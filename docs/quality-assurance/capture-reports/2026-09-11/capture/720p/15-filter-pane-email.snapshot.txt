@@ -1,0 +1,1004 @@
+# 15-filter-pane-email (720p)
+url:      https://hoover4.new.liquiddemo.org/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==
+title:    Hoover Search:
+actions:  sleep 1500; click_css #x-search-open-filters; wait_text All filters; click_text Email; sleep 800
+api calls: 11 (search_for_results_hit_count x4, search_string_facet x3, search_for_results x2, list_storage_tree x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5965[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5963[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5961[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5959[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+            div
+              div#x-filter-modal
+                div
+                  svg
+                    path
+                  div  "All filters"
+                  button[title=Close without applying]
+                    svg
+                      path
+                div
+                  div
+                    button  "Collections"
+                      div
+                      svg
+                        path
+                    button  "File types"
+                      div
+                      svg
+                        path
+                    button  "File size"
+                      div
+                      svg
+                        path
+                    button  "File location"
+                      div
+                      svg
+                        path
+                    button  "Date"
+                      div
+                      svg
+                        path
+                    button  "Email"
+                      div
+                      svg
+                        path
+                    button  "Entities"
+                      div
+                      svg
+                        path
+                  div
+                    div  "Email has attachments"
+                      svg
+                        path
+                    div
+                      div
+                        div  "Sender"
+                        div
+                          svg
+                            path
+                          input[type=text][placeholder=Search senders…]
+                        div
+                          ul
+                            li
+                              div
+                                svg
+                                  path
+                                div  "kay.mann@enron.com"
+                                div
+                                div  "16730"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "vince.kaminski@enron.com"
+                                div
+                                div  "14404"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "jeff.dasovich@enron.com"
+                                div
+                                div  "11247"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "steven.kean@enron.com"
+                                div
+                                div  "6758"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "enron.announcements@enron.com"
+                                div
+                                div  "5964"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "sara.shackleton@enron.com"
+                                div
+                                div  "5798"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "chris.germany@enron.com"
+                                div
+                                div  "5639"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "pete.davis@enron.com"
+                                div
+                                div  "5606"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "tana.jones@enron.com"
+                                div
+                                div  "5379"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "kate.symes@enron.com"
+                                div
+                                div  "3563"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "eric.bass@enron.com"
+                                div
+                                div  "3244"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "no.address@enron.com"
+                                div
+                                div  "3227"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "matthew.lenhart@enron.com"
+                                div
+                                div  "3195"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "sally.beck@enron.com"
+                                div
+                                div  "2831"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "debra.perlingiere@enron.com"
+                                div
+                                div  "2805"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "mark.taylor@enron.com"
+                                div
+                                div  "2652"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "susan.scott@enron.com"
+                                div
+                                div  "2580"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "gerald.nemec@enron.com"
+                                div
+                                div  "2449"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "drew.fossum@enron.com"
+                                div
+                                div  "2443"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "carol.clair@enron.com"
+                                div
+                                div  "2331"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "john.arnold@enron.com"
+                                div
+                                div  "2222"
+                      div
+                        div  "Receiver"
+                        div
+                          svg
+                            path
+                          input[type=text][placeholder=Search receivers…]
+                        div
+                          ul
+                            li
+                              div
+                                svg
+                                  path
+                                div  "richard.shapiro@enron.com"
+                                div
+                                div  "16583"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "jeff.dasovich@enron.com"
+                                div
+                                div  "16427"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "steven.kean@enron.com"
+                                div
+                                div  "14995"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "james.steffes@enron.com"
+                                div
+                                div  "11899"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "vince.kaminski@enron.com"
+                                div
+                                div  "11842"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "tana.jones@enron.com"
+                                div
+                                div  "10098"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "susan.mara@enron.com"
+                                div
+                                div  "9632"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "paul.kaufman@enron.com"
+                                div
+                                div  "9434"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "sara.shackleton@enron.com"
+                                div
+                                div  "9352"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "mark.taylor@enron.com"
+                                div
+                                div  "8633"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "kay.mann@enron.com"
+                                div
+                                div  "7605"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "tim.belden@enron.com"
+                                div
+                                div  "7242"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "mark.guzman@enron.com"
+                                div
+                                div  "7228"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "harry.kingerski@enron.com"
+                                div
+                                div  "6835"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "joe.hartsoe@enron.com"
+                                div
+                                div  "6809"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "karen.denne@enron.com"
+                                div
+                                div  "6759"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "sandra.mccubbin@enron.com"
+                                div
+                                div  "6723"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "louise.kitchen@enron.com"
+                                div
+                                div  "6517"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "sally.beck@enron.com"
+                                div
+                                div  "6260"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "geir.solberg@enron.com"
+                                div
+                                div  "6259"
+                            li
+                              div
+                                svg
+                                  path
+                                div  "ryan.slinger@enron.com"
+                                div
+                                div  "6168"
+                div
+                  button  "Clear all"
+                  div
+                  button  "Cancel"
+                  button  "Show 403211 results"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "403211 documents found"
+                    div
+                      div
+                        div#dxc-5957[role=button]
+                          div
+                            svg
+                              path
+                    div
+                    div
+                      div
+                        div#dxc-5953[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 1000"
+                      div
+                        div#dxc-5955[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-5951[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/51"
+                        div
+                        div
+                          div#dxc-5949[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "4.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "71f1e7ab111b402281ea55d400fc33bf33363432343735", "Contacts": [ { "n": null, "c": null, "st": null, "st2": null, "cy": null, "_s": null, "z": null, "_cty": null, "ph":"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDEzNzEwZTY2NmVmOWVlODU0NDk1NTIxY2MwZjBmY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "event.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountID": 1530474, "EventID": 2805707, "FullDateString": "Monday, November 4, 2019", "Name": "Lecture with Alex Ryvchin", "IsActive": true, "LongDateString": "Monday, November 4, 2019", "HasDate""
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDIxM2QyMzVlOTkyY2UzZTYzZGNhNzgwNTdmNDNhN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "3."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "25.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "58c828033e63401eb7e001263783be1032303437303639", "Contacts": [ { "n": null, "c": null, "st": "1605 Bruce Drive", "st2": null, "cy": "Saints Simons Island", "_s": "Geo"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDIxODBkMDZmNjgwMmNjOGVkMjVkNTdkZThmMzU5Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "4."
+                              div
+                                span[title=Spreadsheet (browsable)]
+                                  svg
+                                    path
+                              div
+                                span  "contacts_export.csv"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "contacts_export.csv"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDU5OGRjZTVmNjY4NzYyMTU5YmJkM2ExMTljNDcwZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "5."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "7.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "8b8c8497df7446d9b65d03990daafea634323639313137", "Contacts": [ { "n": null, "c": "Consulate General of the Republic of India", "st": "5549 Glenridge Drive NE", "st2":"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDZjNzg1ZGY1NTkwNDAzZDUyNTI1Y2Y3NmQzMzJiO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "6."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "20.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "20.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDhmMjQyYmU2MTNjZjQwZGFhZTFlMTA3NTUwZDAxZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "7."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "9.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "9.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMGIwYmNjZDRiYzg4ZWQwYjVjNmE4NTcwN2NmMTU3N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "8."
+                              div
+                                span[title=Spreadsheet (browsable)]
+                                  svg
+                                    path
+                              div
+                                span  "inbox.csv"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "inbox.csv"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMGJjM2NiYzYzZjc1M2U3YmMzZjY3YTAxZjNjYTIyY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "9."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "16.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "16.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMGQ4NWFjYzllNTljZjJjOGJkMDg3OGZkYTA0Nzk3Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "10."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "2.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "2.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMGRlNTVkNmMzZTk3YTE4MjE4MzJhNmRjNDI5ZjEyY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "11."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "2.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "314b847c53644a64a1017c561c1e363933363432343735", "Contacts": [ { "n": null, "c": "Georgia General Assembly", "st": null, "st2": null, "cy": null, "_s": null, "z": nul"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTA3YjViNTAwNTBhN2NkNzg4YTViNzZlZDZlMTIyY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "12."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "10.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "10.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTI1ZjVmOTE5MDk1Yjk2NWUxMmQ4MWE4MGJkMGViN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "13."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "30.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "30.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTJkZDMxMzc3NzBiN2ZmMWFmOWQ4OTdkMDYyODM2Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "14."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "2.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "72e2ecd8568e4db1acad18e05a6d148633313636313037", "Contacts": [ { "n": null, "c": "STEM Atlanta Women", "st": null, "st2": null, "cy": "Atlanta", "_s": "GA", "z": null"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTJmZjYxOTMzNzVhZGZhOTFiOTdiMGZmNzhhZjExY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "15."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "6.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "6.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTM4MWUxMjBhMmI2MzQ2N2QzZGNkYzhlN2ZmY2U5Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "16."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "16.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "16.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTU3NmY0YTY2MjNhZThkZTE3NzU5ZDE5YTI3YzMzN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "17."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "8.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "8.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTVmNTM4ZGQ0NTM1Zjc3OWNiODkyNzIwZGFjMjZkY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "18."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "1.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "e25d06e8fb404fdc96eac6efc3b077a834323639313137", "Contacts": [ { "n": null, "c": "Emory University", "st": null, "st2": null, "cy": null, "_s": null, "z": null, "_cty"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMWE3M2JjOGUxZDZjOWNhMTkzN2VhNDI5ZjZlNGM5Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "19."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "27.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "27.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMWI1NmU2NjhhYjI0ODc5NTFlOGQ0ZGM5MmU5MWI5N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "20."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "23.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "9a68cf8e6c3c4d6cb94b6a94846cf0cd32303437303639", "Contacts": [ { "n": null, "c": "Creative Solutions & Innovations", "st": null, "st2": null, "cy": null, "_s": null, "
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMWU5YWViNzhiNmUxOTM2YzBiMzVmOTA4YjAwMjJlM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

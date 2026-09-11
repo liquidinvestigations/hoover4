@@ -13,3 +13,6 @@ capture report.
 - [Legacy data processing tests](Legacy_Data_Processing_Tests.md), the older system's tests and fixtures, for feature and test parity
 
 `docs/development/Known_Defects.md` is the defect register. It is not a suite list.
+
+
+`docs/quality-assurance/capture-reports/2026-09-11/capture/report.html` - here is a full report of a reference automatic browser testing / verification pass. 

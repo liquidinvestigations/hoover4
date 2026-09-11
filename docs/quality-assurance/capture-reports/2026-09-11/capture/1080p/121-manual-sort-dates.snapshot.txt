@@ -1,0 +1,205 @@
+# 121-manual-sort-dates (1080p)
+url:      https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYW1yYW5nZV9maWx0ZXJzoGRzb3J0omNrZXlkRGF0ZWRkZXNj9Q==/1/9g==/9g==
+title:    Hoover Search:
+actions:  (none)
+api calls: 69 (search_for_results x36, search_for_results_hit_count x26, whoami x7)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-1979[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-1977[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-1975[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-1973[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter (1)"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort: Date"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Descending. Click for ascending.]
+                    svg
+                      path
+                      path
+              div#x-filter-chips
+                div[title=testdata_manualqa]
+                  span  "Collections"
+                  span  "testdata_manualqa"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                button  "Clear all"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "23 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-1967[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 23"
+                      div
+                        div#dxc-1969[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-1965[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "2"
+                          span  "/2"
+                        div
+                        div
+                          div#dxc-1963[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "21."
+                              div
+                                span[title=Archive]
+                                  svg
+                                    path
+                              div
+                                span  "parent.zip"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "parent.zip"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBjNWYyNTE4MzExZmIzZTYwNjQ5MjAwMzZiY2NhO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "22."
+                              div
+                                span[title=Document]
+                                  svg
+                                    path
+                              div
+                                span  "invoice-batch.docx"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "INVOICE BATCH COVER SHEET Remit to IBAN AL47 2121 1009 0000 0002 3569 8741, BIC ABNA BE 2A. Batch total USD 310000 across eleven invoices. The largest single invoice is USD 85000 and the smallest is U"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMGRiYzQ4ZDQ3YmU2NTdiYWNmMWFlMWVlZDVlM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "23."
+                              div
+                                span[title=Archive]
+                                  svg
+                                    path
+                              div
+                                span  "the-directory.zip"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "the-directory/many-a-child-dir-716/file-716.txt many-a-dir-file.txt the-directory/many-a-child-dir-746/file-746.txt many-a-dir-file.txt the-directory/many-a-child-file-320.txt many-a-child-file-$i.txt"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1M]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

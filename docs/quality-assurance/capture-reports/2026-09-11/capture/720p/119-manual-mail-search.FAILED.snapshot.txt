@@ -1,0 +1,313 @@
+# 119-manual-mail-search (720p) -- FAILED
+url:      https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdmaG9vdmVybWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYW1yYW5nZV9maWx0ZXJzoGRzb3J0omNrZXlpUmVsZXZhbmNlZGRlc2P1/0/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/pWpmaW5kX3F1ZXJ5ZWVucm9ub3NlbGVjdGVkX3NvdXJjZfZ0c2VsZWN0ZWRfc291cmNlX3BhZ2X2a3RhYmxlX3N0YXRl9m9zZWxlY3RlZF9lbnRpdHn2
+title:    Hoover Search: hoover
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-1337[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-1335[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-1333[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-1331[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][value=hoover][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter (1)"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+              div#x-filter-chips
+                div[title=testdata_manualqa]
+                  span  "Collections"
+                  span  "testdata_manualqa"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                button  "Clear all"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "2 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-1325[role=button]
+                          button
+                            svg
+                              path
+                      div  "1 / 2"
+                      div
+                        div#dxc-1327[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-1323[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/1"
+                        div
+                        div
+                          div#dxc-1321[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "mail-search-substitute.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "jeff."
+                                span  "hoover"
+                                span  "@enron.com enron separator1 enron separator2 enron separator3 enron separator4 enron separator5 enron separator6 enron separator7 enron separator8 enron separator9 enron separator10 enron separator11 "
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "mail-search-substitute.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "jeff."
+                                span  "hoover"
+                                span  "@enron.com enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3MWI5ZDIxOGU4N2QzMDA1MzNmZTNkNTY1OGM0Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_manualqa"
+                    div  "/"
+                    div
+                      span[title=Text]
+                        svg
+                          path
+                    div  "mail-search-substitute.txt"
+                  div
+                  div
+                    a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZ]
+                      svg
+                        path
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    input[type=text][value=enron][placeholder=Search in document]
+                  div
+                  div
+                    div
+                      div
+                        div#dxc-25[role=button]
+                          button
+                            svg
+                              path
+                      div  "1 / 21"
+                      div
+                        div#dxc-23[role=button]
+                          button
+                            svg
+                              path
+                  div
+                  div
+                    button#dxc-20
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div  "21"
+                        span  "▼"
+                div
+                  div
+                    div
+                      div
+                        pre
+                          span
+                            span  "jeff.hoover@"
+                          span
+                            span  "enron"
+                          span
+                            span  ".com"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator1"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator2"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator3"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator4"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator5"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator6"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator7"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator8"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator9"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator10"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator11"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator12"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator13"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator14"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator15"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator16"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator17"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator18"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator19"
+                          span
+                            span  "enron"
+                          span
+                            span  "separator20"
+    div[role=region][label=0 notifications]
+      ol

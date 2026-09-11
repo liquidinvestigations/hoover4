@@ -1,0 +1,9 @@
+# interval-026-t0130s
+requested deadline: 130.000s  actual: 130.004s  missed: False
+message text length: 2190  user bubbles: 1
+scroll: top=0 height=844 client=838
+transcript selector matched: True
+working placeholder visible: False
+
+## observations
+(none)

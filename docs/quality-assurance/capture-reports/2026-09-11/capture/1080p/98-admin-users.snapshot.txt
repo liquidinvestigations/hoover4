@@ -1,0 +1,132 @@
+# 98-admin-users (1080p)
+url:      https://hoover4.new.liquiddemo.org/admin/users
+title:    Admin: users
+actions:  sleep 2000
+api calls: 2 (admin_list_users x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7423[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7421[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7419[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7417[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Users"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Select user to change"
+              div
+                div
+                  span  "🔍"
+                  input[type=text][placeholder=Search users]
+                table
+                  thead
+                    tr
+                      th  "Username"
+                      th  "Full name"
+                      th  "Email address"
+                      th  "Superuser"
+                      th  "Groups"
+                      th  "Created"
+                      th  "Last login"
+                  tbody
+                    tr
+                      td
+                        a[href=/admin/users/admin]  "admin"
+                      td
+                      td
+                      td
+                        span  "✖"
+                      td  "0"
+                      td  "2026-09-04T13:11:06Z"
+                      td  "—"
+                    tr
+                      td
+                        a[href=/admin/users/hoover4admin]  "hoover4admin"
+                      td  "hoover4admin"
+                      td  "hoover4admin@new.liquiddemo.org"
+                      td
+                        span  "✔"
+                      td  "18"
+                      td  "2026-09-04T13:56:54Z"
+                      td  "—"
+                    tr
+                      td
+                        a[href=/admin/users/hoover4user]  "hoover4user"
+                      td  "hoover4user"
+                      td  "hoover4user@new.liquiddemo.org"
+                      td
+                        span  "✖"
+                      td  "2"
+                      td  "2026-09-04T13:57:40Z"
+                      td  "—"
+                    tr
+                      td
+                        a[href=/admin/users/smoketest]  "smoketest"
+                      td
+                      td
+                      td
+                        span  "✔"
+                      td  "1"
+                      td  "2026-09-05T09:34:29Z"
+                      td  "—"
+    div[role=region][label=0 notifications]
+      ol

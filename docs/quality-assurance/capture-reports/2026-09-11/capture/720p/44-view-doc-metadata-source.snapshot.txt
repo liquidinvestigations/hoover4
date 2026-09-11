@@ -1,0 +1,460 @@
+# 44-view-doc-metadata-source (720p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMzYyNzk1OTg2ZmExZTcyM2VmYWIyOGVjMTE0MWY2NDQ2ZTQ2NThkNjFiMTRmYzFhOTI3YjdmYjFmOTc3MjRlNQ==/o2pmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2VoTWV0YWRhdGF0c2VsZWN0ZWRfc291cmNlX3BhZ2X2/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=
+title:    Hoover Search - View Document
+actions:  sleep 3000
+api calls: 13 (search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_dates x1, get_document_email x1, get_document_sources x1, get_document_table_overview x1, get_document_text_by_id_and_source x1, get_file_path x1, get_raw_metadata_tables x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5095[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5093[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5091[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5089[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      div
+                        div#dxc-13[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / -"
+                      div
+                        div#dxc-11[role=button]
+                          button
+                            svg
+                              path
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Plain text"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_testfiles"
+                    div  "/"
+                    div
+                      span[title=Text]
+                        svg
+                          path
+                    div  "easychair.txt"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    div
+                      div
+                        pre
+                          span
+                            span  "=== THIS IS A SAMPLE .txt FILE === The styles and parameters of this guide are designed for compliance with the requirements for publication in the EasyChair EPiC Series (Voronkov, 2004). EasyChair is"
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                ul
+                  li
+                    h1  "Dates"
+                      svg
+                        path
+                    div  "No confirmed dates. Nothing in this document's metadata gave a date we trust, so it will not match any date range except ."
+                      b  "Unknown only"
+                  li
+                    h1  "blobs"
+                      span  "blob_hash"
+                    table
+                      tbody
+                        tr
+                          td  "blob_size_bytes"
+                          td  "478"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "md5"
+                          td  "840c68eb114c659ee4934eb14df0e499"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "s3_path"
+                          td
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "sha1"
+                          td  "58151db60c6a7e83628cbd9bdff0312763872a3c"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "sha256"
+                          td  "bf40c916af1b69aba575e368ca854d06ee84c7eaf39d2ff7ce8df86a43a25448"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "stored_in_clickhouse"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "file_types"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "extracted_by"
+                          td  "content_sniff"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extracted_by"
+                          td  "extension"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extracted_by"
+                          td  "file"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[0]"
+                          td  "text"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_encoding[0]"
+                          td  "us-ascii"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[0]"
+                          td  "text/plain"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extensions[0]"
+                          td  ".txt"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "extracted_by"
+                          td  "magika"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[0]"
+                          td  "text"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[0]"
+                          td  "text/plain"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "file_type_canonical"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "decided_by"
+                          td  "specificity_ladder"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type"
+                          td  "text"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type"
+                          td  "text/plain"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-04 13:15:05"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "tika_metadata"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "processed_at"
+                          td  "2026-09-04 13:14:00"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Content-Encoding[0]"
+                          td  "ISO-8859-1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Content-Length[0]"
+                          td  "478"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Content-Type[0]"
+                          td  "text/plain; charset=ISO-8859-1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By-Full-Set[0]"
+                          td  "org.apache.tika.parser.DefaultParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By-Full-Set[1]"
+                          td  "org.apache.tika.parser.csv.TextAndCSVParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By[0]"
+                          td  "org.apache.tika.parser.DefaultParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By[1]"
+                          td  "org.apache.tika.parser.csv.TextAndCSVParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.resourceName[0]"
+                          td  "362795986fa1e723efab28ec1141f6446e4658d61b14fc1a927b7fb1f97724e5"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "vfs_files"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "container_hash"
+                          td
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_size_bytes"
+                          td  "478"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "is_deleted"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime"
+                          td  "2025-10-22 10:12:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime_source"
+                          td  "filesystem"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "path"
+                          td  "/easychair.txt"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-04 13:13:59"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "user_id"
+                          td  "system"
+                          td
+                            button
+                              svg
+                                path
+                                path
+    div[role=region][label=0 notifications]
+      ol

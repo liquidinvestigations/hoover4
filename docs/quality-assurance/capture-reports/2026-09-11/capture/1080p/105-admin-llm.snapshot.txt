@@ -1,0 +1,142 @@
+# 105-admin-llm (1080p)
+url:      https://hoover4.new.liquiddemo.org/admin/llm
+title:    Admin: LLM
+actions:  sleep 2000
+api calls: 2 (admin_get_llm x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7655[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7653[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7651[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7649[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "LLM"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "LLM"
+              div
+                div
+                  h2  "Providers"
+                  div
+                    p  "Catalog refresh is single-flight and runs in the background. Stale rows stay visible while it works."
+                    table
+                      thead
+                        tr
+                          th  "Provider"
+                          th  "Models"
+                          th  "Freshest"
+                          th  "Status"
+                      tbody
+                        tr
+                          td  "10.69.70.115:21960"
+                          td  "0"
+                          td
+                          td  "The catalog is empty. Click Refresh."
+                    button  "Refresh catalog"
+                div
+                  h2  "Default models"
+                  div
+                    div
+                      label  "Chat"
+                        input[type=text][value=qwen3.5-35b-a3b]
+                      button  "Save chat default"
+                      label  "Summarisation"
+                        input[type=text][value=qwen3.5-35b-a3b]
+                      button  "Save summarisation default"
+                    p  "Current chat default: qwen3.5-35b-a3b. Summarisation: qwen3.5-35b-a3b."
+                    h3  "Per-profile models"
+                    p  "A lead orchestrator reading a hundred search hits and a summariser writing a chat title do not need the same model. Leave a row empty to use the chat default; clearing a row puts it back on the defaul"
+                    div
+                      label  "Internal search"
+                        input[type=text][placeholder=use the chat default]
+                      button  "Save"
+                      span  "Runs on: qwen3.5-35b-a3b (the chat default)"
+                    div
+                      label  "Full research"
+                        input[type=text][placeholder=use the chat default]
+                      button  "Save"
+                      span  "Runs on: qwen3.5-35b-a3b (the chat default)"
+                    div
+                      label  "Summarisation"
+                        input[type=text][placeholder=use the chat default]
+                      button  "Save"
+                      span  "Runs on: qwen3.5-35b-a3b (the chat default)"
+                div
+                  h2  "Catalog allowlist"
+                  div
+                    div
+                      input[type=text][placeholder=Filter models…]
+                      span  "0 shown"
+                    table
+                      thead
+                        tr
+                          th  "Provider"
+                          th  "Model"
+                          th  "Flags"
+                          th  "p50"
+                          th  "Calls 14d"
+                          th  "Allowed"
+                      tbody
+                    p  "A forged model id in a chat request is rejected server-side, not merely hidden here. shows live serving health."
+                      a[href=/admin/ai_status]  "AI status"
+    div[role=region][label=0 notifications]
+      ol

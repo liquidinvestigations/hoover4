@@ -1,0 +1,107 @@
+# 92-ai-chat (720p)
+url:      https://hoover4.new.liquiddemo.org/ai_chat
+title:    Hoover Search - AI Chat
+actions:  sleep 2000
+api calls: 4 (chat_list_models x1, chat_list_sessions x1, chat_llm_configured x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5599[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5597[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5595[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5593[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          h1  "What are you researching?"
+          div
+            a[href=/ai_chat/c/7f0a2710fdd21c158ed1aa976fc48199577ebfc1fe6ad73eb1629396882423a1/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "List Consulate Documents and Analyze Three Samples"
+                  div  "The user requested available collections and a detailed analysis of three Consulate documents covering event planning, contacts, and task management. The assistant listed seven collections, selected t"
+            a[href=/ai_chat/c/f0bc1d60a1d4f697699046563e7222bb2e5f778a6b9267882496d546f88f84b1/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Rodrigo Paz Presidency and News Search"
+                  div  "User asked for Bolivia's current president and five news links after September 2026, but only pre-September 2026 articles were found. The search confirmed Rodrigo Paz as president but could not provid"
+            a[href=/ai_chat/c/4e98c49ef1070fc19e76dc56817c5d33e7798a3d44747603f70aa3a025a90d0f/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "ceva"
+                  div  "8 messages"
+            a[href=/ai_chat/c/cea7c3d0987f64683de3c2464a71c13c53297e65c8459079558ea6e846d03dae/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Summarise the first document in this collection."
+                  div  "7 messages"
+            a[href=/ai_chat/c/5cd80ae2b7d2020e286a66ae65f4d9318b647fa690f8d1558a41b06545e48223/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Clarifying the Target Collection"
+                  div  "The user asked about a specific collection, and the assistant listed available options to identify the correct one for analysis."
+            a[href=/ai_chat/c/86e471166358b18b05035d43db2b42e26804b3e6e41653a9fc1fa382531c2343/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Count from 1 to 500, one number per line, with no other text…"
+                  div  "2 messages"
+          div
+            a[href=/ai_chat/history]  "View all conversations"
+          div
+            div
+              label
+                span  "Model"
+                select
+            div
+              textarea
+              div
+                label  "Deep Research"
+                  input[type=checkbox][value=on]
+                label  "Internet tools"
+                  input[type=checkbox][value=on]
+                div
+                button[title=Send]  "↑"
+    div[role=region][label=0 notifications]
+      ol

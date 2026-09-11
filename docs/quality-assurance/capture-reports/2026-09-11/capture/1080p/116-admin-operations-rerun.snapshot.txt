@@ -1,0 +1,618 @@
+# 116-admin-operations-rerun (1080p)
+url:      https://hoover4.new.liquiddemo.org/admin/operations
+title:    Admin: operations
+actions:  wait_css #x-ops-filter-state; eval const b=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Re-run'&&!x.disabled);return {ok:!!b};; sleep 2000
+api calls: 2 (admin_list_operations x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5947[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5945[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5943[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5941[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Operations"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Operations"
+              div
+                div
+                  h2  "Filters"
+                  div
+                    label  "State"
+                      select#x-ops-filter-state
+                    label  "Collection"
+                      select#x-ops-filter-collection
+                    span  "Choose a collection to see its per-task error rates."
+                div
+                  h2  "Operations, newest first"
+                  div
+                    table
+                      thead
+                        tr
+                          th  "Kind"
+                          th  "Target"
+                          th  "State"
+                          th  "Started"
+                          th  "Duration"
+                          th  "Progress"
+                          th  "ETA"
+                          th  "Outcome"
+                          th
+                      tbody
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_manualqa"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:46:33Z"
+                          td  "1m 37s"
+                          td
+                            div
+                              div
+                                div
+                              div  "3 / 3 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "2 document(s) failed"
+                              div  "2 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_excelsc"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:45:17Z"
+                          td  "1m 15s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "2 document(s) failed"
+                              div  "2 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_diskfiles"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:44:52Z"
+                          td  "22s"
+                          td
+                            div
+                              div
+                                div
+                              div  "2 / 2 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "1 document(s) failed"
+                              div  "1 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_emails"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:54Z"
+                          td  "57s"
+                          td
+                            div
+                              div
+                                div
+                              div  "3 / 3 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "2 document(s) failed"
+                              div  "2 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_wide"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:48Z"
+                          td  "3s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_manualpdf"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:41Z"
+                          td  "4s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_leaf"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:34Z"
+                          td  "4s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_filenames"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:30Z"
+                          td  "1s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "retry_failed_files"
+                          td  "textfiles_extra"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-05T12:32:53Z"
+                          td  "1h 33m"
+                          td
+                            div
+                              div
+                                div
+                              div  "2 / 2 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "failures not counted"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "enron_maildir"
+                            div  "cli"
+                          td  "running"
+                          td  "2026-09-04T22:03:07Z"
+                          td  "155h 39m"
+                          td
+                            div
+                              div
+                                div
+                              div  "324 / 518 plans"
+                          td  "12h 19m"
+                          td
+                            div
+                              div  "9902 document(s) failed"
+                              div  "11402 task failure(s)"
+                          td
+                            button  "Cancel"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "enron_mann_k"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T21:24:00Z"
+                          td  "39m 3s"
+                          td
+                            div
+                              div
+                                div
+                              div  "24 / 24 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "enron_kaminski_v"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T20:38:20Z"
+                          td  "45m 36s"
+                          td
+                            div
+                              div
+                                div
+                              div  "29 / 29 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "1 document(s) failed"
+                              div  "1 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "enron_kean_s"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T19:53:39Z"
+                          td  "44m 38s"
+                          td
+                            div
+                              div
+                                div
+                              div  "26 / 26 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "enron_dasovich_j"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T19:00:48Z"
+                          td  "52m 50s"
+                          td
+                            div
+                              div
+                                div
+                              div  "29 / 29 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "textfiles_extra"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T15:03:59Z"
+                          td  "3h 56m"
+                          td
+                            div
+                              div
+                                div
+                              div  "29 / 29 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "105 document(s) failed"
+                              div  "192 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "epstein_docs"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T14:52:15Z"
+                          td  "11m 41s"
+                          td
+                            div
+                              div
+                                div
+                              div  "3 / 3 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "16 document(s) failed"
+                              div  "16 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "tables_ehudx"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T14:48:35Z"
+                          td  "3m 37s"
+                          td
+                            div
+                              div
+                                div
+                              div  "2 / 2 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "69 document(s) failed"
+                              div  "91 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "consulate_files"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T14:29:41Z"
+                          td  "18m 52s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "1 document(s) failed"
+                              div  "1 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_entityfixtures"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T14:13:41Z"
+                          td  "6s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "tables_greenvelope"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T14:08:08Z"
+                          td  "21m 29s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "1 document(s) failed"
+                              div  "1 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "tables_excels"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T14:06:52Z"
+                          td  "1m 15s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "2 document(s) failed"
+                              div  "2 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_filenames"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T13:16:29Z"
+                          td  "3s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_shapes"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T13:16:13Z"
+                          td  "14s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_zips"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T13:16:06Z"
+                          td  "6s"
+                          td
+                            div
+                              div
+                                div
+                              div  "2 / 2 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "other_emails"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T13:15:08Z"
+                          td  "55s"
+                          td
+                            div
+                              div
+                                div
+                              div  "3 / 3 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "4 document(s) failed"
+                              div  "6 task failure(s)"
+                          td
+                            button  "Re-run"
+                    div
+                      button  "Newer"
+                      span  "Page 1"
+                      button  "Older"
+    div[role=region][label=0 notifications]
+      ol

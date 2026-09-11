@@ -1,0 +1,1757 @@
+# 97-admin-collection-processing (720p)
+url:      https://hoover4.new.liquiddemo.org/admin/collections/testdata/processing
+title:    Admin — Processing testdata
+actions:  sleep 2500
+api calls: 32 (admin_get_dataset_operation x24, admin_collection_processing x1, admin_list_document_failures x1, admin_list_eta_samples x1, admin_list_task_failures x1, admin_list_workflows x1, admin_task_time_breakdown x1, admin_task_time_live x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7559[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7557[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7555[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7553[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Collections › testdata › Processing"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Collection processing"
+              div
+                div
+                  a[href=/admin/collections/testdata]  "← Back to collection"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-10T08:45:14Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-10T08:44:51Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-04T14:13:47Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-10T08:46:32Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-10T08:43:31Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-10T08:43:38Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-10T08:43:45Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-10T08:48:10Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-04T13:16:27Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-04T13:15:06Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-10T08:43:51Z"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-04T13:16:12Z"
+                div
+                  h2  "Processing stages"
+                  div
+                    div
+                      div  "diskfiles"
+                        span  "(testdata_diskfiles)"
+                        span  "1 errors"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "7 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "7 / 7 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "2 / 2 plans"
+                        div  "—"
+                        div
+                          span  "1 failed"
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "12 / 12 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "7 / 7 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "emails"
+                        span  "(testdata_emails)"
+                        span  "2 errors"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "14 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "14 / 14 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "3 / 3 plans"
+                        div  "—"
+                        div
+                          span  "2 failed"
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "54 / 54 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "14 / 14 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "entityfixtures"
+                        span  "(testdata_entityfixtures)"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "17 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "17 / 17 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "1 / 1 plans"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "37 / 37 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "17 / 17 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "excelsc"
+                        span  "(testdata_excelsc)"
+                        span  "2 errors"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "9 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "9 / 9 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "1 / 1 plans"
+                        div  "—"
+                        div
+                          span  "2 failed"
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "22 / 22 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "9 / 9 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "filenames"
+                        span  "(testdata_filenames)"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "1 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "1 / 1 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "1 / 1 plans"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "2 / 2 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "1 / 1 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "leaf"
+                        span  "(testdata_leaf)"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "1 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "1 / 1 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "1 / 1 plans"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "2 / 2 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "1 / 1 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "manualpdf"
+                        span  "(testdata_manualpdf)"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "1 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "1 / 1 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "1 / 1 plans"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "3 / 3 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "1 / 1 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "manualqa"
+                        span  "(testdata_manualqa)"
+                        span  "2 errors"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "23 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "23 / 23 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "3 / 3 plans"
+                        div  "—"
+                        div
+                          span  "2 failed"
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "84 / 84 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "23 / 23 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "Estimated completion:"
+                          b  "2026-09-10T08:48:04Z"
+                          span  "(in 2s, a best-effort estimate rather than a scheduling promise)"
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          g
+                            line
+                            text  "1s"
+                          g
+                            line
+                            text  "2s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "shapes"
+                        span  "(testdata_shapes)"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "4 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "4 / 4 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "1 / 1 plans"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "7 / 7 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "4 / 4 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "testfiles"
+                        span  "(testdata_testfiles)"
+                        span  "1 errors"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "6 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "6 / 6 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "1 / 1 plans"
+                        div  "—"
+                        div
+                          span  "1 failed"
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "39 / 39 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "6 / 6 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "wide"
+                        span  "(testdata_wide)"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "1 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "1 / 1 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "1 / 1 plans"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "2 / 2 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "1 / 1 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                    div
+                      div  "zips"
+                        span  "(testdata_zips)"
+                      div
+                        div  "P0 · Scan & deduplicate"
+                        div
+                          div
+                        div  "2 blobs"
+                        div  "—"
+                        div
+                      div
+                        div  "P1 · Compute plans"
+                        div
+                          div
+                        div  "2 / 2 blobs planned"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P2/P3 · Execute plans & parse"
+                        div
+                          div
+                        div  "2 / 2 plans"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P4 · Extract entities (NLP)"
+                        div
+                          div
+                        div  "3 / 3 text pages"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div  "P6 · Index for search"
+                        div
+                          div
+                        div  "2 / 2 documents"
+                        div
+                          span  "done"
+                        div
+                      div
+                        div
+                          span  "No current estimate. The pipeline is finished or not making measurable progress."
+                        svg
+                          g
+                            line
+                            text  "0s"
+                          text  "left"
+                          polyline
+                            title  "P1 plan"
+                          polyline
+                            title  "P2/P3 execute"
+                          polyline
+                            title  "P4 nlp"
+                          polyline
+                            title  "P6 index"
+                          line
+                          text  "2026-09-10T08:47:00Z"
+                          text  "2026-09-10T08:48:02Z"
+                        div
+                          span  "P1 plan"
+                            span
+                          span  "P2/P3 execute"
+                            span
+                          span  "P4 nlp"
+                            span
+                          span  "P6 index"
+                            span
+                div
+                  h2  "Live activity"
+                  div
+                    p  "Nothing running. No activity finished in the last 60 s and no worker reports anything in flight."
+                div
+                  h2  "Where processing time goes"
+                  div
+                    div
+                      div
+                        div  "Summed task time"
+                        div  "380 s (6m)"
+                        div  "2252 executions"
+                      div
+                        div  "Wall clock"
+                        div  "502451 s (5d 19h)"
+                        div  "2026-09-04T13:13:59Z"
+                      div
+                        div  "Achieved parallelism"
+                        div  "0.00×"
+                        div  "task-seconds per elapsed second"
+                    p  "Summed task time divided by wall clock is what the pipeline actually achieved in parallel. Close to 1 means the top task below is the whole cost and worth optimising; close to the worker slot count me"
+                    table
+                      thead
+                        tr
+                          th  "Task"
+                          th  "Total"
+                          th  "Share"
+                          th  "Executions"
+                          th  "Mean"
+                          th  "p95"
+                          th  "Max"
+                          th  "Failed"
+                      tbody
+                        tr
+                          td  "run_ocr_pdf_and_store"
+                          td  "167 s (2m)"
+                          td
+                            div
+                              div
+                                div
+                              span  "43.9%"
+                          td  "18"
+                          td  "9261 ms"
+                          td  "59810 ms"
+                          td  "59810 ms"
+                          td  "0"
+                        tr
+                          td  "chunk_embed_for_hashes"
+                          td  "76 s (1m)"
+                          td
+                            div
+                              div
+                                div
+                              span  "20.1%"
+                          td  "18"
+                          td  "4232 ms"
+                          td  "53393 ms"
+                          td  "53393 ms"
+                          td  "0"
+                        tr
+                          td  "ingest_files_batch"
+                          td  "22.4 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "5.9%"
+                          td  "140"
+                          td  "160 ms"
+                          td  "242 ms"
+                          td  "392 ms"
+                          td  "0"
+                        tr
+                          td  "extract_entities_for_hashes"
+                          td  "21.6 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "5.7%"
+                          td  "18"
+                          td  "1200 ms"
+                          td  "7950 ms"
+                          td  "7950 ms"
+                          td  "0"
+                        tr
+                          td  "run_tika_and_store"
+                          td  "16.3 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "4.3%"
+                          td  "118"
+                          td  "138 ms"
+                          td  "434 ms"
+                          td  "1049 ms"
+                          td  "40"
+                        tr
+                          td  "scan_regex_entities_for_hashes"
+                          td  "15.5 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "4.1%"
+                          td  "18"
+                          td  "864 ms"
+                          td  "6929 ms"
+                          td  "6929 ms"
+                          td  "0"
+                        tr
+                          td  "run_ocr_and_store"
+                          td  "10.9 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "2.9%"
+                          td  "14"
+                          td  "781 ms"
+                          td  "4520 ms"
+                          td  "4520 ms"
+                          td  "0"
+                        tr
+                          td  "detect_mime_all"
+                          td  "10.1 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "2.7%"
+                          td  "86"
+                          td  "117 ms"
+                          td  "233 ms"
+                          td  "273 ms"
+                          td  "0"
+                        tr
+                          td  "index_text_pages"
+                          td  "9.7 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "2.6%"
+                          td  "18"
+                          td  "541 ms"
+                          td  "989 ms"
+                          td  "989 ms"
+                          td  "0"
+                        tr
+                          td  "sample_dataset_progress"
+                          td  "4.1 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "1.1%"
+                          td  "31"
+                          td  "133 ms"
+                          td  "228 ms"
+                          td  "269 ms"
+                          td  "0"
+                        tr
+                          td  "index_vectors"
+                          td  "3.7 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "1.0%"
+                          td  "18"
+                          td  "206 ms"
+                          td  "2614 ms"
+                          td  "2614 ms"
+                          td  "0"
+                        tr
+                          td  "insert_vfs_directories"
+                          td  "2.7 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.7%"
+                          td  "52"
+                          td  "52 ms"
+                          td  "67 ms"
+                          td  "72 ms"
+                          td  "0"
+                        tr
+                          td  "parse_table_and_store"
+                          td  "2.5 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.6%"
+                          td  "11"
+                          td  "224 ms"
+                          td  "1940 ms"
+                          td  "1940 ms"
+                          td  "0"
+                        tr
+                          td  "build_email_graph"
+                          td  "1.7 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.4%"
+                          td  "18"
+                          td  "93 ms"
+                          td  "229 ms"
+                          td  "229 ms"
+                          td  "0"
+                        tr
+                          td  "build_vfs_nodes"
+                          td  "1.7 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.4%"
+                          td  "37"
+                          td  "45 ms"
+                          td  "99 ms"
+                          td  "171 ms"
+                          td  "0"
+                        tr
+                          td  "index_vfs_structure"
+                          td  "1.6 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.4%"
+                          td  "19"
+                          td  "86 ms"
+                          td  "253 ms"
+                          td  "253 ms"
+                          td  "0"
+                        tr
+                          td  "plan_shards"
+                          td  "1.6 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.4%"
+                          td  "18"
+                          td  "87 ms"
+                          td  "151 ms"
+                          td  "151 ms"
+                          td  "0"
+                        tr
+                          td  "compute_plans"
+                          td  "1.3 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.3%"
+                          td  "18"
+                          td  "72 ms"
+                          td  "213 ms"
+                          td  "213 ms"
+                          td  "0"
+                        tr
+                          td  "list_disk_folder"
+                          td  "1.1 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.3%"
+                          td  "1094"
+                          td  "1 ms"
+                          td  "4 ms"
+                          td  "26 ms"
+                          td  "0"
+                        tr
+                          td  "resolve_canonical_file_type"
+                          td  "1.0 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.3%"
+                          td  "36"
+                          td  "29 ms"
+                          td  "94 ms"
+                          td  "100 ms"
+                          td  "0"
+                        tr
+                          td  "parse_office_xml_and_store"
+                          td  "0.9 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.2%"
+                          td  "10"
+                          td  "85 ms"
+                          td  "696 ms"
+                          td  "696 ms"
+                          td  "0"
+                        tr
+                          td  "parse_image_metadata_and_store"
+                          td  "0.8 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.2%"
+                          td  "7"
+                          td  "118 ms"
+                          td  "263 ms"
+                          td  "263 ms"
+                          td  "0"
+                        tr
+                          td  "record_processing_errors"
+                          td  "0.8 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.2%"
+                          td  "8"
+                          td  "99 ms"
+                          td  "203 ms"
+                          td  "203 ms"
+                          td  "0"
+                        tr
+                          td  "extract_plaintext_chunks"
+                          td  "0.6 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.2%"
+                          td  "49"
+                          td  "12 ms"
+                          td  "33 ms"
+                          td  "64 ms"
+                          td  "0"
+                        tr
+                          td  "pdf_small_extract_text_and_images"
+                          td  "0.6 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "9"
+                          td  "62 ms"
+                          td  "121 ms"
+                          td  "121 ms"
+                          td  "0"
+                        tr
+                          td  "pdf_get_metadata_and_store"
+                          td  "0.4 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "9"
+                          td  "41 ms"
+                          td  "129 ms"
+                          td  "129 ms"
+                          td  "0"
+                        tr
+                          td  "parse_email_extract_text_headers"
+                          td  "0.3 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "9"
+                          td  "38 ms"
+                          td  "75 ms"
+                          td  "75 ms"
+                          td  "0"
+                        tr
+                          td  "finalize_index_batch"
+                          td  "0.3 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "18"
+                          td  "18 ms"
+                          td  "64 ms"
+                          td  "64 ms"
+                          td  "0"
+                        tr
+                          td  "refresh_stale_document_locations"
+                          td  "0.3 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "13"
+                          td  "20 ms"
+                          td  "39 ms"
+                          td  "39 ms"
+                          td  "0"
+                        tr
+                          td  "resolve_document_dates"
+                          td  "0.3 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "18"
+                          td  "14 ms"
+                          td  "19 ms"
+                          td  "19 ms"
+                          td  "0"
+                        tr
+                          td  "record_indexed"
+                          td  "0.2 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "18"
+                          td  "14 ms"
+                          td  "61 ms"
+                          td  "61 ms"
+                          td  "0"
+                        tr
+                          td  "fetch_plan_hashes"
+                          td  "0.2 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "72"
+                          td  "3 ms"
+                          td  "4 ms"
+                          td  "6 ms"
+                          td  "0"
+                        tr
+                          td  "mark_plan_finished"
+                          td  "0.2 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "18"
+                          td  "13 ms"
+                          td  "63 ms"
+                          td  "63 ms"
+                          td  "0"
+                        tr
+                          td  "count_new_blobs"
+                          td  "0.2 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "39"
+                          td  "6 ms"
+                          td  "14 ms"
+                          td  "18 ms"
+                          td  "0"
+                        tr
+                          td  "extract_archive_to_temp"
+                          td  "0.2 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "7"
+                          td  "30 ms"
+                          td  "86 ms"
+                          td  "86 ms"
+                          td  "0"
+                        tr
+                          td  "index_entity_terms"
+                          td  "0.2 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.1%"
+                          td  "19"
+                          td  "11 ms"
+                          td  "33 ms"
+                          td  "33 ms"
+                          td  "0"
+                        tr
+                          td  "download_plan_files"
+                          td  "0.2 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.0%"
+                          td  "18"
+                          td  "10 ms"
+                          td  "29 ms"
+                          td  "29 ms"
+                          td  "0"
+                        tr
+                          td  "extract_email_attachments_to_temp"
+                          td  "0.1 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.0%"
+                          td  "9"
+                          td  "16 ms"
+                          td  "63 ms"
+                          td  "63 ms"
+                          td  "0"
+                        tr
+                          td  "get_plan_items_metadata"
+                          td  "0.1 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.0%"
+                          td  "18"
+                          td  "6 ms"
+                          td  "20 ms"
+                          td  "20 ms"
+                          td  "0"
+                        tr
+                          td  "optimize_shard_tables"
+                          td  "0.1 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.0%"
+                          td  "18"
+                          td  "6 ms"
+                          td  "8 ms"
+                          td  "8 ms"
+                          td  "0"
+                        tr
+                          td  "reconcile_deleted_files"
+                          td  "0.1 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.0%"
+                          td  "13"
+                          td  "8 ms"
+                          td  "14 ms"
+                          td  "14 ms"
+                          td  "0"
+                        tr
+                          td  "list_pending_plans"
+                          td  "0.1 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.0%"
+                          td  "19"
+                          td  "5 ms"
+                          td  "7 ms"
+                          td  "7 ms"
+                          td  "0"
+                        tr
+                          td  "record_archive_container"
+                          td  "0.1 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.0%"
+                          td  "16"
+                          td  "3 ms"
+                          td  "17 ms"
+                          td  "17 ms"
+                          td  "0"
+                        tr
+                          td  "cleanup_plan_dir"
+                          td  "0.0 s"
+                          td
+                            div
+                              div
+                                div
+                              span  "0.0%"
+                          td  "18"
+                          td  "0 ms"
+                          td  "1 ms"
+                          td  "1 ms"
+                          td  "0"
+                div
+                  h2  "Temporal workflows"
+                  div
+                    div
+                      button  "All"
+                      button  "Running"
+                      button  "Failed"
+                    p  "Workflows started for this collection's datasets, child workflows included (matched on the CollectionDataset search attribute; runs from before it existed are matched on their workflow id)."
+                    p  "No workflows match this filter."
+                div
+                  h2  "Failed tasks"
+                  div
+                    table
+                      thead
+                        tr
+                          th  "Task"
+                          th  "Dataset"
+                          th  "Errors"
+                          th  "Documents"
+                          th  "Last seen"
+                          th  "Sample"
+                          th
+                      tbody
+                        tr
+                          td  "detector_error_tika"
+                          td  "testdata_manualqa"
+                          td  "2"
+                          td  "2"
+                          td  "2026-09-10T08:46:50Z"
+                          td  "[level 0]"
+                          td
+                            button  "Retry"
+                        tr
+                          td  "detector_error_tika"
+                          td  "testdata_excelsc"
+                          td  "2"
+                          td  "2"
+                          td  "2026-09-10T08:45:34Z"
+                          td  "[level 0]"
+                          td
+                            button  "Retry"
+                        tr
+                          td  "detector_error_tika"
+                          td  "testdata_diskfiles"
+                          td  "1"
+                          td  "1"
+                          td  "2026-09-10T08:45:09Z"
+                          td  "[level 0]"
+                          td
+                            button  "Retry"
+                        tr
+                          td  "detector_error_tika"
+                          td  "testdata_emails"
+                          td  "2"
+                          td  "2"
+                          td  "2026-09-10T08:44:21Z"
+                          td  "[level 0]"
+                          td
+                            button  "Retry"
+                        tr
+                          td  "detector_error_tika"
+                          td  "testdata_testfiles"
+                          td  "1"
+                          td  "1"
+                          td  "2026-09-04T13:14:15Z"
+                          td  "[level 0]"
+                          td
+                            button  "Retry"
+                div
+                  h2  "Failures per document"
+                  div
+                    table
+                      thead
+                        tr
+                          th  "Document"
+                          th  "Dataset"
+                          th  "Failed tasks"
+                          th  "Errors"
+                          th  "Last seen"
+                          th
+                      tbody
+                        tr
+                          td
+                            div
+                              div  "052257179718626e83b3f8efa7fcfb42ae4dec47efab6b53c133d7415c7b62f4"
+                              div  "/bikes.jpg"
+                          td  "testdata_manualqa"
+                          td  "detector_error_tika"
+                          td  "1"
+                          td  "2026-09-10T08:46:50Z"
+                          td
+                            button  "Retry"
+                        tr
+                          td
+                            div
+                              div  "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be"
+                              div  "/documents/easychair.docx"
+                          td  "testdata_manualqa"
+                          td  "detector_error_tika"
+                          td  "1"
+                          td  "2026-09-10T08:46:50Z"
+                          td
+                            button  "Retry"
+                        tr
+                          td
+                            div
+                              div  "afb0109469778f7ae2cba542610d14d7ef4c635dd056247a9f4d134a6b84d331"
+                              div  "/sample-xlsx-file-for-testing.xlsx"
+                          td  "testdata_excelsc"
+                          td  "detector_error_tika"
+                          td  "1"
+                          td  "2026-09-10T08:45:34Z"
+                          td
+                            button  "Retry"
+                        tr
+                          td
+                            div
+                              div  "f23f2cc23b3980cb1320f4a55ebfde266c0d9952bb5c7c1cb648cbead3e06803"
+                              div  "/Excel-sample-data-for-pivot-tables.xlsx"
+                          td  "testdata_excelsc"
+                          td  "detector_error_tika"
+                          td  "1"
+                          td  "2026-09-10T08:45:34Z"
+                          td
+                            button  "Retry"
+                        tr
+                          td
+                            div
+                              div  "052257179718626e83b3f8efa7fcfb42ae4dec47efab6b53c133d7415c7b62f4"
+                              div  "/bikes.jpg"
+                          td  "testdata_diskfiles"
+                          td  "detector_error_tika"
+                          td  "1"
+                          td  "2026-09-10T08:45:09Z"
+                          td
+                            button  "Retry"
+                        tr
+                          td
+                            div
+                              div  "9ea568a26dde99dc5872c98807143249f6871c120006fe7db54727fb31b4dd11"
+                              div  "/IMAG1077.jpg"
+                          td  "testdata_emails"
+                          td  "detector_error_tika"
+                          td  "1"
+                          td  "2026-09-10T08:44:21Z"
+                          td
+                            button  "Retry"
+                        tr
+                          td
+                            div
+                              div  "c9bf61d28a93bb767fc7f69f4dfbde9fc38c3dd4ab788205c13f648b8378e98c"
+                              div  "/IMAG1076.jpg"
+                          td  "testdata_emails"
+                          td  "detector_error_tika"
+                          td  "1"
+                          td  "2026-09-10T08:44:21Z"
+                          td
+                            button  "Retry"
+                        tr
+                          td
+                            div
+                              div  "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be"
+                              div  "/documents/easychair.docx"
+                          td  "testdata_testfiles"
+                          td  "detector_error_tika"
+                          td  "1"
+                          td  "2026-09-04T13:14:15Z"
+                          td
+                            button  "Retry"
+    div[role=region][label=0 notifications]
+      ol

@@ -1,0 +1,935 @@
+# 35-search-collections-filter-expanded (720p)
+url:      https://hoover4.new.liquiddemo.org/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdjdGhlbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==
+title:    Hoover Search: the
+actions:  sleep 2500; click_css #x-search-open-filters; sleep 2500; click_css .x-collection-facet-expand; sleep 1000; wait_css .x-dataset-facet-row
+api calls: 9 (search_for_results_hit_count x4, search_for_results x2, list_storage_tree x1, search_string_facet x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6611[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6609[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6607[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6605[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][value=the][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+            div
+              div#x-filter-modal
+                div
+                  svg
+                    path
+                  div  "All filters"
+                  button[title=Close without applying]
+                    svg
+                      path
+                div
+                  div
+                    button  "Collections"
+                      div
+                      svg
+                        path
+                    button  "File types"
+                      div
+                      svg
+                        path
+                    button  "File size"
+                      div
+                      svg
+                        path
+                    button  "File location"
+                      div
+                      svg
+                        path
+                    button  "Date"
+                      div
+                      svg
+                        path
+                    button  "Email"
+                      div
+                      svg
+                        path
+                    button  "Entities"
+                      div
+                      svg
+                        path
+                  div
+                    div
+                      svg
+                        path
+                      input[type=text][placeholder=Search collections and datasets…]
+                    ul
+                      li
+                        div
+                          svg
+                            path
+                          button[title=Collapse]
+                            svg
+                              path
+                          svg
+                            path
+                          div[title=enron]  "enron"
+                          div  "366197"
+                        ul
+                          li
+                            div
+                              svg
+                                path
+                              div[title=enron_maildir]  "maildir"
+                              div  "274791"
+                          li
+                            div
+                              svg
+                                path
+                              div[title=enron_kaminski_v]  "kaminski_v"
+                              div  "24342"
+                          li
+                            div
+                              svg
+                                path
+                              div[title=enron_dasovich_j]  "dasovich_j"
+                              div  "24157"
+                          li
+                            div
+                              svg
+                                path
+                              div[title=enron_kean_s]  "kean_s"
+                              div  "22561"
+                          li
+                            div
+                              svg
+                                path
+                              div[title=enron_mann_k]  "mann_k"
+                              div  "20346"
+                      li
+                        div
+                          svg
+                            path
+                          button[title=Expand]
+                            svg
+                              path
+                          svg
+                            path
+                          div[title=textfiles]  "textfiles"
+                          div  "11482"
+                      li
+                        div
+                          svg
+                            path
+                          button[title=Expand]
+                            svg
+                              path
+                          svg
+                            path
+                          div[title=epstein]  "epstein"
+                          div  "2696"
+                      li
+                        div
+                          svg
+                            path
+                          button[title=Expand]
+                            svg
+                              path
+                          svg
+                            path
+                          div[title=tables]  "tables"
+                          div  "878"
+                      li
+                        div
+                          svg
+                            path
+                          button[title=Expand]
+                            svg
+                              path
+                          svg
+                            path
+                          div[title=consulate]  "consulate"
+                          div  "319"
+                      li
+                        div
+                          svg
+                            path
+                          button[title=Expand]
+                            svg
+                              path
+                          svg
+                            path
+                          div[title=testdata]  "testdata"
+                          div  "45"
+                      li
+                        div
+                          svg
+                            path
+                          button[title=Expand]
+                            svg
+                              path
+                          svg
+                            path
+                          div[title=other]  "other"
+                          div  "6"
+                div
+                  button  "Clear all"
+                  div
+                  button  "Cancel"
+                  button  "Show 321630 results"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "321630 documents found"
+                    div
+                      div
+                        div#dxc-6603[role=button]
+                          div
+                            svg
+                              path
+                    div
+                    div
+                      div
+                        div#dxc-6599[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 1000"
+                      div
+                        div#dxc-6601[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-6597[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/51"
+                        div
+                        div
+                          div#dxc-6595[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Suez_Crisis.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... and is, according to our information, resolved to wreck us. If Middle Eastern oil is denied to us for a year or two, our gold reserves will disappear. If our gold reserves disappear,"
+                                span  "the"
+                                span  "sterling area disintegrates. If"
+                                span  "the"
+                                span  "sterling area disintegrates and we have no reserves, we shall not be able to maintain a force in Germany, or indeed, anywhere else. I doubt whether we shall be able to pay for ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhANzM0NTExMjYwMWNlMzk1NTAyN2Q2YWE1ZTk2ZWU3Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "German_Revolution_of_1918%E2%80%9319.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... August 1919 of"
+                                span  "the"
+                                span  "Weimar Constitution."
+                                span  "The"
+                                span  "causes of"
+                                span  "the"
+                                span  "revolution were"
+                                span  "the"
+                                span  "extreme burdens suffered by"
+                                span  "the"
+                                span  "population during"
+                                span  "the"
+                                span  "four years of war,"
+                                span  "the"
+                                span  "strong impact of"
+                                span  "the"
+                                span  "defeat on"
+                                span  "the"
+                                span  "German Empire and"
+                                span  "the"
+                                span  "social tensions between"
+                                span  "the"
+                                span  "general population and"
+                                span  "the"
+                                span  "elite of aristocrats and bourgeoisie who held power and had just lost"
+                                span  "the"
+                                span  "war."
+                                span  "The"
+                                span  "roots of"
+                                span  "the"
+                                span  "revolution lay in"
+                                span  "the"
+                                span  "German Empire's ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhANzNjYTlhOTRkZDE3YjAwZDdmZTA3Y2VmYWIwZmE0N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "3."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Ages_of_consent_in_"
+                                span  "the"
+                                span  "_United_States.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... age of consent in Utah is 18. However, it is legal for minors aged 16 and 17 to engage in sexual activity with partners less than 7 years older, and between 7 and 10 years older if"
+                                span  "the"
+                                span  "partner reasonably didn't know"
+                                span  "the"
+                                span  "minor's age. 76-5-401.2. Unlawful sexual conduct with a 16- or 17-year-old. (1) As used in this section, "minor" means a person who is 16 years of age or older, but younger than ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhANzRjZTU5MjJhNTBmZTdiNjkyZTEzY2JiMGU2Yzc5Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "4."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Russian_Federation.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... widely separated points in Russia are about 8,000 km (4,971 mi) apart along a geodesic line. These points are: a 60 km (37 mi) long Vistula Spit"
+                                span  "the"
+                                span  "boundary with Poland separating"
+                                span  "the"
+                                span  "Gdańsk Bay from"
+                                span  "the"
+                                span  "Vistula Lagoon and"
+                                span  "the"
+                                span  "most southeastern point of"
+                                span  "the"
+                                span  "Kuril Islands."
+                                span  "The"
+                                span  "points which are farthest separated in longitude are 6,600 km (4,101 mi) apart along a geodesic line. These points are: in ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhANzUwZWFlZjNiNjk1ZTc1ZGUwMmRhZDczNzMyMjZkM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "5."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Marigold_Churchill.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... quickly developed into a major diplomatic incident. Churchill's relationship with de Gaulle was at this time rock bottom in spite of his efforts to preserve French interests at Yalta and a visit t"
+                                span  "the"
+                                span  "previous year. In January he told a colleague that he believed that de Gaulle was "a great danger to peace and for Great Britain. After five years of experience, I am convinced that he is ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhANzc2MzI0MmY0NzAwZGVkZWJmZWQ0YTc0ZTEyYzhjM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "6."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "History_of_American_newspapers.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... in temperate and measured language and to get into a passion as rarely as possible. "There are few things in this world which it is worth while to get angry about; and they are just"
+                                span  "the"
+                                span  "things anger will not improve." In controversy he meant to avoid abusive language. His style was gentle, candid, and decisive, and achieved its purpose by facility, clearness, and moderation rather th"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhANzhiMGJkZmZkZDk0MjczZTliOTY4NjhkMmFjZDVjZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "7."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Modern_history.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... to"
+                                span  "the"
+                                span  "conflict were"
+                                span  "the"
+                                span  "Imperial forces of"
+                                span  "the"
+                                span  "Qing Dynasty (1644–1911), and"
+                                span  "the"
+                                span  "revolutionary forces of"
+                                span  "the"
+                                span  "Chinese Revolutionary Alliance (Tongmenghui)."
+                                span  "The"
+                                span  "Edwardian era in"
+                                span  "the"
+                                span  "United Kingdom is"
+                                span  "the"
+                                span  "period spanning"
+                                span  "the"
+                                span  "reign of King Edward VII up to"
+                                span  "the"
+                                span  "end of"
+                                span  "the"
+                                span  "First World War, including"
+                                span  "the"
+                                span  "years surrounding"
+                                span  "the"
+                                span  "sinking of"
+                                span  "the"
+                                span  "RMS Titanic. In"
+                                span  "the"
+                                span  "early years of"
+                                span  "the"
+                                span  "period,"
+                                span  "the"
+                                span  "Second ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAN2FkMThmNTMyNjFiYTI2MTNiNzQyM2ZiMTA1ZjNkO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "8."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Native_Americans_in_"
+                                span  "the"
+                                span  "_United_States.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... 'Arbor Croche' is yet living in 1897. And from that time this evil came to be quite frequent, for immorality has been introduced among these people by evil white persons who bring their vices into"
+                                span  "the"
+                                span  "tribes."
+                                span  "The"
+                                span  "U.S. government had two purposes when making land agreements with Native Americans: to open it up more land for white settlement, For a Native American man to marry a white woman, he had ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAN2UyN2I1ZDNlN2FjMjU0ODk3ZTMwOTY4NTdmZWQxY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "9."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "History_of_Italy.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... ) was Prime Minister for a total of six years, from 1887 until 1891 and again from 1893 until 1896. Historian R.J.B. Bosworth says of his foreign policy that Crispi: Crispi had been in"
+                                span  "the"
+                                span  "Depretis cabinet minister and was once a Garibaldi republican. Crispi's major concerns before during 1887–91 was protecting Italy from Austria-Hungary. Crispi worked to build Italy as a great world po"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAODAyMDQzYTgxZjRmZjMxYzNhNjk2MWRjZmY2ODM5M]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "10."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Jes%C3%BAs_de_Nazaret.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... a la figura del iniciador del cristianismo como La vida de Brian (Terry Jones, 1979), musicales como Jesucristo Superstar (Norman Jewison, 1973) o Godspell (David Greene, 1973) y filmes de animaci"
+                                span  "The"
+                                span  "Miracle Maker (Derek W. Hayes y Stanislav Sokolov, 2000). Jesús en el teatro musical La vida de Jesús también ha sido convertida en musical y llevada a los escenarios en lugares como Broadway ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAODAwODk2ZTQxZGZhZDJmYmM5YjFhNWEwNDhhZTUxO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "11."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Aufkl%C3%A4rung.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... schlicht der Erste seiner Bürger. Sein Volk nutzt die Presse vor allem, um sich selbst zu größerer Tugend zu erziehen. Bernard Mandeville behauptete 1705 und 1714 in seiner Fable of"
+                                span  "the"
+                                span  "Bees, dass ein zur Tugend gelangendes Gemeinwesen in Stagnation verfiele und seine Lebenskraft verlöre, und wurde dafür als Man-Devil, als Teufel in menschlicher Gestalt verfemt. Die Zukunftsvisionen "
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAODE3MTg1YWYwNzc1NjI5OGRhMWE1OTVjYzg1NjRmY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "12."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Europ%C3%A4ische_Menschenrechtskonvention.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... 1971 tagte die Menschenrechtskonferenz in Wien. Die PV erklärte im Anschluss, zum Teil auf die Ergebnisse der Konferenz gestützt, die Aufgabe des Europarates sei „not only"
+                                span  "the"
+                                span  "maintenance but also"
+                                span  "the"
+                                span  "further realisation of human rights and fundamental freedoms“. Sie forderte, den Grundrechtskatalog auszudehnen. Der Bericht des Expertenkomitees diente in der Folge als Grundlage für die Arbeiten ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAODIwM2Q1ZDgzNzNjZDMzZmIwMmZlOTUxODRiNmM3N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "13."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Jimmy_Carter.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... contribuciones financieras de Rich al Partido Demócrata fueron un factor en la decisión de Clinton. Carter también ha criticado la presidencia de George W. Bush y la guerra de Irak. En un editoria"
+                                span  "The"
+                                span  "New York Times, Carter advirtió contra las consecuencias de una guerra en Irak y llamó a la moderación en el uso de la fuerza militar.​ En marzo de 2004, Carter también acusó a George W ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAN2RmNGQ5MmVhZWI3MjkyZTI0MTc2OTRlNmM5MDE1Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "14."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Uruguay.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... problemas, entre ellos, la reestructuración de la deuda. El crecimiento promedio en el quinquenio 2004-2008 fue del 8 % anual. La deuda externa al 31 de diciembre de 2014, según datos de la CIA"
+                                span  "The"
+                                span  "World Factbook llegó al 24.190 millones de dólares.​ Según estimaciones del FMI, en 2009 luego de la crisis financiera internacional, la economía creció al 0,6 %. Según el Banco Central, con los datos"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAN2E5NjIyMmM2MzIzMjIzMWRjN2Y1ZmZkN2YwOGU5Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "15."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Portugal.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... . Zudem hat sich in Portugal der Hip Hop Tuga entwickelt, eine an Portugal adaptierte Version des Hip-Hop, die unter Jugendlichen populär ist. Bekannteste Vertreter wurden Da Weasel und Sam"
+                                span  "the"
+                                span  "Kid. Auch Reggae ist nach dem Erfolg der Gruppe Kussondulola in Portugal populärer geworden, mit heutigen Interpreten wie Richie Campbell, Mercado Negro oder Freddy Locks. Tanz Im Bereich des Kunsttan"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAN2Y0NTU4NjBjMGNmMTE2OTNhOWI3OWU5N2IzZDAzM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "16."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Essen.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... entfernten Rottberg die Kruppsche Nachtscheinanlage errichtet. Der Angriff auf Essen stellte den Auftakt zu einer bis Mitte Juli 1943 währenden fünfmonatigen britischen Luftoffensive dar, die als "
+                                span  "the"
+                                span  "Ruhr bekannt wurde. Die 26 Luftangriffe im Jahre 1942 richteten nur relativ geringe Zerstörungen an; 1943 folgten schwere Großbombardements. Am 5. März 1943 starteten auf Flugplätzen in Ost ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhANzYyMzBhYzk2YmI3YTQxNTE5Zjc1MDJhYzZmYmUxO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "17."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "M%C3%BCnchen.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... Call me Drella, Cord, Wannda Circus, Tonhalle, Backstage, Pacha und P1. Einige bekannte Bars sind Schumann’s Cocktail Bar, Havana Club, Sehnsucht, Bar Centrale, Ksar, Holy Home, Eat"
+                                span  "the"
+                                span  "Rich, Negroni, Die Goldene Bar und Bei Otto. Wirtschaft und Infrastruktur Laut einer Vergleichsstudie (von den Zeitschriften Wirtschaftswoche, der Initiative Neue Soziale Marktwirtschaft (INSM) und de"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhANzdmNTU0ZjE0Y2YzNzRiMGU0MmQyMTY4NWNkYTEwM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "18."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "Fwd:"
+                                span  "The"
+                                span  "American College of"
+                                span  "The"
+                                span  "ssaloniki - Greece - Tarek Kouatly <tarek@act.edu> - 2013-11-11 1622.eml"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=other_emails]  "other_emails"
+                            div
+                              div
+                                span  "... same accreditation that top US universities such as Harvard, Yale, MIT and many more and is one of few universities that give students a UK degree upon graduation through it's EU validation progra"
+                                span  "the"
+                                span  "Open University, UK. I suggest you take a few minutes and check our Facebook by clicking here and also watch our video to get a feel of our beautiful campus and facilities by clicking here. For ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsb3RoZXJfZW1haWxzaWZpbGVfaGFzaHhANGZhMzY0NjM1YjU4ODJlNjI5MjhlMjc1ZWZhYjI3OGYzO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "19."
+                              div
+                                span[title=PDF]
+                                  svg
+                                    path
+                              div
+                                span  "FAQ 2012-2013.pdf"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=other_emails]  "other_emails"
+                            div
+                              div
+                                span  "... ) in order to study in Greece. This is a one-entry visa. Upon arrival, students will be required to apply for a residence permit. ACT will assist admitted students in applying both for"
+                                span  "the"
+                                span  "student visa and residence permit. Non-EU students cannot register at ACT without a student visa and a residence permit. ACCOMMODATION 1. How do I find accommodation in Thessaloniki? Guidance and assi"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsb3RoZXJfZW1haWxzaWZpbGVfaGFzaHhAMGYzNTgzZjJjMzJmODdjNDllODE4YmRjNzJlZTM1Mjg3M]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "20."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "FW: Invitation Fontys Open Day 2nd of February 2014 - Campus Venlo <campusvenlo@fontys.nl> - 2013-12-16 1700.eml"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=other_emails]  "other_emails"
+                            div
+                              div
+                                span  "... attachment. We will pay two nights of accommodation for motivated students. What do you need to do to participate? Firstly, you’ll need to register online (you can find"
+                                span  "the"
+                                span  "invitation with"
+                                span  "the"
+                                span  "direct registration link in"
+                                span  "the"
+                                span  "attachment) and you’ll need to write a motivation letter of max. 250 words about why you would like to visit our university. If we accept your motivation letter you we will ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsb3RoZXJfZW1haWxzaWZpbGVfaGFzaHhAYTE0MWI4NGRhYjg2ZTQ0ZDAzYzY4MWFlMDExNDQ4ODkwZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

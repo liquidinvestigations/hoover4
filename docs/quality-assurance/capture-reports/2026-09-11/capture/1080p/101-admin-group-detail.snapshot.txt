@@ -1,0 +1,124 @@
+# 101-admin-group-detail (1080p)
+url:      https://hoover4.new.liquiddemo.org/admin/user_groups/admin
+title:    Admin: group admin
+actions:  sleep 2000
+api calls: 3 (admin_get_group x1, admin_list_collections x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7623[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7621[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7619[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7617[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Groups › admin"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Change group"
+              div
+                div
+                  h2  "Group"
+                  div
+                    label  "Display name"
+                      input[type=text][value=Administrators][placeholder=display name]
+                    button  "Save"
+                div
+                  h2  "Members"
+                  div
+                    table
+                      thead
+                        tr
+                          th  "Username"
+                          th  "Origin"
+                          th  "Group admin"
+                          th
+                      tbody
+                        tr
+                          td
+                            a[href=/admin/users/hoover4admin]  "hoover4admin"
+                          td
+                            span  "header"
+                          td
+                            input[type=checkbox][value=on]
+                          td
+                            button  "Remove"
+                        tr
+                          td
+                            a[href=/admin/users/smoketest]  "smoketest"
+                          td
+                            span  "header"
+                          td
+                            input[type=checkbox][value=on]
+                          td
+                            button  "Remove"
+                    div
+                      input[type=text][placeholder=username to add]
+                      button  "Add member"
+                div
+                  h2  "Collection access"
+                  div
+                    p  "This group has no collection permissions."
+                    ul
+                    div
+                      select
+                      button  "Grant"
+    div[role=region][label=0 notifications]
+      ol

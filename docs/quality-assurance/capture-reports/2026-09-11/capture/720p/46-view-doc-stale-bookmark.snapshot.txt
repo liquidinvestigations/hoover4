@@ -1,0 +1,95 @@
+# 46-view-doc-stale-bookmark (720p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMQ==/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=
+title:    Hoover Search - View Document
+actions:  sleep 3000; wait_text Unknown file
+api calls: 7 (search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6799[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6797[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6795[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6793[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                  div  "No Sources!"
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_testfiles"
+                    div  "/"
+                    div
+                      span[title=File]
+                        svg
+                          path
+                    div[title=This document is not at any path in its dataset]  "Unknown file"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div  "No preview available for this document."
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                div
+                  div
+                    input[type=text][placeholder=Filter Entities ...]
+                  div
+    div[role=region][label=0 notifications]
+      ol

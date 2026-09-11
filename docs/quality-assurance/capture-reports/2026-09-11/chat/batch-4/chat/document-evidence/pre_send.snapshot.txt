@@ -1,0 +1,97 @@
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7823[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7821[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7819[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7817[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          h1  "What are you researching?"
+          div
+            a[href=/ai_chat/c/2bf8964d97dbdf7a0765a24ba620aa53ec053b453e240181535a522f729cc335/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Energy Documents Analysis and Claim Table"
+                  div  "The user requested a search for energy documents and a table of claims with citations and uncertainties. The assistant provided a detailed report analyzing three relevant documents and distinguishing "
+            a[href=/ai_chat/c/1ef902cb20d313902f585788c7c02e625d526e1b7efd9f929d17943482d73d10/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Enron Collection Document Analysis"
+                  div  "The user requested a list of available collections and a search of three representative Enron documents with subject descriptions and research potential. The assistant provided the collection list, se"
+            a[href=/ai_chat/c/7f0a2710fdd21c158ed1aa976fc48199577ebfc1fe6ad73eb1629396882423a1/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "List Consulate Documents and Analyze Three Samples"
+                  div  "The user requested available collections and a detailed analysis of three Consulate documents covering event planning, contacts, and task management. The assistant listed seven collections, selected t"
+            a[href=/ai_chat/c/f0bc1d60a1d4f697699046563e7222bb2e5f778a6b9267882496d546f88f84b1/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Rodrigo Paz Presidency and News Search"
+                  div  "User asked for Bolivia's current president and five news links after September 2026, but only pre-September 2026 articles were found. The search confirmed Rodrigo Paz as president but could not provid"
+            a[href=/ai_chat/c/4e98c49ef1070fc19e76dc56817c5d33e7798a3d44747603f70aa3a025a90d0f/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "ceva"
+                  div  "8 messages"
+            a[href=/ai_chat/c/cea7c3d0987f64683de3c2464a71c13c53297e65c8459079558ea6e846d03dae/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Summarise the first document in this collection."
+                  div  "7 messages"
+          div
+            a[href=/ai_chat/history]  "View all conversations"
+          div
+            div
+              label
+                span  "Model"
+                select
+            div
+              textarea
+              div
+                label  "Deep Research"
+                  input[type=checkbox][value=on]
+                label  "Internet tools"
+                  input[type=checkbox][value=on]
+                div
+                button[title=Send]  "↑"
+    div[role=region][label=0 notifications]
+      ol

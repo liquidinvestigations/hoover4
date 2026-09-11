@@ -1,0 +1,569 @@
+# 28-search-filename-only-match (1080p)
+url:      https://hoover4.new.liquiddemo.org/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdmcmVhZG1lbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==
+title:    Hoover Search: readme
+actions:  sleep 2000; wait_text Matched by filename
+api calls: 5 (search_for_results x2, search_for_results_hit_count x2, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-4785[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4783[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4781[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4779[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][value=readme][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "16 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-4773[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 16"
+                      div
+                        div#dxc-4775[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-4771[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/1"
+                        div
+                        div
+                          div#dxc-4769[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Web page]
+                                  svg
+                                    path
+                              div
+                                span  "enwikiversity-20170820-pages-meta-current.xml"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "To get started with Bitbucket, you will need to create a user account and then create a repository. In this lesson you will also use the web interface to create a"
+                                span  "README"
+                                span  ", add files and folders to the repository, and then delete files and delete the repository. == Create a User Account == # Review [https://confluence.atlassian.com/bitbucket/sign-up-for-bitbucket-cloud"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAZmEwOThiN2Q3YTI0ODgwYjJiZTBlMmU1OTVlYjFjO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "generate.py"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "... f"C.5 Notices go to {email[1]} and by telephone to {phone[1]}.", "", "C.6 This annex replaces the annex of 1971-11-30 and takes effect on", " 2016-08-01.", ]) return files"
+                                span  "README"
+                                span  "= """# entity-fixtures A synthetic corpus for the identifier and date scanning path. Every file here is written by `generate.py`; nothing in this directory was collected from a real document and no fi"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YTRiMTYwN2FmMjAxNTgzN2VjM2ZkZGNjMGQ1Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "3."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "2229."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "... global-5.0-win32.exe is for Excel 7 or 97SR1, 2000 or XP, download and run on a local drive. global40-unix.tar.Z is for Applix, download, unzip, and untar and then follow the instructions in"
+                                span  "Readme"
+                                span  "_Install. USING A DOS SHELL: At a DOS prompt type: ftp ftp.fea.com User: global Password: 9cmccfcd Type "binary" and hit 'return'. Type "ls" for a list of available files. Type "get" global-5.0-win32."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QGEzYjhlYWZlNTdlNGY1ZDNmMzE0YzdiNzY0YmY0M]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "4."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "659."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "... .exe and and wait for the ftp> prompt. Type "quit". The file will be downloaded into the directory at which you entered the ftp site. Double click on the exe and follow the instructions on the scr"
+                                span  "readme"
+                                span  "file which contains installation instructions. You may wish to print this out for easy reference. N.B.: The password is only valid until the first Friday of next month."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDkxYWI2ZDY0YWQ5NTIzYjZkNGIxYWY5YTYyNWYxZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "5."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "40."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "... box type: ftp://global@ftp.fea.com Password: vhj6eier global-5.0.3-win32.exe is for Excel 7 or 97SR1, 2000 or XP, download and run on a local drive. global-4.0-unix.tar.Z is for Applix, download, "
+                                span  "Readme"
+                                span  "_Install."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDliYTI4NThjNDlhNzIwODlmODljZjhmMTllN2QwM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "6."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "1."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "... ftp> prompt. Type "quit". The file will be downloaded into the directory at which you entered the ftp site. Double click on the exe and follow the instructions on the screen. There is also a"
+                                span  "readme"
+                                span  "file which contains installation instructions. You may wish to print this out for easy reference. N.B.: The password is only valid until the first Friday of next month. If you have any questions pleas"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QGQ0MjRjY2VlYzljOTg5MmEzYzg1NDc1OTI1YjkwN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "7."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "127."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "... box type: ftp://global@ftp.fea.com Password: vhj6eier global-5.0.3-win32.exe is for Excel 7 or 97SR1, 2000 or XP, download and run on a local drive. global-4.0-unix.tar.Z is for Applix, download, "
+                                span  "Readme"
+                                span  "_Install."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QGQ0NDNkZWY3MWI0ZTgzMjU2MjRjNTMzZTJjMmEyZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "8."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "81."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... NewCo file inventory Everything from Ops, Trading, Marketing, and Development in Calgary, plus Mike's inputs from Toronto, has been consolidated into one master index. The file is located at I:\Ne"
+                                span  "README"
+                                span  ".xls If you have additional items to add to your directories, or I have not yet received inputs from you, please update the master index. There is one tab for each department. Thanks, Richard ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QDE5MWE5MjVlOTFmOTQ2YzE5Mzc5NmY0MjJmMjY0MjQ4Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "9."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "831."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... ftp> prompt. Type "quit". The file will be downloaded into the directory at which you entered the ftp site. Double click on the exe and follow the instructions on the screen. There is also a"
+                                span  "readme"
+                                span  "file which contains installation instructions. You may wish to print this out for easy reference. N.B.: The password is only valid until the first Friday of next month. If you have any questions pleas"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QDFjYTYyY2UxNDNjMWEzZDMxYmVlZTEyNDE4MmY0M2E1O]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "10."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "5."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... ftp> prompt. Type "quit". The file will be downloaded into the directory at which you entered the ftp site. Double click on the exe and follow the instructions on the screen. There is also a"
+                                span  "readme"
+                                span  "file which contains installation instructions. You may wish to print this out for easy reference. N.B.: The password is only valid until the first Friday of next month. If you have any questions pleas"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QDVmZmM5MjUyMGNmNTdmYjhhZGMyZWI0NmY4MTdlYWJlZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "11."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "132."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... NewCo file inventory Everything from Ops, Trading, Marketing, and Development in Calgary, plus Mike's inputs from Toronto, has been consolidated into one master index. The file is located at I:\Ne"
+                                span  "README"
+                                span  ".xls If you have additional items to add to your directories, or I have not yet received inputs from you, please update the master index. There is one tab for each department. Thanks, Richard ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QDZkZGYzNGRmZjUxZjdlOTQxY2MyODExZThmYzQ5YWIxM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "12."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "641."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... the MailSweeper server. Sender: edu@activeworlds.com Date: Wed, 7 Nov 2001 13:09:02 -0600 (CST) Subject: Attachment Type: Scenarios/Incoming/Inbound EXE Catcher: A filename matching the file mask "
+                                span  "readme"
+                                span  ".exe'. If the intended email is of valid business-related content and you believe it requires Enron resources to retrieve it, you may call your Help Desk and ask to have it released ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QGEzNDBlMDM3NmYwZDI5ZGQ3NTg1ZjMxN2M2NjY4MzcwY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "13."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "259."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... X-To: Mark Fisher X-cc: X-bcc: X-Folder: \mark fischer 7-12-02\Notes Folders\Discussion threads X-Origin: FISCHER-M X-FileName: mark fischer 7-12-02 LNotes.nsf Mark, Please find Desert Sky data as"
+                                span  "readme"
+                                span  "" file for explanation. Call me with questions, Regards, Scott Larwood 661-333-9416"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QGQ1N2M0MmQ2MzZkNDY4NmUyZjA4MmMwMTdmMWNlOTY2Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "14."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "830."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... ftp> prompt. Type "quit". The file will be downloaded into the directory at which you entered the ftp site. Double click on the exe and follow the instructions on the screen. There is also a"
+                                span  "readme"
+                                span  "file which contains installation instructions. You may wish to print this out for easy reference. N.B.: The password is only valid until the first Friday of next month. If you have any questions pleas"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QGVkYzQxOWViYjI3NzNkZDI3NjFmOGYxNTY3ZmMwYmZhN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "15."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "README"
+                                span  ".md"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_entityfixtures]  "testdata_entityfixtures"
+                            div
+                              div
+                                div  "Matched by filename. No matching text inside this document."
+                                div
+                                  span  "README"
+                                  span  ".md"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXR3dGVzdGRhdGFfZW50aXR5Zml4dHVyZXNpZmlsZV9oYXNoeEA5YWI1NjM0NDk1NmY5MmY4NTc0MTcxZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "16."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "README"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_testfiles]  "testdata_testfiles"
+                            div
+                              div
+                                div  "Matched by filename. No matching text inside this document."
+                                div
+                                  span  "README"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAM2E1ZmJlNTBkYTIyZDU5NWU2OTY4OWNmNzhiN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

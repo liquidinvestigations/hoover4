@@ -1,0 +1,242 @@
+# 129-manual-entities (1080p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/pWpmaW5kX3F1ZXJ5aiJWb3JvbmtvdiJvc2VsZWN0ZWRfc291cmNl9nRzZWxlY3RlZF9zb3VyY2VfcGFnZfZrdGFibGVfc3RhdGX2b3NlbGVjdGVkX2VudGl0efY=/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=
+title:    Hoover Search - View Document
+actions:  (none)
+api calls: 53 (search_document_item_hit_counts x13, search_document_text_for_hit_count x9, search_document_text_for_hits x8, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x2)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-4801[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4799[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4797[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4795[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-13[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][value="Voronkov"][placeholder=Search in document]
+                  div
+                    div
+                      div
+                        div#dxc-11[role=button]
+                          button
+                            svg
+                              path
+                      div  "1 / 5"
+                      div
+                        div#dxc-9[role=button]
+                          button
+                            svg
+                              path
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Office XML"
+                        div  "5"
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_manualqa"
+                    div  "/"
+                    div
+                      span[title=Document]
+                        svg
+                          path
+                    div  "easychair.docx"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    div
+                      div
+                        pre
+                          span
+                            span  "The Guide for Writing Word Documents in Microsoft Word for Publication in the EPiC Series Andrei Voronkov1,2 and Kryštof Hoder1 1 EasyChair 2 University of Manchester, Manchester, U.K. andrei@"
+                          span
+                            span  "voronkov"
+                          span
+                            span  ".com, hoderk@cs.man.ac.uk Abstract In order to ease the lives of authors, editors, and trees, we present a manual and an example of the use of Microsoft Word and similar tools for creating documents f"
+                          span
+                            span  "Voronkov"
+                          span
+                            span  ", 2004). EasyChair is a conference management system that is flexible, easy to use, and has many features to make it suitable for various conference models. It is currently probably the most commonly "
+                          span
+                            span  "Voronkov"
+                          span
+                            span  ", 2004), serving thousands of conferences every year. EasyChair accepts documents written in any of the following formats: LaTeX; Word documents (.docx), which can be produced by Microsoft Word. This "
+                          span
+                            span  "Voronkov"
+                          span
+                            span  ", at andrei@easychair.org. Any constructive feedback is welcome. Submitting Your Article Through EasyChair This section is intended only for the authors and editors of EasyChair proceedings volumes. W"
+                          span
+                            span  "Voronkov"
+                          span
+                            span  ", A. (2004). EasyChair conference system. Retrieved from easychair.org Masterminded EasyChair and created the first stable version of this document Created the first draft of this document"
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                div
+                  div
+                    input[type=text][placeholder=Filter Entities ...]
+                  div
+                    div
+                      div
+                        svg
+                          path
+                        div  "Person"
+                        div  "4"
+                      div
+                        div[title=Voronkov]
+                          div  "Voronkov"
+                          div  "5"
+                        div[title=andrei]
+                          div  "andrei"
+                          div  "4"
+                        div[title=Andrei Voronkov]
+                          div  "Andrei Voronkov"
+                          div  "2"
+                        div[title=hoderk]
+                          div  "hoderk"
+                          div  "1"
+                    div
+                      div
+                        svg
+                          path
+                        div  "Organization"
+                        div  "6"
+                      div
+                        div[title=voronkov]
+                          div  "voronkov"
+                          div  "5"
+                        div[title=uk]
+                          div  "uk"
+                          div  "1"
+                        div[title=man]
+                          div  "man"
+                          div  "1"
+                        div[title=cs]
+                          div  "cs"
+                          div  "1"
+                        div[title=com]
+                          div  "com"
+                          div  "1"
+                        div[title=University of Manchester]
+                          div  "University of Manchester"
+                          div  "1"
+                    div
+                      div
+                        svg
+                          path
+                        div  "Location"
+                        div  "2"
+                      div
+                        div[title=U.K]
+                          div  "U.K"
+                          div  "1"
+                        div[title=Manchester]
+                          div  "Manchester"
+                          div  "1"
+                    div
+                      div
+                        svg
+                          path
+                        div  "Misc"
+                        div  "6"
+                      div
+                        div[title=EasyChair]
+                          div  "EasyChair"
+                          div  "30"
+                        div[title=Word]
+                          div  "Word"
+                          div  "23"
+                        div[title=Microsoft Word]
+                          div  "Microsoft Word"
+                          div  "13"
+                        div[title=EPiC Series]
+                          div  "EPiC Series"
+                          div  "4"
+                        div[title=LaTeX]
+                          div  "LaTeX"
+                          div  "3"
+                        div[title=EasyChair EPiC Series]
+                          div  "EasyChair EPiC Series"
+                          div  "1"
+                    div
+                      div
+                        svg
+                          path
+                        div  "Email"
+                        div  "3"
+                        button  "View Details"
+                          svg
+                            path
+                      div
+                        div[title=hoderk@cs.man.ac.uk]
+                          div  "hoderk@cs.man.ac.uk"
+                          div  "1"
+                        div[title=andrei@voronkov.com]
+                          div  "andrei@voronkov.com"
+                          div  "1"
+                        div[title=andrei@easychair.org]
+                          div  "andrei@easychair.org"
+                          div  "1"
+    div[role=region][label=0 notifications]
+      ol

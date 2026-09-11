@@ -1,0 +1,1693 @@
+{
+  "target_label": "the configured target",
+  "resolutions": {
+    "720p": [
+      1280,
+      720
+    ],
+    "1080p": [
+      1920,
+      1080
+    ]
+  },
+  "identity": "hoover4admin",
+  "revision": "a38d2afb8d3d9c3411424ed1cbeb701f5e856719",
+  "pages": [
+    {
+      "stem": "120-manual-folder-search",
+      "slug": "703-manual-folder-search",
+      "summary": "Exercises the manual folder search case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/120-manual-folder-search.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/120-manual-folder-search.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "124-manual-relevance",
+      "slug": "707-manual-relevance",
+      "summary": "Exercises the manual relevance case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/124-manual-relevance.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/124-manual-relevance.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "128-manual-table",
+      "slug": "711-manual-table",
+      "summary": "Exercises the manual table case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/128-manual-table.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/128-manual-table.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "132-manual-type-filters",
+      "slug": "715-manual-type-filters",
+      "summary": "Exercises the manual type filters case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/132-manual-type-filters.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/132-manual-type-filters.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "136-manual-email-viewer",
+      "slug": "719-manual-email-viewer",
+      "summary": "Exercises the manual email viewer case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/136-manual-email-viewer.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/136-manual-email-viewer.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "00-home",
+      "slug": "001-home",
+      "summary": "Exercises the home case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/00-home.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/00-home.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "home.png"
+    },
+    {
+      "stem": "04-search-easychair",
+      "slug": "102-search-easychair",
+      "summary": "Exercises the search easychair case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/04-search-easychair.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/04-search-easychair.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "search-results.png"
+    },
+    {
+      "stem": "08-filter-pane-filelocation",
+      "slug": "106-filter-pane-filelocation",
+      "summary": "Exercises the filter pane filelocation case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/08-filter-pane-filelocation.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/08-filter-pane-filelocation.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "filter-file-location.png"
+    },
+    {
+      "stem": "12-filter-pane-date-after",
+      "slug": "110-filter-pane-date-after",
+      "summary": "Exercises the filter pane date after case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/12-filter-pane-date-after.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/12-filter-pane-date-after.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "16-filter-pane-entities",
+      "slug": "114-filter-pane-entities",
+      "summary": "Exercises the filter pane entities case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/16-filter-pane-entities.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/16-filter-pane-entities.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "filter-entities.png"
+    },
+    {
+      "stem": "20-qa-sort-empty-default",
+      "slug": "118-qa-sort-empty-default",
+      "summary": "Exercises the qa sort empty default case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/20-qa-sort-empty-default.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/20-qa-sort-empty-default.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "24-qa-sort-date-directions",
+      "slug": "122-qa-sort-date-directions",
+      "summary": "Exercises the qa sort date directions case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/24-qa-sort-date-directions.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/24-qa-sort-date-directions.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "28-search-filename-only-match",
+      "slug": "126-search-filename-only-match",
+      "summary": "Exercises the search filename only match case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdmcmVhZG1lbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/28-search-filename-only-match.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/28-search-filename-only-match.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "32-search-filename-only-hit",
+      "slug": "130-search-filename-only-hit",
+      "summary": "Exercises the search filename only hit case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmd4GXp6cS11bmlxdWUtZmlsZW5hbWUtdG9rZW5tZmFjZXRfZmlsdGVyc6A=/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/32-search-filename-only-hit.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/32-search-filename-only-hit.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "36-view-doc-pdf-entities",
+      "slug": "201-view-doc-pdf-entities",
+      "summary": "Exercises the view doc pdf entities case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/36-view-doc-pdf-entities.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/36-view-doc-pdf-entities.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "document-pdf.png"
+    },
+    {
+      "stem": "40-view-doc-email-without-body",
+      "slug": "205-view-doc-email-without-body",
+      "summary": "Exercises the view doc email without body case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAMjU3NTdjNDRjODA0N2FkMzI0MGRjZGMxMmEwMzgxZmUwNGZmZGE0ZjhiODVjMDIyYWUzMDMzMzZmM2NlMWMyYg==/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=",
+      "captures": [
+        {
+          "file": "720p/40-view-doc-email-without-body.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/40-view-doc-email-without-body.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/40-view-doc-email-without-body.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/40-view-doc-email-without-body.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "44-view-doc-metadata-source",
+      "slug": "209-view-doc-metadata-source",
+      "summary": "Exercises the view doc metadata source case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMzYyNzk1OTg2ZmExZTcyM2VmYWIyOGVjMTE0MWY2NDQ2ZTQ2NThkNjFiMTRmYzFhOTI3YjdmYjFmOTc3MjRlNQ==/o2pmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2VoTWV0YWRhdGF0c2VsZWN0ZWRfc291cmNlX3BhZ2X2/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=",
+      "captures": [
+        {
+          "file": "720p/44-view-doc-metadata-source.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/44-view-doc-metadata-source.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "48-view-doc-file-locations-tab",
+      "slug": "213-view-doc-file-locations-tab",
+      "summary": "Exercises the view doc file locations tab case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAYTE0MWI4NGRhYjg2ZTQ0ZDAzYzY4MWFlMDExNDQ4ODkwZTkzNWE4YWQxMWJlZWVmYjZjYTQwYjNkMGFlZmJmNw==/9g==/oWxzZWxlY3RlZF90YWJtRmlsZUxvY2F0aW9ucw==",
+      "captures": [
+        {
+          "file": "720p/48-view-doc-file-locations-tab.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/48-view-doc-file-locations-tab.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "52-storage-testfiles-root",
+      "slug": "302-storage-testfiles-root",
+      "summary": "Exercises the storage testfiles root case.",
+      "url": "/file_browser/testdata_testfiles/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/52-storage-testfiles-root.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/52-storage-testfiles-root.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "56-storage-shapes-deep-600px",
+      "slug": "306-storage-shapes-deep-600px",
+      "summary": "Exercises the storage shapes deep 600px case.",
+      "url": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHg-L2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjA=/9g==/9g==",
+      "captures": [
+        {
+          "file": "600x900/56-storage-shapes-deep-600px.png",
+          "resolution": "600x900",
+          "requested": [
+            600,
+            900
+          ],
+          "actual_window": [
+            600,
+            900
+          ],
+          "actual_png": [
+            600,
+            900
+          ],
+          "scroll_offset": 0,
+          "size_source": "viewport"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "60-storage-zip-location",
+      "slug": "310-storage-zip-location",
+      "summary": "Exercises the storage zip location case.",
+      "url": "/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/60-storage-zip-location.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/60-storage-zip-location.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "64-qa-storage-cold-expansion",
+      "slug": "314-qa-storage-cold-expansion",
+      "summary": "Exercises the qa storage cold expansion case.",
+      "url": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/64-qa-storage-cold-expansion.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/64-qa-storage-cold-expansion.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "68-storage-email-preview",
+      "slug": "318-storage-email-preview",
+      "summary": "Exercises the storage email preview case.",
+      "url": "/file_browser/testdata_emails/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/68-storage-email-preview.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/68-storage-email-preview.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "72-storage-tree-unified-600px",
+      "slug": "322-storage-tree-unified-600px",
+      "summary": "Exercises the storage tree unified 600px case.",
+      "url": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHg-L2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjA=/9g==/9g==",
+      "captures": [
+        {
+          "file": "600x900/72-storage-tree-unified-600px.png",
+          "resolution": "600x900",
+          "requested": [
+            600,
+            900
+          ],
+          "actual_window": [
+            600,
+            900
+          ],
+          "actual_png": [
+            600,
+            900
+          ],
+          "scroll_offset": 0,
+          "size_source": "viewport"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "76-storage-collection-by-click",
+      "slug": "326-storage-collection-by-click",
+      "summary": "Exercises the storage collection by click case.",
+      "url": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/76-storage-collection-by-click.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/76-storage-collection-by-click.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "80-view-doc-table-sorted",
+      "slug": "404-view-doc-table-sorted",
+      "summary": "Exercises the view doc table sorted case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/80-view-doc-table-sorted.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/80-view-doc-table-sorted.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "84-qa-table-modal-geometry",
+      "slug": "408-qa-table-modal-geometry",
+      "summary": "Exercises the qa table modal geometry case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/84-qa-table-modal-geometry.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/84-qa-table-modal-geometry.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "88-qa-table-modal-light-colors",
+      "slug": "412-qa-table-modal-light-colors",
+      "summary": "Exercises the qa table modal light colors case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/88-qa-table-modal-light-colors.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/88-qa-table-modal-light-colors.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "92-ai-chat",
+      "slug": "501-ai-chat",
+      "summary": "Exercises the ai chat case.",
+      "url": "/ai_chat",
+      "captures": [
+        {
+          "file": "720p/92-ai-chat.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/92-ai-chat.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "chat-new.png"
+    },
+    {
+      "stem": "96-admin-collections",
+      "slug": "602-admin-collections",
+      "summary": "Exercises the admin collections case.",
+      "url": "/admin/collections",
+      "captures": [
+        {
+          "file": "720p/96-admin-collections.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/96-admin-collections.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "admin-collections.png"
+    },
+    {
+      "stem": "100-admin-groups",
+      "slug": "606-admin-groups",
+      "summary": "Exercises the admin groups case.",
+      "url": "/admin/user_groups",
+      "captures": [
+        {
+          "file": "720p/100-admin-groups.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/100-admin-groups.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "admin-groups.png"
+    },
+    {
+      "stem": "104-admin-ai-status",
+      "slug": "610-admin-ai-status",
+      "summary": "Exercises the admin ai status case.",
+      "url": "/admin/ai_status",
+      "captures": [
+        {
+          "file": "720p/104-admin-ai-status.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/104-admin-ai-status.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/104-admin-ai-status.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/104-admin-ai-status.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "admin-ai-status.png"
+    },
+    {
+      "stem": "108-admin-operations",
+      "slug": "614-admin-operations",
+      "summary": "Exercises the admin operations case.",
+      "url": "/admin/operations",
+      "captures": [
+        {
+          "file": "720p/108-admin-operations.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/108-admin-operations.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/108-admin-operations.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/108-admin-operations.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "112-admin-dataset-rescan-dispatch",
+      "slug": "618-admin-dataset-rescan-dispatch",
+      "summary": "Exercises the admin dataset rescan dispatch case.",
+      "url": "/admin/collections/testdata/datasets/testdata_diskfiles",
+      "captures": [
+        {
+          "file": "720p/112-admin-dataset-rescan-dispatch.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/112-admin-dataset-rescan-dispatch.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "116-admin-operations-rerun",
+      "slug": "622-admin-operations-rerun",
+      "summary": "Exercises the admin operations rerun case.",
+      "url": "/admin/operations",
+      "captures": [
+        {
+          "file": "720p/116-admin-operations-rerun.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/116-admin-operations-rerun.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/116-admin-operations-rerun.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/116-admin-operations-rerun.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    }
+  ],
+  "totals": {
+    "application_error": 0,
+    "expected_outcome": 0,
+    "trace": 0,
+    "behavioral_warning": 0,
+    "diagnostic_warning": 0,
+    "incomplete_execution": 0
+  },
+  "page_reports": [
+    "- `120-manual-folder-search` (`/`): ok",
+    "- `124-manual-relevance` (`/`): ok",
+    "- `128-manual-table` (`/`): ok",
+    "- `132-manual-type-filters` (`/`): ok",
+    "- `136-manual-email-viewer` (`/`): ok",
+    "- `00-home` (`/`): ok",
+    "- `04-search-easychair` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `08-filter-pane-filelocation` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `12-filter-pane-date-after` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `16-filter-pane-entities` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `20-qa-sort-empty-default` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `24-qa-sort-date-directions` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `28-search-filename-only-match` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdmcmVhZG1lbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `32-search-filename-only-hit` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmd4GXp6cS11bmlxdWUtZmlsZW5hbWUtdG9rZW5tZmFjZXRfZmlsdGVyc6A=/0/9g==/9g==`): ok",
+    "- `36-view-doc-pdf-entities` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `40-view-doc-email-without-body` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAMjU3NTdjNDRjODA0N2FkMzI0MGRjZGMxMmEwMzgxZmUwNGZmZGE0ZjhiODVjMDIyYWUzMDMzMzZmM2NlMWMyYg==/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=`): ok",
+    "- `44-view-doc-metadata-source` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMzYyNzk1OTg2ZmExZTcyM2VmYWIyOGVjMTE0MWY2NDQ2ZTQ2NThkNjFiMTRmYzFhOTI3YjdmYjFmOTc3MjRlNQ==/o2pmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2VoTWV0YWRhdGF0c2VsZWN0ZWRfc291cmNlX3BhZ2X2/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=`): ok",
+    "- `48-view-doc-file-locations-tab` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAYTE0MWI4NGRhYjg2ZTQ0ZDAzYzY4MWFlMDExNDQ4ODkwZTkzNWE4YWQxMWJlZWVmYjZjYTQwYjNkMGFlZmJmNw==/9g==/oWxzZWxlY3RlZF90YWJtRmlsZUxvY2F0aW9ucw==`): ok",
+    "- `52-storage-testfiles-root` (`/file_browser/testdata_testfiles/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==`): ok",
+    "- `56-storage-shapes-deep-600px` (`/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHg-L2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjA=/9g==/9g==`): ok",
+    "- `60-storage-zip-location` (`/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==`): ok",
+    "- `64-qa-storage-cold-expansion` (`/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==`): ok",
+    "- `68-storage-email-preview` (`/file_browser/testdata_emails/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==`): ok",
+    "- `72-storage-tree-unified-600px` (`/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHg-L2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjA=/9g==/9g==`): ok",
+    "- `76-storage-collection-by-click` (`/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==`): ok",
+    "- `80-view-doc-table-sorted` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `84-qa-table-modal-geometry` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `88-qa-table-modal-light-colors` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `92-ai-chat` (`/ai_chat`): ok",
+    "- `96-admin-collections` (`/admin/collections`): ok",
+    "- `100-admin-groups` (`/admin/user_groups`): ok",
+    "- `104-admin-ai-status` (`/admin/ai_status`): ok",
+    "- `108-admin-operations` (`/admin/operations`): ok",
+    "- `112-admin-dataset-rescan-dispatch` (`/admin/collections/testdata/datasets/testdata_diskfiles`): ok",
+    "- `116-admin-operations-rerun` (`/admin/operations`): ok"
+  ]
+}

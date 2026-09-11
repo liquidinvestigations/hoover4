@@ -1,0 +1,168 @@
+# 50-view-doc-entity-card-stale (720p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR5dm5vYm9keUBleGFtcGxlLmludmFsaWQ=/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=
+title:    Hoover Search - View Document
+actions:  sleep 3000; wait_text has no entity
+api calls: 8 (search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_pdf x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6847[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6845[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6843[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6841[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      div
+                        div#dxc-13[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        h1  "- / -"
+                      div
+                        div#dxc-11[role=button]
+                          button
+                            svg
+                              path
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "PDF"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "PDF · OCR · Tesseract · eng"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "PDF text"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_testfiles"
+                    div  "/"
+                    div
+                      span[title=PDF]
+                        svg
+                          path
+                    div  "stanley.ec02.pdf"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div#x-pdf-viewer
+                    embedpdf-container
+                  div
+                    div
+                      div
+                        input[type=text][value=1]
+                      div  "30"
+                      button
+                        svg
+                          path
+                      button
+                        svg
+                          path
+                      button
+                        svg
+                          path
+                          path
+                      div
+                        div  "134%"
+                      button
+                        svg
+                          path
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                div
+                  div
+                    div
+                      div  "This document has no entity "nobody@example.invalid". It may have been re-ingested since the link was made."
+                      button  "Show all entities"
+                    input[type=text][placeholder=Filter Entities ...]
+                  div
+    div[role=region][label=0 notifications]
+      ol

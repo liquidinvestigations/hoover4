@@ -1,0 +1,213 @@
+# 91-qa-table-data-sort-filter (720p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZaVoc2hlZXRfaWT2bmhpZGRlbl9jb2x1bW5zgGRzb3J0omljb2x1bW5faWQDZGRlc2P1Z2ZpbHRlcnOBomljb2x1bW5faWQCZGtpbmShaENvbnRhaW5zZENsdWpkcGFnZQBvc2VsZWN0ZWRfZW50aXR59g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=
+title:    Hoover Search - View Document
+actions:  wait_text A-01; pointer_click_css thead th:nth-child(4) span[title^="Sort."]; wait_eval const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));return {ok: values.join(',')==='A-01|Bucharest|10,A-02|Cluj|20,A-03|Iași|30'};; eval const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));if(values.join(',')!=='A-01|Bucharest|10,A-02|Cluj|20,A-03|Iași|30')throw new Error('numeric ascending sort differs from fixture');return {values};; pointer_click_css thead th:nth-child(4) span[title^="Sort."]; wait_eval const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));return {ok: values.join(',')==='A-03|Iași|30,A-02|Cluj|20,A-01|Bucharest|10'};; eval const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));if(values.join(',')!=='A-03|Iași|30,A-02|Cluj|20,A-01|Bucharest|10')throw new Error('numeric descending sort differs from fixture');return {values};; pointer_click_css thead th:nth-child(3) button[aria-label="Filter Region"]; wait_css [role="dialog"][aria-modal="true"]; type_css [role="dialog"] input[placeholder="Contains…"]::Cluj; pointer_click_css button[aria-label="Apply contains filter"]; wait_eval const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));return {ok: values.length===1 && values[0]==='A-02|Cluj|20'};; eval const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));if(values.length!==1||values[0]!=='A-02|Cluj|20')throw new Error('text filter differs from fixture');return {values};
+api calls: 19 (search_document_item_hit_counts x5, get_table_page x4, get_canonical_file_type x2, get_file_path x2, get_table_column_values x2, get_document_entities x1, get_document_sources x1, get_table_overview x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7375[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7373[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7371[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7369[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      svg
+                        path
+                      span  "(the file) (3 × 3)"
+                      button[label=Choose visible columns]  "3 of 3"
+                        svg
+                          path
+                      button[title=Remove every column filter]  "1 filter(s) · clear"
+                        svg
+                          path
+                      span  "Table · csv"
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Table · csv"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Plain text"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_manualqa"
+                    div  "/"
+                    div
+                      span[title=Spreadsheet (browsable)]
+                        svg
+                          path
+                    div  "manual-qa-table.csv"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    div
+                      table
+                        thead
+                          tr
+                            th[title=The row number the file itself gives]  "#"
+                            th
+                              div
+                                span  "A"
+                                span[title=text, 3 values, 3 distinct]  "Case"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Case]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "B"
+                                span[title=text, 3 values, 3 distinct]  "Region"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Region]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "C"
+                                span[title=int, 3 values, 3 distinct]  "Amount"
+                                span[title=Numeric column]  "#"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Amount]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                        tbody
+                          tr
+                            td  "3"
+                            td[title=A-02]
+                              div
+                                button#dxc-16
+                                  span  "A-02"
+                            td[title=Cluj]
+                              div
+                                button#dxc-18
+                                  span  "Cluj"
+                            td[title=20]
+                              div
+                                button#dxc-20
+                                  span  "20"
+                    div
+                      div
+                        button  "Previous"
+                          svg
+                            path
+                        span  "page 1 of 1"
+                        button  "Next"
+                          svg
+                            path
+                      div  "rows 1–1 of 1"
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                div
+                  div
+                    input[type=text][placeholder=Filter Entities ...]
+                  div
+                    div
+                      div
+                        svg
+                          path
+                        div  "Location"
+                        div  "3"
+                      div
+                        div[title=Iași]
+                          div  "Iași"
+                          div  "2"
+                        div[title=Cluj]
+                          div  "Cluj"
+                          div  "2"
+                        div[title=Bucharest]
+                          div  "Bucharest"
+                          div  "2"
+    div[role=region][label=0 notifications]
+      ol

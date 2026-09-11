@@ -1,0 +1,2207 @@
+[
+  {
+    "procedure": "baseline",
+    "expected": "Deep routes expand the tree and warm archive navigation retains its ancestor.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHg-L2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjA=/9g==/9g==",
+        "before_api": "1 (whoami x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (whoami x2, list_folder_children x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_path_to x1)"
+      },
+      {
+        "action": "sleep",
+        "input": "3000",
+        "before_api": "6 (whoami x2, list_folder_children x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_path_to x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "16 (vfs_tree_children x10, whoami x2, list_folder_children x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_path_to x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-storage-tree :: more levels…",
+        "before_api": "16 (vfs_tree_children x10, whoami x2, list_folder_children x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_path_to x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "16 (vfs_tree_children x10, whoami x2, list_folder_children x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_path_to x1)"
+      },
+      {
+        "action": "wait_text",
+        "input": "parent.zip",
+        "before_api": "21 (vfs_tree_children x10, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)"
+      },
+      {
+        "action": "eval",
+        "input": "if(performance.now()!==1000)throw Error('the controlled browser clock is unavailable');return {clock:performance.now()};",
+        "before_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)",
+        "status": "passed",
+        "observed": {
+          "clock": 1000
+        },
+        "after_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [data-node-key][title=\"/location-1\"]",
+        "before_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const ancestor = document.querySelector('#x-storage-tree [data-node-key][title=\"/location-1\"]'); window.__qa_storage_ancestor = ancestor; window.__qa_storage_removed = false; window.__qa_storage_before_calls = performance.getEntriesByType('resource').filter(e => e.name.includes('/api/vfs_tree_')).length; window.__qa_storage_observer=new MutationObserver(records => { for (const record of records) { for (const node of record.removedNodes) { if (node === ancestor || node.contains?.(ancestor)) window.__qa_storage_removed = true; } } }); window.__qa_storage_observer.observe(document.querySelector('#x-storage-tree'), {childList: true, subtree: true}); return {ok: true};",
+        "before_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-storage-tree :: parent.zip",
+        "before_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-storage-tree :: parent.zip",
+        "before_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.includes('/file_browser/testdata_zips/') && location.pathname !== '/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==';",
+        "before_api": "23 (vfs_tree_children x12, whoami x3, list_folder_children x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "27 (vfs_tree_children x12, list_folder_children x3, whoami x3, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2, get_document_sources x1, search_document_item_hit_counts x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [aria-current=\"location\"][title=\"/location-1/parent.zip\"]",
+        "before_api": "27 (vfs_tree_children x12, list_folder_children x3, whoami x3, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_path_to x2, get_document_sources x1, search_document_item_hit_counts x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "32 (vfs_tree_children x12, list_folder_children x3, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [data-node-key][title=\"/parent\"]",
+        "before_api": "32 (vfs_tree_children x12, list_folder_children x3, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "35 (vfs_tree_children x13, list_folder_children x3, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "window.__qa_storage_observer.disconnect(); const calls=performance.getEntriesByType('resource').filter(e => e.name.includes('/api/vfs_tree_')).length-window.__qa_storage_before_calls; if(!document.body.contains(window.__qa_storage_ancestor)||window.__qa_storage_removed) throw new Error('the archive ancestor was removed'); if(calls>3) throw new Error('archive navigation repeated tree requests: '+calls); return {ok:true,calls};",
+        "before_api": "35 (vfs_tree_children x13, list_folder_children x3, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "calls": 3
+        },
+        "after_api": "35 (vfs_tree_children x13, list_folder_children x3, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "window.__qa_storage_return_start=performance.getEntriesByType('resource').filter(e=>e.name.includes('/api/vfs_tree_')).length; return {ok:true};",
+        "before_api": "35 (vfs_tree_children x13, list_folder_children x3, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "35 (vfs_tree_children x13, list_folder_children x3, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "history_back",
+        "input": "",
+        "before_api": "35 (vfs_tree_children x13, list_folder_children x3, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "35 (vfs_tree_children x13, list_folder_children x3, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [aria-current=\"location\"][title=\"/location-1\"]",
+        "before_api": "35 (vfs_tree_children x13, list_folder_children x3, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "36 (vfs_tree_children x13, list_folder_children x4, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const calls=performance.getEntriesByType('resource').filter(e=>e.name.includes('/api/vfs_tree_')).length-window.__qa_storage_return_start; if(calls!==0) throw new Error('fresh return repeated tree requests: '+calls); return {ok:true,phase:'fresh-return',calls};",
+        "before_api": "36 (vfs_tree_children x13, list_folder_children x4, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "phase": "fresh-return",
+          "calls": 0
+        },
+        "after_api": "36 (vfs_tree_children x13, list_folder_children x4, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "history_forward",
+        "input": "",
+        "before_api": "36 (vfs_tree_children x13, list_folder_children x4, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "36 (vfs_tree_children x13, list_folder_children x4, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [aria-current=\"location\"][title=\"/location-1/parent.zip\"]",
+        "before_api": "36 (vfs_tree_children x13, list_folder_children x4, vfs_tree_path_to x3, whoami x3, list_storage_tree x2, search_document_item_hit_counts x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "39 (vfs_tree_children x13, list_folder_children x5, search_document_item_hit_counts x3, vfs_tree_path_to x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [data-node-key][title=\"/parent\"]",
+        "before_api": "39 (vfs_tree_children x13, list_folder_children x5, search_document_item_hit_counts x3, vfs_tree_path_to x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "39 (vfs_tree_children x13, list_folder_children x5, search_document_item_hit_counts x3, vfs_tree_path_to x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const calls=performance.getEntriesByType('resource').filter(e=>e.name.includes('/api/vfs_tree_')).length-window.__qa_storage_return_start; if(calls!==0) throw new Error('fresh forward repeated tree requests: '+calls); window.__qa_storage_expiry_start=performance.now(); return {ok:true,phase:'fresh-forward',calls};",
+        "before_api": "39 (vfs_tree_children x13, list_folder_children x5, search_document_item_hit_counts x3, vfs_tree_path_to x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "phase": "fresh-forward",
+          "calls": 0
+        },
+        "after_api": "39 (vfs_tree_children x13, list_folder_children x5, search_document_item_hit_counts x3, vfs_tree_path_to x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "window.__qa_cache_now+=6000; return {clock:window.__qa_cache_now};",
+        "before_api": "39 (vfs_tree_children x13, list_folder_children x5, search_document_item_hit_counts x3, vfs_tree_path_to x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "clock": 7000
+        },
+        "after_api": "39 (vfs_tree_children x13, list_folder_children x5, search_document_item_hit_counts x3, vfs_tree_path_to x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "history_back",
+        "input": "",
+        "before_api": "39 (vfs_tree_children x13, list_folder_children x5, search_document_item_hit_counts x3, vfs_tree_path_to x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "39 (vfs_tree_children x13, list_folder_children x5, search_document_item_hit_counts x3, vfs_tree_path_to x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [aria-current=\"location\"][title=\"/location-1\"]",
+        "before_api": "39 (vfs_tree_children x13, list_folder_children x5, search_document_item_hit_counts x3, vfs_tree_path_to x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "44 (vfs_tree_children x16, list_folder_children x6, vfs_tree_path_to x4, search_document_item_hit_counts x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const calls=performance.getEntriesByType('resource').filter(e=>e.name.includes('/api/vfs_tree_')).length-window.__qa_storage_return_start; return {ok:calls>0,calls};",
+        "before_api": "44 (vfs_tree_children x16, list_folder_children x6, vfs_tree_path_to x4, search_document_item_hit_counts x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "calls": 4
+        },
+        "after_api": "44 (vfs_tree_children x16, list_folder_children x6, vfs_tree_path_to x4, search_document_item_hit_counts x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "if(!document.body.contains(window.__qa_storage_ancestor)) throw new Error('expiry refresh removed the archive ancestor'); return {ok:true,phase:'expired-return',ancestor_retained:true,calls:performance.getEntriesByType('resource').filter(e=>e.name.includes('/api/vfs_tree_')).length-window.__qa_storage_return_start};",
+        "before_api": "44 (vfs_tree_children x16, list_folder_children x6, vfs_tree_path_to x4, search_document_item_hit_counts x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "phase": "expired-return",
+          "ancestor_retained": true,
+          "calls": 4
+        },
+        "after_api": "44 (vfs_tree_children x16, list_folder_children x6, vfs_tree_path_to x4, search_document_item_hit_counts x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "deep_chain": true,
+      "warm_ancestor_retained": true
+    },
+    "evidence": "130-manual-tree.01"
+  },
+  {
+    "procedure": "two-datasets",
+    "expected": "Both dataset controls remain available after expansion and history navigation.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==",
+        "before_api": "44 (vfs_tree_children x16, list_folder_children x6, vfs_tree_path_to x4, search_document_item_hit_counts x3, whoami x3, get_document_sources x2, list_storage_tree x2, vfs_node_term_id x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "49 (vfs_tree_children x16, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-tree-d-testdata_zips",
+        "before_api": "49 (vfs_tree_children x16, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "50 (vfs_tree_children x17, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const btn=document.querySelector('#x-tree-d-testdata_zips'); if(!btn) throw Error('missing zips disclosure'); btn.scrollIntoView({block:'nearest'}); const expanded=btn.getAttribute('aria-expanded')==='true'; window.__qa_zips_expand={alreadyExpanded:expanded}; if(!expanded) btn.click(); return {ok:true, alreadyExpanded:expanded};",
+        "before_api": "50 (vfs_tree_children x17, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "alreadyExpanded": false
+        },
+        "after_api": "50 (vfs_tree_children x17, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-storage-tree :: location-1",
+        "before_api": "50 (vfs_tree_children x17, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "51 (vfs_tree_children x18, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const btn=document.querySelector('#x-tree-d-testdata_zips'); return {ok:!!btn, aria:btn&&btn.getAttribute('aria-expanded'), already:window.__qa_zips_expand||null, locationReady:[...document.querySelectorAll('#x-storage-tree [data-node-key]')].some(x=>x.title==='/location-1'||x.title.endsWith('/location-1'))};",
+        "before_api": "51 (vfs_tree_children x18, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "aria": "true",
+          "already": {
+            "alreadyExpanded": false
+          },
+          "locationReady": true
+        },
+        "after_api": "51 (vfs_tree_children x18, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-storage-tree :: location-1",
+        "before_api": "51 (vfs_tree_children x18, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "51 (vfs_tree_children x18, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-storage-tree :: location-1",
+        "before_api": "51 (vfs_tree_children x18, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "51 (vfs_tree_children x18, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "history_back",
+        "input": "",
+        "before_api": "51 (vfs_tree_children x18, list_folder_children x7, vfs_tree_path_to x5, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "53 (vfs_tree_children x18, list_folder_children x8, vfs_tree_path_to x6, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const keys=[...document.querySelectorAll('#x-storage-tree [data-node-key]')].map(e=>e.dataset.nodeKey);const zips=document.querySelector('#x-tree-d-testdata_zips');const shapes=document.querySelector('#x-tree-d-testdata_shapes');return {ok:!!zips&&!!shapes&&keys.some(x=>x.startsWith('testdata_shapes'))&&keys.some(x=>x.startsWith('testdata_zips')),visibleNodeKeys:keys,zipsExpanded:zips&&zips.getAttribute('aria-expanded'),shapesExpanded:shapes&&shapes.getAttribute('aria-expanded')};",
+        "before_api": "53 (vfs_tree_children x18, list_folder_children x8, vfs_tree_path_to x6, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "visibleNodeKeys": [
+            "testdata_shapes\u001f\u001f/deep-stuff",
+            "testdata_shapes\u001f\u001f/the-directory",
+            "testdata_shapes\u001f\u001f/the-directory.zip",
+            "testdata_zips\u001f\u001f/location-1",
+            "testdata_zips\u001f\u001f/location-2"
+          ],
+          "zipsExpanded": "true",
+          "shapesExpanded": "true",
+          "expandState": {
+            "ok": true,
+            "aria": "true",
+            "already": {
+              "alreadyExpanded": false
+            },
+            "locationReady": true
+          }
+        },
+        "after_api": "54 (vfs_tree_children x18, list_folder_children x9, vfs_tree_path_to x6, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "ok": true,
+      "visibleNodeKeys": [
+        "testdata_shapes\u001f\u001f/deep-stuff",
+        "testdata_shapes\u001f\u001f/the-directory",
+        "testdata_shapes\u001f\u001f/the-directory.zip",
+        "testdata_zips\u001f\u001f/location-1",
+        "testdata_zips\u001f\u001f/location-2"
+      ],
+      "zipsExpanded": "true",
+      "shapesExpanded": "true",
+      "expandState": {
+        "ok": true,
+        "aria": "true",
+        "already": {
+          "alreadyExpanded": false
+        },
+        "locationReady": true
+      }
+    },
+    "evidence": "130-manual-tree.02"
+  },
+  {
+    "procedure": "keyboard-tree",
+    "expected": "Enter activates the focused dataset disclosure once.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==",
+        "before_api": "54 (vfs_tree_children x18, list_folder_children x9, vfs_tree_path_to x6, whoami x4, list_storage_tree x3, search_document_item_hit_counts x3, vfs_node_term_id x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "60 (vfs_tree_children x19, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in folder…\"]",
+        "before_api": "60 (vfs_tree_children x19, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "60 (vfs_tree_children x19, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-tree-d-testdata_zips",
+        "before_api": "60 (vfs_tree_children x19, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "60 (vfs_tree_children x19, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "document.querySelector('#x-tree-d-testdata_zips').focus();return true;",
+        "before_api": "60 (vfs_tree_children x19, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "60 (vfs_tree_children x19, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "60 (vfs_tree_children x19, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "61 (vfs_tree_children x20, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-storage-tree :: location-1",
+        "before_api": "61 (vfs_tree_children x20, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "61 (vfs_tree_children x20, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return {ok:document.activeElement?.id==='x-tree-d-testdata_zips',active:document.activeElement?.outerHTML};",
+        "before_api": "61 (vfs_tree_children x20, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "active": "<button style=\"border: none; background: none; cursor: pointer; padding: 0; display: flex; align-items: center; flex-shrink: 0;\" id=\"x-tree-d-testdata_zips\" aria-expanded=\"true\" data-dioxus-id=\"491\"><svg class=\"\" style=\"width: 18px; height: 18px; color: rgba(0,0,0,0.6);\" height=\"20\" width=\"20\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\" fill=\"currentColor\" stroke=\"none\" stroke-width=\"0\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\"><!--placeholder--><path d=\"M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z\"></path></svg></button>"
+        },
+        "after_api": "61 (vfs_tree_children x20, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "ok": true,
+      "active": "<button style=\"border: none; background: none; cursor: pointer; padding: 0; display: flex; align-items: center; flex-shrink: 0;\" id=\"x-tree-d-testdata_zips\" aria-expanded=\"true\" data-dioxus-id=\"491\"><svg class=\"\" style=\"width: 18px; height: 18px; color: rgba(0,0,0,0.6);\" height=\"20\" width=\"20\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\" fill=\"currentColor\" stroke=\"none\" stroke-width=\"0\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\"><!--placeholder--><path d=\"M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z\"></path></svg></button>"
+    },
+    "evidence": "130-manual-tree.03"
+  },
+  {
+    "procedure": "reload-and-narrow-view",
+    "expected": "The deep route remains inside a narrow viewport.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHg-L2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjA=/9g==/9g==",
+        "before_api": "61 (vfs_tree_children x20, list_folder_children x10, vfs_tree_path_to x7, whoami x5, list_storage_tree x4, vfs_node_term_id x4, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "76 (vfs_tree_children x30, list_folder_children x11, vfs_tree_path_to x8, whoami x6, list_storage_tree x5, vfs_node_term_id x5, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "sleep",
+        "input": "3000",
+        "before_api": "76 (vfs_tree_children x30, list_folder_children x11, vfs_tree_path_to x8, whoami x6, list_storage_tree x5, vfs_node_term_id x5, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "76 (vfs_tree_children x30, list_folder_children x11, vfs_tree_path_to x8, whoami x6, list_storage_tree x5, vfs_node_term_id x5, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "return performance.timeOrigin;",
+        "before_api": "76 (vfs_tree_children x30, list_folder_children x11, vfs_tree_path_to x8, whoami x6, list_storage_tree x5, vfs_node_term_id x5, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": 1789119258058.9,
+        "after_api": "76 (vfs_tree_children x30, list_folder_children x11, vfs_tree_path_to x8, whoami x6, list_storage_tree x5, vfs_node_term_id x5, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "location.reload();return true;",
+        "before_api": "76 (vfs_tree_children x30, list_folder_children x11, vfs_tree_path_to x8, whoami x6, list_storage_tree x5, vfs_node_term_id x5, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "76 (vfs_tree_children x30, list_folder_children x11, vfs_tree_path_to x8, whoami x6, list_storage_tree x5, vfs_node_term_id x5, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return performance.timeOrigin!==1789119258058.9&&document.readyState==='complete';",
+        "before_api": "76 (vfs_tree_children x30, list_folder_children x11, vfs_tree_path_to x8, whoami x6, list_storage_tree x5, vfs_node_term_id x5, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "81 (vfs_tree_children x30, list_folder_children x12, vfs_tree_path_to x9, whoami x7, list_storage_tree x6, vfs_node_term_id x6, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [aria-current]",
+        "before_api": "81 (vfs_tree_children x30, list_folder_children x12, vfs_tree_path_to x9, whoami x7, list_storage_tree x6, vfs_node_term_id x6, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "82 (vfs_tree_children x31, list_folder_children x12, vfs_tree_path_to x9, whoami x7, list_storage_tree x6, vfs_node_term_id x6, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return {ok:document.documentElement.scrollWidth<=innerWidth,width:innerWidth,scrollWidth:document.documentElement.scrollWidth};",
+        "before_api": "85 (vfs_tree_children x34, list_folder_children x12, vfs_tree_path_to x9, whoami x7, list_storage_tree x6, vfs_node_term_id x6, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "width": 600,
+          "scrollWidth": 600
+        },
+        "after_api": "85 (vfs_tree_children x34, list_folder_children x12, vfs_tree_path_to x9, whoami x7, list_storage_tree x6, vfs_node_term_id x6, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "ok": true,
+      "width": 600,
+      "scrollWidth": 600
+    },
+    "evidence": "130-manual-tree.04"
+  },
+  {
+    "procedure": "leaf-disclosure",
+    "expected": "A leaf dataset opens its root without a disclosure or empty-folder child message.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==",
+        "before_api": "87 (vfs_tree_children x36, list_folder_children x12, vfs_tree_path_to x9, whoami x7, list_storage_tree x6, vfs_node_term_id x6, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "93 (vfs_tree_children x37, list_folder_children x13, vfs_tree_path_to x10, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree",
+        "before_api": "93 (vfs_tree_children x37, list_folder_children x13, vfs_tree_path_to x10, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "93 (vfs_tree_children x37, list_folder_children x13, vfs_tree_path_to x10, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-storage-tree :: leaf",
+        "before_api": "93 (vfs_tree_children x37, list_folder_children x13, vfs_tree_path_to x10, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "94 (vfs_tree_children x38, list_folder_children x13, vfs_tree_path_to x10, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-storage-tree :: leaf",
+        "before_api": "94 (vfs_tree_children x38, list_folder_children x13, vfs_tree_path_to x10, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "94 (vfs_tree_children x38, list_folder_children x13, vfs_tree_path_to x10, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.startsWith('/file_browser/testdata_leaf/');",
+        "before_api": "94 (vfs_tree_children x38, list_folder_children x13, vfs_tree_path_to x10, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "97 (vfs_tree_children x39, list_folder_children x14, vfs_tree_path_to x11, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return !document.querySelector('#x-tree-d-testdata_leaf') && !document.querySelector('#x-storage-tree').innerText.includes('No folders in this dataset.');",
+        "before_api": "97 (vfs_tree_children x39, list_folder_children x14, vfs_tree_path_to x11, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "97 (vfs_tree_children x39, list_folder_children x14, vfs_tree_path_to x11, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "disclosure": false,
+      "navigation": true
+    },
+    "evidence": "130-manual-tree.05"
+  },
+  {
+    "procedure": "cache-and-history",
+    "expected": "Returning through a deep route retains common ancestor DOM nodes and records tree request counts.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHg-L2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjA=/9g==/9g==",
+        "before_api": "97 (vfs_tree_children x39, list_folder_children x14, vfs_tree_path_to x11, whoami x8, list_storage_tree x7, vfs_node_term_id x7, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "102 (vfs_tree_children x39, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "sleep",
+        "input": "3000",
+        "before_api": "102 (vfs_tree_children x39, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "112 (vfs_tree_children x49, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-storage-tree :: more levels…",
+        "before_api": "112 (vfs_tree_children x49, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "112 (vfs_tree_children x49, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const rows=[...document.querySelectorAll('#x-storage-tree [data-node-key]')];const current=rows.find(x=>x.getAttribute('aria-current')==='location');return !!current&&rows.some(x=>current.title.startsWith(x.title+'/'));",
+        "before_api": "112 (vfs_tree_children x49, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "112 (vfs_tree_children x49, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "window.__qa_deep_route=location.pathname;window.__qa_deep_rows=[...document.querySelectorAll('#x-storage-tree [data-node-key]')];const current=window.__qa_deep_rows.find(x=>x.getAttribute('aria-current')==='location');window.__qa_deep_ancestors=window.__qa_deep_rows.filter(x=>current?.title.startsWith(x.title+'/'));window.__qa_deep_ancestor_keys=window.__qa_deep_ancestors.map(x=>x.dataset.nodeKey);window.__qa_deep_requests=performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/vfs_tree_')).length;window.__qa_deep_queries=JSON.parse(document.querySelector('#x-vfs-query-log')?.textContent||'[]');return {rows:window.__qa_deep_rows.map(x=>({key:x.dataset.nodeKey,title:x.title})),ancestorKeys:window.__qa_deep_ancestor_keys};",
+        "before_api": "112 (vfs_tree_children x49, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "rows": [
+            {
+              "key": "testdata_shapes\u001f\u001f/deep-stuff",
+              "title": "/deep-stuff"
+            },
+            {
+              "key": "testdata_shapes\u001f\u001f/deep-stuff/1",
+              "title": "/deep-stuff/1"
+            },
+            {
+              "key": "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15",
+              "title": "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15"
+            },
+            {
+              "key": "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16",
+              "title": "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16"
+            },
+            {
+              "key": "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17",
+              "title": "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17"
+            },
+            {
+              "key": "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18",
+              "title": "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18"
+            },
+            {
+              "key": "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19",
+              "title": "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19"
+            },
+            {
+              "key": "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19/20",
+              "title": "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19/20"
+            },
+            {
+              "key": "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19/20/21",
+              "title": "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19/20/21"
+            },
+            {
+              "key": "testdata_shapes\u001f\u001f/the-directory",
+              "title": "/the-directory"
+            },
+            {
+              "key": "testdata_shapes\u001f\u001f/the-directory.zip",
+              "title": "/the-directory.zip"
+            }
+          ],
+          "ancestorKeys": [
+            "testdata_shapes\u001f\u001f/deep-stuff",
+            "testdata_shapes\u001f\u001f/deep-stuff/1",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19"
+          ]
+        },
+        "after_api": "112 (vfs_tree_children x49, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const rows=[...document.querySelectorAll('#x-storage-tree [data-node-key]')];const current=rows.find(x=>x.getAttribute('aria-current')==='location');const parent=rows.filter(x=>current?.title.startsWith(x.title+'/')).at(-1);if(!parent)throw Error('deep parent row unavailable');window.__qa_deep_current_title=current.title;window.__qa_deep_parent_title=parent.title;parent.click();return {parentKey:parent.dataset.nodeKey,parentTitle:parent.title};",
+        "before_api": "112 (vfs_tree_children x49, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "parentKey": "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19",
+          "parentTitle": "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19"
+        },
+        "after_api": "112 (vfs_tree_children x49, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname!==window.__qa_deep_route;",
+        "before_api": "112 (vfs_tree_children x49, list_folder_children x15, vfs_tree_path_to x12, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "114 (vfs_tree_children x49, list_folder_children x16, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelector('#x-storage-tree [aria-current=location]')?.title===window.__qa_deep_parent_title;",
+        "before_api": "114 (vfs_tree_children x49, list_folder_children x16, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "114 (vfs_tree_children x49, list_folder_children x16, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "async_eval",
+        "input": "await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);return true;",
+        "before_api": "114 (vfs_tree_children x49, list_folder_children x16, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "114 (vfs_tree_children x49, list_folder_children x16, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const rows=[...document.querySelectorAll('#x-storage-tree [data-node-key]')];const keys=new Set(rows.map(x=>x.dataset.nodeKey));return {ok:rows.some(x=>x.title===window.__qa_deep_parent_title)&&!rows.some(x=>x.title.startsWith(window.__qa_deep_current_title+'/'))&&window.__qa_deep_ancestor_keys.every(k=>keys.has(k)),visibleKeys:[...keys],ancestorKeys:window.__qa_deep_ancestor_keys};",
+        "before_api": "114 (vfs_tree_children x49, list_folder_children x16, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "visibleKeys": [
+            "testdata_shapes\u001f\u001f/deep-stuff",
+            "testdata_shapes\u001f\u001f/deep-stuff/1",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19/20",
+            "testdata_shapes\u001f\u001f/the-directory",
+            "testdata_shapes\u001f\u001f/the-directory.zip"
+          ],
+          "ancestorKeys": [
+            "testdata_shapes\u001f\u001f/deep-stuff",
+            "testdata_shapes\u001f\u001f/deep-stuff/1",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19"
+          ]
+        },
+        "after_api": "115 (vfs_tree_children x50, list_folder_children x16, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "history_back",
+        "input": "",
+        "before_api": "115 (vfs_tree_children x50, list_folder_children x16, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "115 (vfs_tree_children x50, list_folder_children x16, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname===window.__qa_deep_route;",
+        "before_api": "115 (vfs_tree_children x50, list_folder_children x16, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "117 (vfs_tree_children x51, list_folder_children x17, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelector('#x-storage-tree [aria-current=location]')?.title===window.__qa_deep_current_title;",
+        "before_api": "117 (vfs_tree_children x51, list_folder_children x17, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "117 (vfs_tree_children x51, list_folder_children x17, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "async_eval",
+        "input": "await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);return true;",
+        "before_api": "117 (vfs_tree_children x51, list_folder_children x17, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "117 (vfs_tree_children x51, list_folder_children x17, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const common=window.__qa_deep_ancestors; const after=performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/vfs_tree_')).length; const queries=JSON.parse(document.querySelector('#x-vfs-query-log')?.textContent||'[]'); const live=new Set([...document.querySelectorAll('#x-storage-tree [data-node-key]')].map(x=>x.dataset.nodeKey)); const result={ancestorKeys:window.__qa_deep_ancestor_keys,ancestors:common.map(x=>x.title),connected:common.map(x=>x.isConnected),requestsBefore:window.__qa_deep_requests,requestsAfter:after,datastoreQueriesBefore:window.__qa_deep_queries,datastoreQueriesAfter:queries}; if(!common.length) throw Error('no common ancestors: '+JSON.stringify(result)); if(common.some(x=>!x.isConnected)||window.__qa_deep_ancestor_keys.some(k=>!live.has(k))) throw Error('common ancestor identity lost: '+JSON.stringify(result)); return result;",
+        "before_api": "117 (vfs_tree_children x51, list_folder_children x17, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ancestorKeys": [
+            "testdata_shapes\u001f\u001f/deep-stuff",
+            "testdata_shapes\u001f\u001f/deep-stuff/1",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18",
+            "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19"
+          ],
+          "ancestors": [
+            "/deep-stuff",
+            "/deep-stuff/1",
+            "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15",
+            "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16",
+            "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17",
+            "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18",
+            "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19"
+          ],
+          "connected": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "requestsBefore": 11,
+          "requestsAfter": 12,
+          "datastoreQueriesBefore": [
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            },
+            {
+              "kind": "path",
+              "from_cache": false,
+              "datastore_queries": 22,
+              "took_ms": 386
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 17
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 21
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 19
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 17
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 19
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 17
+            }
+          ],
+          "datastoreQueriesAfter": [
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            },
+            {
+              "kind": "path",
+              "from_cache": false,
+              "datastore_queries": 22,
+              "took_ms": 386
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 17
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 21
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 19
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 17
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 19
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 17
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "path",
+              "from_cache": false,
+              "datastore_queries": 21,
+              "took_ms": 344
+            },
+            {
+              "kind": "path",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            }
+          ]
+        },
+        "after_api": "117 (vfs_tree_children x51, list_folder_children x17, vfs_tree_path_to x13, whoami x9, list_storage_tree x8, vfs_node_term_id x8, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "ancestorKeys": [
+        "testdata_shapes\u001f\u001f/deep-stuff",
+        "testdata_shapes\u001f\u001f/deep-stuff/1",
+        "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15",
+        "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16",
+        "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17",
+        "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18",
+        "testdata_shapes\u001f\u001f/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19"
+      ],
+      "ancestors": [
+        "/deep-stuff",
+        "/deep-stuff/1",
+        "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15",
+        "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16",
+        "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17",
+        "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18",
+        "/deep-stuff/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17/18/19"
+      ],
+      "connected": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "requestsBefore": 11,
+      "requestsAfter": 12,
+      "datastoreQueriesBefore": [
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        },
+        {
+          "kind": "path",
+          "from_cache": false,
+          "datastore_queries": 22,
+          "took_ms": 386
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 17
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 21
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 19
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 17
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 19
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 17
+        }
+      ],
+      "datastoreQueriesAfter": [
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        },
+        {
+          "kind": "path",
+          "from_cache": false,
+          "datastore_queries": 22,
+          "took_ms": 386
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 17
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 21
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 19
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 17
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 19
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 17
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "path",
+          "from_cache": false,
+          "datastore_queries": 21,
+          "took_ms": 344
+        },
+        {
+          "kind": "path",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        }
+      ]
+    },
+    "evidence": "130-manual-tree.06"
+  },
+  {
+    "procedure": "freshness-and-query-cost",
+    "expected": "Warm archive navigation records browser requests and datastore query counts separately.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "wait_text",
+        "input": "parent.zip",
+        "before_api": "122 (vfs_tree_children x51, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "123 (vfs_tree_children x52, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "if(performance.now()!==1000)throw Error('the controlled browser clock is unavailable');return {clock:performance.now()};",
+        "before_api": "123 (vfs_tree_children x52, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "clock": 1000
+        },
+        "after_api": "123 (vfs_tree_children x52, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [data-node-key][title=\"/location-1\"]",
+        "before_api": "123 (vfs_tree_children x52, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "124 (vfs_tree_children x53, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const ancestor = document.querySelector('#x-storage-tree [data-node-key][title=\"/location-1\"]'); window.__qa_storage_ancestor = ancestor; window.__qa_storage_removed = false; window.__qa_storage_before_calls = performance.getEntriesByType('resource').filter(e => e.name.includes('/api/vfs_tree_')).length; window.__qa_storage_observer=new MutationObserver(records => { for (const record of records) { for (const node of record.removedNodes) { if (node === ancestor || node.contains?.(ancestor)) window.__qa_storage_removed = true; } } }); window.__qa_storage_observer.observe(document.querySelector('#x-storage-tree'), {childList: true, subtree: true}); return {ok: true};",
+        "before_api": "124 (vfs_tree_children x53, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "124 (vfs_tree_children x53, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-storage-tree :: parent.zip",
+        "before_api": "124 (vfs_tree_children x53, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "124 (vfs_tree_children x53, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-storage-tree :: parent.zip",
+        "before_api": "124 (vfs_tree_children x53, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "124 (vfs_tree_children x53, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.includes('/file_browser/testdata_zips/') && location.pathname !== '/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==';",
+        "before_api": "124 (vfs_tree_children x53, list_folder_children x18, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x3, get_document_sources x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "128 (vfs_tree_children x53, list_folder_children x19, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x4, get_document_sources x3, vfs_tree_container_node x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [aria-current=\"location\"][title=\"/location-1/parent.zip\"]",
+        "before_api": "128 (vfs_tree_children x53, list_folder_children x19, vfs_tree_path_to x14, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x4, get_document_sources x3, vfs_tree_container_node x2, get_canonical_file_type x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "134 (vfs_tree_children x53, list_folder_children x19, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2, get_document_text_by_id_and_source x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [data-node-key][title=\"/parent\"]",
+        "before_api": "134 (vfs_tree_children x53, list_folder_children x19, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2, get_document_text_by_id_and_source x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "136 (vfs_tree_children x54, list_folder_children x19, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "eval",
+        "input": "window.__qa_storage_observer.disconnect(); const calls=performance.getEntriesByType('resource').filter(e => e.name.includes('/api/vfs_tree_')).length-window.__qa_storage_before_calls; if(!document.body.contains(window.__qa_storage_ancestor)||window.__qa_storage_removed) throw new Error('the archive ancestor was removed'); if(calls>3) throw new Error('archive navigation repeated tree requests: '+calls); return {ok:true,calls};",
+        "before_api": "136 (vfs_tree_children x54, list_folder_children x19, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "calls": 3
+        },
+        "after_api": "136 (vfs_tree_children x54, list_folder_children x19, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "eval",
+        "input": "window.__qa_storage_return_start=performance.getEntriesByType('resource').filter(e=>e.name.includes('/api/vfs_tree_')).length; return {ok:true};",
+        "before_api": "136 (vfs_tree_children x54, list_folder_children x19, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "136 (vfs_tree_children x54, list_folder_children x19, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "history_back",
+        "input": "",
+        "before_api": "136 (vfs_tree_children x54, list_folder_children x19, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "136 (vfs_tree_children x54, list_folder_children x19, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [aria-current=\"location\"][title=\"/location-1\"]",
+        "before_api": "136 (vfs_tree_children x54, list_folder_children x19, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "137 (vfs_tree_children x54, list_folder_children x20, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const calls=performance.getEntriesByType('resource').filter(e=>e.name.includes('/api/vfs_tree_')).length-window.__qa_storage_return_start; if(calls!==0) throw new Error('fresh return repeated tree requests: '+calls); return {ok:true,phase:'fresh-return',calls};",
+        "before_api": "137 (vfs_tree_children x54, list_folder_children x20, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "phase": "fresh-return",
+          "calls": 0
+        },
+        "after_api": "137 (vfs_tree_children x54, list_folder_children x20, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "history_forward",
+        "input": "",
+        "before_api": "137 (vfs_tree_children x54, list_folder_children x20, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "137 (vfs_tree_children x54, list_folder_children x20, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [aria-current=\"location\"][title=\"/location-1/parent.zip\"]",
+        "before_api": "137 (vfs_tree_children x54, list_folder_children x20, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x5, get_document_sources x3, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "140 (vfs_tree_children x54, list_folder_children x21, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [data-node-key][title=\"/parent\"]",
+        "before_api": "140 (vfs_tree_children x54, list_folder_children x21, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "140 (vfs_tree_children x54, list_folder_children x21, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const calls=performance.getEntriesByType('resource').filter(e=>e.name.includes('/api/vfs_tree_')).length-window.__qa_storage_return_start; if(calls!==0) throw new Error('fresh forward repeated tree requests: '+calls); window.__qa_storage_expiry_start=performance.now(); return {ok:true,phase:'fresh-forward',calls};",
+        "before_api": "140 (vfs_tree_children x54, list_folder_children x21, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "phase": "fresh-forward",
+          "calls": 0
+        },
+        "after_api": "140 (vfs_tree_children x54, list_folder_children x21, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "eval",
+        "input": "window.__qa_cache_now+=6000; return {clock:window.__qa_cache_now};",
+        "before_api": "140 (vfs_tree_children x54, list_folder_children x21, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "clock": 7000
+        },
+        "after_api": "140 (vfs_tree_children x54, list_folder_children x21, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "history_back",
+        "input": "",
+        "before_api": "140 (vfs_tree_children x54, list_folder_children x21, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "140 (vfs_tree_children x54, list_folder_children x21, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "#x-storage-tree [aria-current=\"location\"][title=\"/location-1\"]",
+        "before_api": "140 (vfs_tree_children x54, list_folder_children x21, vfs_tree_path_to x15, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "145 (vfs_tree_children x57, list_folder_children x22, vfs_tree_path_to x16, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const calls=performance.getEntriesByType('resource').filter(e=>e.name.includes('/api/vfs_tree_')).length-window.__qa_storage_return_start; return {ok:calls>0,calls};",
+        "before_api": "145 (vfs_tree_children x57, list_folder_children x22, vfs_tree_path_to x16, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "calls": 4
+        },
+        "after_api": "145 (vfs_tree_children x57, list_folder_children x22, vfs_tree_path_to x16, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "eval",
+        "input": "if(!document.body.contains(window.__qa_storage_ancestor)) throw new Error('expiry refresh removed the archive ancestor'); return {ok:true,phase:'expired-return',ancestor_retained:true,calls:performance.getEntriesByType('resource').filter(e=>e.name.includes('/api/vfs_tree_')).length-window.__qa_storage_return_start};",
+        "before_api": "145 (vfs_tree_children x57, list_folder_children x22, vfs_tree_path_to x16, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "phase": "expired-return",
+          "ancestor_retained": true,
+          "calls": 4
+        },
+        "after_api": "145 (vfs_tree_children x57, list_folder_children x22, vfs_tree_path_to x16, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const queries=JSON.parse(document.querySelector('#x-vfs-query-log')?.textContent||'[]'); const requests=performance.getEntriesByType('resource').filter(x=>x.name.includes('/api/vfs_tree_')).map(x=>({name:x.name,duration:x.duration})); const pathQueries=queries.filter(x=>x.kind==='path'); const childQueries=queries.filter(x=>x.kind==='children'); const cold=queries.filter(x=>!x.from_cache); const fresh=queries.filter(x=>x.from_cache); return {ok:true, browserRequests:requests.length, datastoreQueries:queries, coldDatastoreQueries:cold, freshCachedQueries:fresh, requestDurations:requests};",
+        "before_api": "145 (vfs_tree_children x57, list_folder_children x22, vfs_tree_path_to x16, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "browserRequests": 10,
+          "datastoreQueries": [
+            {
+              "kind": "path",
+              "from_cache": false,
+              "datastore_queries": 2,
+              "took_ms": 34
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 17
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 17
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "path",
+              "from_cache": false,
+              "datastore_queries": 3,
+              "took_ms": 51
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 16
+            },
+            {
+              "kind": "path",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "path",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "path",
+              "from_cache": false,
+              "datastore_queries": 2,
+              "took_ms": 35
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            }
+          ],
+          "coldDatastoreQueries": [
+            {
+              "kind": "path",
+              "from_cache": false,
+              "datastore_queries": 2,
+              "took_ms": 34
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 17
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 17
+            },
+            {
+              "kind": "path",
+              "from_cache": false,
+              "datastore_queries": 3,
+              "took_ms": 51
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 16
+            },
+            {
+              "kind": "path",
+              "from_cache": false,
+              "datastore_queries": 2,
+              "took_ms": 35
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            },
+            {
+              "kind": "children",
+              "from_cache": false,
+              "datastore_queries": 1,
+              "took_ms": 18
+            }
+          ],
+          "freshCachedQueries": [
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "path",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "path",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            },
+            {
+              "kind": "children",
+              "from_cache": true,
+              "datastore_queries": 0,
+              "took_ms": 0
+            }
+          ],
+          "requestDurations": [
+            {
+              "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_path_to690582788476150795",
+              "duration": 412.30000001192093
+            },
+            {
+              "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+              "duration": 128.5
+            },
+            {
+              "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+              "duration": 127.10000002384186
+            },
+            {
+              "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_container_node690582788476150795",
+              "duration": 129.5999999642372
+            },
+            {
+              "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_path_to690582788476150795",
+              "duration": 164.9000000357628
+            },
+            {
+              "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+              "duration": 129.89999997615814
+            },
+            {
+              "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_path_to690582788476150795",
+              "duration": 690.5
+            },
+            {
+              "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+              "duration": 689.6000000238419
+            },
+            {
+              "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+              "duration": 689.4000000357628
+            },
+            {
+              "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+              "duration": 689.1999999880791
+            }
+          ]
+        },
+        "after_api": "145 (vfs_tree_children x57, list_folder_children x22, vfs_tree_path_to x16, whoami x10, list_storage_tree x9, vfs_node_term_id x9, search_document_item_hit_counts x6, get_document_sources x4, get_canonical_file_type x2, get_document_text_by_id_and_source x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, vfs_tree_container_node x2)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "ok": true,
+      "browserRequests": 10,
+      "datastoreQueries": [
+        {
+          "kind": "path",
+          "from_cache": false,
+          "datastore_queries": 2,
+          "took_ms": 34
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 17
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 17
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "path",
+          "from_cache": false,
+          "datastore_queries": 3,
+          "took_ms": 51
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 16
+        },
+        {
+          "kind": "path",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "path",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "path",
+          "from_cache": false,
+          "datastore_queries": 2,
+          "took_ms": 35
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        }
+      ],
+      "coldDatastoreQueries": [
+        {
+          "kind": "path",
+          "from_cache": false,
+          "datastore_queries": 2,
+          "took_ms": 34
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 17
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 17
+        },
+        {
+          "kind": "path",
+          "from_cache": false,
+          "datastore_queries": 3,
+          "took_ms": 51
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 16
+        },
+        {
+          "kind": "path",
+          "from_cache": false,
+          "datastore_queries": 2,
+          "took_ms": 35
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        },
+        {
+          "kind": "children",
+          "from_cache": false,
+          "datastore_queries": 1,
+          "took_ms": 18
+        }
+      ],
+      "freshCachedQueries": [
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "path",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "path",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        },
+        {
+          "kind": "children",
+          "from_cache": true,
+          "datastore_queries": 0,
+          "took_ms": 0
+        }
+      ],
+      "requestDurations": [
+        {
+          "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_path_to690582788476150795",
+          "duration": 412.30000001192093
+        },
+        {
+          "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+          "duration": 128.5
+        },
+        {
+          "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+          "duration": 127.10000002384186
+        },
+        {
+          "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_container_node690582788476150795",
+          "duration": 129.5999999642372
+        },
+        {
+          "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_path_to690582788476150795",
+          "duration": 164.9000000357628
+        },
+        {
+          "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+          "duration": 129.89999997615814
+        },
+        {
+          "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_path_to690582788476150795",
+          "duration": 690.5
+        },
+        {
+          "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+          "duration": 689.6000000238419
+        },
+        {
+          "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+          "duration": 689.4000000357628
+        },
+        {
+          "name": "https://hoover4.new.liquiddemo.org/api/vfs_tree_children690582788476150795",
+          "duration": 689.1999999880791
+        }
+      ]
+    },
+    "evidence": "130-manual-tree.07"
+  }
+]

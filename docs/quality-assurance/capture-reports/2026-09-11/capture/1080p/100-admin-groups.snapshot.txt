@@ -1,0 +1,201 @@
+# 100-admin-groups (1080p)
+url:      https://hoover4.new.liquiddemo.org/admin/user_groups
+title:    Admin: groups
+actions:  sleep 2000
+api calls: 2 (admin_list_groups x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5717[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5715[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5713[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5711[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Groups"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Select group to change"
+              div
+                div
+                  h2  "Add group"
+                  div
+                    input[type=text][placeholder=groupname]
+                    input[type=text][placeholder=display name]
+                    p  "Group name: lowercase letters, digits, underscores and hyphens only. It cannot be changed afterwards. The display name is free text."
+                    button  "Add group +"
+                table
+                  thead
+                    tr
+                      th  "Group"
+                      th  "Display name"
+                      th  "Members"
+                      th  "Collections"
+                  tbody
+                    tr
+                      td
+                        a[href=/admin/user_groups/Administrators]  "Administrators"
+                      td  "Administrators"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/Guests]  "Guests"
+                      td  "Guests"
+                      td  "2"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/admin]  "admin"
+                      td  "Administrators"
+                      td  "2"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/bbb]  "bbb"
+                      td  "bbb"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/codimd]  "codimd"
+                      td  "codimd"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/dokuwiki]  "dokuwiki"
+                      td  "dokuwiki"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/grist]  "grist"
+                      td  "grist"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/hoover]  "hoover"
+                      td  "hoover"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/hoover4]  "hoover4"
+                      td  "hoover4"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/matrix]  "matrix"
+                      td  "matrix"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/nextcloud]  "nextcloud"
+                      td  "nextcloud"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/nextcloud-admin]  "nextcloud-admin"
+                      td  "nextcloud-admin"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/nextcloud28]  "nextcloud28"
+                      td  "nextcloud28"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/prophecies]  "prophecies"
+                      td  "prophecies"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/superuser]  "superuser"
+                      td  "Superusers"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/user]  "user"
+                      td  "user"
+                      td  "2"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/wikijs]  "wikijs"
+                      td  "wikijs"
+                      td  "1"
+                      td  "0"
+                    tr
+                      td
+                        a[href=/admin/user_groups/xwiki]  "xwiki"
+                      td  "xwiki"
+                      td  "1"
+                      td  "0"
+    div[role=region][label=0 notifications]
+      ol

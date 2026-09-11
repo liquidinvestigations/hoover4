@@ -1,0 +1,180 @@
+# 107-admin-dataset-detail (1080p)
+url:      https://hoover4.new.liquiddemo.org/admin/collections/testdata/datasets/testdata_testfiles
+title:    Admin: dataset testdata_testfiles
+actions:  sleep 2500
+api calls: 6 (admin_get_dataset_ocr x2, admin_get_dataset_operation x2, admin_get_dataset x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7591[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7589[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7587[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7585[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Collections › testdata › testdata_testfiles"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Change dataset"
+              div
+                div
+                  h2  "Metadata"
+                  div
+                    label
+                      span  "Display name"
+                      input[type=text][value=testfiles]
+                    div
+                      span  "Name"
+                      span  "testfiles"
+                    div
+                      span  "Type"
+                      span  "disk"
+                    div
+                      span  "Path"
+                      span  "/testdata/hoover-testdata/data/disk-files/pdf-doc-txt"
+                    div
+                      span  "Created"
+                      span  "2026-09-04T13:13:58Z"
+                    div
+                      span  "Collection"
+                      a[href=/admin/collections/testdata]  "testdata"
+                    p  "A dataset's collection is fixed when it is created and cannot be changed."
+                    div
+                      button  "Save"
+                div
+                  h2  "Processing stats"
+                  div
+                    div
+                      div  "6"
+                      div  "Blobs"
+                    div
+                      div  "6"
+                      div  "VFS files"
+                    div
+                      div  "1"
+                      div  "Plans total"
+                    div
+                      div  "1"
+                      div  "Plans finished"
+                    div
+                      div  "1"
+                      div  "Errors"
+                div
+                  div  "add_dataset — finished"
+                  div  "working"
+                  div  "finished 2026-09-04T13:15:06Z"
+                div
+                  h2  "OCR languages"
+                  div
+                    p  "Each language set is a separate stored variant of every document's text. A language is nearly free: it takes eng+ron in a single pass and picks per region, so the whole set is one pass and one variant"
+                      strong  "Tesseract"
+                      strong  "EasyOCR"
+                    div
+                      div  "Tesseract"
+                      div
+                        label  "deu"
+                          input[type=checkbox][value=on]
+                        label  "eng"
+                          input[type=checkbox][value=on]
+                        label  "fra"
+                          input[type=checkbox][value=on]
+                        label  "osd"
+                          input[type=checkbox][value=on]
+                        label  "ron"
+                          input[type=checkbox][value=on]
+                        label  "rus"
+                          input[type=checkbox][value=on]
+                        label  "spa"
+                          input[type=checkbox][value=on]
+                      p  "Order matters: the first language is the primary one, so eng+ron and ron+eng are different variants. Selected:"
+                        strong  "eng"
+                    div
+                      div  "EasyOCR"
+                      input[type=text][value=en]
+                    div
+                      div  "Stored text variants"
+                      div
+                        span  "Extracted text · 5 pages"
+                        span  "Office XML · 2 pages"
+                        span  "PDF text · 30 pages"
+                        span  "Plain text · 2 pages"
+                      p  "Removing a language deletes its variant here and in the search index, and the derived PDF that goes with it."
+                    div
+                      div  "Searchable PDFs"
+                      div
+                        span  "tesseract · eng · 1 files · 14 MB"
+                    div
+                      button  "Apply"
+                      span  "No changes to apply."
+                div
+                  h2  "Processing workflows"
+                  div
+                    p  "Triggers a Temporal workflow for this dataset."
+                    div
+                      button  "Rescan disk"
+                      button  "Compute plans"
+                      button  "Execute plans"
+                div
+                  h2  "Danger zone"
+                  div
+                    p  "Deletes the dataset and everything extracted from it: blobs, text, entities, chunks and vectors, from ClickHouse and from the search index. Only the stored objects survive, orphaned. This cannot be un"
+                    button  "Delete dataset and its data"
+    div[role=region][label=0 notifications]
+      ol

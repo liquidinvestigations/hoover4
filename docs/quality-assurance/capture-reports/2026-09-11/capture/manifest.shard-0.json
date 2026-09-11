@@ -1,0 +1,1734 @@
+{
+  "target_label": "the configured target",
+  "resolutions": {
+    "720p": [
+      1280,
+      720
+    ],
+    "1080p": [
+      1920,
+      1080
+    ]
+  },
+  "identity": "hoover4admin",
+  "revision": "a38d2afb8d3d9c3411424ed1cbeb701f5e856719",
+  "pages": [
+    {
+      "stem": "118-manual-shipping",
+      "slug": "701-manual-shipping",
+      "summary": "Exercises the manual shipping case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/118-manual-shipping.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/118-manual-shipping.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "122-manual-sort-size",
+      "slug": "705-manual-sort-size",
+      "summary": "Exercises the manual sort size case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/122-manual-sort-size.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/122-manual-sort-size.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "126-manual-archive-viewer",
+      "slug": "709-manual-archive-viewer",
+      "summary": "Exercises the manual archive viewer case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/126-manual-archive-viewer.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/126-manual-archive-viewer.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "130-manual-tree",
+      "slug": "713-manual-tree",
+      "summary": "Exercises the manual tree case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "1080p/130-manual-tree.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [
+        {
+          "severity": "application_error",
+          "message": "[720p] baseline: script did not return a JSON string: ExceptionDetails(exception_id=2, text='Uncaught', line_number=0, column_number=360, script_id=ScriptId('478'), url=None, stack_trace=None, exception=RemoteObject(type_='object', subtype='error', class_name='Error', value=None, unserializable_value=None, description='Error: archive navigation repeated tree requests: 4\\n    at <anonymous>:1:367\\n    at <anonymous>:1:457', deep_serialized_value=None, object_id=RemoteObjectId('7146662632969289552.47.2'), preview=None, custom_preview=None), execution_context_id=None, exception_meta_data=None)"
+        }
+      ],
+      "verdict": "application_error"
+    },
+    {
+      "stem": "134-manual-email-filters",
+      "slug": "717-manual-email-filters",
+      "summary": "Exercises the manual email filters case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/134-manual-email-filters.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/134-manual-email-filters.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [
+        {
+          "severity": "diagnostic_warning",
+          "message": "HTTP 500 on POST /api/search_entity_terms16667617515180422573"
+        }
+      ],
+      "verdict": "diagnostic_warning"
+    },
+    {
+      "stem": "138-qa-pdf-full-delayed-source-switch",
+      "slug": "802-qa-pdf-full-delayed-source-switch",
+      "summary": "Exercises the qa pdf full delayed source switch case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/138-qa-pdf-full-delayed-source-switch.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [
+        {
+          "severity": "application_error",
+          "message": "[1080p] no-match: timed out waiting for text '- / -' inside 'body'"
+        }
+      ],
+      "verdict": "application_error"
+    },
+    {
+      "stem": "02-bad-url-malformed-param",
+      "slug": "003-bad-url-malformed-param",
+      "summary": "Exercises the bad url malformed param case.",
+      "url": "/view_document/AAAA/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/02-bad-url-malformed-param.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/02-bad-url-malformed-param.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "not-found.png"
+    },
+    {
+      "stem": "06-filter-pane-filetypes",
+      "slug": "104-filter-pane-filetypes",
+      "summary": "Exercises the filter pane filetypes case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/06-filter-pane-filetypes.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/06-filter-pane-filetypes.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "filter-file-types.png"
+    },
+    {
+      "stem": "10-filter-pane-date",
+      "slug": "108-filter-pane-date",
+      "summary": "Exercises the filter pane date case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/10-filter-pane-date.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/10-filter-pane-date.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "filter-date.png"
+    },
+    {
+      "stem": "14-filter-pane-date-unknown",
+      "slug": "112-filter-pane-date-unknown",
+      "summary": "Exercises the filter pane date unknown case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/14-filter-pane-date-unknown.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/14-filter-pane-date-unknown.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "18-sort-menu",
+      "slug": "116-sort-menu",
+      "summary": "Exercises the sort menu case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/18-sort-menu.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/18-sort-menu.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "sort-menu.png"
+    },
+    {
+      "stem": "22-qa-sort-legacy-ascending-relevance",
+      "slug": "120-qa-sort-legacy-ascending-relevance",
+      "summary": "Exercises the qa sort legacy ascending relevance case.",
+      "url": "/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFuY2VkZGVzY_Q=/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/22-qa-sort-legacy-ascending-relevance.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/22-qa-sort-legacy-ascending-relevance.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "26-qa-sort-name-directions",
+      "slug": "124-qa-sort-name-directions",
+      "summary": "Exercises the qa sort name directions case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/26-qa-sort-name-directions.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/26-qa-sort-name-directions.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "30-search-filelocation-dataset-applied",
+      "slug": "128-search-filelocation-dataset-applied",
+      "summary": "Exercises the search filelocation dataset applied case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/30-search-filelocation-dataset-applied.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/30-search-filelocation-dataset-applied.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "34-search-collections-filter-tree",
+      "slug": "132-search-collections-filter-tree",
+      "summary": "Exercises the search collections filter tree case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdjdGhlbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/34-search-collections-filter-tree.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/34-search-collections-filter-tree.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "38-view-doc-image",
+      "slug": "203-view-doc-image",
+      "summary": "Exercises the view doc image case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAYzliZjYxZDI4YTkzYmI3NjdmYzdmNjlmNGRmYmRlOWZjMzhjM2RkNGFiNzg4MjA1YzEzZjY0OGI4Mzc4ZTk4Yw==/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/38-view-doc-image.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/38-view-doc-image.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "document-image-ocr.png"
+    },
+    {
+      "stem": "42-view-doc-docx-metadata",
+      "slug": "207-view-doc-docx-metadata",
+      "summary": "Exercises the view doc docx metadata case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMzZhMTJjNzdlNGZkODRlOGQzODU0Mjk5MGY5YmQ2NTdjNmFmYjk3NjhjYWU2NzAzZmM3OGIzN2NmNjRlODhiZQ==/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=",
+      "captures": [
+        {
+          "file": "720p/42-view-doc-docx-metadata.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/42-view-doc-docx-metadata.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/42-view-doc-docx-metadata.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/42-view-doc-docx-metadata.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "46-view-doc-stale-bookmark",
+      "slug": "211-view-doc-stale-bookmark",
+      "summary": "Exercises the view doc stale bookmark case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMQ==/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/46-view-doc-stale-bookmark.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/46-view-doc-stale-bookmark.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "50-view-doc-entity-card-stale",
+      "slug": "215-view-doc-entity-card-stale",
+      "summary": "Exercises the view doc entity card stale case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR5dm5vYm9keUBleGFtcGxlLmludmFsaWQ=/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/50-view-doc-entity-card-stale.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/50-view-doc-entity-card-stale.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "54-storage-shapes-deep",
+      "slug": "304-storage-shapes-deep",
+      "summary": "Exercises the storage shapes deep case.",
+      "url": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHg-L2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjA=/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/54-storage-shapes-deep.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/54-storage-shapes-deep.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "storage-tree-deep.png"
+    },
+    {
+      "stem": "58-storage-sidebar-remembered-width",
+      "slug": "308-storage-sidebar-remembered-width",
+      "summary": "Exercises the storage sidebar remembered width case.",
+      "url": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHiAL2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjAvMjEvMjIvMjMvMjQvMjUvMjYvMjcvMjgvMjkvMzAvMzEvMzIvMzMvMzQvMzUvMzYvMzcvMzgvMzkvNDAvNDEvNDI=/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/58-storage-sidebar-remembered-width.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/58-storage-sidebar-remembered-width.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "62-qa-storage-archive-highlight",
+      "slug": "312-qa-storage-archive-highlight",
+      "summary": "Exercises the qa storage archive highlight case.",
+      "url": "/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaHhAYzVmMjUxODMxMWZiM2U2MDY0OTIwMDM2YmNjYTljMGJmODU0MDI0NjRlZDRkYzc0OTg1ZDU1YWM4NDY2MGU1YmRwYXRoYS8=/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/62-qa-storage-archive-highlight.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/62-qa-storage-archive-highlight.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "66-qa-storage-back",
+      "slug": "316-qa-storage-back",
+      "summary": "Exercises the qa storage back case.",
+      "url": "/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/66-qa-storage-back.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/66-qa-storage-back.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "70-storage-tree-unified",
+      "slug": "320-storage-tree-unified",
+      "summary": "Exercises the storage tree unified case.",
+      "url": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aG4vdGhlLWRpcmVjdG9yeQ==/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/70-storage-tree-unified.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/70-storage-tree-unified.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "74-storage-collection-landing-other",
+      "slug": "324-storage-collection-landing-other",
+      "summary": "Exercises the storage collection landing other case.",
+      "url": "/file_browser/c/other",
+      "captures": [
+        {
+          "file": "720p/74-storage-collection-landing-other.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/74-storage-collection-landing-other.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "78-view-doc-table-sorted-blanks",
+      "slug": "402-view-doc-table-sorted-blanks",
+      "summary": "Exercises the view doc table sorted blanks case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGM2MTA3NTEwOGEyZjhjYzFmM2NhOWUzN2UwODRjNTc5MDBhMDRlZTVjYTVmYWFlYTNhM2Y0ZDlhZGU0YzlkZGI=/pGpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZaVoc2hlZXRfaWQAbmhpZGRlbl9jb2x1bW5zgGRzb3J0omljb2x1bW5faWQDZGRlc2P1Z2ZpbHRlcnOAZHBhZ2UJ/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/78-view-doc-table-sorted-blanks.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/78-view-doc-table-sorted-blanks.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "82-view-doc-table-truncated",
+      "slug": "406-view-doc-table-truncated",
+      "summary": "Exercises the view doc table truncated case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtdGVzdGRhdGFfd2lkZWlmaWxlX2hhc2h4QGEyNDMwNjA0NzI4Y2YxMjRkMzE2NGY0MmM4OWFjZTg3ZjY1MjQ2NGE0MzQ1ZjM3OTNkY2U0MzFjMWM5NjY2MTg=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/82-view-doc-table-truncated.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/82-view-doc-table-truncated.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "86-qa-table-modal-exclusivity",
+      "slug": "410-qa-table-modal-exclusivity",
+      "summary": "Exercises the qa table modal exclusivity case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/86-qa-table-modal-exclusivity.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/86-qa-table-modal-exclusivity.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "90-qa-table-picker-visibility",
+      "slug": "414-qa-table-picker-visibility",
+      "summary": "Exercises the qa table picker visibility case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/90-qa-table-picker-visibility.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/90-qa-table-picker-visibility.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "94-ai-chat-session-missing",
+      "slug": "503-ai-chat-session-missing",
+      "summary": "Exercises the ai chat session missing case.",
+      "url": "/ai_chat/c/0000000000000000000000000000000000000000000000000000000000000000/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/94-ai-chat-session-missing.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/94-ai-chat-session-missing.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [
+        {
+          "severity": "diagnostic_warning",
+          "message": "HTTP 404 on POST /api/chat_get_session3055757542734925017"
+        },
+        {
+          "severity": "diagnostic_warning",
+          "message": "HTTP 404 on POST /api/chat_get_session3055757542734925017"
+        }
+      ],
+      "verdict": "diagnostic_warning"
+    },
+    {
+      "stem": "98-admin-users",
+      "slug": "604-admin-users",
+      "summary": "Exercises the admin users case.",
+      "url": "/admin/users",
+      "captures": [
+        {
+          "file": "720p/98-admin-users.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/98-admin-users.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "admin-users.png"
+    },
+    {
+      "stem": "102-admin-settings",
+      "slug": "608-admin-settings",
+      "summary": "Exercises the admin settings case.",
+      "url": "/admin/settings",
+      "captures": [
+        {
+          "file": "720p/102-admin-settings.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/102-admin-settings.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/102-admin-settings.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/102-admin-settings.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "admin-settings.png"
+    },
+    {
+      "stem": "106-admin-collection-detail",
+      "slug": "612-admin-collection-detail",
+      "summary": "Exercises the admin collection detail case.",
+      "url": "/admin/collections/testdata",
+      "captures": [
+        {
+          "file": "720p/106-admin-collection-detail.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/106-admin-collection-detail.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/106-admin-collection-detail.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/106-admin-collection-detail.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "admin-collection.png"
+    },
+    {
+      "stem": "110-admin-operations-errored-empty",
+      "slug": "616-admin-operations-errored-empty",
+      "summary": "Exercises the admin operations errored empty case.",
+      "url": "/admin/operations",
+      "captures": [
+        {
+          "file": "720p/110-admin-operations-errored-empty.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/110-admin-operations-errored-empty.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/110-admin-operations-errored-empty.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/110-admin-operations-errored-empty.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "114-admin-operations-partial-failure",
+      "slug": "620-admin-operations-partial-failure",
+      "summary": "Exercises the admin operations partial failure case.",
+      "url": "/admin/operations",
+      "captures": [
+        {
+          "file": "720p/114-admin-operations-partial-failure.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/114-admin-operations-partial-failure.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/114-admin-operations-partial-failure.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/114-admin-operations-partial-failure.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    }
+  ],
+  "totals": {
+    "application_error": 2,
+    "expected_outcome": 0,
+    "trace": 0,
+    "behavioral_warning": 0,
+    "diagnostic_warning": 3,
+    "incomplete_execution": 0
+  },
+  "page_reports": [
+    "- `118-manual-shipping` (`/`): ok",
+    "- `122-manual-sort-size` (`/`): ok",
+    "- `126-manual-archive-viewer` (`/`): ok",
+    "- `130-manual-tree` (`/`): application_error",
+    "    - application_error: [720p] baseline: script did not return a JSON string: ExceptionDetails(exception_id=2, text='Uncaught', line_number=0, column_number=360, script_id=ScriptId('478'), url=None, stack_trace=None, exception=RemoteObject(type_='object', subtype='error', class_name='Error', value=None, unserializable_value=None, description='Error: archive navigation repeated tree requests: 4\\n    at <anonymous>:1:367\\n    at <anonymous>:1:457', deep_serialized_value=None, object_id=RemoteObjectId('7146662632969289552.47.2'), preview=None, custom_preview=None), execution_context_id=None, exception_meta_data=None)",
+    "- `134-manual-email-filters` (`/`): diagnostic_warning",
+    "    - diagnostic_warning: HTTP 500 on POST /api/search_entity_terms16667617515180422573",
+    "- `138-qa-pdf-full-delayed-source-switch` (`/`): application_error",
+    "    - application_error: [1080p] no-match: timed out waiting for text '- / -' inside 'body'",
+    "- `02-bad-url-malformed-param` (`/view_document/AAAA/9g==/9g==`): ok",
+    "- `06-filter-pane-filetypes` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `10-filter-pane-date` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `14-filter-pane-date-unknown` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `18-sort-menu` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `22-qa-sort-legacy-ascending-relevance` (`/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFuY2VkZGVzY_Q=/0/9g==/9g==`): ok",
+    "- `26-qa-sort-name-directions` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `30-search-filelocation-dataset-applied` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `34-search-collections-filter-tree` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdjdGhlbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `38-view-doc-image` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAYzliZjYxZDI4YTkzYmI3NjdmYzdmNjlmNGRmYmRlOWZjMzhjM2RkNGFiNzg4MjA1YzEzZjY0OGI4Mzc4ZTk4Yw==/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `42-view-doc-docx-metadata` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMzZhMTJjNzdlNGZkODRlOGQzODU0Mjk5MGY5YmQ2NTdjNmFmYjk3NjhjYWU2NzAzZmM3OGIzN2NmNjRlODhiZQ==/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=`): ok",
+    "- `46-view-doc-stale-bookmark` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMQ==/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `50-view-doc-entity-card-stale` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR5dm5vYm9keUBleGFtcGxlLmludmFsaWQ=/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `54-storage-shapes-deep` (`/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHg-L2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjA=/9g==/9g==`): ok",
+    "- `58-storage-sidebar-remembered-width` (`/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHiAL2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjAvMjEvMjIvMjMvMjQvMjUvMjYvMjcvMjgvMjkvMzAvMzEvMzIvMzMvMzQvMzUvMzYvMzcvMzgvMzkvNDAvNDEvNDI=/9g==/9g==`): ok",
+    "- `62-qa-storage-archive-highlight` (`/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaHhAYzVmMjUxODMxMWZiM2U2MDY0OTIwMDM2YmNjYTljMGJmODU0MDI0NjRlZDRkYzc0OTg1ZDU1YWM4NDY2MGU1YmRwYXRoYS8=/9g==/9g==`): ok",
+    "- `66-qa-storage-back` (`/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==`): ok",
+    "- `70-storage-tree-unified` (`/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aG4vdGhlLWRpcmVjdG9yeQ==/9g==/9g==`): ok",
+    "- `74-storage-collection-landing-other` (`/file_browser/c/other`): ok",
+    "- `78-view-doc-table-sorted-blanks` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGM2MTA3NTEwOGEyZjhjYzFmM2NhOWUzN2UwODRjNTc5MDBhMDRlZTVjYTVmYWFlYTNhM2Y0ZDlhZGU0YzlkZGI=/pGpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZaVoc2hlZXRfaWQAbmhpZGRlbl9jb2x1bW5zgGRzb3J0omljb2x1bW5faWQDZGRlc2P1Z2ZpbHRlcnOAZHBhZ2UJ/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `82-view-doc-table-truncated` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtdGVzdGRhdGFfd2lkZWlmaWxlX2hhc2h4QGEyNDMwNjA0NzI4Y2YxMjRkMzE2NGY0MmM4OWFjZTg3ZjY1MjQ2NGE0MzQ1ZjM3OTNkY2U0MzFjMWM5NjY2MTg=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `86-qa-table-modal-exclusivity` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `90-qa-table-picker-visibility` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `94-ai-chat-session-missing` (`/ai_chat/c/0000000000000000000000000000000000000000000000000000000000000000/9g==/9g==`): diagnostic_warning",
+    "    - diagnostic_warning: HTTP 404 on POST /api/chat_get_session3055757542734925017",
+    "    - diagnostic_warning: HTTP 404 on POST /api/chat_get_session3055757542734925017",
+    "- `98-admin-users` (`/admin/users`): ok",
+    "- `102-admin-settings` (`/admin/settings`): ok",
+    "- `106-admin-collection-detail` (`/admin/collections/testdata`): ok",
+    "- `110-admin-operations-errored-empty` (`/admin/operations`): ok",
+    "- `114-admin-operations-partial-failure` (`/admin/operations`): ok"
+  ]
+}

@@ -1,0 +1,63 @@
+# 01-bad-url-unknown-route (1080p)
+url:      https://hoover4.new.liquiddemo.org/no-such-page-exists
+title:    Hoover Search - Page not found
+actions:  sleep 2000; wait_text Page not found
+api calls: 1 (whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5999[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5997[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5995[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5993[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-not-found
+          div
+            h1  "Page not found"
+            p  "Nothing here answers to"
+            code  "/no-such-page-exists"
+            p  "The address may be mistyped, or it may be a link to something that has since been renamed or removed."
+            div
+              a[href=/]  "Go to the home page"
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]  "Search"
+                svg
+                  path
+    div[role=region][label=0 notifications]
+      ol

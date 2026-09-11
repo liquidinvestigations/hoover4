@@ -1,0 +1,388 @@
+[
+  {
+    "procedure": "baseline",
+    "expected": "The child query follows independent raw relevance scores in descending order.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdlY2hpbGRtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "1 (whoami x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "4 documents found"
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: Relevance",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "body :: Relevance",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=[...document.querySelectorAll('#x-search-input-top-bar button')].find(b=>b.textContent.trim()==='Search');if(b&&!b.disabled)b.click();return true;",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelector('button[aria-label=\"Sort direction: descending\"]')?.disabled===true;",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3ZWJmNWFmMzBkMGQ5NzA2MGQxZjE1MDk4NmJjY2Y4YjUwOWFhNDdmMWRmMDkyZTk4ZWNiYzljMTg1YTllNDUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzZWFlMzdiMTc4NGE2NzlmNDdmNDgyYjU2MGE3NDlmMmE5MzNiMWFkMDllMWQ0NDAyYmUyOWQyYWZjOTk5YWE5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBjNWYyNTE4MzExZmIzZTYwNjQ5MjAwMzZiY2NhOWMwYmY4NTQwMjQ2NGVkNGRjNzQ5ODVkNTVhYzg0NjYwZTVi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "return performance.timeOrigin;",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": 1789119056534.4,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "location.reload();return true;",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return performance.timeOrigin!==1789119056534.4&&document.readyState==='complete';",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "11 (search_for_results x4, search_for_results_hit_count x4, whoami x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelector('button[aria-label=\"Sort direction: descending\"]')?.disabled===true;",
+        "before_api": "11 (search_for_results x4, search_for_results_hit_count x4, whoami x3)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "11 (search_for_results x4, search_for_results_hit_count x4, whoami x3)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "identities": [
+        "d5cebd55c20d841834a98d8cbbd53761ccecc1b6518b84152271038dbec218e7",
+        "7ebf5af30d0d97060d1f150986bccf8b509aa47f1df092e98ecbc9c185a9e450",
+        "3eae37b1784a679f47f482b560a749f2a933b1ad09e1d4402be29d2afc999aa9",
+        "c5f2518311fb3e6064920036bcca9c0bf85402464ed4dc74985d55ac84660e5b"
+      ],
+      "raw_scores": [
+        {
+          "file_hash": "d5cebd55c20d841834a98d8cbbd53761ccecc1b6518b84152271038dbec218e7",
+          "score": 1785
+        },
+        {
+          "file_hash": "7ebf5af30d0d97060d1f150986bccf8b509aa47f1df092e98ecbc9c185a9e450",
+          "score": 1784
+        },
+        {
+          "file_hash": "3eae37b1784a679f47f482b560a749f2a933b1ad09e1d4402be29d2afc999aa9",
+          "score": 1629
+        },
+        {
+          "file_hash": "c5f2518311fb3e6064920036bcca9c0bf85402464ed4dc74985d55ac84660e5b",
+          "score": 1629
+        }
+      ],
+      "draft_first": "parent.zip",
+      "prepared_parent_ordinal": 4
+    },
+    "evidence": "124-manual-relevance.01"
+  },
+  {
+    "procedure": "explicit-relevance",
+    "expected": "Explicit relevance and reload retain descending order.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdlY2hpbGRtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "11 (search_for_results x4, search_for_results_hit_count x4, whoami x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "4 documents found"
+        },
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: Relevance",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "body :: Relevance",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=[...document.querySelectorAll('#x-search-input-top-bar button')].find(b=>b.textContent.trim()==='Search');if(b&&!b.disabled)b.click();return true;",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelector('button[aria-label=\"Sort direction: descending\"]')?.disabled===true;",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3ZWJmNWFmMzBkMGQ5NzA2MGQxZjE1MDk4NmJjY2Y4YjUwOWFhNDdmMWRmMDkyZTk4ZWNiYzljMTg1YTllNDUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzZWFlMzdiMTc4NGE2NzlmNDdmNDgyYjU2MGE3NDlmMmE5MzNiMWFkMDllMWQ0NDAyYmUyOWQyYWZjOTk5YWE5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBjNWYyNTE4MzExZmIzZTYwNjQ5MjAwMzZiY2NhOWMwYmY4NTQwMjQ2NGVkNGRjNzQ5ODVkNTVhYzg0NjYwZTVi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "eval",
+        "input": "return performance.timeOrigin;",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": 1789119062266.8,
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "eval",
+        "input": "location.reload();return true;",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return performance.timeOrigin!==1789119062266.8&&document.readyState==='complete';",
+        "before_api": "16 (search_for_results x6, search_for_results_hit_count x6, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "21 (search_for_results x8, search_for_results_hit_count x8, whoami x5)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelector('button[aria-label=\"Sort direction: descending\"]')?.disabled===true;",
+        "before_api": "21 (search_for_results x8, search_for_results_hit_count x8, whoami x5)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "21 (search_for_results x8, search_for_results_hit_count x8, whoami x5)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "identities": [
+        "d5cebd55c20d841834a98d8cbbd53761ccecc1b6518b84152271038dbec218e7",
+        "7ebf5af30d0d97060d1f150986bccf8b509aa47f1df092e98ecbc9c185a9e450",
+        "3eae37b1784a679f47f482b560a749f2a933b1ad09e1d4402be29d2afc999aa9",
+        "c5f2518311fb3e6064920036bcca9c0bf85402464ed4dc74985d55ac84660e5b"
+      ],
+      "raw_scores": [
+        {
+          "file_hash": "d5cebd55c20d841834a98d8cbbd53761ccecc1b6518b84152271038dbec218e7",
+          "score": 1785
+        },
+        {
+          "file_hash": "7ebf5af30d0d97060d1f150986bccf8b509aa47f1df092e98ecbc9c185a9e450",
+          "score": 1784
+        },
+        {
+          "file_hash": "3eae37b1784a679f47f482b560a749f2a933b1ad09e1d4402be29d2afc999aa9",
+          "score": 1629
+        },
+        {
+          "file_hash": "c5f2518311fb3e6064920036bcca9c0bf85402464ed4dc74985d55ac84660e5b",
+          "score": 1629
+        }
+      ],
+      "draft_first": "parent.zip",
+      "prepared_parent_ordinal": 4
+    },
+    "evidence": "124-manual-relevance.02"
+  },
+  {
+    "procedure": "empty-query",
+    "expected": "Current and legacy empty relevance routes expose a disabled descending direction.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+        "before_api": "21 (search_for_results x8, search_for_results_hit_count x8, whoami x5)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_for_results x10, search_for_results_hit_count x10, whoami x6)"
+      },
+      {
+        "action": "wait_text",
+        "input": "Sort",
+        "before_api": "26 (search_for_results x10, search_for_results_hit_count x10, whoami x6)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_for_results x10, search_for_results_hit_count x10, whoami x6)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const b=document.querySelector('button[aria-label=\"Sort direction: descending\"]'); return {ok:!!b&&b.disabled, title:b?.title};",
+        "before_api": "26 (search_for_results x10, search_for_results_hit_count x10, whoami x6)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "title": "Relevance always sorts descending."
+        },
+        "after_api": "26 (search_for_results x10, search_for_results_hit_count x10, whoami x6)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=document.querySelector('button[aria-label=\"Sort direction: descending\"]');if(!b||!b.disabled||b.title!=='Relevance always sorts descending.')throw new Error('empty default relevance direction');return {disabled:b.disabled,title:b.title};",
+        "before_api": "26 (search_for_results x10, search_for_results_hit_count x10, whoami x6)",
+        "status": "passed",
+        "observed": {
+          "disabled": true,
+          "title": "Relevance always sorts descending."
+        },
+        "after_api": "26 (search_for_results x10, search_for_results_hit_count x10, whoami x6)"
+      },
+      {
+        "action": "goto",
+        "input": "/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFuY2VkZGVzY_Q=/0/9g==/9g==",
+        "before_api": "26 (search_for_results x10, search_for_results_hit_count x10, whoami x6)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "31 (search_for_results x12, search_for_results_hit_count x12, whoami x7)"
+      },
+      {
+        "action": "wait_text",
+        "input": "Sort",
+        "before_api": "31 (search_for_results x12, search_for_results_hit_count x12, whoami x7)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "31 (search_for_results x12, search_for_results_hit_count x12, whoami x7)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const b=document.querySelector('button[aria-label=\"Sort direction: descending\"]'); return {ok:!!b&&b.disabled, title:b?.title};",
+        "before_api": "31 (search_for_results x12, search_for_results_hit_count x12, whoami x7)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "title": "Relevance always sorts descending."
+        },
+        "after_api": "31 (search_for_results x12, search_for_results_hit_count x12, whoami x7)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=document.querySelector('button[aria-label=\"Sort direction: descending\"]');if(!b||!b.disabled)throw new Error('legacy ascending relevance was not normalized');return {disabled:b.disabled,title:b.title};",
+        "before_api": "31 (search_for_results x12, search_for_results_hit_count x12, whoami x7)",
+        "status": "passed",
+        "observed": {
+          "disabled": true,
+          "title": "Relevance always sorts descending."
+        },
+        "after_api": "31 (search_for_results x12, search_for_results_hit_count x12, whoami x7)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "current_and_legacy_direction": "descending"
+    },
+    "evidence": "124-manual-relevance.03"
+  }
+]

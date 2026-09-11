@@ -1,0 +1,1291 @@
+[
+  {
+    "procedure": "baseline",
+    "expected": "Every result follows source metadata order across page boundaries in both directions.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "1 (whoami x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "23 documents found"
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: File size",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "body :: File size",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=document.querySelector('button[aria-label=\"Sort direction: descending\"]');if(b)b.click();return true;",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "13 (search_for_results_hit_count x6, search_for_results x5, whoami x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Search",
+        "before_api": "13 (search_for_results_hit_count x6, search_for_results x5, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Search",
+        "before_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const t=document.querySelector('#x-search-panel-left-title-row h1')?.textContent||'';const n=Number(t.replaceAll(',','').match(/\\d+/)?.[0]||0);return {ok:/documents? found|No documents/.test(t)&&n===23,actual:n,expected:23,text:t};",
+        "before_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "actual": 23,
+          "expected": 23,
+          "text": "23 documents found"
+        },
+        "after_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const a=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return a.length>0;",
+        "before_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkZmJjMmU5NWZmNDVhMGYyMTUzYWIyZTdhYTE1Y2UyMzc2Njc4MjA0ZjYyMTYwYzQ2MzIzNmY1NTE5ZDk3M2Rl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3ZWJmNWFmMzBkMGQ5NzA2MGQxZjE1MDk4NmJjY2Y4YjUwOWFhNDdmMWRmMDkyZTk4ZWNiYzljMTg1YTllNDUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzZWFlMzdiMTc4NGE2NzlmNDdmNDgyYjU2MGE3NDlmMmE5MzNiMWFkMDllMWQ0NDAyYmUyOWQyYWZjOTk5YWE5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3MWI5ZDIxOGU4N2QzMDA1MzNmZTNkNTY1OGM0YTI0Y2VkMmE4MDNjNTQwOWU0NWVmZjU0ZDQzMTc4ZTYxNjM5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBjNWYyNTE4MzExZmIzZTYwNjQ5MjAwMzZiY2NhOWMwYmY4NTQwMjQ2NGVkNGRjNzQ5ODVkNTVhYzg0NjYwZTVi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNjI3OTU5ODZmYTFlNzIzZWZhYjI4ZWMxMTQxZjY0NDZlNDY1OGQ2MWIxNGZjMWE5MjdiN2ZiMWY5NzcyNGU1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2OTZkYzU5Y2VmZjE2YmI2ZTY0YmQ4ZDZhOTI2Y2I5NGY1ZDdjMmI4YWUxZjdmZDVjM2M1MWZkZDhjNmNmZWJj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMGRiYzQ4ZDQ3YmU2NTdiYWNmMWFlMWVlZDVlMzYyODEzZmFhYmUyOGJkY2QwMzBmY2Y3MzQ2ZThkODRiNTE4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYmE4NzkwMzdiNzlmY2M3MTEyZWNlYmY0M2Q4M2NhNzU4NDdiMDM4ZDRlNDhiNjEzY2Y1MDRkNWQ2MmE4NTUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YTRiMTYwN2FmMjAxNTgzN2VjM2ZkZGNjMGQ1Yzg2ZmM1NjczOTcxZTY0NjhkYzUzMGUyZTQ3ZTFiNDM1ZWJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1NWVkMjM1Yjc1ZWEzY2RiOTNmMWIyNDZjYzE2YmRkMjcwOTlkNTllODJmYzdiMGIzZjBlZjEyZGE1NWFkYzM3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=[...document.querySelectorAll('#x-search-panel-left-title-row button')].at(-1);if(!b||b.disabled)throw Error('next result page unavailable');b.click();return true;",
+        "before_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.split('/')[3]===\"1\";",
+        "before_api": "14 (search_for_results x6, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "16 (search_for_results x8, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return ![...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].some(a=>a.getAttribute('href').includes(\"onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkZmJjMmU5NWZmNDVhMGYyMTUzYWIyZTdhYTE1Y2UyMzc2Njc4MjA0ZjYyMTYwYzQ2MzIzNmY1NTE5ZDk3M2Rl\"));",
+        "before_api": "16 (search_for_results x8, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "16 (search_for_results x8, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const a=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return a.length>0;",
+        "before_api": "16 (search_for_results x8, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "16 (search_for_results x8, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "16 (search_for_results x8, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMjFjY2ZmNWIxNmYxNWU5OTE0OGJjM2ZhYWEyYTI5NzViMDcxYTE4ZmJkMTU2MmM5YTQyOWM2MzRhZDNhZWUz/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwNTIyNTcxNzk3MTg2MjZlODNiM2Y4ZWZhN2ZjZmI0MmFlNGRlYzQ3ZWZhYjZiNTNjMTMzZDc0MTVjN2I2MmY0/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "16 (search_for_results x8, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return !!document.querySelector('button[aria-label=\"Sort direction: ascending\"]');",
+        "before_api": "16 (search_for_results x8, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "16 (search_for_results x8, search_for_results_hit_count x6, whoami x2)"
+      },
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "16 (search_for_results x8, search_for_results_hit_count x6, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "23 documents found"
+        },
+        "after_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: File size",
+        "before_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "body :: File size",
+        "before_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=document.querySelector('button[aria-label=\"Sort direction: ascending\"]');if(b)b.click();return true;",
+        "before_api": "21 (search_for_results x10, search_for_results_hit_count x8, whoami x3)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Search",
+        "before_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Search",
+        "before_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const t=document.querySelector('#x-search-panel-left-title-row h1')?.textContent||'';const n=Number(t.replaceAll(',','').match(/\\d+/)?.[0]||0);return {ok:/documents? found|No documents/.test(t)&&n===23,actual:n,expected:23,text:t};",
+        "before_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "actual": 23,
+          "expected": 23,
+          "text": "23 documents found"
+        },
+        "after_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const a=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return a.length>0;",
+        "before_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwNTIyNTcxNzk3MTg2MjZlODNiM2Y4ZWZhN2ZjZmI0MmFlNGRlYzQ3ZWZhYjZiNTNjMTMzZDc0MTVjN2I2MmY0/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMjFjY2ZmNWIxNmYxNWU5OTE0OGJjM2ZhYWEyYTI5NzViMDcxYTE4ZmJkMTU2MmM5YTQyOWM2MzRhZDNhZWUz/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1NWVkMjM1Yjc1ZWEzY2RiOTNmMWIyNDZjYzE2YmRkMjcwOTlkNTllODJmYzdiMGIzZjBlZjEyZGE1NWFkYzM3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YTRiMTYwN2FmMjAxNTgzN2VjM2ZkZGNjMGQ1Yzg2ZmM1NjczOTcxZTY0NjhkYzUzMGUyZTQ3ZTFiNDM1ZWJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYmE4NzkwMzdiNzlmY2M3MTEyZWNlYmY0M2Q4M2NhNzU4NDdiMDM4ZDRlNDhiNjEzY2Y1MDRkNWQ2MmE4NTUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMGRiYzQ4ZDQ3YmU2NTdiYWNmMWFlMWVlZDVlMzYyODEzZmFhYmUyOGJkY2QwMzBmY2Y3MzQ2ZThkODRiNTE4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2OTZkYzU5Y2VmZjE2YmI2ZTY0YmQ4ZDZhOTI2Y2I5NGY1ZDdjMmI4YWUxZjdmZDVjM2M1MWZkZDhjNmNmZWJj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNjI3OTU5ODZmYTFlNzIzZWZhYjI4ZWMxMTQxZjY0NDZlNDY1OGQ2MWIxNGZjMWE5MjdiN2ZiMWY5NzcyNGU1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBjNWYyNTE4MzExZmIzZTYwNjQ5MjAwMzZiY2NhOWMwYmY4NTQwMjQ2NGVkNGRjNzQ5ODVkNTVhYzg0NjYwZTVi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3MWI5ZDIxOGU4N2QzMDA1MzNmZTNkNTY1OGM0YTI0Y2VkMmE4MDNjNTQwOWU0NWVmZjU0ZDQzMTc4ZTYxNjM5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=[...document.querySelectorAll('#x-search-panel-left-title-row button')].at(-1);if(!b||b.disabled)throw Error('next result page unavailable');b.click();return true;",
+        "before_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.split('/')[3]===\"1\";",
+        "before_api": "25 (search_for_results x12, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "27 (search_for_results x14, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return ![...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].some(a=>a.getAttribute('href').includes(\"onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwNTIyNTcxNzk3MTg2MjZlODNiM2Y4ZWZhN2ZjZmI0MmFlNGRlYzQ3ZWZhYjZiNTNjMTMzZDc0MTVjN2I2MmY0\"));",
+        "before_api": "27 (search_for_results x14, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "27 (search_for_results x14, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const a=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return a.length>0;",
+        "before_api": "27 (search_for_results x14, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "27 (search_for_results x14, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "27 (search_for_results x14, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzZWFlMzdiMTc4NGE2NzlmNDdmNDgyYjU2MGE3NDlmMmE5MzNiMWFkMDllMWQ0NDAyYmUyOWQyYWZjOTk5YWE5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3ZWJmNWFmMzBkMGQ5NzA2MGQxZjE1MDk4NmJjY2Y4YjUwOWFhNDdmMWRmMDkyZTk4ZWNiYzljMTg1YTllNDUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkZmJjMmU5NWZmNDVhMGYyMTUzYWIyZTdhYTE1Y2UyMzc2Njc4MjA0ZjYyMTYwYzQ2MzIzNmY1NTE5ZDk3M2Rl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "27 (search_for_results x14, search_for_results_hit_count x10, whoami x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return !!document.querySelector('button[aria-label=\"Sort direction: descending\"]');",
+        "before_api": "27 (search_for_results x14, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "27 (search_for_results x14, search_for_results_hit_count x10, whoami x3)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": [
+      {
+        "direction": "ascending",
+        "identities": [
+          "dfbc2e95ff45a0f2153ab2e7aa15ce2376678204f62160c463236f5519d973de",
+          "7ebf5af30d0d97060d1f150986bccf8b509aa47f1df092e98ecbc9c185a9e450",
+          "3eae37b1784a679f47f482b560a749f2a933b1ad09e1d4402be29d2afc999aa9",
+          "29546a145fdabaa8c5c1165e8f2be8a676e826700d7f43f29e9646542c5b8087",
+          "71b9d218e87d300533fe3d5658c4a24ced2a803c5409e45eff54d43178e61639",
+          "c5f2518311fb3e6064920036bcca9c0bf85402464ed4dc74985d55ac84660e5b",
+          "0a126245a1a80bdc3366294e2071e2336ffa616416bb4f384df606ad0e5ac4c0",
+          "362795986fa1e723efab28ec1141f6446e4658d61b14fc1a927b7fb1f97724e5",
+          "4c016bfb03d71412f1636e5c095963131b75a056b4384ac904efda50c2eff8f8",
+          "696dc59ceff16bb6e64bd8d6a926cb94f5d7c2b8ae1f7fd5c3c51fdd8c6cfebc",
+          "d0dbc48d47be657bacf1ae1eed5e362813faabe28bdcd030fcf7346e8d84b518",
+          "0ba879037b79fcc7112ecebf43d83ca75847b038d4e48b613cf504d5d62a8550",
+          "6c9e09332860b47e28824988728f65f9ded22631917a37bd6bedb6bc45c8f50c",
+          "6a4b1607af2015837ec3fddcc0d5c86fc5673971e6468dc530e2e47e1b435ebe",
+          "4545a411d8f36e596760ba510d33d50f23792d48ae660b9815f786c4830a9e6a",
+          "531768b6ac7bf22ebc39194e3d4639910316b60795d48217575d196a80a1dbc5",
+          "b92c91e6927c5902b27eb4188829a93217f496e0421f3d75c347593b7ffe41cf",
+          "55ed235b75ea3cdb93f1b246cc16bdd27099d59e82fc7b0b3f0ef12da55adc37",
+          "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be",
+          "d5cebd55c20d841834a98d8cbbd53761ccecc1b6518b84152271038dbec218e7",
+          "197784dcd954fcccb38fc810a43fde0e9f66047abf034f05a8764bd22983e6fb",
+          "d21ccff5b16f15e99148bc3faaa2a2975b071a18fbd1562c9a429c634ad3aee3",
+          "052257179718626e83b3f8efa7fcfb42ae4dec47efab6b53c133d7415c7b62f4"
+        ],
+        "source_values": [
+          20,
+          25,
+          29,
+          64,
+          142,
+          353,
+          373,
+          478,
+          510,
+          592,
+          1153,
+          1160,
+          8278,
+          26312,
+          29696,
+          137261,
+          166195,
+          183676,
+          215696,
+          223845,
+          283820,
+          455683,
+          624744
+        ]
+      },
+      {
+        "direction": "descending",
+        "identities": [
+          "052257179718626e83b3f8efa7fcfb42ae4dec47efab6b53c133d7415c7b62f4",
+          "d21ccff5b16f15e99148bc3faaa2a2975b071a18fbd1562c9a429c634ad3aee3",
+          "197784dcd954fcccb38fc810a43fde0e9f66047abf034f05a8764bd22983e6fb",
+          "d5cebd55c20d841834a98d8cbbd53761ccecc1b6518b84152271038dbec218e7",
+          "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be",
+          "55ed235b75ea3cdb93f1b246cc16bdd27099d59e82fc7b0b3f0ef12da55adc37",
+          "b92c91e6927c5902b27eb4188829a93217f496e0421f3d75c347593b7ffe41cf",
+          "531768b6ac7bf22ebc39194e3d4639910316b60795d48217575d196a80a1dbc5",
+          "4545a411d8f36e596760ba510d33d50f23792d48ae660b9815f786c4830a9e6a",
+          "6a4b1607af2015837ec3fddcc0d5c86fc5673971e6468dc530e2e47e1b435ebe",
+          "6c9e09332860b47e28824988728f65f9ded22631917a37bd6bedb6bc45c8f50c",
+          "0ba879037b79fcc7112ecebf43d83ca75847b038d4e48b613cf504d5d62a8550",
+          "d0dbc48d47be657bacf1ae1eed5e362813faabe28bdcd030fcf7346e8d84b518",
+          "696dc59ceff16bb6e64bd8d6a926cb94f5d7c2b8ae1f7fd5c3c51fdd8c6cfebc",
+          "4c016bfb03d71412f1636e5c095963131b75a056b4384ac904efda50c2eff8f8",
+          "362795986fa1e723efab28ec1141f6446e4658d61b14fc1a927b7fb1f97724e5",
+          "0a126245a1a80bdc3366294e2071e2336ffa616416bb4f384df606ad0e5ac4c0",
+          "c5f2518311fb3e6064920036bcca9c0bf85402464ed4dc74985d55ac84660e5b",
+          "71b9d218e87d300533fe3d5658c4a24ced2a803c5409e45eff54d43178e61639",
+          "29546a145fdabaa8c5c1165e8f2be8a676e826700d7f43f29e9646542c5b8087",
+          "3eae37b1784a679f47f482b560a749f2a933b1ad09e1d4402be29d2afc999aa9",
+          "7ebf5af30d0d97060d1f150986bccf8b509aa47f1df092e98ecbc9c185a9e450",
+          "dfbc2e95ff45a0f2153ab2e7aa15ce2376678204f62160c463236f5519d973de"
+        ],
+        "source_values": [
+          624744,
+          455683,
+          283820,
+          223845,
+          215696,
+          183676,
+          166195,
+          137261,
+          29696,
+          26312,
+          8278,
+          1160,
+          1153,
+          592,
+          510,
+          478,
+          373,
+          353,
+          142,
+          64,
+          29,
+          25,
+          20
+        ]
+      }
+    ],
+    "evidence": "122-manual-sort-size.01"
+  },
+  {
+    "procedure": "cross-page-order",
+    "expected": "Equal values use document identity order within the selected dataset.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "27 (search_for_results x14, search_for_results_hit_count x10, whoami x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "23 documents found"
+        },
+        "after_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: File size",
+        "before_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "body :: File size",
+        "before_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=document.querySelector('button[aria-label=\"Sort direction: descending\"]');if(b)b.click();return true;",
+        "before_api": "32 (search_for_results x16, search_for_results_hit_count x12, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "36 (search_for_results x18, search_for_results_hit_count x14, whoami x4)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Search",
+        "before_api": "36 (search_for_results x18, search_for_results_hit_count x14, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Search",
+        "before_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const t=document.querySelector('#x-search-panel-left-title-row h1')?.textContent||'';const n=Number(t.replaceAll(',','').match(/\\d+/)?.[0]||0);return {ok:/documents? found|No documents/.test(t)&&n===23,actual:n,expected:23,text:t};",
+        "before_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "actual": 23,
+          "expected": 23,
+          "text": "23 documents found"
+        },
+        "after_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const a=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return a.length>0;",
+        "before_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkZmJjMmU5NWZmNDVhMGYyMTUzYWIyZTdhYTE1Y2UyMzc2Njc4MjA0ZjYyMTYwYzQ2MzIzNmY1NTE5ZDk3M2Rl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3ZWJmNWFmMzBkMGQ5NzA2MGQxZjE1MDk4NmJjY2Y4YjUwOWFhNDdmMWRmMDkyZTk4ZWNiYzljMTg1YTllNDUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzZWFlMzdiMTc4NGE2NzlmNDdmNDgyYjU2MGE3NDlmMmE5MzNiMWFkMDllMWQ0NDAyYmUyOWQyYWZjOTk5YWE5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3MWI5ZDIxOGU4N2QzMDA1MzNmZTNkNTY1OGM0YTI0Y2VkMmE4MDNjNTQwOWU0NWVmZjU0ZDQzMTc4ZTYxNjM5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBjNWYyNTE4MzExZmIzZTYwNjQ5MjAwMzZiY2NhOWMwYmY4NTQwMjQ2NGVkNGRjNzQ5ODVkNTVhYzg0NjYwZTVi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNjI3OTU5ODZmYTFlNzIzZWZhYjI4ZWMxMTQxZjY0NDZlNDY1OGQ2MWIxNGZjMWE5MjdiN2ZiMWY5NzcyNGU1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2OTZkYzU5Y2VmZjE2YmI2ZTY0YmQ4ZDZhOTI2Y2I5NGY1ZDdjMmI4YWUxZjdmZDVjM2M1MWZkZDhjNmNmZWJj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMGRiYzQ4ZDQ3YmU2NTdiYWNmMWFlMWVlZDVlMzYyODEzZmFhYmUyOGJkY2QwMzBmY2Y3MzQ2ZThkODRiNTE4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYmE4NzkwMzdiNzlmY2M3MTEyZWNlYmY0M2Q4M2NhNzU4NDdiMDM4ZDRlNDhiNjEzY2Y1MDRkNWQ2MmE4NTUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YTRiMTYwN2FmMjAxNTgzN2VjM2ZkZGNjMGQ1Yzg2ZmM1NjczOTcxZTY0NjhkYzUzMGUyZTQ3ZTFiNDM1ZWJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1NWVkMjM1Yjc1ZWEzY2RiOTNmMWIyNDZjYzE2YmRkMjcwOTlkNTllODJmYzdiMGIzZjBlZjEyZGE1NWFkYzM3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=[...document.querySelectorAll('#x-search-panel-left-title-row button')].at(-1);if(!b||b.disabled)throw Error('next result page unavailable');b.click();return true;",
+        "before_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.split('/')[3]===\"1\";",
+        "before_api": "40 (search_for_results x20, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "42 (search_for_results x22, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return ![...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].some(a=>a.getAttribute('href').includes(\"onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkZmJjMmU5NWZmNDVhMGYyMTUzYWIyZTdhYTE1Y2UyMzc2Njc4MjA0ZjYyMTYwYzQ2MzIzNmY1NTE5ZDk3M2Rl\"));",
+        "before_api": "42 (search_for_results x22, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "42 (search_for_results x22, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const a=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return a.length>0;",
+        "before_api": "42 (search_for_results x22, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "42 (search_for_results x22, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "42 (search_for_results x22, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMjFjY2ZmNWIxNmYxNWU5OTE0OGJjM2ZhYWEyYTI5NzViMDcxYTE4ZmJkMTU2MmM5YTQyOWM2MzRhZDNhZWUz/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwNTIyNTcxNzk3MTg2MjZlODNiM2Y4ZWZhN2ZjZmI0MmFlNGRlYzQ3ZWZhYjZiNTNjMTMzZDc0MTVjN2I2MmY0/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "42 (search_for_results x22, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return !!document.querySelector('button[aria-label=\"Sort direction: ascending\"]');",
+        "before_api": "42 (search_for_results x22, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "42 (search_for_results x22, search_for_results_hit_count x16, whoami x4)"
+      },
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "42 (search_for_results x22, search_for_results_hit_count x16, whoami x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "23 documents found"
+        },
+        "after_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: File size",
+        "before_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "body :: File size",
+        "before_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=document.querySelector('button[aria-label=\"Sort direction: ascending\"]');if(b)b.click();return true;",
+        "before_api": "47 (search_for_results x24, search_for_results_hit_count x18, whoami x5)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Search",
+        "before_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Search",
+        "before_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const t=document.querySelector('#x-search-panel-left-title-row h1')?.textContent||'';const n=Number(t.replaceAll(',','').match(/\\d+/)?.[0]||0);return {ok:/documents? found|No documents/.test(t)&&n===23,actual:n,expected:23,text:t};",
+        "before_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "actual": 23,
+          "expected": 23,
+          "text": "23 documents found"
+        },
+        "after_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const a=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return a.length>0;",
+        "before_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwNTIyNTcxNzk3MTg2MjZlODNiM2Y4ZWZhN2ZjZmI0MmFlNGRlYzQ3ZWZhYjZiNTNjMTMzZDc0MTVjN2I2MmY0/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMjFjY2ZmNWIxNmYxNWU5OTE0OGJjM2ZhYWEyYTI5NzViMDcxYTE4ZmJkMTU2MmM5YTQyOWM2MzRhZDNhZWUz/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1NWVkMjM1Yjc1ZWEzY2RiOTNmMWIyNDZjYzE2YmRkMjcwOTlkNTllODJmYzdiMGIzZjBlZjEyZGE1NWFkYzM3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YTRiMTYwN2FmMjAxNTgzN2VjM2ZkZGNjMGQ1Yzg2ZmM1NjczOTcxZTY0NjhkYzUzMGUyZTQ3ZTFiNDM1ZWJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYmE4NzkwMzdiNzlmY2M3MTEyZWNlYmY0M2Q4M2NhNzU4NDdiMDM4ZDRlNDhiNjEzY2Y1MDRkNWQ2MmE4NTUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMGRiYzQ4ZDQ3YmU2NTdiYWNmMWFlMWVlZDVlMzYyODEzZmFhYmUyOGJkY2QwMzBmY2Y3MzQ2ZThkODRiNTE4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2OTZkYzU5Y2VmZjE2YmI2ZTY0YmQ4ZDZhOTI2Y2I5NGY1ZDdjMmI4YWUxZjdmZDVjM2M1MWZkZDhjNmNmZWJj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNjI3OTU5ODZmYTFlNzIzZWZhYjI4ZWMxMTQxZjY0NDZlNDY1OGQ2MWIxNGZjMWE5MjdiN2ZiMWY5NzcyNGU1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBjNWYyNTE4MzExZmIzZTYwNjQ5MjAwMzZiY2NhOWMwYmY4NTQwMjQ2NGVkNGRjNzQ5ODVkNTVhYzg0NjYwZTVi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3MWI5ZDIxOGU4N2QzMDA1MzNmZTNkNTY1OGM0YTI0Y2VkMmE4MDNjNTQwOWU0NWVmZjU0ZDQzMTc4ZTYxNjM5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=[...document.querySelectorAll('#x-search-panel-left-title-row button')].at(-1);if(!b||b.disabled)throw Error('next result page unavailable');b.click();return true;",
+        "before_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.split('/')[3]===\"1\";",
+        "before_api": "51 (search_for_results x26, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "53 (search_for_results x28, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return ![...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].some(a=>a.getAttribute('href').includes(\"onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwNTIyNTcxNzk3MTg2MjZlODNiM2Y4ZWZhN2ZjZmI0MmFlNGRlYzQ3ZWZhYjZiNTNjMTMzZDc0MTVjN2I2MmY0\"));",
+        "before_api": "53 (search_for_results x28, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "53 (search_for_results x28, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const a=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return a.length>0;",
+        "before_api": "53 (search_for_results x28, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "53 (search_for_results x28, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "53 (search_for_results x28, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzZWFlMzdiMTc4NGE2NzlmNDdmNDgyYjU2MGE3NDlmMmE5MzNiMWFkMDllMWQ0NDAyYmUyOWQyYWZjOTk5YWE5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3ZWJmNWFmMzBkMGQ5NzA2MGQxZjE1MDk4NmJjY2Y4YjUwOWFhNDdmMWRmMDkyZTk4ZWNiYzljMTg1YTllNDUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkZmJjMmU5NWZmNDVhMGYyMTUzYWIyZTdhYTE1Y2UyMzc2Njc4MjA0ZjYyMTYwYzQ2MzIzNmY1NTE5ZDk3M2Rl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "53 (search_for_results x28, search_for_results_hit_count x20, whoami x5)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return !!document.querySelector('button[aria-label=\"Sort direction: descending\"]');",
+        "before_api": "53 (search_for_results x28, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "53 (search_for_results x28, search_for_results_hit_count x20, whoami x5)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": [
+      {
+        "direction": "ascending",
+        "identities": [
+          "dfbc2e95ff45a0f2153ab2e7aa15ce2376678204f62160c463236f5519d973de",
+          "7ebf5af30d0d97060d1f150986bccf8b509aa47f1df092e98ecbc9c185a9e450",
+          "3eae37b1784a679f47f482b560a749f2a933b1ad09e1d4402be29d2afc999aa9",
+          "29546a145fdabaa8c5c1165e8f2be8a676e826700d7f43f29e9646542c5b8087",
+          "71b9d218e87d300533fe3d5658c4a24ced2a803c5409e45eff54d43178e61639",
+          "c5f2518311fb3e6064920036bcca9c0bf85402464ed4dc74985d55ac84660e5b",
+          "0a126245a1a80bdc3366294e2071e2336ffa616416bb4f384df606ad0e5ac4c0",
+          "362795986fa1e723efab28ec1141f6446e4658d61b14fc1a927b7fb1f97724e5",
+          "4c016bfb03d71412f1636e5c095963131b75a056b4384ac904efda50c2eff8f8",
+          "696dc59ceff16bb6e64bd8d6a926cb94f5d7c2b8ae1f7fd5c3c51fdd8c6cfebc",
+          "d0dbc48d47be657bacf1ae1eed5e362813faabe28bdcd030fcf7346e8d84b518",
+          "0ba879037b79fcc7112ecebf43d83ca75847b038d4e48b613cf504d5d62a8550",
+          "6c9e09332860b47e28824988728f65f9ded22631917a37bd6bedb6bc45c8f50c",
+          "6a4b1607af2015837ec3fddcc0d5c86fc5673971e6468dc530e2e47e1b435ebe",
+          "4545a411d8f36e596760ba510d33d50f23792d48ae660b9815f786c4830a9e6a",
+          "531768b6ac7bf22ebc39194e3d4639910316b60795d48217575d196a80a1dbc5",
+          "b92c91e6927c5902b27eb4188829a93217f496e0421f3d75c347593b7ffe41cf",
+          "55ed235b75ea3cdb93f1b246cc16bdd27099d59e82fc7b0b3f0ef12da55adc37",
+          "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be",
+          "d5cebd55c20d841834a98d8cbbd53761ccecc1b6518b84152271038dbec218e7",
+          "197784dcd954fcccb38fc810a43fde0e9f66047abf034f05a8764bd22983e6fb",
+          "d21ccff5b16f15e99148bc3faaa2a2975b071a18fbd1562c9a429c634ad3aee3",
+          "052257179718626e83b3f8efa7fcfb42ae4dec47efab6b53c133d7415c7b62f4"
+        ],
+        "source_values": [
+          20,
+          25,
+          29,
+          64,
+          142,
+          353,
+          373,
+          478,
+          510,
+          592,
+          1153,
+          1160,
+          8278,
+          26312,
+          29696,
+          137261,
+          166195,
+          183676,
+          215696,
+          223845,
+          283820,
+          455683,
+          624744
+        ]
+      },
+      {
+        "direction": "descending",
+        "identities": [
+          "052257179718626e83b3f8efa7fcfb42ae4dec47efab6b53c133d7415c7b62f4",
+          "d21ccff5b16f15e99148bc3faaa2a2975b071a18fbd1562c9a429c634ad3aee3",
+          "197784dcd954fcccb38fc810a43fde0e9f66047abf034f05a8764bd22983e6fb",
+          "d5cebd55c20d841834a98d8cbbd53761ccecc1b6518b84152271038dbec218e7",
+          "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be",
+          "55ed235b75ea3cdb93f1b246cc16bdd27099d59e82fc7b0b3f0ef12da55adc37",
+          "b92c91e6927c5902b27eb4188829a93217f496e0421f3d75c347593b7ffe41cf",
+          "531768b6ac7bf22ebc39194e3d4639910316b60795d48217575d196a80a1dbc5",
+          "4545a411d8f36e596760ba510d33d50f23792d48ae660b9815f786c4830a9e6a",
+          "6a4b1607af2015837ec3fddcc0d5c86fc5673971e6468dc530e2e47e1b435ebe",
+          "6c9e09332860b47e28824988728f65f9ded22631917a37bd6bedb6bc45c8f50c",
+          "0ba879037b79fcc7112ecebf43d83ca75847b038d4e48b613cf504d5d62a8550",
+          "d0dbc48d47be657bacf1ae1eed5e362813faabe28bdcd030fcf7346e8d84b518",
+          "696dc59ceff16bb6e64bd8d6a926cb94f5d7c2b8ae1f7fd5c3c51fdd8c6cfebc",
+          "4c016bfb03d71412f1636e5c095963131b75a056b4384ac904efda50c2eff8f8",
+          "362795986fa1e723efab28ec1141f6446e4658d61b14fc1a927b7fb1f97724e5",
+          "0a126245a1a80bdc3366294e2071e2336ffa616416bb4f384df606ad0e5ac4c0",
+          "c5f2518311fb3e6064920036bcca9c0bf85402464ed4dc74985d55ac84660e5b",
+          "71b9d218e87d300533fe3d5658c4a24ced2a803c5409e45eff54d43178e61639",
+          "29546a145fdabaa8c5c1165e8f2be8a676e826700d7f43f29e9646542c5b8087",
+          "3eae37b1784a679f47f482b560a749f2a933b1ad09e1d4402be29d2afc999aa9",
+          "7ebf5af30d0d97060d1f150986bccf8b509aa47f1df092e98ecbc9c185a9e450",
+          "dfbc2e95ff45a0f2153ab2e7aa15ce2376678204f62160c463236f5519d973de"
+        ],
+        "source_values": [
+          624744,
+          455683,
+          283820,
+          223845,
+          215696,
+          183676,
+          166195,
+          137261,
+          29696,
+          26312,
+          8278,
+          1160,
+          1153,
+          592,
+          510,
+          478,
+          373,
+          353,
+          142,
+          64,
+          29,
+          25,
+          20
+        ]
+      }
+    ],
+    "evidence": "122-manual-sort-size.02"
+  },
+  {
+    "procedure": "metadata-agreement",
+    "expected": "Reload retains order. Size sorting also agrees with two document Metadata values.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "53 (search_for_results x28, search_for_results_hit_count x20, whoami x5)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "23 documents found"
+        },
+        "after_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Sort",
+        "before_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: File size",
+        "before_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "body :: File size",
+        "before_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=document.querySelector('button[aria-label=\"Sort direction: ascending\"]');if(b)b.click();return true;",
+        "before_api": "58 (search_for_results x30, search_for_results_hit_count x22, whoami x6)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-search-input-top-bar :: Search",
+        "before_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-search-input-top-bar :: Search",
+        "before_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const t=document.querySelector('#x-search-panel-left-title-row h1')?.textContent||'';const n=Number(t.replaceAll(',','').match(/\\d+/)?.[0]||0);return {ok:/documents? found|No documents/.test(t)&&n===23,actual:n,expected:23,text:t};",
+        "before_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "actual": 23,
+          "expected": 23,
+          "text": "23 documents found"
+        },
+        "after_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const a=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return a.length>0;",
+        "before_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwNTIyNTcxNzk3MTg2MjZlODNiM2Y4ZWZhN2ZjZmI0MmFlNGRlYzQ3ZWZhYjZiNTNjMTMzZDc0MTVjN2I2MmY0/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMjFjY2ZmNWIxNmYxNWU5OTE0OGJjM2ZhYWEyYTI5NzViMDcxYTE4ZmJkMTU2MmM5YTQyOWM2MzRhZDNhZWUz/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1NWVkMjM1Yjc1ZWEzY2RiOTNmMWIyNDZjYzE2YmRkMjcwOTlkNTllODJmYzdiMGIzZjBlZjEyZGE1NWFkYzM3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YTRiMTYwN2FmMjAxNTgzN2VjM2ZkZGNjMGQ1Yzg2ZmM1NjczOTcxZTY0NjhkYzUzMGUyZTQ3ZTFiNDM1ZWJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYmE4NzkwMzdiNzlmY2M3MTEyZWNlYmY0M2Q4M2NhNzU4NDdiMDM4ZDRlNDhiNjEzY2Y1MDRkNWQ2MmE4NTUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMGRiYzQ4ZDQ3YmU2NTdiYWNmMWFlMWVlZDVlMzYyODEzZmFhYmUyOGJkY2QwMzBmY2Y3MzQ2ZThkODRiNTE4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2OTZkYzU5Y2VmZjE2YmI2ZTY0YmQ4ZDZhOTI2Y2I5NGY1ZDdjMmI4YWUxZjdmZDVjM2M1MWZkZDhjNmNmZWJj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNjI3OTU5ODZmYTFlNzIzZWZhYjI4ZWMxMTQxZjY0NDZlNDY1OGQ2MWIxNGZjMWE5MjdiN2ZiMWY5NzcyNGU1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBjNWYyNTE4MzExZmIzZTYwNjQ5MjAwMzZiY2NhOWMwYmY4NTQwMjQ2NGVkNGRjNzQ5ODVkNTVhYzg0NjYwZTVi/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3MWI5ZDIxOGU4N2QzMDA1MzNmZTNkNTY1OGM0YTI0Y2VkMmE4MDNjNTQwOWU0NWVmZjU0ZDQzMTc4ZTYxNjM5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "eval",
+        "input": "const b=[...document.querySelectorAll('#x-search-panel-left-title-row button')].at(-1);if(!b||b.disabled)throw Error('next result page unavailable');b.click();return true;",
+        "before_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.split('/')[3]===\"1\";",
+        "before_api": "62 (search_for_results x32, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return ![...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].some(a=>a.getAttribute('href').includes(\"onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwNTIyNTcxNzk3MTg2MjZlODNiM2Y4ZWZhN2ZjZmI0MmFlNGRlYzQ3ZWZhYjZiNTNjMTMzZDc0MTVjN2I2MmY0\"));",
+        "before_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const a=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')];return a.length>0;",
+        "before_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzZWFlMzdiMTc4NGE2NzlmNDdmNDgyYjU2MGE3NDlmMmE5MzNiMWFkMDllMWQ0NDAyYmUyOWQyYWZjOTk5YWE5/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3ZWJmNWFmMzBkMGQ5NzA2MGQxZjE1MDk4NmJjY2Y4YjUwOWFhNDdmMWRmMDkyZTk4ZWNiYzljMTg1YTllNDUw/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkZmJjMmU5NWZmNDVhMGYyMTUzYWIyZTdhYTE1Y2UyMzc2Njc4MjA0ZjYyMTYwYzQ2MzIzNmY1NTE5ZDk3M2Rl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return !!document.querySelector('button[aria-label=\"Sort direction: descending\"]');",
+        "before_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "eval",
+        "input": "return location.pathname;",
+        "before_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": "/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYW1yYW5nZV9maWx0ZXJzoGRzb3J0omNrZXloRmlsZVNpemVkZGVzY_U=/1/9g==/9g==",
+        "after_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "eval",
+        "input": "return performance.timeOrigin;",
+        "before_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": 1789119078964.4,
+        "after_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "eval",
+        "input": "location.reload();return true;",
+        "before_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return performance.timeOrigin!==1789119078964.4&&document.readyState==='complete';",
+        "before_api": "64 (search_for_results x34, search_for_results_hit_count x24, whoami x6)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "69 (search_for_results x36, search_for_results_hit_count x26, whoami x7)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname===\"/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYW1yYW5nZV9maWx0ZXJzoGRzb3J0omNrZXloRmlsZVNpemVkZGVzY_U=/1/9g==/9g==\";",
+        "before_api": "69 (search_for_results x36, search_for_results_hit_count x26, whoami x7)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "69 (search_for_results x36, search_for_results_hit_count x26, whoami x7)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return !!document.querySelector('button[aria-label=\"Sort direction: descending\"]');",
+        "before_api": "69 (search_for_results x36, search_for_results_hit_count x26, whoami x7)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "69 (search_for_results x36, search_for_results_hit_count x26, whoami x7)"
+      },
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwNTIyNTcxNzk3MTg2MjZlODNiM2Y4ZWZhN2ZjZmI0MmFlNGRlYzQ3ZWZhYjZiNTNjMTMzZDc0MTVjN2I2MmY0/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=",
+        "before_api": "69 (search_for_results x36, search_for_results_hit_count x26, whoami x7)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "79 (search_for_results x36, search_for_results_hit_count x26, whoami x8, search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_dates x1, get_document_email x1, get_document_sources x1, get_document_table_overview x1, get_file_path x1, get_raw_metadata_tables x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const cell=[...document.querySelectorAll('td')].find(e=>e.textContent.trim()==='blob_size_bytes');const size=Number(cell?.nextElementSibling?.textContent);return {ok:!!cell&&size===624744,size,expected:624744};",
+        "before_api": "79 (search_for_results x36, search_for_results_hit_count x26, whoami x8, search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_dates x1, get_document_email x1, get_document_sources x1, get_document_table_overview x1, get_file_path x1, get_raw_metadata_tables x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "size": 624744,
+          "expected": 624744
+        },
+        "after_api": "79 (search_for_results x36, search_for_results_hit_count x26, whoami x8, search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_dates x1, get_document_email x1, get_document_sources x1, get_document_table_overview x1, get_file_path x1, get_raw_metadata_tables x1)"
+      },
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMjFjY2ZmNWIxNmYxNWU5OTE0OGJjM2ZhYWEyYTI5NzViMDcxYTE4ZmJkMTU2MmM5YTQyOWM2MzRhZDNhZWUz/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=",
+        "before_api": "79 (search_for_results x36, search_for_results_hit_count x26, whoami x8, search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_dates x1, get_document_email x1, get_document_sources x1, get_document_table_overview x1, get_file_path x1, get_raw_metadata_tables x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "89 (search_for_results x36, search_for_results_hit_count x26, whoami x9, search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_dates x2, get_document_email x2, get_document_sources x2, get_document_table_overview x2, get_file_path x2, get_raw_metadata_tables x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const cell=[...document.querySelectorAll('td')].find(e=>e.textContent.trim()==='blob_size_bytes');const size=Number(cell?.nextElementSibling?.textContent);return {ok:!!cell&&size===455683,size,expected:455683};",
+        "before_api": "89 (search_for_results x36, search_for_results_hit_count x26, whoami x9, search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_dates x2, get_document_email x2, get_document_sources x2, get_document_table_overview x2, get_file_path x2, get_raw_metadata_tables x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "size": 455683,
+          "expected": 455683
+        },
+        "after_api": "89 (search_for_results x36, search_for_results_hit_count x26, whoami x9, search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_dates x2, get_document_email x2, get_document_sources x2, get_document_table_overview x2, get_file_path x2, get_raw_metadata_tables x2)"
+      },
+      {
+        "action": "goto",
+        "input": "/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYW1yYW5nZV9maWx0ZXJzoGRzb3J0omNrZXloRmlsZVNpemVkZGVzY_U=/1/9g==/9g==",
+        "before_api": "89 (search_for_results x36, search_for_results_hit_count x26, whoami x9, search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_dates x2, get_document_email x2, get_document_sources x2, get_document_table_overview x2, get_file_path x2, get_raw_metadata_tables x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "94 (search_for_results x38, search_for_results_hit_count x28, whoami x10, search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_dates x2, get_document_email x2, get_document_sources x2, get_document_table_overview x2, get_file_path x2, get_raw_metadata_tables x2)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "direction": "descending",
+      "identities": [
+        "052257179718626e83b3f8efa7fcfb42ae4dec47efab6b53c133d7415c7b62f4",
+        "d21ccff5b16f15e99148bc3faaa2a2975b071a18fbd1562c9a429c634ad3aee3",
+        "197784dcd954fcccb38fc810a43fde0e9f66047abf034f05a8764bd22983e6fb",
+        "d5cebd55c20d841834a98d8cbbd53761ccecc1b6518b84152271038dbec218e7",
+        "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be",
+        "55ed235b75ea3cdb93f1b246cc16bdd27099d59e82fc7b0b3f0ef12da55adc37",
+        "b92c91e6927c5902b27eb4188829a93217f496e0421f3d75c347593b7ffe41cf",
+        "531768b6ac7bf22ebc39194e3d4639910316b60795d48217575d196a80a1dbc5",
+        "4545a411d8f36e596760ba510d33d50f23792d48ae660b9815f786c4830a9e6a",
+        "6a4b1607af2015837ec3fddcc0d5c86fc5673971e6468dc530e2e47e1b435ebe",
+        "6c9e09332860b47e28824988728f65f9ded22631917a37bd6bedb6bc45c8f50c",
+        "0ba879037b79fcc7112ecebf43d83ca75847b038d4e48b613cf504d5d62a8550",
+        "d0dbc48d47be657bacf1ae1eed5e362813faabe28bdcd030fcf7346e8d84b518",
+        "696dc59ceff16bb6e64bd8d6a926cb94f5d7c2b8ae1f7fd5c3c51fdd8c6cfebc",
+        "4c016bfb03d71412f1636e5c095963131b75a056b4384ac904efda50c2eff8f8",
+        "362795986fa1e723efab28ec1141f6446e4658d61b14fc1a927b7fb1f97724e5",
+        "0a126245a1a80bdc3366294e2071e2336ffa616416bb4f384df606ad0e5ac4c0",
+        "c5f2518311fb3e6064920036bcca9c0bf85402464ed4dc74985d55ac84660e5b",
+        "71b9d218e87d300533fe3d5658c4a24ced2a803c5409e45eff54d43178e61639",
+        "29546a145fdabaa8c5c1165e8f2be8a676e826700d7f43f29e9646542c5b8087",
+        "3eae37b1784a679f47f482b560a749f2a933b1ad09e1d4402be29d2afc999aa9",
+        "7ebf5af30d0d97060d1f150986bccf8b509aa47f1df092e98ecbc9c185a9e450",
+        "dfbc2e95ff45a0f2153ab2e7aa15ce2376678204f62160c463236f5519d973de"
+      ],
+      "source_values": [
+        624744,
+        455683,
+        283820,
+        223845,
+        215696,
+        183676,
+        166195,
+        137261,
+        29696,
+        26312,
+        8278,
+        1160,
+        1153,
+        592,
+        510,
+        478,
+        373,
+        353,
+        142,
+        64,
+        29,
+        25,
+        20
+      ],
+      "metadata": [
+        {
+          "ok": true,
+          "size": 624744,
+          "expected": 624744
+        },
+        {
+          "ok": true,
+          "size": 455683,
+          "expected": 455683
+        }
+      ]
+    },
+    "evidence": "122-manual-sort-size.03"
+  }
+]

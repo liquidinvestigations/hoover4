@@ -1,0 +1,1729 @@
+{
+  "target_label": "the configured target",
+  "resolutions": {
+    "720p": [
+      1280,
+      720
+    ],
+    "1080p": [
+      1920,
+      1080
+    ]
+  },
+  "identity": "hoover4admin",
+  "revision": "a38d2afb8d3d9c3411424ed1cbeb701f5e856719",
+  "pages": [
+    {
+      "stem": "121-manual-sort-dates",
+      "slug": "704-manual-sort-dates",
+      "summary": "Exercises the manual sort dates case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/121-manual-sort-dates.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/121-manual-sort-dates.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "125-manual-pdf",
+      "slug": "708-manual-pdf",
+      "summary": "Exercises the manual pdf case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "1080p/125-manual-pdf.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [
+        {
+          "severity": "application_error",
+          "message": "[720p] active-find-source-switch: timed out waiting for text '1 / 7' inside 'body'; no-match: timed out waiting for text '- / -' inside 'body'"
+        }
+      ],
+      "verdict": "application_error"
+    },
+    {
+      "stem": "129-manual-entities",
+      "slug": "712-manual-entities",
+      "summary": "Exercises the manual entities case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/129-manual-entities.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/129-manual-entities.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "133-manual-dates",
+      "slug": "716-manual-dates",
+      "summary": "Exercises the manual dates case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/133-manual-dates.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/133-manual-dates.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [
+        {
+          "severity": "diagnostic_warning",
+          "message": "HTTP 500 on POST /api/search_for_results_hit_count16667617515180422573"
+        }
+      ],
+      "verdict": "diagnostic_warning"
+    },
+    {
+      "stem": "137-qa-pdf-full-source-switch",
+      "slug": "801-qa-pdf-full-source-switch",
+      "summary": "Exercises the qa pdf full source switch case.",
+      "url": "/",
+      "captures": [
+        {
+          "file": "720p/137-qa-pdf-full-source-switch.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [
+        {
+          "severity": "application_error",
+          "message": "[1080p] active-find-source-switch: timed out waiting for text '1 / 7' inside 'body'; no-match: timed out waiting for text '- / -' inside 'body'"
+        }
+      ],
+      "verdict": "application_error"
+    },
+    {
+      "stem": "01-bad-url-unknown-route",
+      "slug": "002-bad-url-unknown-route",
+      "summary": "Exercises the bad url unknown route case.",
+      "url": "/no-such-page-exists",
+      "captures": [
+        {
+          "file": "720p/01-bad-url-unknown-route.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/01-bad-url-unknown-route.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "05-filter-modal-collections",
+      "slug": "103-filter-modal-collections",
+      "summary": "Exercises the filter modal collections case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/05-filter-modal-collections.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/05-filter-modal-collections.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "filter-collections.png"
+    },
+    {
+      "stem": "09-filter-pane-filelocation-tree",
+      "slug": "107-filter-pane-filelocation-tree",
+      "summary": "Exercises the filter pane filelocation tree case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/09-filter-pane-filelocation-tree.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/09-filter-pane-filelocation-tree.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "13-filter-pane-date-bar-clicked",
+      "slug": "111-filter-pane-date-bar-clicked",
+      "summary": "Exercises the filter pane date bar clicked case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/13-filter-pane-date-bar-clicked.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/13-filter-pane-date-bar-clicked.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "17-search-with-chips",
+      "slug": "115-search-with-chips",
+      "summary": "Exercises the search with chips case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/17-search-with-chips.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/17-search-with-chips.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "search-filter-applied.png"
+    },
+    {
+      "stem": "21-qa-sort-explicit-relevance",
+      "slug": "119-qa-sort-explicit-relevance",
+      "summary": "Exercises the qa sort explicit relevance case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/21-qa-sort-explicit-relevance.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/21-qa-sort-explicit-relevance.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "25-qa-sort-file-size-directions",
+      "slug": "123-qa-sort-file-size-directions",
+      "summary": "Exercises the qa sort file size directions case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/25-qa-sort-file-size-directions.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/25-qa-sort-file-size-directions.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "29-filter-pane-filelocation-dataset-ticked",
+      "slug": "127-filter-pane-filelocation-dataset-ticked",
+      "summary": "Exercises the filter pane filelocation dataset ticked case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/29-filter-pane-filelocation-dataset-ticked.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/29-filter-pane-filelocation-dataset-ticked.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "33-search-filename-only-hit-900px",
+      "slug": "131-search-filename-only-hit-900px",
+      "summary": "Exercises the search filename only hit 900px case.",
+      "url": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmd4GXp6cS11bmlxdWUtZmlsZW5hbWUtdG9rZW5tZmFjZXRfZmlsdGVyc6A=/0/9g==/9g==",
+      "captures": [
+        {
+          "file": "900x900/33-search-filename-only-hit-900px.png",
+          "resolution": "900x900",
+          "requested": [
+            900,
+            900
+          ],
+          "actual_window": [
+            900,
+            900
+          ],
+          "actual_png": [
+            900,
+            900
+          ],
+          "scroll_offset": 0,
+          "size_source": "viewport"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "37-view-doc-pdf-metadata",
+      "slug": "202-view-doc-pdf-metadata",
+      "summary": "Exercises the view doc pdf metadata case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=",
+      "captures": [
+        {
+          "file": "720p/37-view-doc-pdf-metadata.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/37-view-doc-pdf-metadata.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/37-view-doc-pdf-metadata.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/37-view-doc-pdf-metadata.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "41-view-doc-text",
+      "slug": "206-view-doc-text",
+      "summary": "Exercises the view doc text case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMzYyNzk1OTg2ZmExZTcyM2VmYWIyOGVjMTE0MWY2NDQ2ZTQ2NThkNjFiMTRmYzFhOTI3YjdmYjFmOTc3MjRlNQ==/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/41-view-doc-text.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/41-view-doc-text.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "document-text.png"
+    },
+    {
+      "stem": "45-view-doc-file-locations-multi",
+      "slug": "210-view-doc-file-locations-multi",
+      "summary": "Exercises the view doc file locations multi case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtdGVzdGRhdGFfemlwc2lmaWxlX2hhc2h4QGM1ZjI1MTgzMTFmYjNlNjA2NDkyMDAzNmJjY2E5YzBiZjg1NDAyNDY0ZWQ0ZGM3NDk4NWQ1NWFjODQ2NjBlNWI=/9g==/oWxzZWxlY3RlZF90YWJtRmlsZUxvY2F0aW9ucw==",
+      "captures": [
+        {
+          "file": "720p/45-view-doc-file-locations-multi.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/45-view-doc-file-locations-multi.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "document-file-locations.png"
+    },
+    {
+      "stem": "49-view-doc-entity-card",
+      "slug": "214-view-doc-entity-card",
+      "summary": "Exercises the view doc entity card case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR5dmtzdGFubGV5QGNzLnV0ZXhhcy5lZHU=/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/49-view-doc-entity-card.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/49-view-doc-entity-card.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/49-view-doc-entity-card.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/49-view-doc-entity-card.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "53-storage-shapes-wide",
+      "slug": "303-storage-shapes-wide",
+      "summary": "Exercises the storage shapes wide case.",
+      "url": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aG4vdGhlLWRpcmVjdG9yeQ==/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/53-storage-shapes-wide.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/53-storage-shapes-wide.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "57-storage-shapes-deepest",
+      "slug": "307-storage-shapes-deepest",
+      "summary": "Exercises the storage shapes deepest case.",
+      "url": "/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHiAL2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjAvMjEvMjIvMjMvMjQvMjUvMjYvMjcvMjgvMjkvMzAvMzEvMzIvMzMvMzQvMzUvMzYvMzcvMzgvMzkvNDAvNDEvNDI=/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/57-storage-shapes-deepest.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/57-storage-shapes-deepest.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "61-storage-inside-container",
+      "slug": "311-storage-inside-container",
+      "summary": "Exercises the storage inside container case.",
+      "url": "/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/61-storage-inside-container.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/61-storage-inside-container.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "65-qa-storage-warm-navigation",
+      "slug": "315-qa-storage-warm-navigation",
+      "summary": "Exercises the qa storage warm navigation case.",
+      "url": "/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/65-qa-storage-warm-navigation.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/65-qa-storage-warm-navigation.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "69-storage-container-by-url",
+      "slug": "319-storage-container-by-url",
+      "summary": "Exercises the storage container by url case.",
+      "url": "/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaHhAYzVmMjUxODMxMWZiM2U2MDY0OTIwMDM2YmNjYTljMGJmODU0MDI0NjRlZDRkYzc0OTg1ZDU1YWM4NDY2MGU1YmRwYXRoYS8=/9g==/9g==",
+      "captures": [
+        {
+          "file": "720p/69-storage-container-by-url.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/69-storage-container-by-url.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "73-storage-collection-landing",
+      "slug": "323-storage-collection-landing",
+      "summary": "Exercises the storage collection landing case.",
+      "url": "/file_browser/c/testdata",
+      "captures": [
+        {
+          "file": "720p/73-storage-collection-landing.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/73-storage-collection-landing.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "storage-collection.png"
+    },
+    {
+      "stem": "77-view-doc-table-grid",
+      "slug": "401-view-doc-table-grid",
+      "summary": "Exercises the view doc table grid case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/77-view-doc-table-grid.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/77-view-doc-table-grid.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "81-view-doc-table-filter-popover",
+      "slug": "405-view-doc-table-filter-popover",
+      "summary": "Exercises the view doc table filter popover case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/81-view-doc-table-filter-popover.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/81-view-doc-table-filter-popover.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "85-qa-table-modal-backdrop",
+      "slug": "409-qa-table-modal-backdrop",
+      "summary": "Exercises the qa table modal backdrop case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/85-qa-table-modal-backdrop.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/85-qa-table-modal-backdrop.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "89-qa-table-modal-dark-colors",
+      "slug": "413-qa-table-modal-dark-colors",
+      "summary": "Exercises the qa table modal dark colors case.",
+      "url": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+      "captures": [
+        {
+          "file": "720p/89-qa-table-modal-dark-colors.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/89-qa-table-modal-dark-colors.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "93-ai-chat-history",
+      "slug": "502-ai-chat-history",
+      "summary": "Exercises the ai chat history case.",
+      "url": "/ai_chat/history",
+      "captures": [
+        {
+          "file": "720p/93-ai-chat-history.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/93-ai-chat-history.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "chat-history.png"
+    },
+    {
+      "stem": "97-admin-collection-processing",
+      "slug": "603-admin-collection-processing",
+      "summary": "Exercises the admin collection processing case.",
+      "url": "/admin/collections/testdata/processing",
+      "captures": [
+        {
+          "file": "720p/97-admin-collection-processing.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/97-admin-collection-processing.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/97-admin-collection-processing.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/97-admin-collection-processing.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "admin-processing.png"
+    },
+    {
+      "stem": "101-admin-group-detail",
+      "slug": "607-admin-group-detail",
+      "summary": "Exercises the admin group detail case.",
+      "url": "/admin/user_groups/admin",
+      "captures": [
+        {
+          "file": "720p/101-admin-group-detail.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/101-admin-group-detail.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "admin-group.png"
+    },
+    {
+      "stem": "105-admin-llm",
+      "slug": "611-admin-llm",
+      "summary": "Exercises the admin llm case.",
+      "url": "/admin/llm",
+      "captures": [
+        {
+          "file": "720p/105-admin-llm.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/105-admin-llm.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/105-admin-llm.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/105-admin-llm.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok",
+      "manual_asset": "admin-llm.png"
+    },
+    {
+      "stem": "109-admin-operations-state-errored",
+      "slug": "615-admin-operations-state-errored",
+      "summary": "Exercises the admin operations state errored case.",
+      "url": "/admin/operations",
+      "captures": [
+        {
+          "file": "720p/109-admin-operations-state-errored.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/109-admin-operations-state-errored.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/109-admin-operations-state-errored.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/109-admin-operations-state-errored.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "113-admin-operations-running",
+      "slug": "619-admin-operations-running",
+      "summary": "Exercises the admin operations running case.",
+      "url": "/admin/operations",
+      "captures": [
+        {
+          "file": "720p/113-admin-operations-running.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/113-admin-operations-running.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/113-admin-operations-running.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/113-admin-operations-running.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    },
+    {
+      "stem": "117-admin-collection-operations",
+      "slug": "623-admin-collection-operations",
+      "summary": "Exercises the admin collection operations case.",
+      "url": "/admin/collections/testdata",
+      "captures": [
+        {
+          "file": "720p/117-admin-collection-operations.png",
+          "resolution": "720p",
+          "requested": [
+            1280,
+            720
+          ],
+          "actual_window": [
+            1280,
+            720
+          ],
+          "actual_png": [
+            1280,
+            720
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "720p/117-admin-collection-operations.full_page.png",
+          "resolution": "720p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/117-admin-collection-operations.png",
+          "resolution": "1080p",
+          "requested": [
+            1920,
+            1080
+          ],
+          "actual_window": [
+            1920,
+            1080
+          ],
+          "actual_png": [
+            1920,
+            1080
+          ],
+          "scroll_offset": 0,
+          "size_source": "resolution_list"
+        },
+        {
+          "file": "1080p/117-admin-collection-operations.full_page.png",
+          "resolution": "1080p",
+          "supplementary": true,
+          "size_source": "resolution_list"
+        }
+      ],
+      "observations": [],
+      "verdict": "ok"
+    }
+  ],
+  "totals": {
+    "application_error": 2,
+    "expected_outcome": 0,
+    "trace": 0,
+    "behavioral_warning": 0,
+    "diagnostic_warning": 1,
+    "incomplete_execution": 0
+  },
+  "page_reports": [
+    "- `121-manual-sort-dates` (`/`): ok",
+    "- `125-manual-pdf` (`/`): application_error",
+    "    - application_error: [720p] active-find-source-switch: timed out waiting for text '1 / 7' inside 'body'; no-match: timed out waiting for text '- / -' inside 'body'",
+    "- `129-manual-entities` (`/`): ok",
+    "- `133-manual-dates` (`/`): diagnostic_warning",
+    "    - diagnostic_warning: HTTP 500 on POST /api/search_for_results_hit_count16667617515180422573",
+    "- `137-qa-pdf-full-source-switch` (`/`): application_error",
+    "    - application_error: [1080p] active-find-source-switch: timed out waiting for text '1 / 7' inside 'body'; no-match: timed out waiting for text '- / -' inside 'body'",
+    "- `01-bad-url-unknown-route` (`/no-such-page-exists`): ok",
+    "- `05-filter-modal-collections` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `09-filter-pane-filelocation-tree` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `13-filter-pane-date-bar-clicked` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `17-search-with-chips` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `21-qa-sort-explicit-relevance` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `25-qa-sort-file-size-directions` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `29-filter-pane-filelocation-dataset-ticked` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==`): ok",
+    "- `33-search-filename-only-hit-900px` (`/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmd4GXp6cS11bmlxdWUtZmlsZW5hbWUtdG9rZW5tZmFjZXRfZmlsdGVyc6A=/0/9g==/9g==`): ok",
+    "- `37-view-doc-pdf-metadata` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=`): ok",
+    "- `41-view-doc-text` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMzYyNzk1OTg2ZmExZTcyM2VmYWIyOGVjMTE0MWY2NDQ2ZTQ2NThkNjFiMTRmYzFhOTI3YjdmYjFmOTc3MjRlNQ==/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `45-view-doc-file-locations-multi` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtdGVzdGRhdGFfemlwc2lmaWxlX2hhc2h4QGM1ZjI1MTgzMTFmYjNlNjA2NDkyMDAzNmJjY2E5YzBiZjg1NDAyNDY0ZWQ0ZGM3NDk4NWQ1NWFjODQ2NjBlNWI=/9g==/oWxzZWxlY3RlZF90YWJtRmlsZUxvY2F0aW9ucw==`): ok",
+    "- `49-view-doc-entity-card` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR5dmtzdGFubGV5QGNzLnV0ZXhhcy5lZHU=/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `53-storage-shapes-wide` (`/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aG4vdGhlLWRpcmVjdG9yeQ==/9g==/9g==`): ok",
+    "- `57-storage-shapes-deepest` (`/file_browser/testdata_shapes/om5jb250YWluZXJfaGFzaGBkcGF0aHiAL2RlZXAtc3R1ZmYvMS8yLzMvNC81LzYvNy84LzkvMTAvMTEvMTIvMTMvMTQvMTUvMTYvMTcvMTgvMTkvMjAvMjEvMjIvMjMvMjQvMjUvMjYvMjcvMjgvMjkvMzAvMzEvMzIvMzMvMzQvMzUvMzYvMzcvMzgvMzkvNDAvNDEvNDI=/9g==/9g==`): ok",
+    "- `61-storage-inside-container` (`/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==`): ok",
+    "- `65-qa-storage-warm-navigation` (`/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==`): ok",
+    "- `69-storage-container-by-url` (`/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaHhAYzVmMjUxODMxMWZiM2U2MDY0OTIwMDM2YmNjYTljMGJmODU0MDI0NjRlZDRkYzc0OTg1ZDU1YWM4NDY2MGU1YmRwYXRoYS8=/9g==/9g==`): ok",
+    "- `73-storage-collection-landing` (`/file_browser/c/testdata`): ok",
+    "- `77-view-doc-table-grid` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `81-view-doc-table-filter-popover` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `85-qa-table-modal-backdrop` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `89-qa-table-modal-dark-colors` (`/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=`): ok",
+    "- `93-ai-chat-history` (`/ai_chat/history`): ok",
+    "- `97-admin-collection-processing` (`/admin/collections/testdata/processing`): ok",
+    "- `101-admin-group-detail` (`/admin/user_groups/admin`): ok",
+    "- `105-admin-llm` (`/admin/llm`): ok",
+    "- `109-admin-operations-state-errored` (`/admin/operations`): ok",
+    "- `113-admin-operations-running` (`/admin/operations`): ok",
+    "- `117-admin-collection-operations` (`/admin/collections/testdata`): ok"
+  ]
+}

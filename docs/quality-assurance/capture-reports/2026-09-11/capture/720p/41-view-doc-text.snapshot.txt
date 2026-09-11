@@ -1,0 +1,153 @@
+# 41-view-doc-text (720p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMzYyNzk1OTg2ZmExZTcyM2VmYWIyOGVjMTE0MWY2NDQ2ZTQ2NThkNjFiMTRmYzFhOTI3YjdmYjFmOTc3MjRlNQ==/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=
+title:    Hoover Search - View Document
+actions:  sleep 3000
+api calls: 10 (search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6823[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6821[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6819[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6817[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      div
+                        div#dxc-13[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / -"
+                      div
+                        div#dxc-11[role=button]
+                          button
+                            svg
+                              path
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Plain text"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_testfiles"
+                    div  "/"
+                    div
+                      span[title=Text]
+                        svg
+                          path
+                    div  "easychair.txt"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    div
+                      div
+                        pre
+                          span
+                            span  "=== THIS IS A SAMPLE .txt FILE === The styles and parameters of this guide are designed for compliance with the requirements for publication in the EasyChair EPiC Series (Voronkov, 2004). EasyChair is"
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                div
+                  div
+                    input[type=text][placeholder=Filter Entities ...]
+                  div
+                    div
+                      div
+                        svg
+                          path
+                        div  "Person"
+                        div  "1"
+                      div
+                        div[title=Voronkov]
+                          div  "Voronkov"
+                          div  "4"
+                    div
+                      div
+                        svg
+                          path
+                        div  "Misc"
+                        div  "2"
+                      div
+                        div[title=EasyChair]
+                          div  "EasyChair"
+                          div  "4"
+                        div[title=EasyChair EPiC Series]
+                          div  "EasyChair EPiC Series"
+                          div  "2"
+    div[role=region][label=0 notifications]
+      ol

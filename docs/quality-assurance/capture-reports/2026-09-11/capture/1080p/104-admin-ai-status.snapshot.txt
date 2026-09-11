@@ -1,0 +1,252 @@
+# 104-admin-ai-status (1080p)
+url:      https://hoover4.new.liquiddemo.org/admin/ai_status
+title:    Admin: AI status
+actions:  sleep 3000
+api calls: 2 (admin_get_ai_status x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5759[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5757[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5755[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5753[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "AI status"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "AI status"
+              div
+                p  "Configured versus actually serving. Auto-fallback to CPU twins is silent by design, and this page is how you notice."
+                div
+                  h2  "Config fingerprint"
+                  div
+                    table
+                      tbody
+                        tr
+                          td  "Website / worker"
+                          td  "319cb17a868d081c"
+                        tr
+                          td  "AI server"
+                          td  "319cb17a868d081c"
+                        tr
+                          td  "Match"
+                          td  "match"
+                        tr
+                          td  "Embeddings probe"
+                          td  "intfloat/multilingual-e5-small · 384 dims"
+                        tr
+                          td  "LLM configured"
+                          td  "yes"
+                div
+                  h2  "Capabilities"
+                  div
+                    table
+                      thead
+                        tr
+                          th  "Capability"
+                          th  "Configured"
+                          th  "Serving"
+                          th  "Model"
+                          th  "Reachable"
+                          th  "Detail"
+                      tbody
+                        tr
+                          td  "embeddings"
+                          td  "gpu"
+                          td  "gpu"
+                          td  "intfloat/multilingual-e5-small"
+                          td  "yes"
+                          td  "probed dim 384; configured serving dim 384"
+                        tr
+                          td  "rerank"
+                          td  "gpu"
+                          td  "gpu"
+                          td  "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+                          td  "yes"
+                          td  "http://10.69.70.115:21961/v1"
+                        tr
+                          td  "ner"
+                          td  "gpu"
+                          td  "gpu"
+                          td  "FacebookAI/xlm-roberta-large-finetuned-conll03-english"
+                          td  "yes"
+                          td  "serving=primary http://10.69.70.115:21961/v1; primary=http://10.69.70.115:21961/v1; fallback="
+                        tr
+                          td  "ocr"
+                          td  "tesseract"
+                          td  "tesseract"
+                          td  "tesseract"
+                          td  "yes"
+                          td  "http://hoover4-tesseract-cpu:8000/ocr"
+                        tr
+                          td  "llm"
+                          td  "configured"
+                          td  "live"
+                          td  "qwen3.5-35b-a3b"
+                          td  "yes"
+                          td  "http://10.69.70.115:21960/v1"
+                        tr
+                          td  "browser"
+                          td  "playwright-mcp"
+                          td  "router"
+                          td  "0/16 sessions"
+                          td  "yes"
+                          td  "spawn_failures=0; sidecar_restarts=0; template_ready=true"
+                div
+                  h2  "Vector shard dims vs probe"
+                  div
+                    table
+                      thead
+                        tr
+                          th  "Collection"
+                          th  "Shard"
+                          th  "knn_dims"
+                          th  "Matches probe"
+                      tbody
+                        tr
+                          td  "consulate"
+                          td  "consulate_1_vectors"
+                          td  "384"
+                          td  "yes"
+                        tr
+                          td  "enron"
+                          td  "enron_1_vectors"
+                          td  "384"
+                          td  "yes"
+                        tr
+                          td  "epstein"
+                          td  "epstein_1_vectors"
+                          td  "384"
+                          td  "yes"
+                        tr
+                          td  "other"
+                          td  "other_1_vectors"
+                          td  "384"
+                          td  "yes"
+                        tr
+                          td  "tables"
+                          td  "tables_1_vectors"
+                          td  "384"
+                          td  "yes"
+                        tr
+                          td  "testdata"
+                          td  "testdata_1_vectors"
+                          td  "384"
+                          td  "yes"
+                        tr
+                          td  "textfiles"
+                          td  "textfiles_1_vectors"
+                          td  "384"
+                          td  "yes"
+                div
+                  h2  "Browser router"
+                  div
+                    p  "Live sessions: 0 / 16"
+                    p  "spawn_failures=0; sidecar_restarts=0; template_ready=true"
+                div
+                  h2  "Recent LLM traffic (24 h)"
+                  div
+                    table
+                      thead
+                        tr
+                          th  "User"
+                          th  "Calls"
+                          th  "Errors"
+                          th  "p50"
+                      tbody
+                        tr
+                          td  "hoover4admin"
+                          td  "11"
+                          td  "0"
+                          td  "13153 ms"
+                div
+                  h2  "Service use% (24 h)"
+                  div
+                    p  "Busy seconds / 86400 from ai_service_telemetry (and llm_call_events for LLM when the telemetry table is still empty)."
+                    table
+                      thead
+                        tr
+                          th  "Service"
+                          th  "Calls"
+                          th  "Errors"
+                          th  "Busy s"
+                          th  "Use %"
+                      tbody
+                        tr
+                          td  "embeddings"
+                          td  "5"
+                          td  "0"
+                          td  "0.5"
+                          td  "0.00"
+                        tr
+                          td  "llm"
+                          td  "11"
+                          td  "0"
+                          td  "134.1"
+                          td  "0.16"
+                        tr
+                          td  "rerank"
+                          td  "3"
+                          td  "0"
+                          td  "1.3"
+                          td  "0.00"
+    div[role=region][label=0 notifications]
+      ol

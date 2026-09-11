@@ -1,0 +1,1488 @@
+# 39-view-doc-email-metadata (1080p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAMTk3Nzg0ZGNkOTU0ZmNjY2IzOGZjODEwYTQzZmRlMGU5ZjY2MDQ3YWJmMDM0ZjA1YTg3NjRiZDIyOTgzZTZmYg==/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=
+title:    Hoover Search - View Document
+actions:  sleep 3000
+api calls: 14 (search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_dates x1, get_document_email x1, get_document_sources x1, get_document_table_overview x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, get_raw_metadata_tables x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6733[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6731[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6729[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6727[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      div
+                        div#dxc-13[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / -"
+                      div
+                        div#dxc-11[role=button]
+                          button
+                            svg
+                              path
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Email"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Email body"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Plain text"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_emails"
+                    div  "/"
+                    div
+                      span[title=Email]
+                        svg
+                          path
+                    div  "Urăsc canicula, e nașpa.eml"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    div
+                      div
+                        svg
+                          path
+                        div  "Urăsc canicula, e nașpa"
+                        div  "2016-06-17 11:27 UTC"
+                      div  "Gabriel Vîjială <penultim_o@yahoo.com>"
+                      div  "to penultim_o, Gabriel."
+                      div
+                        button
+                          span  "cc 1"
+                          span  "details"
+                          svg
+                            path
+                        a[href=/email_graph/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAMTk3Nzg0ZGNkOTU0ZmNjY2IzOGZjODEwYTQzZmRlMGU]  "Open Connected Emails (2)"
+                      div
+                        svg
+                          path
+                        span  "ATTACHMENTS"
+                      div
+                        a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhANmM5ZTA5MzMyODYwYjQ3ZTI4ODI0OTg4NzI4ZjY1Z]
+                          span
+                            span[title=Image]
+                              svg
+                                path
+                          div
+                            div[title=length.png]  "length.png"
+                            div  "8 KB"
+                          svg
+                            path
+                        a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhANDU0NWE0MTFkOGYzNmU1OTY3NjBiYTUxMGQzM2Q1M]
+                          span
+                            span[title=Document]
+                              svg
+                                path
+                          div
+                            div[title=letterlegal5.doc]  "letterlegal5.doc"
+                            div  "29 KB"
+                          svg
+                            path
+                        a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAYjkyYzkxZTY5MjdjNTkwMmIyN2ViNDE4ODgyOWE5M]
+                          span
+                            span[title=Archive]
+                              svg
+                                path
+                          div
+                            div[title=zip-with-pdf.zip]  "zip-with-pdf.zip"
+                            div  "166 KB"
+                          svg
+                            path
+                      div  "Email text Message"
+                    div
+                      div
+                        pre
+                          span
+                            span  "Hai să băgăm diacritice în subject field, frate! Atașamente cu tona..."
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                ul
+                  li
+                    h1  "Dates"
+                      svg
+                        path
+                    table
+                      tbody
+                        tr
+                          td  "2016-06-17 11:27 UTC"
+                          td  "email:date"
+                        tr
+                          td  "2016-06-17 11:27 UTC"
+                          td  "tika:dcterms:created"
+                  li
+                    h1  "Email"
+                      svg
+                        path
+                    table
+                      tbody
+                        tr
+                          td  "Subject"
+                          td  "Urăsc canicula, e nașpa"
+                        tr
+                          td  "Sent"
+                          td  "2016-06-17 11:27 UTC"
+                        tr
+                          td  "From"
+                          td
+                            div  "Gabriel Vîjială <penultim_o@yahoo.com>"
+                        tr
+                          td  "To"
+                          td
+                            div  "penultim_o@yahoo.com"
+                        tr
+                          td  "Cc"
+                          td
+                            div  "Gabriel Vîjială <gabriel.vijiala@gmail.com>"
+                    div  "3 attachment(s). Browse them by opening this email in Storage."
+                      svg
+                        path
+                  li
+                    h1  "blobs"
+                      span  "blob_hash"
+                    table
+                      tbody
+                        tr
+                          td  "blob_size_bytes"
+                          td  "283820"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "md5"
+                          td  "1baf05389100189e62b2c3db818c2dc1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "s3_path"
+                          td
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "sha1"
+                          td  "02acb1610310adcfa58f0c12e5e30c5498505829"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "sha256"
+                          td  "8f84fba38a59b6b25dcf21425e543d946c51a2f3c88a3b13998ed8ba874fa971"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "stored_in_clickhouse"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "file_types"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "extracted_by"
+                          td  "content_sniff"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[0]"
+                          td  "email"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[0]"
+                          td  "message/rfc822"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extracted_by"
+                          td  "extension"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extracted_by"
+                          td  "file"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[0]"
+                          td  "email"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[1]"
+                          td  "text"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_encoding[0]"
+                          td  "utf-8"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[0]"
+                          td  "message/rfc822"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[1]"
+                          td  "text/plain"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extensions[0]"
+                          td  ".eml"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "extracted_by"
+                          td  "magika"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[0]"
+                          td  "email"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[1]"
+                          td  "text"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[0]"
+                          td  "message/rfc822"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "file_type_canonical"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "decided_by"
+                          td  "parse_succeeded"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type"
+                          td  "email"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "losers[0]"
+                          td  "text/plain"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type"
+                          td  "message/rfc822"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-10 08:44:51"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "tika_metadata"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "processed_at"
+                          td  "2026-09-10 08:43:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Content-Length[0]"
+                          td  "283820"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Content-Type[0]"
+                          td  "message/rfc822"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message-Cc[0]"
+                          td  "Gabriel Vîjială <gabriel.vijiala@gmail.com>"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message-From[0]"
+                          td  "Gabriel Vîjială <penultim_o@yahoo.com>"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message-To[0]"
+                          td  "penultim_o@yahoo.com"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:From-Email[0]"
+                          td  "penultim_o@yahoo.com"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:From-Name[0]"
+                          td  "Gabriel Vîjială"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:Authentication-Results[0]"
+                          td  "mx.google.com; dkim=pass header.i=@yahoo.com; spf=pass (google.com: domain of penultim_o@yahoo.com designates 72.30.238.77 as permitted se…"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:DKIM-Signature[0]"
+                          td  "v=1; a=rsa-sha256; c=relaxed/relaxed; d=yahoo.com; s=s2048; t=1466162859; bh=aIJPS3oOot4QpvrKOkB3mmd4lCoA1H0mGTf8gQ+wT3Q=; h=To:Cc:From:Subject:Date:F…"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:Delivered-To[0]"
+                          td  "gabriel.vijiala@gmail.com"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:MIME-Version[0]"
+                          td  "1.0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:Message-ID[0]"
+                          td  "<5763DEA8.4040701@yahoo.com>"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:Received-SPF[0]"
+                          td  "pass (google.com: domain of penultim_o@yahoo.com designates 72.30.238.77 as permitted sender) client-ip=72.30.238.77;"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:Received[0]"
+                          td  "by 10.200.36.201 with SMTP id t9csp122533qtt; Fri, 17 Jun 2016 04:27:40 -0700 (PDT)"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:Received[1]"
+                          td  "from nm35-vm5.bullet.mail.bf1.yahoo.com (nm35-vm5.bullet.mail.bf1.yahoo.com. [72.30.238.77]) by mx.google.com with ESMTPS id c2si22076731qtb.12…"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:Received[2]"
+                          td  "from [98.139.170.180] by nm35.bullet.mail.bf1.yahoo.com with NNFMP; 17 Jun 2016 11:27:39 -0000"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:Received[3]"
+                          td  "from [98.139.211.205] by tm23.bullet.mail.bf1.yahoo.com with NNFMP; 17 Jun 2016 11:27:39 -0000"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:Received[4]"
+                          td  "from [127.0.0.1] by smtp214.mail.bf1.yahoo.com with NNFMP; 17 Jun 2016 11:27:38 -0000"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:Return-Path[0]"
+                          td  "<penultim_o@yahoo.com>"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:User-Agent[0]"
+                          td  "Mozilla/5.0 (X11; Linux x86_64; rv:38.0) Gecko/20100101 Thunderbird/38.8.0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:X-Received[0]"
+                          td  "by 10.55.217.24 with SMTP id u24mr1372790qki.93.1466162859849; Fri, 17 Jun 2016 04:27:39 -0700 (PDT)"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:X-YMail-OSG[0]"
+                          td  "8VnN5S8VM1k6P_a8pFdJy8eUCojZCi3XEYZ7xqdR_P9FJC7 58J2YebL.efi9xf4GrpsJUOvrGjT4reoxuBustRA7YDLAWdi0EVFpI6Jrn5p rYiryEFSp0aV2J65E_5fIxXz6c9hqAU.V9YLBM5TL…"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:X-Yahoo-Newman-Id[0]"
+                          td  "986206.97965.bm@smtp214.mail.bf1.yahoo.com"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:X-Yahoo-Newman-Property[0]"
+                          td  "ymail-3"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Message:Raw-Header:X-Yahoo-SMTP[0]"
+                          td  "PnPrknSswBCYfJL83JmHWBRRMlTMMas-"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Multipart-Boundary[0]"
+                          td  "------------010603070204020205000805"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Multipart-Subtype[0]"
+                          td  "mixed"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By-Full-Set[0]"
+                          td  "org.apache.tika.parser.DefaultParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By-Full-Set[1]"
+                          td  "org.apache.tika.parser.mail.RFC822Parser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By-Full-Set[2]"
+                          td  "org.apache.tika.parser.microsoft.OfficeParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By-Full-Set[3]"
+                          td  "org.apache.tika.parser.pkg.PackageParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By-Full-Set[4]"
+                          td  "org.apache.tika.parser.pdf.PDFParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By-Full-Set[5]"
+                          td  "org.apache.tika.parser.image.ImageParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By[0]"
+                          td  "org.apache.tika.parser.DefaultParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By[1]"
+                          td  "org.apache.tika.parser.mail.RFC822Parser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.dc:creator[0]"
+                          td  "Gabriel Vîjială <penultim_o@yahoo.com>"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.dc:subject[0]"
+                          td  "Urăsc canicula, e nașpa"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.dc:title[0]"
+                          td  "Urăsc canicula, e nașpa"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.dcterms:created[0]"
+                          td  "2016-06-17T11:27:36Z"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.resourceName[0]"
+                          td  "attempt.eml"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "vfs_files"
+                      span  "container_hash"
+                    table
+                      tbody
+                        tr
+                          td  "file_size_bytes"
+                          td  "8278"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "hash"
+                          td  "6c9e09332860b47e28824988728f65f9ded22631917a37bd6bedb6bc45c8f50c"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "is_deleted"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime"
+                          td  "2026-09-10 08:43:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime_source"
+                          td  "untrusted"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "path"
+                          td  "/length.png"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-10 08:43:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "user_id"
+                          td  "system"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "file_size_bytes"
+                          td  "29696"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "hash"
+                          td  "4545a411d8f36e596760ba510d33d50f23792d48ae660b9815f786c4830a9e6a"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "is_deleted"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime"
+                          td  "2026-09-10 08:43:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime_source"
+                          td  "untrusted"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "path"
+                          td  "/letterlegal5.doc"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-10 08:43:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "user_id"
+                          td  "system"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "file_size_bytes"
+                          td  "166195"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "hash"
+                          td  "b92c91e6927c5902b27eb4188829a93217f496e0421f3d75c347593b7ffe41cf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "is_deleted"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime"
+                          td  "2026-09-10 08:43:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime_source"
+                          td  "untrusted"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "path"
+                          td  "/zip-with-pdf.zip"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-10 08:43:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "user_id"
+                          td  "system"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "vfs_files"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "container_hash"
+                          td
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_size_bytes"
+                          td  "283820"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "is_deleted"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime"
+                          td  "2025-10-22 10:12:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime_source"
+                          td  "filesystem"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "path"
+                          td  "/Urăsc canicula, e nașpa.eml"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-10 08:43:55"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "user_id"
+                          td  "system"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "email_headers"
+                      span  "email_hash"
+                    table
+                      tbody
+                        tr
+                          td  "addresses"
+                          td  "from: Gabriel Vîjială <penultim_o@yahoo.com>; to: penultim_o@yahoo.com; cc: Gabriel Vîjială <gabriel.vijiala@gmail.com>"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "date_sent"
+                          td  "2016-06-17 11:27:36"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "date_sent_known"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[0][0]"
+                          td  "Delivered-To"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[0][1]"
+                          td  "gabriel.vijiala@gmail.com"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[10][0]"
+                          td  "Received"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[10][1]"
+                          td  "from [127.0.0.1] by smtp214.mail.bf1.yahoo.com with NNFMP; 17 Jun 2016 11:27:38 -0000"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[11][0]"
+                          td  "X-Yahoo-Newman-Id"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[11][1]"
+                          td  "986206.97965.bm@smtp214.mail.bf1.yahoo.com"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[12][0]"
+                          td  "X-Yahoo-Newman-Property"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[12][1]"
+                          td  "ymail-3"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[13][0]"
+                          td  "X-YMail-OSG"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[13][1]"
+                          td  "8VnN5S8VM1k6P_a8pFdJy8eUCojZCi3XEYZ7xqdR_P9FJC7 58J2YebL.efi9xf4GrpsJUOvrGjT4reoxuBustRA7YDLAWdi0EVFpI6Jrn5p rYiryEFSp0aV2J65E_5fIxXz6c9hqAU.V9YLBM5TL…"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[14][0]"
+                          td  "X-Yahoo-SMTP"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[14][1]"
+                          td  "PnPrknSswBCYfJL83JmHWBRRMlTMMas-"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[15][0]"
+                          td  "To"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[15][1]"
+                          td  "penultim_o@yahoo.com"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[16][0]"
+                          td  "Cc"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[16][1]"
+                          td  "Gabriel Vîjială <gabriel.vijiala@gmail.com>"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[17][0]"
+                          td  "From"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[17][1]"
+                          td  "Gabriel Vîjială <penultim_o@yahoo.com>"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[18][0]"
+                          td  "Subject"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[18][1]"
+                          td  "Urăsc canicula, e nașpa"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[19][0]"
+                          td  "Message-ID"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[19][1]"
+                          td  "<5763DEA8.4040701@yahoo.com>"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[1][0]"
+                          td  "Received"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[1][1]"
+                          td  "by 10.200.36.201 with SMTP id t9csp122533qtt; Fri, 17 Jun 2016 04:27:40 -0700 (PDT)"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[20][0]"
+                          td  "Date"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[20][1]"
+                          td  "Fri, 17 Jun 2016 14:27:36 +0300"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[21][0]"
+                          td  "User-Agent"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[21][1]"
+                          td  "Mozilla/5.0 (X11; Linux x86_64; rv:38.0) Gecko/20100101 Thunderbird/38.8.0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[22][0]"
+                          td  "MIME-Version"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[22][1]"
+                          td  "1.0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[23][0]"
+                          td  "Content-Type"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[23][1]"
+                          td  "multipart/mixed; boundary="------------010603070204020205000805""
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[2][0]"
+                          td  "X-Received"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[2][1]"
+                          td  "by 10.55.217.24 with SMTP id u24mr1372790qki.93.1466162859849; Fri, 17 Jun 2016 04:27:39 -0700 (PDT)"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[3][0]"
+                          td  "Return-Path"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[3][1]"
+                          td  "<penultim_o@yahoo.com>"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[4][0]"
+                          td  "Received"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[4][1]"
+                          td  "from nm35-vm5.bullet.mail.bf1.yahoo.com (nm35-vm5.bullet.mail.bf1.yahoo.com. [72.30.238.77]) by mx.google.com with ESMTPS id c2si22076731qtb.12…"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[5][0]"
+                          td  "Received-SPF"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[5][1]"
+                          td  "pass (google.com: domain of penultim_o@yahoo.com designates 72.30.238.77 as permitted sender) client-ip=72.30.238.77;"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[6][0]"
+                          td  "Authentication-Results"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[6][1]"
+                          td  "mx.google.com; dkim=pass header.i=@yahoo.com; spf=pass (google.com: domain of penultim_o@yahoo.com designates 72.30.238.77 as permitted se…"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[7][0]"
+                          td  "DKIM-Signature"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[7][1]"
+                          td  "v=1; a=rsa-sha256; c=relaxed/relaxed; d=yahoo.com; s=s2048; t=1466162859; bh=aIJPS3oOot4QpvrKOkB3mmd4lCoA1H0mGTf8gQ+wT3Q=; h=To:Cc:From:Subject:Date:F…"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[8][0]"
+                          td  "Received"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[8][1]"
+                          td  "from [98.139.170.180] by nm35.bullet.mail.bf1.yahoo.com with NNFMP; 17 Jun 2016 11:27:39 -0000"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[9][0]"
+                          td  "Received"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "raw_headers_json[9][1]"
+                          td  "from [98.139.211.205] by tm23.bullet.mail.bf1.yahoo.com with NNFMP; 17 Jun 2016 11:27:39 -0000"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "subject"
+                          td  "Urăsc canicula, e nașpa"
+                          td
+                            button
+                              svg
+                                path
+                                path
+    div[role=region][label=0 notifications]
+      ol

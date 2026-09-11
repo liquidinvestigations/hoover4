@@ -1,0 +1,1260 @@
+# 78-view-doc-table-sorted-blanks (720p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGM2MTA3NTEwOGEyZjhjYzFmM2NhOWUzN2UwODRjNTc5MDBhMDRlZTVjYTVmYWFlYTNhM2Y0ZDlhZGU0YzlkZGI=/pGpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZaVoc2hlZXRfaWQAbmhpZGRlbl9jb2x1bW5zgGRzb3J0omljb2x1bW5faWQDZGRlc2P1Z2ZpbHRlcnOAZHBhZ2UJ/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=
+title:    Hoover Search - View Document
+actions:  sleep 4000; wait_text of 474
+api calls: 11 (get_canonical_file_type x2, get_file_path x2, search_document_item_hit_counts x2, get_document_entities x1, get_document_sources x1, get_table_overview x1, get_table_page x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7151[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7149[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7147[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7145[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      svg
+                        path
+                      span  "Employee data (474 × 8)"
+                      button[label=Choose visible columns]  "8 of 8"
+                        svg
+                          path
+                      span  "Table · xls"
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Table · xls"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_excelsc"
+                    div  "/"
+                    div
+                      span[title=Spreadsheet (browsable)]
+                        svg
+                          path
+                    div  "sample-excel-sheet-with-employee-data.xls"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    div
+                      table
+                        thead
+                          tr
+                            th[title=The row number the file itself gives]  "#"
+                            th
+                              div
+                                span  "A"
+                                span[title=int, 474 values, 474 distinct]  "ID"
+                                span[title=Numeric column]  "#"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter ID]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "B"
+                                span[title=text, 474 values, 2 distinct]  "Gender"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Gender]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "C"
+                                span[title=date, 473 values, 461 distinct]  "Birth Date"
+                                svg
+                                  path
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Birth Date]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "D"
+                                span[title=int, 474 values, 3 distinct]  "Jobcat"
+                                span[title=Numeric column]  "#"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Jobcat]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "E"
+                                span[title=int, 474 values, 221 distinct]  "Salary"
+                                span[title=Numeric column]  "#"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Salary]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "F"
+                                span[title=int, 474 values, 36 distinct]  "Job Time"
+                                span[title=Numeric column]  "#"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Job Time]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "G"
+                                span[title=int, 474 values, 208 distinct]  "Prev Exp"
+                                span[title=Numeric column]  "#"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Prev Exp]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "H"
+                                span[title=int, 474 values, 2 distinct]  "Minority"
+                                span[title=Numeric column]  "#"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Minority]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                        tbody
+                          tr
+                            td  "25"
+                            td[title=24]
+                              div
+                                button#dxc-10
+                                  span  "24"
+                            td[title=f]
+                              div
+                                button#dxc-12
+                                  span  "f"
+                            td[title=1933-03-27]
+                              div
+                                button#dxc-14
+                                  span  "1933-03-27"
+                            td[title=1]
+                              div
+                                button#dxc-16
+                                  span  "1"
+                            td[title=16950]
+                              div
+                                button#dxc-18
+                                  span  "16950"
+                            td[title=97]
+                              div
+                                button#dxc-20
+                                  span  "97"
+                            td[title=124]
+                              div
+                                button#dxc-22
+                                  span  "124"
+                            td[title=1]
+                              div
+                                button#dxc-24
+                                  span  "1"
+                          tr
+                            td  "191"
+                            td[title=190]
+                              div
+                                button#dxc-26
+                                  span  "190"
+                            td[title=f]
+                              div
+                                button#dxc-28
+                                  span  "f"
+                            td[title=1932-11-15]
+                              div
+                                button#dxc-30
+                                  span  "1932-11-15"
+                            td[title=1]
+                              div
+                                button#dxc-32
+                                  span  "1"
+                            td[title=29100]
+                              div
+                                button#dxc-34
+                                  span  "29100"
+                            td[title=84]
+                              div
+                                button#dxc-36
+                                  span  "84"
+                            td[title=35]
+                              div
+                                button#dxc-38
+                                  span  "35"
+                            td[title=0]
+                              div
+                                button#dxc-40
+                                  span  "0"
+                          tr
+                            td  "168"
+                            td[title=167]
+                              div
+                                button#dxc-42
+                                  span  "167"
+                            td[title=f]
+                              div
+                                button#dxc-44
+                                  span  "f"
+                            td[title=1932-08-26]
+                              div
+                                button#dxc-46
+                                  span  "1932-08-26"
+                            td[title=1]
+                              div
+                                button#dxc-48
+                                  span  "1"
+                            td[title=18150]
+                              div
+                                button#dxc-50
+                                  span  "18150"
+                            td[title=86]
+                              div
+                                button#dxc-52
+                                  span  "86"
+                            td[title=72]
+                              div
+                                button#dxc-54
+                                  span  "72"
+                            td[title=0]
+                              div
+                                button#dxc-56
+                                  span  "0"
+                          tr
+                            td  "296"
+                            td[title=295]
+                              div
+                                button#dxc-58
+                                  span  "295"
+                            td[title=m]
+                              div
+                                button#dxc-60
+                                  span  "m"
+                            td[title=1932-08-20]
+                              div
+                                button#dxc-62
+                                  span  "1932-08-20"
+                            td[title=1]
+                              div
+                                button#dxc-64
+                                  span  "1"
+                            td[title=24000]
+                              div
+                                button#dxc-66
+                                  span  "24000"
+                            td[title=78]
+                              div
+                                button#dxc-68
+                                  span  "78"
+                            td[title=476]
+                              div
+                                button#dxc-70
+                                  span  "476"
+                            td[title=0]
+                              div
+                                button#dxc-72
+                                  span  "0"
+                          tr
+                            td  "256"
+                            td[title=255]
+                              div
+                                button#dxc-74
+                                  span  "255"
+                            td[title=m]
+                              div
+                                button#dxc-76
+                                  span  "m"
+                            td[title=1932-08-15]
+                              div
+                                button#dxc-78
+                                  span  "1932-08-15"
+                            td[title=2]
+                              div
+                                button#dxc-80
+                                  span  "2"
+                            td[title=30600]
+                              div
+                                button#dxc-82
+                                  span  "30600"
+                            td[title=80]
+                              div
+                                button#dxc-84
+                                  span  "80"
+                            td[title=460]
+                              div
+                                button#dxc-86
+                                  span  "460"
+                            td[title=0]
+                              div
+                                button#dxc-88
+                                  span  "0"
+                          tr
+                            td  "358"
+                            td[title=357]
+                              div
+                                button#dxc-90
+                                  span  "357"
+                            td[title=f]
+                              div
+                                button#dxc-92
+                                  span  "f"
+                            td[title=1932-01-18]
+                              div
+                                button#dxc-94
+                                  span  "1932-01-18"
+                            td[title=1]
+                              div
+                                button#dxc-96
+                                  span  "1"
+                            td[title=17700]
+                              div
+                                button#dxc-98
+                                  span  "17700"
+                            td[title=72]
+                              div
+                                button#dxc-100
+                                  span  "72"
+                            td[title=184]
+                              div
+                                button#dxc-102
+                                  span  "184"
+                            td[title=0]
+                              div
+                                button#dxc-104
+                                  span  "0"
+                          tr
+                            td  "118"
+                            td[title=117]
+                              div
+                                button#dxc-106
+                                  span  "117"
+                            td[title=f]
+                              div
+                                button#dxc-108
+                                  span  "f"
+                            td[title=1932-01-14]
+                              div
+                                button#dxc-110
+                                  span  "1932-01-14"
+                            td[title=1]
+                              div
+                                button#dxc-112
+                                  span  "1"
+                            td[title=31500]
+                              div
+                                button#dxc-114
+                                  span  "31500"
+                            td[title=90]
+                              div
+                                button#dxc-116
+                                  span  "90"
+                            td[title=205]
+                              div
+                                button#dxc-118
+                                  span  "205"
+                            td[title=0]
+                              div
+                                button#dxc-120
+                                  span  "0"
+                          tr
+                            td  "192"
+                            td[title=191]
+                              div
+                                button#dxc-122
+                                  span  "191"
+                            td[title=f]
+                              div
+                                button#dxc-124
+                                  span  "f"
+                            td[title=1931-10-23]
+                              div
+                                button#dxc-126
+                                  span  "1931-10-23"
+                            td[title=1]
+                              div
+                                button#dxc-128
+                                  span  "1"
+                            td[title=16500]
+                              div
+                                button#dxc-130
+                                  span  "16500"
+                            td[title=84]
+                              div
+                                button#dxc-132
+                                  span  "84"
+                            td[title=288]
+                              div
+                                button#dxc-134
+                                  span  "288"
+                            td[title=0]
+                              div
+                                button#dxc-136
+                                  span  "0"
+                          tr
+                            td  "145"
+                            td[title=144]
+                              div
+                                button#dxc-138
+                                  span  "144"
+                            td[title=f]
+                              div
+                                button#dxc-140
+                                  span  "f"
+                            td[title=1931-08-28]
+                              div
+                                button#dxc-142
+                                  span  "1931-08-28"
+                            td[title=1]
+                              div
+                                button#dxc-144
+                                  span  "1"
+                            td[title=16650]
+                              div
+                                button#dxc-146
+                                  span  "16650"
+                            td[title=88]
+                              div
+                                button#dxc-148
+                                  span  "88"
+                            td[title=412]
+                              div
+                                button#dxc-150
+                                  span  "412"
+                            td[title=0]
+                              div
+                                button#dxc-152
+                                  span  "0"
+                          tr
+                            td  "412"
+                            td[title=411]
+                              div
+                                button#dxc-154
+                                  span  "411"
+                            td[title=f]
+                              div
+                                button#dxc-156
+                                  span  "f"
+                            td[title=1931-08-21]
+                              div
+                                button#dxc-158
+                                  span  "1931-08-21"
+                            td[title=1]
+                              div
+                                button#dxc-160
+                                  span  "1"
+                            td[title=16200]
+                              div
+                                button#dxc-162
+                                  span  "16200"
+                            td[title=68]
+                              div
+                                button#dxc-164
+                                  span  "68"
+                            td[title=180]
+                              div
+                                button#dxc-166
+                                  span  "180"
+                            td[title=0]
+                              div
+                                button#dxc-168
+                                  span  "0"
+                          tr
+                            td  "140"
+                            td[title=139]
+                              div
+                                button#dxc-170
+                                  span  "139"
+                            td[title=f]
+                              div
+                                button#dxc-172
+                                  span  "f"
+                            td[title=1931-06-18]
+                              div
+                                button#dxc-174
+                                  span  "1931-06-18"
+                            td[title=1]
+                              div
+                                button#dxc-176
+                                  span  "1"
+                            td[title=20100]
+                              div
+                                button#dxc-178
+                                  span  "20100"
+                            td[title=88]
+                              div
+                                button#dxc-180
+                                  span  "88"
+                            td[title=90]
+                              div
+                                button#dxc-182
+                                  span  "90"
+                            td[title=0]
+                              div
+                                button#dxc-184
+                                  span  "0"
+                          tr
+                            td  "55"
+                            td[title=54]
+                              div
+                                button#dxc-186
+                                  span  "54"
+                            td[title=m]
+                              div
+                                button#dxc-188
+                                  span  "m"
+                            td[title=1931-06-04]
+                              div
+                                button#dxc-190
+                                  span  "1931-06-04"
+                            td[title=1]
+                              div
+                                button#dxc-192
+                                  span  "1"
+                            td[title=25050]
+                              div
+                                button#dxc-194
+                                  span  "25050"
+                            td[title=94]
+                              div
+                                button#dxc-196
+                                  span  "94"
+                            td[title=444]
+                              div
+                                button#dxc-198
+                                  span  "444"
+                            td[title=0]
+                              div
+                                button#dxc-200
+                                  span  "0"
+                          tr
+                            td  "386"
+                            td[title=385]
+                              div
+                                button#dxc-202
+                                  span  "385"
+                            td[title=m]
+                              div
+                                button#dxc-204
+                                  span  "m"
+                            td[title=1930-10-01]
+                              div
+                                button#dxc-206
+                                  span  "1930-10-01"
+                            td[title=2]
+                              div
+                                button#dxc-208
+                                  span  "2"
+                            td[title=30000]
+                              div
+                                button#dxc-210
+                                  span  "30000"
+                            td[title=69]
+                              div
+                                button#dxc-212
+                                  span  "69"
+                            td[title=348]
+                              div
+                                button#dxc-214
+                                  span  "348"
+                            td[title=0]
+                              div
+                                button#dxc-216
+                                  span  "0"
+                          tr
+                            td  "379"
+                            td[title=378]
+                              div
+                                button#dxc-218
+                                  span  "378"
+                            td[title=f]
+                              div
+                                button#dxc-220
+                                  span  "f"
+                            td[title=1930-09-21]
+                              div
+                                button#dxc-222
+                                  span  "1930-09-21"
+                            td[title=1]
+                              div
+                                button#dxc-224
+                                  span  "1"
+                            td[title=15750]
+                              div
+                                button#dxc-226
+                                  span  "15750"
+                            td[title=70]
+                              div
+                                button#dxc-228
+                                  span  "70"
+                            td[title=275]
+                              div
+                                button#dxc-230
+                                  span  "275"
+                            td[title=0]
+                              div
+                                button#dxc-232
+                                  span  "0"
+                          tr
+                            td  "186"
+                            td[title=185]
+                              div
+                                button#dxc-234
+                                  span  "185"
+                            td[title=m]
+                              div
+                                button#dxc-236
+                                  span  "m"
+                            td[title=1930-08-28]
+                              div
+                                button#dxc-238
+                                  span  "1930-08-28"
+                            td[title=2]
+                              div
+                                button#dxc-240
+                                  span  "2"
+                            td[title=30750]
+                              div
+                                button#dxc-242
+                                  span  "30750"
+                            td[title=84]
+                              div
+                                button#dxc-244
+                                  span  "84"
+                            td[title=380]
+                              div
+                                button#dxc-246
+                                  span  "380"
+                            td[title=0]
+                              div
+                                button#dxc-248
+                                  span  "0"
+                          tr
+                            td  "454"
+                            td[title=453]
+                              div
+                                button#dxc-250
+                                  span  "453"
+                            td[title=m]
+                              div
+                                button#dxc-252
+                                  span  "m"
+                            td[title=1930-08-07]
+                              div
+                                button#dxc-254
+                                  span  "1930-08-07"
+                            td[title=1]
+                              div
+                                button#dxc-256
+                                  span  "1"
+                            td[title=24450]
+                              div
+                                button#dxc-258
+                                  span  "24450"
+                            td[title=65]
+                              div
+                                button#dxc-260
+                                  span  "65"
+                            td[title=338]
+                              div
+                                button#dxc-262
+                                  span  "338"
+                            td[title=0]
+                              div
+                                button#dxc-264
+                                  span  "0"
+                          tr
+                            td  "109"
+                            td[title=108]
+                              div
+                                button#dxc-266
+                                  span  "108"
+                            td[title=f]
+                              div
+                                button#dxc-268
+                                  span  "f"
+                            td[title=1930-07-16]
+                              div
+                                button#dxc-270
+                                  span  "1930-07-16"
+                            td[title=1]
+                              div
+                                button#dxc-272
+                                  span  "1"
+                            td[title=21000]
+                              div
+                                button#dxc-274
+                                  span  "21000"
+                            td[title=91]
+                              div
+                                button#dxc-276
+                                  span  "91"
+                            td[title=108]
+                              div
+                                button#dxc-278
+                                  span  "108"
+                            td[title=0]
+                              div
+                                button#dxc-280
+                                  span  "0"
+                          tr
+                            td  "286"
+                            td[title=285]
+                              div
+                                button#dxc-282
+                                  span  "285"
+                            td[title=m]
+                              div
+                                button#dxc-284
+                                  span  "m"
+                            td[title=1930-05-28]
+                              div
+                                button#dxc-286
+                                  span  "1930-05-28"
+                            td[title=2]
+                              div
+                                button#dxc-288
+                                  span  "2"
+                            td[title=30750]
+                              div
+                                button#dxc-290
+                                  span  "30750"
+                            td[title=78]
+                              div
+                                button#dxc-292
+                                  span  "78"
+                            td[title=429]
+                              div
+                                button#dxc-294
+                                  span  "429"
+                            td[title=0]
+                              div
+                                button#dxc-296
+                                  span  "0"
+                          tr
+                            td  "336"
+                            td[title=335]
+                              div
+                                button#dxc-298
+                                  span  "335"
+                            td[title=m]
+                              div
+                                button#dxc-300
+                                  span  "m"
+                            td[title=1930-02-26]
+                              div
+                                button#dxc-302
+                                  span  "1930-02-26"
+                            td[title=2]
+                              div
+                                button#dxc-304
+                                  span  "2"
+                            td[title=31950]
+                              div
+                                button#dxc-306
+                                  span  "31950"
+                            td[title=74]
+                              div
+                                button#dxc-308
+                                  span  "74"
+                            td[title=408]
+                              div
+                                button#dxc-310
+                                  span  "408"
+                            td[title=0]
+                              div
+                                button#dxc-312
+                                  span  "0"
+                          tr
+                            td  "172"
+                            td[title=171]
+                              div
+                                button#dxc-314
+                                  span  "171"
+                            td[title=m]
+                              div
+                                button#dxc-316
+                                  span  "m"
+                            td[title=1930-01-21]
+                              div
+                                button#dxc-318
+                                  span  "1930-01-21"
+                            td[title=1]
+                              div
+                                button#dxc-320
+                                  span  "1"
+                            td[title=26700]
+                              div
+                                button#dxc-322
+                                  span  "26700"
+                            td[title=86]
+                              div
+                                button#dxc-324
+                                  span  "86"
+                            td[title=367]
+                              div
+                                button#dxc-326
+                                  span  "367"
+                            td[title=1]
+                              div
+                                button#dxc-328
+                                  span  "1"
+                          tr
+                            td  "4"
+                            td[title=3]
+                              div
+                                button#dxc-330
+                                  span  "3"
+                            td[title=f]
+                              div
+                                button#dxc-332
+                                  span  "f"
+                            td[title=1929-07-26]
+                              div
+                                button#dxc-334
+                                  span  "1929-07-26"
+                            td[title=1]
+                              div
+                                button#dxc-336
+                                  span  "1"
+                            td[title=21450]
+                              div
+                                button#dxc-338
+                                  span  "21450"
+                            td[title=98]
+                              div
+                                button#dxc-340
+                                  span  "98"
+                            td[title=381]
+                              div
+                                button#dxc-342
+                                  span  "381"
+                            td[title=0]
+                              div
+                                button#dxc-344
+                                  span  "0"
+                          tr
+                            td  "153"
+                            td[title=152]
+                              div
+                                button#dxc-346
+                                  span  "152"
+                            td[title=m]
+                              div
+                                button#dxc-348
+                                  span  "m"
+                            td[title=1929-05-03]
+                              div
+                                button#dxc-350
+                                  span  "1929-05-03"
+                            td[title=2]
+                              div
+                                button#dxc-352
+                                  span  "2"
+                            td[title=30750]
+                              div
+                                button#dxc-354
+                                  span  "30750"
+                            td[title=87]
+                              div
+                                button#dxc-356
+                                  span  "87"
+                            td[title=451]
+                              div
+                                button#dxc-358
+                                  span  "451"
+                            td[title=0]
+                              div
+                                button#dxc-360
+                                  span  "0"
+                          tr
+                            td  "444"
+                            td[title=443]
+                              div
+                                button#dxc-362
+                                  span  "443"
+                            td[title=f]
+                              div
+                                button#dxc-364
+                                  span  "f"
+                            td[title=1929-02-10]
+                              div
+                                button#dxc-366
+                                  span  "1929-02-10"
+                            td[title=1]
+                              div
+                                button#dxc-368
+                                  span  "1"
+                            td[title=21600]
+                              div
+                                button#dxc-370
+                                  span  "21600"
+                            td[title=66]
+                              div
+                                button#dxc-372
+                                  span  "66"
+                            td[title=228]
+                              div
+                                button#dxc-374
+                                  span  "228"
+                            td[title=0]
+                              div
+                                button#dxc-376
+                                  span  "0"
+                          tr
+                            td  "435"
+                            td[title=434]
+                              div
+                                button#dxc-378
+                                  span  "434"
+                            td[title=m]
+                              div
+                                button#dxc-380
+                                  span  "m"
+                            td
+                            td[title=1]
+                              div
+                                button#dxc-382
+                                  span  "1"
+                            td[title=34950]
+                              div
+                                button#dxc-384
+                                  span  "34950"
+                            td[title=66]
+                              div
+                                button#dxc-386
+                                  span  "66"
+                            td[title=55]
+                              div
+                                button#dxc-388
+                                  span  "55"
+                            td[title=0]
+                              div
+                                button#dxc-390
+                                  span  "0"
+                    div
+                      div
+                        button  "Previous"
+                          svg
+                            path
+                        span  "page 10 of 10"
+                        button  "Next"
+                          svg
+                            path
+                      div  "rows 451–474 of 474"
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                div
+                  div
+                    input[type=text][placeholder=Filter Entities ...]
+                  div
+                    div
+                      div
+                        svg
+                          path
+                        div  "Money"
+                        div  "221"
+                        button  "View Details"
+                          svg
+                            path
+                      div
+                        div[title=USD 30750.00
+as written: $30,750]
+                          div  "USD 30750.00 (USD 10k–100k)"
+                          div  "13"
+                        div[title=USD 24450.00
+as written: $24,450]
+                          div  "USD 24450.00 (USD 10k–100k)"
+                          div  "8"
+                        div[title=USD 24000.00
+as written: $24,000]
+                          div  "USD 24000.00 (USD 10k–100k)"
+                          div  "8"
+                        div[title=USD 27750.00
+as written: $27,750]
+                          div  "USD 27750.00 (USD 10k–100k)"
+                          div  "7"
+                        div[title=USD 26700.00
+as written: $26,700]
+                          div  "USD 26700.00 (USD 10k–100k)"
+                          div  "7"
+                        div[title=USD 26250.00
+as written: $26,250]
+                          div  "USD 26250.00 (USD 10k–100k)"
+                          div  "7"
+                        div[title=USD 22500.00
+as written: $22,500]
+                          div  "USD 22500.00 (USD 10k–100k)"
+                          div  "7"
+                        div[title=USD 33900.00
+as written: $33,900]
+                          div  "USD 33900.00 (USD 10k–100k)"
+                          div  "6"
+                        div[title=USD 28500.00
+as written: $28,500]
+                          div  "USD 28500.00 (USD 10k–100k)"
+                          div  "6"
+                        div[title=USD 22350.00
+as written: $22,350]
+                          div  "USD 22350.00 (USD 10k–100k)"
+                          div  "6"
+                        div[title=USD 19650.00
+as written: $19,650]
+                          div  "USD 19650.00 (USD 10k–100k)"
+                          div  "6"
+                        div[title=USD 34500.00
+as written: $34,500]
+                          div  "USD 34500.00 (USD 10k–100k)"
+                          div  "5"
+                        div[title=USD 30000.00
+as written: $30,000]
+                          div  "USD 30000.00 (USD 10k–100k)"
+                          div  "5"
+                        div[title=USD 29400.00
+as written: $29,400]
+                          div  "USD 29400.00 (USD 10k–100k)"
+                          div  "5"
+                        div[title=USD 29100.00
+as written: $29,100]
+                          div  "USD 29100.00 (USD 10k–100k)"
+                          div  "5"
+                        div[title=USD 27450.00
+as written: $27,450]
+                          div  "USD 27450.00 (USD 10k–100k)"
+                          div  "5"
+                        div[title=USD 27300.00
+as written: $27,300]
+                          div  "USD 27300.00 (USD 10k–100k)"
+                          div  "5"
+                        div[title=USD 26550.00
+as written: $26,550]
+                          div  "USD 26550.00 (USD 10k–100k)"
+                          div  "5"
+                        div[title=USD 25200.00
+as written: $25,200]
+                          div  "USD 25200.00 (USD 10k–100k)"
+                          div  "5"
+                        div[title=USD 21900.00
+as written: $21,900]
+                          div  "USD 21900.00 (USD 10k–100k)"
+                          div  "5"
+                        div[title=USD 20850.00
+as written: $20,850]
+                          div  "USD 20850.00 (USD 10k–100k)"
+                          div  "5"
+                        div[title=USD 40200.00
+as written: $40,200]
+                          div  "USD 40200.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 36000.00
+as written: $36,000]
+                          div  "USD 36000.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 35250.00
+as written: $35,250]
+                          div  "USD 35250.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 31950.00
+as written: $31,950]
+                          div  "USD 31950.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 31650.00
+as written: $31,650]
+                          div  "USD 31650.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 30300.00
+as written: $30,300]
+                          div  "USD 30300.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 29850.00
+as written: $29,850]
+                          div  "USD 29850.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 27900.00
+as written: $27,900]
+                          div  "USD 27900.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 26400.00
+as written: $26,400]
+                          div  "USD 26400.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 25950.00
+as written: $25,950]
+                          div  "USD 25950.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 25500.00
+as written: $25,500]
+                          div  "USD 25500.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 25050.00
+as written: $25,050]
+                          div  "USD 25050.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 24750.00
+as written: $24,750]
+                          div  "USD 24750.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 24300.00
+as written: $24,300]
+                          div  "USD 24300.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 24150.00
+as written: $24,150]
+                          div  "USD 24150.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 23400.00
+as written: $23,400]
+                          div  "USD 23400.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 23100.00
+as written: $23,100]
+                          div  "USD 23100.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 22950.00
+as written: $22,950]
+                          div  "USD 22950.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 22050.00
+as written: $22,050]
+                          div  "USD 22050.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 21300.00
+as written: $21,300]
+                          div  "USD 21300.00 (USD 10k–100k)"
+                          div  "4"
+                        div[title=USD 65000.00
+as written: $65,000]
+                          div  "USD 65000.00 (USD 10k–100k)"
+                          div  "3"
+                        div[title=USD 55000.00
+as written: $55,000]
+                          div  "USD 55000.00 (USD 10k–100k)"
+                          div  "3"
+                        div[title=USD 37800.00
+as written: $37,800]
+                          div  "USD 37800.00 (USD 10k–100k)"
+                          div  "3"
+                        div[title=USD 35700.00
+as written: $35,700]
+                          div  "USD 35700.00 (USD 10k–100k)"
+                          div  "3"
+                        div[title=USD 33300.00
+as written: $33,300]
+                          div  "USD 33300.00 (USD 10k–100k)"
+                          div  "3"
+                        div[title=USD 32550.00
+as written: $32,550]
+                          div  "USD 32550.00 (USD 10k–100k)"
+                          div  "3"
+                        div[title=USD 31500.00
+as written: $31,500]
+                          div  "USD 31500.00 (USD 10k–100k)"
+                          div  "3"
+                        div[title=USD 31350.00
+as written: $31,350]
+                          div  "USD 31350.00 (USD 10k–100k)"
+                          div  "3"
+                        div[title=USD 31200.00
+as written: $31,200]
+                          div  "USD 31200.00 (USD 10k–100k)"
+                          div  "3"
+                      div
+                        button  "Previous"
+                        span  "Page 1 of 5"
+                        button  "Next"
+    div[role=region][label=0 notifications]
+      ol

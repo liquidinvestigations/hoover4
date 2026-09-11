@@ -1,0 +1,126 @@
+# 102-admin-settings (1080p)
+url:      https://hoover4.new.liquiddemo.org/admin/settings
+title:    Admin: settings
+actions:  sleep 2000
+api calls: 3 (admin_list_deployment_config x1, admin_list_settings x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7471[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7469[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7467[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7465[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Settings"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Server settings"
+              div
+                table
+                  thead
+                    tr
+                      th  "Key"
+                      th  "Value"
+                      th  "Description"
+                      th
+                  tbody
+                    tr
+                      td  "chat_artifact_ttl_days"
+                      td
+                        input[type=text][value=30]
+                      td  "How long a chat's captured pages and search details are kept, in days (default: 30). The nightly sweeper deletes the blob-store objects first, then the rows."
+                      td
+                        button  "Save"
+                    tr
+                      td  "embeddings_serving_dim"
+                      td
+                        input[type=text][value=384]
+                      td  "Written by `main.py probe-embeddings`, and it is what the endpoint ACTUALLY serves. Editing this by hand does not change the server."
+                      td
+                        button  "Save"
+                    tr
+                      td  "embeddings_serving_model"
+                      td
+                        input[type=text][value=intfloat/multilingual-e5-small]
+                      td  "Written by `main.py probe-embeddings`, and it is what the endpoint ACTUALLY serves. Editing this by hand does not change the server."
+                      td
+                        button  "Save"
+                    tr
+                      td  "session_expiration_seconds"
+                      td
+                        input[type=text][value=604800]
+                      td  "Web session lifetime in seconds (default: 604800 = 1 week)"
+                      td
+                        button  "Save"
+                h2  "Deployment configuration (read-only)"
+                table
+                  thead
+                    tr
+                      th  "Key"
+                      th  "Value"
+                      th  "Description"
+                  tbody
+                    tr
+                      td  "datasets_mount_path"
+                      td  "/testdata"
+                      td  "Root the dataset-creation form lists subfolders of. Set in hoover4.ini and mounted into both the worker and the website, so it can only be changed by a redeploy — shown here because it decides what th"
+    div[role=region][label=0 notifications]
+      ol

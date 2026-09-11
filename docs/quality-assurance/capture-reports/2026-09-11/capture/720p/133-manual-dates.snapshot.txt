@@ -1,0 +1,159 @@
+# 133-manual-dates (720p)
+url:      https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYW1yYW5nZV9maWx0ZXJzoWVkYXRlc6NjbWluGk0dHQBjbWF4Gk0eboBvaW5jbHVkZV91bmtub3du9GRzb3J0omNrZXlpUmVsZXZhbmNlZGRlc2P1/0/9g==/9g==
+title:    Hoover Search:
+actions:  (none)
+api calls: 41 (search_for_results_hit_count x16, search_for_results x12, whoami x4, list_storage_tree x3, search_date_histogram x3, search_string_facet x3)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-4899[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4897[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4895[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4893[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter (2)"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+              div#x-filter-chips
+                div[title=testdata_manualqa]
+                  span  "Collections"
+                  span  "testdata_manualqa"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                div[title=2010-12-31 – 2011-01-01]
+                  span  "Date"
+                  span  "2010-12-31 – 2011-01-01"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                button  "Clear all"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "1 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-4887[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 1"
+                      div
+                        div#dxc-4889[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-4885[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/1"
+                        div
+                        div
+                          div#dxc-4883[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=PDF]
+                                  svg
+                                    path
+                              div
+                                span  "cap33.pdf"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "160 33. CUADRIPOLI DIPORŢI 33.1. CUADRIPOLI GENERALI Prin multipol electric se înţelege o porţiune de circuit electric cu borne de acces, dar fără cuplaje magnetice cu exteriorul. De regulă multipolul"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1NWVkMjM1Yjc1ZWEzY2RiOTNmMWIyNDZjYzE2Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

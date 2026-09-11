@@ -1,0 +1,647 @@
+# 17-search-with-chips (1080p)
+url:      https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOhZWRhdGVzo2NtaW4aEs6mAGNtYXgaFnP-E29pbmNsdWRlX3Vua25vd270ZHNvcnSiY2tleWlSZWxldmFuY2VkZGVzY_U=/0/9g==/9g==
+title:    Hoover Search:
+actions:  sleep 1500; click_css #x-search-open-filters; wait_text All filters; click_text Date; wait_text Documents by date; click_text Between…; sleep 800; click_css div[title*="Click to"]; sleep 1200; click_text Show; sleep 2000
+api calls: 19 (search_for_results_hit_count x8, search_date_histogram x4, search_for_results x4, list_storage_tree x1, search_string_facet x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6485[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6483[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6481[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6479[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter (1)"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+              div#x-filter-chips
+                div[title=1980-01-01 – 1981-12-08]
+                  span  "Date"
+                  span  "1980-01-01 – 1981-12-08"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                button  "Clear all"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "376 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-6473[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 376"
+                      div
+                        div#dxc-6475[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-6471[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/19"
+                        div
+                        div
+                          div#dxc-6469[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "689."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_dasovich_j]  "enron_dasovich_j"
+                            div
+                              div
+                                span  "Message-ID: <25476052.1075842950567.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: jeff.dasovich@enron.com To: ginger.dernehl@enron.com Subject: Re: Washington, DC Dept. Mtg. "
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fZGFzb3ZpY2hfamlmaWxlX2hhc2h4QDUwMWQ5MmI3ZGY4NjIzZGQ3ZDA2YWFlNjc2ZWI3Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "596."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_dasovich_j]  "enron_dasovich_j"
+                            div
+                              div
+                                span  "Message-ID: <11972760.1075842947758.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: jeff.dasovich@enron.com To: susan.scott@enron.com Subject: Re: Pedersen inquiry Mime-Version"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fZGFzb3ZpY2hfamlmaWxlX2hhc2h4QDUyMjJiYTI2ZWY4MzZjNDlmYTE4NTM0MDQ4YzMxN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "3."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "11517."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_dasovich_j]  "enron_dasovich_j"
+                            div
+                              div
+                                span  "Critical Migration Information: 1. Your scheduled Outlook Migration Date is THE EVENING OF : 2. You need to press the "Save My Data" button (only once) to send us your pre-migration information. 3. Yo"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fZGFzb3ZpY2hfamlmaWxlX2hhc2h4QDhiZTdlZjMzNTkwYmZlZWYwZWVmYmZhNmJlMWZhM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "4."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "4220."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_dasovich_j]  "enron_dasovich_j"
+                            div
+                              div
+                                span  "Message-ID: <30631880.1075843060123.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: jeff.dasovich@enron.com To: paul.kaufman@enron.com Subject: Re: Options the Governor's Consi"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fZGFzb3ZpY2hfamlmaWxlX2hhc2h4QGFiNTllNDI3NjUzODAzMzJlOTAyYzllOGVhOTk3Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "5."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "688."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_dasovich_j]  "enron_dasovich_j"
+                            div
+                              div
+                                span  "Message-ID: <24525978.1075842950545.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: jeff.dasovich@enron.com To: gramlr@pjm.com Subject: RE: APPA Mime-Version: 1.0 Content-Type:"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fZGFzb3ZpY2hfamlmaWxlX2hhc2h4QGI1OGYxYzZmMjQ1NjdiODdhNDZiNzg2ZmY0ODY3N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "6."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "611."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_dasovich_j]  "enron_dasovich_j"
+                            div
+                              div
+                                span  "Message-ID: <16094844.1075842948326.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: jeff.dasovich@enron.com To: janel.guerrero@enron.com, kirk@cea.sfex.com Subject: Re: hey Mim"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fZGFzb3ZpY2hfamlmaWxlX2hhc2h4QGU4MDY0ZDgyY2UxNjc0YzE1OGViYzdiOTAxNDc0N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "7."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "4647."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Message-ID: <4451953.1075856296866.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: vince.kaminski@enron.com To: duffie@stanford.edu Subject: Re: Full version Cc: kaminski@enron"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDA0Y2MyMzlhN2JlZDk0NzEyNzZhZDg2NjVmZjllO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "8."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "2836."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "John, This is the paper that outlines history of the natural gas business in the US. Vince "John D. Martin" on 01/26/2001 05:56:07 PM To: vkamins@enron.com cc: Subject: Remaining work Vince, I shipped"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDBiMzEwM2E2Y2QzNWMxNjRmMGI5MzYxYjk0Y2JkZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "9."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "9749."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Spotlight Report Exchange products seeing slow trading GAVIN SOUTER 03/20/2000 Business Insurance Page 3 Copyright (C) 2000 Crain Communications, Inc. All rights reserved. Exchange-based insurance pro"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDE0ZmY0OWFhNGY4NjNkNjA4NDg0ZTNjMTgwZWQwY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "10."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "5353."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Remi, I spoke briefly with Edith Terry from our DC office. She is looking for a position with another unit of Enron. She may be a great addition to your team. I am attaching her resume in case you are"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDE4ZWYzYzUyYjZjNGRhNDQwMDc4YTgyODJhN2RhM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "11."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "2537."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Teresa, Thanks for the invitation. I shall attend. Vince Kaminski Enron"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDE5YzlhNzJlYWVlZGYzNDY3NWI5MThjNWJmYmJjO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "12."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "3581."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Message-ID: <27966475.1075856415440.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: vince.kaminski@enron.com To: vince.kaminski@enron.com Subject: TO DO Mime-Version: 1.0 Conte"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDI4MmEyMDcxOTY0NDc2Y2Q5OWY2ZDEwNjlkMGFlO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "13."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "2335."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Message-ID: <26858420.1075856238681.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: vince.kaminski@enron.com To: zimin.lu@enron.com Subject: Re: Happy New Year ! Mime-Version: "
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDJlMDgwY2ZlMDUwZTk3NDJkOTdiYWJkZTI4YzU5Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "14."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "5654."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Rick, It would be difficult to use option approach to directly to ships (no historical price series and no regular, continuos markets). The right approach is th real options model that requiresa lot o"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDQzOTY0N2RmMzM4MTFjZDI5ODkyYzVmODY0Y2RlZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "15."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "9182."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Message-ID: <23541957.1075856734644.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: vince.kaminski@enron.com To: rick.buy@enron.com Subject: Re: Exmar Purchase Decision Mime-Ve"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDRkNDY3OWQ3OTQwYTk0OTYwNWVhZDcyOWZmMjM3M]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "16."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "2221."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Teresa, Thanks for the invitation. I shall attend. Vince Kaminski Enron"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDU4YmRhNzE3NzM4YzY2MDIwZWY4NWYyNmVhOTRmM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "17."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "10275."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Message-ID: <32671714.1075856765992.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: vince.kaminski@enron.com To: michael_schilmoeller@pgn.com Subject: Re: RAROC Mime-Version: 1"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDZjMTU4Nzc4YjQ2MTFhOWIzMWRiYzkyZGRhNDQyZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "18."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "3775."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Message-ID: <12643370.1075856420187.JavaMail.evans@thyme> Date: Mon, 31 Dec 1979 16:00:00 -0800 (PST) From: vince.kaminski@enron.com To: john.lavorato@enron.com Subject: VaR issues Cc: david.port@enro"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDc0ODg1OGQ0NmI3MjBlMjRhYjkxZmFkZTViYjMxN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "19."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "740."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "Darrell, Thanks a lot. I really appreciate your quick response. I shall be in Palo Alto between October 10 and October 20. Let's meet for dinner. I shall send you the exact date of my trip in a few da"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDc2NjJhODU0ZDdmZDEzNWY5ZjY5OWYwYjliYzM4N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "20."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "629."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_kaminski_v]  "enron_kaminski_v"
+                            div
+                              div
+                                span  "John, I talked to David Port on Tuesday regarding some VaR issues. One"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwZW5yb25fa2FtaW5za2lfdmlmaWxlX2hhc2h4QDc5ZWYxMzFkYmYwMzM5YmE3ZGFmYjEyMTY0YTQxY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

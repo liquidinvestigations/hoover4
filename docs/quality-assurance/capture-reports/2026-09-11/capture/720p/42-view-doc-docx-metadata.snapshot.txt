@@ -1,0 +1,507 @@
+# 42-view-doc-docx-metadata (720p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAMzZhMTJjNzdlNGZkODRlOGQzODU0Mjk5MGY5YmQ2NTdjNmFmYjk3NjhjYWU2NzAzZmM3OGIzN2NmNjRlODhiZQ==/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=
+title:    Hoover Search - View Document
+actions:  sleep 3000
+api calls: 13 (search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_dates x1, get_document_email x1, get_document_sources x1, get_document_table_overview x1, get_document_text_by_id_and_source x1, get_file_path x1, get_raw_metadata_tables x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6759[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6757[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6755[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6753[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      div
+                        div#dxc-13[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / -"
+                      div
+                        div#dxc-11[role=button]
+                          button
+                            svg
+                              path
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Office XML"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_testfiles"
+                    div  "/"
+                    div
+                      span[title=Document]
+                        svg
+                          path
+                    div  "easychair.docx"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    div
+                      div
+                        pre
+                          span
+                            span  "The Guide for Writing Word Documents in Microsoft Word for Publication in the EPiC Series Andrei Voronkov1,2 and Kryštof Hoder1 1 EasyChair 2 University of Manchester, Manchester, U.K. andrei@voronkov"
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                ul
+                  li
+                    h1  "Dates"
+                      svg
+                        path
+                    div  "No confirmed dates. Nothing in this document's metadata gave a date we trust, so it will not match any date range except ."
+                      b  "Unknown only"
+                  li
+                    h1  "blobs"
+                      span  "blob_hash"
+                    table
+                      tbody
+                        tr
+                          td  "blob_size_bytes"
+                          td  "215696"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "md5"
+                          td  "9cb51143524ba001c674f96a5bd7dd4d"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "s3_path"
+                          td
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "sha1"
+                          td  "6ff2a72af0abcc83f0bd4c34e7481fd1f511f911"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "sha256"
+                          td  "89770b063145eb645823c0b703bd38c9290a01ecadc9e57b8acb5e061c336556"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "stored_in_clickhouse"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "file_types"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "extracted_by"
+                          td  "content_sniff"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extracted_by"
+                          td  "extension"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extensions[0]"
+                          td  ".cbz"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "extensions[1]"
+                          td  ".docx"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "extensions[2]"
+                          td  ".zip"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "extracted_by"
+                          td  "file"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[0]"
+                          td  "archive"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[1]"
+                          td  "doc"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[2]"
+                          td  "other"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_encoding[0]"
+                          td  "binary"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[0]"
+                          td  "application/octet-stream"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[1]"
+                          td  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[2]"
+                          td  "application/zip"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extensions[0]"
+                          td  ".docm"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "extensions[1]"
+                          td  ".docx"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "extracted_by"
+                          td  "magika"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[0]"
+                          td  "doc"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[0]"
+                          td  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "file_type_canonical"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "decided_by"
+                          td  "parse_succeeded+empty_archive_demoted"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type"
+                          td  "doc"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "losers[0]"
+                          td  "application/zip"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "losers[1]"
+                          td  "application/octet-stream"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type"
+                          td  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-04 13:15:05"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "vfs_files"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "container_hash"
+                          td
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_size_bytes"
+                          td  "215696"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "is_deleted"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime"
+                          td  "2025-10-22 10:12:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime_source"
+                          td  "filesystem"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "path"
+                          td  "/easychair.docx"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-04 13:13:59"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "user_id"
+                          td  "system"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "processing_errors"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "attempt"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "error_logs"
+                          td  "[level 0] ActivityError message=Activity task failed retry_state=4 activity_type=run_tika_and_store activity_id=2 identity=28@9aa06ef31774 schedu…"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "run_time_ms"
+                          td  "15746"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "task_name"
+                          td  "detector_error_tika"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "timestamp"
+                          td  "2026-09-04 13:14:15"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "workflow_run_id"
+                          td  "75cadfd9-cbdb-4bfa-ba42-3bf7e1cfa2e3"
+                          td
+                            button
+                              svg
+                                path
+                                path
+    div[role=region][label=0 notifications]
+      ol

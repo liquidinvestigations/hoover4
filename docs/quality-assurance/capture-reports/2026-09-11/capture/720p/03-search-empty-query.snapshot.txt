@@ -1,0 +1,645 @@
+# 03-search-empty-query (720p)
+url:      https://hoover4.new.liquiddemo.org/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==
+title:    Hoover Search:
+actions:  sleep 1500
+api calls: 5 (search_for_results x2, search_for_results_hit_count x2, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5675[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5673[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5671[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5669[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "403211 documents found"
+                    div
+                      div
+                        div#dxc-5667[role=button]
+                          div
+                            svg
+                              path
+                    div
+                    div
+                      div
+                        div#dxc-5663[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 1000"
+                      div
+                        div#dxc-5665[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-5661[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/51"
+                        div
+                        div
+                          div#dxc-5659[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "4.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "71f1e7ab111b402281ea55d400fc33bf33363432343735", "Contacts": [ { "n": null, "c": null, "st": null, "st2": null, "cy": null, "_s": null, "z": null, "_cty": null, "ph":"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDEzNzEwZTY2NmVmOWVlODU0NDk1NTIxY2MwZjBmY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "event.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountID": 1530474, "EventID": 2805707, "FullDateString": "Monday, November 4, 2019", "Name": "Lecture with Alex Ryvchin", "IsActive": true, "LongDateString": "Monday, November 4, 2019", "HasDate""
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDIxM2QyMzVlOTkyY2UzZTYzZGNhNzgwNTdmNDNhN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "3."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "25.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "58c828033e63401eb7e001263783be1032303437303639", "Contacts": [ { "n": null, "c": null, "st": "1605 Bruce Drive", "st2": null, "cy": "Saints Simons Island", "_s": "Geo"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDIxODBkMDZmNjgwMmNjOGVkMjVkNTdkZThmMzU5Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "4."
+                              div
+                                span[title=Spreadsheet (browsable)]
+                                  svg
+                                    path
+                              div
+                                span  "contacts_export.csv"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "contacts_export.csv"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDU5OGRjZTVmNjY4NzYyMTU5YmJkM2ExMTljNDcwZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "5."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "7.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "8b8c8497df7446d9b65d03990daafea634323639313137", "Contacts": [ { "n": null, "c": "Consulate General of the Republic of India", "st": "5549 Glenridge Drive NE", "st2":"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDZjNzg1ZGY1NTkwNDAzZDUyNTI1Y2Y3NmQzMzJiO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "6."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "20.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "20.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMDhmMjQyYmU2MTNjZjQwZGFhZTFlMTA3NTUwZDAxZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "7."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "9.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "9.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMGIwYmNjZDRiYzg4ZWQwYjVjNmE4NTcwN2NmMTU3N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "8."
+                              div
+                                span[title=Spreadsheet (browsable)]
+                                  svg
+                                    path
+                              div
+                                span  "inbox.csv"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "inbox.csv"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMGJjM2NiYzYzZjc1M2U3YmMzZjY3YTAxZjNjYTIyY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "9."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "16.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "16.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMGQ4NWFjYzllNTljZjJjOGJkMDg3OGZkYTA0Nzk3Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "10."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "2.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "2.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMGRlNTVkNmMzZTk3YTE4MjE4MzJhNmRjNDI5ZjEyY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "11."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "2.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "314b847c53644a64a1017c561c1e363933363432343735", "Contacts": [ { "n": null, "c": "Georgia General Assembly", "st": null, "st2": null, "cy": null, "_s": null, "z": nul"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTA3YjViNTAwNTBhN2NkNzg4YTViNzZlZDZlMTIyY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "12."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "10.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "10.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTI1ZjVmOTE5MDk1Yjk2NWUxMmQ4MWE4MGJkMGViN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "13."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "30.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "30.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTJkZDMxMzc3NzBiN2ZmMWFmOWQ4OTdkMDYyODM2Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "14."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "2.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "72e2ecd8568e4db1acad18e05a6d148633313636313037", "Contacts": [ { "n": null, "c": "STEM Atlanta Women", "st": null, "st2": null, "cy": "Atlanta", "_s": "GA", "z": null"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTJmZjYxOTMzNzVhZGZhOTFiOTdiMGZmNzhhZjExY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "15."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "6.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "6.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTM4MWUxMjBhMmI2MzQ2N2QzZGNkYzhlN2ZmY2U5Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "16."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "16.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "16.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTU3NmY0YTY2MjNhZThkZTE3NzU5ZDE5YTI3YzMzN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "17."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "8.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "8.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMTVmNTM4ZGQ0NTM1Zjc3OWNiODkyNzIwZGFjMjZkY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "18."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "1.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "e25d06e8fb404fdc96eac6efc3b077a834323639313137", "Contacts": [ { "n": null, "c": "Emory University", "st": null, "st2": null, "cy": null, "_s": null, "z": null, "_cty"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMWE3M2JjOGUxZDZjOWNhMTkzN2VhNDI5ZjZlNGM5Z]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "19."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "27.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "27.json"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMWI1NmU2NjhhYjI0ODc5NTFlOGQ0ZGM5MmU5MWI5N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "20."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "23.json"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=consulate_files]  "consulate_files"
+                            div
+                              div
+                                span  "{ "AccountType": "B", "CardIDX": "9a68cf8e6c3c4d6cb94b6a94846cf0cd32303437303639", "Contacts": [ { "n": null, "c": "Creative Solutions & Innovations", "st": null, "st2": null, "cy": null, "_s": null, "
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvY29uc3VsYXRlX2ZpbGVzaWZpbGVfaGFzaHhAMWU5YWViNzhiNmUxOTM2YzBiMzVmOTA4YjAwMjJlM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

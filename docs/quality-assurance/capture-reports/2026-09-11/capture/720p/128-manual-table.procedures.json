@@ -1,0 +1,1536 @@
+[
+  {
+    "procedure": "baseline",
+    "expected": "The source table renders in preview and full view and applies numeric order and a text filter.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdzbWFudWFsLXFhLXRhYmxlLmNzdm1mYWNldF9maWx0ZXJzoXJjb2xsZWN0aW9uX2RhdGFzZXSBoWZTdHJpbmdxdGVzdGRhdGFfbWFudWFscWE=/0/9g==/9g==",
+        "before_api": "1 (whoami x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "1 documents found"
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/\"]",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nmanual-qa-table.csv\ntestdata_manualqa\nMatched by filename. No matching text inside this document.\nmanual-qa-table.csv"
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, get_table_overview x1, get_table_page x1)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search in document\"] :: ",
+        "before_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, get_table_overview x1, get_table_page x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, get_table_overview x1, get_table_page x1)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, get_table_overview x1, get_table_page x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "15 (search_document_item_hit_counts x3, get_table_page x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, get_table_overview x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: A-01",
+        "before_api": "15 (search_document_item_hit_counts x3, get_table_page x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, get_table_overview x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "15 (search_document_item_hit_counts x3, get_table_page x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, get_table_overview x1)"
+      },
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "15 (search_document_item_hit_counts x3, get_table_page x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, get_table_overview x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "23 (search_document_item_hit_counts x5, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, get_table_overview x2, get_table_page x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_text",
+        "input": "A-01",
+        "before_api": "23 (search_document_item_hit_counts x5, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, get_table_overview x2, get_table_page x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_document_item_hit_counts x5, get_canonical_file_type x3, get_file_path x3, get_table_page x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(4) span[title^=\"Sort.\"]",
+        "before_api": "26 (search_document_item_hit_counts x5, get_canonical_file_type x3, get_file_path x3, get_table_page x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_document_item_hit_counts x5, get_canonical_file_type x3, get_file_path x3, get_table_page x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(4) span[title^=\"Sort.\"]",
+        "before_api": "26 (search_document_item_hit_counts x5, get_canonical_file_type x3, get_file_path x3, get_table_page x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 819.5078125,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "SPAN",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "26 (search_document_item_hit_counts x5, get_canonical_file_type x3, get_file_path x3, get_table_page x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));return {ok: values.join(',')==='A-01|Bucharest|10,A-02|Cluj|20,A-03|Iași|30'};",
+        "before_api": "26 (search_document_item_hit_counts x5, get_canonical_file_type x3, get_file_path x3, get_table_page x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "28 (search_document_item_hit_counts x6, get_table_page x4, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));if(values.join(',')!=='A-01|Bucharest|10,A-02|Cluj|20,A-03|Iași|30')throw new Error('numeric ascending sort differs from fixture');return {values};",
+        "before_api": "28 (search_document_item_hit_counts x6, get_table_page x4, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "values": [
+            "A-01|Bucharest|10",
+            "A-02|Cluj|20",
+            "A-03|Iași|30"
+          ]
+        },
+        "after_api": "28 (search_document_item_hit_counts x6, get_table_page x4, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(4) span[title^=\"Sort.\"]",
+        "before_api": "28 (search_document_item_hit_counts x6, get_table_page x4, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "28 (search_document_item_hit_counts x6, get_table_page x4, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(4) span[title^=\"Sort.\"]",
+        "before_api": "28 (search_document_item_hit_counts x6, get_table_page x4, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 819.5078125,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "SPAN",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "28 (search_document_item_hit_counts x6, get_table_page x4, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));return {ok: values.join(',')==='A-03|Iași|30,A-02|Cluj|20,A-01|Bucharest|10'};",
+        "before_api": "28 (search_document_item_hit_counts x6, get_table_page x4, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "30 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));if(values.join(',')!=='A-03|Iași|30,A-02|Cluj|20,A-01|Bucharest|10')throw new Error('numeric descending sort differs from fixture');return {values};",
+        "before_api": "30 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "values": [
+            "A-03|Iași|30",
+            "A-02|Cluj|20",
+            "A-01|Bucharest|10"
+          ]
+        },
+        "after_api": "30 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(3) button[aria-label=\"Filter Region\"]",
+        "before_api": "30 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "30 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(3) button[aria-label=\"Filter Region\"]",
+        "before_api": "30 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 516.2265625,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Filter Region"
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "31 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1, get_table_column_values x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "[role=\"dialog\"][aria-modal=\"true\"]",
+        "before_api": "31 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1, get_table_column_values x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "31 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1, get_table_column_values x1)"
+      },
+      {
+        "action": "type_css",
+        "input": "[role=\"dialog\"] input[placeholder=\"Contains…\"]::Cluj",
+        "before_api": "31 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1, get_table_column_values x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "31 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1, get_table_column_values x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "button[aria-label=\"Apply contains filter\"]",
+        "before_api": "31 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1, get_table_column_values x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "32 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "button[aria-label=\"Apply contains filter\"]",
+        "before_api": "32 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 540.2890625,
+          "y": 369.953125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Apply contains filter"
+          },
+          "hit_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Apply contains filter"
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "32 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));return {ok: values.length===1 && values[0]==='A-02|Cluj|20'};",
+        "before_api": "32 (search_document_item_hit_counts x7, get_table_page x5, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "34 (search_document_item_hit_counts x8, get_table_page x6, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));if(values.length!==1||values[0]!=='A-02|Cluj|20')throw new Error('text filter differs from fixture');return {values};",
+        "before_api": "34 (search_document_item_hit_counts x8, get_table_page x6, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "values": [
+            "A-02|Cluj|20"
+          ]
+        },
+        "after_api": "34 (search_document_item_hit_counts x8, get_table_page x6, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "source": "manual-qa-table.csv",
+      "remaining_row": [
+        "A-02",
+        "Cluj",
+        "20"
+      ]
+    },
+    "evidence": "128-manual-table.01"
+  },
+  {
+    "procedure": "sort-and-filter",
+    "expected": "The filtered row matches the generated source bytes.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdzbWFudWFsLXFhLXRhYmxlLmNzdm1mYWNldF9maWx0ZXJzoXJjb2xsZWN0aW9uX2RhdGFzZXSBoWZTdHJpbmdxdGVzdGRhdGFfbWFudWFscWE=/0/9g==/9g==",
+        "before_api": "34 (search_document_item_hit_counts x8, get_table_page x6, get_canonical_file_type x3, get_file_path x3, whoami x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "39 (search_document_item_hit_counts x8, get_table_page x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_file_path x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "39 (search_document_item_hit_counts x8, get_table_page x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_file_path x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "1 documents found"
+        },
+        "after_api": "39 (search_document_item_hit_counts x8, get_table_page x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_file_path x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/\"]",
+        "before_api": "39 (search_document_item_hit_counts x8, get_table_page x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_file_path x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "39 (search_document_item_hit_counts x8, get_table_page x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_file_path x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, get_document_entities x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "39 (search_document_item_hit_counts x8, get_table_page x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_file_path x3, get_document_sources x2, get_table_column_values x2, get_table_overview x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nmanual-qa-table.csv\ntestdata_manualqa\nMatched by filename. No matching text inside this document.\nmanual-qa-table.csv"
+        },
+        "after_api": "41 (search_document_item_hit_counts x9, get_table_page x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3, get_table_column_values x2, get_table_overview x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "41 (search_document_item_hit_counts x9, get_table_page x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3, get_table_column_values x2, get_table_overview x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "46 (search_document_item_hit_counts x10, get_table_page x7, get_canonical_file_type x4, get_file_path x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_document_sources x3, get_table_overview x3, get_table_column_values x2, get_document_entities x1)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search in document\"] :: ",
+        "before_api": "46 (search_document_item_hit_counts x10, get_table_page x7, get_canonical_file_type x4, get_file_path x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_document_sources x3, get_table_overview x3, get_table_column_values x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "46 (search_document_item_hit_counts x10, get_table_page x7, get_canonical_file_type x4, get_file_path x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_document_sources x3, get_table_overview x3, get_table_column_values x2, get_document_entities x1)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "46 (search_document_item_hit_counts x10, get_table_page x7, get_canonical_file_type x4, get_file_path x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_document_sources x3, get_table_overview x3, get_table_column_values x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "48 (search_document_item_hit_counts x11, get_table_page x8, get_canonical_file_type x4, get_file_path x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_document_sources x3, get_table_overview x3, get_table_column_values x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: A-01",
+        "before_api": "48 (search_document_item_hit_counts x11, get_table_page x8, get_canonical_file_type x4, get_file_path x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_document_sources x3, get_table_overview x3, get_table_column_values x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "48 (search_document_item_hit_counts x11, get_table_page x8, get_canonical_file_type x4, get_file_path x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_document_sources x3, get_table_overview x3, get_table_column_values x2, get_document_entities x1)"
+      },
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "48 (search_document_item_hit_counts x11, get_table_page x8, get_canonical_file_type x4, get_file_path x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_document_sources x3, get_table_overview x3, get_table_column_values x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "56 (search_document_item_hit_counts x13, get_table_page x8, get_canonical_file_type x5, get_file_path x5, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "wait_text",
+        "input": "A-01",
+        "before_api": "56 (search_document_item_hit_counts x13, get_table_page x8, get_canonical_file_type x5, get_file_path x5, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "59 (search_document_item_hit_counts x13, get_table_page x9, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(4) span[title^=\"Sort.\"]",
+        "before_api": "59 (search_document_item_hit_counts x13, get_table_page x9, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "59 (search_document_item_hit_counts x13, get_table_page x9, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(4) span[title^=\"Sort.\"]",
+        "before_api": "59 (search_document_item_hit_counts x13, get_table_page x9, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 819.5078125,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "SPAN",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "59 (search_document_item_hit_counts x13, get_table_page x9, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));return {ok: values.join(',')==='A-01|Bucharest|10,A-02|Cluj|20,A-03|Iași|30'};",
+        "before_api": "59 (search_document_item_hit_counts x13, get_table_page x9, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "61 (search_document_item_hit_counts x14, get_table_page x10, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));if(values.join(',')!=='A-01|Bucharest|10,A-02|Cluj|20,A-03|Iași|30')throw new Error('numeric ascending sort differs from fixture');return {values};",
+        "before_api": "61 (search_document_item_hit_counts x14, get_table_page x10, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": {
+          "values": [
+            "A-01|Bucharest|10",
+            "A-02|Cluj|20",
+            "A-03|Iași|30"
+          ]
+        },
+        "after_api": "61 (search_document_item_hit_counts x14, get_table_page x10, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(4) span[title^=\"Sort.\"]",
+        "before_api": "61 (search_document_item_hit_counts x14, get_table_page x10, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "61 (search_document_item_hit_counts x14, get_table_page x10, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(4) span[title^=\"Sort.\"]",
+        "before_api": "61 (search_document_item_hit_counts x14, get_table_page x10, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 819.5078125,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "SPAN",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "61 (search_document_item_hit_counts x14, get_table_page x10, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));return {ok: values.join(',')==='A-03|Iași|30,A-02|Cluj|20,A-01|Bucharest|10'};",
+        "before_api": "61 (search_document_item_hit_counts x14, get_table_page x10, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "63 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));if(values.join(',')!=='A-03|Iași|30,A-02|Cluj|20,A-01|Bucharest|10')throw new Error('numeric descending sort differs from fixture');return {values};",
+        "before_api": "63 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": {
+          "values": [
+            "A-03|Iași|30",
+            "A-02|Cluj|20",
+            "A-01|Bucharest|10"
+          ]
+        },
+        "after_api": "63 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(3) button[aria-label=\"Filter Region\"]",
+        "before_api": "63 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "63 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(3) button[aria-label=\"Filter Region\"]",
+        "before_api": "63 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 516.2265625,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Filter Region"
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "63 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "[role=\"dialog\"][aria-modal=\"true\"]",
+        "before_api": "63 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2, get_table_column_values x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "64 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_table_column_values x3, get_document_entities x2)"
+      },
+      {
+        "action": "type_css",
+        "input": "[role=\"dialog\"] input[placeholder=\"Contains…\"]::Cluj",
+        "before_api": "64 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_table_column_values x3, get_document_entities x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "65 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_column_values x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "button[aria-label=\"Apply contains filter\"]",
+        "before_api": "65 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_column_values x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "65 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_column_values x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "button[aria-label=\"Apply contains filter\"]",
+        "before_api": "65 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_column_values x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 540.2890625,
+          "y": 369.953125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Apply contains filter"
+          },
+          "hit_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Apply contains filter"
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "65 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_column_values x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));return {ok: values.length===1 && values[0]==='A-02|Cluj|20'};",
+        "before_api": "65 (search_document_item_hit_counts x15, get_table_page x11, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_column_values x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "67 (search_document_item_hit_counts x16, get_table_page x12, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_column_values x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const values=Array.from(document.querySelectorAll('tbody tr')).map(row=>Array.from(row.children).slice(1).map(cell=>cell.innerText.trim()).join('|'));if(values.length!==1||values[0]!=='A-02|Cluj|20')throw new Error('text filter differs from fixture');return {values};",
+        "before_api": "67 (search_document_item_hit_counts x16, get_table_page x12, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_column_values x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)",
+        "status": "passed",
+        "observed": {
+          "values": [
+            "A-02|Cluj|20"
+          ]
+        },
+        "after_api": "67 (search_document_item_hit_counts x16, get_table_page x12, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_column_values x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "source": "manual-qa-table.csv",
+      "remaining_row": [
+        "A-02",
+        "Cluj",
+        "20"
+      ]
+    },
+    "evidence": "128-manual-table.02"
+  },
+  {
+    "procedure": "columns-and-reload",
+    "expected": "Hide all displays an empty state. Showing one column survives route reload.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR59g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "67 (search_document_item_hit_counts x16, get_table_page x12, get_canonical_file_type x6, get_file_path x6, whoami x5, get_document_sources x4, get_table_column_values x4, get_table_overview x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "75 (search_document_item_hit_counts x18, get_table_page x12, get_canonical_file_type x7, get_file_path x7, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "75 (search_document_item_hit_counts x18, get_table_page x12, get_canonical_file_type x7, get_file_path x7, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "75 (search_document_item_hit_counts x18, get_table_page x12, get_canonical_file_type x7, get_file_path x7, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: A-01",
+        "before_api": "75 (search_document_item_hit_counts x18, get_table_page x12, get_canonical_file_type x7, get_file_path x7, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "78 (search_document_item_hit_counts x18, get_table_page x13, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "button[aria-label=\"Choose visible columns\"]",
+        "before_api": "78 (search_document_item_hit_counts x18, get_table_page x13, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 157.6640625,
+          "y": 44.640625,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Choose visible columns"
+          },
+          "hit_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Choose visible columns"
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "78 (search_document_item_hit_counts x18, get_table_page x13, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "button[aria-label=\"Hide all columns\"]",
+        "before_api": "78 (search_document_item_hit_counts x18, get_table_page x13, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 580.15625,
+          "y": 359.984375,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Hide all columns"
+          },
+          "hit_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Hide all columns"
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "78 (search_document_item_hit_counts x18, get_table_page x13, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: Every column of this sheet is hidden.",
+        "before_api": "78 (search_document_item_hit_counts x18, get_table_page x13, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "79 (search_document_item_hit_counts x19, get_table_page x13, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "[role=\"dialog\"] input[type=\"checkbox\"]",
+        "before_api": "79 (search_document_item_hit_counts x19, get_table_page x13, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 518.7578125,
+          "y": 379.6328125,
+          "selector_target": {
+            "tag": "INPUT",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_target": {
+            "tag": "INPUT",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "79 (search_document_item_hit_counts x19, get_table_page x13, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "press_key",
+        "input": "Escape",
+        "before_api": "79 (search_document_item_hit_counts x19, get_table_page x13, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "81 (search_document_item_hit_counts x20, get_table_page x14, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelectorAll('thead th').length===2;",
+        "before_api": "81 (search_document_item_hit_counts x20, get_table_page x14, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "81 (search_document_item_hit_counts x20, get_table_page x14, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "eval",
+        "input": "return location.pathname;",
+        "before_api": "81 (search_document_item_hit_counts x20, get_table_page x14, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZaVoc2hlZXRfaWT2bmhpZGRlbl9jb2x1bW5zggIDZHNvcnT2Z2ZpbHRlcnOAZHBhZ2UAb3NlbGVjdGVkX2VudGl0efY=/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "after_api": "81 (search_document_item_hit_counts x20, get_table_page x14, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZaVoc2hlZXRfaWT2bmhpZGRlbl9jb2x1bW5zggIDZHNvcnT2Z2ZpbHRlcnOAZHBhZ2UAb3NlbGVjdGVkX2VudGl0efY=/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "81 (search_document_item_hit_counts x20, get_table_page x14, get_canonical_file_type x8, get_file_path x8, whoami x6, get_document_sources x5, get_table_overview x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "89 (search_document_item_hit_counts x22, get_table_page x14, get_canonical_file_type x9, get_file_path x9, whoami x7, get_document_sources x6, get_table_overview x6, get_document_entities x4, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return {ok:document.querySelectorAll('thead th').length===2,headers:[...document.querySelectorAll('thead th')].map(x=>x.innerText)};",
+        "before_api": "89 (search_document_item_hit_counts x22, get_table_page x14, get_canonical_file_type x9, get_file_path x9, whoami x7, get_document_sources x6, get_table_overview x6, get_document_entities x4, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "headers": [
+            "#",
+            "A\nCase"
+          ]
+        },
+        "after_api": "92 (search_document_item_hit_counts x22, get_table_page x15, get_canonical_file_type x10, get_file_path x10, whoami x7, get_document_sources x6, get_table_overview x6, get_document_entities x4, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "ok": true,
+      "headers": [
+        "#",
+        "A\nCase"
+      ]
+    },
+    "evidence": "128-manual-table.03"
+  },
+  {
+    "procedure": "no-matches",
+    "expected": "An absent value produces zero rows and clearing filters restores three rows.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZThhNjc2ZTgyNjcwMGQ3ZjQzZjI5ZTk2NDY1NDJjNWI4MDg3/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR59g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "92 (search_document_item_hit_counts x22, get_table_page x15, get_canonical_file_type x10, get_file_path x10, whoami x7, get_document_sources x6, get_table_overview x6, get_document_entities x4, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "100 (search_document_item_hit_counts x24, get_table_page x15, get_canonical_file_type x11, get_file_path x11, whoami x8, get_document_sources x7, get_table_overview x7, get_document_entities x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "100 (search_document_item_hit_counts x24, get_table_page x15, get_canonical_file_type x11, get_file_path x11, whoami x8, get_document_sources x7, get_table_overview x7, get_document_entities x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "100 (search_document_item_hit_counts x24, get_table_page x15, get_canonical_file_type x11, get_file_path x11, whoami x8, get_document_sources x7, get_table_overview x7, get_document_entities x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: A-01",
+        "before_api": "100 (search_document_item_hit_counts x24, get_table_page x15, get_canonical_file_type x11, get_file_path x11, whoami x8, get_document_sources x7, get_table_overview x7, get_document_entities x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "103 (search_document_item_hit_counts x24, get_table_page x16, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_document_entities x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "button[aria-label=\"Filter Region\"]",
+        "before_api": "103 (search_document_item_hit_counts x24, get_table_page x16, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_document_entities x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 516.2265625,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Filter Region"
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "103 (search_document_item_hit_counts x24, get_table_page x16, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_document_entities x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "type_css",
+        "input": "[role=\"dialog\"] input[placeholder=\"Contains…\"] :: qa-absent-7ce8421",
+        "before_api": "103 (search_document_item_hit_counts x24, get_table_page x16, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_document_entities x5, get_table_column_values x4, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "105 (search_document_item_hit_counts x24, get_table_page x16, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "button[aria-label=\"Apply contains filter\"]",
+        "before_api": "105 (search_document_item_hit_counts x24, get_table_page x16, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 540.2890625,
+          "y": 369.953125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Apply contains filter"
+          },
+          "hit_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Apply contains filter"
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "105 (search_document_item_hit_counts x24, get_table_page x16, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: rows 0–0 of 0",
+        "before_api": "105 (search_document_item_hit_counts x24, get_table_page x16, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "107 (search_document_item_hit_counts x25, get_table_page x17, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "click_css",
+        "input": "button[title=\"Remove every column filter\"]",
+        "before_api": "107 (search_document_item_hit_counts x25, get_table_page x17, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "107 (search_document_item_hit_counts x25, get_table_page x17, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: A-01",
+        "before_api": "107 (search_document_item_hit_counts x25, get_table_page x17, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "109 (search_document_item_hit_counts x26, get_table_page x18, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return {ok:document.querySelectorAll('tbody tr').length===3};",
+        "before_api": "109 (search_document_item_hit_counts x26, get_table_page x18, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "109 (search_document_item_hit_counts x26, get_table_page x18, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "ok": true
+    },
+    "evidence": "128-manual-table.04"
+  },
+  {
+    "procedure": "keyboard",
+    "expected": "Keyboard focus stays inside the modal and Escape returns focus to its trigger.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "109 (search_document_item_hit_counts x26, get_table_page x18, get_canonical_file_type x12, get_file_path x12, whoami x8, get_document_sources x7, get_table_overview x7, get_table_column_values x6, get_document_entities x5, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "117 (search_document_item_hit_counts x28, get_table_page x18, get_canonical_file_type x13, get_file_path x13, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_text",
+        "input": "Order ID",
+        "before_api": "117 (search_document_item_hit_counts x28, get_table_page x18, get_canonical_file_type x13, get_file_path x13, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "button[aria-label=\"Choose visible columns\"]",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "button[aria-label=\"Choose visible columns\"]",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 175.84375,
+          "y": 44.640625,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Choose visible columns"
+          },
+          "hit_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Choose visible columns"
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "[role=\"dialog\"][aria-modal=\"true\"]",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const dialog=document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]');dialog.querySelector('button[aria-label=\"Close\"]').focus();return {first:true};",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "first": true
+        },
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "press_key",
+        "input": "Shift+Tab",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const dialog=document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]');if(document.activeElement!==dialog)throw new Error('backward focus did not wrap to table modal');return {backward_wrap:true};",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "backward_wrap": true
+        },
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const dialog=document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]');const focusable=Array.from(dialog.querySelectorAll('input,button')).filter(e=>!e.disabled);focusable.at(-1).focus();return {last:focusable.at(-1).tagName};",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "last": "INPUT"
+        },
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "press_key",
+        "input": "Tab",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const dialog=document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]');if(document.activeElement!==dialog)throw new Error('forward focus did not wrap to table modal');return {forward_wrap:true};",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "forward_wrap": true
+        },
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "press_key",
+        "input": "Escape",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return {ok: !document.querySelector('[role=\"dialog\"]') && document.activeElement.getAttribute('aria-label')==='Choose visible columns'};",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "if(document.querySelector('[role=\"dialog\"]')||document.activeElement.getAttribute('aria-label')!=='Choose visible columns')throw new Error('picker did not return focus');return {picker_focus:true};",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "picker_focus": true
+        },
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(4) button[aria-label^=\"Filter \"]",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(4) button[aria-label^=\"Filter \"]",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 507.8515625,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Filter Order Date"
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "[role=\"dialog\"][aria-modal=\"true\"]",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "press_key",
+        "input": "Escape",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return {ok: !document.querySelector('[role=\"dialog\"]') && document.activeElement===document.querySelector('thead th:nth-child(4) button[aria-label^=\"Filter \"]')};",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "if(document.querySelector('[role=\"dialog\"]')||document.activeElement!==document.querySelector('thead th:nth-child(4) button[aria-label^=\"Filter \"]'))throw new Error('column filter did not return focus');return {filter_focus:true};",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "filter_focus": true
+        },
+        "after_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "focus_return": true,
+      "escape": true
+    },
+    "evidence": "128-manual-table.05"
+  },
+  {
+    "procedure": "single-modal-and-palette",
+    "expected": "Pointer hit testing prevents background activation and the modal retains the fixed palette.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "120 (search_document_item_hit_counts x28, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x9, get_document_sources x8, get_table_overview x8, get_document_entities x6, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "124 (search_document_item_hit_counts x29, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x10, get_document_sources x9, get_table_overview x8, get_document_entities x7, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "sleep",
+        "input": "4000",
+        "before_api": "124 (search_document_item_hit_counts x29, get_table_page x19, get_canonical_file_type x14, get_file_path x14, whoami x10, get_document_sources x9, get_table_overview x8, get_document_entities x7, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "131 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_text",
+        "input": "Order ID",
+        "before_api": "131 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "131 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(3) button[aria-label^=\"Filter \"]",
+        "before_api": "131 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "131 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(3) button[aria-label^=\"Filter \"]",
+        "before_api": "131 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 414.6796875,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Filter Order ID"
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "131 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "[role=\"dialog\"][aria-modal=\"true\"]",
+        "before_api": "131 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x6, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "132 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const dialog=document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]');const box=dialog.getBoundingClientRect();const cx=(box.left+box.right)/2;const cy=(box.top+box.bottom)/2;if(box.left<0||box.top<0||box.right>innerWidth||box.bottom>innerHeight||Math.abs(cx-innerWidth/2)>3||Math.abs(cy-innerHeight/2)>3)throw new Error('table modal geometry');return {label:dialog.getAttribute('aria-label'),box:[box.left,box.top,box.right,box.bottom]};",
+        "before_api": "132 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "label": "Filter Order ID",
+          "box": [
+            503.59375,
+            289.109375,
+            776.390625,
+            430.890625
+          ]
+        },
+        "after_api": "132 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "132 (search_document_item_hit_counts x30, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x10, get_document_sources x9, get_table_overview x9, get_document_entities x7, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "136 (search_document_item_hit_counts x31, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x11, get_document_sources x10, get_table_overview x9, get_document_entities x8, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "sleep",
+        "input": "4000",
+        "before_api": "136 (search_document_item_hit_counts x31, get_table_page x20, get_canonical_file_type x16, get_file_path x16, whoami x11, get_document_sources x10, get_table_overview x9, get_document_entities x8, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "143 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_text",
+        "input": "Order ID",
+        "before_api": "143 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "143 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(3) button[aria-label^=\"Filter \"]",
+        "before_api": "143 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "143 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(3) button[aria-label^=\"Filter \"]",
+        "before_api": "143 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 414.6796875,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Filter Order ID"
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "143 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "[role=\"dialog\"][aria-modal=\"true\"]",
+        "before_api": "143 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x7, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const dialog=document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]');const box=dialog.parentElement.getBoundingClientRect();if(box.width!==innerWidth||box.height!==innerHeight)throw new Error('table modal backdrop coverage');window.__qa_first_dialog=dialog.getAttribute('aria-label');return {backdrop:true};",
+        "before_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "backdrop": true
+        },
+        "after_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(4) button[aria-label^=\"Filter \"]",
+        "before_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(4) button[aria-label^=\"Filter \"]",
+        "before_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 507.8515625,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Filter Order Date"
+          },
+          "hit_target": {
+            "tag": "DIV",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": false
+        },
+        "after_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return {ok: !document.querySelector('[role=\"dialog\"]')};",
+        "before_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "if(window.__h4_pointer_click.hit_matches_selector||document.querySelector('[role=\"dialog\"]'))throw new Error('covered trigger opened a filter');return {closed:true,hit:window.__h4_pointer_click.hit_target};",
+        "before_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "closed": true,
+          "hit": {
+            "tag": "DIV",
+            "role": null,
+            "aria_label": null
+          }
+        },
+        "after_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "thead th:nth-child(4) button[aria-label^=\"Filter \"]",
+        "before_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "thead th:nth-child(4) button[aria-label^=\"Filter \"]",
+        "before_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 507.8515625,
+          "y": 47.3828125,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Filter Order Date"
+          },
+          "hit_target": {
+            "tag": "path",
+            "role": null,
+            "aria_label": null
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "[role=\"dialog\"][aria-modal=\"true\"]",
+        "before_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const dialog=document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]');if(document.querySelectorAll('[role=\"dialog\"][aria-modal=\"true\"]').length!==1||dialog.getAttribute('aria-label')===window.__qa_first_dialog)throw new Error('uncovered trigger did not open one different filter');return {label:dialog.getAttribute('aria-label')};",
+        "before_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "label": "Filter Order Date"
+        },
+        "after_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "144 (search_document_item_hit_counts x32, get_table_page x21, get_canonical_file_type x18, get_file_path x18, whoami x11, get_document_sources x10, get_table_overview x10, get_document_entities x8, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "152 (search_document_item_hit_counts x34, get_table_page x21, get_canonical_file_type x19, get_file_path x19, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_text",
+        "input": "Order ID",
+        "before_api": "152 (search_document_item_hit_counts x34, get_table_page x21, get_canonical_file_type x19, get_file_path x19, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "155 (search_document_item_hit_counts x34, get_table_page x22, get_canonical_file_type x20, get_file_path x20, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "button[aria-label=\"Choose visible columns\"]",
+        "before_api": "155 (search_document_item_hit_counts x34, get_table_page x22, get_canonical_file_type x20, get_file_path x20, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "155 (search_document_item_hit_counts x34, get_table_page x22, get_canonical_file_type x20, get_file_path x20, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "button[aria-label=\"Choose visible columns\"]",
+        "before_api": "155 (search_document_item_hit_counts x34, get_table_page x22, get_canonical_file_type x20, get_file_path x20, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 175.84375,
+          "y": 44.640625,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Choose visible columns"
+          },
+          "hit_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Choose visible columns"
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "155 (search_document_item_hit_counts x34, get_table_page x22, get_canonical_file_type x20, get_file_path x20, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "[role=\"dialog\"][aria-modal=\"true\"]",
+        "before_api": "155 (search_document_item_hit_counts x34, get_table_page x22, get_canonical_file_type x20, get_file_path x20, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "155 (search_document_item_hit_counts x34, get_table_page x22, get_canonical_file_type x20, get_file_path x20, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "const root=getComputedStyle(document.documentElement);const dialog=getComputedStyle(document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]'));if(root.getPropertyValue('--primary-color').trim()!=='#fff'||dialog.backgroundColor!=='rgb(255, 255, 255)')throw new Error('table modal light palette');return {primary:root.getPropertyValue('--primary-color').trim(),dialog:dialog.backgroundColor};",
+        "before_api": "155 (search_document_item_hit_counts x34, get_table_page x22, get_canonical_file_type x20, get_file_path x20, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "primary": "#fff",
+          "dialog": "rgb(255, 255, 255)"
+        },
+        "after_api": "155 (search_document_item_hit_counts x34, get_table_page x22, get_canonical_file_type x20, get_file_path x20, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGY5NzUxZThjMjkwNzk5YmU5ZmQ0M2Y1NTQ5OTdhYzJlYWUyZDEwMThlYjc0MTUzODg2ZWZlNjM1NWNmY2EwZmU=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "155 (search_document_item_hit_counts x34, get_table_page x22, get_canonical_file_type x20, get_file_path x20, whoami x12, get_document_sources x11, get_table_overview x11, get_document_entities x9, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "163 (search_document_item_hit_counts x36, get_table_page x22, get_canonical_file_type x21, get_file_path x21, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_text",
+        "input": "Order ID",
+        "before_api": "163 (search_document_item_hit_counts x36, get_table_page x22, get_canonical_file_type x21, get_file_path x21, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "166 (search_document_item_hit_counts x36, get_table_page x23, get_canonical_file_type x22, get_file_path x22, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "button[aria-label=\"Choose visible columns\"]",
+        "before_api": "166 (search_document_item_hit_counts x36, get_table_page x23, get_canonical_file_type x22, get_file_path x22, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "166 (search_document_item_hit_counts x36, get_table_page x23, get_canonical_file_type x22, get_file_path x22, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "pointer_click_css",
+        "input": "button[aria-label=\"Choose visible columns\"]",
+        "before_api": "166 (search_document_item_hit_counts x36, get_table_page x23, get_canonical_file_type x22, get_file_path x22, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "x": 175.84375,
+          "y": 44.640625,
+          "selector_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Choose visible columns"
+          },
+          "hit_target": {
+            "tag": "BUTTON",
+            "role": null,
+            "aria_label": "Choose visible columns"
+          },
+          "hit_matches_selector": true
+        },
+        "after_api": "166 (search_document_item_hit_counts x36, get_table_page x23, get_canonical_file_type x22, get_file_path x22, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "wait_css",
+        "input": "[role=\"dialog\"][aria-modal=\"true\"]",
+        "before_api": "166 (search_document_item_hit_counts x36, get_table_page x23, get_canonical_file_type x22, get_file_path x22, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "166 (search_document_item_hit_counts x36, get_table_page x23, get_canonical_file_type x22, get_file_path x22, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      },
+      {
+        "action": "eval",
+        "input": "if(!matchMedia('(prefers-color-scheme: dark)').matches)throw new Error('dark media preference was not applied');const root=getComputedStyle(document.documentElement);const dialog=getComputedStyle(document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]'));if(root.getPropertyValue('--primary-color').trim()!=='#fff'||dialog.backgroundColor!=='rgb(255, 255, 255)')throw new Error('table modal dark palette');return {primary:root.getPropertyValue('--primary-color').trim(),dialog:dialog.backgroundColor};",
+        "before_api": "166 (search_document_item_hit_counts x36, get_table_page x23, get_canonical_file_type x22, get_file_path x22, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)",
+        "status": "passed",
+        "observed": {
+          "primary": "#fff",
+          "dialog": "rgb(255, 255, 255)"
+        },
+        "after_api": "166 (search_document_item_hit_counts x36, get_table_page x23, get_canonical_file_type x22, get_file_path x22, whoami x13, get_document_sources x12, get_table_overview x12, get_document_entities x10, get_table_column_values x8, search_for_results x4, search_for_results_hit_count x4)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "geometry": true,
+      "backdrop_hit_test": true,
+      "single_modal": true,
+      "palette": "light"
+    },
+    "evidence": "128-manual-table.06"
+  }
+]

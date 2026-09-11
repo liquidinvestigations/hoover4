@@ -1,0 +1,731 @@
+[
+  {
+    "procedure": "baseline",
+    "expected": "The exact Manchester entity selects only documents carrying that source entity.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "3 (search_string_facet x2, whoami x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "8 (search_for_results x2, search_for_results_hit_count x2, search_string_facet x2, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "8 (search_for_results x2, search_for_results_hit_count x2, search_string_facet x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "23 documents found"
+        },
+        "after_api": "8 (search_for_results x2, search_for_results_hit_count x2, search_string_facet x2, whoami x2)"
+      },
+      {
+        "action": "click_css",
+        "input": "#x-search-open-filters",
+        "before_api": "8 (search_for_results x2, search_for_results_hit_count x2, search_string_facet x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "9 (search_for_results_hit_count x3, search_for_results x2, search_string_facet x2, whoami x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: All filters",
+        "before_api": "9 (search_for_results_hit_count x3, search_for_results x2, search_string_facet x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "11 (search_for_results_hit_count x3, search_string_facet x3, search_for_results x2, whoami x2, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Entities",
+        "before_api": "11 (search_for_results_hit_count x3, search_string_facet x3, search_for_results x2, whoami x2, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "11 (search_for_results_hit_count x3, search_string_facet x3, search_for_results x2, whoami x2, list_storage_tree x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Entities",
+        "before_api": "11 (search_for_results_hit_count x3, search_string_facet x3, search_for_results x2, whoami x2, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "11 (search_for_results_hit_count x3, search_string_facet x3, search_for_results x2, whoami x2, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Location",
+        "before_api": "11 (search_for_results_hit_count x3, search_string_facet x3, search_for_results x2, whoami x2, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "12 (search_string_facet x4, search_for_results_hit_count x3, search_for_results x2, whoami x2, list_storage_tree x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Location",
+        "before_api": "12 (search_string_facet x4, search_for_results_hit_count x3, search_for_results x2, whoami x2, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_string_facet x5, search_for_results_hit_count x3, search_for_results x2, whoami x2, list_storage_tree x1)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search location…\"] :: Manchester",
+        "before_api": "13 (search_string_facet x5, search_for_results_hit_count x3, search_for_results x2, whoami x2, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_string_facet x5, search_for_results_hit_count x3, search_for_results x2, whoami x2, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Manchester",
+        "before_api": "13 (search_string_facet x5, search_for_results_hit_count x3, search_for_results x2, whoami x2, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "14 (search_string_facet x5, search_for_results_hit_count x4, search_for_results x2, whoami x2, list_storage_tree x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Manchester",
+        "before_api": "14 (search_string_facet x5, search_for_results_hit_count x4, search_for_results x2, whoami x2, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "14 (search_string_facet x5, search_for_results_hit_count x4, search_for_results x2, whoami x2, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Show",
+        "before_api": "14 (search_string_facet x5, search_for_results_hit_count x4, search_for_results x2, whoami x2, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "15 (search_string_facet x5, search_for_results_hit_count x4, search_for_results x2, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Show",
+        "before_api": "15 (search_string_facet x5, search_for_results_hit_count x4, search_for_results x2, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "15 (search_string_facet x5, search_for_results_hit_count x4, search_for_results x2, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return !document.querySelector('#x-filter-modal');",
+        "before_api": "15 (search_string_facet x5, search_for_results_hit_count x4, search_for_results x2, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "2 documents found"
+        },
+        "after_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const t=document.querySelector('#x-search-panel-left-title-row h1')?.textContent||'';const n=Number(t.replaceAll(',','').match(/\\d+/)?.[0]||0);return {ok:/documents? found|No documents/.test(t)&&n===2,actual:n,expected:2,text:t};",
+        "before_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "actual": 2,
+          "expected": 2,
+          "text": "2 documents found"
+        },
+        "after_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const expected=[\"onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1\", \"onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl\"];const actual=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href').split('/')[2]);return {ok:actual.length===Math.min(20,expected.length)&&actual.every(x=>expected.includes(x)),actual};",
+        "before_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "actual": [
+            "onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl",
+            "onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1"
+          ]
+        },
+        "after_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/\"]",
+        "before_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": {
+          "selected": "2.\neasychair.odt\ntestdata_manualqa\n=== THIS IS A SAMPLE ODT FILE === Andrei Voronkov1,21 Masterminded EasyChair and created the first stable version of this document and Kryštof Hoder12 Created the first draft of this document 1 EasyChair 2 University of Manchester, Manchester, U.K. andrei@voronkov.com, hoderk@cs.man.ac.uk Abstract In order to ease the lives of authors, editors, and trees, we present a manual and an example of the ..."
+        },
+        "after_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "19 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, whoami x2, fetch_db_terms_for_ints x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, search_document_item_hit_counts x2, whoami x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search in document\"] :: Manchester",
+        "before_api": "26 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, search_document_item_hit_counts x2, whoami x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, search_document_item_hit_counts x2, whoami x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "26 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, search_document_item_hit_counts x2, whoami x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "29 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, whoami x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return [...document.querySelectorAll('div')].some(x=>x.children.length===0&&/^1 \\/ [1-9]/.test(x.textContent));",
+        "before_api": "29 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, whoami x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "29 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, whoami x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "expected_count": 2,
+      "expected_identities": [
+        "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be",
+        "531768b6ac7bf22ebc39194e3d4639910316b60795d48217575d196a80a1dbc5"
+      ],
+      "visible_identities": [
+        "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be",
+        "531768b6ac7bf22ebc39194e3d4639910316b60795d48217575d196a80a1dbc5"
+      ]
+    },
+    "evidence": "135-manual-entity-filter.01"
+  },
+  {
+    "procedure": "exact-entity",
+    "expected": "The ODT document find locates the selected entity.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "29 (search_for_results_hit_count x6, search_string_facet x5, search_for_results x4, search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, whoami x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "34 (search_for_results_hit_count x8, search_for_results x6, search_string_facet x5, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "34 (search_for_results_hit_count x8, search_for_results x6, search_string_facet x5, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "23 documents found"
+        },
+        "after_api": "34 (search_for_results_hit_count x8, search_for_results x6, search_string_facet x5, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1)"
+      },
+      {
+        "action": "click_css",
+        "input": "#x-search-open-filters",
+        "before_api": "34 (search_for_results_hit_count x8, search_for_results x6, search_string_facet x5, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "35 (search_for_results_hit_count x9, search_for_results x6, search_string_facet x5, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: All filters",
+        "before_api": "35 (search_for_results_hit_count x9, search_for_results x6, search_string_facet x5, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, list_storage_tree x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "38 (search_for_results_hit_count x10, search_for_results x6, search_string_facet x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Entities",
+        "before_api": "38 (search_for_results_hit_count x10, search_for_results x6, search_string_facet x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "38 (search_for_results_hit_count x10, search_for_results x6, search_string_facet x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Entities",
+        "before_api": "38 (search_for_results_hit_count x10, search_for_results x6, search_string_facet x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "39 (search_for_results_hit_count x10, search_string_facet x7, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Location",
+        "before_api": "39 (search_for_results_hit_count x10, search_string_facet x7, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "39 (search_for_results_hit_count x10, search_string_facet x7, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Location",
+        "before_api": "39 (search_for_results_hit_count x10, search_string_facet x7, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "40 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search location…\"] :: Manchester",
+        "before_api": "40 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "40 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Manchester",
+        "before_api": "40 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "40 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Manchester",
+        "before_api": "40 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "40 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Show",
+        "before_api": "40 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, fetch_db_terms_for_ints x1, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "41 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Show",
+        "before_api": "41 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "41 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return !document.querySelector('#x-filter-modal');",
+        "before_api": "41 (search_for_results_hit_count x10, search_string_facet x8, search_for_results x6, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "2 documents found"
+        },
+        "after_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const t=document.querySelector('#x-search-panel-left-title-row h1')?.textContent||'';const n=Number(t.replaceAll(',','').match(/\\d+/)?.[0]||0);return {ok:/documents? found|No documents/.test(t)&&n===2,actual:n,expected:2,text:t};",
+        "before_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "actual": 2,
+          "expected": 2,
+          "text": "2 documents found"
+        },
+        "after_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const expected=[\"onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1\", \"onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl\"];const actual=[...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href').split('/')[2]);return {ok:actual.length===Math.min(20,expected.length)&&actual.every(x=>expected.includes(x)),actual};",
+        "before_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "actual": [
+            "onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl",
+            "onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1"
+          ]
+        },
+        "after_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('#x-search-results-left-panel a[target=\"_blank\"][href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));",
+        "before_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": [
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+          "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        ],
+        "after_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/\"]",
+        "before_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2Mzk5MTAzMTZiNjA3OTVkNDgyMTc1NzVkMTk2YTgwYTFkYmM1/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": {
+          "selected": "2.\neasychair.odt\ntestdata_manualqa\n=== THIS IS A SAMPLE ODT FILE === Andrei Voronkov1,21 Masterminded EasyChair and created the first stable version of this document and Kryštof Hoder12 Created the first draft of this document 1 EasyChair 2 University of Manchester, Manchester, U.K. andrei@voronkov.com, hoderk@cs.man.ac.uk Abstract In order to ease the lives of authors, editors, and trees, we present a manual and an example of the ..."
+        },
+        "after_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "45 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x3, whoami x3, fetch_db_terms_for_ints x2, list_storage_tree x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "52 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x5, search_document_text_for_hit_count x3, search_document_text_for_hits x3, whoami x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search in document\"] :: Manchester",
+        "before_api": "52 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x5, search_document_text_for_hit_count x3, search_document_text_for_hits x3, whoami x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "52 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x5, search_document_text_for_hit_count x3, search_document_text_for_hits x3, whoami x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "52 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x5, search_document_text_for_hit_count x3, search_document_text_for_hits x3, whoami x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "55 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return [...document.querySelectorAll('div')].some(x=>x.children.length===0&&/^1 \\/ [1-9]/.test(x.textContent));",
+        "before_api": "55 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "55 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "expected_count": 2,
+      "expected_identities": [
+        "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be",
+        "531768b6ac7bf22ebc39194e3d4639910316b60795d48217575d196a80a1dbc5"
+      ],
+      "visible_identities": [
+        "36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be",
+        "531768b6ac7bf22ebc39194e3d4639910316b60795d48217575d196a80a1dbc5"
+      ]
+    },
+    "evidence": "135-manual-entity-filter.02"
+  },
+  {
+    "procedure": "entity-no-match",
+    "expected": "An absent location creates no hidden selection.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "55 (search_for_results_hit_count x12, search_for_results x8, search_string_facet x8, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "60 (search_for_results_hit_count x14, search_for_results x10, search_string_facet x8, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "60 (search_for_results_hit_count x14, search_for_results x10, search_string_facet x8, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "23 documents found"
+        },
+        "after_api": "60 (search_for_results_hit_count x14, search_for_results x10, search_string_facet x8, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)"
+      },
+      {
+        "action": "click_css",
+        "input": "#x-search-open-filters",
+        "before_api": "60 (search_for_results_hit_count x14, search_for_results x10, search_string_facet x8, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "60 (search_for_results_hit_count x14, search_for_results x10, search_string_facet x8, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: All filters",
+        "before_api": "60 (search_for_results_hit_count x14, search_for_results x10, search_string_facet x8, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_storage_tree x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "63 (search_for_results_hit_count x15, search_for_results x10, search_string_facet x9, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Entities",
+        "before_api": "63 (search_for_results_hit_count x15, search_for_results x10, search_string_facet x9, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "63 (search_for_results_hit_count x15, search_for_results x10, search_string_facet x9, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Entities",
+        "before_api": "63 (search_for_results_hit_count x15, search_for_results x10, search_string_facet x9, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "64 (search_for_results_hit_count x15, search_for_results x10, search_string_facet x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Location",
+        "before_api": "64 (search_for_results_hit_count x15, search_for_results x10, search_string_facet x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "64 (search_for_results_hit_count x15, search_for_results x10, search_string_facet x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Location",
+        "before_api": "64 (search_for_results_hit_count x15, search_for_results x10, search_string_facet x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "65 (search_for_results_hit_count x15, search_string_facet x11, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search location…\"] :: qa-absent-7ce8421",
+        "before_api": "65 (search_for_results_hit_count x15, search_string_facet x11, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "65 (search_for_results_hit_count x15, search_string_facet x11, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: No",
+        "before_api": "65 (search_for_results_hit_count x15, search_string_facet x11, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "68 (search_for_results_hit_count x16, search_string_facet x12, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Cancel",
+        "before_api": "68 (search_for_results_hit_count x16, search_string_facet x12, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "68 (search_for_results_hit_count x16, search_string_facet x12, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Cancel",
+        "before_api": "68 (search_for_results_hit_count x16, search_string_facet x12, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "68 (search_for_results_hit_count x16, search_string_facet x12, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "click_css",
+        "input": "#x-search-open-filters",
+        "before_api": "68 (search_for_results_hit_count x16, search_string_facet x12, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "69 (search_for_results_hit_count x17, search_string_facet x12, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: All filters",
+        "before_api": "69 (search_for_results_hit_count x17, search_string_facet x12, search_for_results x10, search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, list_storage_tree x3, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "71 (search_for_results_hit_count x17, search_string_facet x13, search_for_results x10, search_document_item_hit_counts x6, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Entities",
+        "before_api": "71 (search_for_results_hit_count x17, search_string_facet x13, search_for_results x10, search_document_item_hit_counts x6, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "71 (search_for_results_hit_count x17, search_string_facet x13, search_for_results x10, search_document_item_hit_counts x6, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Entities",
+        "before_api": "71 (search_for_results_hit_count x17, search_string_facet x13, search_for_results x10, search_document_item_hit_counts x6, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "72 (search_for_results_hit_count x17, search_string_facet x14, search_for_results x10, search_document_item_hit_counts x6, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return {ok:!document.querySelector('#x-filter-chips')?.innerText.includes('Entities')};",
+        "before_api": "72 (search_for_results_hit_count x17, search_string_facet x14, search_for_results x10, search_document_item_hit_counts x6, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true
+        },
+        "after_api": "72 (search_for_results_hit_count x17, search_string_facet x14, search_for_results x10, search_document_item_hit_counts x6, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "ok": true
+    },
+    "evidence": "135-manual-entity-filter.03"
+  },
+  {
+    "procedure": "popover-appearance",
+    "expected": "Entity controls render under both color preferences.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "72 (search_for_results_hit_count x17, search_string_facet x14, search_for_results x10, search_document_item_hit_counts x6, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, whoami x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "79 (search_for_results_hit_count x19, search_string_facet x16, search_for_results x12, search_document_item_hit_counts x6, whoami x5, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "79 (search_for_results_hit_count x19, search_string_facet x16, search_for_results x12, search_document_item_hit_counts x6, whoami x5, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "23 documents found"
+        },
+        "after_api": "79 (search_for_results_hit_count x19, search_string_facet x16, search_for_results x12, search_document_item_hit_counts x6, whoami x5, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "click_css",
+        "input": "#x-search-open-filters",
+        "before_api": "79 (search_for_results_hit_count x19, search_string_facet x16, search_for_results x12, search_document_item_hit_counts x6, whoami x5, list_storage_tree x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "82 (search_for_results_hit_count x20, search_string_facet x17, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: All filters",
+        "before_api": "82 (search_for_results_hit_count x20, search_string_facet x17, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "82 (search_for_results_hit_count x20, search_string_facet x17, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "#x-filter-modal :: Entities",
+        "before_api": "82 (search_for_results_hit_count x20, search_string_facet x17, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "82 (search_for_results_hit_count x20, search_string_facet x17, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "#x-filter-modal :: Entities",
+        "before_api": "82 (search_for_results_hit_count x20, search_string_facet x17, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "82 (search_for_results_hit_count x20, search_string_facet x17, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector(\"#x-filter-modal\");if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return {ok:r.width>0&&r.height>0&&s.color!==s.backgroundColor,scheme:\"light\",color:s.color,background:s.backgroundColor,width:r.width,height:r.height};",
+        "before_api": "83 (search_for_results_hit_count x20, search_string_facet x18, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "scheme": "light",
+          "color": "rgba(0, 0, 0, 0.75)",
+          "background": "rgb(255, 255, 255)",
+          "width": 855.59375,
+          "height": 613.796875
+        },
+        "after_api": "83 (search_for_results_hit_count x20, search_string_facet x18, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector(\"#x-filter-modal\");if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return {ok:r.width>0&&r.height>0&&s.color!==s.backgroundColor,scheme:\"dark\",color:s.color,background:s.backgroundColor,width:r.width,height:r.height};",
+        "before_api": "83 (search_for_results_hit_count x20, search_string_facet x18, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "scheme": "dark",
+          "color": "rgba(0, 0, 0, 0.75)",
+          "background": "rgb(255, 255, 255)",
+          "width": 855.59375,
+          "height": 613.796875
+        },
+        "after_api": "83 (search_for_results_hit_count x20, search_string_facet x18, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": [
+      {
+        "ok": true,
+        "scheme": "light",
+        "color": "rgba(0, 0, 0, 0.75)",
+        "background": "rgb(255, 255, 255)",
+        "width": 855.59375,
+        "height": 613.796875
+      },
+      {
+        "ok": true,
+        "scheme": "dark",
+        "color": "rgba(0, 0, 0, 0.75)",
+        "background": "rgb(255, 255, 255)",
+        "width": 855.59375,
+        "height": 613.796875
+      }
+    ],
+    "evidence": "135-manual-entity-filter.04"
+  }
+]

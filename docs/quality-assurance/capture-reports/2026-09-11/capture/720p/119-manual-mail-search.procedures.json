@@ -1,0 +1,234 @@
+[
+  {
+    "procedure": "baseline",
+    "expected": "The declared substitute contains the address and 21 Enron occurrences.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdmaG9vdmVybWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "1 (whoami x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "2 documents found"
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/\"]",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nmail-search-substitute.txt\ntestdata_manualqa\njeff.hoover@enron.com enron separator1 enron separator2 enron separator3 enron separator4 enron separator5 enron separator6 enron separator7 enron separator8 enron separator9 enron separator10 enron separator11 enron separator12 enron separator13 enron separator14 enron separator15 enron separator16 enron separator17 enron separator18 enron separator19 enron separator20"
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "12 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: jeff.hoover@enron.com",
+        "before_api": "12 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search in document\"] :: enron",
+        "before_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "16 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: 1 / 21",
+        "before_api": "16 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "16 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const q=document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\");return {ok:q?.value===\"enron\",query:q?.value};",
+        "before_api": "16 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "query": "enron"
+        },
+        "after_api": "16 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "substitute": true,
+      "hits": 21,
+      "draft_ordinal": 66
+    },
+    "evidence": "119-manual-mail-search.01"
+  },
+  {
+    "procedure": "stable-identity",
+    "expected": "Selection uses the pinned hash independently of result position.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdmaG9vdmVybWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==",
+        "before_api": "16 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "21 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "21 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "2 documents found"
+        },
+        "after_api": "21 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/\"]",
+        "before_api": "21 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "21 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "21 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nmail-search-substitute.txt\ntestdata_manualqa\njeff.hoover@enron.com enron separator1 enron separator2 enron separator3 enron separator4 enron separator5 enron separator6 enron separator7 enron separator8 enron separator9 enron separator10 enron separator11 enron separator12 enron separator13 enron separator14 enron separator15 enron separator16 enron separator17 enron separator18 enron separator19 enron separator20"
+        },
+        "after_api": "21 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "21 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "28 (search_document_item_hit_counts x5, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hit_count x3, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: jeff.hoover@enron.com",
+        "before_api": "28 (search_document_item_hit_counts x5, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hit_count x3, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "28 (search_document_item_hit_counts x5, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hit_count x3, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search in document\"] :: enron",
+        "before_api": "28 (search_document_item_hit_counts x5, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hit_count x3, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "28 (search_document_item_hit_counts x5, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hit_count x3, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "28 (search_document_item_hit_counts x5, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hit_count x3, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "31 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: 1 / 21",
+        "before_api": "31 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "31 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const q=document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\");return {ok:q?.value===\"enron\",query:q?.value};",
+        "before_api": "31 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "query": "enron"
+        },
+        "after_api": "31 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "substitute": true,
+      "hits": 21,
+      "draft_ordinal": 66
+    },
+    "evidence": "119-manual-mail-search.02"
+  },
+  {
+    "procedure": "page-return",
+    "expected": "A later-page document returns through browser history.",
+    "status": "unmet_prerequisite",
+    "steps": [],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "error": "The original Enron corpus and its later-page document identity are unavailable.",
+    "failure_state": {
+      "url": "https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdmaG9vdmVybWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYW1yYW5nZV9maWx0ZXJzoGRzb3J0omNrZXlpUmVsZXZhbmNlZGRlc2P1/0/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZTIzMzZmZmE2MTY0MTZiYjRmMzg0ZGY2MDZhZDBlNWFjNGMw/pWpmaW5kX3F1ZXJ5ZWVucm9ub3NlbGVjdGVkX3NvdXJjZfZ0c2VsZWN0ZWRfc291cmNlX3BhZ2X2a3RhYmxlX3N0YXRl9m9zZWxlY3RlZF9lbnRpdHn2",
+      "hasViewer": false,
+      "selectedSource": "Extracted text\n21\n▼",
+      "resources": [
+        {
+          "name": "https://hoover4.new.liquiddemo.org/assets/_viewer/embed-pdf.js",
+          "duration": 0,
+          "transferSize": 0,
+          "decodedBodySize": 1854511
+        },
+        {
+          "name": "https://hoover4.new.liquiddemo.org/assets/frontend_bg-dxh8e815660e71c218b.wasm",
+          "duration": 37.09999996423721,
+          "transferSize": 0,
+          "decodedBodySize": 5532640
+        }
+      ]
+    },
+    "evidence": "119-manual-mail-search.03"
+  }
+]

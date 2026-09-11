@@ -1,0 +1,2136 @@
+# 37-view-doc-pdf-metadata (720p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/9g==/oWxzZWxlY3RlZF90YWJoTWV0YWRhdGE=
+title:    Hoover Search - View Document
+actions:  sleep 3000
+api calls: 11 (search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_dates x1, get_document_email x1, get_document_sources x1, get_document_table_overview x1, get_file_path x1, get_raw_metadata_tables x1, search_document_pdf x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6775[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6773[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6771[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6769[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      div
+                        div#dxc-13[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        h1  "- / -"
+                      div
+                        div#dxc-11[role=button]
+                          button
+                            svg
+                              path
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "PDF"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "PDF · OCR · Tesseract · eng"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "PDF text"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_testfiles"
+                    div  "/"
+                    div
+                      span[title=PDF]
+                        svg
+                          path
+                    div  "stanley.ec02.pdf"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div#x-pdf-viewer
+                    embedpdf-container
+                  div
+                    div
+                      div
+                        input[type=text][value=1]
+                      div  "30"
+                      button
+                        svg
+                          path
+                      button
+                        svg
+                          path
+                      button
+                        svg
+                          path
+                          path
+                      div
+                        div  "134%"
+                      button
+                        svg
+                          path
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                ul
+                  li
+                    h1  "Dates"
+                      svg
+                        path
+                    table
+                      tbody
+                        tr
+                          td  "2002-05-09 15:50 UTC"
+                          td  "tika:dcterms:created"
+                        tr
+                          td  "2002-05-09 15:50 UTC"
+                          td  "tika:pdf:docinfo:created"
+                        tr
+                          td  "2002-05-09 15:50 UTC"
+                          td  "tika:xmp:CreateDate"
+                        tr
+                          td  "2003-02-13 20:29 UTC"
+                          td  "tika:dcterms:modified"
+                        tr
+                          td  "2003-02-13 20:29 UTC"
+                          td  "tika:pdf:docinfo:modified"
+                        tr
+                          td  "2003-02-13 20:29 UTC"
+                          td  "tika:xmp:ModifyDate"
+                  li
+                    h1  "blobs"
+                      span  "blob_hash"
+                    table
+                      tbody
+                        tr
+                          td  "blob_size_bytes"
+                          td  "455683"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "md5"
+                          td  "9540f7d3e06a10a3674109af1f26d0ec"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "s3_path"
+                          td
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "sha1"
+                          td  "c7e1c6d4380fca2f3596703a09cb3c63288be228"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "sha256"
+                          td  "9653947f63d9dc2fc06760b7cac8a82fbf37cbbcda01dc1f6adf12fc6954b4c3"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "stored_in_clickhouse"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "file_types"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "extracted_by"
+                          td  "content_sniff"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extracted_by"
+                          td  "extension"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extensions[0]"
+                          td  ".pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "extracted_by"
+                          td  "file"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[0]"
+                          td  "other"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[1]"
+                          td  "pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_encoding[0]"
+                          td  "binary"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[0]"
+                          td  "application/octet-stream"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[1]"
+                          td  "application/pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                    table
+                      tbody
+                        tr
+                          td  "extensions[0]"
+                          td  ".pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "extracted_by"
+                          td  "magika"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[0]"
+                          td  "doc"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type[1]"
+                          td  "pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type[0]"
+                          td  "application/pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "file_type_canonical"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "decided_by"
+                          td  "parse_succeeded"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_type"
+                          td  "pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "losers[0]"
+                          td  "application/octet-stream"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mime_type"
+                          td  "application/pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-04 13:15:05"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "tika_metadata"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "processed_at"
+                          td  "2026-09-04 13:14:00"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Content-Length[0]"
+                          td  "455683"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.Content-Type[0]"
+                          td  "application/pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By-Full-Set[0]"
+                          td  "org.apache.tika.parser.DefaultParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By-Full-Set[1]"
+                          td  "org.apache.tika.parser.pdf.PDFParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By[0]"
+                          td  "org.apache.tika.parser.DefaultParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.X-TIKA:Parsed-By[1]"
+                          td  "org.apache.tika.parser.pdf.PDFParser"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.access_permission:assemble_document[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.access_permission:can_modify[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.access_permission:can_print[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.access_permission:can_print_degraded[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.access_permission:extract_content[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.access_permission:extract_for_accessibility[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.access_permission:fill_in_form[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.access_permission:modify_annotations[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.dc:format[0]"
+                          td  "application/pdf; version=1.4"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.dcterms:created[0]"
+                          td  "2002-05-09T15:50:40Z"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.dcterms:modified[0]"
+                          td  "2003-02-13T20:29:49Z"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:PDFVersion[0]"
+                          td  "1.4"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:annotationSubtypes[0]"
+                          td  "Link"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:annotationTypes[0]"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[0]"
+                          td  "262"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[10]"
+                          td  "3331"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[11]"
+                          td  "2004"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[12]"
+                          td  "3120"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[13]"
+                          td  "3146"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[14]"
+                          td  "3282"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[15]"
+                          td  "2384"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[16]"
+                          td  "3037"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[17]"
+                          td  "2606"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[18]"
+                          td  "2722"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[19]"
+                          td  "2560"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[1]"
+                          td  "2453"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[20]"
+                          td  "2324"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[21]"
+                          td  "3076"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[22]"
+                          td  "1705"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[23]"
+                          td  "3271"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[24]"
+                          td  "2054"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[25]"
+                          td  "3365"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[26]"
+                          td  "2927"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[27]"
+                          td  "3068"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[28]"
+                          td  "3075"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[29]"
+                          td  "904"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[2]"
+                          td  "3287"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[3]"
+                          td  "2994"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[4]"
+                          td  "3100"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[5]"
+                          td  "2051"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[6]"
+                          td  "3234"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[7]"
+                          td  "3218"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[8]"
+                          td  "2257"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:charsPerPage[9]"
+                          td  "2072"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:containsDamagedFont[0]"
+                          td  "false"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:containsNonEmbeddedFont[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:docinfo:created[0]"
+                          td  "2002-05-09T15:50:40Z"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:docinfo:creator_tool[0]"
+                          td  "TeX output 2002.03.21:1418"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:docinfo:modified[0]"
+                          td  "2003-02-13T20:29:49Z"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:docinfo:producer[0]"
+                          td  "dvipdfm 0.12.9beta, Copyright © 1998, by Mark A. Wicks"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:encrypted[0]"
+                          td  "false"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:hasCollection[0]"
+                          td  "false"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:hasMarkedContent[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:hasXFA[0]"
+                          td  "false"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:hasXMP[0]"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:num3DAnnotations[0]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:overallPercentageUnmappedUnicodeChars[0]"
+                          td  "8.239424787461758E-4"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:producer[0]"
+                          td  "dvipdfm 0.12.9beta, Copyright © 1998, by Mark A. Wicks"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:totalUnmappedUnicodeChars[0]"
+                          td  "65"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[0]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[10]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[11]"
+                          td  "57"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[12]"
+                          td  "5"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[13]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[14]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[15]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[16]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[17]"
+                          td  "2"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[18]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[19]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[1]"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[20]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[21]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[22]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[23]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[24]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[25]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[26]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[27]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[28]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[29]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[2]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[3]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[4]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[5]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[6]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[7]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[8]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.pdf:unmappedUnicodeCharsPerPage[9]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.resourceName[0]"
+                          td  "d21ccff5b16f15e99148bc3faaa2a2975b071a18fbd1562c9a429c634ad3aee3"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.xmp:CreateDate[0]"
+                          td  "2002-05-09T15:50:40Z"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.xmp:CreatorTool[0]"
+                          td  "TeX output 2002.03.21:1418"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "tika_metadata_json.xmp:MetadataDate[0]"
+                          td  "2003-02-13T20:29:49Z"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "archives"
+                      span  "archive_hash"
+                    table
+                      tbody
+                        tr
+                          td  "archive_type"
+                          td  "pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "vfs_files"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "container_hash"
+                          td
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "file_size_bytes"
+                          td  "455683"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "is_deleted"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime"
+                          td  "2025-10-22 10:12:56"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "mtime_source"
+                          td  "filesystem"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "path"
+                          td  "/stanley.ec02.pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "updated_at"
+                          td  "2026-09-04 13:13:59"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "user_id"
+                          td  "system"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "pdf_metadata"
+                      span  "hash"
+                    table
+                      tbody
+                        tr
+                          td  "pdf_metadata_json.acroform.hasacroform"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.acroform.needappearances"
+                          td  "false"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.capabilities.accessibility"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.capabilities.extract"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.capabilities.modify"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.capabilities.modifyannotations"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.capabilities.modifyassembly"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.capabilities.modifyforms"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.capabilities.modifyother"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.capabilities.printhigh"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.capabilities.printlow"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.encrypted"
+                          td  "false"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.ownerpasswordmatched"
+                          td  "false"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.parameters.P"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.parameters.R"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.parameters.V"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.parameters.bits"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.parameters.filemethod"
+                          td  "none"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.parameters.key"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.parameters.method"
+                          td  "none"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.parameters.streammethod"
+                          td  "none"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.parameters.stringmethod"
+                          td  "none"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.recovereduserpassword"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.encrypt.userpasswordmatched"
+                          td  "false"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].dest[0]"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].dest[1]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].dest[2]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].dest[3]"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].destpageposfrom1"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].kids[0].dest[0]"
+                          td  "518 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].kids[0].dest[1]"
+                          td  "/XYZ"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].kids[0].dest[2]"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].kids[0].dest[3]"
+                          td  "568"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].kids[0].dest[4]"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].kids[0].destpageposfrom1"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].kids[0].object"
+                          td  "384 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].kids[0].open"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].kids[0].title"
+                          td  "The MIT Press Journals"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].object"
+                          td  "383 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].open"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.outlines[0].title"
+                          td  "journals_splash.pdf"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].contents[0]"
+                          td  "545 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].contents[1]"
+                          td  "547 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].contents[2]"
+                          td  "549 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].contents[3]"
+                          td  "553 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].contents[4]"
+                          td  "555 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].contents[5]"
+                          td  "557 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].contents[6]"
+                          td  "559 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].contents[7]"
+                          td  "581 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[0].bitspercomponent"
+                          td  "8"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[0].colorspace"
+                          td  "534 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[0].decodeparms[0]"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[0].filter[0]"
+                          td  "/FlateDecode"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[0].filterable"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[0].height"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[0].name"
+                          td  "/Im21"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[0].object"
+                          td  "584 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[0].width"
+                          td  "63"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[10].bitspercomponent"
+                          td  "8"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[10].colorspace"
+                          td  "527 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[10].decodeparms[0]"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[10].filter[0]"
+                          td  "/FlateDecode"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[10].filterable"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[10].height"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[10].name"
+                          td  "/Im31"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[10].object"
+                          td  "594 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[10].width"
+                          td  "63"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[11].bitspercomponent"
+                          td  "8"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[11].colorspace"
+                          td  "523 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[11].decodeparms[0]"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[11].filter[0]"
+                          td  "/FlateDecode"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[11].filterable"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[11].height"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[11].name"
+                          td  "/Im32"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[11].object"
+                          td  "595 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[11].width"
+                          td  "63"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[12].bitspercomponent"
+                          td  "8"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[12].colorspace"
+                          td  "524 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[12].decodeparms[0]"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[12].filter[0]"
+                          td  "/FlateDecode"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[12].filterable"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[12].height"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[12].name"
+                          td  "/Im33"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[12].object"
+                          td  "596 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[12].width"
+                          td  "63"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[13].bitspercomponent"
+                          td  "8"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[13].colorspace"
+                          td  "526 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[13].decodeparms[0]"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[13].filter[0]"
+                          td  "/FlateDecode"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[13].filterable"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[13].height"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[13].name"
+                          td  "/Im34"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[13].object"
+                          td  "597 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[13].width"
+                          td  "63"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[14].bitspercomponent"
+                          td  "8"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[14].colorspace"
+                          td  "525 0 R"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[14].decodeparms[0]"
+                          td  "null"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[14].filter[0]"
+                          td  "/FlateDecode"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[14].filterable"
+                          td  "true"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "pdf_metadata_json.pages[0].images[14].height"
+                          td  "1"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                  li
+                    h1  "pdfs"
+                      span  "pdf_hash"
+                    table
+                      tbody
+                        tr
+                          td  "author_metadata"
+                          td
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "date_created"
+                          td  "1970-01-01 00:00:00"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "page_count"
+                          td  "30"
+                          td
+                            button
+                              svg
+                                path
+                                path
+                        tr
+                          td  "word_count"
+                          td  "0"
+                          td
+                            button
+                              svg
+                                path
+                                path
+    div[role=region][label=0 notifications]
+      ol

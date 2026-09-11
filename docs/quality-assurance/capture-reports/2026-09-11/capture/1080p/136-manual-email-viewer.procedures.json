@@ -1,0 +1,593 @@
+[
+  {
+    "procedure": "baseline",
+    "expected": "Preview and full viewer match the original email bytes.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdoY2FuaWN1bGFtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "1 (whoami x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "1 documents found"
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/\"]",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nUrăsc canicula, e nașpa.eml\ntestdata_manualqa\n... _f92HriCwPKYHLQt1kOb sF4w1QctvEsaWJVP7jt4MIPJhGOZY5vaRHaKR5To- X-Yahoo-SMTP: PnPrknSswBCYfJL83JmHWBRRMlTMMas- To: penultim_o@yahoo.com Cc: =?UTF-8?B?R2FicmllbCBWw65qaWFsxIM=?= From: =?UTF-8?B?R2FicmllbCBWw65qaWFsxIM=?= Subject: =?UTF-8?Q?Ur=c4=83sc_canicula=2c_e_na=c8=99pa?= Message-ID: <5763DEA8.4040701@yahoo.com> Date: Fri, 17 Jun 2016 14:27:36 +0300 User-Agent: Mozilla/5.0 (X11; Linux x86_64 ..."
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-toggle",
+        "before_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "15 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "click_css",
+        "input": ".x-email-details-toggle",
+        "before_api": "15 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "15 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-panel",
+        "before_api": "15 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "15 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "eval",
+        "input": "return document.querySelector('.x-email-details-panel').innerText;",
+        "before_api": "15 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": "From:\t\nGabriel Vîjială <penultim_o@yahoo.com>\n\nTo:\t\npenultim_o@yahoo.com\n\nCc:\t\nGabriel Vîjială <gabriel.vijiala@gmail.com>",
+        "after_api": "15 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('.x-email-attachment-card')].map(a=>({name:a.querySelector('div[title]').title,href:a.getAttribute('href')}));",
+        "before_api": "15 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": [
+          {
+            "name": "length.png",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          },
+          {
+            "name": "letterlegal5.doc",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          },
+          {
+            "name": "zip-with-pdf.zip",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          }
+        ],
+        "after_api": "15 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR59g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "15 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "24 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1, get_document_text_by_id_and_source x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "24 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1, get_document_text_by_id_and_source x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "24 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1, get_document_text_by_id_and_source x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-toggle",
+        "before_api": "24 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1, get_document_text_by_id_and_source x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "click_css",
+        "input": ".x-email-details-toggle",
+        "before_api": "26 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-panel",
+        "before_api": "26 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "eval",
+        "input": "return document.querySelector('.x-email-details-panel').innerText;",
+        "before_api": "26 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": "From:\t\nGabriel Vîjială <penultim_o@yahoo.com>\n\nTo:\t\npenultim_o@yahoo.com\n\nCc:\t\nGabriel Vîjială <gabriel.vijiala@gmail.com>",
+        "after_api": "26 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('.x-email-attachment-card')].map(a=>({name:a.querySelector('div[title]').title,href:a.getAttribute('href')}));",
+        "before_api": "26 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": [
+          {
+            "name": "length.png",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          },
+          {
+            "name": "letterlegal5.doc",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          },
+          {
+            "name": "zip-with-pdf.zip",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          }
+        ],
+        "after_api": "26 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "envelope": "From:\t\nGabriel Vîjială <penultim_o@yahoo.com>\n\nTo:\t\npenultim_o@yahoo.com\n\nCc:\t\nGabriel Vîjială <gabriel.vijiala@gmail.com>",
+      "attachments": [
+        {
+          "name": "length.png",
+          "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        },
+        {
+          "name": "letterlegal5.doc",
+          "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        },
+        {
+          "name": "zip-with-pdf.zip",
+          "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        }
+      ]
+    },
+    "evidence": "136-manual-email-viewer.01"
+  },
+  {
+    "procedure": "preview-parity",
+    "expected": "Envelope and attachment identities agree across both viewers.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdoY2FuaWN1bGFtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "26 (search_document_item_hit_counts x4, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, search_for_results x2, search_for_results_hit_count x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "31 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "31 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "1 documents found"
+        },
+        "after_api": "31 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/\"]",
+        "before_api": "31 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "31 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_document_entities x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "31 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nUrăsc canicula, e nașpa.eml\ntestdata_manualqa\n... _f92HriCwPKYHLQt1kOb sF4w1QctvEsaWJVP7jt4MIPJhGOZY5vaRHaKR5To- X-Yahoo-SMTP: PnPrknSswBCYfJL83JmHWBRRMlTMMas- To: penultim_o@yahoo.com Cc: =?UTF-8?B?R2FicmllbCBWw65qaWFsxIM=?= From: =?UTF-8?B?R2FicmllbCBWw65qaWFsxIM=?= Subject: =?UTF-8?Q?Ur=c4=83sc_canicula=2c_e_na=c8=99pa?= Message-ID: <5763DEA8.4040701@yahoo.com> Date: Fri, 17 Jun 2016 14:27:36 +0300 User-Agent: Mozilla/5.0 (X11; Linux x86_64 ..."
+        },
+        "after_api": "31 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "31 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x2, get_document_sources x2, get_document_text_by_id_and_source x2, get_email_envelope x2, get_file_path x2, search_document_text_for_hit_count x2, search_document_text_for_hits x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "38 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, get_document_text_by_id_and_source x2, search_document_text_for_hits x2, get_document_entities x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-toggle",
+        "before_api": "38 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, get_document_text_by_id_and_source x2, search_document_text_for_hits x2, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "40 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_document_text_by_id_and_source x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, get_document_entities x1)"
+      },
+      {
+        "action": "click_css",
+        "input": ".x-email-details-toggle",
+        "before_api": "40 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_document_text_by_id_and_source x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "40 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_document_text_by_id_and_source x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, get_document_entities x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-panel",
+        "before_api": "40 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_document_text_by_id_and_source x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "40 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_document_text_by_id_and_source x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, get_document_entities x1)"
+      },
+      {
+        "action": "eval",
+        "input": "return document.querySelector('.x-email-details-panel').innerText;",
+        "before_api": "40 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_document_text_by_id_and_source x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, get_document_entities x1)",
+        "status": "passed",
+        "observed": "From:\t\nGabriel Vîjială <penultim_o@yahoo.com>\n\nTo:\t\npenultim_o@yahoo.com\n\nCc:\t\nGabriel Vîjială <gabriel.vijiala@gmail.com>",
+        "after_api": "40 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_document_text_by_id_and_source x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, get_document_entities x1)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('.x-email-attachment-card')].map(a=>({name:a.querySelector('div[title]').title,href:a.getAttribute('href')}));",
+        "before_api": "40 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_document_text_by_id_and_source x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, get_document_entities x1)",
+        "status": "passed",
+        "observed": [
+          {
+            "name": "length.png",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          },
+          {
+            "name": "letterlegal5.doc",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          },
+          {
+            "name": "zip-with-pdf.zip",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          }
+        ],
+        "after_api": "40 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_document_text_by_id_and_source x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, get_document_entities x1)"
+      },
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR59g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "40 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_document_text_by_id_and_source x3, get_email_envelope x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, get_document_entities x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "49 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_entities x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "49 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_entities x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "49 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_entities x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-toggle",
+        "before_api": "49 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_entities x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "51 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_document_text_by_id_and_source x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)"
+      },
+      {
+        "action": "click_css",
+        "input": ".x-email-details-toggle",
+        "before_api": "51 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_document_text_by_id_and_source x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "51 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_document_text_by_id_and_source x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-panel",
+        "before_api": "51 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_document_text_by_id_and_source x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "51 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_document_text_by_id_and_source x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)"
+      },
+      {
+        "action": "eval",
+        "input": "return document.querySelector('.x-email-details-panel').innerText;",
+        "before_api": "51 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_document_text_by_id_and_source x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)",
+        "status": "passed",
+        "observed": "From:\t\nGabriel Vîjială <penultim_o@yahoo.com>\n\nTo:\t\npenultim_o@yahoo.com\n\nCc:\t\nGabriel Vîjială <gabriel.vijiala@gmail.com>",
+        "after_api": "51 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_document_text_by_id_and_source x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('.x-email-attachment-card')].map(a=>({name:a.querySelector('div[title]').title,href:a.getAttribute('href')}));",
+        "before_api": "51 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_document_text_by_id_and_source x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)",
+        "status": "passed",
+        "observed": [
+          {
+            "name": "length.png",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          },
+          {
+            "name": "letterlegal5.doc",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          },
+          {
+            "name": "zip-with-pdf.zip",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          }
+        ],
+        "after_api": "51 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_document_text_by_id_and_source x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "envelope": "From:\t\nGabriel Vîjială <penultim_o@yahoo.com>\n\nTo:\t\npenultim_o@yahoo.com\n\nCc:\t\nGabriel Vîjială <gabriel.vijiala@gmail.com>",
+      "attachments": [
+        {
+          "name": "length.png",
+          "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        },
+        {
+          "name": "letterlegal5.doc",
+          "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        },
+        {
+          "name": "zip-with-pdf.zip",
+          "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+        }
+      ]
+    },
+    "evidence": "136-manual-email-viewer.02"
+  },
+  {
+    "procedure": "attachment-return",
+    "expected": "Closing an attachment preserves the full email viewer state.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR59g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "51 (search_document_item_hit_counts x8, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_document_text_by_id_and_source x4, get_email_envelope x4, get_file_path x4, search_document_text_for_hit_count x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "60 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "60 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-toggle",
+        "before_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "click_css",
+        "input": ".x-email-details-toggle",
+        "before_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-panel",
+        "before_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "eval",
+        "input": "return document.querySelector('.x-email-details-panel').innerText;",
+        "before_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": "From:\t\nGabriel Vîjială <penultim_o@yahoo.com>\n\nTo:\t\npenultim_o@yahoo.com\n\nCc:\t\nGabriel Vîjială <gabriel.vijiala@gmail.com>",
+        "after_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "eval",
+        "input": "return [...document.querySelectorAll('.x-email-attachment-card')].map(a=>({name:a.querySelector('div[title]').title,href:a.getAttribute('href')}));",
+        "before_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": [
+          {
+            "name": "length.png",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          },
+          {
+            "name": "letterlegal5.doc",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZDUwZjIzNzkyZDQ4YWU2NjBiOTgxNWY3ODZjNDgzMGE5ZTZh/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          },
+          {
+            "name": "zip-with-pdf.zip",
+            "href": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5YTkzMjE3ZjQ5NmUwNDIxZjNkNzVjMzQ3NTkzYjdmZmU0MWNm/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM="
+          }
+        ],
+        "after_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "click_css",
+        "input": "a[href=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=\"]",
+        "before_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "61 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, get_document_text_by_id_and_source x4, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "eval",
+        "input": "return location.pathname;",
+        "before_api": "62 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_document_text_by_id_and_source x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZGUwZTlmNjYwNDdhYmYwMzRmMDVhODc2NGJkMjI5ODNlNmZi/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR59g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "after_api": "62 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_document_text_by_id_and_source x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-email-details-panel",
+        "before_api": "62 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_document_text_by_id_and_source x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "62 (search_document_item_hit_counts x10, whoami x6, get_canonical_file_type x5, get_document_sources x5, get_document_text_by_id_and_source x5, get_email_envelope x5, get_file_path x5, search_document_text_for_hit_count x5, search_document_text_for_hits x5, search_for_results x4, search_for_results_hit_count x4, get_document_entities x3)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "child": {
+        "title": "Hoover Search - View Document",
+        "url": "https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmNjVmOWRlZDIyNjMxOTE3YTM3YmQ2YmVkYjZiYzQ1YzhmNTBj/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "lines": [
+          "body",
+          "  div#main",
+          "    div#x-nav-container",
+          "      div#x-nav-sidebar",
+          "        a[href=/]",
+          "          img",
+          "        div",
+          "          div",
+          "            div#dxc-3995[role=button]",
+          "              a[href=/]",
+          "                span",
+          "                  svg",
+          "                    path",
+          "          div",
+          "            div#dxc-3993[role=button]",
+          "              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]",
+          "                span",
+          "                  svg",
+          "                    path",
+          "          div",
+          "            div#dxc-3991[role=button]",
+          "              a[href=/file_browser]",
+          "                span",
+          "                  svg",
+          "                    path",
+          "          div",
+          "            div#dxc-3989[role=button]",
+          "              a[href=/ai_chat]",
+          "                span",
+          "                  svg",
+          "                    path",
+          "        div",
+          "        div",
+          "          div",
+          "            div#dxc-9[role=button]",
+          "              a[href=/admin]",
+          "                span",
+          "                  svg",
+          "                    path",
+          "      div#x-page-container",
+          "        div",
+          "          div",
+          "            div",
+          "              div",
+          "                div",
+          "                  div",
+          "                    div",
+          "                      input[type=text][placeholder=Search in document]",
+          "                  div  \"Image; 365x125\"",
+          "                  div",
+          "                    ul",
+          "                      div",
+          "                        div",
+          "                          svg",
+          "                            path",
+          "                        div",
+          "                          svg",
+          "                            path",
+          "                        div  \"Image\"",
+          "                        div",
+          "              div",
+          "                div",
+          "                  div",
+          "                    div",
+          "                      svg",
+          "                        path",
+          "                    div  \"testdata_manualqa\"",
+          "                    div  \"/\"",
+          "                    div",
+          "                      span[title=Image]",
+          "                        svg",
+          "                          path",
+          "                    div  \"length.png\"",
+          "                  div",
+          "                  div",
+          "                    div",
+          "                      button",
+          "                        svg",
+          "                          path",
+          "                div",
+          "                  img",
+          "          div",
+          "            div",
+          "              div",
+          "                button  \"Entities\"",
+          "                button  \"File Locations\"",
+          "                button  \"Metadata\"",
+          "              div",
+          "                div",
+          "                  div",
+          "                    input[type=text][placeholder=Filter Entities ...]",
+          "                  div",
+          "    div[role=region][label=0 notifications]",
+          "      ol"
+        ]
+      },
+      "screenshot": "136-manual-email-viewer.popup-3-8.png"
+    },
+    "evidence": "136-manual-email-viewer.03"
+  }
+]

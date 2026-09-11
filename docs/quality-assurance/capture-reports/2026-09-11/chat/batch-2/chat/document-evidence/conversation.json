@@ -1,0 +1,521 @@
+{
+  "name": "document-evidence",
+  "profile": "chat",
+  "prompt": "Search the available collections for documents about energy. Inspect up to three relevant documents. Produce a table of claims, supporting passages, document citations, and uncertainties. Distinguish statements in the documents from your conclusions. If there are no relevant documents, describe the searches you attempted.",
+  "session_url": "https://hoover4.new.liquiddemo.org/ai_chat/c/2bf8964d97dbdf7a0765a24ba620aa53ec053b453e240181535a522f729cc335/9g==/9g==",
+  "submission_ok": true,
+  "turn_started": true,
+  "stop_disappeared_at_s": 230.00190874899272,
+  "completed_answer_present": true,
+  "generating_started_s": 16.271316052007023,
+  "generating_ended_s": 246.32985959702637,
+  "captures": {
+    "720p": [
+      {
+        "file": "720p/interval-000-t0000s.png",
+        "deadline_offset_s": 0.0,
+        "actual_offset_s": 0.0,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 349,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-001-t0005s.png",
+        "deadline_offset_s": 5.0,
+        "actual_offset_s": 5.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 369,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-002-t0010s.png",
+        "deadline_offset_s": 10.0,
+        "actual_offset_s": 10.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 503,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-003-t0015s.png",
+        "deadline_offset_s": 15.0,
+        "actual_offset_s": 15.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 524,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-004-t0020s.png",
+        "deadline_offset_s": 20.0,
+        "actual_offset_s": 20.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 461,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-005-t0025s.png",
+        "deadline_offset_s": 25.0,
+        "actual_offset_s": 25.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 461,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-006-t0030s.png",
+        "deadline_offset_s": 30.0,
+        "actual_offset_s": 30.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 461,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-007-t0035s.png",
+        "deadline_offset_s": 35.0,
+        "actual_offset_s": 35.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 461,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-008-t0040s.png",
+        "deadline_offset_s": 40.0,
+        "actual_offset_s": 40.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 474,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-009-t0045s.png",
+        "deadline_offset_s": 45.0,
+        "actual_offset_s": 45.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 486,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-010-t0050s.png",
+        "deadline_offset_s": 50.0,
+        "actual_offset_s": 50.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 641,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-011-t0055s.png",
+        "deadline_offset_s": 55.0,
+        "actual_offset_s": 55.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 872,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-012-t0060s.png",
+        "deadline_offset_s": 60.0,
+        "actual_offset_s": 60.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 872,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-013-t0065s.png",
+        "deadline_offset_s": 65.0,
+        "actual_offset_s": 65.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 602,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-014-t0070s.png",
+        "deadline_offset_s": 70.0,
+        "actual_offset_s": 70.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 647,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-015-t0075s.png",
+        "deadline_offset_s": 75.0,
+        "actual_offset_s": 75.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 736,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-016-t0080s.png",
+        "deadline_offset_s": 80.0,
+        "actual_offset_s": 80.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 736,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-017-t0085s.png",
+        "deadline_offset_s": 85.0,
+        "actual_offset_s": 85.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 736,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-018-t0090s.png",
+        "deadline_offset_s": 90.0,
+        "actual_offset_s": 90.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 659,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-019-t0095s.png",
+        "deadline_offset_s": 95.0,
+        "actual_offset_s": 95.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 659,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-020-t0100s.png",
+        "deadline_offset_s": 100.0,
+        "actual_offset_s": 100.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 839,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-021-t0105s.png",
+        "deadline_offset_s": 105.0,
+        "actual_offset_s": 105.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 839,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-022-t0110s.png",
+        "deadline_offset_s": 110.0,
+        "actual_offset_s": 110.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 839,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-023-t0115s.png",
+        "deadline_offset_s": 115.0,
+        "actual_offset_s": 115.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 839,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-024-t0120s.png",
+        "deadline_offset_s": 120.0,
+        "actual_offset_s": 120.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 839,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-025-t0125s.png",
+        "deadline_offset_s": 125.0,
+        "actual_offset_s": 125.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 840,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-026-t0130s.png",
+        "deadline_offset_s": 130.0,
+        "actual_offset_s": 130.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 840,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-027-t0135s.png",
+        "deadline_offset_s": 135.0,
+        "actual_offset_s": 135.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 840,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-028-t0140s.png",
+        "deadline_offset_s": 140.0,
+        "actual_offset_s": 140.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 840,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-029-t0145s.png",
+        "deadline_offset_s": 145.0,
+        "actual_offset_s": 145.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 840,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-030-t0150s.png",
+        "deadline_offset_s": 150.0,
+        "actual_offset_s": 150.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 840,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-031-t0155s.png",
+        "deadline_offset_s": 155.0,
+        "actual_offset_s": 155.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 840,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-032-t0160s.png",
+        "deadline_offset_s": 160.0,
+        "actual_offset_s": 160.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 840,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-033-t0165s.png",
+        "deadline_offset_s": 165.0,
+        "actual_offset_s": 165.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 697,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-034-t0170s.png",
+        "deadline_offset_s": 170.0,
+        "actual_offset_s": 170.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 697,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-035-t0175s.png",
+        "deadline_offset_s": 175.0,
+        "actual_offset_s": 175.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1142,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-036-t0180s.png",
+        "deadline_offset_s": 180.0,
+        "actual_offset_s": 180.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1454,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-037-t0185s.png",
+        "deadline_offset_s": 185.0,
+        "actual_offset_s": 185.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 976,
+        "text_length": 1932,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-038-t0190s.png",
+        "deadline_offset_s": 190.0,
+        "actual_offset_s": 190.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1079,
+        "text_length": 2381,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-039-t0195s.png",
+        "deadline_offset_s": 195.0,
+        "actual_offset_s": 195.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1262,
+        "text_length": 2840,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-040-t0200s.png",
+        "deadline_offset_s": 200.0,
+        "actual_offset_s": 200.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1342,
+        "text_length": 3152,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-041-t0205s.png",
+        "deadline_offset_s": 205.0,
+        "actual_offset_s": 205.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1548,
+        "text_length": 3770,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-042-t0210s.png",
+        "deadline_offset_s": 210.0,
+        "actual_offset_s": 210.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1778,
+        "text_length": 4383,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-043-t0215s.png",
+        "deadline_offset_s": 215.0,
+        "actual_offset_s": 215.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1934,
+        "text_length": 4918,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-044-t0220s.png",
+        "deadline_offset_s": 220.0,
+        "actual_offset_s": 220.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2176,
+        "text_length": 5593,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-045-t0225s.png",
+        "deadline_offset_s": 225.0,
+        "actual_offset_s": 225.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2426,
+        "text_length": 6215,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-046-t0230s.png",
+        "deadline_offset_s": 230.0,
+        "actual_offset_s": 230.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 3562,
+        "text_length": 8696,
+        "observations": []
+      }
+    ]
+  },
+  "history": {
+    "by_resolution": {
+      "720p": {
+        "before_reload_text_length": 19182,
+        "after_reload_text_length": 8696,
+        "reload_survived": true,
+        "before_answers": [
+          {
+            "seq": "8",
+            "text": "Now I have all the citations. Let me produce the comprehensive table of claims with supporting passages, document citations, and uncertainties.Report: Energy Documents AnalysisI searched the user's document collections for documents about energy and found relevant content across multiple collections. I inspected three documents in detail:`/eng/Energy_policy_of_the_United_States.txt` (textfiles collection) - A comprehensive overview of US energy policy`/eng/Energy_in_the_United_States.txt` (textfiles collection) - Data on US energy consumption and history`/TEXT/001/HOUSE_OVERSIGHT_024194.txt` (epstein collection) - A J.P. Morgan analysis of 2012 energy developmentsTable of ClaimsClaimSupporting PassageDocument CitationUncertaintiesThe United States receives approximately 84% of its energy from fossil fuels.\"The United States receives approximately 84% of its energy from fossil fuels.\"[D1]The document does not specify the year this statistic applies to; may be outdated.Federal subsidies to fossil fuels ($72B) significantly exceeded renewable subsidies ($29B) during 2002-2008.\"The federal government provided substantially larger subsidies to fossil fuels than to renewables in the 2002\u20132008 period. Subsidies to fossil fuels totaled approximately $72 billion over the study period... Subsidies for renewable fuels, totaled $29 billion over the same period.\"[D1]The document does not specify the exact study period end date or methodology for calculating these figures.In 2012, the US produced 60% of the petroleum it used, with the remainder imported.\"In 2012, the US produced 60% of the petroleum it used, the remainder being imported.\"[D1]This is a specific year's data; production/import ratios may have changed since.The United States was the 2nd largest energy consumer in 2010 (after China).\"The United States was the 2nd largest energy consumer in 2010 (after China) considering total use.\"[D2]Does not account for energy used overseas in production of goods consumed in the US.Per capita energy consumption averaged 334 million BTUs per person from 1980 to 2010.\"The average has been 334 million British thermal units (BTUs) per person from 1980 to 2010.\"[D2]This is an average; year-to-year variation is not captured.In 2010, 70.5% of petroleum consumption in the U.S. was for transportation.\"In 2010, 70.5% of petroleum consumption in the U.S. was for transportation.\"[D2]Specific to 2010; may have changed in subsequent years.Rising crude oil production in Texas and North Dakota reversed the long-term US production decline.\"Rising crude oil production in Texas and North Dakota has contributed to a reversal of the long-term US production decline.\"[D3]This analysis is from October 2012; subsequent developments may have altered this trend.US still imports approximately 9 million barrels per day of oil despite domestic production growth.\"The growth in US domestic production is notable, but on its own insufficient to result in energy independence since the US still imports ~9 mm bpd of oil.\"[D3]This is a 2012 figure; import levels have likely changed since.The shale/tight oil boom represents \"the most important revolution in the oil sector in decades.\"\"The shale/tight oil boom in the United States is not a temporary bubble, but the most important revolution in the oil sector in decades.\"[D3]This is an expert opinion (Leonardo Maugeri); long-term impacts remain to be fully assessed.Key Observations from the DocumentsFrom Document 1 (Energy Policy):Energy policy is determined by federal, state, and local entities addressing production, distribution, and consumptionState-specific energy-efficiency incentive programs play a significant roleThe document notes criticism that federal energy policies since 1973 have been \"dominated by crisis-mentality thinking\"In 2014, the largest energy sources were: petroleum (35%), natural gas (28%), coal (18%), renewable sources (10%), and nuclear power (8%)From Document 2 (Energy in the United States):The US has been somewhat consistent in per-capita energy consumption from the 1970s to 2010Energy consumption varies significantly by region (Pacific region homes consume 35% less than South Central region)The industrial sector represents about 33% of total energy use, followed by transportation, residential, and commercial sectorsOil price increases have historically correlated with US recessionsFrom Document 3 (J.P. Morgan Energy Analysis):The document discusses US energy independence prospects through 2025CAFE standards and automobile replacement cycles could reduce oil consumption by 1.5 million barrels per dayNatural gas vehicles could provide modest reductions (0.3 mm bpd at 3% penetration)The document notes that energy represents only 5% of total expenses for US manufacturing companiesDistinguishing Document Statements from ConclusionsStatements from Documents (verified by citations):All claims in the table above are direct statements from the documents, supported by verified quotesThe documents provide specific statistics, dates, and expert opinionsMy Conclusions (not in documents):The documents span different time periods (2002-2014 for policy/consumption data, 2012 for the J.P. Morgan analysis), so users should be aware of potential data stalenessThe textfiles documents appear to be Wikipedia-style articles (general knowledge), while the epstein document is a financial analysis reportThe documents collectively show that US energy policy has evolved from colonial-era timber use through coal dominance to the current mix of fossil fuels with growing renewable interestSearch SummaryI searched across 7 collections (consulate, enron, epstein, other, tables, testdata, textfiles) using 8 different query angles related to energy. The search returned 50 results, with the most relevant documents coming from the textfiles and epstein collections. The enron collection also contained energy-related content but the top results were less comprehensive than the three documents I analyzed."
+          }
+        ],
+        "after_answers": [
+          {
+            "seq": "8",
+            "text": "Now I have all the citations. Let me produce the comprehensive table of claims with supporting passages, document citations, and uncertainties.Report: Energy Documents AnalysisI searched the user's document collections for documents about energy and found relevant content across multiple collections. I inspected three documents in detail:`/eng/Energy_policy_of_the_United_States.txt` (textfiles collection) - A comprehensive overview of US energy policy`/eng/Energy_in_the_United_States.txt` (textfiles collection) - Data on US energy consumption and history`/TEXT/001/HOUSE_OVERSIGHT_024194.txt` (epstein collection) - A J.P. Morgan analysis of 2012 energy developmentsTable of ClaimsClaimSupporting PassageDocument CitationUncertaintiesThe United States receives approximately 84% of its energy from fossil fuels.\"The United States receives approximately 84% of its energy from fossil fuels.\"[D1]The document does not specify the year this statistic applies to; may be outdated.Federal subsidies to fossil fuels ($72B) significantly exceeded renewable subsidies ($29B) during 2002-2008.\"The federal government provided substantially larger subsidies to fossil fuels than to renewables in the 2002\u20132008 period. Subsidies to fossil fuels totaled approximately $72 billion over the study period... Subsidies for renewable fuels, totaled $29 billion over the same period.\"[D1]The document does not specify the exact study period end date or methodology for calculating these figures.In 2012, the US produced 60% of the petroleum it used, with the remainder imported.\"In 2012, the US produced 60% of the petroleum it used, the remainder being imported.\"[D1]This is a specific year's data; production/import ratios may have changed since.The United States was the 2nd largest energy consumer in 2010 (after China).\"The United States was the 2nd largest energy consumer in 2010 (after China) considering total use.\"[D2]Does not account for energy used overseas in production of goods consumed in the US.Per capita energy consumption averaged 334 million BTUs per person from 1980 to 2010.\"The average has been 334 million British thermal units (BTUs) per person from 1980 to 2010.\"[D2]This is an average; year-to-year variation is not captured.In 2010, 70.5% of petroleum consumption in the U.S. was for transportation.\"In 2010, 70.5% of petroleum consumption in the U.S. was for transportation.\"[D2]Specific to 2010; may have changed in subsequent years.Rising crude oil production in Texas and North Dakota reversed the long-term US production decline.\"Rising crude oil production in Texas and North Dakota has contributed to a reversal of the long-term US production decline.\"[D3]This analysis is from October 2012; subsequent developments may have altered this trend.US still imports approximately 9 million barrels per day of oil despite domestic production growth.\"The growth in US domestic production is notable, but on its own insufficient to result in energy independence since the US still imports ~9 mm bpd of oil.\"[D3]This is a 2012 figure; import levels have likely changed since.The shale/tight oil boom represents \"the most important revolution in the oil sector in decades.\"\"The shale/tight oil boom in the United States is not a temporary bubble, but the most important revolution in the oil sector in decades.\"[D3]This is an expert opinion (Leonardo Maugeri); long-term impacts remain to be fully assessed.Key Observations from the DocumentsFrom Document 1 (Energy Policy):Energy policy is determined by federal, state, and local entities addressing production, distribution, and consumptionState-specific energy-efficiency incentive programs play a significant roleThe document notes criticism that federal energy policies since 1973 have been \"dominated by crisis-mentality thinking\"In 2014, the largest energy sources were: petroleum (35%), natural gas (28%), coal (18%), renewable sources (10%), and nuclear power (8%)From Document 2 (Energy in the United States):The US has been somewhat consistent in per-capita energy consumption from the 1970s to 2010Energy consumption varies significantly by region (Pacific region homes consume 35% less than South Central region)The industrial sector represents about 33% of total energy use, followed by transportation, residential, and commercial sectorsOil price increases have historically correlated with US recessionsFrom Document 3 (J.P. Morgan Energy Analysis):The document discusses US energy independence prospects through 2025CAFE standards and automobile replacement cycles could reduce oil consumption by 1.5 million barrels per dayNatural gas vehicles could provide modest reductions (0.3 mm bpd at 3% penetration)The document notes that energy represents only 5% of total expenses for US manufacturing companiesDistinguishing Document Statements from ConclusionsStatements from Documents (verified by citations):All claims in the table above are direct statements from the documents, supported by verified quotesThe documents provide specific statistics, dates, and expert opinionsMy Conclusions (not in documents):The documents span different time periods (2002-2014 for policy/consumption data, 2012 for the J.P. Morgan analysis), so users should be aware of potential data stalenessThe textfiles documents appear to be Wikipedia-style articles (general knowledge), while the epstein document is a financial analysis reportThe documents collectively show that US energy policy has evolved from colonial-era timber use through coal dominance to the current mix of fossil fuels with growing renewable interestSearch SummaryI searched across 7 collections (consulate, enron, epstein, other, tables, testdata, textfiles) using 8 different query angles related to energy. The search returned 50 results, with the most relevant documents coming from the textfiles and epstein collections. The enron collection also contained energy-related content but the top results were less comprehensive than the three documents I analyzed."
+          }
+        ],
+        "switch": {
+          "attempted": true,
+          "text_length_after_switch_back": 8696,
+          "survived": true
+        }
+      }
+    }
+  },
+  "document_preview": {
+    "ok": true,
+    "title": "3.",
+    "count": 64,
+    "toggled_disclosures": 4
+  },
+  "observations": [],
+  "incomplete": false,
+  "incomplete_reason": ""
+}

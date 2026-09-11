@@ -1,0 +1,94 @@
+# 109-admin-operations-state-errored (720p)
+url:      https://hoover4.new.liquiddemo.org/admin/operations
+title:    Admin: operations
+actions:  wait_css #x-ops-filter-state; eval const el=document.querySelector('#x-ops-filter-state');const s=Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value').set;s.call(el,'errored');el.dispatchEvent(new Event('change',{bubbles:true}));return {ok:true};; sleep 2000
+api calls: 3 (admin_list_operations x2, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7663[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7661[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7659[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7657[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Operations"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Operations"
+              div
+                div
+                  h2  "Filters"
+                  div
+                    label  "State"
+                      select#x-ops-filter-state
+                    label  "Collection"
+                      select#x-ops-filter-collection
+                    span  "Choose a collection to see its per-task error rates."
+                div
+                  h2  "Operations, newest first"
+                  div
+                    p  "No operations recorded for this filter."
+                    div
+                      button  "Newer"
+                      span  "Page 1"
+                      button  "Older"
+    div[role=region][label=0 notifications]
+      ol

@@ -1,0 +1,710 @@
+# 103-admin-metrics (1080p)
+url:      https://hoover4.new.liquiddemo.org/admin/metrics
+title:    Admin: metrics
+actions:  sleep 2500
+api calls: 5 (chat_admin_live_runs x3, admin_get_metrics x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7535[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7533[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7531[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7529[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Metrics"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Metrics"
+              div
+                div
+                  h2  "Live LLM chats"
+                  div
+                    p  "Agent turns running right now, longest-running first. Refreshes every 2 s. Read from Temporal, so a turn that started before the last website restart is here too."
+                    p  "No chats running."
+                p  "Rolling last 24 hours. Events record who, which route class or function name, and when. Never a URL or a query string."
+                div
+                  h2  "Usage (last 24 h)"
+                  div
+                    h3  "Events by type"
+                    table
+                      thead
+                        tr
+                          th  "Event"
+                          th  "Count"
+                      tbody
+                        tr
+                          td  "user_get_document"
+                          td  "102202"
+                        tr
+                          td  "user_other_request"
+                          td  "10336"
+                        tr
+                          td  "user_search"
+                          td  "5841"
+                        tr
+                          td  "llm_chat_message"
+                          td  "2"
+                    h3  "Events per hour"
+                    svg
+                      g
+                        line
+                        text  "0"
+                      g
+                        line
+                        text  "14195"
+                      g
+                        line
+                        text  "28390"
+                      rect
+                        title  "2026-09-10T09:00:00Z: 20 events"
+                      rect
+                        title  "2026-09-10T10:00:00Z: 8310 events"
+                      rect
+                        title  "2026-09-10T11:00:00Z: 28068 events"
+                      rect
+                        title  "2026-09-10T12:00:00Z: 110 events"
+                      rect
+                        title  "2026-09-10T13:00:00Z: 733 events"
+                      rect
+                        title  "2026-09-10T14:00:00Z: 30 events"
+                      rect
+                        title  "2026-09-10T15:00:00Z: 28390 events"
+                      rect
+                        title  "2026-09-10T16:00:00Z: 26540 events"
+                      rect
+                        title  "2026-09-11T05:00:00Z: 1 events"
+                      rect
+                        title  "2026-09-11T07:00:00Z: 24 events"
+                      rect
+                        title  "2026-09-11T09:00:00Z: 26155 events"
+                      line
+                      text  "09-10 09:00"
+                      text  "09-10 14:00"
+                      text  "09-11 09:00"
+                      text  "UTC"
+                    h3  "Busiest users"
+                    table
+                      thead
+                        tr
+                          th  "User"
+                          th  "Events"
+                      tbody
+                        tr
+                          td  "hoover4admin"
+                          td  "118381"
+                div
+                  h2  "API calls (last 24 h)"
+                  div
+                    table
+                      thead
+                        tr
+                          th  "Function"
+                          th  "Calls"
+                          th  "Errors"
+                          th  "Error rate"
+                          th  "p50"
+                          th  "p95"
+                          th  "max"
+                          th  "Bytes in"
+                          th  "Bytes out"
+                      tbody
+                        tr
+                          td  "search_document_item_hit_counts"
+                          td  "3029"
+                          td  "0"
+                          td  "0.0%"
+                          td  "0 ms"
+                          td  "350 ms"
+                          td  "679 ms"
+                          td  "3.9 MiB"
+                          td  "0 B"
+                        tr
+                          td  "search_for_results_hit_count"
+                          td  "2762"
+                          td  "3"
+                          td  "0.1%"
+                          td  "10 ms"
+                          td  "43 ms"
+                          td  "392 ms"
+                          td  "492.1 KiB"
+                          td  "0 B"
+                        tr
+                          td  "whoami"
+                          td  "2424"
+                          td  "0"
+                          td  "0.0%"
+                          td  "0 ms"
+                          td  "0 ms"
+                          td  "1 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "other_server_fn"
+                          td  "2380"
+                          td  "1"
+                          td  "0.0%"
+                          td  "2 ms"
+                          td  "23 ms"
+                          td  "445 ms"
+                          td  "360.7 KiB"
+                          td  "0 B"
+                        tr
+                          td  "search_for_results"
+                          td  "2286"
+                          td  "2"
+                          td  "0.1%"
+                          td  "12 ms"
+                          td  "156 ms"
+                          td  "597 ms"
+                          td  "485.2 KiB"
+                          td  "0 B"
+                        tr
+                          td  "vfs_tree_children"
+                          td  "1833"
+                          td  "0"
+                          td  "0.0%"
+                          td  "18 ms"
+                          td  "20 ms"
+                          td  "36 ms"
+                          td  "282.2 KiB"
+                          td  "0 B"
+                        tr
+                          td  "get_file_path"
+                          td  "1316"
+                          td  "0"
+                          td  "0.0%"
+                          td  "2 ms"
+                          td  "5 ms"
+                          td  "24 ms"
+                          td  "185.6 KiB"
+                          td  "0 B"
+                        tr
+                          td  "get_document_sources"
+                          td  "1174"
+                          td  "0"
+                          td  "0.0%"
+                          td  "4 ms"
+                          td  "10 ms"
+                          td  "28 ms"
+                          td  "165.5 KiB"
+                          td  "0 B"
+                        tr
+                          td  "list_storage_tree"
+                          td  "869"
+                          td  "0"
+                          td  "0.0%"
+                          td  "128 ms"
+                          td  "144 ms"
+                          td  "218 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "list_folder_children"
+                          td  "674"
+                          td  "0"
+                          td  "0.0%"
+                          td  "9 ms"
+                          td  "13 ms"
+                          td  "26 ms"
+                          td  "73.8 KiB"
+                          td  "0 B"
+                        tr
+                          td  "search_document_pdf"
+                          td  "659"
+                          td  "0"
+                          td  "0.0%"
+                          td  "126 ms"
+                          td  "244 ms"
+                          td  "561 ms"
+                          td  "139.8 KiB"
+                          td  "0 B"
+                        tr
+                          td  "search_string_facet"
+                          td  "582"
+                          td  "0"
+                          td  "0.0%"
+                          td  "16 ms"
+                          td  "152 ms"
+                          td  "1099 ms"
+                          td  "145.2 KiB"
+                          td  "0 B"
+                        tr
+                          td  "vfs_tree_path_to"
+                          td  "579"
+                          td  "0"
+                          td  "0.0%"
+                          td  "37 ms"
+                          td  "403 ms"
+                          td  "946 ms"
+                          td  "59.7 KiB"
+                          td  "0 B"
+                        tr
+                          td  "get_document_entities"
+                          td  "572"
+                          td  "0"
+                          td  "0.0%"
+                          td  "412 ms"
+                          td  "2413 ms"
+                          td  "8467 ms"
+                          td  "80.9 KiB"
+                          td  "0 B"
+                        tr
+                          td  "search_document_text_for_hit_count"
+                          td  "554"
+                          td  "48"
+                          td  "8.7%"
+                          td  "2 ms"
+                          td  "32 ms"
+                          td  "47 ms"
+                          td  "89.2 KiB"
+                          td  "0 B"
+                        tr
+                          td  "download_document"
+                          td  "532"
+                          td  "0"
+                          td  "0.0%"
+                          td  "16 ms"
+                          td  "22 ms"
+                          td  "59 ms"
+                          td  "0 B"
+                          td  "211.8 MiB"
+                        tr
+                          td  "search_document_text_for_hits"
+                          td  "476"
+                          td  "0"
+                          td  "0.0%"
+                          td  "2 ms"
+                          td  "24 ms"
+                          td  "46 ms"
+                          td  "95.2 KiB"
+                          td  "0 B"
+                        tr
+                          td  "vfs_node_term_id"
+                          td  "422"
+                          td  "0"
+                          td  "0.0%"
+                          td  "2 ms"
+                          td  "3 ms"
+                          td  "8 ms"
+                          td  "45.3 KiB"
+                          td  "0 B"
+                        tr
+                          td  "get_document_text_by_id_and_source"
+                          td  "282"
+                          td  "0"
+                          td  "0.0%"
+                          td  "8 ms"
+                          td  "10 ms"
+                          td  "14 ms"
+                          td  "57.8 KiB"
+                          td  "0 B"
+                        tr
+                          td  "chat_poll"
+                          td  "229"
+                          td  "0"
+                          td  "0.0%"
+                          td  "505 ms"
+                          td  "5755 ms"
+                          td  "15156 ms"
+                          td  "30.3 KiB"
+                          td  "0 B"
+                        tr
+                          td  "search_date_histogram"
+                          td  "175"
+                          td  "0"
+                          td  "0.0%"
+                          td  "35 ms"
+                          td  "150 ms"
+                          td  "672 ms"
+                          td  "26.0 KiB"
+                          td  "0 B"
+                        tr
+                          td  "get_email_envelope"
+                          td  "172"
+                          td  "0"
+                          td  "0.0%"
+                          td  "12 ms"
+                          td  "82 ms"
+                          td  "162 ms"
+                          td  "24.1 KiB"
+                          td  "0 B"
+                        tr
+                          td  "fetch_db_terms_for_ints"
+                          td  "133"
+                          td  "0"
+                          td  "0.0%"
+                          td  "6 ms"
+                          td  "17 ms"
+                          td  "64 ms"
+                          td  "7.3 KiB"
+                          td  "0 B"
+                        tr
+                          td  "admin_list_operations"
+                          td  "87"
+                          td  "0"
+                          td  "0.0%"
+                          td  "4 ms"
+                          td  "9 ms"
+                          td  "11 ms"
+                          td  "4.8 KiB"
+                          td  "0 B"
+                        tr
+                          td  "get_document_email"
+                          td  "54"
+                          td  "0"
+                          td  "0.0%"
+                          td  "2 ms"
+                          td  "7 ms"
+                          td  "8 ms"
+                          td  "7.6 KiB"
+                          td  "0 B"
+                        tr
+                          td  "get_raw_metadata_tables"
+                          td  "54"
+                          td  "0"
+                          td  "0.0%"
+                          td  "28 ms"
+                          td  "34 ms"
+                          td  "38 ms"
+                          td  "87.1 KiB"
+                          td  "0 B"
+                        tr
+                          td  "get_document_dates"
+                          td  "54"
+                          td  "0"
+                          td  "0.0%"
+                          td  "2 ms"
+                          td  "3 ms"
+                          td  "4 ms"
+                          td  "7.6 KiB"
+                          td  "0 B"
+                        tr
+                          td  "vfs_search_in_folder"
+                          td  "35"
+                          td  "0"
+                          td  "0.0%"
+                          td  "19 ms"
+                          td  "23 ms"
+                          td  "23 ms"
+                          td  "4.6 KiB"
+                          td  "0 B"
+                        tr
+                          td  "vfs_node_term_ids"
+                          td  "32"
+                          td  "0"
+                          td  "0.0%"
+                          td  "2 ms"
+                          td  "3 ms"
+                          td  "3 ms"
+                          td  "1.6 KiB"
+                          td  "0 B"
+                        tr
+                          td  "chat_llm_configured"
+                          td  "29"
+                          td  "0"
+                          td  "0.0%"
+                          td  "0 ms"
+                          td  "0 ms"
+                          td  "0 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "chat_list_models"
+                          td  "29"
+                          td  "0"
+                          td  "0.0%"
+                          td  "8 ms"
+                          td  "9 ms"
+                          td  "11 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_list_groups"
+                          td  "25"
+                          td  "0"
+                          td  "0.0%"
+                          td  "63 ms"
+                          td  "75 ms"
+                          td  "87 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "chat_admin_live_runs"
+                          td  "25"
+                          td  "0"
+                          td  "0.0%"
+                          td  "19 ms"
+                          td  "20 ms"
+                          td  "22 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "collection_overview"
+                          td  "24"
+                          td  "0"
+                          td  "0.0%"
+                          td  "8 ms"
+                          td  "10 ms"
+                          td  "12 ms"
+                          td  "672 B"
+                          td  "0 B"
+                        tr
+                          td  "chat_list_sessions"
+                          td  "21"
+                          td  "0"
+                          td  "0.0%"
+                          td  "6 ms"
+                          td  "7 ms"
+                          td  "7 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "search_numeric_facet"
+                          td  "20"
+                          td  "0"
+                          td  "0.0%"
+                          td  "6 ms"
+                          td  "134 ms"
+                          td  "138 ms"
+                          td  "3.8 KiB"
+                          td  "0 B"
+                        tr
+                          td  "get_document_first_vfs_path"
+                          td  "18"
+                          td  "0"
+                          td  "0.0%"
+                          td  "2 ms"
+                          td  "3 ms"
+                          td  "6 ms"
+                          td  "2.5 KiB"
+                          td  "0 B"
+                        tr
+                          td  "admin_list_users"
+                          td  "18"
+                          td  "0"
+                          td  "0.0%"
+                          td  "13 ms"
+                          td  "17 ms"
+                          td  "17 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_dashboard_counts"
+                          td  "18"
+                          td  "0"
+                          td  "0.0%"
+                          td  "109 ms"
+                          td  "123 ms"
+                          td  "152 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_list_collections"
+                          td  "17"
+                          td  "0"
+                          td  "0.0%"
+                          td  "35 ms"
+                          td  "39 ms"
+                          td  "46 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "get_file_locations"
+                          td  "16"
+                          td  "0"
+                          td  "0.0%"
+                          td  "73 ms"
+                          td  "108 ms"
+                          td  "109 ms"
+                          td  "2.2 KiB"
+                          td  "0 B"
+                        tr
+                          td  "admin_get_dataset"
+                          td  "15"
+                          td  "0"
+                          td  "0.0%"
+                          td  "11 ms"
+                          td  "12 ms"
+                          td  "13 ms"
+                          td  "645 B"
+                          td  "0 B"
+                        tr
+                          td  "chat_get_session"
+                          td  "15"
+                          td  "0"
+                          td  "0.0%"
+                          td  "3 ms"
+                          td  "29 ms"
+                          td  "37 ms"
+                          td  "1.2 KiB"
+                          td  "0 B"
+                        tr
+                          td  "admin_get_collection"
+                          td  "13"
+                          td  "0"
+                          td  "0.0%"
+                          td  "27 ms"
+                          td  "30 ms"
+                          td  "32 ms"
+                          td  "377 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_list_settings"
+                          td  "9"
+                          td  "0"
+                          td  "0.0%"
+                          td  "2 ms"
+                          td  "2 ms"
+                          td  "3 ms"
+                          td  "0 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_get_group"
+                          td  "7"
+                          td  "0"
+                          td  "0.0%"
+                          td  "6 ms"
+                          td  "9 ms"
+                          td  "11 ms"
+                          td  "148 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_task_time_live"
+                          td  "7"
+                          td  "0"
+                          td  "0.0%"
+                          td  "10 ms"
+                          td  "23 ms"
+                          td  "29 ms"
+                          td  "343 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_task_time_breakdown"
+                          td  "6"
+                          td  "0"
+                          td  "0.0%"
+                          td  "9 ms"
+                          td  "53 ms"
+                          td  "66 ms"
+                          td  "174 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_list_task_failures"
+                          td  "6"
+                          td  "0"
+                          td  "0.0%"
+                          td  "6 ms"
+                          td  "16 ms"
+                          td  "19 ms"
+                          td  "240 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_list_document_failures"
+                          td  "6"
+                          td  "0"
+                          td  "0.0%"
+                          td  "7 ms"
+                          td  "28 ms"
+                          td  "35 ms"
+                          td  "384 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_collection_processing"
+                          td  "6"
+                          td  "0"
+                          td  "0.0%"
+                          td  "33 ms"
+                          td  "44 ms"
+                          td  "48 ms"
+                          td  "174 B"
+                          td  "0 B"
+                        tr
+                          td  "admin_list_workflows"
+                          td  "6"
+                          td  "0"
+                          td  "0.0%"
+                          td  "26 ms"
+                          td  "34 ms"
+                          td  "35 ms"
+                          td  "354 B"
+                          td  "0 B"
+                        tr
+                          td  "chat_send_message"
+                          td  "2"
+                          td  "0"
+                          td  "0.0%"
+                          td  "76 ms"
+                          td  "79 ms"
+                          td  "80 ms"
+                          td  "845 B"
+                          td  "0 B"
+                        tr
+                          td  "chat_create_session"
+                          td  "1"
+                          td  "0"
+                          td  "0.0%"
+                          td  "6 ms"
+                          td  "6 ms"
+                          td  "6 ms"
+                          td  "18 B"
+                          td  "0 B"
+    div[role=region][label=0 notifications]
+      ol

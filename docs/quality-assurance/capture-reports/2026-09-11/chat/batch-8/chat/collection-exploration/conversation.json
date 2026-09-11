@@ -1,0 +1,1831 @@
+{
+  "name": "collection-exploration",
+  "profile": "chat",
+  "prompt": "List the document collections available to this conversation. Select one accessible collection and search for three representative documents. Describe their subjects and explain what further research they could support. Cite the documents you actually inspected. If access or evidence is insufficient, state the limitation.",
+  "session_url": "https://hoover4.new.liquiddemo.org/ai_chat/c/ea48613f873f4eadbfadceb7ba12fd1d721b4af3b56c2c16772d18b9e6f5c434/9g==/9g==",
+  "submission_ok": true,
+  "turn_started": true,
+  "stop_disappeared_at_s": 885.0019787549973,
+  "completed_answer_present": true,
+  "generating_started_s": 16.01940791599918,
+  "generating_ended_s": 901.4237821899587,
+  "captures": {
+    "720p": [
+      {
+        "file": "720p/interval-000-t0000s.png",
+        "deadline_offset_s": 0.0,
+        "actual_offset_s": 0.0,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 349,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-001-t0005s.png",
+        "deadline_offset_s": 5.0,
+        "actual_offset_s": 5.006,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 349,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-002-t0011s.png",
+        "deadline_offset_s": 10.0,
+        "actual_offset_s": 10.858,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 366,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-003-t0015s.png",
+        "deadline_offset_s": 15.0,
+        "actual_offset_s": 15.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 366,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-004-t0020s.png",
+        "deadline_offset_s": 20.0,
+        "actual_offset_s": 20.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 401,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-005-t0025s.png",
+        "deadline_offset_s": 25.0,
+        "actual_offset_s": 25.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 430,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-006-t0030s.png",
+        "deadline_offset_s": 30.0,
+        "actual_offset_s": 30.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 506,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-007-t0035s.png",
+        "deadline_offset_s": 35.0,
+        "actual_offset_s": 35.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 590,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-008-t0040s.png",
+        "deadline_offset_s": 40.0,
+        "actual_offset_s": 40.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 665,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-009-t0045s.png",
+        "deadline_offset_s": 45.0,
+        "actual_offset_s": 45.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 817,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-010-t0050s.png",
+        "deadline_offset_s": 50.0,
+        "actual_offset_s": 50.008,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 415,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-011-t0055s.png",
+        "deadline_offset_s": 55.0,
+        "actual_offset_s": 55.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 415,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-012-t0060s.png",
+        "deadline_offset_s": 60.0,
+        "actual_offset_s": 60.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 415,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-013-t0065s.png",
+        "deadline_offset_s": 65.0,
+        "actual_offset_s": 65.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 415,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-014-t0070s.png",
+        "deadline_offset_s": 70.0,
+        "actual_offset_s": 70.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 415,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-015-t0075s.png",
+        "deadline_offset_s": 75.0,
+        "actual_offset_s": 75.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 428,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-016-t0080s.png",
+        "deadline_offset_s": 80.0,
+        "actual_offset_s": 80.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 494,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-017-t0085s.png",
+        "deadline_offset_s": 85.0,
+        "actual_offset_s": 85.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 550,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-018-t0090s.png",
+        "deadline_offset_s": 90.0,
+        "actual_offset_s": 90.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 597,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-019-t0095s.png",
+        "deadline_offset_s": 95.0,
+        "actual_offset_s": 95.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 708,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-020-t0100s.png",
+        "deadline_offset_s": 100.0,
+        "actual_offset_s": 100.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 849,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-021-t0105s.png",
+        "deadline_offset_s": 105.0,
+        "actual_offset_s": 105.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 849,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-022-t0110s.png",
+        "deadline_offset_s": 110.0,
+        "actual_offset_s": 110.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 849,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-023-t0115s.png",
+        "deadline_offset_s": 115.0,
+        "actual_offset_s": 115.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 849,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-024-t0120s.png",
+        "deadline_offset_s": 120.0,
+        "actual_offset_s": 120.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 849,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-025-t0125s.png",
+        "deadline_offset_s": 125.0,
+        "actual_offset_s": 125.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 858,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-026-t0130s.png",
+        "deadline_offset_s": 130.0,
+        "actual_offset_s": 130.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 543,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-027-t0135s.png",
+        "deadline_offset_s": 135.0,
+        "actual_offset_s": 135.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 543,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-028-t0140s.png",
+        "deadline_offset_s": 140.0,
+        "actual_offset_s": 140.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-029-t0145s.png",
+        "deadline_offset_s": 145.0,
+        "actual_offset_s": 145.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-030-t0150s.png",
+        "deadline_offset_s": 150.0,
+        "actual_offset_s": 150.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-031-t0155s.png",
+        "deadline_offset_s": 155.0,
+        "actual_offset_s": 155.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-032-t0160s.png",
+        "deadline_offset_s": 160.0,
+        "actual_offset_s": 160.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-033-t0165s.png",
+        "deadline_offset_s": 165.0,
+        "actual_offset_s": 165.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-034-t0170s.png",
+        "deadline_offset_s": 170.0,
+        "actual_offset_s": 170.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-035-t0175s.png",
+        "deadline_offset_s": 175.0,
+        "actual_offset_s": 175.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-036-t0180s.png",
+        "deadline_offset_s": 180.0,
+        "actual_offset_s": 180.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-037-t0185s.png",
+        "deadline_offset_s": 185.0,
+        "actual_offset_s": 185.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-038-t0190s.png",
+        "deadline_offset_s": 190.0,
+        "actual_offset_s": 190.006,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-039-t0195s.png",
+        "deadline_offset_s": 195.0,
+        "actual_offset_s": 195.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-040-t0200s.png",
+        "deadline_offset_s": 200.0,
+        "actual_offset_s": 200.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-041-t0205s.png",
+        "deadline_offset_s": 205.0,
+        "actual_offset_s": 205.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-042-t0210s.png",
+        "deadline_offset_s": 210.0,
+        "actual_offset_s": 210.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-043-t0215s.png",
+        "deadline_offset_s": 215.0,
+        "actual_offset_s": 215.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-044-t0220s.png",
+        "deadline_offset_s": 220.0,
+        "actual_offset_s": 220.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-045-t0225s.png",
+        "deadline_offset_s": 225.0,
+        "actual_offset_s": 225.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-046-t0230s.png",
+        "deadline_offset_s": 230.0,
+        "actual_offset_s": 230.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-047-t0235s.png",
+        "deadline_offset_s": 235.0,
+        "actual_offset_s": 235.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-048-t0240s.png",
+        "deadline_offset_s": 240.0,
+        "actual_offset_s": 240.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-049-t0245s.png",
+        "deadline_offset_s": 245.0,
+        "actual_offset_s": 245.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-050-t0250s.png",
+        "deadline_offset_s": 250.0,
+        "actual_offset_s": 250.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-051-t0255s.png",
+        "deadline_offset_s": 255.0,
+        "actual_offset_s": 255.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-052-t0260s.png",
+        "deadline_offset_s": 260.0,
+        "actual_offset_s": 260.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-053-t0265s.png",
+        "deadline_offset_s": 265.0,
+        "actual_offset_s": 265.351,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-054-t0270s.png",
+        "deadline_offset_s": 270.0,
+        "actual_offset_s": 270.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-055-t0275s.png",
+        "deadline_offset_s": 275.0,
+        "actual_offset_s": 275.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-056-t0280s.png",
+        "deadline_offset_s": 280.0,
+        "actual_offset_s": 280.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-057-t0285s.png",
+        "deadline_offset_s": 285.0,
+        "actual_offset_s": 285.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 541,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-058-t0290s.png",
+        "deadline_offset_s": 290.0,
+        "actual_offset_s": 290.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 594,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-059-t0295s.png",
+        "deadline_offset_s": 295.0,
+        "actual_offset_s": 295.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 632,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-060-t0300s.png",
+        "deadline_offset_s": 300.0,
+        "actual_offset_s": 300.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 644,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-061-t0305s.png",
+        "deadline_offset_s": 305.0,
+        "actual_offset_s": 305.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 699,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-062-t0310s.png",
+        "deadline_offset_s": 310.0,
+        "actual_offset_s": 310.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-063-t0315s.png",
+        "deadline_offset_s": 315.0,
+        "actual_offset_s": 315.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-064-t0320s.png",
+        "deadline_offset_s": 320.0,
+        "actual_offset_s": 320.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-065-t0325s.png",
+        "deadline_offset_s": 325.0,
+        "actual_offset_s": 325.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-066-t0330s.png",
+        "deadline_offset_s": 330.0,
+        "actual_offset_s": 330.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-067-t0335s.png",
+        "deadline_offset_s": 335.0,
+        "actual_offset_s": 335.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-068-t0340s.png",
+        "deadline_offset_s": 340.0,
+        "actual_offset_s": 340.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-069-t0345s.png",
+        "deadline_offset_s": 345.0,
+        "actual_offset_s": 345.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-070-t0350s.png",
+        "deadline_offset_s": 350.0,
+        "actual_offset_s": 350.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-071-t0355s.png",
+        "deadline_offset_s": 355.0,
+        "actual_offset_s": 355.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-072-t0360s.png",
+        "deadline_offset_s": 360.0,
+        "actual_offset_s": 360.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-073-t0365s.png",
+        "deadline_offset_s": 365.0,
+        "actual_offset_s": 365.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-074-t0370s.png",
+        "deadline_offset_s": 370.0,
+        "actual_offset_s": 370.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-075-t0375s.png",
+        "deadline_offset_s": 375.0,
+        "actual_offset_s": 375.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-076-t0380s.png",
+        "deadline_offset_s": 380.0,
+        "actual_offset_s": 380.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-077-t0385s.png",
+        "deadline_offset_s": 385.0,
+        "actual_offset_s": 385.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-078-t0390s.png",
+        "deadline_offset_s": 390.0,
+        "actual_offset_s": 390.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 723,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-079-t0395s.png",
+        "deadline_offset_s": 395.0,
+        "actual_offset_s": 395.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 943,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-080-t0400s.png",
+        "deadline_offset_s": 400.0,
+        "actual_offset_s": 400.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 943,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-081-t0405s.png",
+        "deadline_offset_s": 405.0,
+        "actual_offset_s": 405.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 943,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-082-t0410s.png",
+        "deadline_offset_s": 410.0,
+        "actual_offset_s": 410.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1050,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-083-t0415s.png",
+        "deadline_offset_s": 415.0,
+        "actual_offset_s": 415.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1188,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-084-t0420s.png",
+        "deadline_offset_s": 420.0,
+        "actual_offset_s": 420.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 910,
+        "text_length": 1337,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-085-t0425s.png",
+        "deadline_offset_s": 425.0,
+        "actual_offset_s": 425.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 910,
+        "text_length": 1374,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-086-t0430s.png",
+        "deadline_offset_s": 430.0,
+        "actual_offset_s": 430.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 910,
+        "text_length": 1379,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-087-t0435s.png",
+        "deadline_offset_s": 435.0,
+        "actual_offset_s": 435.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 945,
+        "text_length": 1397,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-088-t0440s.png",
+        "deadline_offset_s": 440.0,
+        "actual_offset_s": 440.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 945,
+        "text_length": 1422,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-089-t0445s.png",
+        "deadline_offset_s": 445.0,
+        "actual_offset_s": 445.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 945,
+        "text_length": 1444,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-090-t0450s.png",
+        "deadline_offset_s": 450.0,
+        "actual_offset_s": 450.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 945,
+        "text_length": 1480,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-091-t0455s.png",
+        "deadline_offset_s": 455.0,
+        "actual_offset_s": 455.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 945,
+        "text_length": 1521,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-092-t0460s.png",
+        "deadline_offset_s": 460.0,
+        "actual_offset_s": 460.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 945,
+        "text_length": 1542,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-093-t0465s.png",
+        "deadline_offset_s": 465.0,
+        "actual_offset_s": 465.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 970,
+        "text_length": 1560,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-094-t0470s.png",
+        "deadline_offset_s": 470.0,
+        "actual_offset_s": 470.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 970,
+        "text_length": 1588,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-095-t0475s.png",
+        "deadline_offset_s": 475.0,
+        "actual_offset_s": 475.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 970,
+        "text_length": 1588,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-096-t0480s.png",
+        "deadline_offset_s": 480.0,
+        "actual_offset_s": 480.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 970,
+        "text_length": 1700,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-097-t0485s.png",
+        "deadline_offset_s": 485.0,
+        "actual_offset_s": 485.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 994,
+        "text_length": 1776,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-098-t0490s.png",
+        "deadline_offset_s": 490.0,
+        "actual_offset_s": 490.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 994,
+        "text_length": 1776,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-099-t0495s.png",
+        "deadline_offset_s": 495.0,
+        "actual_offset_s": 495.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 994,
+        "text_length": 1776,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-100-t0500s.png",
+        "deadline_offset_s": 500.0,
+        "actual_offset_s": 500.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 994,
+        "text_length": 1855,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-101-t0505s.png",
+        "deadline_offset_s": 505.0,
+        "actual_offset_s": 505.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1088,
+        "text_length": 2139,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-102-t0510s.png",
+        "deadline_offset_s": 510.0,
+        "actual_offset_s": 510.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1174,
+        "text_length": 2359,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-103-t0515s.png",
+        "deadline_offset_s": 515.0,
+        "actual_offset_s": 515.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1204,
+        "text_length": 2398,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-104-t0520s.png",
+        "deadline_offset_s": 520.0,
+        "actual_offset_s": 520.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1239,
+        "text_length": 2407,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-105-t0525s.png",
+        "deadline_offset_s": 525.0,
+        "actual_offset_s": 525.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1239,
+        "text_length": 2424,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-106-t0530s.png",
+        "deadline_offset_s": 530.0,
+        "actual_offset_s": 530.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1239,
+        "text_length": 2443,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-107-t0535s.png",
+        "deadline_offset_s": 535.0,
+        "actual_offset_s": 535.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1274,
+        "text_length": 2452,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-108-t0540s.png",
+        "deadline_offset_s": 540.0,
+        "actual_offset_s": 540.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1274,
+        "text_length": 2479,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-109-t0545s.png",
+        "deadline_offset_s": 545.0,
+        "actual_offset_s": 545.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1274,
+        "text_length": 2513,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-110-t0550s.png",
+        "deadline_offset_s": 550.0,
+        "actual_offset_s": 550.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1274,
+        "text_length": 2559,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-111-t0555s.png",
+        "deadline_offset_s": 555.0,
+        "actual_offset_s": 555.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1274,
+        "text_length": 2584,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-112-t0560s.png",
+        "deadline_offset_s": 560.0,
+        "actual_offset_s": 560.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1274,
+        "text_length": 2616,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-113-t0565s.png",
+        "deadline_offset_s": 565.0,
+        "actual_offset_s": 565.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1298,
+        "text_length": 2747,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-114-t0570s.png",
+        "deadline_offset_s": 570.0,
+        "actual_offset_s": 570.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1298,
+        "text_length": 2747,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-115-t0575s.png",
+        "deadline_offset_s": 575.0,
+        "actual_offset_s": 575.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1323,
+        "text_length": 2878,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-116-t0580s.png",
+        "deadline_offset_s": 580.0,
+        "actual_offset_s": 580.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1323,
+        "text_length": 2878,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-117-t0585s.png",
+        "deadline_offset_s": 585.0,
+        "actual_offset_s": 585.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1348,
+        "text_length": 2940,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-118-t0590s.png",
+        "deadline_offset_s": 590.0,
+        "actual_offset_s": 590.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1383,
+        "text_length": 2966,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-119-t0595s.png",
+        "deadline_offset_s": 595.0,
+        "actual_offset_s": 595.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1383,
+        "text_length": 3021,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-120-t0600s.png",
+        "deadline_offset_s": 600.0,
+        "actual_offset_s": 600.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1383,
+        "text_length": 3021,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-121-t0605s.png",
+        "deadline_offset_s": 605.0,
+        "actual_offset_s": 605.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1446,
+        "text_length": 3104,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-122-t0610s.png",
+        "deadline_offset_s": 610.0,
+        "actual_offset_s": 610.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1446,
+        "text_length": 3137,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-123-t0615s.png",
+        "deadline_offset_s": 615.0,
+        "actual_offset_s": 615.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1481,
+        "text_length": 3159,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-124-t0620s.png",
+        "deadline_offset_s": 620.0,
+        "actual_offset_s": 620.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1475,
+        "text_length": 3202,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-125-t0625s.png",
+        "deadline_offset_s": 625.0,
+        "actual_offset_s": 625.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1475,
+        "text_length": 3202,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-126-t0630s.png",
+        "deadline_offset_s": 630.0,
+        "actual_offset_s": 630.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1503,
+        "text_length": 3270,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-127-t0635s.png",
+        "deadline_offset_s": 635.0,
+        "actual_offset_s": 635.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1596,
+        "text_length": 3401,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-128-t0640s.png",
+        "deadline_offset_s": 640.0,
+        "actual_offset_s": 640.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1631,
+        "text_length": 3531,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-129-t0645s.png",
+        "deadline_offset_s": 645.0,
+        "actual_offset_s": 645.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1631,
+        "text_length": 3531,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-130-t0650s.png",
+        "deadline_offset_s": 650.0,
+        "actual_offset_s": 650.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1631,
+        "text_length": 3586,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-131-t0655s.png",
+        "deadline_offset_s": 655.0,
+        "actual_offset_s": 655.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1656,
+        "text_length": 3597,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-132-t0660s.png",
+        "deadline_offset_s": 660.0,
+        "actual_offset_s": 660.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1656,
+        "text_length": 3597,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-133-t0665s.png",
+        "deadline_offset_s": 665.0,
+        "actual_offset_s": 665.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1656,
+        "text_length": 3658,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-134-t0670s.png",
+        "deadline_offset_s": 670.0,
+        "actual_offset_s": 670.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1656,
+        "text_length": 3686,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-135-t0676s.png",
+        "deadline_offset_s": 675.0,
+        "actual_offset_s": 675.626,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1656,
+        "text_length": 3722,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-136-t0681s.png",
+        "deadline_offset_s": 680.0,
+        "actual_offset_s": 680.999,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1656,
+        "text_length": 3743,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-137-t0685s.png",
+        "deadline_offset_s": 685.0,
+        "actual_offset_s": 685.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1656,
+        "text_length": 3743,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-138-t0690s.png",
+        "deadline_offset_s": 690.0,
+        "actual_offset_s": 690.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1681,
+        "text_length": 3788,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-139-t0695s.png",
+        "deadline_offset_s": 695.0,
+        "actual_offset_s": 695.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1681,
+        "text_length": 3812,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-140-t0700s.png",
+        "deadline_offset_s": 700.0,
+        "actual_offset_s": 700.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1681,
+        "text_length": 3821,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-141-t0705s.png",
+        "deadline_offset_s": 705.0,
+        "actual_offset_s": 705.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1681,
+        "text_length": 3833,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-142-t0710s.png",
+        "deadline_offset_s": 710.0,
+        "actual_offset_s": 710.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1681,
+        "text_length": 3867,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-143-t0715s.png",
+        "deadline_offset_s": 715.0,
+        "actual_offset_s": 715.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1716,
+        "text_length": 3901,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-144-t0720s.png",
+        "deadline_offset_s": 720.0,
+        "actual_offset_s": 720.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1716,
+        "text_length": 3939,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-145-t0725s.png",
+        "deadline_offset_s": 725.0,
+        "actual_offset_s": 725.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1750,
+        "text_length": 3971,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-146-t0730s.png",
+        "deadline_offset_s": 730.0,
+        "actual_offset_s": 730.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1750,
+        "text_length": 3997,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-147-t0735s.png",
+        "deadline_offset_s": 735.0,
+        "actual_offset_s": 735.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1779,
+        "text_length": 4022,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-148-t0740s.png",
+        "deadline_offset_s": 740.0,
+        "actual_offset_s": 740.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1865,
+        "text_length": 4191,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-149-t0745s.png",
+        "deadline_offset_s": 745.0,
+        "actual_offset_s": 745.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1865,
+        "text_length": 4228,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-150-t0750s.png",
+        "deadline_offset_s": 750.0,
+        "actual_offset_s": 750.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1900,
+        "text_length": 4260,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-151-t0755s.png",
+        "deadline_offset_s": 755.0,
+        "actual_offset_s": 755.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1933,
+        "text_length": 4290,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-152-t0760s.png",
+        "deadline_offset_s": 760.0,
+        "actual_offset_s": 760.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1996,
+        "text_length": 4514,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-153-t0765s.png",
+        "deadline_offset_s": 765.0,
+        "actual_offset_s": 765.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2050,
+        "text_length": 4615,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-154-t0770s.png",
+        "deadline_offset_s": 770.0,
+        "actual_offset_s": 770.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2084,
+        "text_length": 4639,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-155-t0775s.png",
+        "deadline_offset_s": 775.0,
+        "actual_offset_s": 775.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2084,
+        "text_length": 4660,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-156-t0780s.png",
+        "deadline_offset_s": 780.0,
+        "actual_offset_s": 780.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2119,
+        "text_length": 4689,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-157-t0785s.png",
+        "deadline_offset_s": 785.0,
+        "actual_offset_s": 785.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2119,
+        "text_length": 4712,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-158-t0790s.png",
+        "deadline_offset_s": 790.0,
+        "actual_offset_s": 790.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2176,
+        "text_length": 4947,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-159-t0795s.png",
+        "deadline_offset_s": 795.0,
+        "actual_offset_s": 795.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2211,
+        "text_length": 5150,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-160-t0800s.png",
+        "deadline_offset_s": 800.0,
+        "actual_offset_s": 800.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2236,
+        "text_length": 5227,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-161-t0805s.png",
+        "deadline_offset_s": 805.0,
+        "actual_offset_s": 805.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2236,
+        "text_length": 5270,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-162-t0810s.png",
+        "deadline_offset_s": 810.0,
+        "actual_offset_s": 810.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2236,
+        "text_length": 5293,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-163-t0815s.png",
+        "deadline_offset_s": 815.0,
+        "actual_offset_s": 815.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2304,
+        "text_length": 5318,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-164-t0820s.png",
+        "deadline_offset_s": 820.0,
+        "actual_offset_s": 820.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2304,
+        "text_length": 5371,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-165-t0825s.png",
+        "deadline_offset_s": 825.0,
+        "actual_offset_s": 825.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2304,
+        "text_length": 5408,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-166-t0830s.png",
+        "deadline_offset_s": 830.0,
+        "actual_offset_s": 830.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2304,
+        "text_length": 5445,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-167-t0835s.png",
+        "deadline_offset_s": 835.0,
+        "actual_offset_s": 835.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2328,
+        "text_length": 5484,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-168-t0840s.png",
+        "deadline_offset_s": 840.0,
+        "actual_offset_s": 840.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2328,
+        "text_length": 5514,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-169-t0845s.png",
+        "deadline_offset_s": 845.0,
+        "actual_offset_s": 845.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2388,
+        "text_length": 5771,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-170-t0850s.png",
+        "deadline_offset_s": 850.0,
+        "actual_offset_s": 850.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2422,
+        "text_length": 5817,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-171-t0855s.png",
+        "deadline_offset_s": 855.0,
+        "actual_offset_s": 855.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2422,
+        "text_length": 5827,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-172-t0860s.png",
+        "deadline_offset_s": 860.0,
+        "actual_offset_s": 860.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2423,
+        "text_length": 5831,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-173-t0865s.png",
+        "deadline_offset_s": 865.0,
+        "actual_offset_s": 865.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2451,
+        "text_length": 5840,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-174-t0870s.png",
+        "deadline_offset_s": 870.0,
+        "actual_offset_s": 870.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2451,
+        "text_length": 5853,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-175-t0875s.png",
+        "deadline_offset_s": 875.0,
+        "actual_offset_s": 875.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2451,
+        "text_length": 5861,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-176-t0880s.png",
+        "deadline_offset_s": 880.0,
+        "actual_offset_s": 880.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2480,
+        "text_length": 5906,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-177-t0885s.png",
+        "deadline_offset_s": 885.0,
+        "actual_offset_s": 885.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 3215,
+        "text_length": 7982,
+        "observations": []
+      }
+    ]
+  },
+  "history": {
+    "by_resolution": {
+      "720p": {
+        "before_reload_text_length": 13386,
+        "after_reload_text_length": 7982,
+        "reload_survived": true,
+        "before_answers": [
+          {
+            "seq": "6",
+            "text": "The quotes were not found exactly as written. Let me re-read the documents more carefully to extract accurate quotes:Based on my analysis of the available document collections, here is a comprehensive report:Available Document CollectionsThe following collections are accessible to this conversation:Consulate (335 documents)Enron (366,316 documents)Epstein (2,888 documents)Other Collection (14 documents)Tables (1,389 documents)Test Data (65 documents)Textfiles (26,593 documents)Selected Collection: EpsteinI selected the Epstein collection for detailed analysis due to its focused nature and the significant public interest in these documents.Three Representative Documents1. Legal Plea Agreement DocumentationFile Path: /TEXT/001/HOUSE_OVERSIGHT_012197.txtSubject: This document is a May 19, 2008 letter from the U.S. Attorney's Office for the Southern District of Florida to Jeffrey Epstein's attorney, Jay P. Lefkowitz. It details the controversial 2007 plea agreement that allowed Epstein to avoid federal prosecution in exchange for pleading guilty to state charges of soliciting prostitution from a minor and registering as a sex offender. The letter outlines the terms of the agreement, including a 30-month sentence with 18 months in county jail, and discusses the negotiations and subsequent disputes over victim compensation and notification procedures.Further Research Potential: This document could support research into:The legal mechanisms used to avoid federal prosecution in high-profile casesThe role of federal prosecutors in negotiating plea deals involving powerful individualsThe impact of the \"non-prosecution agreement\" on victim rights and justiceComparative analysis of similar cases involving wealthy defendants2. Magazine Profile ArticleFile Path: /TEXT/001/HOUSE_OVERSIGHT_023627.txtSubject: This appears to be a magazine article (likely from New York Magazine) describing Epstein's lifestyle, social connections, and role as an advisor to the ultra-wealthy. The article details his Manhattan residence, his relationships with prominent figures including Bill Gates, Prince Andrew, and various technology entrepreneurs, and his philosophy about wealth management and philanthropy. It describes his \"hyper wealth\" discussions with billionaires and his role as a connector in elite circles.Further Research Potential: This document could support research into:Epstein's social network and connections to powerful individualsThe culture of wealth and philanthropy among the ultra-wealthyHow Epstein maintained access to elite circles despite legal troublesThe intersection of technology, finance, and philanthropy in the early 2000sMedia portrayal of Epstein before his 2019 arrest3. FBI Evidence InventoryFile Path: /TEXT/001/HOUSE_OVERSIGHT_018872.txtSubject: This is an FBI FOIA document showing a deleted page information sheet and evidence inventory from Epstein's Palm Beach property seized on August 28, 2006. The document lists 40+ items of evidence including phone message books, CDs, photos, massage tables, and sexual devices. It also shows that 152 pages were deleted from the document under various FOIA exemptions (b6, b7C, b7E, b3), and many pages were sealed by court order.Further Research Potential: This document could support research into:The scope of FBI investigations into Epstein's activitiesWhat information was redacted from public records and whyThe types of evidence collected in sex trafficking investigationsThe relationship between law enforcement and Epstein's legal teamHow evidence handling procedures work in high-profile federal casesLimitationsAccess Limitations:The documents provided are excerpts from a larger collection, and many pages appear to be redacted or sealedThe FBI evidence inventory shows 152 deleted pages and numerous court-sealed pages, indicating significant portions of the original documents are not accessibleSome documents are truncated, limiting the full context of the informationEvidence Limitations:The documents represent only a small sample of the 2,888 documents in the Epstein collectionWithout access to the full documents, particularly the redacted portions, the complete picture of Epstein's activities and connections cannot be fully understoodThe documents span different time periods (2006-2008) and may not reflect later developments in the caseCitation Verification: The citation system indicates that some quotes could not be verified in the original documents, suggesting potential issues with the document extraction or formatting. This limitation should be noted when using these documents for research purposes.ConclusionThe Epstein collection contains diverse document types including legal correspondence, media profiles, and law enforcement evidence inventories. These documents provide valuable insights into Epstein's legal troubles, social connections, and the investigative process. However, the significant redactions and sealed portions of these documents limit their completeness and suggest that much of the most sensitive information remains unavailable to researchers.Documents Inspected:/TEXT/001/HOUSE_OVERSIGHT_012197.txt [D1]/TEXT/001/HOUSE_OVERSIGHT_023627.txt [D2]/TEXT/001/HOUSE_OVERSIGHT_018872.txt [D3]"
+          }
+        ],
+        "after_answers": [
+          {
+            "seq": "6",
+            "text": "The quotes were not found exactly as written. Let me re-read the documents more carefully to extract accurate quotes:Based on my analysis of the available document collections, here is a comprehensive report:Available Document CollectionsThe following collections are accessible to this conversation:Consulate (335 documents)Enron (366,316 documents)Epstein (2,888 documents)Other Collection (14 documents)Tables (1,389 documents)Test Data (65 documents)Textfiles (26,593 documents)Selected Collection: EpsteinI selected the Epstein collection for detailed analysis due to its focused nature and the significant public interest in these documents.Three Representative Documents1. Legal Plea Agreement DocumentationFile Path: /TEXT/001/HOUSE_OVERSIGHT_012197.txtSubject: This document is a May 19, 2008 letter from the U.S. Attorney's Office for the Southern District of Florida to Jeffrey Epstein's attorney, Jay P. Lefkowitz. It details the controversial 2007 plea agreement that allowed Epstein to avoid federal prosecution in exchange for pleading guilty to state charges of soliciting prostitution from a minor and registering as a sex offender. The letter outlines the terms of the agreement, including a 30-month sentence with 18 months in county jail, and discusses the negotiations and subsequent disputes over victim compensation and notification procedures.Further Research Potential: This document could support research into:The legal mechanisms used to avoid federal prosecution in high-profile casesThe role of federal prosecutors in negotiating plea deals involving powerful individualsThe impact of the \"non-prosecution agreement\" on victim rights and justiceComparative analysis of similar cases involving wealthy defendants2. Magazine Profile ArticleFile Path: /TEXT/001/HOUSE_OVERSIGHT_023627.txtSubject: This appears to be a magazine article (likely from New York Magazine) describing Epstein's lifestyle, social connections, and role as an advisor to the ultra-wealthy. The article details his Manhattan residence, his relationships with prominent figures including Bill Gates, Prince Andrew, and various technology entrepreneurs, and his philosophy about wealth management and philanthropy. It describes his \"hyper wealth\" discussions with billionaires and his role as a connector in elite circles.Further Research Potential: This document could support research into:Epstein's social network and connections to powerful individualsThe culture of wealth and philanthropy among the ultra-wealthyHow Epstein maintained access to elite circles despite legal troublesThe intersection of technology, finance, and philanthropy in the early 2000sMedia portrayal of Epstein before his 2019 arrest3. FBI Evidence InventoryFile Path: /TEXT/001/HOUSE_OVERSIGHT_018872.txtSubject: This is an FBI FOIA document showing a deleted page information sheet and evidence inventory from Epstein's Palm Beach property seized on August 28, 2006. The document lists 40+ items of evidence including phone message books, CDs, photos, massage tables, and sexual devices. It also shows that 152 pages were deleted from the document under various FOIA exemptions (b6, b7C, b7E, b3), and many pages were sealed by court order.Further Research Potential: This document could support research into:The scope of FBI investigations into Epstein's activitiesWhat information was redacted from public records and whyThe types of evidence collected in sex trafficking investigationsThe relationship between law enforcement and Epstein's legal teamHow evidence handling procedures work in high-profile federal casesLimitationsAccess Limitations:The documents provided are excerpts from a larger collection, and many pages appear to be redacted or sealedThe FBI evidence inventory shows 152 deleted pages and numerous court-sealed pages, indicating significant portions of the original documents are not accessibleSome documents are truncated, limiting the full context of the informationEvidence Limitations:The documents represent only a small sample of the 2,888 documents in the Epstein collectionWithout access to the full documents, particularly the redacted portions, the complete picture of Epstein's activities and connections cannot be fully understoodThe documents span different time periods (2006-2008) and may not reflect later developments in the caseCitation Verification: The citation system indicates that some quotes could not be verified in the original documents, suggesting potential issues with the document extraction or formatting. This limitation should be noted when using these documents for research purposes.ConclusionThe Epstein collection contains diverse document types including legal correspondence, media profiles, and law enforcement evidence inventories. These documents provide valuable insights into Epstein's legal troubles, social connections, and the investigative process. However, the significant redactions and sealed portions of these documents limit their completeness and suggest that much of the most sensitive information remains unavailable to researchers.Documents Inspected:/TEXT/001/HOUSE_OVERSIGHT_012197.txt [D1]/TEXT/001/HOUSE_OVERSIGHT_023627.txt [D2]/TEXT/001/HOUSE_OVERSIGHT_018872.txt [D3]"
+          }
+        ],
+        "switch": {
+          "attempted": true,
+          "text_length_after_switch_back": 7982,
+          "survived": true
+        }
+      }
+    }
+  },
+  "document_preview": {
+    "ok": true,
+    "title": "3.",
+    "count": 19,
+    "toggled_disclosures": 3
+  },
+  "observations": [],
+  "incomplete": false,
+  "incomplete_reason": ""
+}

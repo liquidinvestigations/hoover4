@@ -1,0 +1,185 @@
+# 31-search-filetype-chip (1080p)
+url:      https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOhamZpbGVfdHlwZXOBoWNJbnQbeCS9jZyyoDhtcmFuZ2VfZmlsdGVyc6Bkc29ydKJja2V5aVJlbGV2YW5jZWRkZXNj9Q==/0/9g==/9g==
+title:    Hoover Search: easychair
+actions:  sleep 1500; click_css #x-search-open-filters; wait_text All filters; click_text File types; sleep 1200; click_text_in #x-filter-modal :: doc; sleep 800; click_text Show; sleep 2500; wait_text_in #x-filter-chips :: doc
+api calls: 16 (search_for_results_hit_count x7, search_for_results x4, search_string_facet x2, fetch_db_terms_for_ints x1, list_storage_tree x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6503[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6501[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6499[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6497[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][value=easychair][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter (1)"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+              div#x-filter-chips
+                div[title=doc]
+                  span  "File types"
+                  span  "doc"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                button  "Clear all"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "2 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-6491[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 2"
+                      div
+                        div#dxc-6493[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-6489[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/1"
+                        div
+                        div
+                          div#dxc-6487[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Document]
+                                  svg
+                                    path
+                              div
+                                span  "easychair"
+                                span  ".docx"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "... first line of the title), select Format -> Paragraph in the Microsoft Word menu and set the spacing before the paragraph to 94pt and after to 15pt. Styles To produce a document complying with the"
+                                span  "EasyChair"
+                                span  "style you can simply take this guide and modify it. Several Word document styles are defined and used in this guide. To apply these styles in Microsoft Word you can use the Formatting Palette ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Document]
+                                  svg
+                                    path
+                              div
+                                span  "easychair"
+                                span  ".odt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "... first line of the title), select Format -> Paragraph in the Microsoft Word menu and set the spacing before the paragraph to 94pt and after to 15pt. Styles To produce a document complying with the"
+                                span  "EasyChair"
+                                span  "style you can simply take this guide and modify it. Several Word document styles are defined and used in this guide. To apply these styles in Microsoft Word you can use the Formatting Palette ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2M]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

@@ -1,0 +1,606 @@
+# 111-admin-operations-collection-testdata (720p)
+url:      https://hoover4.new.liquiddemo.org/admin/operations
+title:    Admin: operations
+actions:  wait_css #x-ops-filter-state; eval const el=document.querySelector('#x-ops-filter-collection');const s=Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value').set;s.call(el,'testdata');el.dispatchEvent(new Event('change',{bubbles:true}));return {ok:true};; wait_text task type(s) failing above; sleep 2000
+api calls: 3 (admin_list_operations x2, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7599[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7597[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7595[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7593[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Operations"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Operations"
+              div
+                div
+                  h2  "Filters"
+                  div
+                    label  "State"
+                      select#x-ops-filter-state
+                    label  "Collection"
+                      select#x-ops-filter-collection
+                    span  "Choose a collection to see its per-task error rates."
+                div
+                  h2  "Failure rate by task type (testdata)"
+                  div
+                    p  "One row per activity execution, retries included. Anything over is called out as a possible tooling limitation; below that is an ordinary failure rate on a messy corpus."
+                      b  "5.0%"
+                    p  "1 task type(s) failing above 5.0%."
+                    table
+                      thead
+                        tr
+                          th  "Task"
+                          th  "Error rate"
+                          th  "Failed / total executions"
+                          th  "Documents affected"
+                      tbody
+                        tr
+                          td  "run_tika_and_store"
+                          td  "33.9%"
+                            span  "above the line"
+                          td  "40 / 118"
+                          td  "6 / 65"
+                        tr
+                          td  "list_disk_folder"
+                          td  "0.0%"
+                          td  "0 / 1094"
+                          td  "0 / 1"
+                        tr
+                          td  "ingest_files_batch"
+                          td  "0.0%"
+                          td  "0 / 140"
+                          td  "0 / 1"
+                        tr
+                          td  "detect_mime_all"
+                          td  "0.0%"
+                          td  "0 / 86"
+                          td  "0 / 65"
+                        tr
+                          td  "fetch_plan_hashes"
+                          td  "0.0%"
+                          td  "0 / 72"
+                          td  "0 / 17"
+                        tr
+                          td  "insert_vfs_directories"
+                          td  "0.0%"
+                          td  "0 / 52"
+                          td  "0 / 1"
+                        tr
+                          td  "extract_plaintext_chunks"
+                          td  "0.0%"
+                          td  "0 / 49"
+                          td  "0 / 39"
+                        tr
+                          td  "count_new_blobs"
+                          td  "0.0%"
+                          td  "0 / 39"
+                          td  "0 / 1"
+                        tr
+                          td  "build_vfs_nodes"
+                          td  "0.0%"
+                          td  "0 / 37"
+                          td  "0 / 1"
+                        tr
+                          td  "resolve_canonical_file_type"
+                          td  "0.0%"
+                          td  "0 / 36"
+                          td  "0 / 1"
+                        tr
+                          td  "sample_dataset_progress"
+                          td  "0.0%"
+                          td  "0 / 31"
+                          td  "0 / 1"
+                        tr
+                          td  "list_pending_plans"
+                          td  "0.0%"
+                          td  "0 / 19"
+                          td  "0 / 1"
+                        tr
+                          td  "index_vfs_structure"
+                          td  "0.0%"
+                          td  "0 / 19"
+                          td  "0 / 1"
+                        tr
+                          td  "index_entity_terms"
+                          td  "0.0%"
+                          td  "0 / 19"
+                          td  "0 / 1"
+                        tr
+                          td  "extract_entities_for_hashes"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "index_vectors"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "finalize_index_batch"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "scan_regex_entities_for_hashes"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "plan_shards"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "get_plan_items_metadata"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "mark_plan_finished"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "chunk_embed_for_hashes"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "compute_plans"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 1"
+                        tr
+                          td  "cleanup_plan_dir"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "optimize_shard_tables"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "record_indexed"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "resolve_document_dates"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "download_plan_files"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "build_email_graph"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 1"
+                        tr
+                          td  "run_ocr_pdf_and_store"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 7"
+                        tr
+                          td  "index_text_pages"
+                          td  "0.0%"
+                          td  "0 / 18"
+                          td  "0 / 17"
+                        tr
+                          td  "record_archive_container"
+                          td  "0.0%"
+                          td  "0 / 16"
+                          td  "0 / 11"
+                        tr
+                          td  "run_ocr_and_store"
+                          td  "0.0%"
+                          td  "0 / 14"
+                          td  "0 / 5"
+                        tr
+                          td  "refresh_stale_document_locations"
+                          td  "0.0%"
+                          td  "0 / 13"
+                          td  "0 / 1"
+                        tr
+                          td  "reconcile_deleted_files"
+                          td  "0.0%"
+                          td  "0 / 13"
+                          td  "0 / 1"
+                        tr
+                          td  "parse_table_and_store"
+                          td  "0.0%"
+                          td  "0 / 11"
+                          td  "0 / 11"
+                        tr
+                          td  "parse_office_xml_and_store"
+                          td  "0.0%"
+                          td  "0 / 10"
+                          td  "0 / 7"
+                        tr
+                          td  "pdf_small_extract_text_and_images"
+                          td  "0.0%"
+                          td  "0 / 9"
+                          td  "0 / 7"
+                        tr
+                          td  "pdf_get_metadata_and_store"
+                          td  "0.0%"
+                          td  "0 / 9"
+                          td  "0 / 7"
+                        tr
+                          td  "extract_email_attachments_to_temp"
+                          td  "0.0%"
+                          td  "0 / 9"
+                          td  "0 / 7"
+                        tr
+                          td  "parse_email_extract_text_headers"
+                          td  "0.0%"
+                          td  "0 / 9"
+                          td  "0 / 7"
+                        tr
+                          td  "record_processing_errors"
+                          td  "0.0%"
+                          td  "0 / 8"
+                          td  "0 / 1"
+                        tr
+                          td  "extract_archive_to_temp"
+                          td  "0.0%"
+                          td  "0 / 7"
+                          td  "0 / 4"
+                        tr
+                          td  "parse_image_metadata_and_store"
+                          td  "0.0%"
+                          td  "0 / 7"
+                          td  "0 / 5"
+                div
+                  h2  "Operations, newest first"
+                  div
+                    table
+                      thead
+                        tr
+                          th  "Kind"
+                          th  "Target"
+                          th  "State"
+                          th  "Started"
+                          th  "Duration"
+                          th  "Progress"
+                          th  "ETA"
+                          th  "Outcome"
+                          th
+                      tbody
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_manualqa"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:46:33Z"
+                          td  "1m 37s"
+                          td
+                            div
+                              div
+                                div
+                              div  "3 / 3 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "2 document(s) failed"
+                              div  "2 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_excelsc"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:45:17Z"
+                          td  "1m 15s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "2 document(s) failed"
+                              div  "2 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_diskfiles"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:44:52Z"
+                          td  "22s"
+                          td
+                            div
+                              div
+                                div
+                              div  "2 / 2 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "1 document(s) failed"
+                              div  "1 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_emails"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:54Z"
+                          td  "57s"
+                          td
+                            div
+                              div
+                                div
+                              div  "3 / 3 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "2 document(s) failed"
+                              div  "2 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_wide"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:48Z"
+                          td  "3s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_manualpdf"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:41Z"
+                          td  "4s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_leaf"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:34Z"
+                          td  "4s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_filenames"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:30Z"
+                          td  "1s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_entityfixtures"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T14:13:41Z"
+                          td  "6s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_filenames"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T13:16:29Z"
+                          td  "3s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_shapes"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T13:16:13Z"
+                          td  "14s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_zips"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T13:16:06Z"
+                          td  "6s"
+                          td
+                            div
+                              div
+                                div
+                              div  "2 / 2 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_testfiles"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T13:13:58Z"
+                          td  "1m 8s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "1 document(s) failed"
+                              div  "1 task failure(s)"
+                          td
+                            button  "Re-run"
+                    div
+                      button  "Newer"
+                      span  "Page 1"
+                      button  "Older"
+    div[role=region][label=0 notifications]
+      ol

@@ -1,0 +1,97 @@
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7935[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7933[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7931[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7929[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          h1  "What are you researching?"
+          div
+            a[href=/ai_chat/c/02b3f8b2b4021b61d1941be19bcb4fc67e81c749b7d5111d35b0856a91a94f6b/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Comparing Three Enron Contract Documents"
+                  div  "The user requested a comparison of three procurement contracts by parties, subject, dates, and obligations with evidence citations. The assistant analyzed a GE turbine agreement, a PERC turbine purcha"
+            a[href=/ai_chat/c/bbd1ca580daf4f4c093c481142f3dacb26c07173bfb2539a27aa83b5cc3aacd3/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Enron Chronology from Multiple Documents"
+                  div  "A timeline of Enron events is built from documents dated 2001 to 2002, distinguishing creation dates from event dates and noting gaps in the 1989-1991 period."
+            a[href=/ai_chat/c/a26ae1cb0d5abc868957f07d9c68398ff7d99e8e3ea49f1e41f939e74eccf0fb/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Energy Document Analysis and Claim Extraction"
+                  div  "The assistant searched collections for energy documents, inspected three relevant files, and generated a table of claims with citations and uncertainties. It distinguished direct document statements f"
+            a[href=/ai_chat/c/5ef389363764d6c71adbd53a584630b2aee186e288087308ed474bfc29320fff/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Epstein Collection Document Analysis"
+                  div  "The assistant listed available collections, selected the Epstein set, and analyzed three documents covering litigation strategies, a controversial plea deal, and media reports on Clinton. The response"
+            a[href=/ai_chat/c/2bf8964d97dbdf7a0765a24ba620aa53ec053b453e240181535a522f729cc335/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Energy Documents Analysis and Claim Table"
+                  div  "The user requested a search for energy documents and a table of claims with citations and uncertainties. The assistant provided a detailed report analyzing three relevant documents and distinguishing "
+            a[href=/ai_chat/c/1ef902cb20d313902f585788c7c02e625d526e1b7efd9f929d17943482d73d10/9g==/9g==]
+              div
+                div  "💬"
+                div
+                  div  "Enron Collection Document Analysis"
+                  div  "The user requested a list of available collections and a search of three representative Enron documents with subject descriptions and research potential. The assistant provided the collection list, se"
+          div
+            a[href=/ai_chat/history]  "View all conversations"
+          div
+            div
+              label
+                span  "Model"
+                select
+            div
+              textarea
+              div
+                label  "Deep Research"
+                  input[type=checkbox][value=on]
+                label  "Internet tools"
+                  input[type=checkbox][value=on]
+                div
+                button[title=Send]  "↑"
+    div[role=region][label=0 notifications]
+      ol

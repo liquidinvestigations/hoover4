@@ -1,0 +1,586 @@
+# 27-filter-filelocation-reopen (1080p)
+url:      https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhamZpbGVfcGF0aHOBoWNJbnQbH96n4pK7p09tcmFuZ2VfZmlsdGVyc6Bkc29ydKJja2V5aVJlbGV2YW5jZWRkZXNj9Q==/0/9g==/9g==
+title:    Hoover Search:
+actions:  sleep 1500; click_css #x-search-open-filters; wait_text All filters; click_text File location; wait_text Filtering on a folder; sleep 1200; click_css #x-tree-d-testdata_shapes; sleep 1500; click_text_in #x-filter-modal :: the-directory; sleep 800; click_text Show; sleep 2500; wait_text_in #x-filter-chips :: the-directory; click_css #x-search-open-filters; wait_text All filters; click_text File location; wait_text Filtering on a folder; sleep 2500; click_css #x-tree-d-testdata_shapes; sleep 1500
+api calls: 25 (search_for_results_hit_count x9, list_storage_tree x4, search_for_results x4, fetch_db_terms_for_ints x2, search_string_facet x2, vfs_tree_children x2, vfs_node_term_ids x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6323[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6321[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6319[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6317[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter (1)"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+              div#x-filter-chips
+                div[title=/the-directory]
+                  span  "File location"
+                  span  "the-directory"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                button  "Clear all"
+            div
+              div#x-filter-modal
+                div
+                  svg
+                    path
+                  div  "All filters"
+                  button[title=Close without applying]
+                    svg
+                      path
+                div
+                  div
+                    button  "Collections"
+                      div
+                      svg
+                        path
+                    button  "File types"
+                      div
+                      svg
+                        path
+                    button  "File size"
+                      div
+                      svg
+                        path
+                    button  "File location"
+                      div
+                        div
+                      svg
+                        path
+                    button  "Date"
+                      div
+                      svg
+                        path
+                    button  "Email"
+                      div
+                      svg
+                        path
+                    button  "Entities"
+                      div
+                      svg
+                        path
+                  div
+                    div  "Filtering on a folder finds everything below it, including inside archives and emails."
+                    div
+                      div#x-storage-tree
+                        div[title=consulate]
+                          button#x-tree-c-consulate
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "consulate"
+                        div[title=consulate_files]
+                          button#x-tree-d-consulate_files
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "files"
+                        div[title=enron]
+                          button#x-tree-c-enron
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "enron"
+                        div[title=enron_dasovich_j]
+                          button#x-tree-d-enron_dasovich_j
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "dasovich_j"
+                        div[title=enron_kaminski_v]
+                          button#x-tree-d-enron_kaminski_v
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "kaminski_v"
+                        div[title=enron_kean_s]
+                          button#x-tree-d-enron_kean_s
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "kean_s"
+                        div[title=enron_maildir]
+                          div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "maildir"
+                        div[title=enron_mann_k]
+                          button#x-tree-d-enron_mann_k
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "mann_k"
+                        div[title=epstein]
+                          button#x-tree-c-epstein
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "epstein"
+                        div[title=epstein_docs]
+                          button#x-tree-d-epstein_docs
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "docs"
+                        div[title=other]
+                          button#x-tree-c-other
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "other"
+                        div[title=other_emails]
+                          button#x-tree-d-other_emails
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "emails"
+                        div[title=tables]
+                          button#x-tree-c-tables
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "tables"
+                        div[title=tables_ehudx]
+                          button#x-tree-d-tables_ehudx
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "ehudx"
+                        div[title=tables_excels]
+                          div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "excels"
+                        div[title=tables_greenvelope]
+                          button#x-tree-d-tables_greenvelope
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "greenvelope"
+                        div[title=testdata]
+                          button#x-tree-c-testdata
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "testdata"
+                        div[title=testdata_diskfiles]
+                          button#x-tree-d-testdata_diskfiles
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "diskfiles"
+                        div[title=testdata_emails]
+                          button#x-tree-d-testdata_emails
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "emails"
+                        div[title=testdata_entityfixtures]
+                          div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "entityfixtures"
+                        div[title=testdata_excelsc]
+                          div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "excelsc"
+                        div[title=testdata_filenames]
+                          div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "filenames"
+                        div[title=testdata_leaf]
+                          div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "leaf"
+                        div[title=testdata_manualpdf]
+                          div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "manualpdf"
+                        div[title=testdata_manualqa]
+                          button#x-tree-d-testdata_manualqa
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "manualqa"
+                        div[title=testdata_shapes]
+                          button#x-tree-d-testdata_shapes
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "shapes"
+                        div
+                          div
+                            div[title=/deep-stuff]
+                              button
+                                svg
+                                  path
+                              div
+                                svg
+                                  path
+                              div
+                                svg
+                                  path
+                              div  "deep-stuff"
+                            div[title=/the-directory]
+                              button
+                                svg
+                                  path
+                              div
+                                svg
+                                  path
+                              div
+                                svg
+                                  path
+                              div  "the-directory"
+                            div[title=/the-directory.zip]
+                              button
+                                svg
+                                  path
+                              div
+                                svg
+                                  path
+                              div
+                                svg
+                                  path
+                              div  "the-directory.zip"
+                        div[title=testdata_testfiles]
+                          div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "testfiles"
+                        div[title=testdata_wide]
+                          div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "wide"
+                        div[title=testdata_zips]
+                          button#x-tree-d-testdata_zips
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "zips"
+                        div[title=textfiles]
+                          button#x-tree-c-textfiles
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "textfiles"
+                        div[title=textfiles_extra]
+                          button#x-tree-d-textfiles_extra
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "extra"
+                div
+                  button  "Clear all"
+                  div
+                  button  "Cancel"
+                  button  "Show 2 results"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "2 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-6311[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 2"
+                      div
+                        div#dxc-6313[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-6309[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/1"
+                        div
+                        div
+                          div#dxc-6307[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "many-a-child-file-1.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_shapes]  "testdata_shapes"
+                            div
+                              div
+                                span  "many-a-child-file-1.txt many-a-child-file-10.txt many-a-child-file-100.txt many-a-child-file-101.txt many-a-child-file-102.txt many-a-child-file-103.txt many-a-child-file-104.txt many-a-child-file-105"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfc2hhcGVzaWZpbGVfaGFzaHhAN2ViZjVhZjMwZDBkOTcwNjBkMWYxNTA5ODZiY2NmO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "file-666.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_shapes]  "testdata_shapes"
+                            div
+                              div
+                                span  "file-666.txt file-667.txt file-668.txt file-669.txt file-670.txt file-671.txt file-672.txt file-673.txt file-674.txt file-675.txt file-676.txt file-677.txt file-678.txt file-679.txt file-680.txt file-"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfc2hhcGVzaWZpbGVfaGFzaHhAZGZiYzJlOTVmZjQ1YTBmMjE1M2FiMmU3YWExNWNlM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

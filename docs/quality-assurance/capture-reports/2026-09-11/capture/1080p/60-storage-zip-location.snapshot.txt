@@ -1,0 +1,368 @@
+# 60-storage-zip-location (1080p)
+url:      https://hoover4.new.liquiddemo.org/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==
+title:    Hoover Search - File Browser
+actions:  sleep 2000
+api calls: 7 (vfs_tree_children x2, list_folder_children x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_path_to x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5277[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5275[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5273[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5271[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div  "Storage"
+                div
+                  div#x-storage-tree
+                    div[title=consulate]
+                      button#x-tree-c-consulate
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "consulate"
+                    div[title=consulate_files]
+                      button#x-tree-d-consulate_files
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "files"
+                    div[title=enron]
+                      button#x-tree-c-enron
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "enron"
+                    div[title=enron_dasovich_j]
+                      button#x-tree-d-enron_dasovich_j
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "dasovich_j"
+                    div[title=enron_kaminski_v]
+                      button#x-tree-d-enron_kaminski_v
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "kaminski_v"
+                    div[title=enron_kean_s]
+                      button#x-tree-d-enron_kean_s
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "kean_s"
+                    div[title=enron_maildir]
+                      div
+                      div
+                        svg
+                          path
+                      div  "maildir"
+                    div[title=enron_mann_k]
+                      button#x-tree-d-enron_mann_k
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "mann_k"
+                    div[title=epstein]
+                      button#x-tree-c-epstein
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "epstein"
+                    div[title=epstein_docs]
+                      button#x-tree-d-epstein_docs
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "docs"
+                    div[title=other]
+                      button#x-tree-c-other
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "other"
+                    div[title=other_emails]
+                      button#x-tree-d-other_emails
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "emails"
+                    div[title=tables]
+                      button#x-tree-c-tables
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "tables"
+                    div[title=tables_ehudx]
+                      button#x-tree-d-tables_ehudx
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "ehudx"
+                    div[title=tables_excels]
+                      div
+                      div
+                        svg
+                          path
+                      div  "excels"
+                    div[title=tables_greenvelope]
+                      button#x-tree-d-tables_greenvelope
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "greenvelope"
+                    div[title=testdata]
+                      button#x-tree-c-testdata
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "testdata"
+                    div[title=testdata_diskfiles]
+                      button#x-tree-d-testdata_diskfiles
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "diskfiles"
+                    div[title=testdata_emails]
+                      button#x-tree-d-testdata_emails
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "emails"
+                    div[title=testdata_entityfixtures]
+                      div
+                      div
+                        svg
+                          path
+                      div  "entityfixtures"
+                    div[title=testdata_excelsc]
+                      div
+                      div
+                        svg
+                          path
+                      div  "excelsc"
+                    div[title=testdata_filenames]
+                      div
+                      div
+                        svg
+                          path
+                      div  "filenames"
+                    div[title=testdata_leaf]
+                      div
+                      div
+                        svg
+                          path
+                      div  "leaf"
+                    div[title=testdata_manualpdf]
+                      div
+                      div
+                        svg
+                          path
+                      div  "manualpdf"
+                    div[title=testdata_manualqa]
+                      button#x-tree-d-testdata_manualqa
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "manualqa"
+                    div[title=testdata_shapes]
+                      button#x-tree-d-testdata_shapes
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "shapes"
+                    div[title=testdata_testfiles]
+                      div
+                      div
+                        svg
+                          path
+                      div  "testfiles"
+                    div[title=testdata_wide]
+                      div
+                      div
+                        svg
+                          path
+                      div  "wide"
+                    div[title=testdata_zips]
+                      button#x-tree-d-testdata_zips
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "zips"
+                    div
+                      div
+                        div[title=/location-1]
+                          button
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "location-1"
+                        div[title=/location-1/parent.zip]
+                          button
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "parent.zip"
+                        div[title=/location-2]
+                          button
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "location-2"
+                    div[title=textfiles]
+                      button#x-tree-c-textfiles
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "textfiles"
+                    div[title=textfiles_extra]
+                      button#x-tree-d-textfiles_extra
+                        svg
+                          path
+                      div
+                        svg
+                          path
+                      div  "extra"
+            div#x-sidebar-resize[title=Drag to resize the sidebar, double-click to reset it]
+          div
+            div
+              div
+                a[href=/file_browser]  "Browsing"
+                a[href=/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/9g==/9g==]  "testdata_zips"
+                span  "›"
+                a[title=/location-1][href=/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/9g==/9g==]
+                  span  "location-1"
+              div
+                div
+                  svg
+                    path
+                  input[type=text][placeholder=Search in folder…]
+                a[title=Search the whole corpus, filtered to this folder and everything below it][href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhamZpbGVfcGF0aHOBoWNJbnQbaRBVWSM0MGdtcmFuZ2Vf]  "Open in Search"
+                  svg
+                    path
+              div
+                table
+                  thead
+                    tr
+                      th  "Name"
+                      th
+                      th  "Size"
+                      th
+                  tbody
+                    tr
+                      td
+                        div
+                          span
+                            svg
+                              path
+                          span  "parent.zip"
+                      td
+                        button[title=Show this container in the preview pane]  "View Details"
+                      td  "353 B"
+                      td
+                        div
+                          a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtdGVzdGRhdGFfemlwc2lmaWxlX2hhc2h4QGM1ZjI1MTgzMTFmYjNlNjA2NDkyMDAzNmJjY2E5YzBiZ]
+                            svg
+                              path
+                          div
+                            button
+                              svg
+                                path
+            div
+              div
+                div
+                  svg
+                    path
+                    polygon
+                  div  "No document selected"
+                  div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

@@ -1,0 +1,387 @@
+# 93-ai-chat-history (1080p)
+url:      https://hoover4.new.liquiddemo.org/ai_chat/history
+title:    Hoover Search - Chat history
+actions:  sleep 2000
+api calls: 2 (chat_list_sessions x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7527[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7525[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7523[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7521[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            a[href=/ai_chat]  "← Back"
+            h1  "Conversation history"
+          div
+            div
+              a[href=/ai_chat/c/7f0a2710fdd21c158ed1aa976fc48199577ebfc1fe6ad73eb1629396882423a1/9g==/9g==]
+                div  "List Consulate Documents and Analyze Three Samples"
+                div  "The user requested available collections and a detailed analysis of three Consulate documents covering event planning, contacts, and task management. The assistant listed seven collections, selected t"
+                div  "11 messages · updated 2026-09-10T11:10:43Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/f0bc1d60a1d4f697699046563e7222bb2e5f778a6b9267882496d546f88f84b1/9g==/9g==]
+                div  "Rodrigo Paz Presidency and News Search"
+                div  "User asked for Bolivia's current president and five news links after September 2026, but only pre-September 2026 articles were found. The search confirmed Rodrigo Paz as president but could not provid"
+                div  "6 messages · updated 2026-09-08T07:14:39Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/4e98c49ef1070fc19e76dc56817c5d33e7798a3d44747603f70aa3a025a90d0f/9g==/9g==]
+                div  "ceva"
+                div  "8 messages"
+                div  "8 messages · updated 2026-09-07T18:05:04Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/cea7c3d0987f64683de3c2464a71c13c53297e65c8459079558ea6e846d03dae/9g==/9g==]
+                div  "Summarise the first document in this collection."
+                div  "7 messages"
+                div  "7 messages · updated 2026-09-07T18:03:23Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/5cd80ae2b7d2020e286a66ae65f4d9318b647fa690f8d1558a41b06545e48223/9g==/9g==]
+                div  "Clarifying the Target Collection"
+                div  "The user asked about a specific collection, and the assistant listed available options to identify the correct one for analysis."
+                div  "4 messages · updated 2026-09-07T18:02:27Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/86e471166358b18b05035d43db2b42e26804b3e6e41653a9fc1fa382531c2343/9g==/9g==]
+                div  "Count from 1 to 500, one number per line, with no other text…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T18:01:39Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/9da92d02e4c444568d0c45b6e35299b5249d071718321cab0b93d21ce74da4b1/9g==/9g==]
+                div  "Verification Token Exchange"
+                div  "User requested a specific token format and received the exact string CONC-12345-ALPHA in response."
+                div  "2 messages · updated 2026-09-07T17:56:57Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/ed5303a6b341b96271ca0056fca7c80338705a5d9a33bc881251370304b45f05/9g==/9g==]
+                div  "List every distinct email address appearing anywhere in this…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T17:56:54Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/f8818f809602dcea7a3f98166cb36e9ceed33f108292a70e6823fe1d93ea962c/9g==/9g==]
+                div  "Open the longest document in this collection, quote its firs…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T17:56:44Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/88771478d423c4242feede32c3c7282554888d1dccb1c950944870342d105311/9g==/9g==]
+                div  "Use web search to find the current public registry entry for…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T17:56:41Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/901a1f5d74e14908be3e04ba8e928d98bf555ea8d01c6c1b584f39d7bb99b4b9/9g==/9g==]
+                div  "Search this collection for documents mentioning invoices fro…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T17:56:39Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/cf34a9b1f46863c95d54cf96a1317186d9954503366781c701d7bb68699f5cb8/9g==/9g==]
+                div  "Write a 900-word overview of what this collection contains, …"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T17:56:36Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/46f367de04eb28a43802c23cf6bc3e0096171d166b52ddddd1b5b18450d479dc/9g==/9g==]
+                div  "Analyze Consulate Collection and Representative Documents"
+                div  "The user requested a list of available collections and a detailed analysis of three representative documents from the Consulate collection, including their subjects and research potential. The assista"
+                div  "8 messages · updated 2026-09-07T16:05:00Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/646e30372ab4579b342cb1f2ca87d2a595044aff1e19cf4c13603f1b83b7018a/9g==/9g==]
+                div  "User Requests for Cookie Dough Recipes"
+                div  "The assistant provided five detailed recipes including three safe-to-eat raw versions and two baked options with step-by-step instructions."
+                div  "5 messages · updated 2026-09-07T11:18:43Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/efc809ea56b71547845914aabe5279a4651ee39b1319809fdc46b52c0b8b5bc7/9g==/9g==]
+                div  "Document Collections and Consulate Analysis"
+                div  "The user requested a list of available collections and a detailed analysis of three representative documents from the Consulate collection, which the assistant provided by identifying the collections,"
+                div  "10 messages · updated 2026-09-07T09:57:39Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/7468d13c5536008fab6540b99d0d6b58f30b866f33817891c6914d7b63512a54/9g==/9g==]
+                div  "Write a 900-word overview of what this collection contains, …"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:09:21Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/717fc224d9329ea330531c67f9d1a16f3696de5f3905bf7bd1dc45e47bdfee68/9g==/9g==]
+                div  "Reply with exactly this token and nothing else: CONC-{{ID}}-…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:09:11Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/df3d373c6fe291d2108157bbe1a79d8169ceb8a65434556afcff3f36f6191e5c/9g==/9g==]
+                div  "Reply with exactly this token and nothing else: CONC-{{ID}}-…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:09:03Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/7dffd419d35db09950fa14ff9c89e054a80a1ddb88ba02af7d2871a12db46ab2/9g==/9g==]
+                div  "Counting from 1 to 500"
+                div  "The user requested numbers 1 through 500, each on a separate line with no additional text, and the assistant provided the full sequence as instructed."
+                div  "2 messages · updated 2026-09-07T09:07:02Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/9d89239625cc8eae9330882d48c6913484ae7203ec478c711e0e5e19da7ba2ea/9g==/9g==]
+                div  "List every distinct email address appearing anywhere in this…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:06:41Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/dacb48a03187a9c42f00c21db1944ff9fc416b852cba808e1df59e99a8439d39/9g==/9g==]
+                div  "Summarise the first document in this collection."
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:06:38Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/636d857aff7e7f3846d482c0c1ae54fb326856b4b7f812e159cd09cc3b54db5e/9g==/9g==]
+                div  "What is this collection about?"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:06:33Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/f7bcb58e75da9d11ef1f4f412dfda3dea73102f521279cd19d9cf798bebae0a2/9g==/9g==]
+                div  "Open the longest document in this collection, quote its firs…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:06:30Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/df5c6e40867bce2248da2cb5ed0585a97305d7ba8b4644ec89e276f8c7a7bc02/9g==/9g==]
+                div  "Use web search to find the current public registry entry for…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:06:28Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/c307a5eb45abb2e1de8052fe6f8a28e8ed3578205a95499abd75bb95e29032ee/9g==/9g==]
+                div  "test"
+                div  "9 messages"
+                div  "9 messages · updated 2026-09-07T09:06:27Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/7a97ad492c9a67059074f99213f0921576bd9d521bad0d52cd175f5cf8368c3c/9g==/9g==]
+                div  "Reply with exactly this token and nothing else: CONC-{{ID}}-…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:06:25Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/69423a61de9ab69e6e403c277788d5cd00eb1c2758acc7f3d31145769f257673/9g==/9g==]
+                div  "Search this collection for documents mentioning invoices fro…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:06:25Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/04f6a572ed9faf83077645c6acfef8e061c3afc2789552e091f73d00b5eec71d/9g==/9g==]
+                div  "Write a 900-word overview of what this collection contains, …"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:06:22Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/3ec1c8c8087ca9a5bf33fc7bd2336b9b53c0e310de7387238f4326f94ee9b2b6/9g==/9g==]
+                div  "Most Frequently Mentioned Organizations in Enron Emails"
+                div  "Enron and its internal divisions like EBS, EES, and ECT are the most frequently named organizations, with external entities such as Fortune, General Electric, and Goldman Sachs also appearing regularl"
+                div  "15 messages · updated 2026-09-07T09:05:35Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/58b4e8325f39f64e9eb46956d3b3f6c93954317ea91a0698b38a08772338146b/9g==/9g==]
+                div  "Count from 1 to 500, one number per line, with no other text…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:04:47Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/fbbbc3c6c4a110c02583d213309e0ba4914b68c9501e23caf33d8d0fd30c9d4c/9g==/9g==]
+                div  "List every distinct email address appearing anywhere in this…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:04:04Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/e4ca659a25dbb00ba3344bb098b92c8a2cf529aeceeaaf987689f866a8579686/9g==/9g==]
+                div  "Summarise the first document in this collection."
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:04:02Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/452e187b8436aa8d50c74437e7639ca2a9d509787d407ef7c91a41852a1c5ca7/9g==/9g==]
+                div  "What is this collection about?"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:03:56Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/a7cf4c96ff09630c6f91bad9614eb5bf4eff8094c471b85d7bc2be10b9ad0c41/9g==/9g==]
+                div  "Open the longest document in this collection, quote its firs…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:03:54Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/79497e4899e1bb74f7ada2bdc76d1baee9a7577f71c95270a3a93dfdf01a127b/9g==/9g==]
+                div  "Use web search to find the current public registry entry for…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:03:51Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/749566625de16ebd7336c3ab45fe89464e0a0fe97ef2307ff0629dbebf38450c/9g==/9g==]
+                div  "Search this collection for documents mentioning invoices fro…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:03:48Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/1bbba0719abc7f924233dc86d035648f4a8f0fde7b014f9a8a689649b6fd83a4/9g==/9g==]
+                div  "Write a 900-word overview of what this collection contains, …"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:03:46Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/440955fe527d0f4f54a1d10d080f36fa1c7307122b389d86b0b484ae88bffbc6/9g==/9g==]
+                div  "Reply with exactly this token and nothing else: CONC-{{ID}}-…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:03:44Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/e7abd3d42b6e85868ac5a40ca353fad9c7f6b3b43d04598f3aa667680d8ceb1e/9g==/9g==]
+                div  "Count from 1 to 500, one number per line, with no other text…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:02:41Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/c59c054dff75ee8e45a1a4a26cdf75994cefb02ae485d0e37892bb0158a41939/9g==/9g==]
+                div  "Summarise the first document in this collection."
+                div  "5 messages"
+                div  "5 messages · updated 2026-09-07T09:02:24Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/5a15b71a5f117e8331297eea87d9b26fa3c7839387a9a742cf34a305846f3864/9g==/9g==]
+                div  "List every distinct email address appearing anywhere in this…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:02:02Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/cd84acc7087019f3e2d7b544416487204349f2eac4d066c453e4060d93ff32cd/9g==/9g==]
+                div  "What is this collection about?"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:01:44Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/57abb695814c299b9d99178abb9db23b613df50708e4a83e73e0a54da51b739e/9g==/9g==]
+                div  "Open the longest document in this collection, quote its firs…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:01:41Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/837d33740333505ff816768e9c625cb34f4267520dd7ed60da35091891257388/9g==/9g==]
+                div  "Use web search to find the current public registry entry for…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:01:39Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/0e7c11c92b1adfd28f70284b85d0e53d76bf15809d3eb3cfb56b8f8eeff9ec45/9g==/9g==]
+                div  "Search this collection for documents mentioning invoices fro…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:01:36Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/2199f7f4575518172a25ee0e24c358296fa9eb3365d496306be71bad596cf970/9g==/9g==]
+                div  "Write a 900-word overview of what this collection contains, …"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:01:33Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/3d36f433681bf435d32390cae08b21ab6d770f87608c466465651b6b2811a911/9g==/9g==]
+                div  "Reply with exactly this token and nothing else: CONC-{{ID}}-…"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:01:31Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/29ee9b50d6e923de4477fd4347185a250754a30e51331aae082a9861b51043cd/9g==/9g==]
+                div  "ceva"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:01:04Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/e7c63e2503b7600db8af32e5b384534ca4335ecbff9452c4cb92dfb2d2e2cd70/9g==/9g==]
+                div  "Write a 900-word overview of what this collection contains, …"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T09:00:22Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/e72412502ee2ad0ad4d9f8889aef57752df71ca0236b8bb0b277c5955eb21d3d/9g==/9g==]
+                div  "User requested exact token repetition"
+                div  "Assistant repeated the specified token exactly as instructed"
+                div  "2 messages · updated 2026-09-07T09:00:15Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/19eb9f4f2c4acb4a8fabb5bd96dc6b8b5756318cdedc3ff5c5dde2104abded85/9g==/9g==]
+                div  "ceva"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T08:59:57Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/619f2f8e8fd317e36ee60f1a1809d63631acd215809efa11528b4128721926d9/9g==/9g==]
+                div  "ceva"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T08:52:42Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/766109515ce879f8eead922154fb81de7e6e5b50f0d90e37d0dfe331dfee5439/9g==/9g==]
+                div  "User requested exact token repetition"
+                div  "Assistant repeated the specified token exactly as instructed"
+                div  "2 messages · updated 2026-09-07T08:51:43Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/b4ce611e1e795321faf46dea451eafadeb7da67eae36bd802ab78daadb582a0f/9g==/9g==]
+                div  "Capital of Poland Identified"
+                div  "The user asked for Poland's capital, and the assistant confirmed it is Warsaw, citing multiple authoritative sources for verification."
+                div  "6 messages · updated 2026-09-07T08:22:52Z"
+              button[title=Delete conversation]  "Delete"
+            div
+              a[href=/ai_chat/c/d0e99ac9fa469a52cb9fd14eaaebf6732d99126b31bbb7767dc627fddc654eaa/9g==/9g==]
+                div  "Ceva"
+                div  "2 messages"
+                div  "2 messages · updated 2026-09-07T08:22:04Z"
+              button[title=Delete conversation]  "Delete"
+    div[role=region][label=0 notifications]
+      ol

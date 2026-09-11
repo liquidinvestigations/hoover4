@@ -1,0 +1,195 @@
+# 48-view-doc-file-locations-tab (720p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAYTE0MWI4NGRhYjg2ZTQ0ZDAzYzY4MWFlMDExNDQ4ODkwZTkzNWE4YWQxMWJlZWVmYjZjYTQwYjNkMGFlZmJmNw==/9g==/oWxzZWxlY3RlZF90YWJtRmlsZUxvY2F0aW9ucw==
+title:    Hoover Search - View Document
+actions:  sleep 3000; wait_css .x-file-location-copy
+api calls: 11 (search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_email_envelope x1, get_file_locations x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5127[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5125[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5123[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5121[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      div
+                        div#dxc-13[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / -"
+                      div
+                        div#dxc-11[role=button]
+                          button
+                            svg
+                              path
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Email"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Email body"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Plain text"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_emails"
+                    div  "/"
+                    div
+                      span[title=Email]
+                        svg
+                          path
+                    div  "FW: Invitation Fontys Open Day 2nd of February 2014 - Campus Venlo <campusvenlo@fontys.nl> - 2013-12-16 1700.eml"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    div
+                      div
+                        svg
+                          path
+                        div  "FW: Invitation Fontys Open Day 2nd of February 2014"
+                        div  "2013-12-16 15:00 UTC"
+                      div  "Campus Venlo <campusvenlo@fontys.nl>"
+                      div  "to Campus."
+                      div
+                        button
+                          span  "details"
+                          svg
+                            path
+                      div
+                        svg
+                          path
+                        span  "ATTACHMENTS"
+                      div
+                        a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAZGQyN2Q1ZWEwMjYwNzA4Njg1ZjFjZGZkMzdkMTY1Y]
+                          span
+                            span[title=PDF]
+                              svg
+                                path
+                          div
+                            div[title=International Open Day Invitation.pdf]  "International Open Day Invitation.pdf"
+                            div  "285 KB"
+                          svg
+                            path
+                        a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfaGFzaHhAYjA5OGIwZjY1MjFkZmI0MzMyYThjMzBlY2I1NTkxZ]
+                          span
+                            span[title=Image]
+                              svg
+                                path
+                          div
+                            div[title=image001.jpg]  "image001.jpg"
+                            div  "1 KB"
+                          svg
+                            path
+                      div  "Email text Message"
+                    div
+                      div
+                        pre
+                          span
+                            span  "Dear student, Like last November we organize an Open Day especially for interested international students. During this Open Day we would like to give you the opportunity to get a feeling of what study"
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                div
+                  div  "Document locations"
+                    svg
+                      path
+                  div
+                    div[title=/FW: Invitation Fontys Open Day 2nd of February 2014 - Campus Venlo <campusvenlo@fontys.nl> - 2013-12-16 1700.eml]  "/FW: Invitation Fontys Open Day 2nd of February 2014 - Campus Venlo <campusvenlo@fontys.nl> - 2013-12-16 1700.eml"
+                    a[title=Open the containing folder in the file browser][href=/file_browser/testdata_emails/om5jb250YWluZXJfaGFzaGBkcGF0aGEv/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfZW1haWxzaWZpbGVfa]
+                      svg
+                        path
+                    button[title=Copy this path]
+                      svg
+                        path
+    div[role=region][label=0 notifications]
+      ol

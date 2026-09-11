@@ -1,0 +1,2046 @@
+# 135-manual-entity-filter (1080p)
+url:      https://hoover4.new.liquiddemo.org/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYQ==/0/9g==/9g==
+title:    Hoover Search:
+actions:  (none)
+api calls: 93 (search_string_facet x27, search_for_results_hit_count x21, search_for_results x12, search_document_item_hit_counts x6, list_storage_tree x5, whoami x5, search_document_text_for_hit_count x4, search_document_text_for_hits x4, fetch_db_terms_for_ints x2, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_entity_terms x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-4231[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4229[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4227[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4225[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter (1)"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+              div#x-filter-chips
+                div[title=testdata_manualqa]
+                  span  "Collections"
+                  span  "testdata_manualqa"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                button  "Clear all"
+            div
+              div#x-filter-modal
+                div
+                  svg
+                    path
+                  div  "All filters"
+                  button[title=Close without applying]
+                    svg
+                      path
+                div
+                  div
+                    button  "Collections"
+                      div
+                        div
+                      svg
+                        path
+                    button  "File types"
+                      div
+                      svg
+                        path
+                    button  "File size"
+                      div
+                      svg
+                        path
+                    button  "File location"
+                      div
+                      svg
+                        path
+                    button  "Date"
+                      div
+                      svg
+                        path
+                    button  "Email"
+                      div
+                      svg
+                        path
+                    button  "Entities"
+                      div
+                      svg
+                        path
+                  div
+                    div
+                      div
+                        button
+                          div
+                          svg
+                            path
+                          span  "All"
+                        button
+                          div
+                          svg
+                            path
+                          span  "Person"
+                        button
+                          div
+                          svg
+                            path
+                          span  "Organization"
+                        button
+                          div
+                          svg
+                            path
+                          span  "Location"
+                        button
+                          div
+                          svg
+                            path
+                          span  "Misc"
+                        button
+                          div
+                          svg
+                            path
+                          span  "Email"
+                        button
+                          div
+                          svg
+                            path
+                          span  "Phone"
+                        button
+                          div
+                          svg
+                            rect
+                            rect
+                            rect
+                            rect
+                            polygon
+                          span  "Bank account"
+                        button
+                          div
+                          svg
+                            path
+                          span  "Company ID"
+                        button
+                          div
+                          svg
+                            path
+                          span  "Money"
+                        button
+                          div
+                          svg
+                            path
+                          span  "Crypto wallet"
+                        button
+                          div
+                          svg
+                            path
+                          span  "Mentioned Date"
+                      div
+                        div
+                          svg
+                            path
+                          input[type=text][placeholder=Search every entity type…]
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "EasyChair"
+                              div
+                              div  "3"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "EasyChair EPiC Series"
+                              div
+                              div  "3"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USD 10k-100k"
+                              div
+                              div  "3"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Voronkov"
+                              div
+                              div  "3"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "com"
+                              div
+                              div  "3"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "cs"
+                              div
+                              div  "3"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "+24762889"
+                              div
+                              div  "2"
+                        div  "Phone"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Andrei Voronkov"
+                              div
+                              div  "2"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Arial"
+                              div
+                              div  "2"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Arial"
+                              div
+                              div  "2"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Bold"
+                              div
+                              div  "2"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Courier New"
+                              div
+                              div  "2"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "EPiC Series"
+                              div
+                              div  "2"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "EUR 100-1k"
+                              div
+                              div  "2"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "EUR 10k-100k"
+                              div
+                              div  "2"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "EUR 1k-10k"
+                              div
+                              div  "2"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Kryštof Hoder"
+                              div
+                              div  "2"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "LaTeX"
+                              div
+                              div  "2"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "MS Word"
+                              div
+                              div  "2"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Manchester"
+                              div
+                              div  "2"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Microsoft Word"
+                              div
+                              div  "2"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Times New Roman"
+                              div
+                              div  "2"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Times New Roman Bold"
+                              div
+                              div  "2"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "U.K"
+                              div
+                              div  "2"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USD 10-100"
+                              div
+                              div  "2"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USD 100k-1M"
+                              div
+                              div  "2"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "University of Manchester"
+                              div
+                              div  "2"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Word"
+                              div
+                              div  "2"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "andrei"
+                              div
+                              div  "2"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "andrei@easychair.org"
+                              div
+                              div  "2"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "andrei@voronkov.com"
+                              div
+                              div  "2"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "enron"
+                              div
+                              div  "2"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "hoderk"
+                              div
+                              div  "2"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "hoderk@cs.man.ac.uk"
+                              div
+                              div  "2"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "hoover"
+                              div
+                              div  "2"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "jeff"
+                              div
+                              div  "2"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "jeff.hoover@enron.com"
+                              div
+                              div  "2"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "man"
+                              div
+                              div  "2"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "+93234567890"
+                              div
+                              div  "1"
+                        div  "Phone"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "+97122345678"
+                              div
+                              div  "1"
+                        div  "Phone"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "787"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "78712"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "87d10n7r9f.fsf@einherjar.cs.pub.ro"
+                              div
+                              div  "1"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "AL47212110090000000235698741"
+                              div
+                              div  "1"
+                        div  "Bank account"
+                          svg
+                            rect
+                            rect
+                            rect
+                            rect
+                            polygon
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Alberts"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Applied Mathematics and Computation"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Austin"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Austin,"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Bucharest"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Cambridge"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Cluj"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Darnell"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Das"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Department of Computer Sciences"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Doolittle"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "E."
+                              div
+                              div  "1"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "EUR 10-100"
+                              div
+                              div  "1"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "GA"
+                              div
+                              div  "1"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "IEEE"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "IEEE Press"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Iași"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Machine Learning"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Massachusetts"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "McGregor"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Mühlenbein"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "NEAT"
+                              div
+                              div  "1"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Nature"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Ne"
+                              div
+                              div  "1"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Neuro"
+                              div
+                              div  "1"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "NeuroEvolu"
+                              div
+                              div  "1"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "New Jersey"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "PDGP"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Piscataway"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Poli"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Pujol"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Radding"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "RecA"
+                              div
+                              div  "1"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "San Francisco"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Sigal"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "TX"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Texas"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "The University of Texas at Austin"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USA"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USD 1-10"
+                              div
+                              div  "1"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USD 100-1k"
+                              div
+                              div  "1"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USD 10M-100M"
+                              div
+                              div  "1"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USD 1M-10M"
+                              div
+                              div  "1"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USD 1k-10k"
+                              div
+                              div  "1"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USD over 100M"
+                              div
+                              div  "1"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "USD under 1"
+                              div
+                              div  "1"
+                        div  "Money"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Watson"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Yao"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "Zhang"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "ap@example.org"
+                              div
+                              div  "1"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "coli"
+                              div
+                              div  "1"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "gupta"
+                              div
+                              div  "1"
+                        div  "Person"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "infra@example.org"
+                              div
+                              div  "1"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "ing Topologies"
+                              div
+                              div  "1"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "ir"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "kstanley@cs.utexas.edu"
+                              div
+                              div  "1"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "ledger@example.net"
+                              div
+                              div  "1"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "mit"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "of"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "of Aug"
+                              div
+                              div  "1"
+                        div  "Misc"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "remotesensing"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "risto@cs.utexas.edu"
+                              div
+                              div  "1"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "ro"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "secops@example.org"
+                              div
+                              div  "1"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "shapelib-admin@lists.maptools.org"
+                              div
+                              div  "1"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "treasury-ops@example.org"
+                              div
+                              div  "1"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "uk"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "uk"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "utexas"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "voronkov"
+                              div
+                              div  "1"
+                        div  "Organization"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "warmerda@remotesensing.org"
+                              div
+                              div  "1"
+                        div  "Email"
+                          svg
+                            path
+                        div
+                          div
+                            div
+                              svg
+                                path
+                              div  "zanzibar"
+                              div
+                              div  "1"
+                        div  "Location"
+                          svg
+                            path
+                div
+                  button  "Clear all"
+                  div
+                  button  "Cancel"
+                  button  "Show 23 results"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "23 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-4219[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 23"
+                      div
+                        div#dxc-4221[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-4217[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/2"
+                        div
+                        div
+                          div#dxc-4215[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Image]
+                                  svg
+                                    path
+                              div
+                                span  "bikes.jpg"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "08"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwNTIyNTcxNzk3MTg2MjZlODNiM2Y4ZWZhN2ZjZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "mail-search-substitute.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "mail-search-substitute.txt"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYTEyNjI0NWExYTgwYmRjMzM2NjI5NGUyMDcxZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "3."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "security-incident.eml"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "Three advisories apply to the estate this week: * CVE-2020-8123 -- the edge proxy, patched. * CVE-2021-23398 -- the document converter, patch pending. * CVE-2021-28680 -- the mail relay, not applicabl"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAwYmE4NzkwMzdiNzlmY2M3MTEyZWNlYmY0M2Q4M]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "4."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "Urăsc canicula, e nașpa.eml"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "Hai să băgăm diacritice în subject field, frate! Atașamente cu tona... Sample document created with MS Word Page 1 of 5 This page is Size Letter 0 1 2 If this was a real document it would have more he"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAxOTc3ODRkY2Q5NTRmY2NjYjM4ZmM4MTBhNDNmZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "5."
+                              div
+                                span[title=Spreadsheet (browsable)]
+                                  svg
+                                    path
+                              div
+                                span  "manual-qa-table.csv"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "Case,Region,Amount A-01,Bucharest,10 A-02,Cluj,20 A-03,Iași,30"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAyOTU0NmExNDVmZGFiYWE4YzVjMTE2NWU4ZjJiZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "6."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "easychair.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "easychair.txt"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNjI3OTU5ODZmYTFlNzIzZWZhYjI4ZWMxMTQxZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "7."
+                              div
+                                span[title=Document]
+                                  svg
+                                    path
+                              div
+                                span  "easychair.docx"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "The Guide for Writing Word Documents in Microsoft Word for Publication in the EPiC Series Andrei Voronkov1,2 and Kryštof Hoder1 1 EasyChair 2 University of Manchester, Manchester, U.K. andrei@voronkov"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "8."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "child.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "zipped in multiple locations"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzZWFlMzdiMTc4NGE2NzlmNDdmNDgyYjU2MGE3N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "9."
+                              div
+                                span[title=Document]
+                                  svg
+                                    path
+                              div
+                                span  "letterlegal5.doc"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "letterlegal5.doc"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0NTQ1YTQxMWQ4ZjM2ZTU5Njc2MGJhNTEwZDMzZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "10."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "shipping-manifest.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "shipping-manifest.txt"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "11."
+                              div
+                                span[title=Document]
+                                  svg
+                                    path
+                              div
+                                span  "easychair.odt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "=== THIS IS A SAMPLE ODT FILE === Andrei Voronkov1,21 Masterminded EasyChair and created the first stable version of this document and Kryštof Hoder12 Created the first draft of this document 1 EasyCh"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2M]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "12."
+                              div
+                                span[title=PDF]
+                                  svg
+                                    path
+                              div
+                                span  "cap33.pdf"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "160 33. CUADRIPOLI DIPORŢI 33.1. CUADRIPOLI GENERALI Prin multipol electric se înţelege o porţiune de circuit electric cu borne de acces, dar fără cuplaje magnetice cu exteriorul. De regulă multipolul"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1NWVkMjM1Yjc1ZWEzY2RiOTNmMWIyNDZjYzE2Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "13."
+                              div
+                                span[title=PDF]
+                                  svg
+                                    path
+                              div
+                                span  "born-digital-no-ocr.pdf"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "%PDF-1.4 1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resourc"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2OTZkYzU5Y2VmZjE2YmI2ZTY0YmQ4ZDZhOTI2Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "14."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "generate.py"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "generate.py"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YTRiMTYwN2FmMjAxNTgzN2VjM2ZkZGNjMGQ1Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "15."
+                              div
+                                span[title=Image]
+                                  svg
+                                    path
+                              div
+                                span  "length.png"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                div  "Matched by filename. No matching text inside this document."
+                                div
+                                  span  "length.png"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YzllMDkzMzI4NjBiNDdlMjg4MjQ5ODg3MjhmN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "16."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "mail-search-substitute.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "jeff.hoover@enron.com enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron enron"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3MWI5ZDIxOGU4N2QzMDA1MzNmZTNkNTY1OGM0Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "17."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "many-a-child-file-1.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "many-a-child-file-$i.txt"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA3ZWJmNWFmMzBkMGQ5NzA2MGQxZjE1MDk4NmJjY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "18."
+                              div
+                                span[title=Archive]
+                                  svg
+                                    path
+                              div
+                                span  "zip-with-pdf.zip"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "cap33.pdf 160 33. CUADRIPOLI DIPORŢI 33.1. CUADRIPOLI GENERALI Prin multipol electric se înţelege o porţiune de circuit electric cu borne de acces, dar fără cuplaje magnetice cu exteriorul. De regulă "
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBiOTJjOTFlNjkyN2M1OTAyYjI3ZWI0MTg4ODI5Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "19."
+                              div
+                                span[title=Archive]
+                                  svg
+                                    path
+                              div
+                                span  "parent.zip"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "parent.zip"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBjNWYyNTE4MzExZmIzZTYwNjQ5MjAwMzZiY2NhO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "20."
+                              div
+                                span[title=Document]
+                                  svg
+                                    path
+                              div
+                                span  "invoice-batch.docx"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "INVOICE BATCH COVER SHEET Remit to IBAN AL47 2121 1009 0000 0002 3569 8741, BIC ABNA BE 2A. Batch total USD 310000 across eleven invoices. The largest single invoice is USD 85000 and the smallest is U"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMGRiYzQ4ZDQ3YmU2NTdiYWNmMWFlMWVlZDVlM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

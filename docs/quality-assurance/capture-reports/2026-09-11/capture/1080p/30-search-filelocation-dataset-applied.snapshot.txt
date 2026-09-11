@@ -1,0 +1,231 @@
+# 30-search-filelocation-dataset-applied (1080p)
+url:      https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOhamZpbGVfcGF0aHOBoWNJbnQbXffj-s-GVjFtcmFuZ2VfZmlsdGVyc6Bkc29ydKJja2V5aVJlbGV2YW5jZWRkZXNj9Q==/0/9g==/9g==
+title:    Hoover Search:
+actions:  sleep 1500; click_css #x-search-open-filters; wait_text All filters; click_text File location; wait_text Filtering on a folder; sleep 1500; click_text_in #x-storage-tree :: shapes; sleep 1200; click_text Show; sleep 2500; wait_text_in #x-filter-chips :: testdata_shapes
+api calls: 17 (search_for_results_hit_count x7, search_for_results x4, list_storage_tree x2, fetch_db_terms_for_ints x1, search_string_facet x1, vfs_node_term_ids x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6521[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6519[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6517[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6515[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter (1)"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+              div#x-filter-chips
+                div[title=testdata_shapes]
+                  span  "File location"
+                  span  "testdata_shapes"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                button  "Clear all"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "4 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-6509[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 4"
+                      div
+                        div#dxc-6511[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-6507[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/1"
+                        div
+                        div
+                          div#dxc-6505[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "many-a-child-file-1.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_shapes]  "testdata_shapes"
+                            div
+                              div
+                                span  "many-a-child-file-1.txt many-a-child-file-10.txt many-a-child-file-100.txt many-a-child-file-101.txt many-a-child-file-102.txt many-a-child-file-103.txt many-a-child-file-104.txt many-a-child-file-105"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfc2hhcGVzaWZpbGVfaGFzaHhAN2ViZjVhZjMwZDBkOTcwNjBkMWYxNTA5ODZiY2NmO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "43"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_shapes]  "testdata_shapes"
+                            div
+                              div
+                                span  "43"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfc2hhcGVzaWZpbGVfaGFzaHhAYzRkZDlmY2M5NDBlNzg2YjdhZjBhNDU2NzVkODUxN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "3."
+                              div
+                                span[title=Archive]
+                                  svg
+                                    path
+                              div
+                                span  "the-directory.zip"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_shapes]  "testdata_shapes"
+                            div
+                              div
+                                span  "the-directory.zip"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfc2hhcGVzaWZpbGVfaGFzaHhAZDVjZWJkNTVjMjBkODQxODM0YTk4ZDhjYmJkNTM3N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "4."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "file-666.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_shapes]  "testdata_shapes"
+                            div
+                              div
+                                span  "file-666.txt file-667.txt file-668.txt file-669.txt file-670.txt file-671.txt file-672.txt file-673.txt file-674.txt file-675.txt file-676.txt file-677.txt file-678.txt file-679.txt file-680.txt file-"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGVzdGRhdGFfc2hhcGVzaWZpbGVfaGFzaHhAZGZiYzJlOTVmZjQ1YTBmMjE1M2FiMmU3YWExNWNlM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

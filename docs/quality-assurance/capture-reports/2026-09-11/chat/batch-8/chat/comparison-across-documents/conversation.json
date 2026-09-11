@@ -1,0 +1,1987 @@
+{
+  "name": "comparison-across-documents",
+  "profile": "chat",
+  "prompt": "Search the available collections for contracts or procurement. Compare up to three relevant documents by parties, subject, dates, and stated obligations. Cite the evidence for each populated field. Mark absent information as unavailable. Do not infer wrongdoing from a missing field or a difference between documents.",
+  "session_url": "https://hoover4.new.liquiddemo.org/ai_chat/c/f95b9f196ebfd2ecbaec64645a327501a277324dc32dcf761fa5ac5d822883f4/9g==/9g==",
+  "submission_ok": true,
+  "turn_started": true,
+  "stop_disappeared_at_s": null,
+  "completed_answer_present": false,
+  "generating_started_s": 16.09601321996888,
+  "generating_ended_s": 976.1619127089507,
+  "captures": {
+    "720p": [
+      {
+        "file": "720p/interval-000-t0000s.png",
+        "deadline_offset_s": 0.0,
+        "actual_offset_s": 0.0,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 343,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-001-t0005s.png",
+        "deadline_offset_s": 5.0,
+        "actual_offset_s": 5.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 343,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-002-t0011s.png",
+        "deadline_offset_s": 10.0,
+        "actual_offset_s": 10.781,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 343,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-003-t0015s.png",
+        "deadline_offset_s": 15.0,
+        "actual_offset_s": 15.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 363,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-004-t0020s.png",
+        "deadline_offset_s": 20.0,
+        "actual_offset_s": 20.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 389,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-005-t0025s.png",
+        "deadline_offset_s": 25.0,
+        "actual_offset_s": 25.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 446,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-006-t0030s.png",
+        "deadline_offset_s": 30.0,
+        "actual_offset_s": 30.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 685,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-007-t0035s.png",
+        "deadline_offset_s": 35.0,
+        "actual_offset_s": 35.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 421,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-008-t0040s.png",
+        "deadline_offset_s": 40.0,
+        "actual_offset_s": 40.032,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 556,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-009-t0045s.png",
+        "deadline_offset_s": 45.0,
+        "actual_offset_s": 45.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 556,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-010-t0050s.png",
+        "deadline_offset_s": 50.0,
+        "actual_offset_s": 50.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 455,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-011-t0055s.png",
+        "deadline_offset_s": 55.0,
+        "actual_offset_s": 55.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 455,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-012-t0060s.png",
+        "deadline_offset_s": 60.0,
+        "actual_offset_s": 60.021,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 455,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-013-t0065s.png",
+        "deadline_offset_s": 65.0,
+        "actual_offset_s": 65.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 455,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-014-t0070s.png",
+        "deadline_offset_s": 70.0,
+        "actual_offset_s": 70.017,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 455,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-015-t0075s.png",
+        "deadline_offset_s": 75.0,
+        "actual_offset_s": 75.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 455,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-016-t0080s.png",
+        "deadline_offset_s": 80.0,
+        "actual_offset_s": 80.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 455,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-017-t0085s.png",
+        "deadline_offset_s": 85.0,
+        "actual_offset_s": 85.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 468,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-018-t0090s.png",
+        "deadline_offset_s": 90.0,
+        "actual_offset_s": 90.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 488,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-019-t0095s.png",
+        "deadline_offset_s": 95.0,
+        "actual_offset_s": 95.013,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 696,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-020-t0100s.png",
+        "deadline_offset_s": 100.0,
+        "actual_offset_s": 100.012,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 804,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-021-t0105s.png",
+        "deadline_offset_s": 105.0,
+        "actual_offset_s": 105.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 867,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-022-t0110s.png",
+        "deadline_offset_s": 110.0,
+        "actual_offset_s": 110.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 937,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-023-t0115s.png",
+        "deadline_offset_s": 115.0,
+        "actual_offset_s": 115.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 948,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-024-t0120s.png",
+        "deadline_offset_s": 120.0,
+        "actual_offset_s": 120.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1014,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-025-t0125s.png",
+        "deadline_offset_s": 125.0,
+        "actual_offset_s": 125.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-026-t0130s.png",
+        "deadline_offset_s": 130.0,
+        "actual_offset_s": 130.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-027-t0135s.png",
+        "deadline_offset_s": 135.0,
+        "actual_offset_s": 135.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-028-t0140s.png",
+        "deadline_offset_s": 140.0,
+        "actual_offset_s": 140.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-029-t0145s.png",
+        "deadline_offset_s": 145.0,
+        "actual_offset_s": 145.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-030-t0150s.png",
+        "deadline_offset_s": 150.0,
+        "actual_offset_s": 150.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-031-t0155s.png",
+        "deadline_offset_s": 155.0,
+        "actual_offset_s": 155.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-032-t0160s.png",
+        "deadline_offset_s": 160.0,
+        "actual_offset_s": 160.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 596,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-033-t0165s.png",
+        "deadline_offset_s": 165.0,
+        "actual_offset_s": 165.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 602,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-034-t0170s.png",
+        "deadline_offset_s": 170.0,
+        "actual_offset_s": 170.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 645,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-035-t0175s.png",
+        "deadline_offset_s": 175.0,
+        "actual_offset_s": 175.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 688,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-036-t0180s.png",
+        "deadline_offset_s": 180.0,
+        "actual_offset_s": 180.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 716,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-037-t0185s.png",
+        "deadline_offset_s": 185.0,
+        "actual_offset_s": 185.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 884,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-038-t0190s.png",
+        "deadline_offset_s": 190.0,
+        "actual_offset_s": 190.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 959,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-039-t0195s.png",
+        "deadline_offset_s": 195.0,
+        "actual_offset_s": 195.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 997,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-040-t0200s.png",
+        "deadline_offset_s": 200.0,
+        "actual_offset_s": 200.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 630,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-041-t0205s.png",
+        "deadline_offset_s": 205.0,
+        "actual_offset_s": 205.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 643,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-042-t0210s.png",
+        "deadline_offset_s": 210.0,
+        "actual_offset_s": 210.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 643,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-043-t0215s.png",
+        "deadline_offset_s": 215.0,
+        "actual_offset_s": 215.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 643,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-044-t0220s.png",
+        "deadline_offset_s": 220.0,
+        "actual_offset_s": 220.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 841,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-045-t0225s.png",
+        "deadline_offset_s": 225.0,
+        "actual_offset_s": 225.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 841,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-046-t0230s.png",
+        "deadline_offset_s": 230.0,
+        "actual_offset_s": 230.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 896,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-047-t0235s.png",
+        "deadline_offset_s": 235.0,
+        "actual_offset_s": 235.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 946,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-048-t0240s.png",
+        "deadline_offset_s": 240.0,
+        "actual_offset_s": 240.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 957,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-049-t0245s.png",
+        "deadline_offset_s": 245.0,
+        "actual_offset_s": 245.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 967,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-050-t0250s.png",
+        "deadline_offset_s": 250.0,
+        "actual_offset_s": 250.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 972,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-051-t0255s.png",
+        "deadline_offset_s": 255.0,
+        "actual_offset_s": 255.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1052,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-052-t0260s.png",
+        "deadline_offset_s": 260.0,
+        "actual_offset_s": 260.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1090,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-053-t0265s.png",
+        "deadline_offset_s": 265.0,
+        "actual_offset_s": 265.274,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1102,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-054-t0270s.png",
+        "deadline_offset_s": 270.0,
+        "actual_offset_s": 270.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1108,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-055-t0275s.png",
+        "deadline_offset_s": 275.0,
+        "actual_offset_s": 275.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1116,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-056-t0280s.png",
+        "deadline_offset_s": 280.0,
+        "actual_offset_s": 280.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1148,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-057-t0285s.png",
+        "deadline_offset_s": 285.0,
+        "actual_offset_s": 285.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1148,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-058-t0290s.png",
+        "deadline_offset_s": 290.0,
+        "actual_offset_s": 290.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1148,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-059-t0295s.png",
+        "deadline_offset_s": 295.0,
+        "actual_offset_s": 295.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1148,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-060-t0300s.png",
+        "deadline_offset_s": 300.0,
+        "actual_offset_s": 300.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1148,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-061-t0305s.png",
+        "deadline_offset_s": 305.0,
+        "actual_offset_s": 305.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1148,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-062-t0310s.png",
+        "deadline_offset_s": 310.0,
+        "actual_offset_s": 310.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1148,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-063-t0315s.png",
+        "deadline_offset_s": 315.0,
+        "actual_offset_s": 315.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1148,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-064-t0320s.png",
+        "deadline_offset_s": 320.0,
+        "actual_offset_s": 320.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1148,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-065-t0325s.png",
+        "deadline_offset_s": 325.0,
+        "actual_offset_s": 325.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1148,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-066-t0330s.png",
+        "deadline_offset_s": 330.0,
+        "actual_offset_s": 330.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 771,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-067-t0335s.png",
+        "deadline_offset_s": 335.0,
+        "actual_offset_s": 335.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 771,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-068-t0340s.png",
+        "deadline_offset_s": 340.0,
+        "actual_offset_s": 340.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 771,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-069-t0345s.png",
+        "deadline_offset_s": 345.0,
+        "actual_offset_s": 345.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 771,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-070-t0350s.png",
+        "deadline_offset_s": 350.0,
+        "actual_offset_s": 350.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 771,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-071-t0355s.png",
+        "deadline_offset_s": 355.0,
+        "actual_offset_s": 355.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 797,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-072-t0360s.png",
+        "deadline_offset_s": 360.0,
+        "actual_offset_s": 360.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 797,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-073-t0365s.png",
+        "deadline_offset_s": 365.0,
+        "actual_offset_s": 365.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 942,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-074-t0370s.png",
+        "deadline_offset_s": 370.0,
+        "actual_offset_s": 370.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 975,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-075-t0375s.png",
+        "deadline_offset_s": 375.0,
+        "actual_offset_s": 375.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1015,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-076-t0380s.png",
+        "deadline_offset_s": 380.0,
+        "actual_offset_s": 380.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1032,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-077-t0385s.png",
+        "deadline_offset_s": 385.0,
+        "actual_offset_s": 385.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1087,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-078-t0390s.png",
+        "deadline_offset_s": 390.0,
+        "actual_offset_s": 390.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1159,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-079-t0395s.png",
+        "deadline_offset_s": 395.0,
+        "actual_offset_s": 395.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1159,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-080-t0400s.png",
+        "deadline_offset_s": 400.0,
+        "actual_offset_s": 400.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1159,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-081-t0405s.png",
+        "deadline_offset_s": 405.0,
+        "actual_offset_s": 405.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1159,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-082-t0410s.png",
+        "deadline_offset_s": 410.0,
+        "actual_offset_s": 410.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 805,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-083-t0415s.png",
+        "deadline_offset_s": 415.0,
+        "actual_offset_s": 415.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 818,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-084-t0420s.png",
+        "deadline_offset_s": 420.0,
+        "actual_offset_s": 420.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 818,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-085-t0425s.png",
+        "deadline_offset_s": 425.0,
+        "actual_offset_s": 425.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 818,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-086-t0430s.png",
+        "deadline_offset_s": 430.0,
+        "actual_offset_s": 430.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 818,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-087-t0435s.png",
+        "deadline_offset_s": 435.0,
+        "actual_offset_s": 435.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 826,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-088-t0440s.png",
+        "deadline_offset_s": 440.0,
+        "actual_offset_s": 440.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 892,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-089-t0445s.png",
+        "deadline_offset_s": 445.0,
+        "actual_offset_s": 445.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 922,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-090-t0450s.png",
+        "deadline_offset_s": 450.0,
+        "actual_offset_s": 450.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 968,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-091-t0455s.png",
+        "deadline_offset_s": 455.0,
+        "actual_offset_s": 455.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 995,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-092-t0460s.png",
+        "deadline_offset_s": 460.0,
+        "actual_offset_s": 460.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1054,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-093-t0465s.png",
+        "deadline_offset_s": 465.0,
+        "actual_offset_s": 465.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-094-t0470s.png",
+        "deadline_offset_s": 470.0,
+        "actual_offset_s": 470.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-095-t0475s.png",
+        "deadline_offset_s": 475.0,
+        "actual_offset_s": 475.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-096-t0480s.png",
+        "deadline_offset_s": 480.0,
+        "actual_offset_s": 480.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-097-t0485s.png",
+        "deadline_offset_s": 485.0,
+        "actual_offset_s": 485.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-098-t0490s.png",
+        "deadline_offset_s": 490.0,
+        "actual_offset_s": 490.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-099-t0495s.png",
+        "deadline_offset_s": 495.0,
+        "actual_offset_s": 495.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-100-t0500s.png",
+        "deadline_offset_s": 500.0,
+        "actual_offset_s": 500.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-101-t0505s.png",
+        "deadline_offset_s": 505.0,
+        "actual_offset_s": 505.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-102-t0510s.png",
+        "deadline_offset_s": 510.0,
+        "actual_offset_s": 510.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-103-t0515s.png",
+        "deadline_offset_s": 515.0,
+        "actual_offset_s": 515.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-104-t0520s.png",
+        "deadline_offset_s": 520.0,
+        "actual_offset_s": 520.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-105-t0525s.png",
+        "deadline_offset_s": 525.0,
+        "actual_offset_s": 525.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-106-t0530s.png",
+        "deadline_offset_s": 530.0,
+        "actual_offset_s": 530.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-107-t0535s.png",
+        "deadline_offset_s": 535.0,
+        "actual_offset_s": 535.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-108-t0540s.png",
+        "deadline_offset_s": 540.0,
+        "actual_offset_s": 540.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-109-t0545s.png",
+        "deadline_offset_s": 545.0,
+        "actual_offset_s": 545.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-110-t0550s.png",
+        "deadline_offset_s": 550.0,
+        "actual_offset_s": 550.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-111-t0555s.png",
+        "deadline_offset_s": 555.0,
+        "actual_offset_s": 555.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-112-t0560s.png",
+        "deadline_offset_s": 560.0,
+        "actual_offset_s": 560.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1055,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-113-t0565s.png",
+        "deadline_offset_s": 565.0,
+        "actual_offset_s": 565.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 946,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-114-t0570s.png",
+        "deadline_offset_s": 570.0,
+        "actual_offset_s": 570.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 946,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-115-t0575s.png",
+        "deadline_offset_s": 575.0,
+        "actual_offset_s": 575.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 946,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-116-t0580s.png",
+        "deadline_offset_s": 580.0,
+        "actual_offset_s": 580.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 946,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-117-t0585s.png",
+        "deadline_offset_s": 585.0,
+        "actual_offset_s": 585.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 956,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-118-t0590s.png",
+        "deadline_offset_s": 590.0,
+        "actual_offset_s": 590.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 996,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-119-t0595s.png",
+        "deadline_offset_s": 595.0,
+        "actual_offset_s": 595.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1024,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-120-t0600s.png",
+        "deadline_offset_s": 600.0,
+        "actual_offset_s": 600.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1058,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-121-t0605s.png",
+        "deadline_offset_s": 605.0,
+        "actual_offset_s": 605.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1126,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-122-t0610s.png",
+        "deadline_offset_s": 610.0,
+        "actual_offset_s": 610.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1149,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-123-t0615s.png",
+        "deadline_offset_s": 615.0,
+        "actual_offset_s": 615.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1156,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-124-t0620s.png",
+        "deadline_offset_s": 620.0,
+        "actual_offset_s": 620.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1156,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-125-t0625s.png",
+        "deadline_offset_s": 625.0,
+        "actual_offset_s": 625.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1156,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-126-t0630s.png",
+        "deadline_offset_s": 630.0,
+        "actual_offset_s": 630.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1156,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-127-t0635s.png",
+        "deadline_offset_s": 635.0,
+        "actual_offset_s": 635.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1156,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-128-t0640s.png",
+        "deadline_offset_s": 640.0,
+        "actual_offset_s": 640.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 980,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-129-t0645s.png",
+        "deadline_offset_s": 645.0,
+        "actual_offset_s": 645.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 980,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-130-t0650s.png",
+        "deadline_offset_s": 650.0,
+        "actual_offset_s": 650.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 993,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-131-t0655s.png",
+        "deadline_offset_s": 655.0,
+        "actual_offset_s": 655.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 993,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-132-t0660s.png",
+        "deadline_offset_s": 660.0,
+        "actual_offset_s": 660.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 993,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-133-t0665s.png",
+        "deadline_offset_s": 665.0,
+        "actual_offset_s": 665.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 993,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-134-t0670s.png",
+        "deadline_offset_s": 670.0,
+        "actual_offset_s": 670.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 993,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-135-t0676s.png",
+        "deadline_offset_s": 675.0,
+        "actual_offset_s": 675.549,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 993,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-136-t0681s.png",
+        "deadline_offset_s": 680.0,
+        "actual_offset_s": 680.922,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 993,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-137-t0685s.png",
+        "deadline_offset_s": 685.0,
+        "actual_offset_s": 685.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 993,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-138-t0690s.png",
+        "deadline_offset_s": 690.0,
+        "actual_offset_s": 690.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 993,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-139-t0695s.png",
+        "deadline_offset_s": 695.0,
+        "actual_offset_s": 695.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1017,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-140-t0700s.png",
+        "deadline_offset_s": 700.0,
+        "actual_offset_s": 700.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1072,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-141-t0705s.png",
+        "deadline_offset_s": 705.0,
+        "actual_offset_s": 705.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1098,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-142-t0710s.png",
+        "deadline_offset_s": 710.0,
+        "actual_offset_s": 710.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1132,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-143-t0715s.png",
+        "deadline_offset_s": 715.0,
+        "actual_offset_s": 715.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-144-t0720s.png",
+        "deadline_offset_s": 720.0,
+        "actual_offset_s": 720.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-145-t0725s.png",
+        "deadline_offset_s": 725.0,
+        "actual_offset_s": 725.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-146-t0730s.png",
+        "deadline_offset_s": 730.0,
+        "actual_offset_s": 730.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-147-t0735s.png",
+        "deadline_offset_s": 735.0,
+        "actual_offset_s": 735.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-148-t0740s.png",
+        "deadline_offset_s": 740.0,
+        "actual_offset_s": 740.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-149-t0745s.png",
+        "deadline_offset_s": 745.0,
+        "actual_offset_s": 745.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-150-t0750s.png",
+        "deadline_offset_s": 750.0,
+        "actual_offset_s": 750.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-151-t0755s.png",
+        "deadline_offset_s": 755.0,
+        "actual_offset_s": 755.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-152-t0760s.png",
+        "deadline_offset_s": 760.0,
+        "actual_offset_s": 760.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-153-t0765s.png",
+        "deadline_offset_s": 765.0,
+        "actual_offset_s": 765.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-154-t0770s.png",
+        "deadline_offset_s": 770.0,
+        "actual_offset_s": 770.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-155-t0775s.png",
+        "deadline_offset_s": 775.0,
+        "actual_offset_s": 775.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-156-t0780s.png",
+        "deadline_offset_s": 780.0,
+        "actual_offset_s": 780.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-157-t0785s.png",
+        "deadline_offset_s": 785.0,
+        "actual_offset_s": 785.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-158-t0790s.png",
+        "deadline_offset_s": 790.0,
+        "actual_offset_s": 790.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1173,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-159-t0795s.png",
+        "deadline_offset_s": 795.0,
+        "actual_offset_s": 795.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1121,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-160-t0800s.png",
+        "deadline_offset_s": 800.0,
+        "actual_offset_s": 800.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1121,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-161-t0805s.png",
+        "deadline_offset_s": 805.0,
+        "actual_offset_s": 805.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1121,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-162-t0810s.png",
+        "deadline_offset_s": 810.0,
+        "actual_offset_s": 810.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1121,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-163-t0815s.png",
+        "deadline_offset_s": 815.0,
+        "actual_offset_s": 815.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1121,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-164-t0820s.png",
+        "deadline_offset_s": 820.0,
+        "actual_offset_s": 820.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1121,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-165-t0825s.png",
+        "deadline_offset_s": 825.0,
+        "actual_offset_s": 825.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1138,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-166-t0830s.png",
+        "deadline_offset_s": 830.0,
+        "actual_offset_s": 830.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1186,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-167-t0835s.png",
+        "deadline_offset_s": 835.0,
+        "actual_offset_s": 835.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1222,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-168-t0840s.png",
+        "deadline_offset_s": 840.0,
+        "actual_offset_s": 840.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1248,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-169-t0845s.png",
+        "deadline_offset_s": 845.0,
+        "actual_offset_s": 845.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1438,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-170-t0850s.png",
+        "deadline_offset_s": 850.0,
+        "actual_offset_s": 850.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1575,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-171-t0855s.png",
+        "deadline_offset_s": 855.0,
+        "actual_offset_s": 855.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1594,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-172-t0860s.png",
+        "deadline_offset_s": 860.0,
+        "actual_offset_s": 860.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1603,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-173-t0865s.png",
+        "deadline_offset_s": 865.0,
+        "actual_offset_s": 865.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1634,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-174-t0870s.png",
+        "deadline_offset_s": 870.0,
+        "actual_offset_s": 870.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1661,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-175-t0875s.png",
+        "deadline_offset_s": 875.0,
+        "actual_offset_s": 875.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1672,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-176-t0880s.png",
+        "deadline_offset_s": 880.0,
+        "actual_offset_s": 880.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1706,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-177-t0885s.png",
+        "deadline_offset_s": 885.0,
+        "actual_offset_s": 885.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1733,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-178-t0890s.png",
+        "deadline_offset_s": 890.0,
+        "actual_offset_s": 890.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 856,
+        "text_length": 1746,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-179-t0895s.png",
+        "deadline_offset_s": 895.0,
+        "actual_offset_s": 895.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 856,
+        "text_length": 1783,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-180-t0900s.png",
+        "deadline_offset_s": 900.0,
+        "actual_offset_s": 900.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 856,
+        "text_length": 1815,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-181-t0905s.png",
+        "deadline_offset_s": 905.0,
+        "actual_offset_s": 905.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1798,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-182-t0910s.png",
+        "deadline_offset_s": 910.0,
+        "actual_offset_s": 910.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1807,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-183-t0915s.png",
+        "deadline_offset_s": 915.0,
+        "actual_offset_s": 915.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1813,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-184-t0920s.png",
+        "deadline_offset_s": 920.0,
+        "actual_offset_s": 920.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1813,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-185-t0925s.png",
+        "deadline_offset_s": 925.0,
+        "actual_offset_s": 925.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1813,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-186-t0930s.png",
+        "deadline_offset_s": 930.0,
+        "actual_offset_s": 930.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1813,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-187-t0935s.png",
+        "deadline_offset_s": 935.0,
+        "actual_offset_s": 935.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1813,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-188-t0940s.png",
+        "deadline_offset_s": 940.0,
+        "actual_offset_s": 940.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1813,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-189-t0945s.png",
+        "deadline_offset_s": 945.0,
+        "actual_offset_s": 945.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1809,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-190-t0950s.png",
+        "deadline_offset_s": 950.0,
+        "actual_offset_s": 950.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1809,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-191-t0955s.png",
+        "deadline_offset_s": 955.0,
+        "actual_offset_s": 955.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1809,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-192-t0960s.png",
+        "deadline_offset_s": 960.0,
+        "actual_offset_s": 960.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1809,
+        "observations": []
+      }
+    ]
+  },
+  "history": {
+    "by_resolution": {
+      "720p": {
+        "before_reload_text_length": 1809,
+        "after_reload_text_length": 1809,
+        "reload_survived": false,
+        "before_answers": [],
+        "after_answers": [],
+        "switch": {
+          "attempted": true,
+          "text_length_after_switch_back": 1858,
+          "survived": false
+        }
+      }
+    }
+  },
+  "document_preview": {
+    "ok": false,
+    "reason": "no_cards",
+    "toggled_disclosures": 0
+  },
+  "observations": [
+    {
+      "severity": "diagnostic_warning",
+      "message": "observation reached its 960s ceiling with the Stop button still present; the conversation was left running, not cancelled"
+    },
+    {
+      "severity": "application_error",
+      "message": "the Stop button never disappeared during the observed window: this is not recorded as a completed answer"
+    },
+    {
+      "severity": "application_error",
+      "message": "the completed transcript is empty after the observed window"
+    },
+    {
+      "severity": "application_error",
+      "message": "Saved assistant answers changed after history navigation."
+    }
+  ],
+  "incomplete": false,
+  "incomplete_reason": ""
+}

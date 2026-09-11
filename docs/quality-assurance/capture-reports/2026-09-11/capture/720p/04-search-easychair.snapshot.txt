@@ -1,0 +1,208 @@
+# 04-search-easychair (720p)
+url:      https://hoover4.new.liquiddemo.org/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOg/0/9g==/9g==
+title:    Hoover Search: easychair
+actions:  sleep 1500
+api calls: 5 (search_for_results x2, search_for_results_hit_count x2, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-4055[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4053[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4051[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4049[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][value=easychair][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "3 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-4043[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 3"
+                      div
+                        div#dxc-4045[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-4041[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/1"
+                        div
+                        div
+                          div#dxc-4039[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Document]
+                                  svg
+                                    path
+                              div
+                                span  "easychair"
+                                span  ".docx"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "... first line of the title), select Format -> Paragraph in the Microsoft Word menu and set the spacing before the paragraph to 94pt and after to 15pt. Styles To produce a document complying with the"
+                                span  "EasyChair"
+                                span  "style you can simply take this guide and modify it. Several Word document styles are defined and used in this guide. To apply these styles in Microsoft Word you can use the Formatting Palette ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Document]
+                                  svg
+                                    path
+                              div
+                                span  "easychair"
+                                span  ".odt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "... first line of the title), select Format -> Paragraph in the Microsoft Word menu and set the spacing before the paragraph to 94pt and after to 15pt. Styles To produce a document complying with the"
+                                span  "EasyChair"
+                                span  "style you can simply take this guide and modify it. Several Word document styles are defined and used in this guide. To apply these styles in Microsoft Word you can use the Formatting Palette ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA1MzE3NjhiNmFjN2JmMjJlYmMzOTE5NGUzZDQ2M]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "3."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "easychair"
+                                span  ".txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "=== THIS IS A SAMPLE .txt FILE === The styles and parameters of this guide are designed for compliance with the requirements for publication in the"
+                                span  "EasyChair"
+                                span  "EPiC Series (Voronkov, 2004)."
+                                span  "EasyChair"
+                                span  "is a conference management system that is flexible, easy to use, and has many features to make it suitable for various conference models. It is currently probably the most commonly used conference ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNjI3OTU5ODZmYTFlNzIzZWZhYjI4ZWMxMTQxZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

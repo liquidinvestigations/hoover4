@@ -1,0 +1,137 @@
+# 45-view-doc-file-locations-multi (1080p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtdGVzdGRhdGFfemlwc2lmaWxlX2hhc2h4QGM1ZjI1MTgzMTFmYjNlNjA2NDkyMDAzNmJjY2E5YzBiZjg1NDAyNDY0ZWQ0ZGM3NDk4NWQ1NWFjODQ2NjBlNWI=/9g==/oWxzZWxlY3RlZF90YWJtRmlsZUxvY2F0aW9ucw==
+title:    Hoover Search - View Document
+actions:  sleep 3000; wait_text location-2
+api calls: 10 (search_document_item_hit_counts x2, get_canonical_file_type x1, get_document_sources x1, get_document_text_by_id_and_source x1, get_file_locations x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6895[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6893[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6891[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6889[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      div
+                        div#dxc-13[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / -"
+                      div
+                        div#dxc-11[role=button]
+                          button
+                            svg
+                              path
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_zips"
+                    div  "/"
+                    div
+                      span[title=Archive]
+                        svg
+                          path
+                    div  "parent.zip"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    div
+                      div
+                        pre
+                          span
+                            span  "parent/child.txt zipped in multiple locations"
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                div
+                  div  "Document locations"
+                    svg
+                      path
+                  div
+                    div[title=/location-1/parent.zip]  "/location-1/parent.zip"
+                    a[title=Open the containing folder in the file browser][href=/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMQ==/onJjb2xsZWN0aW9uX2RhdGFzZXRtdGVzdGRhdGFfeml]
+                      svg
+                        path
+                    button[title=Copy this path]
+                      svg
+                        path
+                  div
+                    div[title=/location-2/parent.zip]  "/location-2/parent.zip"
+                    a[title=Open the containing folder in the file browser][href=/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaGBkcGF0aGsvbG9jYXRpb24tMg==/onJjb2xsZWN0aW9uX2RhdGFzZXRtdGVzdGRhdGFfeml]
+                      svg
+                        path
+                    button[title=Copy this path]
+                      svg
+                        path
+    div[role=region][label=0 notifications]
+      ol

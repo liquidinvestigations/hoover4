@@ -1,0 +1,1141 @@
+# 79-view-doc-table-sheets (720p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRwdGVzdGRhdGFfZXhjZWxzY2lmaWxlX2hhc2h4QGYyM2YyY2MyM2IzOTgwY2IxMzIwZjRhNTVlYmZkZTI2NmMwZDk5NTJiYjVjN2MxY2I2NDhjYmVhZDNlMDY4MDM=/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=
+title:    Hoover Search - View Document
+actions:  sleep 4000; wait_text Source Data
+api calls: 11 (get_canonical_file_type x2, get_file_path x2, search_document_item_hit_counts x2, get_document_entities x1, get_document_sources x1, get_table_overview x1, get_table_page x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7247[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7245[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7241[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7237[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      svg
+                        path
+                      div
+                        button#dxc-10
+                          span  "Source Data (286 × 4)"
+                      button[label=Choose visible columns]  "4 of 4"
+                        svg
+                          path
+                      span  "Table · xlsx · 2 sheets"
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Table · xlsx · 2 sheets"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Office XML"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_excelsc"
+                    div  "/"
+                    div
+                      span[title=Spreadsheet (browsable)]
+                        svg
+                          path
+                    div  "Excel-sample-data-for-pivot-tables.xlsx"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    div
+                      table
+                        thead
+                          tr
+                            th[title=The row number the file itself gives]  "#"
+                            th
+                              div
+                                span  "A"
+                                span[title=text, 286 values, 8 distinct]  "Category"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Category]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "B"
+                                span[title=text, 286 values, 77 distinct]  "Product"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Product]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "C"
+                                span[title=float, 286 values, 282 distinct]  "Sales"
+                                span[title=Numeric column]  "#"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Sales]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                            th
+                              div
+                                span  "D"
+                                span[title=text, 286 values, 4 distinct]  "Quarter"
+                                span[title=Sort. Rows with nothing in this column come last, either way.]
+                                  svg
+                                    path
+                                button[label=Filter Quarter]
+                                  span[title=Filter this column]
+                                    svg
+                                      path
+                        tbody
+                          tr
+                            td  "2"
+                            td[title=Beverages]
+                              div
+                                button#dxc-12
+                                  span  "Beverages"
+                            td[title=Chai]
+                              div
+                                button#dxc-14
+                                  span  "Chai"
+                            td[title=705.6]
+                              div
+                                button#dxc-16
+                                  span  "705.6"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-18
+                                  span  "Qtr 1"
+                          tr
+                            td  "3"
+                            td[title=Beverages]
+                              div
+                                button#dxc-20
+                                  span  "Beverages"
+                            td[title=Chai]
+                              div
+                                button#dxc-22
+                                  span  "Chai"
+                            td[title=878.4]
+                              div
+                                button#dxc-24
+                                  span  "878.4"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-26
+                                  span  "Qtr 2"
+                          tr
+                            td  "4"
+                            td[title=Beverages]
+                              div
+                                button#dxc-28
+                                  span  "Beverages"
+                            td[title=Chai]
+                              div
+                                button#dxc-30
+                                  span  "Chai"
+                            td[title=1174.5]
+                              div
+                                button#dxc-32
+                                  span  "1174.5"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-34
+                                  span  "Qtr 3"
+                          tr
+                            td  "5"
+                            td[title=Beverages]
+                              div
+                                button#dxc-36
+                                  span  "Beverages"
+                            td[title=Chai]
+                              div
+                                button#dxc-38
+                                  span  "Chai"
+                            td[title=2128.5]
+                              div
+                                button#dxc-40
+                                  span  "2128.5"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-42
+                                  span  "Qtr 4"
+                          tr
+                            td  "6"
+                            td[title=Beverages]
+                              div
+                                button#dxc-44
+                                  span  "Beverages"
+                            td[title=Chang]
+                              div
+                                button#dxc-46
+                                  span  "Chang"
+                            td[title=2720.8]
+                              div
+                                button#dxc-48
+                                  span  "2720.8"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-50
+                                  span  "Qtr 1"
+                          tr
+                            td  "7"
+                            td[title=Beverages]
+                              div
+                                button#dxc-52
+                                  span  "Beverages"
+                            td[title=Chang]
+                              div
+                                button#dxc-54
+                                  span  "Chang"
+                            td[title=228]
+                              div
+                                button#dxc-56
+                                  span  "228"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-58
+                                  span  "Qtr 2"
+                          tr
+                            td  "8"
+                            td[title=Beverages]
+                              div
+                                button#dxc-60
+                                  span  "Beverages"
+                            td[title=Chang]
+                              div
+                                button#dxc-62
+                                  span  "Chang"
+                            td[title=2061.5]
+                              div
+                                button#dxc-64
+                                  span  "2061.5"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-66
+                                  span  "Qtr 3"
+                          tr
+                            td  "9"
+                            td[title=Beverages]
+                              div
+                                button#dxc-68
+                                  span  "Beverages"
+                            td[title=Chang]
+                              div
+                                button#dxc-70
+                                  span  "Chang"
+                            td[title=2028.25]
+                              div
+                                button#dxc-72
+                                  span  "2028.25"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-74
+                                  span  "Qtr 4"
+                          tr
+                            td  "10"
+                            td[title=Beverages]
+                              div
+                                button#dxc-76
+                                  span  "Beverages"
+                            td[title=Chartreuse verte]
+                              div
+                                button#dxc-78
+                                  span  "Chartreuse verte"
+                            td[title=590.4]
+                              div
+                                button#dxc-80
+                                  span  "590.4"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-82
+                                  span  "Qtr 1"
+                          tr
+                            td  "11"
+                            td[title=Beverages]
+                              div
+                                button#dxc-84
+                                  span  "Beverages"
+                            td[title=Chartreuse verte]
+                              div
+                                button#dxc-86
+                                  span  "Chartreuse verte"
+                            td[title=360]
+                              div
+                                button#dxc-88
+                                  span  "360"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-90
+                                  span  "Qtr 2"
+                          tr
+                            td  "12"
+                            td[title=Beverages]
+                              div
+                                button#dxc-92
+                                  span  "Beverages"
+                            td[title=Chartreuse verte]
+                              div
+                                button#dxc-94
+                                  span  "Chartreuse verte"
+                            td[title=1100.7]
+                              div
+                                button#dxc-96
+                                  span  "1100.7"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-98
+                                  span  "Qtr 3"
+                          tr
+                            td  "13"
+                            td[title=Beverages]
+                              div
+                                button#dxc-100
+                                  span  "Beverages"
+                            td[title=Chartreuse verte]
+                              div
+                                button#dxc-102
+                                  span  "Chartreuse verte"
+                            td[title=2424.6]
+                              div
+                                button#dxc-104
+                                  span  "2424.6"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-106
+                                  span  "Qtr 4"
+                          tr
+                            td  "14"
+                            td[title=Beverages]
+                              div
+                                button#dxc-108
+                                  span  "Beverages"
+                            td[title=Côte de Blaye]
+                              div
+                                button#dxc-110
+                                  span  "Côte de Blaye"
+                            td[title=25127.36]
+                              div
+                                button#dxc-112
+                                  span  "25127.36"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-114
+                                  span  "Qtr 1"
+                          tr
+                            td  "15"
+                            td[title=Beverages]
+                              div
+                                button#dxc-116
+                                  span  "Beverages"
+                            td[title=Côte de Blaye]
+                              div
+                                button#dxc-118
+                                  span  "Côte de Blaye"
+                            td[title=12806.1]
+                              div
+                                button#dxc-120
+                                  span  "12806.1"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-122
+                                  span  "Qtr 2"
+                          tr
+                            td  "16"
+                            td[title=Beverages]
+                              div
+                                button#dxc-124
+                                  span  "Beverages"
+                            td[title=Côte de Blaye]
+                              div
+                                button#dxc-126
+                                  span  "Côte de Blaye"
+                            td[title=7312.12]
+                              div
+                                button#dxc-128
+                                  span  "7312.12"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-130
+                                  span  "Qtr 3"
+                          tr
+                            td  "17"
+                            td[title=Beverages]
+                              div
+                                button#dxc-132
+                                  span  "Beverages"
+                            td[title=Côte de Blaye]
+                              div
+                                button#dxc-134
+                                  span  "Côte de Blaye"
+                            td[title=1317.5]
+                              div
+                                button#dxc-136
+                                  span  "1317.5"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-138
+                                  span  "Qtr 4"
+                          tr
+                            td  "18"
+                            td[title=Beverages]
+                              div
+                                button#dxc-140
+                                  span  "Beverages"
+                            td[title=Guaraná Fantástica]
+                              div
+                                button#dxc-142
+                                  span  "Guaraná Fantástica"
+                            td[title=529.2]
+                              div
+                                button#dxc-144
+                                  span  "529.2"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-146
+                                  span  "Qtr 1"
+                          tr
+                            td  "19"
+                            td[title=Beverages]
+                              div
+                                button#dxc-148
+                                  span  "Beverages"
+                            td[title=Guaraná Fantástica]
+                              div
+                                button#dxc-150
+                                  span  "Guaraná Fantástica"
+                            td[title=467.55]
+                              div
+                                button#dxc-152
+                                  span  "467.55"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-154
+                                  span  "Qtr 2"
+                          tr
+                            td  "20"
+                            td[title=Beverages]
+                              div
+                                button#dxc-156
+                                  span  "Beverages"
+                            td[title=Guaraná Fantástica]
+                              div
+                                button#dxc-158
+                                  span  "Guaraná Fantástica"
+                            td[title=219.37]
+                              div
+                                button#dxc-160
+                                  span  "219.37"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-162
+                                  span  "Qtr 3"
+                          tr
+                            td  "21"
+                            td[title=Beverages]
+                              div
+                                button#dxc-164
+                                  span  "Beverages"
+                            td[title=Guaraná Fantástica]
+                              div
+                                button#dxc-166
+                                  span  "Guaraná Fantástica"
+                            td[title=337.5]
+                              div
+                                button#dxc-168
+                                  span  "337.5"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-170
+                                  span  "Qtr 4"
+                          tr
+                            td  "22"
+                            td[title=Beverages]
+                              div
+                                button#dxc-172
+                                  span  "Beverages"
+                            td[title=Ipoh Coffee]
+                              div
+                                button#dxc-174
+                                  span  "Ipoh Coffee"
+                            td[title=1398.4]
+                              div
+                                button#dxc-176
+                                  span  "1398.4"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-178
+                                  span  "Qtr 1"
+                          tr
+                            td  "23"
+                            td[title=Beverages]
+                              div
+                                button#dxc-180
+                                  span  "Beverages"
+                            td[title=Ipoh Coffee]
+                              div
+                                button#dxc-182
+                                  span  "Ipoh Coffee"
+                            td[title=4496.5]
+                              div
+                                button#dxc-184
+                                  span  "4496.5"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-186
+                                  span  "Qtr 2"
+                          tr
+                            td  "24"
+                            td[title=Beverages]
+                              div
+                                button#dxc-188
+                                  span  "Beverages"
+                            td[title=Ipoh Coffee]
+                              div
+                                button#dxc-190
+                                  span  "Ipoh Coffee"
+                            td[title=1196]
+                              div
+                                button#dxc-192
+                                  span  "1196"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-194
+                                  span  "Qtr 3"
+                          tr
+                            td  "25"
+                            td[title=Beverages]
+                              div
+                                button#dxc-196
+                                  span  "Beverages"
+                            td[title=Ipoh Coffee]
+                              div
+                                button#dxc-198
+                                  span  "Ipoh Coffee"
+                            td[title=3979]
+                              div
+                                button#dxc-200
+                                  span  "3979"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-202
+                                  span  "Qtr 4"
+                          tr
+                            td  "26"
+                            td[title=Beverages]
+                              div
+                                button#dxc-204
+                                  span  "Beverages"
+                            td[title=Lakkalikööri]
+                              div
+                                button#dxc-206
+                                  span  "Lakkalikööri"
+                            td[title=1141.92]
+                              div
+                                button#dxc-208
+                                  span  "1141.92"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-210
+                                  span  "Qtr 1"
+                          tr
+                            td  "27"
+                            td[title=Beverages]
+                              div
+                                button#dxc-212
+                                  span  "Beverages"
+                            td[title=Lakkalikööri]
+                              div
+                                button#dxc-214
+                                  span  "Lakkalikööri"
+                            td[title=1774.08]
+                              div
+                                button#dxc-216
+                                  span  "1774.08"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-218
+                                  span  "Qtr 2"
+                          tr
+                            td  "28"
+                            td[title=Beverages]
+                              div
+                                button#dxc-220
+                                  span  "Beverages"
+                            td[title=Lakkalikööri]
+                              div
+                                button#dxc-222
+                                  span  "Lakkalikööri"
+                            td[title=3261.6]
+                              div
+                                button#dxc-224
+                                  span  "3261.6"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-226
+                                  span  "Qtr 3"
+                          tr
+                            td  "29"
+                            td[title=Beverages]
+                              div
+                                button#dxc-228
+                                  span  "Beverages"
+                            td[title=Lakkalikööri]
+                              div
+                                button#dxc-230
+                                  span  "Lakkalikööri"
+                            td[title=1705.5]
+                              div
+                                button#dxc-232
+                                  span  "1705.5"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-234
+                                  span  "Qtr 4"
+                          tr
+                            td  "30"
+                            td[title=Beverages]
+                              div
+                                button#dxc-236
+                                  span  "Beverages"
+                            td[title=Laughing Lumberjack Lager]
+                              div
+                                button#dxc-238
+                                  span  "Laughing Lumberjack Lager"
+                            td[title=518]
+                              div
+                                button#dxc-240
+                                  span  "518"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-242
+                                  span  "Qtr 2"
+                          tr
+                            td  "31"
+                            td[title=Beverages]
+                              div
+                                button#dxc-244
+                                  span  "Beverages"
+                            td[title=Laughing Lumberjack Lager]
+                              div
+                                button#dxc-246
+                                  span  "Laughing Lumberjack Lager"
+                            td[title=350]
+                              div
+                                button#dxc-248
+                                  span  "350"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-250
+                                  span  "Qtr 3"
+                          tr
+                            td  "32"
+                            td[title=Beverages]
+                              div
+                                button#dxc-252
+                                  span  "Beverages"
+                            td[title=Laughing Lumberjack Lager]
+                              div
+                                button#dxc-254
+                                  span  "Laughing Lumberjack Lager"
+                            td[title=42]
+                              div
+                                button#dxc-256
+                                  span  "42"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-258
+                                  span  "Qtr 4"
+                          tr
+                            td  "33"
+                            td[title=Beverages]
+                              div
+                                button#dxc-260
+                                  span  "Beverages"
+                            td[title=Outback Lager]
+                              div
+                                button#dxc-262
+                                  span  "Outback Lager"
+                            td[title=1508.4]
+                              div
+                                button#dxc-264
+                                  span  "1508.4"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-266
+                                  span  "Qtr 1"
+                          tr
+                            td  "34"
+                            td[title=Beverages]
+                              div
+                                button#dxc-268
+                                  span  "Beverages"
+                            td[title=Outback Lager]
+                              div
+                                button#dxc-270
+                                  span  "Outback Lager"
+                            td[title=384]
+                              div
+                                button#dxc-272
+                                  span  "384"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-274
+                                  span  "Qtr 2"
+                          tr
+                            td  "35"
+                            td[title=Beverages]
+                              div
+                                button#dxc-276
+                                  span  "Beverages"
+                            td[title=Outback Lager]
+                              div
+                                button#dxc-278
+                                  span  "Outback Lager"
+                            td[title=1252.5]
+                              div
+                                button#dxc-280
+                                  span  "1252.5"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-282
+                                  span  "Qtr 3"
+                          tr
+                            td  "36"
+                            td[title=Beverages]
+                              div
+                                button#dxc-284
+                                  span  "Beverages"
+                            td[title=Outback Lager]
+                              div
+                                button#dxc-286
+                                  span  "Outback Lager"
+                            td[title=2683.5]
+                              div
+                                button#dxc-288
+                                  span  "2683.5"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-290
+                                  span  "Qtr 4"
+                          tr
+                            td  "37"
+                            td[title=Beverages]
+                              div
+                                button#dxc-292
+                                  span  "Beverages"
+                            td[title=Rhönbräu Klosterbier]
+                              div
+                                button#dxc-294
+                                  span  "Rhönbräu Klosterbier"
+                            td[title=214.52]
+                              div
+                                button#dxc-296
+                                  span  "214.52"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-298
+                                  span  "Qtr 1"
+                          tr
+                            td  "38"
+                            td[title=Beverages]
+                              div
+                                button#dxc-300
+                                  span  "Beverages"
+                            td[title=Rhönbräu Klosterbier]
+                              div
+                                button#dxc-302
+                                  span  "Rhönbräu Klosterbier"
+                            td[title=1508.92]
+                              div
+                                button#dxc-304
+                                  span  "1508.92"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-306
+                                  span  "Qtr 2"
+                          tr
+                            td  "39"
+                            td[title=Beverages]
+                              div
+                                button#dxc-308
+                                  span  "Beverages"
+                            td[title=Rhönbräu Klosterbier]
+                              div
+                                button#dxc-310
+                                  span  "Rhönbräu Klosterbier"
+                            td[title=1233.8]
+                              div
+                                button#dxc-312
+                                  span  "1233.8"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-314
+                                  span  "Qtr 3"
+                          tr
+                            td  "40"
+                            td[title=Beverages]
+                              div
+                                button#dxc-316
+                                  span  "Beverages"
+                            td[title=Rhönbräu Klosterbier]
+                              div
+                                button#dxc-318
+                                  span  "Rhönbräu Klosterbier"
+                            td[title=1233.8]
+                              div
+                                button#dxc-320
+                                  span  "1233.8"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-322
+                                  span  "Qtr 4"
+                          tr
+                            td  "41"
+                            td[title=Beverages]
+                              div
+                                button#dxc-324
+                                  span  "Beverages"
+                            td[title=Sasquatch Ale]
+                              div
+                                button#dxc-326
+                                  span  "Sasquatch Ale"
+                            td[title=179.2]
+                              div
+                                button#dxc-328
+                                  span  "179.2"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-330
+                                  span  "Qtr 1"
+                          tr
+                            td  "42"
+                            td[title=Beverages]
+                              div
+                                button#dxc-332
+                                  span  "Beverages"
+                            td[title=Sasquatch Ale]
+                              div
+                                button#dxc-334
+                                  span  "Sasquatch Ale"
+                            td[title=1037.4]
+                              div
+                                button#dxc-336
+                                  span  "1037.4"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-338
+                                  span  "Qtr 2"
+                          tr
+                            td  "43"
+                            td[title=Beverages]
+                              div
+                                button#dxc-340
+                                  span  "Beverages"
+                            td[title=Sasquatch Ale]
+                              div
+                                button#dxc-342
+                                  span  "Sasquatch Ale"
+                            td[title=750.4]
+                              div
+                                button#dxc-344
+                                  span  "750.4"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-346
+                                  span  "Qtr 4"
+                          tr
+                            td  "44"
+                            td[title=Beverages]
+                              div
+                                button#dxc-348
+                                  span  "Beverages"
+                            td[title=Steeleye Stout]
+                              div
+                                button#dxc-350
+                                  span  "Steeleye Stout"
+                            td[title=1742.4]
+                              div
+                                button#dxc-352
+                                  span  "1742.4"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-354
+                                  span  "Qtr 1"
+                          tr
+                            td  "45"
+                            td[title=Beverages]
+                              div
+                                button#dxc-356
+                                  span  "Beverages"
+                            td[title=Steeleye Stout]
+                              div
+                                button#dxc-358
+                                  span  "Steeleye Stout"
+                            td[title=1008]
+                              div
+                                button#dxc-360
+                                  span  "1008"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-362
+                                  span  "Qtr 2"
+                          tr
+                            td  "46"
+                            td[title=Beverages]
+                              div
+                                button#dxc-364
+                                  span  "Beverages"
+                            td[title=Steeleye Stout]
+                              div
+                                button#dxc-366
+                                  span  "Steeleye Stout"
+                            td[title=1683]
+                              div
+                                button#dxc-368
+                                  span  "1683"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-370
+                                  span  "Qtr 3"
+                          tr
+                            td  "47"
+                            td[title=Beverages]
+                              div
+                                button#dxc-372
+                                  span  "Beverages"
+                            td[title=Steeleye Stout]
+                              div
+                                button#dxc-374
+                                  span  "Steeleye Stout"
+                            td[title=1273.5]
+                              div
+                                button#dxc-376
+                                  span  "1273.5"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-378
+                                  span  "Qtr 4"
+                          tr
+                            td  "48"
+                            td[title=Condiments]
+                              div
+                                button#dxc-380
+                                  span  "Condiments"
+                            td[title=Aniseed Syrup]
+                              div
+                                button#dxc-382
+                                  span  "Aniseed Syrup"
+                            td[title=544]
+                              div
+                                button#dxc-384
+                                  span  "544"
+                            td[title=Qtr 1]
+                              div
+                                button#dxc-386
+                                  span  "Qtr 1"
+                          tr
+                            td  "49"
+                            td[title=Condiments]
+                              div
+                                button#dxc-388
+                                  span  "Condiments"
+                            td[title=Aniseed Syrup]
+                              div
+                                button#dxc-390
+                                  span  "Aniseed Syrup"
+                            td[title=600]
+                              div
+                                button#dxc-392
+                                  span  "600"
+                            td[title=Qtr 2]
+                              div
+                                button#dxc-394
+                                  span  "Qtr 2"
+                          tr
+                            td  "50"
+                            td[title=Condiments]
+                              div
+                                button#dxc-396
+                                  span  "Condiments"
+                            td[title=Aniseed Syrup]
+                              div
+                                button#dxc-398
+                                  span  "Aniseed Syrup"
+                            td[title=140]
+                              div
+                                button#dxc-400
+                                  span  "140"
+                            td[title=Qtr 3]
+                              div
+                                button#dxc-402
+                                  span  "Qtr 3"
+                          tr
+                            td  "51"
+                            td[title=Condiments]
+                              div
+                                button#dxc-404
+                                  span  "Condiments"
+                            td[title=Aniseed Syrup]
+                              div
+                                button#dxc-406
+                                  span  "Aniseed Syrup"
+                            td[title=440]
+                              div
+                                button#dxc-408
+                                  span  "440"
+                            td[title=Qtr 4]
+                              div
+                                button#dxc-410
+                                  span  "Qtr 4"
+                    div
+                      div
+                        button  "Previous"
+                          svg
+                            path
+                        span  "page 1 of 6"
+                        button  "Next"
+                          svg
+                            path
+                      div  "rows 1–50 of 286"
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                div
+                  div
+                    input[type=text][placeholder=Filter Entities ...]
+                  div
+                    div
+                      div
+                        svg
+                          path
+                        div  "Organization"
+                        div  "5"
+                      div
+                        div[title=Rhönbräu]
+                          div  "Rhönbräu"
+                          div  "4"
+                        div[title=Lakkalikööri]
+                          div  "Lakkalikööri"
+                          div  "4"
+                        div[title=Ipoh Coffee]
+                          div  "Ipoh Coffee"
+                          div  "4"
+                        div[title=Guaraná Fantástica]
+                          div  "Guaraná Fantástica"
+                          div  "4"
+                        div[title=Chartreuse]
+                          div  "Chartreuse"
+                          div  "4"
+                    div
+                      div
+                        svg
+                          path
+                        div  "Location"
+                        div  "3"
+                      div
+                        div[title=Côte de Blaye]
+                          div  "Côte de Blaye"
+                          div  "4"
+                        div[title=Chang]
+                          div  "Chang"
+                          div  "4"
+                        div[title=Chai]
+                          div  "Chai"
+                          div  "4"
+                    div
+                      div
+                        svg
+                          path
+                        div  "Misc"
+                        div  "4"
+                      div
+                        div[title=Outback Lager]
+                          div  "Outback Lager"
+                          div  "4"
+                        div[title=Klosterbier]
+                          div  "Klosterbier"
+                          div  "4"
+                        div[title=Sasquatch Ale]
+                          div  "Sasquatch Ale"
+                          div  "3"
+                        div[title=Laughing Lumberjack Lager]
+                          div  "Laughing Lumberjack Lager"
+                          div  "3"
+    div[role=region][label=0 notifications]
+      ol

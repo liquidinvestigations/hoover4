@@ -1,0 +1,257 @@
+# 137-qa-pdf-full-source-switch (1080p) -- FAILED
+url:      https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdnc3RhbmxleW1mYWNldF9maWx0ZXJzoXJjb2xsZWN0aW9uX2RhdGFzZXSBoWZTdHJpbmdxdGVzdGRhdGFfbWFudWFscWFtcmFuZ2VfZmlsdGVyc6Bkc29ydKJja2V5aVJlbGV2YW5jZWRkZXNj9Q==/0/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMjFjY2ZmNWIxNmYxNWU5OTE0OGJjM2ZhYWEyYTI5NzViMDcxYTE4ZmJkMTU2MmM5YTQyOWM2MzRhZDNhZWUz/pWpmaW5kX3F1ZXJ5Y01JVG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR59g==
+title:    Hoover Search: stanley
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5939[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5937[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5935[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5933[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][value=stanley][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter (1)"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+              div#x-filter-chips
+                div[title=testdata_manualqa]
+                  span  "Collections"
+                  span  "testdata_manualqa"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                button  "Clear all"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "1 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-5927[role=button]
+                          button
+                            svg
+                              path
+                      div  "1 / 1"
+                      div
+                        div#dxc-5929[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-5925[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/1"
+                        div
+                        div
+                          div#dxc-5923[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=PDF]
+                                  svg
+                                    path
+                              div
+                                span  "stanley"
+                                span  ".ec02.pdf"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "... 5 1−>5 1−>5 3−>5 3−>66−>4 DIS DIS DIS DIS DIS 1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4 5 5 5 5 6 6 6 6 7 8 9 Mutate Add Connection Mutate Add Node K. O."
+                                span  "Stanley"
+                                span  "and R. Miikkulainen split and the new node placed where the old connection used to be. The old connection is disabled and two new connections are added to the genome. The new connection leading into t"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMjFjY2ZmNWIxNmYxNWU5OTE0OGJjM2ZhYWEyY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_manualqa"
+                    div  "/"
+                    div
+                      span[title=PDF]
+                        svg
+                          path
+                    div  "stanley.ec02.pdf"
+                  div
+                  div
+                    a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMjFjY2ZmNWIxNmYxNWU5OTE0OGJjM2ZhYWEyY]
+                      svg
+                        path
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div
+                    input[type=text][value=MIT][placeholder=Search in document]
+                  div
+                  div
+                    div
+                      div
+                        div#dxc-25[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        h1  "1 / 7"
+                      div
+                        div#dxc-23[role=button]
+                          button
+                            svg
+                              path
+                  div
+                  div
+                    button#dxc-20
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "PDF"
+                        div  "7"
+                        span  "▼"
+                    div#dxc-21[role=dialog]
+                      ul
+                        div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "PDF"
+                          div  "7"
+                        div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "PDF · OCR · Tesseract · eng"
+                          div  "7"
+                        div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "Extracted text"
+                          div  "10"
+                        div
+                          div
+                            svg
+                              path
+                          div
+                            svg
+                              path
+                          div  "PDF text"
+                          div  "7"
+                div
+                  div#x-pdf-viewer
+                    embedpdf-container
+                  div
+                    div
+                      div
+                        input[type=text][value=1]
+                      div  "30"
+                      button
+                        svg
+                          path
+                      button
+                        svg
+                          path
+                      button
+                        svg
+                          path
+                          path
+                      div
+                        div  "115%"
+                      button
+                        svg
+                          path
+    div[role=region][label=0 notifications]
+      ol

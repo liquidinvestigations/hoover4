@@ -1,0 +1,485 @@
+[
+  {
+    "procedure": "baseline",
+    "expected": "The search action opens the archive location and the archive row enters its root.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdxdGhlLWRpcmVjdG9yeS56aXBtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "1 (whoami x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "2 documents found"
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/\"]",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nthe-directory.zip\ntestdata_manualqa\nMatched by filename. No matching text inside this document.\nthe-directory.zip"
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/\\\"]\");let row=a;while(row&&!row.style.height.includes('148px'))row=row.parentElement;const more=row?.querySelector('a')?.parentElement.querySelector('button');if(!more)throw Error('result more control unavailable');more.click();return true;",
+        "before_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: Open in File Browser",
+        "before_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "body :: Open in File Browser",
+        "before_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.startsWith('/file_browser/');",
+        "before_api": "13 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "25 (search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_folder_children x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_path_to x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: the-directory.zip",
+        "before_api": "25 (search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_folder_children x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_path_to x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "25 (search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_folder_children x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_path_to x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "table :: the-directory.zip",
+        "before_api": "25 (search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_folder_children x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_path_to x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "25 (search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_folder_children x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_path_to x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "table :: the-directory.zip",
+        "before_api": "25 (search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_folder_children x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_path_to x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "25 (search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_folder_children x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_path_to x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelectorAll('#x-storage-tree [aria-current=\"location\"]').length===1;",
+        "before_api": "25 (search_document_item_hit_counts x4, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_folder_children x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_path_to x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "31 (search_document_item_hit_counts x4, vfs_tree_children x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, vfs_tree_path_to x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "return {route:location.pathname,tree:document.querySelector('#x-storage-tree').innerText,listing:document.querySelector('table')?.innerText};",
+        "before_api": "31 (search_document_item_hit_counts x4, vfs_tree_children x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, vfs_tree_path_to x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "route": "/file_browser/testdata_manualqa/om5jb250YWluZXJfaGFzaHhAZDVjZWJkNTVjMjBkODQxODM0YTk4ZDhjYmJkNTM3NjFjY2VjYzFiNjUxOGI4NDE1MjI3MTAzOGRiZWMyMThlN2RwYXRoYS8=/9g==/9g==",
+          "tree": "consulate\nfiles\nenron\ndasovich_j\nkaminski_v\nkean_s\nmaildir\nmann_k\nepstein\ndocs\nother\nemails\ntables\nehudx\nexcels\ngreenvelope\ntestdata\ndiskfiles\nemails\nentityfixtures\nexcelsc\nfilenames\nleaf\nmanualpdf\nmanualqa\narchives\nparent.zip\nthe-directory.zip\nthe-directory\ndocuments\nemails\nentity-fixtures\nimages\nsubstitutes\nparent.zip\nUrăsc canicula, e nașpa.eml\nshapes\ntestfiles\nwide\nzips\ntextfiles\nextra",
+          "listing": "Name\t\tSize\t\n\nthe-directory\n\t\t\t"
+        },
+        "after_api": "31 (search_document_item_hit_counts x4, vfs_tree_children x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, vfs_tree_path_to x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "route": "/file_browser/testdata_manualqa/om5jb250YWluZXJfaGFzaHhAZDVjZWJkNTVjMjBkODQxODM0YTk4ZDhjYmJkNTM3NjFjY2VjYzFiNjUxOGI4NDE1MjI3MTAzOGRiZWMyMThlN2RwYXRoYS8=/9g==/9g==",
+      "tree": "consulate\nfiles\nenron\ndasovich_j\nkaminski_v\nkean_s\nmaildir\nmann_k\nepstein\ndocs\nother\nemails\ntables\nehudx\nexcels\ngreenvelope\ntestdata\ndiskfiles\nemails\nentityfixtures\nexcelsc\nfilenames\nleaf\nmanualpdf\nmanualqa\narchives\nparent.zip\nthe-directory.zip\nthe-directory\ndocuments\nemails\nentity-fixtures\nimages\nsubstitutes\nparent.zip\nUrăsc canicula, e nașpa.eml\nshapes\ntestfiles\nwide\nzips\ntextfiles\nextra",
+      "listing": "Name\t\tSize\t\n\nthe-directory\n\t\t\t"
+    },
+    "evidence": "127-manual-archive-storage.01"
+  },
+  {
+    "procedure": "search-handoff",
+    "expected": "The selected archive and storage focus agree.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdxdGhlLWRpcmVjdG9yeS56aXBtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "31 (search_document_item_hit_counts x4, vfs_tree_children x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, vfs_tree_path_to x2, whoami x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "36 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_children x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "36 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_children x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "2 documents found"
+        },
+        "after_api": "36 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_children x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/\"]",
+        "before_api": "36 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_children x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "36 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_children x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "36 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_children x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nthe-directory.zip\ntestdata_manualqa\nMatched by filename. No matching text inside this document.\nthe-directory.zip"
+        },
+        "after_api": "36 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_children x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "36 (search_document_item_hit_counts x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_children x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, list_folder_children x2, search_document_text_for_hit_count x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, search_document_text_for_hits x1, vfs_node_term_id x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "43 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3, search_document_text_for_hit_count x3, vfs_tree_children x3, whoami x3, list_folder_children x2, search_document_text_for_hits x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/\\\"]\");let row=a;while(row&&!row.style.height.includes('148px'))row=row.parentElement;const more=row?.querySelector('a')?.parentElement.querySelector('button');if(!more)throw Error('result more control unavailable');more.click();return true;",
+        "before_api": "43 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3, search_document_text_for_hit_count x3, vfs_tree_children x3, whoami x3, list_folder_children x2, search_document_text_for_hits x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "43 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3, search_document_text_for_hit_count x3, vfs_tree_children x3, whoami x3, list_folder_children x2, search_document_text_for_hits x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: Open in File Browser",
+        "before_api": "43 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3, search_document_text_for_hit_count x3, vfs_tree_children x3, whoami x3, list_folder_children x2, search_document_text_for_hits x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "43 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3, search_document_text_for_hit_count x3, vfs_tree_children x3, whoami x3, list_folder_children x2, search_document_text_for_hits x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "body :: Open in File Browser",
+        "before_api": "43 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3, search_document_text_for_hit_count x3, vfs_tree_children x3, whoami x3, list_folder_children x2, search_document_text_for_hits x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "43 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3, search_document_text_for_hit_count x3, vfs_tree_children x3, whoami x3, list_folder_children x2, search_document_text_for_hits x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.startsWith('/file_browser/');",
+        "before_api": "43 (search_document_item_hit_counts x6, search_for_results x4, search_for_results_hit_count x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3, search_document_text_for_hit_count x3, vfs_tree_children x3, whoami x3, list_folder_children x2, search_document_text_for_hits x2, vfs_tree_path_to x2, get_document_first_vfs_path x1, get_document_text_by_id_and_source x1, list_storage_tree x1, vfs_node_term_id x1, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "55 (search_document_item_hit_counts x8, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, list_folder_children x3, vfs_tree_children x3, vfs_tree_path_to x3, whoami x3, get_document_first_vfs_path x2, get_document_text_by_id_and_source x2, list_storage_tree x2, search_document_text_for_hits x2, vfs_node_term_id x2, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: the-directory.zip",
+        "before_api": "55 (search_document_item_hit_counts x8, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, list_folder_children x3, vfs_tree_children x3, vfs_tree_path_to x3, whoami x3, get_document_first_vfs_path x2, get_document_text_by_id_and_source x2, list_storage_tree x2, search_document_text_for_hits x2, vfs_node_term_id x2, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "59 (search_document_item_hit_counts x8, vfs_tree_children x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, get_document_text_by_id_and_source x3, list_folder_children x3, search_document_text_for_hits x3, vfs_tree_path_to x3, whoami x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "table :: the-directory.zip",
+        "before_api": "59 (search_document_item_hit_counts x8, vfs_tree_children x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, get_document_text_by_id_and_source x3, list_folder_children x3, search_document_text_for_hits x3, vfs_tree_path_to x3, whoami x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "59 (search_document_item_hit_counts x8, vfs_tree_children x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, get_document_text_by_id_and_source x3, list_folder_children x3, search_document_text_for_hits x3, vfs_tree_path_to x3, whoami x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x1)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "table :: the-directory.zip",
+        "before_api": "59 (search_document_item_hit_counts x8, vfs_tree_children x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, get_document_text_by_id_and_source x3, list_folder_children x3, search_document_text_for_hits x3, vfs_tree_path_to x3, whoami x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "62 (search_document_item_hit_counts x8, vfs_tree_children x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, vfs_tree_path_to x3, whoami x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelectorAll('#x-storage-tree [aria-current=\"location\"]').length===1;",
+        "before_api": "62 (search_document_item_hit_counts x8, vfs_tree_children x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, vfs_tree_path_to x3, whoami x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "63 (search_document_item_hit_counts x8, vfs_tree_children x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_path_to x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, whoami x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "eval",
+        "input": "return {route:location.pathname,tree:document.querySelector('#x-storage-tree').innerText,listing:document.querySelector('table')?.innerText};",
+        "before_api": "63 (search_document_item_hit_counts x8, vfs_tree_children x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_path_to x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, whoami x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "route": "/file_browser/testdata_manualqa/om5jb250YWluZXJfaGFzaHhAZDVjZWJkNTVjMjBkODQxODM0YTk4ZDhjYmJkNTM3NjFjY2VjYzFiNjUxOGI4NDE1MjI3MTAzOGRiZWMyMThlN2RwYXRoYS8=/9g==/9g==",
+          "tree": "consulate\nfiles\nenron\ndasovich_j\nkaminski_v\nkean_s\nmaildir\nmann_k\nepstein\ndocs\nother\nemails\ntables\nehudx\nexcels\ngreenvelope\ntestdata\ndiskfiles\nemails\nentityfixtures\nexcelsc\nfilenames\nleaf\nmanualpdf\nmanualqa\narchives\nparent.zip\nthe-directory.zip\ndocuments\nemails\nentity-fixtures\nimages\nsubstitutes\nparent.zip\nUrăsc canicula, e nașpa.eml\nshapes\ntestfiles\nwide\nzips\ntextfiles\nextra",
+          "listing": "Name\t\tSize\t\n\nthe-directory\n\t\t\t"
+        },
+        "after_api": "63 (search_document_item_hit_counts x8, vfs_tree_children x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_path_to x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, whoami x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "route": "/file_browser/testdata_manualqa/om5jb250YWluZXJfaGFzaHhAZDVjZWJkNTVjMjBkODQxODM0YTk4ZDhjYmJkNTM3NjFjY2VjYzFiNjUxOGI4NDE1MjI3MTAzOGRiZWMyMThlN2RwYXRoYS8=/9g==/9g==",
+      "tree": "consulate\nfiles\nenron\ndasovich_j\nkaminski_v\nkean_s\nmaildir\nmann_k\nepstein\ndocs\nother\nemails\ntables\nehudx\nexcels\ngreenvelope\ntestdata\ndiskfiles\nemails\nentityfixtures\nexcelsc\nfilenames\nleaf\nmanualpdf\nmanualqa\narchives\nparent.zip\nthe-directory.zip\ndocuments\nemails\nentity-fixtures\nimages\nsubstitutes\nparent.zip\nUrăsc canicula, e nașpa.eml\nshapes\ntestfiles\nwide\nzips\ntextfiles\nextra",
+      "listing": "Name\t\tSize\t\n\nthe-directory\n\t\t\t"
+    },
+    "evidence": "127-manual-archive-storage.02"
+  },
+  {
+    "procedure": "return-navigation",
+    "expected": "Browser history returns to the archive route.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdxdGhlLWRpcmVjdG9yeS56aXBtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "64 (search_document_item_hit_counts x8, vfs_tree_children x7, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, vfs_tree_path_to x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, whoami x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "69 (search_document_item_hit_counts x8, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "69 (search_document_item_hit_counts x8, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "2 documents found"
+        },
+        "after_api": "69 (search_document_item_hit_counts x8, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/\"]",
+        "before_api": "69 (search_document_item_hit_counts x8, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "69 (search_document_item_hit_counts x8, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "69 (search_document_item_hit_counts x8, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nthe-directory.zip\ntestdata_manualqa\nMatched by filename. No matching text inside this document.\nthe-directory.zip"
+        },
+        "after_api": "69 (search_document_item_hit_counts x8, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "69 (search_document_item_hit_counts x8, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, list_folder_children x4, search_document_text_for_hit_count x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "75 (search_document_item_hit_counts x10, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x5, get_document_sources x5, get_file_path x5, search_document_text_for_hit_count x5, list_folder_children x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkNWNlYmQ1NWMyMGQ4NDE4MzRhOThkOGNiYmQ1Mzc2MWNjZWNjMWI2NTE4Yjg0MTUyMjcxMDM4ZGJlYzIxOGU3/\\\"]\");let row=a;while(row&&!row.style.height.includes('148px'))row=row.parentElement;const more=row?.querySelector('a')?.parentElement.querySelector('button');if(!more)throw Error('result more control unavailable');more.click();return true;",
+        "before_api": "75 (search_document_item_hit_counts x10, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x5, get_document_sources x5, get_file_path x5, search_document_text_for_hit_count x5, list_folder_children x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, search_document_text_for_hits x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "76 (search_document_item_hit_counts x10, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x5, get_document_sources x5, get_file_path x5, search_document_text_for_hit_count x5, list_folder_children x4, search_document_text_for_hits x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: Open in File Browser",
+        "before_api": "76 (search_document_item_hit_counts x10, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x5, get_document_sources x5, get_file_path x5, search_document_text_for_hit_count x5, list_folder_children x4, search_document_text_for_hits x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "76 (search_document_item_hit_counts x10, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x5, get_document_sources x5, get_file_path x5, search_document_text_for_hit_count x5, list_folder_children x4, search_document_text_for_hits x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "body :: Open in File Browser",
+        "before_api": "76 (search_document_item_hit_counts x10, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x5, get_document_sources x5, get_file_path x5, search_document_text_for_hit_count x5, list_folder_children x4, search_document_text_for_hits x4, vfs_tree_path_to x4, whoami x4, get_document_text_by_id_and_source x3, get_document_first_vfs_path x2, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "77 (search_document_item_hit_counts x10, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x5, get_document_sources x5, get_file_path x5, search_document_text_for_hit_count x5, list_folder_children x4, search_document_text_for_hits x4, vfs_tree_path_to x4, whoami x4, get_document_first_vfs_path x3, get_document_text_by_id_and_source x3, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return location.pathname.startsWith('/file_browser/');",
+        "before_api": "77 (search_document_item_hit_counts x10, vfs_tree_children x7, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x5, get_document_sources x5, get_file_path x5, search_document_text_for_hit_count x5, list_folder_children x4, search_document_text_for_hits x4, vfs_tree_path_to x4, whoami x4, get_document_first_vfs_path x3, get_document_text_by_id_and_source x3, list_storage_tree x2, vfs_node_term_id x2, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "84 (search_document_item_hit_counts x11, vfs_tree_children x7, get_document_sources x6, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x5, get_file_path x5, list_folder_children x5, search_document_text_for_hit_count x5, vfs_tree_path_to x5, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: the-directory.zip",
+        "before_api": "84 (search_document_item_hit_counts x11, vfs_tree_children x7, get_document_sources x6, search_for_results x6, search_for_results_hit_count x6, get_canonical_file_type x5, get_file_path x5, list_folder_children x5, search_document_text_for_hit_count x5, vfs_tree_path_to x5, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "88 (search_document_item_hit_counts x12, vfs_tree_children x7, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, list_folder_children x5, vfs_tree_path_to x5, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "table :: the-directory.zip",
+        "before_api": "88 (search_document_item_hit_counts x12, vfs_tree_children x7, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, list_folder_children x5, vfs_tree_path_to x5, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "89 (search_document_item_hit_counts x12, vfs_tree_children x8, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, list_folder_children x5, vfs_tree_path_to x5, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "click_text_in",
+        "input": "table :: the-directory.zip",
+        "before_api": "89 (search_document_item_hit_counts x12, vfs_tree_children x8, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, list_folder_children x5, vfs_tree_path_to x5, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "90 (search_document_item_hit_counts x12, vfs_tree_children x8, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, list_folder_children x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x5, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelectorAll('#x-storage-tree [aria-current=\"location\"]').length===1;",
+        "before_api": "90 (search_document_item_hit_counts x12, vfs_tree_children x8, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, list_folder_children x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x5, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "96 (search_document_item_hit_counts x12, vfs_tree_children x12, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, list_folder_children x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)"
+      },
+      {
+        "action": "eval",
+        "input": "return {route:location.pathname,tree:document.querySelector('#x-storage-tree').innerText,listing:document.querySelector('table')?.innerText};",
+        "before_api": "96 (search_document_item_hit_counts x12, vfs_tree_children x12, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, list_folder_children x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)",
+        "status": "passed",
+        "observed": {
+          "route": "/file_browser/testdata_manualqa/om5jb250YWluZXJfaGFzaHhAZDVjZWJkNTVjMjBkODQxODM0YTk4ZDhjYmJkNTM3NjFjY2VjYzFiNjUxOGI4NDE1MjI3MTAzOGRiZWMyMThlN2RwYXRoYS8=/9g==/9g==",
+          "tree": "consulate\nfiles\nenron\ndasovich_j\nkaminski_v\nkean_s\nmaildir\nmann_k\nepstein\ndocs\nother\nemails\ntables\nehudx\nexcels\ngreenvelope\ntestdata\ndiskfiles\nemails\nentityfixtures\nexcelsc\nfilenames\nleaf\nmanualpdf\nmanualqa\narchives\nparent.zip\nthe-directory.zip\nLoading…\ndocuments\nemails\nentity-fixtures\nimages\nsubstitutes\nparent.zip\nUrăsc canicula, e nașpa.eml\nshapes\ntestfiles\nwide\nzips\ntextfiles\nextra",
+          "listing": "Name\t\tSize\t\n\nthe-directory\n\t\t\t"
+        },
+        "after_api": "96 (search_document_item_hit_counts x12, vfs_tree_children x12, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, list_folder_children x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)"
+      },
+      {
+        "action": "eval",
+        "input": "return location.pathname;",
+        "before_api": "96 (search_document_item_hit_counts x12, vfs_tree_children x12, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, list_folder_children x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)",
+        "status": "passed",
+        "observed": "/file_browser/testdata_manualqa/om5jb250YWluZXJfaGFzaHhAZDVjZWJkNTVjMjBkODQxODM0YTk4ZDhjYmJkNTM3NjFjY2VjYzFiNjUxOGI4NDE1MjI3MTAzOGRiZWMyMThlN2RwYXRoYS8=/9g==/9g==",
+        "after_api": "96 (search_document_item_hit_counts x12, vfs_tree_children x12, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, list_folder_children x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)"
+      },
+      {
+        "action": "history_back",
+        "input": "",
+        "before_api": "96 (search_document_item_hit_counts x12, vfs_tree_children x12, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, list_folder_children x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "96 (search_document_item_hit_counts x12, vfs_tree_children x12, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, list_folder_children x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: the-directory.zip",
+        "before_api": "96 (search_document_item_hit_counts x12, vfs_tree_children x12, get_canonical_file_type x6, get_document_sources x6, get_file_path x6, list_folder_children x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "100 (search_document_item_hit_counts x13, vfs_tree_children x13, get_document_sources x7, list_folder_children x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)"
+      },
+      {
+        "action": "history_forward",
+        "input": "",
+        "before_api": "100 (search_document_item_hit_counts x13, vfs_tree_children x13, get_document_sources x7, list_folder_children x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "100 (search_document_item_hit_counts x13, vfs_tree_children x13, get_document_sources x7, list_folder_children x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return {ok:location.pathname===\"/file_browser/testdata_manualqa/om5jb250YWluZXJfaGFzaHhAZDVjZWJkNTVjMjBkODQxODM0YTk4ZDhjYmJkNTM3NjFjY2VjYzFiNjUxOGI4NDE1MjI3MTAzOGRiZWMyMThlN2RwYXRoYS8=/9g==/9g==\",route:location.pathname};",
+        "before_api": "100 (search_document_item_hit_counts x13, vfs_tree_children x13, get_document_sources x7, list_folder_children x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "route": "/file_browser/testdata_manualqa/om5jb250YWluZXJfaGFzaHhAZDVjZWJkNTVjMjBkODQxODM0YTk4ZDhjYmJkNTM3NjFjY2VjYzFiNjUxOGI4NDE1MjI3MTAzOGRiZWMyMThlN2RwYXRoYS8=/9g==/9g=="
+        },
+        "after_api": "102 (vfs_tree_children x14, search_document_item_hit_counts x13, list_folder_children x8, get_document_sources x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "ok": true,
+      "route": "/file_browser/testdata_manualqa/om5jb250YWluZXJfaGFzaHhAZDVjZWJkNTVjMjBkODQxODM0YTk4ZDhjYmJkNTM3NjFjY2VjYzFiNjUxOGI4NDE1MjI3MTAzOGRiZWMyMThlN2RwYXRoYS8=/9g==/9g=="
+    },
+    "evidence": "127-manual-archive-storage.03"
+  },
+  {
+    "procedure": "archive-highlight",
+    "expected": "Exactly one tree row identifies the current archive.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/file_browser/testdata_zips/om5jb250YWluZXJfaGFzaHhAYzVmMjUxODMxMWZiM2U2MDY0OTIwMDM2YmNjYTljMGJmODU0MDI0NjRlZDRkYzc0OTg1ZDU1YWM4NDY2MGU1YmRwYXRoYS8=/9g==/9g==",
+        "before_api": "102 (vfs_tree_children x14, search_document_item_hit_counts x13, list_folder_children x8, get_document_sources x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, get_document_text_by_id_and_source x4, search_document_text_for_hits x4, whoami x4, get_document_first_vfs_path x3, list_storage_tree x3, vfs_node_term_id x3, vfs_tree_container_node x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "107 (vfs_tree_children x14, search_document_item_hit_counts x13, list_folder_children x9, get_document_sources x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, whoami x5, get_document_text_by_id_and_source x4, list_storage_tree x4, search_document_text_for_hits x4, vfs_node_term_id x4, vfs_tree_container_node x4, get_document_first_vfs_path x3)"
+      },
+      {
+        "action": "wait_text",
+        "input": "parent.zip",
+        "before_api": "107 (vfs_tree_children x14, search_document_item_hit_counts x13, list_folder_children x9, get_document_sources x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, vfs_tree_path_to x6, whoami x5, get_document_text_by_id_and_source x4, list_storage_tree x4, search_document_text_for_hits x4, vfs_node_term_id x4, vfs_tree_container_node x4, get_document_first_vfs_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "110 (vfs_tree_children x16, search_document_item_hit_counts x13, list_folder_children x9, get_document_sources x7, vfs_tree_path_to x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, whoami x5, get_document_text_by_id_and_source x4, list_storage_tree x4, search_document_text_for_hits x4, vfs_node_term_id x4, vfs_tree_container_node x4, get_document_first_vfs_path x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const rows=Array.from(document.querySelectorAll('#x-storage-tree [aria-current=\"location\"]')); return rows.length === 1 && rows[0].title.endsWith('/parent.zip');",
+        "before_api": "110 (vfs_tree_children x16, search_document_item_hit_counts x13, list_folder_children x9, get_document_sources x7, vfs_tree_path_to x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, whoami x5, get_document_text_by_id_and_source x4, list_storage_tree x4, search_document_text_for_hits x4, vfs_node_term_id x4, vfs_tree_container_node x4, get_document_first_vfs_path x3)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "111 (vfs_tree_children x17, search_document_item_hit_counts x13, list_folder_children x9, get_document_sources x7, vfs_tree_path_to x7, get_canonical_file_type x6, get_file_path x6, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, whoami x5, get_document_text_by_id_and_source x4, list_storage_tree x4, search_document_text_for_hits x4, vfs_node_term_id x4, vfs_tree_container_node x4, get_document_first_vfs_path x3)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "current_rows": 1
+    },
+    "evidence": "127-manual-archive-storage.04"
+  }
+]

@@ -1,0 +1,695 @@
+# 120-manual-folder-search (1080p)
+url:      https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdnaW52b2ljZW1mYWNldF9maWx0ZXJzoG1yYW5nZV9maWx0ZXJzoGRzb3J0omNrZXlpUmVsZXZhbmNlZGRlc2P1/0/9g==/9g==
+title:    Hoover Search: invoice
+actions:  (none)
+api calls: 76 (search_for_results x10, search_for_results_hit_count x10, search_document_item_hit_counts x7, vfs_tree_children x6, fetch_db_terms_for_ints x4, get_document_sources x4, list_folder_children x4, list_storage_tree x4, vfs_node_term_id x4, vfs_tree_path_to x4, whoami x4, get_canonical_file_type x3, get_file_path x3, search_document_text_for_hit_count x3, search_document_text_for_hits x3, vfs_search_in_folder x3)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-1775[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-1773[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-1771[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-1769[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][value=invoice][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "3110 documents found"
+                    div
+                      div
+                        div#dxc-35[role=button]
+                          div
+                            svg
+                              path
+                    div
+                    div
+                      div
+                        div#dxc-31[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 1000"
+                      div
+                        div#dxc-33[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-29[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "1"
+                          span  "/51"
+                        div
+                        div
+                          div#dxc-27[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+                        li
+                          div
+                            div
+                              span  "1."
+                              div
+                                span[title=Web page]
+                                  svg
+                                    path
+                              div
+                                span  "enwikiversity-20170820-pages-meta-current.xml"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... a current export reference guide. Certificates of origin are normally issued by an exporter or a party acting on their behalf and must be signed and sealed by a local chamber of commerce. ===Comme"
+                                span  "Invoice"
+                                span  "=== The commercial"
+                                span  "invoice"
+                                span  "is the bill of sale and an exporter’s request for payment from a buyer. It is also important to any third party who needs to determine the value of a shipment, such ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhAZmEwOThiN2Q3YTI0ODgwYjJiZTBlMmU1OTVlYjFjO]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "2."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "HOUSE_OVERSIGHT_021434.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=epstein_docs]  "epstein_docs"
+                            div
+                              div
+                                span  "... advance check in the amount of 71 made payable to "Delaware Secretary of State" in order to obtain certified copies I I AFII Iwill provide an"
+                                span  "invoice"
+                                span  "for these records once obtained from the Delaware Secretary of State. It should be noted that the receipt of the"
+                                span  "invoice"
+                                span  "will take 14 to 20 days. • • 3 b3 b6 b7C FD-302 (Rev. 10-6-95) b6 b7C -1- FEDERAL BUREAU OF INVESTIGATION Date of transcription ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsZXBzdGVpbl9kb2NzaWZpbGVfaGFzaHhAOWViMThmM2VhOTMyMDAyZDY5MDE5MzVlOGE5MTFmOWIwZ]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "3."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "generate.py"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "... USD 310000", " line 8 USD 2400000", " line 9 USD 45000000", " line 10 USD 250000000", "", "The euro leg is smaller: EUR 12 and EUR 4100.", "", "Value date 2023-03-14. The framework agreement is da"
+                                span  "invoice"
+                                span  "-batch.docx"] = ("docx", [ ""
+                                span  "INVOICE"
+                                span  "BATCH COVER SHEET", f"Remit to IBAN {iban[1]}, BIC {bic[1]}.", "Batch total USD 310000 across eleven invoices.", "The largest single ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA2YTRiMTYwN2FmMjAxNTgzN2VjM2ZkZGNjMGQ1Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "4."
+                              div
+                                span[title=Web page]
+                                  svg
+                                    path
+                              div
+                                span  "1 (5).html"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=tables_ehudx]  "tables_ehudx"
+                            div
+                              div
+                                span  "body { font-family: Calibri, Sans-serif; } hr { color: BurlyWood; } #header_table, #image_table { border-collapse: collapse; border-style:solid; border-color:Moccasin; width:100%; border-width:1px; ta"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsdGFibGVzX2VodWR4aWZpbGVfaGFzaHhAZjg3ZTQ5MDA1MzIzZDBhNzhmMDVmY2JhYjgzZDliNjJlN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "5."
+                              div
+                                span[title=Text]
+                                  svg
+                                    path
+                              div
+                                span  "Taxation_in_the_United_States.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=textfiles_extra]  "textfiles_extra"
+                            div
+                              div
+                                span  "... goods are generally accompanied by a bill of lading or air waybill describing the goods. For purposes of customs duty assessment, they must also be accompanied by an"
+                                span  "invoice"
+                                span  "documenting the transaction value. The goods on the bill of lading and"
+                                span  "invoice"
+                                span  "are classified and duty is computed by the importer or CBP. The amount of this duty is payable immediately, and must be paid before the goods can ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRvdGV4dGZpbGVzX2V4dHJhaWZpbGVfaGFzaHhANjI0YWI3ZTkwNWJmYzVjMGQyYmUxMzM3M2VjNDM5N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "6."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "HOUSE_OVERSIGHT_031294.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=epstein_docs]  "epstein_docs"
+                            div
+                              div
+                                span  "... 2017, at 11:19 AM, Richard Kahn < > wrote: The foundation that will be making this contribution is: Gratitude America Ltd. 6100 Red Hook Quarter, B3 St Thomas, USVI 00802 please send all correspon"
+                                span  "invoice"
+                                span  "to me via email thank you HOUSE OVERSIGHT 031295 Richard Kahn HBRK Associates Inc. 575 Lexington Avenue 4th Floor New York, NY 10022 ftaexl cell On Nov 16, 2017, at 3:38 PM, Steven ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsZXBzdGVpbl9kb2NzaWZpbGVfaGFzaHhAMjBlZThkYjBjOWEzYWM2MzA2MGIzZTFmNzJmYWEyMDgyY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "7."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "HOUSE_OVERSIGHT_023291.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=epstein_docs]  "epstein_docs"
+                            div
+                              div
+                                span  "... you only 20 if you do as i ask, not tell me for the first time only after i laid it all out. had it not been you, i would have required payment in escrow. BEFORE fyi the reason I sent you an"
+                                span  "invoice"
+                                span  "so that if you decided that you wanted me to continue this year . it would be applied to last years income. I think today was a beginiing for you. I am glad I will meet wendy the 23, rd, . separate an"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsZXBzdGVpbl9kb2NzaWZpbGVfaGFzaHhAMmMwNWIwMTA2YjE5YzAyZDRhZjg4Y2QzZWNiYTk1MGJmM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "8."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "HOUSE_OVERSIGHT_023208.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=epstein_docs]  "epstein_docs"
+                            div
+                              div
+                                span  "... - you've paid a great deal of money to date. that being said - If you want my involvement moving foward, I suggest you pay my regular 1 fee of 40 m. 20 now . 20 on completion or as per the"
+                                span  "invoice"
+                                span  "issues at the end of last year pay 30 all at once. - To help out . im keenly aware of your current cash position. so I will consider an in-kind payment - real estate ( Miami )�art , financing of my ne"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsZXBzdGVpbl9kb2NzaWZpbGVfaGFzaHhANDJmNjM4ZTZjY2VlMTFmZmE3YmJkYjI5OTVlMTAwOTZlM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "9."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "HOUSE_OVERSIGHT_031320.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=epstein_docs]  "epstein_docs"
+                            div
+                              div
+                                span  "... 17, 2017, at 11:19 AM, Richard Kahn < > wrote: The foundation that will be making this contribution is: Gratitude America Ltd. 6100 Red Hook Quarter, B3 St Thomas, USVI 00802 please send all corre"
+                                span  "invoice"
+                                span  "to me via email thank you HOUSE OVERSIGHT 031321 Richard Kahn HBRK Associates Inc. 575 Lexington Avenue 4th Floor New York, NY 10022 tel fax cell On Nov 16, 2017, at 3:38 PM ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsZXBzdGVpbl9kb2NzaWZpbGVfaGFzaHhANzliZjg0NzhhZmIyOWIzMDFhZGY4MjFiZDIwYmE5MmVhM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "10."
+                              div
+                                span[title=Document]
+                                  svg
+                                    path
+                              div
+                                span  "invoice"
+                                span  "-batch.docx"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=testdata_manualqa]  "testdata_manualqa"
+                            div
+                              div
+                                span  "INVOICE"
+                                span  "BATCH COVER SHEET Remit to IBAN AL47 2121 1009 0000 0002 3569 8741, BIC ABNA BE 2A. Batch total USD 310000 across eleven invoices. The largest single"
+                                span  "invoice"
+                                span  "is USD 85000 and the smallest is USD 12. Queries to warmerda@remotesensing.org or +24762889. Batch date 2017-05-09. The oldest"
+                                span  "invoice"
+                                span  "in the batch is dated 1979-01-15."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEBkMGRiYzQ4ZDQ3YmU2NTdiYWNmMWFlMWVlZDVlM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "11."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "HOUSE_OVERSIGHT_028501.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=epstein_docs]  "epstein_docs"
+                            div
+                              div
+                                span  "... Gotham Awards Attachments: image001.png; image002.png; image003.png Sounds good, works for me. So, Peggy, if you could just let me know what info to include on the donation letter and"
+                                span  "invoice"
+                                span  ", I'll send that along your way. COMPANY NAME (if applicable): CONTACT NAME: ADDRESS LINE 1: ADDRESS LINE 2: Thanks, Steven Steven Pfeiffer Associate Director, Development Independent Filmmaker Projec"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsZXBzdGVpbl9kb2NzaWZpbGVfaGFzaHhAMjViMWE3OWI3M2I2NDYyYzgzYjFkMGM0ZDlkN2E2YWM2Y]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "12."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "HOUSE_OVERSIGHT_026228.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=epstein_docs]  "epstein_docs"
+                            div
+                              div
+                                span  "... To: Jeffrey E.; Peggy Siegal Subject: Re: 2017 IFP Gotham Awards Sounds good, works for me. So, Peggy, if you could just let me know what info to include on the donation letter and"
+                                span  "invoice"
+                                span  ", I'll send that along your way. COMPANY NAME (if applicable): CONTACT NAME: ADDRESS LINE 1: ADDRESS LINE 2: Thanks, Steven Steven Pfeiffer Associate Director, Development Independent Filmmaker Projec"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsZXBzdGVpbl9kb2NzaWZpbGVfaGFzaHhAM2MxZDdjZTJjNzY0NmM3ZjBhOTliNjNiMmQ1Y2NmYWYyN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "13."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "HOUSE_OVERSIGHT_028497.txt"
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=epstein_docs]  "epstein_docs"
+                            div
+                              div
+                                span  "... To: Jeffrey E.; Peggy Siegal Subject: Re: 2017 IFP Gotham Awards Sounds good, works for me. So, Peggy, if you could just let me know what info to include on the donation letter and"
+                                span  "invoice"
+                                span  ", I'll send that along your way. COMPANY NAME (if applicable): CONTACT NAME: ADDRESS LINE 1: ADDRESS LINE 2: Thanks, Steven Steven Pfeiffer Associate Director, Development Independent Filmmaker Projec"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRsZXBzdGVpbl9kb2NzaWZpbGVfaGFzaHhANTQ0MTVlODBkZTBlOWE4NTZhYzc4MGJmMzQ1ZWJkMWY0N]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "14."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "559."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... to be paid. According to Kim, normally it would appear on a buy/sale ticket and therefore, Margaret Dhont's group would handle this. I'm not really sure what group should handle it. Is there an"
+                                span  "invoice"
+                                span  "that you can get to me so that I can have it as backup support for the cash request? -----Original Message----- From: Germany, Chris Sent: Tuesday, March 12, 2002 4:33 PM To: Wynne, Rita Cc: Tomaski ."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QGM1YWNiMjAyZjIyNWYwYTA5ZDA5YWYyODY2YmE1ZjhiM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "15."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "594."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... box or mail to the new PO Box: PO Box 4734, Houston, TX 77210-4734, ATTN: Enron Accounts Payable. Be sure to include the company name and number, contact name, and the coder�,s EID on the"
+                                span  "invoice"
+                                span  ", but do not include a coding sheet. * Beginning May 1st, when you receive an e-mail from iBuyit.Payables@enron.com, click on the link provided, login to the system, and code and approve invoices onli"
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QDE5ZmU5MDBkY2RkZDUzZGUxMjZmOTA1YzdjMTYyMTEzM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "16."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "1574."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... or mail to the new PO Box: PO Box 4734, Houston, TX 77210-4734= ,=20 ATTN: Enron Accounts Payable. Be sure to include the company name and=20 number, contact name, and the coder=01,s EID on the"
+                                span  "invoice"
+                                span  ", but do not inc= lude=20 a coding sheet. * Beginning May 1st, when you receive an e-mail from=20 iBuyit.Payables@enron.com, click on the link provided, login to the system,= =20 and code and approve "
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QDljY2M4YTQ3MDk5ZWVjNDIyZDNmYjA1YWViNTM1ZTQ1M]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "17."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "35."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... to be paid. According to Kim, normally it would appear on a buy/sale ticket and therefore, Margaret Dhont's group would handle this. I'm not really sure what group should handle it. Is there an"
+                                span  "invoice"
+                                span  "that you can get to me so that I can have it as backup support for the cash request? -----Original Message----- From: Germany, Chris Sent: Tuesday, March 12, 2002 4:33 PM To: Wynne, Rita Cc: Tomaski ."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QGU5NDllMTExZWFkNWI2MjcwNjRjNjgzOTdiOGViNzFiN]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "18."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "572."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... to be paid. According to Kim, normally it would appear on a buy/sale ticket and therefore, Margaret Dhont's group would handle this. I'm not really sure what group should handle it. Is there an"
+                                span  "invoice"
+                                span  "that you can get to me so that I can have it as backup support for the cash request? -----Original Message----- From: Germany, Chris Sent: Tuesday, March 12, 2002 4:33 PM To: Wynne, Rita Cc: Tomaski ."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QDkxMGU0MmMxNjUyOTM2MDE1NzY3YjNhNzBiZTNiOWJmY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "19."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "454."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... Sent: Monday, March 11, 2002 4:38 PM To: McMichael Jr., Ed Cc: Mann, Kay; McMichael Jr., Ed; Dicarlo, Louis; Dhont, Margaret; Polsky, Phil; Boyt, Eric; Parks, Joe; Melanie Gray (E-mail) Subject: R"
+                                span  "Invoice"
+                                span  "for Post petition Deliveries Ed, this gas was nominated on an IT contract into a pool on NGPL. I am unable to identify the gas after that so its difficult for me to tell if the ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QGU5NjE0NDFlYzFlYjI2YjAwOTZjNzFiZThkYmU1ZTQxM]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+                        li
+                          div
+                            div
+                              span  "20."
+                              div
+                                span[title=Email]
+                                  svg
+                                    path
+                              div
+                                span  "2."
+                              div
+                              div
+                                svg
+                                  path
+                              span[title=enron_maildir]  "enron_maildir"
+                            div
+                              div
+                                span  "... Sent: Monday, March 11, 2002 4:38 PM To: McMichael Jr., Ed Cc: Mann, Kay; McMichael Jr., Ed; Dicarlo, Louis; Dhont, Margaret; Polsky, Phil; Boyt, Eric; Parks, Joe; Melanie Gray (E-mail) Subject: R"
+                                span  "Invoice"
+                                span  "for Post petition Deliveries Ed, this gas was nominated on an IT contract into a pool on NGPL. I am unable to identify the gas after that so its difficult for me to tell if the ..."
+                              div
+                                a[href=/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRtZW5yb25fbWFpbGRpcmlmaWxlX2hhc2h4QDI1OTJlMzI3NzcwOGJiZGJhNDdhODAwOGYxNDFhYWFhY]
+                                  svg
+                                    path
+                                div
+                                  button
+                                    svg
+                                      path
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

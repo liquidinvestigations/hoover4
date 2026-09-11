@@ -1,0 +1,257 @@
+# 49-view-doc-entity-card (1080p)
+url:      https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRydGVzdGRhdGFfdGVzdGZpbGVzaWZpbGVfaGFzaHhAZDIxY2NmZjViMTZmMTVlOTkxNDhiYzNmYWFhMmEyOTc1YjA3MWExOGZiZDE1NjJjOWE0MjljNjM0YWQzYWVlMw==/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR5dmtzdGFubGV5QGNzLnV0ZXhhcy5lZHU=/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=
+title:    Hoover Search - View Document
+actions:  sleep 3000; wait_text What this does not prove
+api calls: 9 (search_document_item_hit_counts x2, explain_entity x1, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_pdf x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-6943[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6941[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6939[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-6937[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          div
+            div
+              div
+                div
+                  div
+                    div
+                      input[type=text][placeholder=Search in document]
+                  div
+                    div
+                      div
+                        div#dxc-13[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        h1  "- / -"
+                      div
+                        div#dxc-11[role=button]
+                          button
+                            svg
+                              path
+                  div
+                    ul
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "PDF"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "PDF · OCR · Tesseract · eng"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "Extracted text"
+                        div
+                      div
+                        div
+                          svg
+                            path
+                        div
+                          svg
+                            path
+                        div  "PDF text"
+                        div
+              div
+                div
+                  div
+                    div
+                      svg
+                        path
+                    div  "testdata_testfiles"
+                    div  "/"
+                    div
+                      span[title=PDF]
+                        svg
+                          path
+                    div  "stanley.ec02.pdf"
+                  div
+                  div
+                    div
+                      button
+                        svg
+                          path
+                div
+                  div#x-pdf-viewer
+                    embedpdf-container
+                  div
+                    div
+                      div
+                        input[type=text][value=1]
+                      div  "30"
+                      button
+                        svg
+                          path
+                      button
+                        svg
+                          path
+                      button
+                        svg
+                          path
+                          path
+                      div
+                        div  "134%"
+                      button
+                        svg
+                          path
+          div
+            div
+              div
+                button  "Entities"
+                button  "File Locations"
+                button  "Metadata"
+              div
+                div
+                  div
+                    div
+                      div  "Opened on one entity: kstanley@cs.utexas.edu"
+                      button  "Show all entities"
+                    input[type=text][placeholder=Filter Entities ...]
+                  div
+                    div
+                      div
+                        svg
+                          path
+                        div  "Email"
+                        div  "1"
+                      div
+                        div
+                          div
+                            div  "Email address"
+                            div  "cs.utexas.edu · generic top-level domain"
+                            div  "kstanley@cs.utexas.edu"
+                            div
+                              div
+                                p
+                                  span  "An address in the ordinary local-part@domain form that people actually write. Full RFC 5322 syntax (quoted local parts, comments, folded whitespace) is deliberately not the target: it accepts a great "
+                                p
+                                  span  "The local part"
+                                  code  "kstanley"
+                                  span  "identifies a mailbox at"
+                                  code  "cs.utexas.edu"
+                                  span  ". The domain is compared case-insensitively and is stored lowercased; the local part is case-sensitive and is left exactly as written."
+                                  code  ".edu"
+                                  span  "is a generic top-level domain."
+                                p
+                                  strong  "What was checked"
+                                ul
+                                  li
+                                    span  "the top-level domain is on IANA's list of delegated domains, which is what separates an address from a file name such as sprite@2x.png"
+                                  li
+                                    span  "the local part is addressable unquoted, with no leading, trailing or doubled dot"
+                                  li
+                                    span  "the local part and the domain are inside the RFC 5321 length limits of 64 and 255 characters"
+                                  li
+                                    span  "nothing addressable runs into the match from either side, so an address is not cut out of a longer token"
+                                p
+                                  strong  "What this does not prove"
+                                ul
+                                  li
+                                    span  "whether the domain exists, resolves, or accepts mail. No lookup of any kind is made"
+                                  li
+                                    span  "whether the mailbox exists or the address was ever in use"
+                                  li
+                                    span  "whether the address belongs to the person the surrounding text is about"
+                                  li
+                                    span  "a domain with no dot in it: the pattern requires at least two labels, so test@io is not matched. message.rfc5322 does admit a single-label right-hand side, because RFC 5322 §3.6.4 says an id-right may"
+                                  li
+                                    span  "the local-part characters RFC 5322 admits that this pattern's class does not: ! # $ & ' * / = ? ^ ` { | } ~. An address using one is not merely skipped: the match begins after the offending character,"
+                                p
+                                  strong  "Defined by"
+                                ul
+                                  li
+                                    span  "RFC 5321: Simple Mail Transfer Protocol, which sets the length limits"
+                                  li
+                                    span  "RFC 5322: Internet Message Format, which defines the address grammar"
+                                p
+                                  strong  "Authorities"
+                                ul
+                                  li
+                                    a[href=https://www.iana.org/domains/root/db]  "Internet Assigned Numbers Authority"
+                                    span  ", delegates top-level domains and publishes the authoritative list"
+                                p
+                                  strong  "References"
+                                ul
+                                  li
+                                    a[href=https://www.iana.org/domains/root/db]  "IANA Root Zone Database"
+                                    span  ", every delegated top-level domain and who sponsors it"
+                                  li
+                                    a[href=https://www.rfc-editor.org/rfc/rfc5321#section-4.5.3.1]  "RFC 5321 §4.5.3.1"
+                                    span  ", the local-part and domain length limits applied here"
+                                  li
+                                    a[href=https://www.rfc-editor.org/rfc/rfc5321#section-2.4]  "RFC 5321 §2.4"
+                                    span  ", why the domain may be lowercased and the local part may not"
+                            div
+                              div  "Address"
+                              div  "kstanley@cs.utexas.edu"
+                              div  "Local part"
+                              div  "kstanley"
+                              div  "Domain"
+                              div  "cs.utexas.edu"
+                              div  "Top-level domain"
+                              div  ".edu"
+                              div  "Domain type"
+                              div  "generic top-level domain"
+                            div
+                              a[title=who sponsors this top-level domain and under what policy][href=https://www.iana.org/domains/root/db/edu.html]  "IANA register entry for .edu"
+                              a[title=every delegated top-level domain and who sponsors it][href=https://www.iana.org/domains/root/db]  "IANA Root Zone Database"
+                              a[title=the local-part and domain length limits applied here][href=https://www.rfc-editor.org/rfc/rfc5321#section-4.5.3.1]  "RFC 5321 §4.5.3.1"
+                              a[title=why the domain may be lowercased and the local part may not][href=https://www.rfc-editor.org/rfc/rfc5321#section-2.4]  "RFC 5321 §2.4"
+    div[role=region][label=0 notifications]
+      ol

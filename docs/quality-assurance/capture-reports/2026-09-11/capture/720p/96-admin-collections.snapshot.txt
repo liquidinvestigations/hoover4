@@ -1,0 +1,164 @@
+# 96-admin-collections (720p)
+url:      https://hoover4.new.liquiddemo.org/admin/collections
+title:    Admin: collections
+actions:  sleep 2000
+api calls: 2 (admin_list_collections x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-5641[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5639[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5637[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-5635[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Collections"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Select collection to change"
+              div
+                div
+                  h2  "Add collection"
+                  div
+                    input[type=text][placeholder=collectionname (slug)]
+                    input[type=text][placeholder=display name]
+                    button  "Add collection +"
+                table
+                  thead
+                    tr
+                      th  "Collection"
+                      th  "Display name"
+                      th  "Datasets"
+                      th  "Groups with access"
+                      th  "Access"
+                      th  "Database"
+                  tbody
+                    tr
+                      td
+                        a[href=/admin/collections/consulate]  "consulate"
+                      td  "Consulate"
+                      td  "1"
+                      td  "0"
+                      td
+                        span  "restricted"
+                      td
+                        span  "✔ ready"
+                    tr
+                      td
+                        a[href=/admin/collections/enron]  "enron"
+                      td  "Enron"
+                      td  "5"
+                      td  "0"
+                      td
+                        span  "restricted"
+                      td
+                        span  "✔ ready"
+                    tr
+                      td
+                        a[href=/admin/collections/epstein]  "epstein"
+                      td  "Epstein"
+                      td  "1"
+                      td  "0"
+                      td
+                        span  "restricted"
+                      td
+                        span  "✔ ready"
+                    tr
+                      td
+                        a[href=/admin/collections/other]  "other"
+                      td  "Other Collection"
+                      td  "1"
+                      td  "0"
+                      td
+                        span  "restricted"
+                      td
+                        span  "✔ ready"
+                    tr
+                      td
+                        a[href=/admin/collections/tables]  "tables"
+                      td  "Tables"
+                      td  "3"
+                      td  "0"
+                      td
+                        span  "restricted"
+                      td
+                        span  "✔ ready"
+                    tr
+                      td
+                        a[href=/admin/collections/testdata]  "testdata"
+                      td  "Test Data"
+                      td  "12"
+                      td  "0"
+                      td
+                        span  "restricted"
+                      td
+                        span  "✔ ready"
+                    tr
+                      td
+                        a[href=/admin/collections/textfiles]  "textfiles"
+                      td  "Textfiles"
+                      td  "1"
+                      td  "0"
+                      td
+                        span  "restricted"
+                      td
+                        span  "✔ ready"
+    div[role=region][label=0 notifications]
+      ol

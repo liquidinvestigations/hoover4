@@ -1,0 +1,1391 @@
+{
+  "name": "chronology-from-evidence",
+  "profile": "chat",
+  "prompt": "Find available documents about a public project or an organization. Select one topic supported by at least two documents if possible. Build a short chronology using dates stated in the documents. Distinguish document dates from dates of described events. Cite each entry and explain any contradictions or gaps.",
+  "session_url": "https://hoover4.new.liquiddemo.org/ai_chat/c/bbd1ca580daf4f4c093c481142f3dacb26c07173bfb2539a27aa83b5cc3aacd3/9g==/9g==",
+  "submission_ok": true,
+  "turn_started": true,
+  "stop_disappeared_at_s": 665.0036747470149,
+  "completed_answer_present": true,
+  "generating_started_s": 16.97479732701322,
+  "generating_ended_s": 682.0532474670326,
+  "captures": {
+    "720p": [
+      {
+        "file": "720p/interval-000-t0000s.png",
+        "deadline_offset_s": 0.0,
+        "actual_offset_s": 0.0,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 336,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-001-t0005s.png",
+        "deadline_offset_s": 5.0,
+        "actual_offset_s": 5.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 336,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-002-t0010s.png",
+        "deadline_offset_s": 10.0,
+        "actual_offset_s": 10.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 356,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-003-t0015s.png",
+        "deadline_offset_s": 15.0,
+        "actual_offset_s": 15.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 491,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-004-t0020s.png",
+        "deadline_offset_s": 20.0,
+        "actual_offset_s": 20.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 414,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-005-t0025s.png",
+        "deadline_offset_s": 25.0,
+        "actual_offset_s": 25.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 628,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-006-t0030s.png",
+        "deadline_offset_s": 30.0,
+        "actual_offset_s": 30.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 776,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-007-t0035s.png",
+        "deadline_offset_s": 35.0,
+        "actual_offset_s": 35.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 448,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-008-t0040s.png",
+        "deadline_offset_s": 40.0,
+        "actual_offset_s": 40.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 448,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-009-t0045s.png",
+        "deadline_offset_s": 45.0,
+        "actual_offset_s": 45.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 448,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-010-t0050s.png",
+        "deadline_offset_s": 50.0,
+        "actual_offset_s": 50.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 448,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-011-t0055s.png",
+        "deadline_offset_s": 55.0,
+        "actual_offset_s": 55.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 448,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-012-t0060s.png",
+        "deadline_offset_s": 60.0,
+        "actual_offset_s": 60.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 461,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-013-t0065s.png",
+        "deadline_offset_s": 65.0,
+        "actual_offset_s": 65.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 461,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-014-t0070s.png",
+        "deadline_offset_s": 70.0,
+        "actual_offset_s": 70.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 500,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-015-t0075s.png",
+        "deadline_offset_s": 75.0,
+        "actual_offset_s": 75.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 781,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-016-t0080s.png",
+        "deadline_offset_s": 80.0,
+        "actual_offset_s": 80.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 495,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-017-t0085s.png",
+        "deadline_offset_s": 85.0,
+        "actual_offset_s": 85.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 508,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-018-t0090s.png",
+        "deadline_offset_s": 90.0,
+        "actual_offset_s": 90.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 620,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-019-t0095s.png",
+        "deadline_offset_s": 95.0,
+        "actual_offset_s": 95.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 921,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-020-t0100s.png",
+        "deadline_offset_s": 100.0,
+        "actual_offset_s": 100.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 963,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-021-t0105s.png",
+        "deadline_offset_s": 105.0,
+        "actual_offset_s": 105.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 963,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-022-t0110s.png",
+        "deadline_offset_s": 110.0,
+        "actual_offset_s": 110.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 963,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-023-t0115s.png",
+        "deadline_offset_s": 115.0,
+        "actual_offset_s": 115.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 963,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-024-t0120s.png",
+        "deadline_offset_s": 120.0,
+        "actual_offset_s": 120.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 976,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-025-t0125s.png",
+        "deadline_offset_s": 125.0,
+        "actual_offset_s": 125.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 976,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-026-t0130s.png",
+        "deadline_offset_s": 130.0,
+        "actual_offset_s": 130.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 623,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-027-t0135s.png",
+        "deadline_offset_s": 135.0,
+        "actual_offset_s": 135.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 636,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-028-t0140s.png",
+        "deadline_offset_s": 140.0,
+        "actual_offset_s": 140.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 636,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-029-t0145s.png",
+        "deadline_offset_s": 145.0,
+        "actual_offset_s": 145.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 636,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-030-t0150s.png",
+        "deadline_offset_s": 150.0,
+        "actual_offset_s": 150.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 636,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-031-t0155s.png",
+        "deadline_offset_s": 155.0,
+        "actual_offset_s": 155.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 932,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-032-t0160s.png",
+        "deadline_offset_s": 160.0,
+        "actual_offset_s": 160.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 955,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-033-t0165s.png",
+        "deadline_offset_s": 165.0,
+        "actual_offset_s": 165.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 683,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-034-t0170s.png",
+        "deadline_offset_s": 170.0,
+        "actual_offset_s": 170.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 683,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-035-t0175s.png",
+        "deadline_offset_s": 175.0,
+        "actual_offset_s": 175.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 683,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-036-t0180s.png",
+        "deadline_offset_s": 180.0,
+        "actual_offset_s": 180.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 683,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-037-t0185s.png",
+        "deadline_offset_s": 185.0,
+        "actual_offset_s": 185.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 844,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-038-t0190s.png",
+        "deadline_offset_s": 190.0,
+        "actual_offset_s": 190.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 844,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-039-t0195s.png",
+        "deadline_offset_s": 195.0,
+        "actual_offset_s": 195.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 844,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-040-t0200s.png",
+        "deadline_offset_s": 200.0,
+        "actual_offset_s": 200.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 844,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-041-t0205s.png",
+        "deadline_offset_s": 205.0,
+        "actual_offset_s": 205.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 844,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-042-t0210s.png",
+        "deadline_offset_s": 210.0,
+        "actual_offset_s": 210.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 844,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-043-t0215s.png",
+        "deadline_offset_s": 215.0,
+        "actual_offset_s": 215.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 844,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-044-t0220s.png",
+        "deadline_offset_s": 220.0,
+        "actual_offset_s": 220.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 844,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-045-t0225s.png",
+        "deadline_offset_s": 225.0,
+        "actual_offset_s": 225.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 844,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-046-t0230s.png",
+        "deadline_offset_s": 230.0,
+        "actual_offset_s": 230.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 811,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-047-t0235s.png",
+        "deadline_offset_s": 235.0,
+        "actual_offset_s": 235.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 811,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-048-t0240s.png",
+        "deadline_offset_s": 240.0,
+        "actual_offset_s": 240.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 811,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-049-t0245s.png",
+        "deadline_offset_s": 245.0,
+        "actual_offset_s": 245.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 811,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-050-t0250s.png",
+        "deadline_offset_s": 250.0,
+        "actual_offset_s": 250.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 964,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-051-t0255s.png",
+        "deadline_offset_s": 255.0,
+        "actual_offset_s": 255.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 997,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-052-t0260s.png",
+        "deadline_offset_s": 260.0,
+        "actual_offset_s": 260.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1003,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-053-t0265s.png",
+        "deadline_offset_s": 265.0,
+        "actual_offset_s": 265.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1003,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-054-t0270s.png",
+        "deadline_offset_s": 270.0,
+        "actual_offset_s": 270.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1003,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-055-t0275s.png",
+        "deadline_offset_s": 275.0,
+        "actual_offset_s": 275.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1003,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-056-t0280s.png",
+        "deadline_offset_s": 280.0,
+        "actual_offset_s": 280.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1003,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-057-t0285s.png",
+        "deadline_offset_s": 285.0,
+        "actual_offset_s": 285.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 858,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-058-t0290s.png",
+        "deadline_offset_s": 290.0,
+        "actual_offset_s": 290.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 858,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-059-t0295s.png",
+        "deadline_offset_s": 295.0,
+        "actual_offset_s": 295.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 858,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-060-t0300s.png",
+        "deadline_offset_s": 300.0,
+        "actual_offset_s": 300.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 858,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-061-t0305s.png",
+        "deadline_offset_s": 305.0,
+        "actual_offset_s": 305.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 858,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-062-t0310s.png",
+        "deadline_offset_s": 310.0,
+        "actual_offset_s": 310.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 982,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-063-t0315s.png",
+        "deadline_offset_s": 315.0,
+        "actual_offset_s": 315.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 982,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-064-t0320s.png",
+        "deadline_offset_s": 320.0,
+        "actual_offset_s": 320.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 906,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-065-t0325s.png",
+        "deadline_offset_s": 325.0,
+        "actual_offset_s": 325.035,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 919,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-066-t0330s.png",
+        "deadline_offset_s": 330.0,
+        "actual_offset_s": 330.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 919,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-067-t0335s.png",
+        "deadline_offset_s": 335.0,
+        "actual_offset_s": 335.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 919,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-068-t0340s.png",
+        "deadline_offset_s": 340.0,
+        "actual_offset_s": 340.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 919,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-069-t0345s.png",
+        "deadline_offset_s": 345.0,
+        "actual_offset_s": 345.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 919,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-070-t0350s.png",
+        "deadline_offset_s": 350.0,
+        "actual_offset_s": 350.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1053,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-071-t0355s.png",
+        "deadline_offset_s": 355.0,
+        "actual_offset_s": 355.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1167,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-072-t0360s.png",
+        "deadline_offset_s": 360.0,
+        "actual_offset_s": 360.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1167,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-073-t0365s.png",
+        "deadline_offset_s": 365.0,
+        "actual_offset_s": 365.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-074-t0370s.png",
+        "deadline_offset_s": 370.0,
+        "actual_offset_s": 370.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-075-t0375s.png",
+        "deadline_offset_s": 375.0,
+        "actual_offset_s": 375.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-076-t0380s.png",
+        "deadline_offset_s": 380.0,
+        "actual_offset_s": 380.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-077-t0385s.png",
+        "deadline_offset_s": 385.0,
+        "actual_offset_s": 385.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-078-t0390s.png",
+        "deadline_offset_s": 390.0,
+        "actual_offset_s": 390.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-079-t0395s.png",
+        "deadline_offset_s": 395.0,
+        "actual_offset_s": 395.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-080-t0400s.png",
+        "deadline_offset_s": 400.0,
+        "actual_offset_s": 400.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-081-t0405s.png",
+        "deadline_offset_s": 405.0,
+        "actual_offset_s": 405.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-082-t0410s.png",
+        "deadline_offset_s": 410.0,
+        "actual_offset_s": 410.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-083-t0415s.png",
+        "deadline_offset_s": 415.0,
+        "actual_offset_s": 415.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-084-t0420s.png",
+        "deadline_offset_s": 420.0,
+        "actual_offset_s": 420.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-085-t0425s.png",
+        "deadline_offset_s": 425.0,
+        "actual_offset_s": 425.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-086-t0430s.png",
+        "deadline_offset_s": 430.0,
+        "actual_offset_s": 430.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-087-t0435s.png",
+        "deadline_offset_s": 435.0,
+        "actual_offset_s": 435.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-088-t0440s.png",
+        "deadline_offset_s": 440.0,
+        "actual_offset_s": 440.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-089-t0445s.png",
+        "deadline_offset_s": 445.0,
+        "actual_offset_s": 445.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-090-t0450s.png",
+        "deadline_offset_s": 450.0,
+        "actual_offset_s": 450.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-091-t0455s.png",
+        "deadline_offset_s": 455.0,
+        "actual_offset_s": 455.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-092-t0460s.png",
+        "deadline_offset_s": 460.0,
+        "actual_offset_s": 460.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-093-t0465s.png",
+        "deadline_offset_s": 465.0,
+        "actual_offset_s": 465.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-094-t0470s.png",
+        "deadline_offset_s": 470.0,
+        "actual_offset_s": 470.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-095-t0475s.png",
+        "deadline_offset_s": 475.0,
+        "actual_offset_s": 475.005,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-096-t0480s.png",
+        "deadline_offset_s": 480.0,
+        "actual_offset_s": 480.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-097-t0485s.png",
+        "deadline_offset_s": 485.0,
+        "actual_offset_s": 485.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-098-t0490s.png",
+        "deadline_offset_s": 490.0,
+        "actual_offset_s": 490.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-099-t0495s.png",
+        "deadline_offset_s": 495.0,
+        "actual_offset_s": 495.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-100-t0500s.png",
+        "deadline_offset_s": 500.0,
+        "actual_offset_s": 500.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1168,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-101-t0505s.png",
+        "deadline_offset_s": 505.0,
+        "actual_offset_s": 505.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 957,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-102-t0510s.png",
+        "deadline_offset_s": 510.0,
+        "actual_offset_s": 510.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 957,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-103-t0515s.png",
+        "deadline_offset_s": 515.0,
+        "actual_offset_s": 515.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 957,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-104-t0520s.png",
+        "deadline_offset_s": 520.0,
+        "actual_offset_s": 520.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 957,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-105-t0525s.png",
+        "deadline_offset_s": 525.0,
+        "actual_offset_s": 525.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 957,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-106-t0530s.png",
+        "deadline_offset_s": 530.0,
+        "actual_offset_s": 530.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 957,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-107-t0535s.png",
+        "deadline_offset_s": 535.0,
+        "actual_offset_s": 535.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 838,
+        "text_length": 1207,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-108-t0540s.png",
+        "deadline_offset_s": 540.0,
+        "actual_offset_s": 540.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 893,
+        "text_length": 1617,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-109-t0545s.png",
+        "deadline_offset_s": 545.0,
+        "actual_offset_s": 545.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1035,
+        "text_length": 1942,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-110-t0550s.png",
+        "deadline_offset_s": 550.0,
+        "actual_offset_s": 550.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1154,
+        "text_length": 2387,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-111-t0555s.png",
+        "deadline_offset_s": 555.0,
+        "actual_offset_s": 555.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1213,
+        "text_length": 2651,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-112-t0560s.png",
+        "deadline_offset_s": 560.0,
+        "actual_offset_s": 560.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1213,
+        "text_length": 2682,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-113-t0565s.png",
+        "deadline_offset_s": 565.0,
+        "actual_offset_s": 565.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1213,
+        "text_length": 2726,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-114-t0570s.png",
+        "deadline_offset_s": 570.0,
+        "actual_offset_s": 570.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1213,
+        "text_length": 2757,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-115-t0575s.png",
+        "deadline_offset_s": 575.0,
+        "actual_offset_s": 575.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1238,
+        "text_length": 2844,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-116-t0580s.png",
+        "deadline_offset_s": 580.0,
+        "actual_offset_s": 580.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1367,
+        "text_length": 3239,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-117-t0585s.png",
+        "deadline_offset_s": 585.0,
+        "actual_offset_s": 585.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1401,
+        "text_length": 3332,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-118-t0590s.png",
+        "deadline_offset_s": 590.0,
+        "actual_offset_s": 590.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1401,
+        "text_length": 3372,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-119-t0595s.png",
+        "deadline_offset_s": 595.0,
+        "actual_offset_s": 595.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1401,
+        "text_length": 3414,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-120-t0600s.png",
+        "deadline_offset_s": 600.0,
+        "actual_offset_s": 600.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1401,
+        "text_length": 3447,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-121-t0605s.png",
+        "deadline_offset_s": 605.0,
+        "actual_offset_s": 605.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1426,
+        "text_length": 3479,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-122-t0610s.png",
+        "deadline_offset_s": 610.0,
+        "actual_offset_s": 610.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1461,
+        "text_length": 3632,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-123-t0615s.png",
+        "deadline_offset_s": 615.0,
+        "actual_offset_s": 615.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1590,
+        "text_length": 3983,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-124-t0620s.png",
+        "deadline_offset_s": 620.0,
+        "actual_offset_s": 620.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1694,
+        "text_length": 4270,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-125-t0625s.png",
+        "deadline_offset_s": 625.0,
+        "actual_offset_s": 625.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1788,
+        "text_length": 4652,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-126-t0630s.png",
+        "deadline_offset_s": 630.0,
+        "actual_offset_s": 630.001,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 1892,
+        "text_length": 5068,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-127-t0635s.png",
+        "deadline_offset_s": 635.0,
+        "actual_offset_s": 635.003,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2048,
+        "text_length": 5406,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-128-t0640s.png",
+        "deadline_offset_s": 640.0,
+        "actual_offset_s": 640.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2107,
+        "text_length": 5726,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-129-t0645s.png",
+        "deadline_offset_s": 645.0,
+        "actual_offset_s": 645.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2261,
+        "text_length": 6121,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-130-t0650s.png",
+        "deadline_offset_s": 650.0,
+        "actual_offset_s": 650.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2384,
+        "text_length": 6462,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-131-t0655s.png",
+        "deadline_offset_s": 655.0,
+        "actual_offset_s": 655.002,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2447,
+        "text_length": 6839,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-132-t0660s.png",
+        "deadline_offset_s": 660.0,
+        "actual_offset_s": 660.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 2497,
+        "text_length": 7097,
+        "observations": []
+      },
+      {
+        "file": "720p/interval-133-t0665s.png",
+        "deadline_offset_s": 665.0,
+        "actual_offset_s": 665.004,
+        "missed": false,
+        "scroll_top": 0,
+        "scroll_height": 3376,
+        "text_length": 8986,
+        "observations": []
+      }
+    ]
+  },
+  "history": {
+    "by_resolution": {
+      "720p": {
+        "before_reload_text_length": 42932,
+        "after_reload_text_length": 8986,
+        "reload_survived": true,
+        "before_answers": [
+          {
+            "seq": "12",
+            "text": "Now I have the citations. Let me write the final report with the chronology, distinguishing document dates from event dates, and noting any contradictions or gaps.Chronology of Enron CorporationBased on documents from the Enron collection, I have compiled a chronology of Enron Corporation, a major public energy organization that operated from 1985 until its bankruptcy in 2001. The chronology is supported by multiple documents from the user's collection.Document InformationPrimary Source: Houston Chronicle article \"Enron's chronology\" dated April 15, 2001 [D1]Secondary Sources: SEC media documents and news articles from November-December 2001 [D2][D3]Note on Document Dates vs. Event Dates: The documents themselves were created on various dates (2001, 2000, 2002), but they describe events spanning from 1985 to 2001. The chronology below lists the event dates as described in the documents, not the document creation dates.Chronology of Enron Corporation1985 - Houston Natural Gas merges with Omaha, Nebraska-based InterNorth to create the company that would eventually be named Enron Corp. The deal integrated several pipeline systems to create the first nationwide natural gas pipeline system [D1].1986 - Ken Lay, who had been chief executive officer of Houston Natural Gas, is named chairman and chief executive officer. The company chooses the name \"Enron\" after rejecting \"Interon\" [D1].1987 - Enron discovers that oil traders in New York have overextended the company's accounts by almost $1 billion. The company ultimately worked this loss down to $142 million. This leads to Enron developing services to help reduce the risk of price swings [D1].1988 - Enron opens its first overseas offices in England to take advantage of the country's privatization of its power industry. This marked a major strategy shift to pursue unregulated markets [D1].1992 - Enron acquires Transportadora de Gas del Sur. It was Enron's first pipeline presence in South America and the start of a push to expand on the continent [D1].1993 - Enron's Teesside power plant in England begins operation, one of the first big successes for the company's international strategy [D1].1994 - Enron makes its first electricity trade, beginning what will turn out to be one of the company's biggest profit centers in the next few years [D1].1995 - Enron Europe establishes a trading center in London, marking the company's entry into European wholesale markets. Europe is now considered one of the company's prime growth markets [D1].1996 - Construction begins on the first phase of the Dabhol power plant in India. The $2 billion project would be one of the largest single outside investments ever made in that country [D1].August 2000 - California energy shortage causes sporadic blackouts; prices soar [D2].December 15, 2000 - Four months after the chief executive of Azurix resigns, Enron takes the company private again [D2].August 14, 2001 - Only six months after becoming chief executive, Jeffrey K. Skilling resigns. He is succeeded by Kenneth L. Lay [D2].October 8, 2001 - Four years after buying Portland General Electric, Enron agrees to sell it to Northwest Natural Gas [D2].October 16, 2001 - Enron reports a third-quarter loss of $618 million [D2].October 24, 2001 - Two days after Enron discloses that the Securities and Exchange Commission is looking into complicated transactions involving Enron and partnerships set up by Andrew S. Fastow, the company's chief financial officer, Mr. Fastow is forced out [D2].October 31, 2001 - The S.E.C. upgrades its inquiry to a formal investigation [D2].November 9-10, 2001 - With its stock plunging and its finances in doubt, Enron agreed to be acquired by rival Dynegy Inc. for about $9 billion in stock and the assumption of $13 billion in debt [D3].December 2, 2001 - Enron filed for bankruptcy-court protection following a loss of investor confidence after the company issued several restatements of earnings dating back to 1997 and disclosures about several questionable partnerships run by its top executives [D2].Analysis of Contradictions and GapsGaps in the Record:1989-1991: There is a significant gap in the chronology between 1988 and 1992. The documents do not provide information about what Enron did during these years, including whether it started trading natural gas commodities (mentioned in other documents as beginning in 1989).1997-1999: The chronology jumps from 1996 to 2000, leaving out important years. Other documents mention that Enron started using off-balance-sheet partnerships in 1999, and that earnings were restated dating back to 1997, but these events are not in the main chronology.November 2001: The Dynegy deal was announced in early November 2001, but the documents do not clearly state when the deal was ultimately terminated (which led to the bankruptcy filing on December 2).Potential Contradictions:Name Change Date: One document mentions the name change to \"Enron Corporation\" occurred on April 10, 1986, while another simply states \"1986\" without a specific date [D1][additional search result].Merger Completion: One document states the merger agreement was filed and effective in Texas on July 16, 1985, while the chronology simply states \"1985\" for the merger [D1].Document Date Distinctions:The primary chronology document [D1] was published on April 15, 2001 in the Houston Chronicle, so it does not include any events after that date.The SEC media documents [D2][D3] were created in November-December 2001 and contain the later events leading to bankruptcy.The bankruptcy filing date of December 2, 2001 is confirmed by multiple sources but appears only in the later documents, not in the April 2001 chronology.Supporting Evidence: This chronology is supported by at least two documents: the Houston Chronicle chronology article [D1] and the SEC media documents containing news articles about the collapse [D2][D3]. The consistency between these sources on key dates (such as the 1985 merger, 1986 naming, and 2001 collapse events) strengthens the reliability of the chronology."
+          }
+        ],
+        "after_answers": [
+          {
+            "seq": "12",
+            "text": "Now I have the citations. Let me write the final report with the chronology, distinguishing document dates from event dates, and noting any contradictions or gaps.Chronology of Enron CorporationBased on documents from the Enron collection, I have compiled a chronology of Enron Corporation, a major public energy organization that operated from 1985 until its bankruptcy in 2001. The chronology is supported by multiple documents from the user's collection.Document InformationPrimary Source: Houston Chronicle article \"Enron's chronology\" dated April 15, 2001 [D1]Secondary Sources: SEC media documents and news articles from November-December 2001 [D2][D3]Note on Document Dates vs. Event Dates: The documents themselves were created on various dates (2001, 2000, 2002), but they describe events spanning from 1985 to 2001. The chronology below lists the event dates as described in the documents, not the document creation dates.Chronology of Enron Corporation1985 - Houston Natural Gas merges with Omaha, Nebraska-based InterNorth to create the company that would eventually be named Enron Corp. The deal integrated several pipeline systems to create the first nationwide natural gas pipeline system [D1].1986 - Ken Lay, who had been chief executive officer of Houston Natural Gas, is named chairman and chief executive officer. The company chooses the name \"Enron\" after rejecting \"Interon\" [D1].1987 - Enron discovers that oil traders in New York have overextended the company's accounts by almost $1 billion. The company ultimately worked this loss down to $142 million. This leads to Enron developing services to help reduce the risk of price swings [D1].1988 - Enron opens its first overseas offices in England to take advantage of the country's privatization of its power industry. This marked a major strategy shift to pursue unregulated markets [D1].1992 - Enron acquires Transportadora de Gas del Sur. It was Enron's first pipeline presence in South America and the start of a push to expand on the continent [D1].1993 - Enron's Teesside power plant in England begins operation, one of the first big successes for the company's international strategy [D1].1994 - Enron makes its first electricity trade, beginning what will turn out to be one of the company's biggest profit centers in the next few years [D1].1995 - Enron Europe establishes a trading center in London, marking the company's entry into European wholesale markets. Europe is now considered one of the company's prime growth markets [D1].1996 - Construction begins on the first phase of the Dabhol power plant in India. The $2 billion project would be one of the largest single outside investments ever made in that country [D1].August 2000 - California energy shortage causes sporadic blackouts; prices soar [D2].December 15, 2000 - Four months after the chief executive of Azurix resigns, Enron takes the company private again [D2].August 14, 2001 - Only six months after becoming chief executive, Jeffrey K. Skilling resigns. He is succeeded by Kenneth L. Lay [D2].October 8, 2001 - Four years after buying Portland General Electric, Enron agrees to sell it to Northwest Natural Gas [D2].October 16, 2001 - Enron reports a third-quarter loss of $618 million [D2].October 24, 2001 - Two days after Enron discloses that the Securities and Exchange Commission is looking into complicated transactions involving Enron and partnerships set up by Andrew S. Fastow, the company's chief financial officer, Mr. Fastow is forced out [D2].October 31, 2001 - The S.E.C. upgrades its inquiry to a formal investigation [D2].November 9-10, 2001 - With its stock plunging and its finances in doubt, Enron agreed to be acquired by rival Dynegy Inc. for about $9 billion in stock and the assumption of $13 billion in debt [D3].December 2, 2001 - Enron filed for bankruptcy-court protection following a loss of investor confidence after the company issued several restatements of earnings dating back to 1997 and disclosures about several questionable partnerships run by its top executives [D2].Analysis of Contradictions and GapsGaps in the Record:1989-1991: There is a significant gap in the chronology between 1988 and 1992. The documents do not provide information about what Enron did during these years, including whether it started trading natural gas commodities (mentioned in other documents as beginning in 1989).1997-1999: The chronology jumps from 1996 to 2000, leaving out important years. Other documents mention that Enron started using off-balance-sheet partnerships in 1999, and that earnings were restated dating back to 1997, but these events are not in the main chronology.November 2001: The Dynegy deal was announced in early November 2001, but the documents do not clearly state when the deal was ultimately terminated (which led to the bankruptcy filing on December 2).Potential Contradictions:Name Change Date: One document mentions the name change to \"Enron Corporation\" occurred on April 10, 1986, while another simply states \"1986\" without a specific date [D1][additional search result].Merger Completion: One document states the merger agreement was filed and effective in Texas on July 16, 1985, while the chronology simply states \"1985\" for the merger [D1].Document Date Distinctions:The primary chronology document [D1] was published on April 15, 2001 in the Houston Chronicle, so it does not include any events after that date.The SEC media documents [D2][D3] were created in November-December 2001 and contain the later events leading to bankruptcy.The bankruptcy filing date of December 2, 2001 is confirmed by multiple sources but appears only in the later documents, not in the April 2001 chronology.Supporting Evidence: This chronology is supported by at least two documents: the Houston Chronicle chronology article [D1] and the SEC media documents containing news articles about the collapse [D2][D3]. The consistency between these sources on key dates (such as the 1985 merger, 1986 naming, and 2001 collapse events) strengthens the reliability of the chronology."
+          }
+        ],
+        "switch": {
+          "attempted": true,
+          "text_length_after_switch_back": 8986,
+          "survived": true
+        }
+      }
+    }
+  },
+  "document_preview": {
+    "ok": true,
+    "title": "3.",
+    "count": 98,
+    "toggled_disclosures": 8
+  },
+  "observations": [],
+  "incomplete": false,
+  "incomplete_reason": ""
+}

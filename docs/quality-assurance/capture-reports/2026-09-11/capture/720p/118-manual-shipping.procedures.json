@@ -1,0 +1,790 @@
+[
+  {
+    "procedure": "baseline",
+    "expected": "The manifest is selected and document find navigates four occurrences.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdrQ1NRVTMwNTQzODNtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "1 (whoami x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "1 documents found"
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/\"]",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nshipping-manifest.txt\ntestdata_manualqa\nCARGO MANIFEST -- COASTAL SERVICE Carrying vessel: IMO 9319466, calling under MMSI 367533950. Relief vessel on the return leg is IMO 8814275, MMSI 538090443. One forty-foot box, CSQU3054383, is loaded at the forward hatch. Freight is invoiced at EUR 25000 per rotation with a bunker surcharge of EUR 4100. Demurrage accrues at EUR 950 per day after the free period. The charter party is dated 1974-06 ..."
+        },
+        "after_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "6 (search_for_results x2, search_for_results_hit_count x2, whoami x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "12 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search in document\"] :: is",
+        "before_api": "12 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "12 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "12 (search_document_item_hit_counts x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "14 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: 1 / 4",
+        "before_api": "14 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const q=document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\");return {ok:q?.value===\"is\",query:q?.value};",
+        "before_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "query": "is"
+        },
+        "after_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const root=document.querySelector('#x-search-results-right-panel')||document;const h=[...root.querySelectorAll('h1,div')].find(x=>x.children.length===0&&/^\\d+ \\/ \\d+$/.test(x.textContent.trim()));if(!h)throw Error('hit counter unavailable');let p=h.parentElement;while(p&&p.querySelectorAll('button').length<2)p=p.parentElement;const b=p?.querySelectorAll('button')[1];if(!b||b.disabled)throw Error('hit navigation unavailable');b.click();return {clicked:true};",
+        "before_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": {
+          "clicked": true
+        },
+        "after_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: 2 / 4",
+        "before_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const root=document.querySelector('#x-search-results-right-panel')||document;const h=[...root.querySelectorAll('h1,div')].find(x=>x.children.length===0&&/^\\d+ \\/ \\d+$/.test(x.textContent.trim()));if(!h)throw Error('hit counter unavailable');let p=h.parentElement;while(p&&p.querySelectorAll('button').length<2)p=p.parentElement;const b=p?.querySelectorAll('button')[0];if(!b||b.disabled)throw Error('hit navigation unavailable');b.click();return {clicked:true};",
+        "before_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": {
+          "clicked": true
+        },
+        "after_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: 1 / 4",
+        "before_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "query": "CSQU3054383",
+      "find_hits": 4
+    },
+    "evidence": "118-manual-shipping.01"
+  },
+  {
+    "procedure": "keyboard-find",
+    "expected": "Enter submits the find and next/previous change the counter.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdrQ1NRVTMwNTQzODNtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "15 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, search_for_results x2, search_for_results_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "20 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "20 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "1 documents found"
+        },
+        "after_api": "20 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/\"]",
+        "before_api": "20 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "20 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "20 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nshipping-manifest.txt\ntestdata_manualqa\nCARGO MANIFEST -- COASTAL SERVICE Carrying vessel: IMO 9319466, calling under MMSI 367533950. Relief vessel on the return leg is IMO 8814275, MMSI 538090443. One forty-foot box, CSQU3054383, is loaded at the forward hatch. Freight is invoiced at EUR 25000 per rotation with a bunker surcharge of EUR 4100. Demurrage accrues at EUR 950 per day after the free period. The charter party is dated 1974-06 ..."
+        },
+        "after_api": "20 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "20 (search_for_results x4, search_for_results_hit_count x4, search_document_item_hit_counts x3, whoami x3, search_document_text_for_hit_count x2, get_canonical_file_type x1, get_document_sources x1, get_file_path x1, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "27 (search_document_item_hit_counts x5, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hit_count x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search in document\"] :: is",
+        "before_api": "27 (search_document_item_hit_counts x5, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hit_count x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "27 (search_document_item_hit_counts x5, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hit_count x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "27 (search_document_item_hit_counts x5, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hit_count x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: 1 / 4",
+        "before_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const q=document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\");return {ok:q?.value===\"is\",query:q?.value};",
+        "before_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "query": "is"
+        },
+        "after_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const root=document.querySelector('#x-search-results-right-panel')||document;const h=[...root.querySelectorAll('h1,div')].find(x=>x.children.length===0&&/^\\d+ \\/ \\d+$/.test(x.textContent.trim()));if(!h)throw Error('hit counter unavailable');let p=h.parentElement;while(p&&p.querySelectorAll('button').length<2)p=p.parentElement;const b=p?.querySelectorAll('button')[1];if(!b||b.disabled)throw Error('hit navigation unavailable');b.click();return {clicked:true};",
+        "before_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": {
+          "clicked": true
+        },
+        "after_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: 2 / 4",
+        "before_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const root=document.querySelector('#x-search-results-right-panel')||document;const h=[...root.querySelectorAll('h1,div')].find(x=>x.children.length===0&&/^\\d+ \\/ \\d+$/.test(x.textContent.trim()));if(!h)throw Error('hit counter unavailable');let p=h.parentElement;while(p&&p.querySelectorAll('button').length<2)p=p.parentElement;const b=p?.querySelectorAll('button')[0];if(!b||b.disabled)throw Error('hit navigation unavailable');b.click();return {clicked:true};",
+        "before_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": {
+          "clicked": true
+        },
+        "after_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: 1 / 4",
+        "before_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "query": "CSQU3054383",
+      "find_hits": 4
+    },
+    "evidence": "118-manual-shipping.02"
+  },
+  {
+    "procedure": "popup-return",
+    "expected": "The full viewer has the declared entities and the preview retains its find.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdrQ1NRVTMwNTQzODNtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "30 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, search_for_results x4, search_for_results_hit_count x4, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "35 (search_document_item_hit_counts x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x4, whoami x4, search_document_text_for_hits x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "35 (search_document_item_hit_counts x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x4, whoami x4, search_document_text_for_hits x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "1 documents found"
+        },
+        "after_api": "35 (search_document_item_hit_counts x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x4, whoami x4, search_document_text_for_hits x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/\"]",
+        "before_api": "35 (search_document_item_hit_counts x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x4, whoami x4, search_document_text_for_hits x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "35 (search_document_item_hit_counts x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x4, whoami x4, search_document_text_for_hits x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "35 (search_document_item_hit_counts x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x4, whoami x4, search_document_text_for_hits x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nshipping-manifest.txt\ntestdata_manualqa\nCARGO MANIFEST -- COASTAL SERVICE Carrying vessel: IMO 9319466, calling under MMSI 367533950. Relief vessel on the return leg is IMO 8814275, MMSI 538090443. One forty-foot box, CSQU3054383, is loaded at the forward hatch. Freight is invoiced at EUR 25000 per rotation with a bunker surcharge of EUR 4100. Demurrage accrues at EUR 950 per day after the free period. The charter party is dated 1974-06 ..."
+        },
+        "after_api": "35 (search_document_item_hit_counts x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x4, whoami x4, search_document_text_for_hits x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "35 (search_document_item_hit_counts x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x4, whoami x4, search_document_text_for_hits x3, get_canonical_file_type x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "42 (search_document_item_hit_counts x8, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x5, search_document_text_for_hits x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search in document\"] :: is",
+        "before_api": "42 (search_document_item_hit_counts x8, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x5, search_document_text_for_hits x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "42 (search_document_item_hit_counts x8, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x5, search_document_text_for_hits x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "42 (search_document_item_hit_counts x8, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hit_count x5, search_document_text_for_hits x4, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: 1 / 4",
+        "before_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const q=document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\");return {ok:q?.value===\"is\",query:q?.value};",
+        "before_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "query": "is"
+        },
+        "after_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "click_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/\"]",
+        "before_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "eval",
+        "input": "return location.pathname;",
+        "before_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": "/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdrQ1NRVTMwNTQzODNtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFhbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFuY2VkZGVzY_U=/0/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/pWpmaW5kX3F1ZXJ5Ymlzb3NlbGVjdGVkX3NvdXJjZfZ0c2VsZWN0ZWRfc291cmNlX3BhZ2X2a3RhYmxlX3N0YXRl9m9zZWxlY3RlZF9lbnRpdHn2",
+        "after_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: 1 / 4",
+        "before_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "child": {
+        "title": "Hoover Search - View Document",
+        "url": "https://hoover4.new.liquiddemo.org/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/9g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "lines": [
+          "body",
+          "  div#main",
+          "    div#x-nav-container",
+          "      div#x-nav-sidebar",
+          "        a[href=/]",
+          "          img",
+          "        div",
+          "          div",
+          "            div#dxc-1539[role=button]",
+          "              a[href=/]",
+          "                span",
+          "                  svg",
+          "                    path",
+          "          div",
+          "            div#dxc-1537[role=button]",
+          "              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]",
+          "                span",
+          "                  svg",
+          "                    path",
+          "          div",
+          "            div#dxc-1535[role=button]",
+          "              a[href=/file_browser]",
+          "                span",
+          "                  svg",
+          "                    path",
+          "          div",
+          "            div#dxc-1533[role=button]",
+          "              a[href=/ai_chat]",
+          "                span",
+          "                  svg",
+          "                    path",
+          "        div",
+          "        div",
+          "          div",
+          "            div#dxc-9[role=button]",
+          "              a[href=/admin]",
+          "                span",
+          "                  svg",
+          "                    path",
+          "      div#x-page-container",
+          "        div",
+          "          div",
+          "            div",
+          "              div",
+          "                div",
+          "                  div",
+          "                    div",
+          "                      input[type=text][placeholder=Search in document]",
+          "                  div",
+          "                    div",
+          "                      div",
+          "                        div#dxc-13[role=button]",
+          "                          button",
+          "                            svg",
+          "                              path",
+          "                      div  \"- / -\"",
+          "                      div",
+          "                        div#dxc-11[role=button]",
+          "                          button",
+          "                            svg",
+          "                              path",
+          "                  div",
+          "                    ul",
+          "                      div",
+          "                        div",
+          "                          svg",
+          "                            path",
+          "                        div",
+          "                          svg",
+          "                            path",
+          "                        div  \"Extracted text\"",
+          "                        div",
+          "                      div",
+          "                        div",
+          "                          svg",
+          "                            path",
+          "                        div",
+          "                          svg",
+          "                            path",
+          "                        div  \"Plain text\"",
+          "                        div",
+          "              div",
+          "                div",
+          "                  div",
+          "                    div",
+          "                      svg",
+          "                        path",
+          "                    div  \"testdata_manualqa\"",
+          "                    div  \"/\"",
+          "                    div",
+          "                      span[title=Text]",
+          "                        svg",
+          "                          path",
+          "                    div  \"shipping-manifest.txt\"",
+          "                  div",
+          "                  div",
+          "                    div",
+          "                      button",
+          "                        svg",
+          "                          path",
+          "                div",
+          "                  div",
+          "                    div",
+          "                      div",
+          "                        div  \"Loading...\"",
+          "          div",
+          "            div",
+          "              div",
+          "                button  \"Entities\"",
+          "                button  \"File Locations\"",
+          "                button  \"Metadata\"",
+          "              div",
+          "                div",
+          "                  div",
+          "                    input[type=text][placeholder=Filter Entities ...]",
+          "                  div",
+          "                    div",
+          "                      div",
+          "                        svg",
+          "                          path",
+          "                        div  \"Organization\"",
+          "                        div  \"2\"",
+          "                      div",
+          "                        div[title=org]",
+          "                          div  \"org\"",
+          "                          div  \"2\"",
+          "                        div[title=maptools]",
+          "                          div  \"maptools\"",
+          "                          div  \"2\"",
+          "                    div",
+          "                      div",
+          "                        svg",
+          "                          path",
+          "                        div  \"Misc\"",
+          "                        div  \"1\"",
+          "                      div",
+          "                        div[title=IMO]",
+          "                          div  \"IMO\"",
+          "                          div  \"4\"",
+          "                    div",
+          "                      div",
+          "                        svg",
+          "                          path",
+          "                        div  \"Email\"",
+          "                        div  \"1\"",
+          "                        button  \"View Details\"",
+          "                          svg",
+          "                            path",
+          "                      div",
+          "                        div[title=shapelib-admin@lists.maptools.org]",
+          "                          div  \"shapelib-admin@lists.maptools.org\"",
+          "                          div  \"1\"",
+          "                    div",
+          "                      div",
+          "                        svg",
+          "                          path",
+          "                        div  \"Phone\"",
+          "                        div  \"1\"",
+          "                        button  \"View Details\"",
+          "                          svg",
+          "                            path",
+          "                      div",
+          "                        div[title=+24762889]",
+          "                          div  \"+24762889\"",
+          "                          div  \"1\"",
+          "                    div",
+          "                      div",
+          "                        svg",
+          "                          path",
+          "                        div  \"Money\"",
+          "                        div  \"3\"",
+          "                        button  \"View Details\"",
+          "                          svg",
+          "                            path",
+          "                      div",
+          "                        div[title=EUR 950.00\nas written: EUR 950]",
+          "                          div  \"EUR 950.00 (EUR 100–1k)\"",
+          "                          div  \"1\"",
+          "                        div[title=EUR 4100.00\nas written: EUR 4100]",
+          "                          div  \"EUR 4100.00 (EUR 1k–10k)\"",
+          "                          div  \"1\"",
+          "                        div[title=EUR 25000.00\nas written: EUR 25000]",
+          "                          div  \"EUR 25000.00 (EUR 10k–100k)\"",
+          "                          div  \"1\"",
+          "                    div",
+          "                      div",
+          "                        svg",
+          "                          path",
+          "                        div  \"Mentioned Date\"",
+          "                        div  \"2\"",
+          "                        button  \"View Details\"",
+          "                          svg",
+          "                            path",
+          "                      div",
+          "                        div[title=2011-09-08]",
+          "                          div  \"2011-09-08\"",
+          "                          div  \"1\"",
+          "                        div[title=1974-06-30]",
+          "                          div  \"1974-06-30\"",
+          "                          div  \"1\"",
+          "                    div",
+          "                      div",
+          "                        svg",
+          "                          path",
+          "                        div  \"Other\"",
+          "                        div  \"5\"",
+          "                        button  \"View Details\"",
+          "                          svg",
+          "                            path",
+          "                      div",
+          "                        div[title=CSQU3054383]",
+          "                          div  \"CSQU3054383\"",
+          "                          div  \"1\"",
+          "                        div[title=9319466\nas written: IMO 9319466]",
+          "                          div  \"9319466\"",
+          "                          div  \"1\"",
+          "                        div[title=8814275\nas written: IMO 8814275]",
+          "                          div  \"8814275\"",
+          "                          div  \"1\"",
+          "                        div[title=538090443]",
+          "                          div  \"538090443\"",
+          "                          div  \"1\"",
+          "                        div[title=367533950]",
+          "                          div  \"367533950\"",
+          "                          div  \"1\"",
+          "    div[role=region][label=0 notifications]",
+          "      ol"
+        ]
+      },
+      "screenshot": "118-manual-shipping.popup-3-10.png",
+      "expected_entities": [
+        {
+          "category": "Organization",
+          "value": "org",
+          "count": 2
+        },
+        {
+          "category": "Organization",
+          "value": "maptools",
+          "count": 2
+        },
+        {
+          "category": "Misc",
+          "value": "IMO",
+          "count": 4
+        },
+        {
+          "category": "Email",
+          "value": "shapelib-admin@lists.maptools.org",
+          "count": 1
+        },
+        {
+          "category": "Phone",
+          "value": "+24762889",
+          "count": 1
+        },
+        {
+          "category": "Money",
+          "value": "EUR 950.00 (EUR 100–1k)",
+          "count": 1
+        },
+        {
+          "category": "Money",
+          "value": "EUR 4100.00 (EUR 1k–10k)",
+          "count": 1
+        },
+        {
+          "category": "Money",
+          "value": "EUR 25000.00 (EUR 10k–100k)",
+          "count": 1
+        },
+        {
+          "category": "Mentioned Date",
+          "value": "2011-09-08",
+          "count": 1
+        },
+        {
+          "category": "Mentioned Date",
+          "value": "1974-06-30",
+          "count": 1
+        },
+        {
+          "category": "Other",
+          "value": "CSQU3054383",
+          "count": 1
+        },
+        {
+          "category": "Other",
+          "value": "9319466",
+          "count": 1
+        },
+        {
+          "category": "Other",
+          "value": "8814275",
+          "count": 1
+        },
+        {
+          "category": "Other",
+          "value": "538090443",
+          "count": 1
+        },
+        {
+          "category": "Other",
+          "value": "367533950",
+          "count": 1
+        }
+      ]
+    },
+    "evidence": "118-manual-shipping.03"
+  },
+  {
+    "procedure": "no-match",
+    "expected": "An absent term clears the active hit.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/search/o3Njb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdrQ1NRVTMwNTQzODNtZmFjZXRfZmlsdGVyc6FyY29sbGVjdGlvbl9kYXRhc2V0gaFmU3RyaW5ncXRlc3RkYXRhX21hbnVhbHFh/0/9g==/9g==",
+        "before_api": "45 (search_document_item_hit_counts x9, search_document_text_for_hit_count x6, search_for_results x6, search_for_results_hit_count x6, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "50 (search_document_item_hit_counts x9, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x6, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector('#x-search-panel-left-title-row h1');return {ok:!!e&&/documents? found|No documents/.test(e.textContent),text:e?.textContent};",
+        "before_api": "50 (search_document_item_hit_counts x9, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x6, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "1 documents found"
+        },
+        "after_api": "50 (search_document_item_hit_counts x9, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x6, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "wait_css",
+        "input": "a[href^=\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/\"]",
+        "before_api": "50 (search_document_item_hit_counts x9, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x6, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "50 (search_document_item_hit_counts x9, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x6, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "eval",
+        "input": "const a=document.querySelector(\"a[href^=\\\"/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEA0YzAxNmJmYjAzZDcxNDEyZjE2MzZlNWMwOTU5NjMxMzFiNzVhMDU2YjQzODRhYzkwNGVmZGE1MGMyZWZmOGY4/\\\"]\");let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};",
+        "before_api": "50 (search_document_item_hit_counts x9, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x6, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": {
+          "selected": "1.\nshipping-manifest.txt\ntestdata_manualqa\nCARGO MANIFEST -- COASTAL SERVICE Carrying vessel: IMO 9319466, calling under MMSI 367533950. Relief vessel on the return leg is IMO 8814275, MMSI 538090443. One forty-foot box, CSQU3054383, is loaded at the forward hatch. Freight is invoiced at EUR 25000 per rotation with a bunker surcharge of EUR 4100. Demurrage accrues at EUR 950 per day after the free period. The charter party is dated 1974-06 ..."
+        },
+        "after_api": "50 (search_document_item_hit_counts x9, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x6, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "50 (search_document_item_hit_counts x9, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x6, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "57 (search_document_item_hit_counts x11, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x7, search_document_text_for_hits x6, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Search in document\"] :: qa-absent-7ce8421",
+        "before_api": "57 (search_document_item_hit_counts x11, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x7, search_document_text_for_hits x6, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "57 (search_document_item_hit_counts x11, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x7, search_document_text_for_hits x6, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4)"
+      },
+      {
+        "action": "press_enter",
+        "input": "",
+        "before_api": "57 (search_document_item_hit_counts x11, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hit_count x7, search_document_text_for_hits x6, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "60 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hits x7, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: - / -",
+        "before_api": "60 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hits x7, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "61 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hits x7, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const q=document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\");return {ok:q?.value===\"qa-absent-7ce8421\",query:q?.value};",
+        "before_api": "61 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hits x7, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "query": "qa-absent-7ce8421"
+        },
+        "after_api": "61 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hits x7, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const p=document.querySelector('#x-search-results-right-panel');const counter=[...p.querySelectorAll('div')].find(e=>e.children.length===0&&e.textContent.trim()==='- / -');const buttons=[...counter.parentElement.querySelectorAll('button')];return {ok:!p.querySelector('.x-hit-span-active-match')&&buttons.length===2&&buttons.every(b=>b.disabled),query:document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\").value};",
+        "before_api": "61 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hits x7, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "query": "qa-absent-7ce8421"
+        },
+        "after_api": "61 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_for_results x8, search_for_results_hit_count x8, search_document_text_for_hits x7, whoami x5, get_canonical_file_type x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "ok": true,
+      "query": "qa-absent-7ce8421"
+    },
+    "evidence": "118-manual-shipping.04"
+  }
+]

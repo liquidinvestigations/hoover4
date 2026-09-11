@@ -1,0 +1,453 @@
+[
+  {
+    "procedure": "baseline",
+    "expected": "Known Easychair values and counts match the original DOCX text.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR59g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "1 (whoami x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Filter Entities ...\"]",
+        "before_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Filter Entities ...\"] :: University of Manchester",
+        "before_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: University of Manchester",
+        "before_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=[...document.querySelectorAll('.x-entity-chip')].find(x=>x.title===\"University of Manchester\");return {ok:!!e&&e.lastElementChild?.textContent.trim()===\"1\",text:e?.innerText};",
+        "before_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "University of Manchester\n1"
+        },
+        "after_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "click_css",
+        "input": ".x-entity-chip[title=\"University of Manchester\"]",
+        "before_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\")?.value.includes(\"University of Manchester\");",
+        "before_api": "9 (search_document_item_hit_counts x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1, search_document_text_for_hit_count x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: University of Manchester",
+        "before_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "press_key",
+        "input": "Escape",
+        "before_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Filter Entities ...\"] :: Microsoft Word",
+        "before_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: Microsoft Word",
+        "before_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=[...document.querySelectorAll('.x-entity-chip')].find(x=>x.title===\"Microsoft Word\");return {ok:!!e&&e.lastElementChild?.textContent.trim()===\"13\",text:e?.innerText};",
+        "before_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "Microsoft Word\n13"
+        },
+        "after_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "click_css",
+        "input": ".x-entity-chip[title=\"Microsoft Word\"]",
+        "before_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\")?.value.includes(\"Microsoft Word\");",
+        "before_api": "11 (search_document_item_hit_counts x3, search_document_text_for_hit_count x2, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "13 (search_document_item_hit_counts x4, search_document_text_for_hit_count x3, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: Microsoft Word",
+        "before_api": "13 (search_document_item_hit_counts x4, search_document_text_for_hit_count x3, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_document_item_hit_counts x4, search_document_text_for_hit_count x3, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)"
+      },
+      {
+        "action": "press_key",
+        "input": "Escape",
+        "before_api": "13 (search_document_item_hit_counts x4, search_document_text_for_hit_count x3, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "13 (search_document_item_hit_counts x4, search_document_text_for_hit_count x3, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": [
+      {
+        "value": "University of Manchester",
+        "count": 1,
+        "basis": "Occurrences in the original DOCX document XML."
+      },
+      {
+        "value": "Microsoft Word",
+        "count": 13,
+        "basis": "Occurrences in the original DOCX document XML."
+      }
+    ],
+    "evidence": "129-manual-entities.01"
+  },
+  {
+    "procedure": "multiple-values",
+    "expected": "Two selected entity values open their own cards and counts.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR59g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "13 (search_document_item_hit_counts x4, search_document_text_for_hit_count x3, whoami x2, get_canonical_file_type x1, get_document_entities x1, get_document_sources x1, get_file_path x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "22 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "22 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "22 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Filter Entities ...\"]",
+        "before_api": "22 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "23 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Filter Entities ...\"] :: University of Manchester",
+        "before_api": "23 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "23 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: University of Manchester",
+        "before_api": "23 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "23 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=[...document.querySelectorAll('.x-entity-chip')].find(x=>x.title===\"University of Manchester\");return {ok:!!e&&e.lastElementChild?.textContent.trim()===\"1\",text:e?.innerText};",
+        "before_api": "23 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "University of Manchester\n1"
+        },
+        "after_api": "23 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)"
+      },
+      {
+        "action": "click_css",
+        "input": ".x-entity-chip[title=\"University of Manchester\"]",
+        "before_api": "23 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "23 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\")?.value.includes(\"University of Manchester\");",
+        "before_api": "23 (search_document_item_hit_counts x6, search_document_text_for_hit_count x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2, search_document_text_for_hits x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: University of Manchester",
+        "before_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "press_key",
+        "input": "Escape",
+        "before_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "type_css",
+        "input": "input[placeholder=\"Filter Entities ...\"] :: Microsoft Word",
+        "before_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: Microsoft Word",
+        "before_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=[...document.querySelectorAll('.x-entity-chip')].find(x=>x.title===\"Microsoft Word\");return {ok:!!e&&e.lastElementChild?.textContent.trim()===\"13\",text:e?.innerText};",
+        "before_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "text": "Microsoft Word\n13"
+        },
+        "after_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "click_css",
+        "input": ".x-entity-chip[title=\"Microsoft Word\"]",
+        "before_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "return document.querySelector(\"input[placeholder=\\\"Search in document\\\"]\")?.value.includes(\"Microsoft Word\");",
+        "before_api": "26 (search_document_item_hit_counts x7, search_document_text_for_hit_count x5, search_document_text_for_hits x3, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": true,
+        "after_api": "29 (search_document_item_hit_counts x8, search_document_text_for_hit_count x6, search_document_text_for_hits x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: Microsoft Word",
+        "before_api": "29 (search_document_item_hit_counts x8, search_document_text_for_hit_count x6, search_document_text_for_hits x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "29 (search_document_item_hit_counts x8, search_document_text_for_hit_count x6, search_document_text_for_hits x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)"
+      },
+      {
+        "action": "press_key",
+        "input": "Escape",
+        "before_api": "29 (search_document_item_hit_counts x8, search_document_text_for_hit_count x6, search_document_text_for_hits x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "29 (search_document_item_hit_counts x8, search_document_text_for_hit_count x6, search_document_text_for_hits x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": [
+      {
+        "value": "University of Manchester",
+        "count": 1,
+        "basis": "Occurrences in the original DOCX document XML."
+      },
+      {
+        "value": "Microsoft Word",
+        "count": 13,
+        "basis": "Occurrences in the original DOCX document XML."
+      }
+    ],
+    "evidence": "129-manual-entities.02"
+  },
+  {
+    "procedure": "stale-entity",
+    "expected": "An absent selected entity produces the explicit missing-value state.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR5cXFhLWFic2VudC03Y2U4NDIx/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "29 (search_document_item_hit_counts x8, search_document_text_for_hit_count x6, search_document_text_for_hits x4, whoami x3, get_canonical_file_type x2, get_document_entities x2, get_document_sources x2, get_file_path x2)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "37 (search_document_item_hit_counts x10, search_document_text_for_hit_count x7, search_document_text_for_hits x4, whoami x4, get_canonical_file_type x3, get_document_entities x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "37 (search_document_item_hit_counts x10, search_document_text_for_hit_count x7, search_document_text_for_hits x4, whoami x4, get_canonical_file_type x3, get_document_entities x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "38 (search_document_item_hit_counts x10, search_document_text_for_hit_count x7, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_entities x3, get_document_sources x3, get_file_path x3)"
+      },
+      {
+        "action": "wait_text_in",
+        "input": "body :: has no entity",
+        "before_api": "38 (search_document_item_hit_counts x10, search_document_text_for_hit_count x7, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_entities x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "38 (search_document_item_hit_counts x10, search_document_text_for_hit_count x7, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_entities x3, get_document_sources x3, get_file_path x3)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": {
+      "missing_value": "qa-absent-7ce8421"
+    },
+    "evidence": "129-manual-entities.03"
+  },
+  {
+    "procedure": "appearance",
+    "expected": "Entity values and cards render under both color preferences.",
+    "status": "passed",
+    "steps": [
+      {
+        "action": "goto",
+        "input": "/view_document/onJjb2xsZWN0aW9uX2RhdGFzZXRxdGVzdGRhdGFfbWFudWFscWFpZmlsZV9oYXNoeEAzNmExMmM3N2U0ZmQ4NGU4ZDM4NTQyOTkwZjliZDY1N2M2YWZiOTc2OGNhZTY3MDNmYzc4YjM3Y2Y2NGU4OGJl/pWpmaW5kX3F1ZXJ5YG9zZWxlY3RlZF9zb3VyY2X2dHNlbGVjdGVkX3NvdXJjZV9wYWdl9mt0YWJsZV9zdGF0ZfZvc2VsZWN0ZWRfZW50aXR59g==/oWxzZWxlY3RlZF90YWJoRW50aXRpZXM=",
+        "before_api": "38 (search_document_item_hit_counts x10, search_document_text_for_hit_count x7, search_document_text_for_hits x5, whoami x4, get_canonical_file_type x3, get_document_entities x3, get_document_sources x3, get_file_path x3)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "47 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": "input[placeholder=\"Search in document\"]",
+        "before_api": "47 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "47 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)"
+      },
+      {
+        "action": "wait_css",
+        "input": ".x-entity-chip",
+        "before_api": "47 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "47 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)"
+      },
+      {
+        "action": "click_css",
+        "input": ".x-entity-chip",
+        "before_api": "47 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)",
+        "status": "passed",
+        "observed": null,
+        "after_api": "47 (search_document_item_hit_counts x12, search_document_text_for_hit_count x8, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector(\".x-entity-chip\");if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return {ok:r.width>0&&r.height>0&&s.color!==s.backgroundColor,scheme:\"light\",color:s.color,background:s.backgroundColor,width:r.width,height:r.height};",
+        "before_api": "49 (search_document_item_hit_counts x13, search_document_text_for_hit_count x9, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "scheme": "light",
+          "color": "rgba(0, 0, 0, 0.75)",
+          "background": "rgb(255, 255, 255)",
+          "width": 63.546875,
+          "height": 18.4375
+        },
+        "after_api": "49 (search_document_item_hit_counts x13, search_document_text_for_hit_count x9, search_document_text_for_hits x5, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)"
+      },
+      {
+        "action": "wait_eval",
+        "input": "const e=document.querySelector(\".x-entity-chip\");if(!e)return false;const s=getComputedStyle(e),r=e.getBoundingClientRect();return {ok:r.width>0&&r.height>0&&s.color!==s.backgroundColor,scheme:\"dark\",color:s.color,background:s.backgroundColor,width:r.width,height:r.height};",
+        "before_api": "50 (search_document_item_hit_counts x13, search_document_text_for_hit_count x9, search_document_text_for_hits x6, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)",
+        "status": "passed",
+        "observed": {
+          "ok": true,
+          "scheme": "dark",
+          "color": "rgba(0, 0, 0, 0.75)",
+          "background": "rgb(255, 255, 255)",
+          "width": 63.546875,
+          "height": 18.4375
+        },
+        "after_api": "50 (search_document_item_hit_counts x13, search_document_text_for_hit_count x9, search_document_text_for_hits x6, whoami x5, get_canonical_file_type x4, get_document_entities x4, get_document_sources x4, get_file_path x4, get_document_text_by_id_and_source x1)"
+      }
+    ],
+    "runner_sha256": "f07e66e8fd38335f1ab37856bde1e440ec797c040f1d81de95fc211ebfa3abea",
+    "observed": [
+      {
+        "ok": true,
+        "scheme": "light",
+        "color": "rgba(0, 0, 0, 0.75)",
+        "background": "rgb(255, 255, 255)",
+        "width": 63.546875,
+        "height": 18.4375
+      },
+      {
+        "ok": true,
+        "scheme": "dark",
+        "color": "rgba(0, 0, 0, 0.75)",
+        "background": "rgb(255, 255, 255)",
+        "width": 63.546875,
+        "height": 18.4375
+      }
+    ],
+    "evidence": "129-manual-entities.04"
+  }
+]

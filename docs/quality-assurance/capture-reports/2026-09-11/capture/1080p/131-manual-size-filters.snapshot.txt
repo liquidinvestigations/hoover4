@@ -1,0 +1,211 @@
+# 131-manual-size-filters (1080p)
+url:      https://hoover4.new.liquiddemo.org/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgXF0ZXN0ZGF0YV9tYW51YWxxYWxxdWVyeV9zdHJpbmdpZWFzeWNoYWlybWZhY2V0X2ZpbHRlcnOhcmNvbGxlY3Rpb25fZGF0YXNldIGhZlN0cmluZ3F0ZXN0ZGF0YV9tYW51YWxxYW1yYW5nZV9maWx0ZXJzoW9maWxlX3NpemVfYnl0ZXOjY21pbhoAEAAAY21heBoAoAAAb2luY2x1ZGVfdW5rbm93bvRkc29ydKJja2V5aVJlbGV2YW5jZWRkZXNj9Q==/0/9g==/9g==
+title:    Hoover Search: easychair
+actions:  (none)
+api calls: 104 (search_for_results_hit_count x30, search_for_results x24, search_document_item_hit_counts x9, whoami x8, search_document_text_for_hit_count x6, search_document_text_for_hits x6, list_storage_tree x4, search_numeric_facet x4, search_string_facet x4, get_canonical_file_type x3, get_document_sources x3, get_file_path x3)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-3733[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-3731[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-3729[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-3727[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-19[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-search-page-root-component
+          div#x-search-input-top-bar
+            div
+              div
+                div#x-search-input-search-box
+                  button
+                    svg
+                      path
+                  input[type=text][value=easychair][placeholder=Search in knowledgebase]
+                button[title=Nothing new to search for]  "Search"
+                button#x-search-open-filters[title=Open all filters]  "Filter (2)"
+                  svg
+                    path
+                div
+                  button[title=Change the order of the results]  "Sort"
+                    svg
+                      path
+                  button[label=Sort direction: descending][title=Relevance always sorts descending.]
+                    svg
+                      path
+                      path
+              div#x-filter-chips
+                div[title=testdata_manualqa]
+                  span  "Collections"
+                  span  "testdata_manualqa"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                div[title=1 MB – 10 MB]
+                  span  "File size"
+                  span  "1 MB – 10 MB"
+                  button[title=Remove this filter]
+                    svg
+                      path
+                button  "Clear all"
+            div
+              div#x-filter-modal
+                div
+                  svg
+                    path
+                  div  "All filters"
+                  button[title=Close without applying]
+                    svg
+                      path
+                div
+                  div
+                    button  "Collections"
+                      div
+                        div
+                      svg
+                        path
+                    button  "File types"
+                      div
+                      svg
+                        path
+                    button  "File size"
+                      div
+                        div
+                      svg
+                        path
+                    button  "File location"
+                      div
+                      svg
+                        path
+                    button  "Date"
+                      div
+                      svg
+                        path
+                    button  "Email"
+                      div
+                      svg
+                        path
+                    button  "Entities"
+                      div
+                      svg
+                        path
+                  div
+                    div
+                      div
+                        svg
+                          path
+                        div  "under 1 MB"
+                        div  "3"
+                      div
+                        svg
+                          path
+                        div  "1 – 10 MB"
+                        div  "0"
+                      div
+                        svg
+                          path
+                        div  "10 – 100 MB"
+                        div  "0"
+                      div
+                        svg
+                          path
+                        div  "over 100 MB"
+                        div  "0"
+                      div
+                        div
+                        div  "Or"
+                        div
+                      div
+                        span  "Between"
+                        input[type=number][value=1][placeholder=min]
+                        span  "and"
+                        input[type=number][value=10][placeholder=max]
+                        span  "MB"
+                div
+                  button  "Clear all"
+                  div
+                  button  "Cancel"
+                  button  "Show 0 results"
+          div#x-search-results-bottom-space
+            div#x-search-results-left-panel
+              div
+                div#x-search-panel-left-wrapper
+                  div#x-search-panel-left-title-row
+                    h1  "0 documents found"
+                    div
+                    div
+                      div
+                        div#dxc-3721[role=button]
+                          button
+                            svg
+                              path
+                      div  "- / 0"
+                      div
+                        div#dxc-3723[role=button]
+                          button
+                            svg
+                              path
+                      div
+                        div
+                          div#dxc-3719[role=button]
+                            button
+                              svg
+                                path
+                        div
+                        div  "0"
+                          span  "/0"
+                        div
+                        div
+                          div#dxc-3717[role=button]
+                            button
+                              svg
+                                path
+                  div
+                    div
+                      ul#x-search-panel-results-wrapper
+            div#x-search-results-right-panel
+              div
+                div
+                  div
+                    svg
+                      path
+                      polygon
+                    div  "No document selected"
+                    div  "Please select a document from the list to display its preview here."
+    div[role=region][label=0 notifications]
+      ol

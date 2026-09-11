@@ -1,0 +1,85 @@
+# 00-home (720p)
+url:      https://hoover4.new.liquiddemo.org/
+title:    Hoover Search - Home
+actions:  wait_text Hoover
+api calls: 1 (whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-4021[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4019[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4017[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-4015[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div#x-home-container
+          div
+            img
+            span  "Welcome to"
+            span  "Hoover!"
+          div  "Investigate faster with AI-powered tools built for journalists search, analyze, and uncover insights across thousands of documents."
+          div
+            div#x-card-text-search
+              div  "Text Search"
+              div  "Instantly find keywords or phrases across all uploaded reports, articles and documents. Perfect for tracing facts or following leads fast."
+              div
+              div  "*Type search terms in the text box below and hit Enter to start."
+              div
+                svg
+                  path
+                input[type=text][placeholder=Search in knowledgebase]
+            a[href=/ai_chat]
+              div#x-card-ai-chat
+                div  "AI Chat"
+                div  "Ask questions about your data and get clear, contextual answers. The assistant searches the collections you have access to, reads what it finds, and cites its sources."
+                div
+                div  "Start a new chat or pick up an earlier one →"
+                  svg
+                    path
+          div
+            div#x-card-feedback
+              div
+                svg
+                  path
+              div
+                div  "We'd love to hear from you. Share your ideas, suggestions, or issues to help us improve Hoover."
+                div
+                  button  "Feedback Form"
+    div[role=region][label=0 notifications]
+      ol

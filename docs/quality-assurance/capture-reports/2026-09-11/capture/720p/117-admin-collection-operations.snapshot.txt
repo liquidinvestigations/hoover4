@@ -1,0 +1,440 @@
+# 117-admin-collection-operations (720p)
+url:      https://hoover4.new.liquiddemo.org/admin/collections/testdata
+title:    Admin: collection testdata
+actions:  wait_text Operations; sleep 2000
+api calls: 6 (admin_get_collection x1, admin_get_collection_ocr_defaults x1, admin_list_dataset_folders x1, admin_list_groups x1, admin_list_operations x1, whoami x1)
+
+## observations
+(none)
+
+## rendered outline
+body
+  div#main
+    div#x-nav-container
+      div#x-nav-sidebar
+        a[href=/]
+          img
+        div
+          div
+            div#dxc-7703[role=button]
+              a[href=/]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7701[role=button]
+              a[href=/search/pXNjb2xsZWN0aW9uX2RhdGFzZXRzgGxxdWVyeV9zdHJpbmdgbWZhY2V0X2ZpbHRlcnOgbXJhbmdlX2ZpbHRlcnOgZHNvcnSiY2tleWlSZWxldmFu]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7699[role=button]
+              a[href=/file_browser]
+                span
+                  svg
+                    path
+          div
+            div#dxc-7697[role=button]
+              a[href=/ai_chat]
+                span
+                  svg
+                    path
+        div
+        div
+          div
+            div#dxc-9[role=button]
+              a[href=/admin]
+                span
+                  svg
+                    path
+      div#x-page-container
+        div
+          header
+            a[href=/admin]  "Hoover4 administration"
+            div
+              span  "Welcome, ."
+                b  "hoover4admin"
+              a[href=/]  "View site"
+          div
+            a[href=/admin]  "Home"
+            span  "›"
+            span  "Collections › testdata"
+          div
+            aside
+              div  "Administration"
+              a[href=/admin]  "Dashboard"
+              a[href=/admin/collections]  "Collections"
+              a[href=/admin/operations]  "Operations"
+              a[href=/admin/users]  "Users"
+              a[href=/admin/user_groups]  "Groups"
+              a[href=/admin/settings]  "Settings"
+              a[href=/admin/llm]  "LLM"
+              a[href=/admin/ai_status]  "AI status"
+              a[href=/admin/metrics]  "Metrics"
+            main
+              h1  "Change collection"
+              div
+                div
+                  h2  "Collection"
+                  div
+                    p  "Database"
+                      code  "Hoover4_Collection_testdata"
+                      span  "✔ ready"
+                    a[href=/admin/collections/testdata/processing]  "Processing status, workflows and failures →"
+                  div
+                    label  "Display name"
+                      input[type=text][value=Test Data][placeholder=display name]
+                    button  "Save"
+                div
+                  h2  "Operations"
+                  div
+                    p  "Long operations dispatched against this collection, newest first. Per-dataset OCR language changes are not operations yet and do not appear here."
+                    table
+                      thead
+                        tr
+                          th  "Kind"
+                          th  "Target"
+                          th  "State"
+                          th  "Started"
+                          th  "Duration"
+                          th  "Progress"
+                          th  "ETA"
+                          th  "Outcome"
+                          th
+                      tbody
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_manualqa"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:46:33Z"
+                          td  "1m 37s"
+                          td
+                            div
+                              div
+                                div
+                              div  "3 / 3 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "2 document(s) failed"
+                              div  "2 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_excelsc"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:45:17Z"
+                          td  "1m 15s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "2 document(s) failed"
+                              div  "2 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_diskfiles"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:44:52Z"
+                          td  "22s"
+                          td
+                            div
+                              div
+                                div
+                              div  "2 / 2 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "1 document(s) failed"
+                              div  "1 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_emails"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:54Z"
+                          td  "57s"
+                          td
+                            div
+                              div
+                                div
+                              div  "3 / 3 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              div  "2 document(s) failed"
+                              div  "2 task failure(s)"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_wide"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:48Z"
+                          td  "3s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_manualpdf"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:41Z"
+                          td  "4s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_leaf"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:34Z"
+                          td  "4s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_filenames"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-10T08:43:30Z"
+                          td  "1s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_entityfixtures"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T14:13:41Z"
+                          td  "6s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                        tr
+                          td
+                            code  "add_dataset"
+                          td  "testdata_filenames"
+                            div  "cli"
+                          td  "finished"
+                          td  "2026-09-04T13:16:29Z"
+                          td  "3s"
+                          td
+                            div
+                              div
+                                div
+                              div  "1 / 1 plans"
+                          td
+                            span  "n/a"
+                          td
+                            div
+                              span  "no failed documents"
+                          td
+                            button  "Re-run"
+                div
+                  h2  "Datasets"
+                  div
+                    p  "A dataset's collection is fixed when it is created and cannot be changed."
+                    table
+                      thead
+                        tr
+                          th  "Dataset"
+                          th  "Name"
+                          th  "Type"
+                          th  "Created"
+                      tbody
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_diskfiles]  "testdata_diskfiles"
+                          td  "diskfiles"
+                          td  "disk"
+                          td  "2026-09-10T08:44:52Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_emails]  "testdata_emails"
+                          td  "emails"
+                          td  "disk"
+                          td  "2026-09-10T08:43:54Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_entityfixtures]  "testdata_entityfixtures"
+                          td  "entityfixtures"
+                          td  "disk"
+                          td  "2026-09-04T14:13:41Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_excelsc]  "testdata_excelsc"
+                          td  "excelsc"
+                          td  "disk"
+                          td  "2026-09-10T08:45:17Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_filenames]  "testdata_filenames"
+                          td  "filenames"
+                          td  "disk"
+                          td  "2026-09-04T13:16:29Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_leaf]  "testdata_leaf"
+                          td  "leaf"
+                          td  "disk"
+                          td  "2026-09-10T08:43:34Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_manualpdf]  "testdata_manualpdf"
+                          td  "manualpdf"
+                          td  "disk"
+                          td  "2026-09-10T08:43:41Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_manualqa]  "testdata_manualqa"
+                          td  "manualqa"
+                          td  "disk"
+                          td  "2026-09-10T08:46:33Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_shapes]  "testdata_shapes"
+                          td  "shapes"
+                          td  "disk"
+                          td  "2026-09-04T13:16:13Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_testfiles]  "testdata_testfiles"
+                          td  "testfiles"
+                          td  "disk"
+                          td  "2026-09-04T13:13:58Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_wide]  "testdata_wide"
+                          td  "wide"
+                          td  "disk"
+                          td  "2026-09-10T08:43:47Z"
+                        tr
+                          td
+                            a[href=/admin/collections/testdata/datasets/testdata_zips]  "testdata_zips"
+                          td  "zips"
+                          td  "disk"
+                          td  "2026-09-04T13:16:06Z"
+                div
+                  h2  "Add a dataset"
+                  div
+                    label
+                      span  "Folder"
+                      select
+                    p  "Only direct subfolders of the configured datasets path are offered, and the path is composed on the server — the form never carries one."
+                    label
+                      span  "Dataset name"
+                      input[type=text]
+                    p  "Lowercase letters, digits and underscores. It becomes part of the dataset id and cannot be changed afterwards."
+                    label
+                      span  "Tesseract"
+                      input[type=text][value=eng]
+                    label
+                      span  "EasyOCR"
+                      input[type=text][value=en]
+                    p  "`+`-joined language codes, e.g. eng+ron. These are the languages the first pass runs with; they can be changed later on the dataset page, but changing them re-runs OCR over the whole dataset. New data"
+                    div
+                      button  "Save as collection defaults"
+                    div
+                      button  "Create and ingest"
+                div
+                  h2  "Access mode"
+                  div
+                    p  "Restricted — only members of the groups listed below can search and read this collection."
+                    div
+                      button  "Make public"
+                div
+                  h2  "Group permissions"
+                  div
+                    p  "No group can read this collection yet."
+                    ul
+                    div
+                      select
+                      button  "Grant"
+                div
+                  h2  "Danger zone"
+                  div
+                    p  "A collection can only be deleted while it has no datasets."
+                    p  "Deleting the collection also drops its database and everything in it. This cannot be undone. Type the collection name to confirm."
+                      code  "Hoover4_Collection_testdata"
+                    div
+                      label  "Collection name"
+                        input[type=text][placeholder=testdata]
+                      button  "Delete collection"
+    div[role=region][label=0 notifications]
+      ol
