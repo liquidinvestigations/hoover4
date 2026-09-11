@@ -7,7 +7,8 @@ the actual gate.
 ## Modules
 
 - `collections.rs` / `datasets.rs` / `groups.rs` / `users.rs` / `settings.rs`, CRUD for
-  the registry tables.
+  the registry tables. `settings.rs` includes `chat_enabled`, read at request time by
+  the chat gate.
 - `processing.rs`, collection processing status (stage bars derived from watermarks),
   the Temporal workflow browser, failure lists, retries, and reads of the stored
   `processing_eta_samples` (written by the `CollectEtaSamples` workflow in

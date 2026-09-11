@@ -144,6 +144,7 @@ languages.
 | `F-chat-19a` | Render the collection-search server's discovery instructions (read by whichever agent connects, before it writes a query) from the tools that server registers, so a renamed tool is a test failure and not an instruction to call something that no longer exists | `collection_search_server/prompts/`, `collection_search_server/tests/test_prompts.py` |
 | `F-chat-19b` | Tell the model plainly, in its own instructions, when the conversation can read no collection at all, instead of leaving it to infer that from three empty searches | `prompts.render`'s `collections_hint`, `agent._create_graph` |
 | `F-chat-20` | Turn off the three internet-facing MCP servers (browser, metasearch, whois) so they do not start, and bind the full-research agent to collections and todo only | `internet_tools_enabled`, `deploy.py`, `compose/internet-tools.yaml` |
+| `F-chat-21` | Turn all chat features off at runtime from `/admin/settings` (`chat_enabled`). The backend refuses a new turn when the switch is off, when no provider is configured, or when a non-self-hosted provider has no API key. The composer overlay names which of those three applies. An in-flight turn finishes. | `server_settings.chat_enabled`, `website/backend/src/api/chat/gate.rs`, `website/frontend/src/components/chat_components/gate_overlay.rs` |
 
 ## Administration
 

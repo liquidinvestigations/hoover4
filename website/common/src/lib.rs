@@ -3,6 +3,7 @@
 extern crate serde;
 
 pub mod admin_types;
+pub mod chat_gate;
 pub mod chat_types;
 pub mod current_user;
 pub mod date_histogram;

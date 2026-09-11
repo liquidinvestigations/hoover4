@@ -109,23 +109,9 @@ pub async fn chat_list_models() -> Result<Vec<common::llm_types::ChatModelChoice
 }
 
 #[server]
-pub async fn chat_llm_configured() -> Result<bool, ServerFnError> {
+pub async fn chat_llm_configured() -> Result<common::chat_gate::ChatGate, ServerFnError> {
     let _user = crate::api::server_auth::extract_user().await?;
-    let base_ok = std::env::var("LLM_BASE_URL")
-        .ok()
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
-    if !base_ok {
-        return Ok(false);
-    }
-    let env_model = std::env::var("LLM_MODEL")
-        .ok()
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
-    if env_model {
-        return Ok(true);
-    }
-    Ok(!backend::api::admin::llm::default_chat_model().await.trim().is_empty())
+    Ok(backend::api::chat::gate::evaluate_live_chat_gate().await)
 }
 #[server]
 pub async fn admin_dashboard_counts() -> Result<(u32, u32, u32, u32), ServerFnError> {

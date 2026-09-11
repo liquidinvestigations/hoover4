@@ -20,8 +20,12 @@
 //!   this process, see [`stream_state`];
 //! * stopping a turn is a Temporal cancellation, not a flag another task polls;
 //! * the admin live-run list is a Temporal visibility query, so it cannot show a run
-//!   this process forgot about or hide one it never knew about.
+//!   this process forgot about or hide one it never knew about;
+//! * a new turn is refused by [`gate`] when no provider is configured, when a
+//!   non-self-hosted provider has an empty API key, or when `chat_enabled` is false.
+//!   An in-flight turn is left to finish.
 
+pub mod gate;
 pub mod llm_events;
 
 use std::time::{Duration, Instant};
@@ -190,6 +194,7 @@ pub async fn send_message(
     requested_options: ChatOptions,
     requested_model: Option<String>,
 ) -> anyhow::Result<ChatSendResult> {
+    gate::require_chat_open().await?;
     let username = user.username.as_str();
 
     if let Err(e) = check_and_record(username, RateLimitKind::ChatMessage) {
@@ -737,6 +742,7 @@ pub async fn start_research_task(
     message: String,
     requested_options: ChatOptions,
 ) -> anyhow::Result<Result<String, u64>> {
+    gate::require_chat_open().await?;
     let username = user.username.as_str();
 
     if let Err(e) = check_and_record(username, RateLimitKind::ChatMessage) {

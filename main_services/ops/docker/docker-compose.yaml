@@ -666,6 +666,8 @@ services:
       # and never gets a summary. Both are rendered from hoover4.ini by deploy.py.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-}
+      # The chat gate uses this name to decide whether an API key is required.
+      - LLM_PROVIDER_NAME=${LLM_PROVIDER_NAME:-}
       # The API key is a bind-mounted file, never an env value: hoover4.ini stores
       # the host path, deploy.py mounts it here, and summarize.rs reads it. With no
       # provider key configured the mount source is /dev/null and the code falls

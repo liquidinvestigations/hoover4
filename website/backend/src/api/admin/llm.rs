@@ -762,7 +762,7 @@ fn simple_match(pattern: &str, haystack: &str) -> bool {
 /// its port are kept whole. Every place that names a provider goes through this,
 /// including the placeholder row for a configured endpoint whose catalog is still empty:
 /// two spellings of one endpoint render as two providers, one of them permanently empty.
-fn provider_name_from_url(base: &str) -> String {
+pub(crate) fn provider_name_from_url(base: &str) -> String {
     if let Ok(name) = std::env::var("LLM_PROVIDER_NAME") {
         if !name.trim().is_empty() {
             return name;
@@ -827,7 +827,7 @@ fn context_window_from_entry(entry: &serde_json::Value) -> Option<u32> {
     None
 }
 
-fn read_llm_api_key() -> String {
+pub(crate) fn read_llm_api_key() -> String {
     if let Ok(key) = std::env::var("LLM_API_KEY") {
         if !key.trim().is_empty() {
             return key;

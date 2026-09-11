@@ -291,6 +291,13 @@ permission one, and the chat rate limiter (`backend::api::rate_limit::check_and_
 the control for it: its budget decays the longer a burst lasts, which is what distinguishes
 a person working from a loop running.
 
+A new turn is also refused when chat cannot work. `api::chat::gate` closes when no
+provider is configured, when a non-self-hosted provider has an empty API key, or when
+`chat_enabled` in `server_settings` is false. The composer overlay names which of those
+three holds. An in-flight turn is left to finish. The frontend control is a hint. The
+backend refuses `chat_send_message` and `chat_start_research` under the same three
+conditions.
+
 ## Allocating a message sequence
 
 A message's `seq` is `max(seq)+1` with no database-side sequence behind it, so two senders in

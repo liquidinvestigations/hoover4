@@ -1,5 +1,6 @@
 //! `/ai_chat/c/:session_id/...`, conversation transcript + document preview (60/40).
 
+use common::chat_gate::ChatGate;
 use common::chat_types::{rate_limited_seconds, ChatMessageItem, ChatOptions, ChatSessionDetail};
 use common::llm_types::ChatModelChoice;
 use common::search_query::SearchQuery;
@@ -12,7 +13,7 @@ use crate::api::chat_api::{
     chat_start_research, chat_stop,
 };
 use crate::components::chat_components::{
-    ChatComposer, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
+    ChatComposer, ChatGateOverlay, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
 };
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
@@ -125,13 +126,12 @@ fn AiChatSessionRoot(
     // remount for no reason.
     let models_res = use_resource(chat_list_models);
     let configured_res = use_resource(chat_llm_configured);
-    let configured = use_memo(move || {
-        configured_res
-            .read()
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
-            .copied()
-            .unwrap_or(true)
+    let gate = use_memo(move || {
+        match configured_res.read().as_ref() {
+            None => None,
+            Some(Ok(g)) => Some(*g),
+            Some(Err(_)) => Some(ChatGate::from_server_result::<()>(Err(()))),
+        }
     });
     let choices = use_memo(move || {
         models_res
@@ -191,7 +191,7 @@ fn AiChatSessionRoot(
         div {
             style: "height: 100%; width: 100%; display: flex; flex-direction: row; \
                     background: #F5F6F8; overflow: hidden;",
-            ChatConversationPanel { session_id, detail, messages, configured, choices }
+            ChatConversationPanel { session_id, detail, messages, gate, choices }
             // Right, document pane (≈40%)
             div {
                 style: "height: 100%; width: 40%; min-width: 300px;",
@@ -220,7 +220,7 @@ fn ChatConversationPanel(
     session_id: ReadSignal<String>,
     detail: ChatSessionDetail,
     mut messages: Signal<Vec<ChatMessageItem>>,
-    configured: Memo<bool>,
+    gate: Memo<Option<ChatGate>>,
     choices: Memo<Vec<ChatModelChoice>>,
 ) -> Element {
     let mut draft = use_signal(String::new);
@@ -257,7 +257,8 @@ fn ChatConversationPanel(
         }
     });
 
-    let configured = *configured.read();
+    let gate_now = *gate.read();
+    let gate_open = gate_now == Some(ChatGate::Open);
     let choices = choices.read().clone();
     let show_models = !choices.is_empty();
 
@@ -399,6 +400,9 @@ fn ChatConversationPanel(
     let on_submit = move |_| {
         let text = draft.read().trim().to_string();
         if text.is_empty() || *sending.read() {
+            return;
+        }
+        if *gate.read() != Some(ChatGate::Open) {
             return;
         }
         let opts = *options.read();
@@ -564,37 +568,27 @@ fn ChatConversationPanel(
                     "{e}"
                 }
             }
-            div { style: "padding: 12px 14px; flex-shrink: 0;",
-                if !configured {
-                    div {
-                        style: "background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 12px; \
-                                padding: 14px 16px; color: #92400E; font-size: 14px; line-height: 1.5;",
-                        "No LLM provider is configured. An administrator can add one under "
-                        Link {
-                            to: Route::AdminLlmPage {},
-                            style: "color: #92400E; font-weight: 600;",
-                            "/admin/llm"
-                        }
-                        "."
-                    }
-                } else {
-                    if show_models {
-                        div { style: "margin-bottom: 8px;",
-                            ModelSelector {
-                                choices: choices.clone(),
-                                selected: selected_model,
-                                disabled: *sending.read(),
-                            }
+            div { style: "padding: 12px 14px; flex-shrink: 0; position: relative;",
+                if show_models {
+                    div { style: "margin-bottom: 8px;",
+                        ModelSelector {
+                            choices: choices.clone(),
+                            selected: selected_model,
+                            disabled: *sending.read() || !gate_open,
                         }
                     }
-                    ChatComposer {
-                        draft,
-                        options,
-                        sending,
-                        retry_after_seconds: retry_after,
-                        on_submit,
-                        on_stop,
-                    }
+                }
+                ChatComposer {
+                    draft,
+                    options,
+                    sending,
+                    retry_after_seconds: retry_after,
+                    on_submit,
+                    on_stop,
+                    blocked: !gate_open,
+                }
+                if let Some(ChatGate::Closed(reason)) = gate_now {
+                    ChatGateOverlay { reason }
                 }
             }
         }

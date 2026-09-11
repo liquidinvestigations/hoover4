@@ -18,9 +18,11 @@ use crate::db_auth::settings;
 /// disagree the page misrepresents the current behaviour, so keep them together:
 /// * `chat_artifact_ttl_days`: `tasks/P_admin/artifact_sweeper.py::DEFAULT_TTL_DAYS`
 /// * `session_expiration_seconds`, `auth::session` (one week)
+/// * `chat_enabled`: default `true`. Read at request time by `api::chat::gate`
 const KNOWN_SETTINGS: &[(&str, &str)] = &[
     ("session_expiration_seconds", "604800"),
     ("chat_artifact_ttl_days", "30"),
+    (common::chat_gate::CHAT_ENABLED_SETTING, "true"),
 ];
 
 /// Deployment configuration the page shows but cannot change: these come from
@@ -118,6 +120,12 @@ pub async fn admin_set_setting(
                 .map_err(|_| anyhow::anyhow!("chat_artifact_ttl_days must be a positive integer"))?;
             if v == 0 || v > 3650 {
                 anyhow::bail!("chat_artifact_ttl_days must be between 1 and 3650");
+            }
+        }
+        s if s == common::chat_gate::CHAT_ENABLED_SETTING => {
+            match value.trim().to_ascii_lowercase().as_str() {
+                "true" | "false" => {}
+                _ => anyhow::bail!("chat_enabled must be true or false"),
             }
         }
         _ => {}

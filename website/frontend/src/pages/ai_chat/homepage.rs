@@ -1,5 +1,6 @@
 //! `/ai_chat`, "What are you researching?" homepage.
 
+use common::chat_gate::ChatGate;
 use common::chat_types::{rate_limited_seconds, ChatOptions};
 use dioxus::prelude::*;
 
@@ -8,7 +9,9 @@ use crate::api::chat_api::{
     chat_create_session, chat_delete_session, chat_list_sessions, chat_send_message,
     chat_start_research,
 };
-use crate::components::chat_components::{ChatComposer, ChatSessionCard, ModelSelector};
+use crate::components::chat_components::{
+    ChatComposer, ChatGateOverlay, ChatSessionCard, ModelSelector,
+};
 use crate::routes::Route;
 
 const HOMEPAGE_CARD_LIMIT: usize = 6;
@@ -26,12 +29,12 @@ pub fn AiChatPage() -> Element {
     let mut retry_after = use_signal(|| None::<u64>);
     let nav = navigator();
 
-    let configured = configured_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .copied()
-        .unwrap_or(true);
+    let gate = match configured_res.read().as_ref() {
+        None => None,
+        Some(Ok(g)) => Some(*g),
+        Some(Err(_)) => Some(ChatGate::from_server_result::<()>(Err(()))),
+    };
+    let gate_open = gate == Some(ChatGate::Open);
     let choices = models_res
         .read()
         .as_ref()
@@ -64,6 +67,14 @@ pub fn AiChatPage() -> Element {
     let on_submit = move |_| {
         let text = draft.read().trim().to_string();
         if text.is_empty() || *sending.read() {
+            return;
+        }
+        let live_gate = match configured_res.read().as_ref() {
+            Some(Ok(g)) => *g,
+            Some(Err(_)) => ChatGate::from_server_result::<()>(Err(())),
+            None => ChatGate::Open,
+        };
+        if !live_gate.is_open() {
             return;
         }
         let opts = *options.read();
@@ -160,36 +171,26 @@ pub fn AiChatPage() -> Element {
                 }
             }
 
-            div { style: "width: 100%; max-width: 720px;",
-                if !configured {
-                    div {
-                        style: "background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 12px; \
-                                padding: 16px 18px; color: #92400E; font-size: 14px; line-height: 1.5;",
-                        "No LLM provider is configured. An administrator can add one under "
-                        Link {
-                            to: Route::AdminLlmPage {},
-                            style: "color: #92400E; font-weight: 600;",
-                            "/admin/llm"
-                        }
-                        "."
-                    }
-                } else {
-                    if show_models {
-                        div { style: "margin-bottom: 10px;",
-                            ModelSelector {
-                                choices: choices.clone(),
-                                selected: selected_model,
-                                disabled: *sending.read(),
-                            }
+            div { style: "width: 100%; max-width: 720px; position: relative;",
+                if show_models {
+                    div { style: "margin-bottom: 10px;",
+                        ModelSelector {
+                            choices: choices.clone(),
+                            selected: selected_model,
+                            disabled: *sending.read() || !gate_open,
                         }
                     }
-                    ChatComposer {
-                        draft,
-                        options,
-                        sending,
-                        retry_after_seconds: retry_after,
-                        on_submit,
-                    }
+                }
+                ChatComposer {
+                    draft,
+                    options,
+                    sending,
+                    retry_after_seconds: retry_after,
+                    on_submit,
+                    blocked: !gate_open,
+                }
+                if let Some(ChatGate::Closed(reason)) = gate {
+                    ChatGateOverlay { reason }
                 }
             }
 

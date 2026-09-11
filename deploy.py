@@ -635,6 +635,7 @@ def render_main_env(cfg):
     if provider is not None:
         env["LLM_BASE_URL"] = cfg.llm_base_url(provider)
         env["LLM_MODEL"] = cfg.llm_model(provider)
+        env["LLM_PROVIDER_NAME"] = provider
         key_file = cfg.llm_api_key_file(provider)
         if key_file:
             # Bind-mount source only; the container reads /run/secrets/llm_api_key.
@@ -642,6 +643,7 @@ def render_main_env(cfg):
     else:
         env["LLM_BASE_URL"] = ""
         env["LLM_MODEL"] = ""
+        env["LLM_PROVIDER_NAME"] = ""
 
     env["TEMPORAL_UI_URL"] = "http://localhost:%s" % cfg.get(m, "temporal_ui_port")
     env["EXTERNAL_CLICKHOUSE_URL"] = "http://localhost:%s" % cfg.get(m, "clickhouse_http_port")

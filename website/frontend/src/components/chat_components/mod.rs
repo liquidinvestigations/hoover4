@@ -8,6 +8,7 @@
 pub mod composer;
 pub mod conversation_find;
 pub mod doc_ref_card;
+pub mod gate_overlay;
 pub mod locked_options;
 pub mod markdown_text;
 pub mod model_selector;
@@ -19,6 +20,7 @@ pub mod transcript;
 pub use composer::ChatComposer;
 pub use conversation_find::ConversationFindBar;
 pub use doc_ref_card::ChatDocRefCard;
+pub use gate_overlay::ChatGateOverlay;
 pub use locked_options::LockedOptionsBar;
 pub use model_selector::ModelSelector;
 pub use session_card::ChatSessionCard;

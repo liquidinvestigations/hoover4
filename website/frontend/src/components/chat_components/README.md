@@ -5,6 +5,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | Module | Role |
 |---|---|
 | `composer.rs` | Textarea + **Deep Research** / **Internet tools** checkboxes + send arrow. The checkboxes disappear once the conversation has a turn, see below. No paperclip / upload control: documents enter via the processing pipeline. |
+| `gate_overlay.rs` | Non-dismissible overlay over the composer when a new turn cannot start. Names which reason applies: no provider, missing API key, or chat switched off. History stays readable. |
 | `locked_options.rs` | The two switches, read-only, above the transcript once they are frozen. |
 | `session_card.rs` | Homepage / history card showing title + summary. |
 | `transcript.rs` | User bubbles, assistant markdown, tool disclosures, inline doc cards, the retry-attempt disclosure, and the token footer under an answer. |
@@ -111,7 +112,7 @@ rendered three times over and the disclosure's count described page-hits while c
 documents.
 
 **The cards are collapsed behind `DocRefsDisclosure` by default**, one disclosure per tool
-row, labelled `<n> documents from <tool> — show`. A result set is evidence for the answer,
+row, labelled `<n> documents from <tool>, show`. A result set is evidence for the answer,
 not the answer: rendered open, a single search put 46 cards between the question and a
 one-line reply and made the page 22 168 characters of which 31 were the answer. The
 summary line carries the tool name and the count because a bare chevron makes the reader

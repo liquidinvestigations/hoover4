@@ -21,10 +21,13 @@ pub fn ChatComposer(
     on_submit: EventHandler<()>,
     /// The stop button, shown in place of send while a turn is in flight.
     on_stop: Option<EventHandler<()>>,
+    /// The chat gate is closed. Typing and send do nothing. The overlay sits on top.
+    #[props(default)]
+    blocked: bool,
 ) -> Element {
-    // Only a rate-limit lockout disables typing: while a turn streams the user can
-    // already draft the next message (the server serialises turns per session).
-    let disabled = retry_after_seconds.read().is_some();
+    // Only a rate-limit lockout or a closed gate disables typing: while a turn streams
+    // the user can already draft the next message (the server serialises turns per session).
+    let disabled = retry_after_seconds.read().is_some() || blocked;
     let locked = options.read().locked;
 
     rsx! {

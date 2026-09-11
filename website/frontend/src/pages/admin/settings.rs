@@ -17,6 +17,10 @@ fn setting_description(key: &str) -> &'static str {
              (default: 30). The nightly sweeper deletes the blob-store objects first, then the \
              rows."
         }
+        "chat_enabled" => {
+            "Turns every new chat turn off when false (default: true). An in-flight turn \
+             finishes. Takes effect on the next send, with no redeploy."
+        }
         "llm_default_chat_model" => "Model new chats start on",
         "llm_summarization_model" => "Model that writes chat titles and summaries",
         "llm_model_internal_search" => "Model for documents-only chats (empty = the chat default)",
