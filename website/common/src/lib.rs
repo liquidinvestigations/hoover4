@@ -14,6 +14,7 @@ pub mod document_tables;
 pub mod email_graph;
 pub mod entity_cards;
 pub mod entity_stoplist;
+pub mod failure_types;
 pub mod file_type_icons;
 pub mod filter_summary;
 pub mod llm_types;

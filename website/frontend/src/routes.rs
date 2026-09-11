@@ -18,6 +18,7 @@ use crate::pages::admin::{
     groups_list::AdminGroupsPage, llm_config::AdminLlmPage, metrics::AdminMetricsPage,
     operations::AdminOperationsPage, settings::AdminSettingsPage, user_detail::AdminUserPage,
     user_llm::AdminUserLlmPage, users_list::AdminUsersPage,
+    failures::AdminFailuresPage, failure_detail::AdminFailureDetailPage,
 };
 use crate::pages::ai_chat::{AiChatHistoryPage, AiChatPage, AiChatSessionPage};
 use crate::pages::email_graph_page::EmailGraphPage;
@@ -115,6 +116,12 @@ pub enum Route {
     // routes are all distinct literal prefixes and none of them shadows another.
     #[route("/admin/operations")]
     AdminOperationsPage {},
+
+    #[route("/admin/failures")]
+    AdminFailuresPage {},
+
+    #[route("/admin/failures/:op_id")]
+    AdminFailureDetailPage { op_id: String },
 
     #[route("/admin/users")]
     AdminUsersPage {},

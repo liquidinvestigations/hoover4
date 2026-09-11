@@ -1,6 +1,7 @@
 //! Admin API server function wrappers.
 
 use common::admin_types::*;
+use common::failure_types::{FailureInstanceRow, FailureListFilter, FailureListSort, FailureTree, FailuresPage};
 use common::metrics_types::{AdminMetrics, AdminUserLlmMetrics};
 use common::operations_types::OperationsPage;
 use common::processing_types::*;
@@ -79,6 +80,9 @@ admin_server_fn!(admin_task_time_live, backend::api::admin::processing::admin_ta
 admin_server_fn!(admin_list_operations, backend::api::admin::operations::admin_list_operations, (state: String, collectionname: String, limit: u32, offset: u32) -> OperationsPage);
 admin_server_fn!(admin_rerun_operation, backend::api::admin::operations::admin_rerun_operation, (op_id: String, confirm_target: String) -> String);
 admin_server_fn!(admin_cancel_operation, backend::api::admin::operations::admin_cancel_operation, (op_id: String));
+admin_server_fn!(admin_list_operation_failures, backend::api::admin::failures::admin_list_operation_failures, (filter: FailureListFilter, sort: FailureListSort, limit: u32, offset: u32) -> FailuresPage);
+admin_server_fn!(admin_list_failure_instances, backend::api::admin::failures::admin_list_failure_instances, (filter: FailureListFilter, signature: String, limit: u32, offset: u32) -> Vec<FailureInstanceRow>);
+admin_server_fn!(admin_get_failure_tree, backend::api::admin::failures::admin_get_failure_tree, (op_id: String) -> FailureTree);
 
 admin_server_fn!(admin_list_deployment_config, backend::api::admin::settings::admin_list_deployment_config, () -> Vec<ServerSettingItem>);
 

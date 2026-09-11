@@ -159,6 +159,7 @@ fn to_display_row(r: OperationDbRow) -> OperationRow {
         "collection" => r.collectionname.clone(),
         _ => String::new(),
     };
+    let temporal_url = crate::api::admin::operation_temporal_url(&r.op_id);
     OperationRow {
         destructive: is_destructive(&r.kind),
         failed_documents: detail_u64(&r.detail, "failed_documents"),
@@ -180,6 +181,8 @@ fn to_display_row(r: OperationDbRow) -> OperationRow {
         user_id: r.user_id,
         rerun_of: r.rerun_of,
         detail: r.detail,
+        has_failure_tree: false,
+        temporal_url,
     }
 }
 
@@ -286,10 +289,17 @@ pub async fn admin_list_operations(
     // same read rather than by a second count over a table that is being written to.
     let raw = fetch_rows(&state, &collectionname, limit + 1, offset).await?;
     let has_more = raw.len() as u32 > limit;
+    let page_ids: Vec<String> = raw.iter().take(limit as usize).map(|r| r.op_id.clone()).collect();
+    let with_trees = crate::api::admin::failures::op_ids_with_failure_trees(&page_ids).await?;
     let rows: Vec<OperationRow> = raw
         .into_iter()
         .take(limit as usize)
-        .map(to_display_row)
+        .map(|r| {
+            let has_failure_tree = with_trees.contains(&r.op_id);
+            let mut row = to_display_row(r);
+            row.has_failure_tree = has_failure_tree;
+            row
+        })
         .collect();
 
     let client = get_global_client();

@@ -19,18 +19,10 @@ use common::current_user::CurrentUser;
 use common::processing_types::*;
 use time::format_description::well_known::Rfc3339;
 
-use crate::api::admin::operations;
+use crate::api::admin::{operations, temporal_ui_base};
 use crate::auth::guard;
 use crate::db_auth::collections;
 use crate::db_utils::clickhouse_utils::{get_collection_client, get_global_client};
-
-/// Base URL of the Temporal *UI*, used only to build deep links shown to admins.
-/// Distinct from `TEMPORAL_HTTP_URL`, which is the API the backend calls: the UI runs
-/// on a different port and, unlike the API, is reached from the admin's browser rather
-/// than from this container, so it must be a host-reachable address.
-fn temporal_ui_base() -> String {
-    std::env::var("TEMPORAL_UI_URL").unwrap_or_else(|_| "http://localhost:21909".to_string())
-}
 
 fn temporal_api_base() -> String {
     std::env::var("TEMPORAL_HTTP_URL").unwrap_or_else(|_| "http://localhost:21908".to_string())

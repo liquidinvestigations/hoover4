@@ -6,6 +6,8 @@ pub mod collection_processing;
 pub mod collections_list;
 pub mod dashboard;
 pub mod dataset_detail;
+pub mod failure_detail;
+pub mod failures;
 pub mod group_detail;
 pub mod groups_list;
 pub mod llm_config;

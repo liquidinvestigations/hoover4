@@ -52,6 +52,13 @@ pub struct OperationRow {
     /// The `detail` JSON as stored, for the parameters the operation was dispatched
     /// with.
     pub detail: String,
+    /// True when `operation_failures` has at least one row for this `op_id`. An
+    /// operation can be `finished` and still have a captured tree.
+    pub has_failure_tree: bool,
+    /// Deep link to this operation in the Temporal UI, built from `op_id` and
+    /// `TEMPORAL_UI_URL`. Rendered whether or not that UI is reachable from the
+    /// reader's browser.
+    pub temporal_url: String,
 }
 
 /// The error rate of one task type, and whether it is above the configured line.

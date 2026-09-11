@@ -13,9 +13,10 @@ use crate::api::admin_api::{admin_cancel_operation, admin_list_operations, admin
 use crate::api::error_util::user_facing_message;
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_SMALL, BTN_SMALL_DANGER, C_DANGER,
-    HELP_TEXT, INPUT, LABEL, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT, TABLE, TD, TH,
+    HELP_TEXT, INPUT, LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
+use crate::routes::Route;
 
 /// Rows per page. Deliberately small: the log is read newest-first and the interesting
 /// row is almost always near the top.
@@ -338,6 +339,13 @@ fn OperationTableRow(
                 if !row.rerun_of.is_empty() {
                     div { style: HELP_TEXT, "re-run of {row.rerun_of}" }
                 }
+                a {
+                    class: "x-ops-temporal-link",
+                    href: "{row.temporal_url}",
+                    target: "_blank",
+                    style: "{LINK} font-size: 12px; display: inline-block; margin-top: 4px;",
+                    "Temporal"
+                }
             }
             td { style: TD,
                 "{row.target}"
@@ -478,9 +486,23 @@ fn ProgressCell(row: OperationRow) -> Element {
 fn OutcomeCell(row: OperationRow) -> Element {
     rsx! {
         div {
-            if !row.error.is_empty() {
+            if row.has_failure_tree {
+                div { style: "font-size: 12px; max-width: 320px; overflow-wrap: anywhere;",
+                    Link {
+                        to: Route::AdminFailureDetailPage { op_id: row.op_id.clone() },
+                        style: LINK,
+                        class: "x-ops-failure-link",
+                        if row.error.is_empty() {
+                            "Open captured tree"
+                        } else {
+                            "{row.error}"
+                        }
+                    }
+                }
+            } else if !row.error.is_empty() {
                 div { style: "color: {C_DANGER}; font-size: 12px; max-width: 320px; overflow-wrap: anywhere;",
                     "{row.error}"
+                    div { style: HELP_TEXT, "no captured tree" }
                 }
             }
             match row.failed_documents {

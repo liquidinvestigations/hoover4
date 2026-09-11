@@ -27,6 +27,10 @@ the actual gate.
   button starts goes through here**, so each click gets its own timestamped workflow id
   and its own row. A fixed workflow id would make the second click resolve to the first
   click's execution and quietly do nothing.
+- `failures.rs`, the grouped list and per-operation tree behind `/admin/failures`. Reads
+  of the global `operation_failures` table only. Grouping is by the stored `signature`
+  column. A scrubbed copy is built at read time for the copy control. The stored rows
+  stay raw.
 - `metrics.rs`, aggregates for `/admin/metrics` and `/admin/users/:username/llm`.
 - `llm.rs`, the model catalog, the defaults and the allowlist. See below.
 

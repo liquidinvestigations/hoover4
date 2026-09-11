@@ -165,7 +165,7 @@ languages.
 | `F-admin-13` | Refuse a second dispatch of the same kind of operation against the same target while one is still running, naming what is in the way | `database/operations.py:assert_lock_free` |
 | `F-admin-14` | Submit a long operation from the command line and follow it, where interrupting the command detaches from the work rather than stopping it | `main.py add-disk-dataset`, `main.py reindex-collection`, `main.py refresh-document-locations --apply`, `main.py purge-dataset --apply`, `main.py retry-failed-files --apply`, `tasks/P_ops/cli.py` |
 | `F-admin-15` | List, inspect, re-run and cancel operations from the command line | `main.py operations list\|show\|rerun\|cancel` |
-| `F-admin-16` | Browse the operations log in the interface (newest first, paginated, filtered by state and by collection) with progress, estimate, outcome and the error against each row | `/admin/operations`, `website/backend/src/api/admin/operations.rs` |
+| `F-admin-16` | Browse the operations log in the interface (newest first, paginated, filtered by state and by collection) with progress, estimate, outcome, a Temporal deep link on every row, and a link to the captured failure tree when one exists | `/admin/operations`, `website/backend/src/api/admin/operations.rs` |
 | `F-admin-17` | Re-run or cancel an operation from the interface, where a destructive kind is refused until the target is typed out | `admin_rerun_operation`, `admin_cancel_operation` |
 | `F-admin-18` | See the same operations log scoped to one collection, on that collection's page | `CollectionOperationsPanel`, `website/frontend/src/pages/admin/collection_detail.rs` |
 | `F-admin-19` | Show how many documents an operation failed on, so a run that finished over failed documents does not read as a clean one | `tasks/P_ops/activities.py:sample_dataset_progress`, the row's `detail` |
@@ -176,6 +176,7 @@ languages.
 | `F-admin-24` | Report a backup's progress from the stores' own byte counts, one named phase per store, and leave a failed or cancelled run in a directory that blocks no later attempt | `tasks/P_ops/backup.py`, the row's `detail` |
 | `F-admin-25` | Restore a collection from one of those directories (its objects, its database, its search tables and its configuration rows) into an empty collection of the same name, refusing a target that still holds data by naming what is in the way | `main.py import-collection`, the `import_collection` operation, `tasks/P_ops/restore.py` |
 | `F-admin-26` | Capture a tree of each failed operation, with the worker stack trace of every failed activity and child workflow, into the global `operation_failures` table | `tasks/operation_failure_capture.py`, `Hoover4_Processing.operation_failures` |
+| `F-admin-27` | Browse captured operation failures grouped by signature with a count, with filters, sort, pagination, a per-operation tree, a scrubbed copy for a language model, and a Temporal deep link | `/admin/failures`, `website/backend/src/api/admin/failures.rs` |
 
 ## Identity and access
 
