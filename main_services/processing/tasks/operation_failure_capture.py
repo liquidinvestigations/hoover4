@@ -51,10 +51,6 @@ TEMPORAL_BLOB_LIMIT_BYTES = 2097121
 #: ceiling by construction.
 TEMPORAL_BLOB_MARGIN_BYTES = 256 * 1024
 
-#: ClickHouse insert batch. 16 nodes of 64 KB is 1 MB, under the Temporal blob
-#: limit with the named margin, and far under what ClickHouse will take.
-CLICKHOUSE_INSERT_NODES = 16
-
 FAILURE_COLUMNS = [
     "op_id", "node_index", "depth", "parent_index",
     "error_class", "error_type", "message", "stack_trace", "signature",
@@ -382,26 +378,25 @@ def _row(
 
 
 def _insert_rows(rows: Sequence[list]) -> int:
+    """Insert the whole tree in one statement.
+
+    A chunked insert can store a prefix and then fail. The screen treats
+    ``nodes_dropped > 0`` as truncated, and a later-chunk failure would not set
+    that flag. One statement either stores every node or stores none.
+    """
     from database.clickhouse import get_global_client, insert_idempotent
 
-    written = 0
+    if not rows:
+        return 0
     try:
         with get_global_client() as client:
-            for start in range(0, len(rows), CLICKHOUSE_INSERT_NODES):
-                chunk = list(rows[start:start + CLICKHOUSE_INSERT_NODES])
-                try:
-                    insert_idempotent(
-                        client,
-                        "operation_failures",
-                        chunk,
-                        column_names=FAILURE_COLUMNS,
-                    )
-                    written += len(chunk)
-                except Exception:
-                    log.exception(
-                        "operation_failures insert failed at offset %s", start)
-                    return written
+            insert_idempotent(
+                client,
+                "operation_failures",
+                list(rows),
+                column_names=FAILURE_COLUMNS,
+            )
+        return len(rows)
     except Exception:
         log.exception("operation_failures ClickHouse is unreachable")
-        return written
-    return written
+        return 0
