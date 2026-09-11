@@ -20,6 +20,14 @@ In ingestion and tuning, a driver is the Temporal workflow that runs one plan's 
 series. In storage and database code, a driver is a client library for ClickHouse, Manticore
 or another datastore.
 
+**Error**:
+A per-document processing failure is stored in `processing_errors`. Each row is one
+document and one task.
+
+**Failure**:
+An above-document record of why a pipeline operation or stage stopped is stored in
+`operation_failures`. Each row is one node of that operation's failure tree.
+
 **Page**:
 A documentation page is one file in the documentation area. A website route is a page in the
 frontend area. A text page is the unit of parsed text the pipeline writes, one per file per

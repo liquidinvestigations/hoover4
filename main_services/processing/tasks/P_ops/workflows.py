@@ -25,6 +25,7 @@ with workflow.unsafe.imports_passed_through():
         reindex_collection_activity, sample_dataset_progress,
         tombstone_dataset_row,
     )
+    from tasks.operation_failure_capture import capture_failure_best_effort
     from .backup import (
         begin_export, export_clickhouse, export_manticore, export_object_store,
         finish_export,
@@ -106,6 +107,15 @@ class Operation:
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=ROW_RETRY,
             )
+            if state != "cancelled":
+                await capture_failure_best_effort(
+                    exc,
+                    op_id=params.op_id,
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    stage="",
+                    task_name="Operation",
+                )
             raise
         await workflow.execute_activity(
             record_operation_state,

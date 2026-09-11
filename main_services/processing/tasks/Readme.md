@@ -87,7 +87,10 @@ that was killed, or that deliberately detached, can always find its work again, 
 row outlives Temporal's history, which is retained for a day. The workflow owns the row's
 lifecycle and its terminal write is what releases the operations lock. Runs on
 `operations-queue` and the three store queues, in the `hoover4-ops` container rather than
-in this fleet. See [P_ops/Readme.md](P_ops/Readme.md).
+in this fleet. See [P_ops/Readme.md](P_ops/Readme.md). A failed operation also writes a
+tree of worker stack traces into the global `operation_failures` table
+(`tasks/operation_failure_capture.py`). Each failing pipeline workflow writes the same
+way, so a root capture that fails still leaves the child records.
 
 ### P_agent - every AI agent turn
 

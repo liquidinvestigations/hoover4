@@ -10,6 +10,9 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxRestrictions
 
+from .operation_failure_capture import (
+    OperationFailureInterceptor, capture_operation_failure,
+)
 from .task_timing import TaskTimingInterceptor, attach_temporal_client
 
 log = logging.getLogger(__name__)
@@ -286,7 +289,7 @@ async def run_common_worker():
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
-          interceptors=[TaskTimingInterceptor()],
+          interceptors=[TaskTimingInterceptor(), OperationFailureInterceptor()],
           workflow_runner=sandboxed_runner(),
           task_queue="processing-common-queue",
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
@@ -371,6 +374,8 @@ async def run_common_worker():
             reopen_plans_for_ocr_change,
             purge_dropped_ocr_variants,
             delete_orphaned_derived_pdfs,
+
+            capture_operation_failure,
           ],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,
@@ -704,7 +709,7 @@ async def run_operations_worker():
   with concurrent.futures.ThreadPoolExecutor(max_workers=orchestration) as executor:
     workers = [Worker(
       client,
-      interceptors=[TaskTimingInterceptor()],
+      interceptors=[TaskTimingInterceptor(), OperationFailureInterceptor()],
       workflow_runner=sandboxed_runner(),
       task_queue="operations-queue",
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
@@ -713,7 +718,7 @@ async def run_operations_worker():
                   reindex_collection_activity, count_dataset_rows_activity,
                   begin_failed_file_retry, finish_failed_file_retry,
                   tombstone_dataset_row, begin_export, finish_export,
-                  begin_import, finish_import],
+                  begin_import, finish_import, capture_operation_failure],
       activity_executor=executor,
       max_concurrent_activities=orchestration,
     )]

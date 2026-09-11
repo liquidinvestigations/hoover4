@@ -1,0 +1,43 @@
+{
+  "events": [
+    {
+      "eventId": "1",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_STARTED",
+      "workflowExecutionStartedEventAttributes": {
+        "workflowType": {"name": "ExecutePlans"},
+        "workflowId": "parent-wf"
+      }
+    },
+    {
+      "eventId": "10",
+      "eventType": "EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_FAILED",
+      "childWorkflowExecutionFailedEventAttributes": {
+        "failure": {
+          "message": "Child Workflow execution failed",
+          "cause": {
+            "message": "forced parse failure for operation_failures capture",
+            "applicationFailureInfo": {"type": "RuntimeError"}
+          }
+        },
+        "namespace": "default",
+        "workflowExecution": {"workflowId": "child-wf", "runId": "child-run"},
+        "workflowType": {"name": "ParseSingleFile"},
+        "initiatedEventId": "8",
+        "startedEventId": "9",
+        "retryState": "RETRY_STATE_RETRY_POLICY_NOT_SET"
+      }
+    },
+    {
+      "eventId": "17",
+      "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_FAILED",
+      "workflowExecutionFailedEventAttributes": {
+        "failure": {
+          "message": "Child Workflow execution failed",
+          "cause": {
+            "message": "Activity task failed"
+          }
+        }
+      }
+    }
+  ]
+}

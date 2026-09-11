@@ -40,6 +40,14 @@ The **workflow** writes `running` on entry, refreshes progress while the real wo
 beneath it, and writes exactly one of `finished` or `errored` with `finished_at` set. That
 terminal write is what releases the lock, so it is on the way out of every path.
 
+When the operation errors, a capture activity reads the Temporal workflow history over
+HTTP, walks failed child workflows and failed activities, and writes one row per node
+into the global `operation_failures` table. The in-process exception chain is stored as
+well, with `source = chain`, so a history read that fails still leaves a record. Each
+failing pipeline workflow runs the same capture, so a root write that itself fails still
+leaves the child records. The capture never raises into the failing workflow. If
+ClickHouse is unreachable the write is logged and dropped.
+
 `cancelled` is the exception, and it is written by whoever requested the cancellation. A
 cancelled workflow cannot schedule further activities, so a cleanup write attempted inside
 it would be cancelled with it and the row would stay non-terminal for ever, holding the lock
