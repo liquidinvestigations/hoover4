@@ -57,6 +57,10 @@ server itself.
 | OCR | `easyocr_enabled`, `easyocr_port`, `easyocr_languages` | the accelerated OCR service |
 | credentials | `vllm_api_key_file`, `hf_token_file` | paths to files outside the repository, never values |
 
+`enabled = false` turns the GPU services off. Main services then clear each URL that points
+to the GPU tier. The CPU spaCy endpoint stays available through `ner_provider = spacy`.
+The per-service flags do not turn GPU services on.
+
 **`embeddings_dim` must match the model.** It is a stored column width, not a hint: changing
 the model without it produces vectors the store rejects or silently truncates.
 
@@ -70,6 +74,8 @@ Seventy-eight keys plus the six chat and agent cap keys. Read by `deploy.py`, th
 `ner_spacy_enabled`, `tesseract_cpu_enabled`, `ocr_pdf_enabled`. These pick between the
 accelerated tier and the CPU twins on the main side. See
 [AI services](../architecture/AI_Services.md) for why the twins live there.
+
+`ner_provider` accepts `gpu`, `spacy`, `both`, and `none`. `none` leaves `NER_URL` empty.
 
 `gpu_fallback`, `gpu_connect_timeout_ms` and `gpu_circuit_break_seconds` are the fallback
 behaviour itself, read by `main_services/processing/tasks/remote.py`: whether to retry

@@ -99,6 +99,14 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
     collection_dataset: str = params.collection_dataset
     item_hashes: list[str] = params.hashes
     plan_hash: str = params.plan_hash
+    base_url = (os.getenv("NER_URL") or "").strip().rstrip("/")
+    if not base_url:
+        log.info(
+            "%s (plan %s): NER_URL is empty (ner_provider = none or the GPU tier is off); "
+            "skipping entity extraction",
+            collection_dataset, plan_hash[:8],
+        )
+        return ExtractEntitiesResult(text_segments=0, entity_groups=0)
     nlp_model = configured_nlp_model()
     heartbeat = HeartbeatClock()
     heartbeat.beat("querying text_content")

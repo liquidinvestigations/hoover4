@@ -168,6 +168,9 @@ one stage is a rule the other can drift away from.
 
 ## Failure Policy
 
+When `NER_URL` is empty, the activity returns zero counts before it opens ClickHouse. This
+skip applies to `ner_provider = none` and to a GPU provider with the GPU tier off.
+
 NER errors are **not** swallowed. The activity fails and Temporal retries it
 (`maximum_attempts=3`, 30 min `start_to_close_timeout`); after retries are
 exhausted the workflow records one `processing_errors` row per affected hash.

@@ -559,7 +559,7 @@ def render_main_env(cfg):
     ai_host = container_reachable_host(cfg.get("ai_services", "host"))
     ner_provider = cfg.get(m, "ner_provider")
     spacy_twin = "http://hoover4-ner-spacy:8000/v1"   # CPU twin, same network
-    if ner_provider in ("gpu", "both"):
+    if ner_provider in ("gpu", "both") and _ai_tier_present(cfg):
         env["NER_URL"] = "http://%s:%s/v1" % (ai_host, cfg.get("ai_services", "ai_server_port"))
     elif ner_provider == "spacy":
         env["NER_URL"] = spacy_twin
@@ -572,7 +572,8 @@ def render_main_env(cfg):
     # url, instead of stalling. Never point the fallback at the primary.
     env["NER_URL_FALLBACK"] = (
         spacy_twin
-        if ner_provider in ("gpu", "both") and cfg.get(m, "gpu_fallback") == "true"
+        if ner_provider in ("gpu", "both") and _ai_tier_present(cfg)
+        and cfg.get(m, "gpu_fallback") == "true"
         and _ner_spacy_twin_enabled(cfg)
         else ""
     )
@@ -593,7 +594,7 @@ def render_main_env(cfg):
     )
     env["OCR_EASYOCR_URL"] = (
         "http://%s:%s/ocr" % (ai_host, cfg.get("ai_services", "easyocr_port"))
-        if cfg.get("ai_services", "easyocr_enabled") == "true"
+        if _ai_tier_present(cfg) and cfg.get("ai_services", "easyocr_enabled") == "true"
         else ""
     )
 
@@ -620,11 +621,12 @@ def render_main_env(cfg):
     # Embeddings_cpu_port is reserved but nothing serves it, so "cpu" renders empty and
     # the embed activity will fail fast naming the setting rather than hang.
     emb_provider = cfg.get(m, "embeddings_provider")
-    if emb_provider == "gpu":
+    if emb_provider == "gpu" and _ai_tier_present(cfg):
         env["EMBEDDINGS_URL"] = "http://%s:%s/v1" % (
             ai_host, cfg.get("ai_services", "ai_server_port"))
     else:
         env["EMBEDDINGS_URL"] = ""
+    # RERANK_URL follows EMBEDDINGS_URL. This keeps the two URLs in one condition.
     env["RERANK_URL"] = (
         env["EMBEDDINGS_URL"]
         if env["EMBEDDINGS_URL"] and cfg.get("ai_services", "reranker_enabled") == "true"
@@ -632,7 +634,7 @@ def render_main_env(cfg):
     )
 
     provider = cfg.active_llm_provider()
-    if provider is not None:
+    if provider is not None and (provider != "selfhosted" or _ai_tier_present(cfg)):
         env["LLM_BASE_URL"] = cfg.llm_base_url(provider)
         env["LLM_MODEL"] = cfg.llm_model(provider)
         env["LLM_PROVIDER_NAME"] = provider
@@ -1123,6 +1125,10 @@ def container_reachable_host(host):
     return host
 
 
+def _ai_tier_present(cfg):
+    return cfg.get_bool("ai_services", "enabled")
+
+
 def port_is_free(port, bind_ips):
     for ip in bind_ips:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1222,6 +1228,29 @@ def preflight_ai_enabled(cfg, side):
     if side == "ai" and not cfg.get_bool("ai_services", "enabled"):
         fail("--ai-services was requested but [ai_services] says enabled = false. "
              "the ini has this tier off")
+
+
+def preflight_ner_gpu_without_tier(cfg, side):
+    if side == "ai":
+        return
+    if cfg.get("main_services", "ner_provider") not in ("gpu", "both"):
+        return
+    if _ai_tier_present(cfg):
+        return
+    fail("[main_services] ner_provider = gpu or both but [ai_services] enabled = false. "
+         "Set ner_provider = none when entity extraction is not required, or set "
+         "[ai_services] enabled = true.")
+
+
+def preflight_llm_selfhosted_without_tier(cfg, side):
+    if side == "ai":
+        return
+    if not cfg.get_bool("ai_services", "llm_selfhosted"):
+        return
+    if _ai_tier_present(cfg):
+        return
+    fail("[ai_services] llm_selfhosted = true but [ai_services] enabled = false. "
+         "Set llm_selfhosted = false, or set [ai_services] enabled = true.")
 
 
 def preflight_compose_yaml(cfg, side):
@@ -1354,6 +1383,8 @@ def run_preflights(cfg, side, rt, starting):
     if starting:
         preflight_ports(cfg, side, rt)
     preflight_ai_enabled(cfg, side)
+    preflight_ner_gpu_without_tier(cfg, side)
+    preflight_llm_selfhosted_without_tier(cfg, side)
     preflight_ner_spacy(cfg, side)
     preflight_compose_yaml(cfg, side)
     if starting:

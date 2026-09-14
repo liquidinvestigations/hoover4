@@ -40,8 +40,8 @@
 # =============================================================================
 
 [ai_services]
-# The whole GPU tier is optional. DEFAULT OFF: with enabled = false, ./deploy
-# --ai-services refuses with a clear message, and main_services runs alone.
+# The whole GPU tier is optional. False turns the whole tier off on both sides and clears
+# the GPU URLs that main_services dials.
 enabled            = false
 
 # How main_services reaches this box (ignored on the GPU host itself). Must be an
@@ -116,7 +116,7 @@ easyocr_languages  = en
 
 [main_services]
 # ---- which side of each capability the pipeline prefers -------------------------
-ner_provider          = gpu        ; gpu | spacy | both
+ner_provider          = none       ; gpu | spacy | both | none
 
 # spaCy is the CPU twin for NER. It is OFF by default and should stay off wherever a GPU
 # NER endpoint exists: its accuracy on this corpus is poor and its output is noisy enough

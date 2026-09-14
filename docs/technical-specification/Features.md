@@ -29,7 +29,7 @@ languages.
 | `F-ingest-04` | Extract text from documents, per format, recording which extractor produced each page | `P3_parse_files/` |
 | `F-ingest-05` | Read spreadsheets and delimited text into cells, sheets and columns | `P3_parse_files/`, the table tables |
 | `F-ingest-06` | Optically recognise text in images and scanned PDFs, in configured languages, and assemble a searchable PDF | `main_services/ocr_tesseract/`, `main_services/ocr_pdf/` |
-| `F-ingest-07` | Extract named entities with a model | `P4_extract_entities/` |
+| `F-ingest-07` | Extract named entities with a selected model. `ner_provider = none` skips extraction. The GPU model is off when the GPU tier is off. | `P4_extract_entities/` |
 | `F-ingest-08` | Scan text for pattern entities (identifiers, amounts, dates and similar) with checksum validation where the format has one | `P4_extract_entities/`, `main_services/regex_entity_scanner/` |
 | `F-ingest-09` | Chunk and embed every text variant into a durable vector store | `P5_chunk_embed/` |
 | `F-ingest-10` | Index everything into shard tables sized by a planner | `P6_index_data/` |
