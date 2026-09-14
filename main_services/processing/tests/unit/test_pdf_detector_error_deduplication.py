@@ -4,11 +4,22 @@ from tasks.P3_parse_files import workflows
 from tasks.operation_failure_capture import _SKIP_WORKFLOW_TYPES
 
 
+class TemporalCauseFailure(RuntimeError):
+    """Test exception that exposes its nested failure through Temporal's ``cause``."""
+
+    def __init__(self, message, cause):
+        super().__init__(message)
+        self.cause = cause
+
+
 def test_pdf_failure_omits_the_duplicate_tika_error():
     local_error = RuntimeError("local detector failed")
     tika_error = RuntimeError("document is encrypted")
-    pdf_error = RuntimeError("PDF child workflow failed")
-    pdf_error.__cause__ = RuntimeError("qpdf --show-npages failed: invalid password")
+    pdf_error = TemporalCauseFailure(
+        "PDF child workflow failed",
+        RuntimeError("qpdf --show-npages failed: invalid password"),
+    )
+    assert pdf_error.__cause__ is None
 
     results = workflows._detector_results_for_error_capture(
         ["file", "tika"],

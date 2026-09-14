@@ -264,11 +264,15 @@ def _scan_indexed_vfs_rows(cur, vfs_table: str, collection_dataset: str) -> list
 
 
 def vfs_stale_ids(indexed: list, current_keys: set[str]) -> list[int]:
-    """Manticore row ids whose ``node_key`` is not in the current ClickHouse tree."""
+    """Manticore row ids that differ from a current deterministic ``(id, node_key)`` pair."""
+    expected_pairs = {
+        (hash_string_to_uint63(node_key), node_key)
+        for node_key in current_keys
+    }
     stale: list[int] = []
     for row in indexed:
         row_id, node_key = row[0], row[1]
-        if node_key not in current_keys:
+        if (int(row_id), node_key) not in expected_pairs:
             stale.append(int(row_id))
     return stale
 

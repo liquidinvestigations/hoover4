@@ -69,7 +69,8 @@ def _is_qpdf_page_count_failure(error: BaseException) -> bool:
         if str(current).startswith("qpdf --show-npages failed:"):
             return True
         seen.add(id(current))
-        current = current.__cause__
+        temporal_cause = getattr(current, "cause", None)
+        current = temporal_cause if isinstance(temporal_cause, BaseException) else current.__cause__
     return False
 
 

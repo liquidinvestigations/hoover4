@@ -298,9 +298,24 @@ class TestVfsReplaceSql:
 
 
 class TestVfsReconciliation:
-    def test_stale_ids_are_those_missing_from_clickhouse(self):
-        indexed = [(11, "keep"), (22, "gone"), (33, "also-gone")]
-        assert vfs_stale_ids(indexed, {"keep", "new"}) == [22, 33]
+    def test_stale_ids_include_a_removed_key(self):
+        current_key = "keep"
+        indexed = [
+            (hash_string_to_uint63(current_key), current_key),
+            (22, "gone"),
+        ]
+        assert vfs_stale_ids(indexed, {current_key}) == [22]
+
+    def test_stale_ids_keep_a_current_key_with_its_deterministic_id(self):
+        current_key = "keep"
+        indexed = [(hash_string_to_uint63(current_key), current_key)]
+        assert vfs_stale_ids(indexed, {current_key}) == []
+
+    def test_stale_ids_include_a_current_key_with_an_obsolete_id(self):
+        current_key = "keep"
+        expected_id = hash_string_to_uint63(current_key)
+        indexed = [(expected_id ^ 1, current_key)]
+        assert vfs_stale_ids(indexed, {current_key}) == [expected_id ^ 1]
 
     def test_delete_sql_is_by_id_never_dataset_wide(self):
         sql = vfs_delete_ids_sql("testdata_vfs", [22, 33])

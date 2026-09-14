@@ -88,9 +88,10 @@ for ever.
 
 `index_vfs_structure` copies ClickHouse `vfs_nodes` into `<coll>_vfs` with one multi-row
 `REPLACE INTO … VALUES (…),(…),…` per 512-node chunk. Deterministic ids make REPLACE
-idempotent, so there is no dataset-wide DELETE first. A reconciliation pass then deletes
-Manticore rows whose `node_key` is not in the current ClickHouse tree, by id. During an
-ingest the `_vfs` row count never falls to zero because of this activity.
+idempotent, so there is no dataset-wide DELETE first. A reconciliation pass deletes a
+Manticore row when its key is absent from the current ClickHouse tree. It also deletes a
+row whose id differs from its key's deterministic id. During an ingest the `_vfs` row
+count never falls to zero because of this activity.
 
 That pass reads the indexed ids a keyset page at a time, with an explicit `LIMIT` and a
 matching `OPTION max_matches`. A Manticore `SELECT` with no limit clause returns twenty
