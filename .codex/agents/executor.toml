@@ -1,7 +1,7 @@
 name = "executor"
 description = "Applies one written work package and runs its named checks. Use it when the package defines the scope and verification."
 model = "gpt-5.6-terra"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "xhigh"
 sandbox_mode = "workspace-write"
 developer_instructions = """
 Apply one written work package. Do not change its scope.
