@@ -53,6 +53,10 @@ PDF text comes from a single `pdftotext` call split on the form feed it writes a
 every page, so per-page storage costs no extra subprocesses. The label is
 `extracted_by = 'pdftotext'` (it was `'qpdf'`, which named the wrong tool).
 
+qpdf exit status 3 returns usable output with warnings. Page-count parsing accepts it and
+logs the warning with the file hash. Metadata JSON parsing accepts it. A page-count error
+records after one attempt.
+
 ## Searchable PDFs are a derived object, not a document
 
 `parse_ocr_pdf.py` produces a *file*, not rows of text: a PDF with the page images and an

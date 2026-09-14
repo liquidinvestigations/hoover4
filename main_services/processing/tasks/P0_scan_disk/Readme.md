@@ -20,6 +20,10 @@ This stage discovers datasets on disk, enumerates directories and files, and pop
 
 The workflow starts at the dataset root and recursively enumerates folders in batches of 10. Files are batched by count and total size to limit ingestion payloads. Hashing uses a single streaming pass to compute `sha3_256` (primary) plus `md5`, `sha1`, and `sha256`. Blob storage is split between ClickHouse (`blob_values`) for small files and the collection's own Garage bucket (`blobs.s3_path`, a full `s3://<bucket>/<key>`) for larger content.
 
+Folder listing uses sorted name pages under a byte budget. The cursor is the final name on a
+page, so a re-scan does not depend on filesystem directory order. The workflow lists ten
+folders in parallel and walks each folder's pages in sequence.
+
 ## A rescan detects change, and it detects deletion
 
 `vfs_files` is keyed on `(collection_dataset, container_hash, path)` (no `hash`), so a

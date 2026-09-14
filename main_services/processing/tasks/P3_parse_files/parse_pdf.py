@@ -36,6 +36,17 @@ def _run_qpdf(args: List[str]) -> subprocess.CompletedProcess:
                           timeout=_PDF_SUBPROCESS_TIMEOUT_S)
 
 
+# qpdf --help=exit-status states that 0 has no errors or warnings, 2 has errors,
+# and 3 has warnings unless --warning-exit-0 is given.
+QPDF_EXIT_OK = 0
+QPDF_EXIT_ERROR = 2
+QPDF_EXIT_WARNING = 3
+
+
+def _qpdf_succeeded(res: subprocess.CompletedProcess) -> bool:
+    return res.returncode in (QPDF_EXIT_OK, QPDF_EXIT_WARNING)
+
+
 #: qpdf's own, unambiguous statement that the bytes it read are not a PDF at all. The
 #: routing that calls into this module fires whenever any one detector's guess includes
 #: "pdf", even when the other detectors disagree, so this is the expected shape for a
@@ -43,26 +54,37 @@ def _run_qpdf(args: List[str]) -> subprocess.CompletedProcess:
 _NOT_A_PDF_MARKER = b"can't find PDF header"
 
 
-def _qpdf_show_npages(path: str) -> int:
+def _raise_qpdf_show_npages_error(res: subprocess.CompletedProcess) -> None:
+    from temporalio.exceptions import ApplicationError
+
+    if _NOT_A_PDF_MARKER in (res.stderr or b""):
+        raise ApplicationError(
+            f"qpdf --show-npages failed: {res.stderr[:200]} {res.stdout[:200]}",
+            non_retryable=True,
+        )
+    raise ApplicationError(
+        f"qpdf --show-npages failed: {res.stderr[:200]} {res.stdout[:200]}",
+        non_retryable=True,
+    )
+
+
+def _qpdf_show_npages(path: str, file_hash: str = "") -> int:
     res = _run_qpdf(["--show-npages", path])
-    if res.returncode != 0:
-        if _NOT_A_PDF_MARKER in (res.stderr or b""):
-            from temporalio.exceptions import ApplicationError
-            raise ApplicationError(
-                f"qpdf --show-npages failed: {res.stderr[:200]} {res.stdout[:200]}",
-                non_retryable=True,
-            )
-        raise RuntimeError(f"qpdf --show-npages failed: {res.stderr[:200]} {res.stdout[:200]}")
+    if not _qpdf_succeeded(res):
+        _raise_qpdf_show_npages_error(res)
     out = (res.stdout or b"").decode("utf-8", errors="ignore").strip()
     try:
-        return int(out)
+        page_count = int(out)
     except Exception:
-        raise RuntimeError(f"Invalid page count from qpdf: '{out}'")
+        _raise_qpdf_show_npages_error(res)
+    if res.returncode == QPDF_EXIT_WARNING:
+        log.warning("[P3] qpdf warning for file hash %s: %s", file_hash, res.stderr)
+    return page_count
 
 
 def _qpdf_json(path: str) -> Dict[str, Any]:
     res = _run_qpdf(["--json", path])
-    if res.returncode != 0:
+    if not _qpdf_succeeded(res):
         # Some qpdf builds require explicit --json-output
         raise RuntimeError(f"qpdf --json failed: {res.stderr[:200]} {res.stdout[:200]}")
     txt = (res.stdout or b"").decode("utf-8", errors="ignore")
@@ -188,7 +210,7 @@ def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
 
     # Two blocking qpdf calls with no loop of their own -> pump.
     with heartbeat_pump(f"qpdf meta {pdf_hash[:8]}"):
-        page_count = _qpdf_show_npages(file_path)
+        page_count = _qpdf_show_npages(file_path, pdf_hash)
         meta = {}
         try:
             meta = _qpdf_json(file_path)
@@ -382,7 +404,7 @@ def pdf_large_split_to_chunks(params: PdfLargeParams) -> Dict[str, Any]:
 
     # Compute pages per chunk
     if page_count <= 0:
-        page_count = _qpdf_show_npages(file_path)
+        page_count = _qpdf_show_npages(file_path, pdf_hash)
     pages_per_chunk = _compute_pages_per_chunk(size_bytes, page_count)
 
     # Split into ranges

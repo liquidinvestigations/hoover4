@@ -38,14 +38,14 @@ def test_qpdf_not_a_pdf_header_is_non_retryable(monkeypatch):
     assert excinfo.value.non_retryable is True
 
 
-def test_qpdf_other_failure_stays_retryable(monkeypatch):
+def test_qpdf_other_failure_is_non_retryable(monkeypatch):
     monkeypatch.setattr(
         parse_pdf.subprocess, "run",
         lambda *a, **k: _completed(1, stderr=b"some other qpdf error\n"),
     )
-    with pytest.raises(RuntimeError) as excinfo:
+    with pytest.raises(ApplicationError) as excinfo:
         parse_pdf._qpdf_show_npages("/does/not/matter")
-    assert not isinstance(excinfo.value, ApplicationError)
+    assert excinfo.value.non_retryable is True
 
 
 def test_7z_cannot_open_as_archive_is_non_retryable(monkeypatch, tmp_path):

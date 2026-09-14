@@ -138,23 +138,41 @@ class HandleFolders:
         folder_paths: List[str] = params.folder_paths  # max 10
         log.info("Handling %s folders for %s", len(folder_paths), params.collection_dataset)
 
-        # List each folder in parallel
-        list_futs = []
-        for folder_rel in folder_paths:
-            list_futs.append(
-                workflow.execute_activity(
+        async def list_folder_pages(folder_rel: str) -> Dict[str, List[Dict[str, Any]]]:
+            dirs: List[Dict[str, Any]] = []
+            files: List[Dict[str, Any]] = []
+            after_name = ""
+            while True:
+                result = await workflow.execute_activity(
                     list_disk_folder,
                     ListDiskFolderParams(
                         collectionname=params.collectionname,
                         collection_dataset=params.collection_dataset,
                         dataset_path=params.dataset_path,
                         folder_path=folder_rel,
+                        after_name=after_name,
                     ),
                     start_to_close_timeout=timedelta(minutes=50),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
-            )
+                dirs.extend(result.get("dirs", []))
+                files.extend(result.get("files", []))
+                next_after_name = result.get("next_after_name", "")
+                if not next_after_name:
+                    return {"dirs": dirs, "files": files}
+                if next_after_name <= after_name:
+                    from temporalio.exceptions import ApplicationError
+                    raise ApplicationError(
+                        f"list_disk_folder returned a non-advancing cursor for {folder_rel}",
+                        non_retryable=True,
+                    )
+                after_name = next_after_name
+
+        # List each folder in parallel while each listing walks its pages in sequence.
+        list_futs = []
+        for folder_rel in folder_paths:
+            list_futs.append(list_folder_pages(folder_rel))
 
         listings = await asyncio.gather(*list_futs)
 

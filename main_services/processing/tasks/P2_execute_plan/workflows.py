@@ -14,11 +14,6 @@ from tasks.workflow_window import run_with_window
 
 log = logging.getLogger(__name__)
 
-# How many per-item results one `record_processing_errors` activity carries. The rows
-# are small and mostly absent; the point of the chunk is to keep a single insert off a
-# plan-sized list, not to bound anything the workflow does.
-ERROR_REPORT_CHUNK = 500
-
 # Items one `ProcessItemsBatched` run covers before continuing as new. Each item is a
 # child workflow, and each child workflow is a handful of events on this execution's
 # history; the 51,200-event cap is a hard failure of the whole plan, not a slowdown.
@@ -609,19 +604,16 @@ class ProcessItemsBatched:
 
         results = await run_with_window([_factory(it) for it in this_run], CONCURRENCY)
 
-        # Error rows are written once for the whole run rather than once per batch:
-        # the activity that writes them is itself a Temporal execution, and one per 32
-        # files is a cost the window no longer has any reason to pay.
-        for i in range(0, len(results), ERROR_REPORT_CHUNK):
-            chunk = results[i:i + ERROR_REPORT_CHUNK]
-            await record_errors_from_results(
-                chunk,
-                task_ids=["P3_ParseSingleFile"] * len(chunk),
-                starts=[started_at] * len(chunk),
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                item_hashes=item_hashes[i:i + ERROR_REPORT_CHUNK],
-            )
+        # This caller supplies the complete result list once. The helper writes
+        # byte-bounded activity batches in sequence.
+        await record_errors_from_results(
+            results,
+            task_ids=["P3_ParseSingleFile"] * len(results),
+            starts=[started_at] * len(results),
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            item_hashes=item_hashes,
+        )
 
         if remaining:
             workflow.continue_as_new(ProcessItemsBatchedParams(
@@ -632,5 +624,3 @@ class ProcessItemsBatched:
                 items=remaining,
             ))
         return f"processed {len(results)} items"
-
-

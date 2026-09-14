@@ -6,6 +6,7 @@ import logging
 import json
 from dataclasses import dataclass
 from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
+from tasks.operation_failure_capture import TEMPORAL_BLOB_LIMIT_BYTES
 
 
 log = logging.getLogger(__name__)
@@ -19,6 +20,12 @@ log = logging.getLogger(__name__)
 #: plausible unit of retrieval, and for genuinely paged formats the page number is used
 #: directly instead (see :func:`insert_text_pages`).
 DEFAULT_TEXT_SEGMENT_BYTES = 256 * 1024
+
+
+# Half the limit leaves headroom for the Temporal envelope and the six fields outside
+# `error_logs`.
+ERROR_PAYLOAD_BUDGET_BYTES = TEMPORAL_BLOB_LIMIT_BYTES // 2
+ERROR_PAYLOAD_TRUNCATION_MARKER = "\n[error log truncated for the Temporal payload limit]"
 
 
 def _split_utf8_bytes_to_chunks(data: bytes, max_bytes: int) -> List[str]:
@@ -337,12 +344,47 @@ async def record_errors_from_results(
         from tasks.P2_execute_plan.activities import record_processing_errors as _record_processing_errors
         from tasks.P2_execute_plan.activities import RecordProcessingErrorsParams as _RecordProcessingErrorsParams
 
-    await _wf.execute_activity(
-        _record_processing_errors,
-        _RecordProcessingErrorsParams(collectionname=collectionname, errors=error_rows),
-        start_to_close_timeout=_td(seconds=start_to_close_timeout_seconds),
-        heartbeat_timeout=HEARTBEAT_TIMEOUT,
-        retry_policy=_RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-    )
+    def row_size_bytes(row: Dict[str, Any]) -> int:
+        return (
+            len(str(row.get("error_logs") or "").encode("utf-8"))
+            + len(str(row.get("collection_dataset") or "").encode("utf-8"))
+            + len(str(row.get("hash") or "").encode("utf-8"))
+            + len(str(row.get("task_name") or "").encode("utf-8"))
+            + len(str(row.get("workflow_run_id") or "").encode("utf-8"))
+            + 128
+        )
+
+    def truncate_error_logs(row: Dict[str, Any]) -> None:
+        fixed_size = row_size_bytes({**row, "error_logs": ""})
+        allowed_log_bytes = max(0, ERROR_PAYLOAD_BUDGET_BYTES - fixed_size)
+        error_log = str(row.get("error_logs") or "")
+        if len(error_log.encode("utf-8")) <= allowed_log_bytes:
+            return
+        marker_bytes = ERROR_PAYLOAD_TRUNCATION_MARKER.encode("utf-8")
+        content_bytes = error_log.encode("utf-8")[:max(0, allowed_log_bytes - len(marker_bytes))]
+        row["error_logs"] = content_bytes.decode("utf-8", errors="ignore") + ERROR_PAYLOAD_TRUNCATION_MARKER
+
+    async def record_batch(rows: List[Dict[str, Any]]) -> None:
+        await _wf.execute_activity(
+            _record_processing_errors,
+            _RecordProcessingErrorsParams(collectionname=collectionname, errors=rows),
+            start_to_close_timeout=_td(seconds=start_to_close_timeout_seconds),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=_RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+        )
+
+    batch: List[Dict[str, Any]] = []
+    batch_size_bytes = 0
+    for error_row in error_rows:
+        truncate_error_logs(error_row)
+        error_row_size_bytes = row_size_bytes(error_row)
+        if batch and batch_size_bytes + error_row_size_bytes > ERROR_PAYLOAD_BUDGET_BYTES:
+            await record_batch(batch)
+            batch = []
+            batch_size_bytes = 0
+        batch.append(error_row)
+        batch_size_bytes += error_row_size_bytes
+    if batch:
+        await record_batch(batch)
 
     return len(error_rows)

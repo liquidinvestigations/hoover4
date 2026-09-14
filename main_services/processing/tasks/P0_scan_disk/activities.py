@@ -14,12 +14,17 @@ log = logging.getLogger(__name__)
 
 from database.clickhouse import get_collection_client
 from database.s3 import collection_bucket, get_s3_client, ensure_bucket
-from tasks.heartbeat import with_heartbeat
+from tasks.heartbeat import HEARTBEAT_INTERVAL, HeartbeatClock, with_heartbeat
+from tasks.operation_failure_capture import TEMPORAL_BLOB_LIMIT_BYTES
 
 
 SMALL_BLOB_THRESHOLD_BYTES = 600 * 1024
 FILE_BATCH_MAX_COUNT = 100
 FILE_BATCH_MAX_BYTES = 50 * 1024 * 1024
+
+# One quarter leaves headroom for the Temporal envelope, JSON punctuation, and paths
+# longer than the paths in the corpus.
+LISTING_PAGE_BUDGET_BYTES = TEMPORAL_BLOB_LIMIT_BYTES // 4
 
 
 def _compute_hashes_streaming(file_path: str) -> Tuple[Dict[str, str], int]:
@@ -87,21 +92,33 @@ class ListDiskFolderParams:
     collection_dataset: str
     dataset_path: str
     folder_path: str
+    after_name: str = ""
 
 
 @activity.defn
 @with_heartbeat
-def list_disk_folder(params: ListDiskFolderParams) -> Dict[str, List[Dict[str, Any]]]:
+def list_disk_folder(params: ListDiskFolderParams) -> Dict[str, Any]:
     """Activity that lists a folder and returns dir and file metadata."""
     abs_dir = _rel_to_abs(params.dataset_path, params.folder_path)
     if not os.path.isdir(abs_dir):
-        return {"dirs": [], "files": []}
+        return {"dirs": [], "files": [], "next_after_name": ""}
 
     dirs: List[Dict[str, Any]] = []
     files: List[Dict[str, Any]] = []
+    page_cost_bytes = 0
+    last_name = ""
+    has_more = False
+    heartbeat = HeartbeatClock(interval_seconds=HEARTBEAT_INTERVAL.total_seconds())
 
     with os.scandir(abs_dir) as it:
-        for entry in it:
+        entries = sorted(((entry.name, entry) for entry in it), key=lambda item: item[0])
+        for name, entry in entries:
+            if name <= params.after_name:
+                continue
+            heartbeat.beat(f"list disk folder {params.folder_path}")
+            # The estimate includes the path, three integers, and JSON punctuation. The
+            # page budget leaves headroom for data the estimate does not count.
+            entry_cost_bytes = len(entry.path.encode("utf-8", errors="surrogatepass")) + 64
             try:
                 stat = entry.stat(follow_symlinks=False)
             except FileNotFoundError:
@@ -109,25 +126,44 @@ def list_disk_folder(params: ListDiskFolderParams) -> Dict[str, List[Dict[str, A
             # if surrogate is contained in path, skip the path.
 
             if re.search(r'[\uD800-\uDFFF]', entry.path):
-                log.warning("Found path with non-utf8 character: '%s' ", entry.path, "  -- skipping path from processing!")
+                log.warning(
+                    "Found path with non-utf8 character: '%s' -- skipping path from processing!",
+                    entry.path,
+                )
                 continue
-            
+
             rel_child = os.path.relpath(entry.path, params.dataset_path).replace(os.sep, "/")
             if entry.is_dir(follow_symlinks=False):
-                dirs.append({
+                result = {
                     "path": "/" if rel_child == "." else ("/" + rel_child if not rel_child.startswith("/") else rel_child),
                     "mtime": int(stat.st_mtime),
                     "ctime": int(getattr(stat, "st_ctime", stat.st_mtime)),
-                })
+                }
             elif entry.is_file(follow_symlinks=False):
-                files.append({
+                result = {
                     "path": "/" + rel_child if not rel_child.startswith("/") else rel_child,
                     "size": int(stat.st_size),
                     "mtime": int(stat.st_mtime),
                     "ctime": int(getattr(stat, "st_ctime", stat.st_mtime)),
-                })
+                }
+            else:
+                continue
 
-    return {"dirs": dirs, "files": files}
+            if last_name and page_cost_bytes + entry_cost_bytes > LISTING_PAGE_BUDGET_BYTES:
+                has_more = True
+                break
+            if entry.is_dir(follow_symlinks=False):
+                dirs.append(result)
+            else:
+                files.append(result)
+            page_cost_bytes += entry_cost_bytes
+            last_name = name
+
+    return {
+        "dirs": dirs,
+        "files": files,
+        "next_after_name": last_name if has_more else "",
+    }
 
 
 @dataclass
