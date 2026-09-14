@@ -89,8 +89,9 @@ lifecycle and its terminal write is what releases the operations lock. Runs on
 `operations-queue` and the three store queues, in the `hoover4-ops` container rather than
 in this fleet. See [P_ops/Readme.md](P_ops/Readme.md). A failed operation also writes a
 tree of worker stack traces into the global `operation_failures` table
-(`tasks/operation_failure_capture.py`). Each failing pipeline workflow writes the same
-way, so a root capture that fails still leaves the child records.
+(`tasks/operation_failure_capture.py`). A pipeline workflow that fails an operation writes
+the same way. The PDF child workflow reports an unreadable PDF to `ParseSingleFile`
+through `processing_errors` and does not write `operation_failures`.
 
 ### P_agent - every AI agent turn
 

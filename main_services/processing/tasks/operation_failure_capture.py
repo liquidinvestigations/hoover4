@@ -65,6 +65,7 @@ _SKIP_WORKFLOW_TYPES = frozenset({
     "SweepChatArtifacts",
     "ChatTurn",
     "ResearchTask",
+    "PdfProcessingAndScan",
 })
 
 

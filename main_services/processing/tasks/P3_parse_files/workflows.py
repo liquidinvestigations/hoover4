@@ -41,6 +41,38 @@ with workflow.unsafe.imports_passed_through():
     from tasks.visibility import dataset_search_attributes
 
 
+def _detector_results_for_error_capture(
+    detector_names: List[str],
+    detector_results: List[Any],
+    parser_task_ids: List[str],
+    parser_results: List[Any],
+) -> List[Any]:
+    """Return detector failures after a qpdf page-count failure."""
+    qpdf_page_count_failed = any(
+        task_id == "pdf_process"
+        and isinstance(result, Exception)
+        and _is_qpdf_page_count_failure(result)
+        for task_id, result in zip(parser_task_ids, parser_results)
+    )
+    if not qpdf_page_count_failed:
+        return detector_results
+    # qpdf is authoritative for an unreadable PDF. Tika reads the same bytes and its
+    # retry error would otherwise write a second Error row for the document.
+    return [None if name == "tika" else result for name, result in zip(detector_names, detector_results)]
+
+
+def _is_qpdf_page_count_failure(error: BaseException) -> bool:
+    """Whether an exception chain contains the qpdf page-count failure."""
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        if str(current).startswith("qpdf --show-npages failed:"):
+            return True
+        seen.add(id(current))
+        current = current.__cause__
+    return False
+
+
 @dataclass
 class ParseSingleFileParams:
     collectionname: str
@@ -140,25 +172,6 @@ class ParseSingleFile:
                 for name in LOCAL_DETECTORS
             ]
         detector_results.append(tika_res)
-        try:
-            await record_errors_from_results(
-                detector_results,
-                task_ids=[f"detector_error_{name}" for name in detector_names],
-                starts=[detectors_started_at] * len(detector_results),
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                item_hashes=[params.item_hash] * len(detector_results),
-                default_task_name="detector_error_unknown",
-            )
-        except Exception:
-            # Best-effort: a detector that failed must not also fail the parse. But never
-            # silently -- this call site lost every detector error for months by swallowing
-            # a param-shape TypeError here.
-            log.exception(
-                "[P3] failed to record detector errors for %s/%s",
-                params.collection_dataset, params.item_hash,
-            )
-
         combined = _combine_detector_results(detector_results)
         coarse_types: List[str] = combined["coarse_types"]
         mime_types: List[str] = combined["mime_types"]
@@ -397,6 +410,27 @@ class ParseSingleFile:
 
         # Wait for all and capture exceptions, then record via common helper
         results = await asyncio.gather(*futs, return_exceptions=True)
+        detector_results_for_error_capture = _detector_results_for_error_capture(
+            detector_names, detector_results, task_ids, results,
+        )
+        try:
+            await record_errors_from_results(
+                detector_results_for_error_capture,
+                task_ids=[f"detector_error_{name}" for name in detector_names],
+                starts=[detectors_started_at] * len(detector_results),
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                item_hashes=[params.item_hash] * len(detector_results),
+                default_task_name="detector_error_unknown",
+            )
+        except Exception:
+            # Best-effort: a detector that failed must not also fail the parse. But never
+            # silently -- this call site lost every detector error for months by swallowing
+            # a param-shape TypeError here.
+            log.exception(
+                "[P3] failed to record detector errors for %s/%s",
+                params.collection_dataset, params.item_hash,
+            )
         await record_errors_from_results(
             results,
             task_ids=task_ids,
@@ -407,5 +441,3 @@ class ParseSingleFile:
             start_to_close_timeout_seconds=proc_secs,
         )
         return "ok"
-
-
