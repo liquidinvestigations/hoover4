@@ -238,6 +238,10 @@ async def run_common_worker():
         reconcile_selected_errors,
         select_historical_errors,
     )
+    from .P_admin.collection_backfill import (
+        clear_unattributed_entities,
+        list_finished_plans,
+    )
     from .P_admin.ocr_languages import (
         begin_ocr_language_job,
         delete_orphaned_derived_pdfs,
@@ -380,6 +384,8 @@ async def run_common_worker():
             delete_orphaned_derived_pdfs,
             select_historical_errors,
             reconcile_selected_errors,
+            clear_unattributed_entities,
+            list_finished_plans,
 
             capture_operation_failure,
           ],
@@ -691,9 +697,8 @@ async def run_operations_worker():
   needs.
   """
   from .P_ops.activities import (
-      begin_failed_file_retry, count_dataset_rows_activity, finish_failed_file_retry,
-      record_operation_state, reindex_collection_activity, sample_dataset_progress,
-      tombstone_dataset_row,
+      count_dataset_rows_activity, record_operation_state, reindex_collection_activity,
+      sample_dataset_progress, tombstone_dataset_row,
   )
   from .P_ops.backup import (
       begin_export, export_clickhouse, export_manticore, export_object_store,
@@ -722,7 +727,6 @@ async def run_operations_worker():
       workflows=[Operation],
       activities=[record_operation_state, sample_dataset_progress,
                   reindex_collection_activity, count_dataset_rows_activity,
-                  begin_failed_file_retry, finish_failed_file_retry,
                   tombstone_dataset_row, begin_export, finish_export,
                   begin_import, finish_import, capture_operation_failure],
       activity_executor=executor,

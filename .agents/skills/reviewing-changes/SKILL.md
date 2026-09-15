@@ -174,3 +174,4 @@ Three rules make it worth the second reading.
 
 - `reference/checklist.md`, the same list as a run-through, with the command that settles
   each item.
+- `scripts/check-operation-kind-mirror.py`, compares the Python and Rust operation registries.

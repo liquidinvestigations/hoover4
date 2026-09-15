@@ -284,7 +284,7 @@ def operations_rerun(op_id: str, wait: bool):
     A new id and a new row, never a resumption: the original run's record is what the
     log is for, and overwriting it would hide the attempt that made a re-run necessary.
     """
-    import json
+    from database.operation_inputs import MissingOperationInput, project_inputs
     from database.operations import OperationLocked, get_operation
     from tasks.P_ops.cli import submit_operation, tail_operation, where_to_look
 
@@ -292,10 +292,10 @@ def operations_rerun(op_id: str, wait: bool):
     if row is None:
         raise click.ClickException(f"No operation with id {op_id}.")
     try:
-        detail = json.loads(row["detail"] or "{}")
-    except ValueError:
-        detail = {}
-    try:
+        detail = project_inputs(
+            row["kind"], row["collectionname"], row["collection_dataset"],
+            row["detail"],
+        )
         new_id = submit_operation(
             row["kind"], collectionname=row["collectionname"],
             collection_dataset=row["collection_dataset"],
@@ -304,6 +304,8 @@ def operations_rerun(op_id: str, wait: bool):
         )
     except OperationLocked as e:
         raise click.ClickException(str(e))
+    except MissingOperationInput as e:
+        raise click.ClickException(f"cannot re-run {op_id}: {e}")
     click.echo(f"operation {new_id}")
     if not wait:
         click.echo(where_to_look(new_id))
@@ -662,31 +664,10 @@ def purge_dataset(collectionname: str, collection_dataset: str, apply: bool, all
 @click.option("--apply/--dry-run", default=False, show_default=True,
               help="--dry-run (the default) only reports what failed and how it would be retried.")
 def retry_failed_files(collectionname: str, collection_dataset: str, task_name: str, apply: bool):
-    """Re-run one failed stage for the file hashes recorded in `processing_errors`.
+    """Select historical Error rows, execute their plans, and reconcile the result.
 
-    A plan is marked finished when its stages have RUN, not when every document
-    succeeded, a stage that records per-document errors without failing the plan (P4
-    entity extraction is the common case) still lets the plan finish. `execute-plans` is
-    therefore a no-op for exactly those failures, and this is the way back: the failed
-    hashes are re-run through the stage that failed them, with no re-ingest and no new
-    dataset name.
-
-    What re-runs depends on the task, and the dry run says which before anything
-    happens: NER failures clear the failed hashes' watermarks and re-run P4 + P6 for
-    their plans; index failures re-run P6 alone; embedding failures re-run P5 + P6;
-    parse failures have no per-file entry point and reopen the whole plan, which
-    re-processes its other documents too.
-
-    The `processing_errors` rows are cleared only after the re-run has finished and the
-    documents have a watermark again. A document that fails again keeps exactly one row.
-    The one this run wrote, replacing the one it started from. The count is what the file
-    browser and the admin processing page show, so appending instead would double the
-    failures a visitor sees, and again on every further retry.
-
-    The dry run is a local read-only report. `--apply` dispatches a `retry_failed_files`
-    operation and follows it, so the retry takes the dataset's lock, leaves a row saying
-    what was retried and how it ended, and outlives this terminal: Ctrl-C detaches from
-    the watching and stops nothing.
+    The dry run reads Error groups. `--apply` dispatches one operation for each selected
+    dataset. The selector clears stage state and reopens selected plans before execution.
     """
     from database.clickhouse import validate_collectionname
     from database.operations import OperationLocked
@@ -707,10 +688,10 @@ def retry_failed_files(collectionname: str, collection_dataset: str, task_name: 
         print(f"{collectionname}: no recorded failures for that selection")
         return
 
-    print(f"{'dataset':28s} {'task':28s} {'errors':>7s} {'docs':>7s}  retry     last failure")
+    print(f"{'dataset':28s} {'task':28s} {'errors':>7s} {'docs':>7s}  last failure")
     for g in groups:
         print(f"{g.collection_dataset:28s} {g.task_name:28s} {g.errors:7d} {g.documents:7d}  "
-              f"{g.retry_kind:8s}  {g.last_seen}")
+              f"{g.last_seen}")
 
     if not apply:
         print("dry run; pass --task <name> --apply to retry one of these")
@@ -722,26 +703,20 @@ def retry_failed_files(collectionname: str, collection_dataset: str, task_name: 
             "to avoid"
         )
     datasets = sorted({g.collection_dataset for g in groups})
-    if len(datasets) > 1 and not collection_dataset:
-        raise click.ClickException(
-            f"--apply needs --dataset: {task_name} failed in {len(datasets)} datasets "
-            f"({', '.join(datasets)})"
-        )
-    collection_dataset = datasets[0]
-
-    # Which documents to retry, what to clear before the re-run and which error rows may
-    # be cleared after it are all decided inside the operation, against the corpus as it
-    # is when the retry starts rather than as it was when this command was typed.
-    try:
-        op_id = submit_operation("retry_failed_files", collectionname=collectionname,
-                                 collection_dataset=collection_dataset,
-                                 detail={"task_name": task_name})
-    except OperationLocked as e:
-        raise click.ClickException(str(e))
-    click.echo(f"operation {op_id}")
-    state = tail_operation(op_id)
-    if state == "errored":
-        raise click.ClickException(f"{op_id} failed.")
+    for selected_dataset in datasets:
+        try:
+            op_id = submit_operation(
+                "retry_failed_files",
+                collectionname=collectionname,
+                collection_dataset=selected_dataset,
+                detail={"task_name": task_name},
+            )
+        except OperationLocked as e:
+            raise click.ClickException(str(e))
+        click.echo(f"operation {op_id}")
+        state = tail_operation(op_id)
+        if state == "errored":
+            raise click.ClickException(f"{op_id} failed.")
 
 
 @cli.command(name="purge-unattributed-entities")
@@ -749,25 +724,14 @@ def retry_failed_files(collectionname: str, collection_dataset: str, task_name: 
 @click.option("--apply/--dry-run", default=False, show_default=True,
               help="--dry-run (the default) only reports what would change.")
 def purge_unattributed_entities(collectionname: str, apply: bool):
-    """Clear `entity_hit` rows with an empty `nlp_model`, re-running NER for their pages.
+    """Clear unattributed entity rows through a collection operation.
 
-    These are rows written before `nlp_model` existed. `nlp_model` is part of the table's
-    ORDER BY (deliberately, so two NER providers can coexist), which means a later run
-    under a real provider name **adds** rows rather than replacing them: the unattributed
-    set is immortal, and the admin UI renders it as a phantom third provider whose entities
-    nothing can be filtered by.
-
-    Deleting them alone is not safe in general, and the live stack proved it: one
-    collection's entire entity set was unattributed, so a bare DELETE would have removed
-    every entity it had. So this also clears the `nlp_processed` watermark for the affected
-    pages, which is what makes P4 extract them again. The watermark is the only reason it
-    would skip a page it has already seen.
-
-    Order matters: watermarks first, then the rows, then the re-run. A crash between the
-    two deletes leaves pages that will be re-extracted, which is the harmless
-    direction.
+    The dry run counts rows. `--apply` deletes the rows, then re-runs entity extraction
+    and indexing for every finished plan in the collection.
     """
     from database.clickhouse import get_collection_client, validate_collectionname
+    from database.operations import OperationLocked
+    from tasks.P_ops.cli import submit_operation, tail_operation
 
     try:
         validate_collectionname(collectionname)
@@ -785,153 +749,50 @@ def purge_unattributed_entities(collectionname: str, apply: bool):
         ).result_rows
         orphan_pages = int(pages[0][0]) if pages else 0
 
-    if not orphan_rows:
+    if orphan_rows:
+        print(f"{collectionname}: {orphan_rows} unattributed entity_hit row(s) "
+              f"over {orphan_pages} page(s)")
+    else:
         print(f"{collectionname}: no unattributed entity_hit rows")
-        return
-
-    print(f"{collectionname}: {orphan_rows} unattributed entity_hit row(s) "
-          f"over {orphan_pages} page(s)")
     if not apply:
-        print("dry run; pass --apply to delete them and re-run NER for those pages")
+        print("dry run; pass --apply to submit the collection operation")
         return
-
-    with get_collection_client(collectionname) as client:
-        # `ALTER TABLE ... DELETE` is a mutation: asynchronous by default, and the next
-        # step depends on it having landed. `mutations_sync=2` waits for every replica.
-        settings = {"mutations_sync": 2}
-        client.command("""
-            ALTER TABLE nlp_processed DELETE WHERE (file_hash, extracted_by, page_id) IN (
-                SELECT file_hash, extracted_by, page_id FROM entity_hit FINAL
-                WHERE nlp_model = ''
-            )
-        """, settings=settings)
-        client.command(
-            "ALTER TABLE entity_hit DELETE WHERE nlp_model = ''", settings=settings
+    try:
+        op_id = submit_operation(
+            "purge_unattributed_entities", collectionname=collectionname
         )
-        plans = client.query(
-            "SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL "
-            "ORDER BY collection_dataset, plan_hash"
-        ).result_rows
-
-    print(f"deleted; re-running NER + index for {len(plans)} finished plan(s)")
-
-    async def _run():
-        from temporalio.client import Client as TemporalClient
-        import temporalio.common
-        from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan
-        from tasks.P4_extract_entities.params import ExtractEntitiesForPlanParams
-        from tasks.P6_index_data.workflows import IndexDatasetPlan
-        from tasks.P6_index_data.params import IndexDatasetPlanParams
-        from tasks.visibility import dataset_search_attributes
-
-        client = await TemporalClient.connect("temporal:7233")
-        for collection_dataset, plan_hash in plans:
-            # P4 then P6: the index copies the entity rows P4 writes, and the Manticore
-            # `ner` term dictionary is built from them.
-            handle = await client.start_workflow(
-                ExtractEntitiesForPlan.run,
-                ExtractEntitiesForPlanParams(
-                    collectionname=collectionname,
-                    collection_dataset=collection_dataset,
-                    plan_hash=plan_hash,
-                ),
-                id=f"reattribute-ner-{collection_dataset}-{plan_hash}",
-                task_queue="processing-common-queue",
-                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
-                search_attributes=dataset_search_attributes(collection_dataset),
-            )
-            log.info("NER re-run: %s plan %s", collection_dataset, plan_hash[:8])
-            await handle.result()
-            handle = await client.start_workflow(
-                IndexDatasetPlan.run,
-                IndexDatasetPlanParams(
-                    collectionname=collectionname,
-                    collection_dataset=collection_dataset,
-                    plan_hash=plan_hash,
-                ),
-                id=f"reattribute-index-{collection_dataset}-{plan_hash}",
-                task_queue="processing-common-queue",
-                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
-                search_attributes=dataset_search_attributes(collection_dataset),
-            )
-            log.info("re-index: %s plan %s", collection_dataset, plan_hash[:8])
-            await handle.result()
-
-    asyncio.run(_run())
-    print(f"purge-unattributed-entities of {collectionname}: done")
+    except OperationLocked as e:
+        raise click.ClickException(str(e))
+    click.echo(f"operation {op_id}")
+    state = tail_operation(op_id)
+    if state == "errored":
+        raise click.ClickException(f"{op_id} failed.")
 
 
 @cli.command(name="backfill-vectors")
 @click.argument("collectionname", type=str)
 def backfill_vectors(collectionname: str):
-    """Run chunk+embed (P5) and re-index (P6) every finished plan of a collection.
+    """Backfill vectors and indexing through a collection operation.
 
-    The backfill path for data ingested before P5 existed: the normal pipeline runs
-    ChunkEmbedForPlan inside ExecuteSinglePlan, but a plan that finished earlier has
-    no chunks or vectors. Both stages are idempotent (left-anti join on the vector
-    key; REPLACE INTO with deterministic row ids), so re-running over already-embedded
-    plans costs a scan, not a re-embed.
-
-    Blocks until every plan's two workflows have completed. ClickHouse keeps the
-    vectors, so this never drops anything; use `reindex-collection` instead when the
-    Manticore tables themselves must be rebuilt (lost volume, knn_dims change).
+    The operation records every finished plan, then runs embedding and indexing for each.
     """
-    from database.clickhouse import get_collection_client, validate_collectionname
+    from database.clickhouse import validate_collectionname
+    from database.operations import OperationLocked
+    from tasks.P_ops.cli import submit_operation, tail_operation
 
     try:
         validate_collectionname(collectionname)
     except ValueError as e:
         raise click.ClickException(str(e))
 
-    with get_collection_client(collectionname) as client:
-        plans = client.query(
-            "SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL "
-            "ORDER BY collection_dataset, plan_hash"
-        ).result_rows
-
-    if not plans:
-        log.warning("No finished plans found for %s - nothing to backfill", collectionname)
-        return
-
-    async def _run():
-        from temporalio.client import Client as TemporalClient
-        import temporalio.common
-        from tasks.P5_chunk_embed.workflows import ChunkEmbedForPlan
-        from tasks.P5_chunk_embed.params import ChunkEmbedForPlanParams
-        from tasks.P6_index_data.workflows import IndexDatasetPlan
-        from tasks.P6_index_data.params import IndexDatasetPlanParams
-        from tasks.visibility import dataset_search_attributes
-
-        client = await TemporalClient.connect("temporal:7233")
-        for collection_dataset, plan_hash in plans:
-            # P5 before P6: the vector indexer copies the rows P5 writes.
-            handle = await client.start_workflow(
-                ChunkEmbedForPlan.run,
-                ChunkEmbedForPlanParams(collectionname=collectionname, collection_dataset=collection_dataset, plan_hash=plan_hash),
-                id=f"backfill-embed-{collection_dataset}-{plan_hash}",
-                task_queue="processing-common-queue",
-                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
-                search_attributes=dataset_search_attributes(collection_dataset),
-            )
-            log.info("chunk+embed running: %s plan %s", collection_dataset, plan_hash[:8])
-            await handle.result()
-            handle = await client.start_workflow(
-                IndexDatasetPlan.run,
-                IndexDatasetPlanParams(collectionname=collectionname, collection_dataset=collection_dataset, plan_hash=plan_hash),
-                id=f"backfill-index-{collection_dataset}-{plan_hash}",
-                task_queue="processing-common-queue",
-                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
-                search_attributes=dataset_search_attributes(collection_dataset),
-            )
-            log.info("re-index running: %s plan %s", collection_dataset, plan_hash[:8])
-            await handle.result()
-
-    asyncio.run(_run())
-    print(f"backfill-vectors of {collectionname}: {len(plans)} plan(s) done")
+    try:
+        op_id = submit_operation("backfill_vectors", collectionname=collectionname)
+    except OperationLocked as e:
+        raise click.ClickException(str(e))
+    click.echo(f"operation {op_id}")
+    state = tail_operation(op_id)
+    if state == "errored":
+        raise click.ClickException(f"{op_id} failed.")
 
 
 @cli.command(name="list-collections")

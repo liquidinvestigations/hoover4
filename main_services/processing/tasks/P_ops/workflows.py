@@ -20,8 +20,7 @@ from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
     from .activities import (
-        begin_failed_file_retry, count_dataset_rows_activity,
-        finish_failed_file_retry, record_operation_state,
+        count_dataset_rows_activity, record_operation_state,
         reindex_collection_activity, sample_dataset_progress,
         tombstone_dataset_row,
     )
@@ -31,10 +30,11 @@ with workflow.unsafe.imports_passed_through():
         finish_export,
     )
     from .params import (
-        DatasetProgressParams, DatasetRegistryParams, ExportParams, FinishRetryParams,
-        ImportParams, OperationParams, OperationStateParams, RetryFailedFilesParams,
+        DatasetProgressParams, DatasetRegistryParams, ExportParams, ImportParams,
+        OperationParams, OperationStateParams,
     )
     from tasks.P_admin.rerun_params import ReconcileErrorsParams, SelectErrorsParams, SelectionResult
+    from tasks.P_admin.collection_backfill import CollectionBackfillParams
     from .restore import (
         begin_import, finish_import, import_clickhouse, import_manticore,
         import_object_store,
@@ -143,6 +143,10 @@ class Operation:
             return await self._change_ocr_languages(params)
         if params.kind == "retry_failed_files":
             return await self._retry_failed_files(params)
+        if params.kind == "purge_unattributed_entities":
+            return await self._purge_unattributed_entities(params)
+        if params.kind == "backfill_vectors":
+            return await self._backfill_vectors(params)
         if params.kind in ("ensure_collection", "drop_collection_database"):
             return await self._collection_database(params)
         if params.kind == "export_collection":
@@ -546,94 +550,128 @@ class Operation:
         )
 
     async def _retry_failed_files(self, params: OperationParams) -> str:
-        """Re-run one failed stage for the documents `processing_errors` names.
-
-        Three phases, and the order is what makes the result trustworthy: decide what
-        to re-run and clear the state that would make it a no-op, re-run it plan by
-        plan, then verify and clear only the error rows of the documents that are
-        demonstrably fixed. Deciding after the re-run would read a corpus that has
-        already changed.
-
-        Progress is plans: the plan is the unit the pipeline finishes, and it is the
-        unit this operation submits. A parse-stage retry has no per-plan entry point --
-        one `ExecutePlans` run picks up every reopened plan -- so its counter stays at
-        zero until that run returns and then jumps to the total.
-        """
-        plan = await workflow.execute_activity(
-            begin_failed_file_retry,
-            RetryFailedFilesParams(
+        """Run selected historical Error rows through plan execution and reconciliation."""
+        task_name = str(params.detail.get("task_name", ""))
+        doc_hash = str(params.detail.get("hash", ""))
+        if not task_name and not doc_hash:
+            raise ApplicationErrorDetail(params.kind, "task_name or hash")
+        await workflow.execute_activity(
+            "select_historical_errors",
+            SelectErrorsParams(
                 op_id=params.op_id,
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
-                task_name=str(params.detail.get("task_name", "")),
+                task_name=task_name,
+                hash=doc_hash,
             ),
-            task_queue="operations-queue",
+            result_type=SelectionResult,
+            task_queue="processing-common-queue",
             start_to_close_timeout=timedelta(minutes=60),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
-        total = len(plan.plan_hashes)
+        child = asyncio.ensure_future(workflow.execute_child_workflow(
+            "ExecutePlans",
+            {
+                "collectionname": params.collectionname,
+                "collection_dataset": params.collection_dataset,
+                "base_temp_dir": "/tmp/hoover4",
+                "op_id": params.op_id,
+            },
+            id=f"retry-failed-files-{params.op_id}",
+            task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
+        ))
+        await self._sample_plans_until_done(child, params)
+        result = await child
+        await workflow.execute_activity(
+            "reconcile_selected_errors",
+            ReconcileErrorsParams(
+                op_id=params.op_id,
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+            ),
+            result_type=str,
+            task_queue="processing-common-queue",
+            start_to_close_timeout=timedelta(minutes=60),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        )
+        return result
+
+    async def _purge_unattributed_entities(self, params: OperationParams) -> str:
+        """Re-run entity extraction and indexing after unattributed rows are deleted."""
+        plans = await workflow.execute_activity(
+            "clear_unattributed_entities",
+            CollectionBackfillParams(params.op_id, params.collectionname),
+            result_type=list[list[str]],
+            task_queue="processing-common-queue",
+            start_to_close_timeout=timedelta(minutes=60),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        )
+        total = len(plans)
         await self._record(params.op_id, 0, total)
-        if not total:
-            return f"nothing to retry for {plan.task_name}"
-
-        common = {
-            "collectionname": params.collectionname,
-            "collection_dataset": params.collection_dataset,
-            "op_id": params.op_id,
-        }
-        attributes = dataset_search_attributes(params.collection_dataset)
-        if plan.retry_kind == "plan":
+        for done, (collection_dataset, plan_hash) in enumerate(plans, 1):
+            child_params = {
+                "collectionname": params.collectionname,
+                "collection_dataset": collection_dataset,
+                "plan_hash": plan_hash,
+                "op_id": params.op_id,
+            }
             await workflow.execute_child_workflow(
-                "ExecutePlans",
-                {**common, "base_temp_dir": "/tmp/hoover4"},
-                id=f"retry-execute-plans-{params.op_id}",
+                "ExtractEntitiesForPlan",
+                child_params,
+                id=f"purge-unattributed-ner-{params.op_id}-{plan_hash}",
                 task_queue="processing-common-queue",
-                search_attributes=attributes,
+                search_attributes=dataset_search_attributes(collection_dataset),
             )
-            await self._record(params.op_id, total, total)
-        else:
-            for done, plan_hash in enumerate(plan.plan_hashes, 1):
-                if plan.retry_kind == "nlp":
-                    # P4 then P6, in that order: Manticore's entity attributes and term
-                    # dictionary are built from the rows P4 writes.
-                    await workflow.execute_child_workflow(
-                        "ExtractEntitiesForPlan", {**common, "plan_hash": plan_hash},
-                        id=f"retry-ner-{params.op_id}-{plan_hash}",
-                        task_queue="processing-common-queue",
-                        search_attributes=attributes,
-                    )
-                elif plan.retry_kind == "embed":
-                    await workflow.execute_child_workflow(
-                        "ChunkEmbedForPlan", {**common, "plan_hash": plan_hash},
-                        id=f"retry-embed-{params.op_id}-{plan_hash}",
-                        task_queue="processing-common-queue",
-                        search_attributes=attributes,
-                    )
-                await workflow.execute_child_workflow(
-                    "IndexDatasetPlan", {**common, "plan_hash": plan_hash},
-                    id=f"retry-index-{params.op_id}-{plan_hash}",
-                    task_queue="processing-common-queue",
-                    search_attributes=attributes,
-                )
-                await self._record(params.op_id, done, total)
+            await workflow.execute_child_workflow(
+                "IndexDatasetPlan",
+                child_params,
+                id=f"purge-unattributed-index-{params.op_id}-{plan_hash}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(collection_dataset),
+            )
+            await self._record(params.op_id, done, total)
+        return f"re-ran entity extraction and indexing for {total} plan(s)"
 
-        return await workflow.execute_activity(
-            finish_failed_file_retry,
-            FinishRetryParams(
-                op_id=params.op_id,
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                task_name=plan.task_name,
-                retry_kind=plan.retry_kind,
-                hashes=plan.hashes,
-                started_at=plan.started_at,
-            ),
-            task_queue="operations-queue",
+    async def _backfill_vectors(self, params: OperationParams) -> str:
+        """Run embedding and indexing for every finished plan in a collection."""
+        plans = await workflow.execute_activity(
+            "list_finished_plans",
+            CollectionBackfillParams(params.op_id, params.collectionname),
+            result_type=list[list[str]],
+            task_queue="processing-common-queue",
             start_to_close_timeout=timedelta(minutes=60),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
+        total = len(plans)
+        await self._record(params.op_id, 0, total)
+        for done, (collection_dataset, plan_hash) in enumerate(plans, 1):
+            child_params = {
+                "collectionname": params.collectionname,
+                "collection_dataset": collection_dataset,
+                "plan_hash": plan_hash,
+                "op_id": params.op_id,
+            }
+            await workflow.execute_child_workflow(
+                "ChunkEmbedForPlan",
+                child_params,
+                id=f"backfill-embed-{params.op_id}-{plan_hash}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(collection_dataset),
+            )
+            await workflow.execute_child_workflow(
+                "IndexDatasetPlan",
+                child_params,
+                id=f"backfill-index-{params.op_id}-{plan_hash}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(collection_dataset),
+            )
+            await self._record(params.op_id, done, total)
+        return f"backfilled vectors and indexing for {total} plan(s)"
 
 
 def _failure_message(exc: Exception) -> str:

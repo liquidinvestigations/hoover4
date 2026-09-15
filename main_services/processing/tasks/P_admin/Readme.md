@@ -13,8 +13,8 @@ singleton, rather than as part of ingestion.
   collection-DB table with a `collection_dataset` column), then recompute the shard ledger.
 - Report what such a purge would delete, per store and per table (`count_dataset_rows`),
   so a destructive command can say what it is about to do before it does it.
-- Re-run a failed stage for the file hashes in `processing_errors`
-  (`failed_file_retry.py`), which is the only recovery that does not re-ingest.
+- Select historical Error rows for retry, then reconcile those rows after plan execution
+  (`failed_file_retry.py`).
 - Collect ETA samples for the admin processing page (`CollectEtaSamples`).
 - Apply a dataset's new OCR languages end to end (`ChangeOcrLanguages`): write the
   settings, reopen the plans holding OCR candidates, re-run them, then purge the variants
@@ -34,8 +34,8 @@ exactly one source of truth in Python.
 - OCR languages: `ocr_languages.py` (the variant diff, the purge, and the stage reports
   it merges into the operation row the admin form polls)
 - ETA logic: `eta_collector.py` (SQL, rates and throttle, documented in its module docstring)
-- File-level retry: `failed_file_retry.py` (which re-run recovers which task, and the
-  ClickHouse reads and deletes it needs)
+- Error selection: `failed_file_retry.py` (the ClickHouse reads and deletes that prepare
+  selected Error rows for plan execution)
 - Queue: `processing-common-queue`
 - CLI: `main.py ensure-collection <collectionname>`, `main.py purge-dataset
   <collectionname> <collection_dataset> [--apply]`, `main.py retry-failed-files
@@ -99,38 +99,11 @@ converging estimate reads as a flattening line, a sawtooth means it is wandering
 
 ## Retry semantics and the mutation caveat
 
-Retrying failed work **reopens the plans containing the failed documents** (deletes
-their `processing_plan_finished` rows), clears the matching `processing_errors`, then
-restarts `ExecutePlans`. The failure this avoids: a bare `ExecutePlans` restart is a no-op,
-because a stage can record an error *without* failing the plan (P4 entity extraction is
-the common case). The plan still finishes and is then skipped as done. Any future retry
-path must reopen the plan first. Reprocessing a whole plan to fix one document is coarse,
-but the plan is the pipeline's unit of work and every stage is idempotent.
+The selector records matching historical Error rows, clears their NLP and regex state,
+and reopens their plans. `ExecutePlans` then runs every selected plan with the operation id.
 
-The retry deletes `processing_errors` rows with `ALTER TABLE ... DELETE`. ClickHouse
-mutations are **asynchronous**, so a row can still appear in the failure list for a few
-seconds after a retry. Accepted: it is the only way to remove rows from a plain
-MergeTree. Do not re-file this as a bug.
-
-`failed_file_retry.py` is the same recovery without the whole-plan cost, and it is what
-`main.py retry-failed-files` drives. It re-runs the **stage** that failed for the
-**hashes** that failed it: NER clears those hashes' `nlp_processed` watermarks (the only
-reason P4 skips a page it has seen) and re-runs P4 + P6 for their plans, so the re-run
-touches the failed documents and nothing else; index failures re-run P6; embedding
-failures re-run P5 + P6; parse failures still need the whole plan, because they have no
-per-file entry point that does not start by downloading the plan's blobs. Deletion order
-is watermarks, then rows. A crash between the two leaves a page that is re-extracted. Unlike the UI button it clears the error rows **after** the re-run and only
-for the documents it can show are fixed.
-
-**One `processing_errors` row per (document, task), however many retries it takes.** The
-table is append-only and both `/file_browser/c/<name>` and the admin processing page count
-its *rows*, so a retry that fails the same way and appends shows a visitor twice the
-failures, and one more multiple on every further attempt. After the re-run each
-retried hash is in exactly one of three states: recovered (its rows go), failed again with
-a fresh row (the rows that row replaces go, the new one stays), or failed again with
-nothing written because the run died first (the original row is the only evidence there is
-and is left alone). A fresh error row outranks the stage's own verification: a document
-that recorded a new failure is never counted as recovered.
+Reconciliation replaces each selected Error row after execution. A new Error row stays.
+A recovered Error row is deleted. ClickHouse mutations use `mutations_sync = 2`.
 
 ## A finished plan is not a successful one
 

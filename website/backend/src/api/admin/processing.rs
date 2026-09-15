@@ -1050,53 +1050,6 @@ pub async fn admin_list_document_failures(
 // Retries
 // ---------------------------------------------------------------------------
 
-/// Mark the plans containing `hashes` as unfinished, and return how many were reopened.
-///
-/// This is what makes a retry actually retry. `ExecutePlans` skips any plan already in
-/// `processing_plan_finished`, and a stage that records an error *without* failing the
-/// plan (P4 entity extraction is the common case), still lets the plan finish. So
-/// restarting the workflow on its own is a no-op for exactly the failures an admin is
-/// most likely to be looking at. Deleting the finished-marker first is what puts the
-/// work back in front of the pipeline.
-///
-/// Reprocessing a whole plan to fix one document is coarse (a plan is a batch of
-/// blobs), but the pipeline's unit of work *is* the plan, and every stage is
-/// idempotent. Re-running one costs time, not correctness.
-async fn reopen_plans_for_hashes(
-    client: &clickhouse::Client,
-    collection_dataset: &str,
-    hashes: &[String],
-) -> anyhow::Result<u64> {
-    if hashes.is_empty() {
-        return Ok(0);
-    }
-    let plan_hashes: Vec<String> = client
-        .query(
-            "SELECT DISTINCT plan_hash FROM processing_plan_hits FINAL \
-             WHERE collection_dataset = ? AND item_hash IN ?",
-        )
-        .bind(collection_dataset)
-        .bind(hashes)
-        .fetch_all::<String>()
-        .await?;
-
-    if plan_hashes.is_empty() {
-        return Ok(0);
-    }
-
-    client
-        .query(
-            "ALTER TABLE processing_plan_finished DELETE \
-             WHERE collection_dataset = ? AND plan_hash IN ?",
-        )
-        .bind(collection_dataset)
-        .bind(&plan_hashes)
-        .execute()
-        .await?;
-
-    Ok(plan_hashes.len() as u64)
-}
-
 /// Re-run the stage that failed, for the documents it failed on.
 ///
 /// Dispatched as a `retry_failed_files` operation, so the retry takes the dataset's lock,
@@ -1128,14 +1081,8 @@ pub async fn admin_retry_failed_task(
 
 /// Retry the processing of a single document.
 ///
-/// Reopens the plan that document belongs to, clears its error rows, and dispatches an
-/// `execute_plans` operation. The plan is the pipeline's unit of work, so its other
-/// documents are reprocessed too, which is not yet decided.
-///
-/// The error rows are cleared before the re-run here, unlike the per-task retry, which
-/// keeps them until the documents are demonstrably fixed. One document is a small
-/// enough claim that the file browser showing it clean and then failing again is
-/// tolerable; a whole task's worth is not.
+/// Dispatches a `retry_failed_files` operation for the document hash. The selector
+/// reopens its plans and reconciliation keeps its Error rows until they recover.
 pub async fn admin_retry_document(
     user: &CurrentUser,
     collectionname: String,
@@ -1146,28 +1093,15 @@ pub async fn admin_retry_document(
     if hash.is_empty() {
         anyhow::bail!("no document hash given");
     }
-    let client = get_collection_client(&collectionname);
-
-    let reopened =
-        reopen_plans_for_hashes(&client, &collection_dataset, std::slice::from_ref(&hash)).await?;
-
-    client
-        .query("ALTER TABLE processing_errors DELETE WHERE collection_dataset = ? AND hash = ?")
-        .bind(&collection_dataset)
-        .bind(&hash)
-        .execute()
-        .await?;
-
-    let op_id = operations::dispatch_operation(
-        "execute_plans",
+    operations::dispatch_operation(
+        "retry_failed_files",
         &collectionname,
         &collection_dataset,
         &user.username,
         "",
-        "",
+        &serde_json::json!({ "hash": hash }).to_string(),
     )
-    .await?;
-    Ok(format!("{op_id} ({reopened} plan(s) reopened)"))
+    .await
 }
 
 #[cfg(test)]

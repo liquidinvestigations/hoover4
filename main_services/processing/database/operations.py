@@ -56,7 +56,28 @@ KINDS: dict[str, dict] = {
     "drop_collection_database": {"target_kind": "collection", "destructive": True},
     "export_collection": {"target_kind": "collection", "destructive": False},
     "import_collection": {"target_kind": "collection", "destructive": True},
+    "purge_unattributed_entities": {"target_kind": "collection", "destructive": True},
+    "backfill_vectors": {"target_kind": "collection", "destructive": False},
 }
+
+DRIVEN_KINDS = (
+    "add_dataset",
+    "rescan_dataset",
+    "compute_plans",
+    "execute_plans",
+    "purge_dataset",
+    "delete_dataset",
+    "change_ocr_languages",
+    "reindex_collection",
+    "refresh_document_locations",
+    "retry_failed_files",
+    "ensure_collection",
+    "drop_collection_database",
+    "export_collection",
+    "import_collection",
+    "purge_unattributed_entities",
+    "backfill_vectors",
+)
 
 #: The columns of `operations`, in table order. One list, because a `ReplacingMergeTree`
 #: update rewrites the whole row and a column missed here would be silently reset to its

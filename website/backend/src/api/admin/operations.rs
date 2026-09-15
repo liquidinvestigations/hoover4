@@ -45,6 +45,8 @@ const KINDS: &[(&str, &str, bool)] = &[
     ("drop_collection_database", "collection", true),
     ("export_collection", "collection", false),
     ("import_collection", "collection", true),
+    ("purge_unattributed_entities", "collection", true),
+    ("backfill_vectors", "collection", false),
 ];
 
 /// Kinds the operations workflow can actually drive today. The rest are registered
@@ -65,7 +67,102 @@ const DRIVEN_KINDS: &[&str] = &[
     "drop_collection_database",
     "export_collection",
     "import_collection",
+    "purge_unattributed_entities",
+    "backfill_vectors",
 ];
+
+const INPUT_KEYS: &[(&str, &[&str])] = &[
+    ("add_dataset", &["dataset_path"]),
+    ("rescan_dataset", &["dataset_path"]),
+    ("change_ocr_languages", &["tesseract_languages", "easyocr_languages"]),
+    ("retry_failed_files", &["task_name", "hash"]),
+    ("refresh_document_locations", &["item_hashes"]),
+    ("export_collection", &["destination"]),
+    ("import_collection", &["source"]),
+];
+
+const REGISTRY_KEYS: &[&str] = &["add_dataset", "rescan_dataset"];
+
+#[derive(Debug)]
+struct MissingOperationInput {
+    kind: String,
+    key: &'static str,
+}
+
+impl std::fmt::Display for MissingOperationInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} needs {}, and the original row does not hold it", self.kind, self.key)
+    }
+}
+
+fn input_keys(kind: &str) -> &'static [&'static str] {
+    INPUT_KEYS
+        .iter()
+        .find(|(entry_kind, _)| *entry_kind == kind)
+        .map(|(_, keys)| *keys)
+        .unwrap_or(&[])
+}
+
+fn project_inputs(
+    kind: &str,
+    raw_detail: &str,
+    registry_dataset_path: Option<&str>,
+) -> Result<serde_json::Value, MissingOperationInput> {
+    let detail = serde_json::from_str::<serde_json::Value>(raw_detail)
+        .ok()
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    let mut projected = serde_json::Map::new();
+    for key in input_keys(kind) {
+        if let Some(value) = detail.get(*key) {
+            projected.insert((*key).to_string(), value.clone());
+        }
+    }
+
+    if REGISTRY_KEYS.contains(&kind) {
+        let Some(path) = registry_dataset_path.filter(|path| !path.is_empty()) else {
+            return Err(MissingOperationInput {
+                kind: kind.to_string(),
+                key: "dataset_path",
+            });
+        };
+        projected.insert("dataset_path".to_string(), serde_json::json!(path));
+    } else if kind == "change_ocr_languages" {
+        if !input_keys(kind).iter().any(|key| {
+            projected.get(*key).and_then(|value| value.as_str()).is_some_and(|value| !value.trim().is_empty())
+        }) {
+            return Err(MissingOperationInput {
+                kind: kind.to_string(),
+                key: "tesseract_languages or easyocr_languages",
+            });
+        }
+    } else if kind == "retry_failed_files" {
+        if !input_keys(kind).iter().any(|key| {
+            projected.get(*key).and_then(|value| value.as_str()).is_some_and(|value| !value.trim().is_empty())
+        }) {
+            return Err(MissingOperationInput {
+                kind: kind.to_string(),
+                key: "task_name or hash",
+            });
+        }
+    } else if kind == "refresh_document_locations" {
+        if !projected.get("item_hashes").and_then(|value| value.as_array()).is_some_and(|hashes| !hashes.is_empty()) {
+            return Err(MissingOperationInput {
+                kind: kind.to_string(),
+                key: "item_hashes",
+            });
+        }
+    } else if kind == "import_collection" {
+        if !projected.get("source").and_then(|value| value.as_str()).is_some_and(|value| !value.trim().is_empty()) {
+            return Err(MissingOperationInput {
+                kind: kind.to_string(),
+                key: "source",
+            });
+        }
+    }
+
+    Ok(serde_json::Value::Object(projected))
+}
 
 fn kind_entry(kind: &str) -> Option<&'static (&'static str, &'static str, bool)> {
     KINDS.iter().find(|(k, _, _)| *k == kind)
@@ -373,11 +470,18 @@ pub async fn admin_rerun_operation(
             display.kind
         );
     }
-    // The original row's `detail` is what the re-run is dispatched with. A kind whose
-    // behaviour is decided by parameters (which languages, which failed task) would
-    // otherwise be re-run against whatever the dataset is set to now, which is not what
-    // the row in front of the person says.
-    let detail = display.detail.clone();
+    let registry_path = if REGISTRY_KEYS.contains(&display.kind.as_str()) {
+        registry_dataset_path(&display.collection_dataset).await?
+    } else {
+        None
+    };
+    let detail = project_inputs(
+        &display.kind,
+        &display.detail,
+        registry_path.as_deref(),
+    )
+    .map_err(|error| anyhow::anyhow!("cannot re-run {}: {error}", display.op_id))?
+    .to_string();
     dispatch_operation(
         &display.kind,
         &display.collectionname,
@@ -519,15 +623,19 @@ async fn dispatch_detail(kind: &str, collection_dataset: &str) -> String {
 }
 
 async fn dataset_path(collection_dataset: &str) -> anyhow::Result<String> {
+    registry_dataset_path(collection_dataset)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("dataset not found: {collection_dataset}"))
+}
+
+async fn registry_dataset_path(collection_dataset: &str) -> anyhow::Result<Option<String>> {
     let client = get_global_client();
     let rows = client
         .query("SELECT dataset_path FROM dataset FINAL WHERE collection_dataset = ? AND is_deleted = 0 LIMIT 1")
         .bind(collection_dataset)
         .fetch_all::<String>()
         .await?;
-    rows.into_iter()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("dataset not found: {collection_dataset}"))
+    Ok(rows.into_iter().next())
 }
 
 /// Start the `Operation` workflow over Temporal's HTTP API, on the operation's own id.
@@ -630,7 +738,7 @@ pub async fn admin_cancel_operation(user: &CurrentUser, op_id: String) -> anyhow
 
 #[cfg(test)]
 mod tests {
-    use super::lock_clause;
+    use super::{lock_clause, project_inputs};
 
     #[test]
     fn dataset_lock_clause_blocks_the_dataset_and_collection() {
@@ -646,6 +754,43 @@ mod tests {
         assert_eq!(
             lock_clause("collection"),
             "state IN ('pending', 'running') AND collectionname = ?"
+        );
+    }
+
+    #[test]
+    fn project_inputs_keeps_only_the_re_run_inputs() {
+        assert_eq!(
+            project_inputs(
+                "add_dataset",
+                r#"{"dataset_path":"/old","dataset_name":"x","failed_documents":3}"#,
+                Some("/new"),
+            )
+            .unwrap(),
+            serde_json::json!({"dataset_path":"/new"}),
+        );
+        assert_eq!(
+            project_inputs("add_dataset", "not json", Some("/new")).unwrap(),
+            serde_json::json!({"dataset_path":"/new"}),
+        );
+        assert_eq!(
+            project_inputs(
+                "change_ocr_languages",
+                r#"{"tesseract_languages":"eng","added":["x"],"stage":"done"}"#,
+                None,
+            )
+            .unwrap(),
+            serde_json::json!({"tesseract_languages":"eng"}),
+        );
+        assert!(project_inputs(
+            "retry_failed_files",
+            r#"{"task_name":"","hash":""}"#,
+            None,
+        )
+        .is_err());
+        assert_eq!(
+            project_inputs("export_collection", r#"{"stores":{},"phase":"x"}"#, None)
+                .unwrap(),
+            serde_json::json!({}),
         );
     }
 }
