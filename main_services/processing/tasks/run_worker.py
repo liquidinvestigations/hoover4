@@ -234,6 +234,10 @@ async def run_common_worker():
         sweep_chat_artifacts,
         sweep_orphan_table_cells,
     )
+    from .P_admin.rerun_selection import (
+        reconcile_selected_errors,
+        select_historical_errors,
+    )
     from .P_admin.ocr_languages import (
         begin_ocr_language_job,
         delete_orphaned_derived_pdfs,
@@ -374,6 +378,8 @@ async def run_common_worker():
             reopen_plans_for_ocr_change,
             purge_dropped_ocr_variants,
             delete_orphaned_derived_pdfs,
+            select_historical_errors,
+            reconcile_selected_errors,
 
             capture_operation_failure,
           ],

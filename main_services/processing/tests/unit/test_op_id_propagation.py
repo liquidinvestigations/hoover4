@@ -36,8 +36,8 @@ SOURCE_FILES = (
 )
 
 EXEMPT_COLLECTION_DATASET_DICTS = {
-    ("tasks/P0_scan_disk/workflows.py", 280): "HandleFolders input writes no Error.",
-    ("tasks/P0_scan_disk/workflows.py", 355): "ComputePlans input writes no Error.",
+    ("tasks/P0_scan_disk/workflows.py", 285): "HandleFolders input writes no Error.",
+    ("tasks/P0_scan_disk/workflows.py", 360): "ComputePlans input writes no Error.",
     ("tasks/P2_execute_plan/workflows.py", 139): "ComputePlans input writes no Error.",
     ("tasks/P2_execute_plan/workflows.py", 308): "ComputePlans input writes no Error.",
     ("tasks/P3_parse_files/workflows.py", 194): "Archive child input writes no Error.",
@@ -46,9 +46,9 @@ EXEMPT_COLLECTION_DATASET_DICTS = {
     ("tasks/P3_parse_files/parse_pdf.py", 268): "The PDF page Arrow row is not workflow input.",
     ("tasks/P3_parse_files/parse_pdf.py", 360): "The image Arrow rows are not workflow input.",
     ("tasks/P3_parse_files/parse_pdf.py", 369): "The link Arrow rows are not workflow input.",
-    ("tasks/P_ops/workflows.py", 163): "Location refresh does not write an Error.",
-    ("tasks/P_ops/workflows.py", 248): "ComputePlans input writes no Error.",
-    ("tasks/P_ops/workflows.py", 317): "PurgeDataset input writes no Error.",
+    ("tasks/P_ops/workflows.py", 164): "Location refresh does not write an Error.",
+    ("tasks/P_ops/workflows.py", 249): "ComputePlans input writes no Error.",
+    ("tasks/P_ops/workflows.py", 347): "PurgeDataset input writes no Error.",
 }
 
 

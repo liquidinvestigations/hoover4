@@ -65,56 +65,39 @@ def record_operation_state(params: OperationStateParams) -> str:
 @activity.defn
 @with_heartbeat
 def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
-    """Count a dataset's plans and finished plans, and write them onto the row.
+    """Count this operation's plans and Error rows, and write them onto the row.
 
     Plans rather than documents, because a plan is the unit the pipeline finishes and
     the only one whose total is known before the work is done. The estimate is derived
     from this operation's own elapsed time rather than from the global sampler, so it
     is right for this run's data even when nothing comparable has ever been ingested.
 
-    It also counts the dataset's failed documents onto the row's `detail`, and that is
-    not a bonus: an operation whose stages all ran finishes `finished` whether or not
-    every document survived, so without a recorded failure count a plan that lost
-    documents is indistinguishable from one that did not. The count is of the dataset,
-    not of this run. A re-run over an already-damaged dataset should say so rather
-    than report a clean sheet because its own attempt added nothing new.
+    The Error counts cover this operation. Historical Error rows are recorded at
+    selection time, before the run changes them.
 
     Returns `[done, total]`. A dataset whose scan has not produced plans yet is
     `[0, 0]`, which the row records as "no estimate can be made" rather than as zero
     progress out of zero work.
     """
     from database.clickhouse import get_collection_client
+    from database.operation_ledger import run_plan_counts
     from database.operations import get_operation, merge_detail, update_operation
 
     done = total = 0
     failed_documents = failed_tasks = 0
+    if params.op_id:
+        done, total = run_plan_counts(
+            params.collectionname, params.op_id, params.collection_dataset
+        )
     with get_collection_client(params.collectionname) as client:
         rows = client.query(
-            "SELECT count() FROM processing_plans FINAL "
-            "WHERE collection_dataset = {cd:String}",
-            parameters={"cd": params.collection_dataset},
+            "SELECT uniqExactIf(hash, hash != '') AS failed_documents, count() AS failed_tasks "
+            "FROM processing_errors WHERE collection_dataset = {ds:String} "
+            "AND op_id = {op:String}",
+            parameters={"ds": params.collection_dataset, "op": params.op_id},
         ).result_rows
-        # An aggregate over an empty match returns one row holding zero, never no
-        # rows, so this reads the value rather than testing whether a row came back.
-        total = int(rows[0][0]) if rows else 0
-        rows = client.query(
-            "SELECT count() FROM processing_plan_finished FINAL "
-            "WHERE collection_dataset = {cd:String}",
-            parameters={"cd": params.collection_dataset},
-        ).result_rows
-        done = int(rows[0][0]) if rows else 0
-        # Documents rather than error rows: one document that failed six tasks is one
-        # failed document, and both numbers are recorded because they answer different
-        # questions. A dataset-level failure carries an empty hash and is excluded from
-        # the document count rather than counted as a document.
-        rows = client.query(
-            "SELECT uniqExactIf(hash, hash != ''), count() FROM processing_errors "
-            "WHERE collection_dataset = {cd:String}",
-            parameters={"cd": params.collection_dataset},
-        ).result_rows
-        if rows:
-            failed_documents = int(rows[0][0])
-            failed_tasks = int(rows[0][1])
+        failed_documents = int(rows[0][0])
+        failed_tasks = int(rows[0][1])
 
     eta = 0
     row = get_operation(params.op_id)

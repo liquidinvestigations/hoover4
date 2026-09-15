@@ -113,10 +113,12 @@ own history instead gives you days of retention and nothing aggregable.
 ## Re-running a stage
 
 A plan is marked finished when its stages have **run**, not when every document in it
-succeeded. Re-running the driving workflow is therefore a no-op for a document that failed
-inside a finished plan, and there is a separate entry point that reads the failed hashes out
-of the error table and re-runs the stage that failed them, per stage, with no re-ingest. The
-error rows are cleared only after the re-run has demonstrably fixed the document, so a second
-failure leaves the record it started from.
+succeeded. An ingest or plan-execution operation selects historical Error pairs after planning
+and before plan execution. It deletes Errors for disabled stages and keeps Errors without a
+plan. It clears the selected hashes' model and regex scan watermarks, then reopens their plans.
+
+After successful plan execution, reconciliation removes the selected historical Error rows.
+It keeps an Error row the operation wrote for a repeated failure. The operation record keeps
+the historical, selected, recovered, still-failing, disabled-stage and unmappable pair counts.
 
 `main_services/processing/Readme.md` lists those entry points with their flags.

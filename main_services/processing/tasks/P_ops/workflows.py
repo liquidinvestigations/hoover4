@@ -34,6 +34,7 @@ with workflow.unsafe.imports_passed_through():
         DatasetProgressParams, DatasetRegistryParams, ExportParams, FinishRetryParams,
         ImportParams, OperationParams, OperationStateParams, RetryFailedFilesParams,
     )
+    from tasks.P_admin.rerun_params import ReconcileErrorsParams, SelectErrorsParams, SelectionResult
     from .restore import (
         begin_import, finish_import, import_clickhouse, import_manticore,
         import_object_store,
@@ -262,6 +263,21 @@ class Operation:
         archive computes plans for what was inside it), and that is the corpus being
         discovered, not the counter reporting a wrong number: the number moves in both parts.
         """
+        await workflow.execute_activity(
+            "select_historical_errors",
+            SelectErrorsParams(
+                op_id=params.op_id,
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                task_name=str(params.detail.get("task_name", "")),
+                hash=str(params.detail.get("hash", "")),
+            ),
+            result_type=SelectionResult,
+            task_queue="processing-common-queue",
+            start_to_close_timeout=timedelta(minutes=60),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        )
         child = asyncio.ensure_future(workflow.execute_child_workflow(
             "ExecutePlans",
             {
@@ -275,7 +291,21 @@ class Operation:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
         await self._sample_plans_until_done(child, params)
-        return await child
+        result = await child
+        await workflow.execute_activity(
+            "reconcile_selected_errors",
+            ReconcileErrorsParams(
+                op_id=params.op_id,
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+            ),
+            result_type=str,
+            task_queue="processing-common-queue",
+            start_to_close_timeout=timedelta(minutes=60),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        )
+        return result
 
     async def _record(self, op_id: str, done: int, total: int) -> None:
         """Write progress counters onto the row, without changing its state."""

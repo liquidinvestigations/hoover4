@@ -20,6 +20,11 @@ with workflow.unsafe.imports_passed_through():
         ListDiskFolderParams, InsertVfsDirectoriesParams, IngestFilesBatchParams,
         ReconcileDeletedFilesParams,
     )
+    from tasks.P_admin.rerun_params import ReconcileErrorsParams, SelectErrorsParams
+    from tasks.P_admin.rerun_selection import (
+        reconcile_selected_errors,
+        select_historical_errors,
+    )
     from tasks.visibility import dataset_search_attributes
 
 
@@ -360,6 +365,19 @@ class IngestAndProcessDataset:
             task_queue="processing-common-queue",
             search_attributes=attributes,
         )
+        if params.op_id:
+            await workflow.execute_activity(
+                select_historical_errors,
+                SelectErrorsParams(
+                    op_id=params.op_id,
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                ),
+                task_queue="processing-common-queue",
+                start_to_close_timeout=timedelta(minutes=60),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=3),
+            )
         await workflow.execute_child_workflow(
             ExecutePlans.run,
             ExecutePlansParams(
@@ -372,4 +390,17 @@ class IngestAndProcessDataset:
             task_queue="processing-common-queue",
             search_attributes=attributes,
         )
+        if params.op_id:
+            await workflow.execute_activity(
+                reconcile_selected_errors,
+                ReconcileErrorsParams(
+                    op_id=params.op_id,
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                ),
+                task_queue="processing-common-queue",
+                start_to_close_timeout=timedelta(minutes=60),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=3),
+            )
         return f"ingested and processed {params.collection_dataset}"

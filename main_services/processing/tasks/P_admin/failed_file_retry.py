@@ -191,6 +191,47 @@ def clear_nlp_state(collectionname: str, collection_dataset: str, hashes) -> tup
     return watermarks, hits
 
 
+def clear_regex_state(collectionname: str, collection_dataset: str, hashes) -> tuple[int, int]:
+    """Delete regex scan watermarks and hits for `hashes` in that order.
+
+    A scan watermark prevents the same rule set from reading a segment again. Deleting
+    it before the hits leaves a segment eligible after an interrupted recovery.
+    """
+    from database.clickhouse import get_collection_client
+
+    settings = {"mutations_sync": 2}
+    watermarks = hits = 0
+    with get_collection_client(collectionname) as client:
+        for chunk in chunked(hashes):
+            watermarks += int(client.query(
+                "SELECT count() FROM regex_scanned WHERE collection_dataset = {ds:String} "
+                "AND file_hash IN {hashes:Array(String)}",
+                parameters={"ds": collection_dataset, "hashes": chunk},
+            ).result_rows[0][0])
+            hits += int(client.query(
+                "SELECT count() FROM regex_entity_hit WHERE collection_dataset = {ds:String} "
+                "AND file_hash IN {hashes:Array(String)}",
+                parameters={"ds": collection_dataset, "hashes": chunk},
+            ).result_rows[0][0])
+            client.command(
+                "ALTER TABLE regex_scanned DELETE WHERE collection_dataset = {ds:String} "
+                "AND file_hash IN {hashes:Array(String)}",
+                parameters={"ds": collection_dataset, "hashes": chunk},
+                settings=settings,
+            )
+            client.command(
+                "ALTER TABLE regex_entity_hit DELETE WHERE collection_dataset = {ds:String} "
+                "AND file_hash IN {hashes:Array(String)}",
+                parameters={"ds": collection_dataset, "hashes": chunk},
+                settings=settings,
+            )
+    log.info(
+        "[retry] cleared %d regex_scanned and %d regex_entity_hit rows for %s",
+        watermarks, hits, collection_dataset,
+    )
+    return watermarks, hits
+
+
 def reopen_plans(collectionname: str, collection_dataset: str, plan_hashes) -> int:
     """Delete the finished markers of `plan_hashes` so ``ExecutePlans`` runs them again."""
     from database.clickhouse import get_collection_client

@@ -32,6 +32,7 @@ class ListPendingPlansParams:
 def list_pending_plans(params: ListPendingPlansParams) -> List[str]:
     """Activity that lists up to 1001 pending plan hashes to execute."""
     from database.clickhouse import get_collection_client
+    from database.operation_ledger import insert_operation_plans
     collection_dataset: str = params.collection_dataset
     starting_plan_hash: str = params.starting_plan_hash or ""
 
@@ -57,6 +58,14 @@ def list_pending_plans(params: ListPendingPlansParams) -> List[str]:
             col = tbl.column(0)
             for i in range(tbl.num_rows):
                 results.append(col[i].as_py())
+        if params.op_id:
+            insert_operation_plans(
+                params.collectionname,
+                params.op_id,
+                params.collection_dataset,
+                results,
+                "listed",
+            )
         return results
 
 
