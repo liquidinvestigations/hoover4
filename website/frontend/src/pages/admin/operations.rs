@@ -6,7 +6,7 @@
 //! otherwise, and a task type failing above the deployment's configured line is called
 //! out rather than left to be noticed in a percentage column.
 
-use common::operations_types::{OperationRow, OperationsPage, TaskErrorRate};
+use common::operations_types::{rerun_outcome_summary, OperationRow, OperationsPage, TaskErrorRate};
 use dioxus::prelude::*;
 
 use crate::api::admin_api::{admin_cancel_operation, admin_list_operations, admin_rerun_operation};
@@ -330,7 +330,16 @@ fn OperationTableRow(
     rsx! {
         tr {
             td { style: TD,
-                code { "{row.kind}" }
+                Link {
+                    to: Route::AdminOperationDetailPage {
+                        op_id: row.op_id.clone(),
+                        plans_page: 0,
+                        events_page: 0,
+                    },
+                    class: "x-ops-detail-link",
+                    style: LINK,
+                    code { "{row.kind}" }
+                }
                 if row.destructive {
                     div { style: "font-size: 11px; color: {C_DANGER}; text-transform: uppercase; letter-spacing: 0.5px;",
                         "destructive"
@@ -522,6 +531,9 @@ fn OutcomeCell(row: OperationRow) -> Element {
                         span { style: HELP_TEXT, "failures not counted" }
                     }
                 },
+            }
+            if let Some(summary) = rerun_outcome_summary(&row) {
+                div { style: HELP_TEXT, "{summary}" }
             }
         }
     }

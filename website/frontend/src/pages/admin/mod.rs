@@ -12,6 +12,7 @@ pub mod group_detail;
 pub mod groups_list;
 pub mod llm_config;
 pub mod metrics;
+pub mod operation_detail;
 pub mod operations;
 pub mod settings;
 pub mod user_detail;

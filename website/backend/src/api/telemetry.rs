@@ -257,6 +257,7 @@ const KNOWN_FUNCTIONS: &[&str] = &[
     "admin_get_dataset",
     "admin_get_failure_tree",
     "admin_get_group",
+    "admin_get_operation_detail",
     "admin_get_user",
     "admin_grant_permission",
     "admin_list_collections",

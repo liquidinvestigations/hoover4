@@ -23,6 +23,7 @@ added, renamed or deleted in the code mechanically visible against this tree, an
 | `UI-AdminCollectionProcessingPage` | `/admin/collections/:collection_id/processing` | - |
 | `UI-AdminDatasetPage` | `/admin/collections/:collection_id/datasets/:dataset_id` | - |
 | `UI-AdminOperationsPage` | `/admin/operations` | - |
+| `UI-AdminOperationDetailPage` | `/admin/operations/:op_id` | - |
 | `UI-AdminFailuresPage` | `/admin/failures` | - |
 | `UI-AdminFailureDetailPage` | `/admin/failures/:op_id` | - |
 | `UI-AdminUsersPage` | `/admin/users` | - |

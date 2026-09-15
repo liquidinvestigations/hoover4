@@ -49,6 +49,17 @@ pub struct OperationRow {
     /// Individual task failures behind `failed_documents`; one document can fail
     /// several times.
     pub failed_tasks: Option<u64>,
+    /// Error rows in the dataset before this operation selected any for a re-run.
+    /// `None` means this operation did not use the re-run selector.
+    pub errors_before_run: Option<u64>,
+    /// Selected Error rows that no longer have an Error row from this operation.
+    pub recovered_errors: Option<u64>,
+    /// Selected Error rows that have a new Error row from this operation.
+    pub still_failing_errors: Option<u64>,
+    /// Error rows the selector removed because their stage is disabled.
+    pub removed_stage_off_errors: Option<u64>,
+    /// Error rows the selector could not attach to an operation plan.
+    pub without_plan_errors: Option<u64>,
     /// The `detail` JSON as stored, for the parameters the operation was dispatched
     /// with.
     pub detail: String,
@@ -59,6 +70,50 @@ pub struct OperationRow {
     /// `TEMPORAL_UI_URL`. Rendered whether or not that UI is reachable from the
     /// reader's browser.
     pub temporal_url: String,
+}
+
+/// One plan that an operation ran.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OperationPlanRow {
+    pub collection_dataset: String,
+    pub plan_hash: String,
+    pub source: String,
+    pub finished: bool,
+}
+
+/// One Error event that an operation recorded.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OperationErrorEventRow {
+    pub collection_dataset: String,
+    pub hash: String,
+    pub task_name: String,
+    pub event: String,
+    pub created_at: String,
+    pub error_excerpt: String,
+}
+
+/// Everything one operation-detail page renders.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OperationDetail {
+    pub row: OperationRow,
+    pub plans: Vec<OperationPlanRow>,
+    pub plans_total: u64,
+    pub events: Vec<OperationErrorEventRow>,
+    pub events_total: u64,
+    pub page_size: u32,
+}
+
+/// The re-run outcome sentence, or `None` when this operation has no re-run counts.
+pub fn rerun_outcome_summary(row: &OperationRow) -> Option<String> {
+    let before = row.errors_before_run?;
+    let recovered = row.recovered_errors.unwrap_or(0);
+    let still_failing = row.still_failing_errors.unwrap_or(0);
+    let removed = row.removed_stage_off_errors.unwrap_or(0);
+    let without_plan = row.without_plan_errors.unwrap_or(0);
+    let partial = if row.state == "cancelled" { "partial " } else { "" };
+    Some(format!(
+        "{partial}{recovered} recovered, {still_failing} still failing, {removed} removed (stage off), {without_plan} without a plan, {before} before this run"
+    ))
 }
 
 /// The error rate of one task type, and whether it is above the configured line.
@@ -99,4 +154,58 @@ pub struct OperationsPage {
     /// deployment. Shipped to the browser so the page can name the number it is
     /// judging against instead of implying a universal one.
     pub error_rate_threshold_percent: f64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(state: &str, errors_before_run: Option<u64>) -> OperationRow {
+        OperationRow {
+            op_id: String::new(),
+            kind: String::new(),
+            target_kind: String::new(),
+            collectionname: String::new(),
+            collection_dataset: String::new(),
+            target: String::new(),
+            state: state.into(),
+            started_at: String::new(),
+            finished_at: None,
+            duration_seconds: 0,
+            progress_done: 0,
+            progress_total: 0,
+            eta_seconds: 0,
+            error: String::new(),
+            user_id: String::new(),
+            rerun_of: String::new(),
+            destructive: false,
+            failed_documents: None,
+            failed_tasks: None,
+            errors_before_run,
+            recovered_errors: Some(3),
+            still_failing_errors: Some(1),
+            removed_stage_off_errors: Some(2),
+            without_plan_errors: Some(0),
+            detail: String::new(),
+            has_failure_tree: false,
+            temporal_url: String::new(),
+        }
+    }
+
+    #[test]
+    fn rerun_outcome_summary_formats_finished_cancelled_and_unknown_rows() {
+        assert_eq!(
+            rerun_outcome_summary(&row("finished", Some(12))),
+            Some("3 recovered, 1 still failing, 2 removed (stage off), 0 without a plan, 12 before this run".into())
+        );
+        let mut cancelled = row("cancelled", Some(4));
+        cancelled.recovered_errors = Some(0);
+        cancelled.still_failing_errors = Some(0);
+        cancelled.removed_stage_off_errors = Some(0);
+        assert_eq!(
+            rerun_outcome_summary(&cancelled),
+            Some("partial 0 recovered, 0 still failing, 0 removed (stage off), 0 without a plan, 4 before this run".into())
+        );
+        assert_eq!(rerun_outcome_summary(&row("finished", None)), None);
+    }
 }

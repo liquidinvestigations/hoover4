@@ -15,7 +15,10 @@
 //!   never collapse into a running execution and a re-run is always a new row.
 
 use common::current_user::CurrentUser;
-use common::operations_types::{OperationRow, OperationsPage, TaskErrorRate};
+use common::operations_types::{
+    OperationDetail, OperationErrorEventRow, OperationPlanRow, OperationRow, OperationsPage,
+    TaskErrorRate,
+};
 use time::format_description::well_known::Rfc3339;
 
 use crate::auth::guard;
@@ -221,6 +224,24 @@ struct OperationDbRow {
     rerun_of: String,
 }
 
+#[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
+struct OperationPlanDbRow {
+    collection_dataset: String,
+    plan_hash: String,
+    source: String,
+    finished: u8,
+}
+
+#[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
+struct OperationErrorEventDbRow {
+    collection_dataset: String,
+    hash: String,
+    task_name: String,
+    event: String,
+    created_at: String,
+    error_excerpt: String,
+}
+
 /// The column list, in table order. A `ReplacingMergeTree` update rewrites the whole
 /// row, so a column missing from an insert is silently reset to its default, and
 /// RowBinary is positional, so a select in a different order pairs values with the
@@ -272,6 +293,11 @@ fn to_display_row(r: OperationDbRow) -> OperationRow {
         destructive: is_destructive(&r.kind),
         failed_documents: detail_u64(&r.detail, "failed_documents"),
         failed_tasks: detail_u64(&r.detail, "failed_tasks"),
+        errors_before_run: detail_u64(&r.detail, "errors_before_run"),
+        recovered_errors: detail_u64(&r.detail, "recovered_errors"),
+        still_failing_errors: detail_u64(&r.detail, "still_failing_errors"),
+        removed_stage_off_errors: detail_u64(&r.detail, "removed_stage_off_errors"),
+        without_plan_errors: detail_u64(&r.detail, "without_plan_errors"),
         duration_seconds: (end - r.started_at.unix_timestamp()).max(0) as u64,
         started_at: format_datetime(r.started_at),
         finished_at: finished_at_of(r.finished_at),
@@ -428,6 +454,116 @@ pub async fn admin_list_operations(
         collections,
         task_error_rates,
         error_rate_threshold_percent: error_rate_threshold_percent(),
+    })
+}
+
+/// One operation with the plans it ran and the Error events it recorded.
+pub async fn admin_get_operation_detail(
+    user: &CurrentUser,
+    op_id: String,
+    plans_page: u32,
+    events_page: u32,
+) -> anyhow::Result<OperationDetail> {
+    const PAGE_SIZE: u32 = 100;
+
+    guard::require_admin(user)?;
+    let global = get_global_client();
+    let mut rows = global
+        .query(&format!(
+            "SELECT {COLUMNS} FROM operations FINAL WHERE op_id = ? LIMIT 1"
+        ))
+        .bind(&op_id)
+        .fetch_all::<OperationDbRow>()
+        .await?;
+    let operation = rows.pop().ok_or_else(|| anyhow::anyhow!("operation not found"))?;
+    let mut row = to_display_row(operation);
+    row.has_failure_tree = crate::api::admin::failures::op_ids_with_failure_trees(&[op_id])
+        .await?
+        .contains(&row.op_id);
+
+    if row.collectionname.is_empty()
+        || !collections::collection_db_ready(&row.collectionname).await?
+    {
+        return Ok(OperationDetail {
+            row,
+            plans: Vec::new(),
+            plans_total: 0,
+            events: Vec::new(),
+            events_total: 0,
+            page_size: PAGE_SIZE,
+        });
+    }
+
+    let client = get_collection_client(&row.collectionname);
+    let plans_offset = plans_page.saturating_mul(PAGE_SIZE);
+    let events_offset = events_page.saturating_mul(PAGE_SIZE);
+    let plans_total = client
+        .query("SELECT count() FROM operation_plans FINAL WHERE op_id = ?")
+        .bind(&row.op_id)
+        .fetch_one::<u64>()
+        .await?;
+    let plans = client
+        .query(
+            "SELECT p.collection_dataset AS collection_dataset, p.plan_hash AS plan_hash, \
+                    p.source AS source, f.plan_hash != '' AS finished \
+             FROM operation_plans AS p FINAL \
+             LEFT JOIN (SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL) AS f \
+               ON f.collection_dataset = p.collection_dataset AND f.plan_hash = p.plan_hash \
+             WHERE p.op_id = ? \
+             ORDER BY p.collection_dataset, p.plan_hash \
+             LIMIT ? OFFSET ?",
+        )
+        .bind(&row.op_id)
+        .bind(PAGE_SIZE)
+        .bind(plans_offset)
+        .fetch_all::<OperationPlanDbRow>()
+        .await?
+        .into_iter()
+        .map(|plan| OperationPlanRow {
+            collection_dataset: plan.collection_dataset,
+            plan_hash: plan.plan_hash,
+            source: plan.source,
+            finished: plan.finished != 0,
+        })
+        .collect();
+    let events_total = client
+        .query("SELECT count() FROM operation_error_events FINAL WHERE op_id = ?")
+        .bind(&row.op_id)
+        .fetch_one::<u64>()
+        .await?;
+    let events = client
+        .query(
+            "SELECT collection_dataset, hash, task_name, event, \
+                    toString(created_at) AS created_at, \
+                    substring(error_logs, 1, 300) AS error_excerpt \
+             FROM operation_error_events FINAL \
+             WHERE op_id = ? \
+             ORDER BY created_at, collection_dataset, hash, task_name, event \
+             LIMIT ? OFFSET ?",
+        )
+        .bind(&row.op_id)
+        .bind(PAGE_SIZE)
+        .bind(events_offset)
+        .fetch_all::<OperationErrorEventDbRow>()
+        .await?
+        .into_iter()
+        .map(|event| OperationErrorEventRow {
+            collection_dataset: event.collection_dataset,
+            hash: event.hash,
+            task_name: event.task_name,
+            event: event.event,
+            created_at: event.created_at,
+            error_excerpt: event.error_excerpt,
+        })
+        .collect();
+
+    Ok(OperationDetail {
+        row,
+        plans,
+        plans_total,
+        events,
+        events_total,
+        page_size: PAGE_SIZE,
     })
 }
 

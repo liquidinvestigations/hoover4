@@ -224,6 +224,16 @@ Admin dashboard, collections, users, groups, settings, metrics, and operations.
 | `621-admin-operations-destructive-confirm` | Exercises the admin operations destructive confirm case. | none named | `--names admin-operations-destructive-confirm` |
 | `622-admin-operations-rerun` | Exercises the admin operations rerun case. | none named | `--names admin-operations-rerun` |
 | `623-admin-collection-operations` | Exercises the admin collection operations case. | none named | `--names admin-collection-operations` |
+| `624-admin-failures` | Exercises the admin failures list with rows present. | none named | `--names admin-failures` |
+| `625-admin-failures-filter` | Exercises one filter on the admin failures list. | none named | `--names admin-failures-filter` |
+| `626-admin-failures-sort` | Exercises signature sort in both directions on the failures list. | none named | `--names admin-failures-sort` |
+| `627-admin-failures-page-two` | Exercises page two of the grouped failures list. | none named | `--names admin-failures-page-two` |
+| `628-admin-failures-expand` | Exercises expanding a grouped failure row to its instances. | none named | `--names admin-failures-expand` |
+| `629-admin-failure-detail` | Exercises the failure tree detail page. | `reruns` | `--names admin-failure-detail` |
+| `630-admin-operations-failure-link` | Exercises the operations-page link into a captured failure tree. | `reruns` | `--names admin-operations-failure-link` |
+| `631-admin-operations-temporal-link` | Exercises the Temporal deep link on an operations row. | none named | `--names admin-operations-temporal-link` |
+| `632-admin-failure-scrubbed` | Exercises the scrubbed-copy control on a failure tree. | `reruns` | `--names admin-failure-scrubbed` |
+| `633-admin-operation-detail` | Exercises the operation detail page. | `reruns`, with the failed import | `--names admin-operation-detail` |
 
 ## Manual QA procedures
 
@@ -260,4 +270,3 @@ Switching PDF sources in the full viewer and in the preview.
 | `801-qa-pdf-full-source-switch` | Exercises the qa pdf full source switch case. | none named | `--names qa-pdf-full-source-switch` |
 | `802-qa-pdf-full-delayed-source-switch` | Exercises the qa pdf full delayed source switch case. | none named | `--names qa-pdf-full-delayed-source-switch` |
 | `803-qa-pdf-preview-source-switch` | Exercises the qa pdf preview source switch case. | none named | `--names qa-pdf-preview-source-switch` |
-

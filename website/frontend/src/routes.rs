@@ -16,7 +16,8 @@ use crate::pages::admin::{
     collection_processing::AdminCollectionProcessingPage, collections_list::AdminCollectionsPage,
     dashboard::AdminDashboardPage, dataset_detail::AdminDatasetPage, group_detail::AdminGroupPage,
     groups_list::AdminGroupsPage, llm_config::AdminLlmPage, metrics::AdminMetricsPage,
-    operations::AdminOperationsPage, settings::AdminSettingsPage, user_detail::AdminUserPage,
+    operation_detail::AdminOperationDetailPage, operations::AdminOperationsPage,
+    settings::AdminSettingsPage, user_detail::AdminUserPage,
     user_llm::AdminUserLlmPage, users_list::AdminUsersPage,
     failures::AdminFailuresPage, failure_detail::AdminFailureDetailPage,
 };
@@ -116,6 +117,13 @@ pub enum Route {
     // routes are all distinct literal prefixes and none of them shadows another.
     #[route("/admin/operations")]
     AdminOperationsPage {},
+
+    #[route("/admin/operations/:op_id?:plans_page&:events_page")]
+    AdminOperationDetailPage {
+        op_id: String,
+        plans_page: u32,
+        events_page: u32,
+    },
 
     #[route("/admin/failures")]
     AdminFailuresPage {},

@@ -6,7 +6,7 @@
 //! Manticore on `MANTICORE_URL` (default http://127.0.0.1:9308).
 
 use backend::db_utils::clickhouse_utils::{
-    get_client_for_dataset, list_shards, resolve_collection, shard_generation,
+    get_client_for_dataset, get_global_client, list_shards, resolve_collection, shard_generation,
 };
 use common::current_user::CurrentUser;
 use common::search_query::SearchQuery;
@@ -147,6 +147,55 @@ macro_rules! skip_unless_full_corpus {
 /// test deliberately makes every search partial for its duration, which would
 /// flunk the healthy-stack assertions of tests running concurrently.
 static GLOBAL_SEARCH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn operation_detail_lists_rerun_plans_and_error_events() {
+    if !backend::db_auth::collections::collection_db_ready("reruns")
+        .await
+        .unwrap_or(false)
+    {
+        eprintln!("[stack] skip: reruns collection does not exist");
+        return;
+    }
+
+    // `main_services/run.sh operations rerun` creates a reruns operation before this test.
+    let op_ids = get_global_client()
+        .query(
+            "SELECT op_id FROM operations FINAL \
+             WHERE collection_dataset = 'reruns_probe' AND state = 'finished' \
+             ORDER BY started_at DESC",
+        )
+        .fetch_all::<String>()
+        .await
+        .expect("reruns_probe must have a finished operation");
+    let mut detail = None;
+    for op_id in op_ids {
+        let candidate = backend::api::admin::operations::admin_get_operation_detail(
+            &admin_user(),
+            op_id,
+            0,
+            0,
+        )
+        .await
+        .unwrap();
+        if candidate.plans_total >= 1 && !candidate.events.is_empty() {
+            detail = Some(candidate);
+            break;
+        }
+    }
+    let detail = detail.expect("reruns_probe must have a finished operation with plans and events");
+
+    assert!(detail.plans_total >= 1, "{detail:?}");
+    assert!(
+        detail.plans.iter().all(|plan| plan.source == "listed"),
+        "{:#?}",
+        detail.plans
+    );
+    assert!(!detail.events.is_empty(), "{detail:?}");
+    assert_eq!(detail.page_size, 100);
+    assert!(detail.row.errors_before_run.is_some(), "{:#?}", detail.row);
+}
 
 /// Wait until the in-process shard-state cache (TTL ~30 s, see
 /// `clickhouse_utils::SHARD_STATE_TTL`) reflects the presence/absence of a shard.
