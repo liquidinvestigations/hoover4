@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS manticore_shards
     doc_count UInt64 COMMENT 'Distinct file_hash count written into this shard',
     is_open UInt8 DEFAULT 1 COMMENT '1 = accepting new documents, 0 = sealed (over budget)',
     created_at DateTime DEFAULT now(),
-    updated_at DateTime DEFAULT now() COMMENT 'Version column for ReplacingMergeTree'
+    updated_at DateTime DEFAULT now() COMMENT 'Version column for ReplacingMergeTree',
+    row_count UInt64 DEFAULT 0 COMMENT 'Manticore rows written into this shard so far'
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (shard_name)

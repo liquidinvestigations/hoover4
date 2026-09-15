@@ -142,7 +142,7 @@ table never sets the column. A profile's model picker cannot check whether a mod
 it can call tools at all.
 
 ```
-grep -n "supports_tools" main_services/processing/database/db_global_migrations/00019_llm_models.sql main_services/processing/tasks/llm_catalog.py
+grep -n "supports_tools" main_services/processing/database/db_global_migrations/00018_llm_models.sql main_services/processing/tasks/llm_catalog.py
 ```
 
 The migration line is the only match. `llm_catalog.py` is the only writer and does not

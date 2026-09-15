@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS chat_message_stream
     reasoning  String DEFAULT '' COMMENT 'Partial reasoning content, rendered behind a disclosure and never in the answer body',
     tool_name  String DEFAULT '',
     is_final   UInt8  DEFAULT 0 COMMENT 'Last write before the row moves to chat_messages',
-    updated_at DateTime64(3) DEFAULT now64(3) COMMENT 'Version column, and the staleness clock for detecting an interrupted turn'
+    updated_at DateTime64(3) DEFAULT now64(3) COMMENT 'Version column, and the staleness clock for detecting an interrupted turn',
+    message_uuid String DEFAULT '' COMMENT 'Per-turn uuid, shared by every row the turn writes. Detects seq collisions between two senders',
+    tool_call_index UInt32 DEFAULT 0 COMMENT '0-based order of this tool row within its turn. 0 for the assistant row'
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (username, session_id, seq)

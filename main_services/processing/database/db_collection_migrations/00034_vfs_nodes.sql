@@ -36,4 +36,4 @@ CREATE TABLE IF NOT EXISTS vfs_nodes
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (collection_dataset, node_key)
-COMMENT 'Materialised VFS tree, one row per node. Source for the per-collection Manticore structure index and for the file_paths ancestor closure. This is also the readiness sentinel (see READINESS_SENTINEL) and must stay the last table-creating migration.';
+COMMENT 'Materialised VFS tree, one row per node. Source for the per-collection Manticore structure index and for the file_paths ancestor closure.';

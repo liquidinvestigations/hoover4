@@ -41,4 +41,4 @@ ENGINE = MergeTree
 PARTITION BY toYYYYMM(captured_at)
 ORDER BY (op_id, node_index)
 TTL captured_at + INTERVAL 180 DAY
-COMMENT 'One row per node of an operation failure tree. No writer inserts into it';
+COMMENT 'One row per node of an operation failure tree';

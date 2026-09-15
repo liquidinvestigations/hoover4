@@ -368,9 +368,9 @@ pub async fn admin_apply_ocr_languages(
         }
     }
 
-    // No second check here: the operations lock refuses a second dispatch while a
-    // non-terminal `change_ocr_languages` row holds the dataset, and it names the row in
-    // the way. A separate guard would be a second rule that can disagree with it.
+    // No second check here: the operations lock refuses a dispatch while a live operation
+    // holds the dataset or its collection, and it names the row in the way. A separate
+    // guard would be a second rule that can disagree with it.
     let detail = serde_json::json!({
         "tesseract_languages": tesseract,
         "easyocr_languages": easyocr,

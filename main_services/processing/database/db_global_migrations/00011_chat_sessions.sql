@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS chat_sessions
     options_locked UInt8 DEFAULT 0 COMMENT 'Set once the first message is sent - after this the two switches above are read-only',
     created_at DateTime DEFAULT now(),
     updated_at DateTime DEFAULT now() COMMENT 'Version column for ReplacingMergeTree, and the sort key of the session list',
-    is_deleted UInt8 DEFAULT 0 COMMENT 'Soft-delete tombstone'
+    is_deleted UInt8 DEFAULT 0 COMMENT 'Soft-delete tombstone',
+    peak_context_tokens UInt32 DEFAULT 0 COMMENT 'Running maximum of peak_context_tokens over every turn of this conversation'
 )
 ENGINE = ReplacingMergeTree(updated_at, is_deleted)
 ORDER BY (username, session_id)

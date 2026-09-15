@@ -32,7 +32,11 @@ CREATE TABLE IF NOT EXISTS chat_messages
     created_ms DateTime64(3) DEFAULT now64(3) COMMENT 'Millisecond creation time. created_at has second granularity and cannot order a turn against the tool calls it triggered',
     agent_duration_ms UInt32 DEFAULT 0 COMMENT 'Wall time the agent took to produce this row, 0 for user turns',
     created_at DateTime DEFAULT now(),
-    updated_at DateTime DEFAULT now() COMMENT 'Version column for ReplacingMergeTree'
+    updated_at DateTime DEFAULT now() COMMENT 'Version column for ReplacingMergeTree',
+    message_uuid String DEFAULT '' COMMENT 'Per-turn uuid, shared by every row the turn writes. Detects seq collisions between two senders',
+    context_tokens UInt32 DEFAULT 0 COMMENT 'Prompt tokens of the first model call of this turn - the conversation as the model received it. 0 when unknown',
+    peak_context_tokens UInt32 DEFAULT 0 COMMENT 'Largest prompt plus completion of any single model call in this turn. 0 when unknown',
+    context_window UInt32 DEFAULT 0 COMMENT 'Context window of the model that produced this row, copied from the catalog. 0 means the provider did not say and readers must show unknown'
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (username, session_id, seq)

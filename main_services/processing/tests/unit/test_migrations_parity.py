@@ -26,14 +26,12 @@ ALTER_TABLE_RE = re.compile(r"ALTER\s+TABLE", re.IGNORECASE)
 #: change from here on is a NEW numbered file, which, for adding a column to a table
 #: that already exists, has to be an ALTER. See `test_alter_table_only_in_new_files`.
 COLLAPSED_BASELINE = {
-    "db_global_migrations": 20,
-    "db_collection_migrations": 31,
+    "db_global_migrations": 28,
+    "db_collection_migrations": 48,
 }
 
 #: Every table a global migration creates. It mirrors the `CREATE TABLE` statements in
-#: the directory, not the live schema, so a table a later migration drops stays listed:
-#: the applied file that created it is frozen and cannot be edited away. `dataset_jobs`
-#: is one of those. Created, then dropped once the operations log replaced it.
+#: the directory and the collapsed migration set. The set creates every listed table.
 EXPECTED_GLOBAL_TABLES = {
     "api_events",
     "chat_artifacts",
@@ -45,7 +43,6 @@ EXPECTED_GLOBAL_TABLES = {
     "collection_group_permissions",
     "collections",
     "dataset",
-    "dataset_jobs",
     "dataset_settings",
     "llm_call_events",
     "llm_models",
@@ -92,6 +89,8 @@ EXPECTED_COLLECTION_TABLES = {
     "pdfs",
     "pdfs_image",
     "processing_errors",
+    "operation_error_events",
+    "operation_plans",
     "processing_plan_finished",
     "processing_plan_hits",
     "processing_plans",
@@ -319,10 +318,6 @@ def test_readiness_sentinel_matches_last_collection_migration():
     anchoring on the literal last file would fail on it. Readiness means "the schema is
     fully built", which is decided by the last CREATE, and that distinction is what keeps
     a trailing drop-only migration from making every collection report un-ready.
-
-    `00034_vfs_nodes.sql` carries a comment claiming it must stay last. That comment is
-    wrong and is deliberately not corrected: it is applied history whose md5 is recorded,
-    and editing it would fail every deployment that already ran it.
 
     The sentinel name is checked in next to the migrations (READINESS_SENTINEL) so this
     test does not depend on the website sources being mounted. The old version read

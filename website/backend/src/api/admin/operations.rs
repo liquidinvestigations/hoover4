@@ -75,6 +75,17 @@ fn is_destructive(kind: &str) -> bool {
     kind_entry(kind).map(|(_, _, d)| *d).unwrap_or(false)
 }
 
+fn lock_clause(target_kind: &str) -> &'static str {
+    match target_kind {
+        "dataset" => {
+            "state IN ('pending', 'running') AND \
+             (collection_dataset = ? OR (target_kind = 'collection' AND collectionname = ?))"
+        }
+        "collection" => "state IN ('pending', 'running') AND collectionname = ?",
+        _ => "state IN ('pending', 'running')",
+    }
+}
+
 /// The error rate above which a task type is called out as a possible tooling
 /// limitation rather than as ordinary mess.
 ///
@@ -408,34 +419,46 @@ pub async fn dispatch_operation(
     let now = time::OffsetDateTime::now_utc();
     let op_id = format!("{kind}-{target}-{}", now.unix_timestamp());
 
-    // The lock is one rule with one owner: a second dispatch is refused while a
-    // non-terminal row holds the same kind and target. A stale row is NOT free. A run
-    // that stopped reporting may still have activities in flight.
+    // The lock is one rule with one owner: a dataset operation holds its dataset and a
+    // collection operation holds its collection. A stale row is NOT free. A run that
+    // stopped reporting may still have activities in flight.
     let client = get_global_client();
-    let target_column = match *target_kind {
-        "dataset" => "collection_dataset",
-        "collection" => "collectionname",
-        _ => "",
-    };
-    if !target_column.is_empty() {
-        let blockers = client
-            .query(&format!(
-                "SELECT op_id, state FROM operations FINAL \
-                 WHERE kind = ? AND {target_column} = ? AND state IN ('pending', 'running') \
-                 ORDER BY started_at DESC LIMIT 5"
-            ))
-            .bind(kind)
-            .bind(target)
-            .fetch_all::<(String, String)>()
-            .await?;
-        if !blockers.is_empty() {
-            let names = blockers
-                .iter()
-                .map(|(id, st)| format!("{id} ({st})"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            anyhow::bail!("{kind} is already running for {target}: {names}. Wait for it, or cancel it, then dispatch again.");
+    let blockers = match *target_kind {
+        "dataset" => {
+            client
+                .query(&format!(
+                    "SELECT op_id, kind, state FROM operations FINAL WHERE {} \
+                     ORDER BY started_at DESC",
+                    lock_clause(target_kind)
+                ))
+                .bind(collection_dataset)
+                .bind(collectionname)
+                .fetch_all::<(String, String, String)>()
+                .await?
         }
+        "collection" => {
+            client
+                .query(&format!(
+                    "SELECT op_id, kind, state FROM operations FINAL WHERE {} \
+                     ORDER BY started_at DESC",
+                    lock_clause(target_kind)
+                ))
+                .bind(collectionname)
+                .fetch_all::<(String, String, String)>()
+                .await?
+        }
+        _ => Vec::new(),
+    };
+    if !blockers.is_empty() {
+        let names = blockers
+            .iter()
+            .map(|(id, blocker_kind, state)| format!("{id} ({blocker_kind}, {state})"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow::bail!(
+            "{target} is held by {names}. Wait for it, or cancel it with \
+             `main.py operations cancel <op_id>`, then dispatch again."
+        );
     }
 
     let detail = match detail.trim() {
@@ -603,4 +626,26 @@ pub async fn admin_cancel_operation(user: &CurrentUser, op_id: String) -> anyhow
     insert.write(&row).await?;
     insert.end().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lock_clause;
+
+    #[test]
+    fn dataset_lock_clause_blocks_the_dataset_and_collection() {
+        assert_eq!(
+            lock_clause("dataset"),
+            "state IN ('pending', 'running') AND (collection_dataset = ? OR \
+             (target_kind = 'collection' AND collectionname = ?))"
+        );
+    }
+
+    #[test]
+    fn collection_lock_clause_blocks_the_collection() {
+        assert_eq!(
+            lock_clause("collection"),
+            "state IN ('pending', 'running') AND collectionname = ?"
+        );
+    }
 }

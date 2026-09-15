@@ -130,9 +130,9 @@ consequences:
   `migrate` run, because each has its own independent `schema_versions`.
 
 Both sets are **collapsed at a baseline**, then grow by new numbered files.
-`COLLAPSED_BASELINE` in `tests/unit/test_migrations_parity.py` is `{global: 20,
-collection: 31}`. Files at or below those numbers are CREATE-only history and must
-never be edited. Files above the baseline may `ALTER TABLE`.
+`COLLAPSED_BASELINE` in `tests/unit/test_migrations_parity.py` is `{global: 28,
+collection: 48}`. Files at or below those numbers are CREATE-only history and must
+never be edited. A file above a baseline may `ALTER TABLE`.
 
 Collapsing is a deliberate break of the never-edit-history rule and is paid for by a full
 `./deploy --reset`: it drops all data and reindexes `testdata`. There is no migration path
@@ -258,68 +258,12 @@ returns without infix indexing, not equal to it.
 
 ## Migrations above the collapsed baseline
 
-`COLLAPSED_BASELINE` is `{global: 20, collection: 31}`. Files at or below those numbers
-are the collapsed baseline and must never be edited. Above them the collection set carries
-appended tables and column-adding migrations; the global set does the same.
+`COLLAPSED_BASELINE` is `{global: 28, collection: 48}`. No migration is above either
+baseline. A later schema change adds one numbered file and one row to this section.
 
-| | |
-|---|---|
-| `00024_eta_samples_ttl.sql` | Global. `processing_eta_samples` TTL is 3 days. `sampled_at` stays in the sort key so the admin page can plot the newest 100 samples per stage. |
-| `00025_processing_task_runs.sql` | Global. Same columns as the collection table of this name. Activities whose parameters name no collection write here with an empty `collection_dataset`. |
-| `00026_bench_runs.sql` | Global. One row per `bench-ingest.sh` run, sorted `(fixture, started_at)`. |
-| `00027_task_runs_queue_wait.sql` | Global. Same queue-wait columns as collection `00047` on the unroutable `processing_task_runs` copy. |
-| `00028_processing_queue_backlog.sql` | Global. Sampled Temporal queue waiters (`DescribeTaskQueue`): backlog count, age, add/dispatch rates, pollers. Level samples, nothing written while every queue is idle. TTL 2 days. Distinct from `processing_task_inflight`, which is busy slots inside a worker process. |
-| `00032_email_addresses.sql` | Structured sender/recipient rows written by `parse_email`. |
-| `00033_document_dates.sql` | Every confirmed historical date for a document, with the metadata key it came from. |
-| `00034_vfs_nodes.sql` | The folder tree, one row per path node. |
-| `00035_processing_task_runs.sql` | One row per Temporal activity execution: task, dataset, hash, wall duration, outcome, attempt, queue, worker. The success side of `processing_errors`, which only records failures. `MergeTree`, partitioned by month, sorted `(collection_dataset, task_name, started_at)`, TTL 180 days. |
-| `00036_processing_task_inflight.sql` | Sampled concurrency: what each worker process is running right now. Level samples, not counters, read the newest per worker and sum those. TTL 2 days. |
-| `00037_shard_row_budget.sql` | `row_count` on `manticore_shards` and `manticore_shard_assignments`: the shard planner caps a shard on Manticore rows as well as on text bytes. An `ALTER`, because both tables are in the collapsed baseline. |
-| `00042_table_cells.sql` | One row per non-empty cell of a tabular document, keyed `(file_hash, sheet_id, column_id, row_id)`, column-major, because every operation the grid performs is scoped to one column. No `collection_dataset` column: one parse serves every dataset in the collection holding the same file. |
-| `00043_table_documents.sql` | The per-`(collection_dataset, hash)` manifest for those cells: reader, format, counts, and the truncation record. The only thing that authorises a cell read. |
-| `00044_table_sheets.sql` | Per-sheet extents. Every cell read is bounded by these, which is how a re-parse that produces fewer rows leaves the old tail unreachable rather than needing a mutation. |
-| `00045_table_columns.sql` | Per-column header, inferred type, per-kind counts, value range and samples. Real columns rather than JSON, so "every document with a column called IBAN" is a SQL query. |
-| `00046_text_content_bytes.sql` | `text_bytes` on `text_content`: byte length of `text`, written at insert so size queries never scan the body. |
-| `00047_task_runs_queue_wait.sql` | Queue wait on `processing_task_runs`: `scheduled_at`, `schedule_to_start_ms`, `retry_backoff_ms`, plus `workflow_id` / `workflow_run_id` / `workflow_type`. Defaults keep older rows readable. |
-| `00048_processing_errors_join.sql` | `attempt` and `workflow_run_id` on `processing_errors`, so an `outcome = error` row in `processing_task_runs` can join its stack trace without a hash+time window. |
-| `00049_regex_entity_hit.sql` | One row per `(file, variant, segment, rule set, entity type)` holding the segment's deduplicated values in five parallel arrays. Not one row per occurrence: 193 real segments produced 325 365 entities, and density per segment is unbounded. `rule_set_version` is in the sort key so two rule sets' results coexist rather than replace one another. |
-| `00050_regex_scanned.sql` | The scan stage's watermark, per rule set version. A bump makes every segment eligible again and nothing re-runs until a rescan is asked for. Segments the variant filter skipped are watermarked too, or they are reconsidered on every run for ever. |
-| `00029_operations.sql` | Global. One row per long-running operation: kind, target, state, progress, ETA, error, who asked. No TTL, its whole value is answering "was this ever run" about something that happened longer ago than a Temporal history survives (24 hours here). `op_id` carries a timestamp and is also the workflow id, so two dispatches can never collapse into one execution. |
-| `00037_operation_failures.sql` | Global. One row per node of an operation failure tree, keyed `(op_id, node_index)` so one operation's tree is a prefix read. Monthly partition on `captured_at` so a newest-failures query reads recent partitions. TTL 180 days. The capture writes a row set when an operation or a pipeline workflow fails. |
-| `00038_operation_failures_comment.sql` | Global. Table comment on `operation_failures`: the capture writes this table. |
-
-`processing_task_runs` and `processing_task_inflight` are written by `tasks/task_timing.py`
-(a Temporal activity interceptor, batched, best-effort but never silent) and read by the
-admin processing page and `main_services/task-time-report.sh`. Queue waiters are a third
-table, global `processing_queue_backlog`, sampled from Temporal `DescribeTaskQueue` by
-the same daemon. Volume, so nobody is surprised by it: a full ~200k-file ingest produces
-single-digit millions of `processing_task_runs` rows (a handful of activities per file),
-which is a fraction of a second to aggregate and a few tens of megabytes on disk. The
-in-flight table is thousands of rows for the same run, and zero while nothing is being
-processed. The backlog table is a handful of rows per sample while any queue has waiters,
-and zero while every queue is idle.
-
-Two baseline files carry edits made in place: `00005_vfs_files.sql` (`container_hash` in
-the sort key, plus `mtime`/`mtime_source`) and `00008_email_headers.sql`
-(`date_sent_known`). **Do not take that as licence to do it again.** Editing an applied
-migration is normally impossible: the runner records an md5 per file and an edit fails
-every deployment that already ran it. It was survivable only because the rollout was a
-docker reset, which wipes the applied-migration table, and that excuse expires the moment
-a deployment exists that must be upgraded rather than rebuilt. `COLLAPSED_BASELINE` was
-deliberately not raised over those edits, so the next schema change is a new numbered file.
-
-`vfs_files`'s sort key needs `container_hash` because two containers holding the same
-inner path (two copies of one archive), otherwise collapse into a single
-ReplacingMergeTree row and the second container loses its children. The P0 dedupe read
-carries the same filter for the same reason.
-
-**The readiness sentinel names whatever the LAST table-creating migration creates**,
-because "ready" means the schema is fully built. It is currently `table_columns`
-and must be updated in both copies (`db_collection_migrations/READINESS_SENTINEL` and
-`website/backend/src/db_auth/READINESS_SENTINEL`) whenever a table-creating migration is
-appended. `00034_vfs_nodes.sql` contains a comment claiming it must stay last; that
-sentence is wrong and is **left alone on purpose**, because it is applied history whose md5
-is recorded. The rule it states still holds. That is why the sentinel is not there.
+**The readiness sentinel names the table that the last table-creating migration creates**.
+It is `operation_plans`. Update both sentinel copies when a later table-creating migration
+is added.
 
 ## `table_cells` is keyed by hash, and that is why it needs a sweeper
 

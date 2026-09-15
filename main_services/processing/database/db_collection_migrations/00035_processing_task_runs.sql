@@ -36,12 +36,18 @@ CREATE TABLE IF NOT EXISTS processing_task_runs
     collection_dataset LowCardinality(String) COMMENT 'Dataset the execution belongs to, empty when the activity is not dataset-scoped',
     task_name LowCardinality(String) COMMENT 'Temporal activity type, e.g. run_tika_and_store. This is the unit the breakdown groups by',
     hash String COMMENT 'Artifact the execution worked on when one is identifiable (file/pdf/email/archive hash, else the plan hash), empty otherwise',
-    outcome Enum8('ok' = 0, 'error' = 1) COMMENT 'Whether the activity body returned or raised. Raised executions still carry their run time',
+    outcome Enum8('ok' = 0, 'error' = 1, 'skipped' = 2) COMMENT 'Whether the activity body returned data, raised, or decided the input needs nothing. A skip still ran to completion and consumed no retry',
     run_time_ms UInt32 COMMENT 'Wall duration of this execution in milliseconds',
     started_at DateTime64(3) COMMENT 'When the execution started, UTC, millisecond precision',
     attempt UInt16 COMMENT 'Temporal attempt number, 1 for the first try. Retries are separate rows',
     task_queue LowCardinality(String) COMMENT 'Queue the execution ran on, which is also which worker tier it consumed',
-    worker_id LowCardinality(String) COMMENT 'host-pid of the worker process, so concurrency can be split per process'
+    worker_id LowCardinality(String) COMMENT 'host-pid of the worker process, so concurrency can be split per process',
+    scheduled_at DateTime64(3) DEFAULT toDateTime64(0, 3),
+    schedule_to_start_ms UInt32 DEFAULT 0,
+    retry_backoff_ms UInt32 DEFAULT 0,
+    workflow_id String DEFAULT '',
+    workflow_run_id String DEFAULT '',
+    workflow_type LowCardinality(String) DEFAULT ''
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMM(started_at)

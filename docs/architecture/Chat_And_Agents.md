@@ -318,7 +318,7 @@ required:
   `UInt32` column is 0 rather than NULL, so "no rows yet" and "one row at seq 0" produce
   the same number. Whether a session is on its first turn is read from the transcript,
   never inferred from the seq;
-* **`message_uuid`** (migration `00021`), shared by every row of a turn and **read** rather
+* **`message_uuid`** (migration `00012`), shared by every row of a turn and **read** rather
   than merely written: `db_chat::detect_seq_collision` looks for a second uuid at the seq just claimed
   and refuses the turn if it finds one, so the user resends instead of losing a message. It
   reads without `FINAL` on purpose: `FINAL` collapses away the evidence. **A write-only

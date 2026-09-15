@@ -41,7 +41,13 @@ CREATE TABLE IF NOT EXISTS chat_compactions
     chars_before     UInt64   DEFAULT 0 COMMENT 'Characters of tool-result content before eviction',
     chars_after      UInt64   DEFAULT 0 COMMENT 'Characters of tool-result content after eviction',
     evicted          Array(String) COMMENT 'Names of the evicted tool results, in the order they ran',
-    updated_at       DateTime DEFAULT now() COMMENT 'Version column for ReplacingMergeTree'
+    updated_at       DateTime DEFAULT now() COMMENT 'Version column for ReplacingMergeTree',
+    summary          String DEFAULT '' COMMENT 'The handoff document layer two produced, whole. Empty for an eviction',
+    summarised_count UInt32 DEFAULT 0 COMMENT 'Messages layer two replaced with the handoff document',
+    preserved_count  UInt32 DEFAULT 0 COMMENT 'Messages layer two copied through unchanged - the user turns, the todo, everything carrying a citation handle, and the most recent exchanges',
+    handles          Array(String) COMMENT 'Citation handles already issued when the compaction ran. Every one of them survives it',
+    list_before      String DEFAULT '' COMMENT 'Model-visible message list before the compaction, one line per message',
+    list_after       String DEFAULT '' COMMENT 'Model-visible message list after the compaction, one line per message'
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (session_id, compaction_id)

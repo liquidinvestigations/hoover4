@@ -11,8 +11,8 @@ Two rules run through everything below and neither is negotiable:
 * **`op_id` is the Temporal workflow id.** Every dispatch mints a fresh one with a
   timestamp in it, so two dispatches can never collapse into one execution and every
   attempt keeps its own row.
-* **A non-terminal row holds the lock.** A second dispatch of the same kind against the
-  same target is refused while one exists, and a row that has stopped reporting is NOT
+* **A non-terminal row holds the lock.** A dataset operation holds its dataset and a
+  collection operation holds its collection. A row that has stopped reporting is NOT
   treated as free: a run that stopped updating may still have activities in flight, and
   releasing the lock on a clock would start a second writer beside a live one. There is
   deliberately no staleness timeout here. Cancelling the operation is how a lock is
@@ -80,10 +80,13 @@ class OperationLocked(Exception):
         self.kind = kind
         self.target = target
         self.blockers = blockers
-        names = ", ".join(f"{b['op_id']} ({b['state']})" for b in blockers[:5])
+        names = ", ".join(
+            f"{blocker['op_id']} ({blocker['kind']}, {blocker['state']})"
+            for blocker in blockers
+        )
         super().__init__(
-            f"{kind} is already running for {target}: {names}. Wait for it, or cancel "
-            f"it with `main.py operations cancel <op_id>`, then dispatch again."
+            f"{target} is held by {names}. Wait for it, or cancel it with "
+            f"`main.py operations cancel <op_id>`, then dispatch again."
         )
 
 
@@ -93,11 +96,10 @@ def is_destructive(kind: str) -> bool:
 
 
 def target_of(kind: str, collectionname: str, collection_dataset: str) -> str:
-    """The single string a kind locks on: the dataset, the collection, or nothing.
+    """The single string a kind acts on: the dataset, the collection, or nothing.
 
-    The lock is over `(kind, target)`, and which of the two identifiers is the target
-    is a property of the kind. Reading both would let a dataset-scoped operation block
-    on a collection-scoped one that is not touching it.
+    Which identifier is the target is a property of the kind. The value is also part of
+    the operation id, so it keeps repeated dispatches distinct.
     """
     target_kind = KINDS.get(kind, {}).get("target_kind", "global")
     if target_kind == "dataset":
@@ -173,27 +175,40 @@ def _insert_row(row: dict) -> None:
         insert_arrow_durable(client, "operations", table)
 
 
+def lock_clause(kind: str, collectionname: str,
+                collection_dataset: str) -> tuple[str, dict]:
+    """Return the live-row lock clause and its bound parameters."""
+    target_kind = KINDS.get(kind, {}).get("target_kind", "global")
+    if target_kind == "dataset":
+        return (
+            "state IN ('pending', 'running') AND "
+            "(collection_dataset = {collection_dataset:String} OR "
+            "(target_kind = 'collection' AND collectionname = {collectionname:String}))",
+            {
+                "collection_dataset": collection_dataset,
+                "collectionname": collectionname,
+            },
+        )
+    if target_kind == "collection":
+        return (
+            "state IN ('pending', 'running') AND collectionname = {collectionname:String}",
+            {"collectionname": collectionname},
+        )
+    return "state IN ('pending', 'running')", {}
+
+
 def blocking_operations(kind: str, collectionname: str,
                         collection_dataset: str) -> list[dict]:
-    """Non-terminal rows of this kind against this target, newest first.
+    """Live operations that conflict with this dispatch, newest first.
 
     Empty means the lock is free. A stale row is returned like any other, on purpose.
     """
-    target = target_of(kind, collectionname, collection_dataset)
-    column = {
-        "dataset": "collection_dataset",
-        "collection": "collectionname",
-    }.get(KINDS.get(kind, {}).get("target_kind", "global"))
-    where = "kind = {kind:String} AND state IN ('pending', 'running')"
-    parameters: dict = {"kind": kind}
-    if column:
-        where += f" AND {column} = {{target:String}}"
-        parameters["target"] = target
+    where, parameters = lock_clause(kind, collectionname, collection_dataset)
     return _select(where, parameters)
 
 
 def assert_lock_free(kind: str, collectionname: str, collection_dataset: str) -> None:
-    """Refuse a dispatch while a non-terminal operation of this kind holds the target."""
+    """Refuse a dispatch while a non-terminal operation holds its target."""
     blockers = blocking_operations(kind, collectionname, collection_dataset)
     if blockers:
         raise OperationLocked(

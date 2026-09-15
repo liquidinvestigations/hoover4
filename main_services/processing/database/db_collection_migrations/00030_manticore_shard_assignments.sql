@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS manticore_shard_assignments
     shard_name LowCardinality(String) COMMENT 'Shard the document was written to',
     text_bytes UInt64 COMMENT 'Text bytes contributed by this document',
     indexed_at DateTime DEFAULT now(),
-    updated_at DateTime DEFAULT now() COMMENT 'Version column for ReplacingMergeTree'
+    updated_at DateTime DEFAULT now() COMMENT 'Version column for ReplacingMergeTree',
+    row_count UInt64 DEFAULT 0 COMMENT 'Manticore rows contributed by this document: its text segments plus its filename row'
 )
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY (collection_dataset, file_hash)

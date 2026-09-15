@@ -4,7 +4,8 @@ CREATE TABLE IF NOT EXISTS text_content
     file_hash String COMMENT 'Hash of the source file that yielded this text',
     extracted_by String COMMENT 'Extractor that produced this text (e.g., pdfminer, tika)',
     page_id UInt32 COMMENT '1-based page number for paged formats (PDF, TIFF). For non-paged text, a 1-based ~256KB segment ordinal. Never 0.',
-    text String COMMENT 'Text content for a page/part (<1M suggested)'
+    text String COMMENT 'Text content for a page/part (<1M suggested)',
+    text_bytes UInt64 DEFAULT 0 COMMENT 'Byte length of text, written at insert'
 )
 ENGINE = ReplacingMergeTree
 ORDER BY (collection_dataset, file_hash, extracted_by, page_id)
