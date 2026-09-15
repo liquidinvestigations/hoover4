@@ -24,6 +24,7 @@ class ListPendingPlansParams:
     collectionname: str
     collection_dataset: str
     starting_plan_hash: str | None = None
+    op_id: str = ""
 
 
 @activity.defn
@@ -321,7 +322,7 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
     Writes to the collection database selected by ``params.collectionname``.
     Expected params:
       - errors: List[Dict[str, Any]] where each item has keys:
-          collection_dataset, hash, task_name, run_time_ms, error_logs
+            collection_dataset, hash, task_name, run_time_ms, error_logs, op_id
     """
     from database.clickhouse import get_collection_client
     errors: List[Dict[str, Any]] = list(params.errors or [])
@@ -347,6 +348,7 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
     ts_vals: List[datetime] = []
     attempt_vals: List[int] = []
     run_id_vals: List[str] = []
+    op_id_vals: List[str] = []
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -371,6 +373,7 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
             attempt = 0
         attempt_vals.append(min(attempt, 65535))
         run_id_vals.append((e.get("workflow_run_id") or ""))
+        op_id_vals.append((e.get("op_id") or ""))
 
     with get_collection_client(params.collectionname) as client:
         tbl = pa.table({
@@ -382,9 +385,26 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
             "timestamp": pa.array(ts_vals, type=pa.timestamp("s")),
             "attempt": pa.array(attempt_vals, type=pa.uint16()),
             "workflow_run_id": pa.array(run_id_vals, type=pa.string()),
+            "op_id": pa.array(op_id_vals, type=pa.string()),
         })
         client.insert_arrow("processing_errors", tbl)
 
+    from database.operation_ledger import event_rows, insert_error_events
+
+    event_groups: Dict[tuple[str, str], List[tuple[str, str, str]]] = {}
+    for collection_dataset, item_hash, task_name, error_logs, op_id in zip(
+        coll_vals, hash_vals, task_vals, logs_vals, op_id_vals
+    ):
+        if op_id:
+            event_groups.setdefault((op_id, collection_dataset), []).append(
+                (item_hash, task_name, error_logs)
+            )
+    for (op_id, collection_dataset), rows in event_groups.items():
+        pairs = [(item_hash, task_name) for item_hash, task_name, _ in rows]
+        logs = {(item_hash, task_name): error_logs for item_hash, task_name, error_logs in rows}
+        insert_error_events(
+            params.collectionname,
+            event_rows(op_id, collection_dataset, pairs, "error", logs),
+        )
+
     return len(errors)
-
-

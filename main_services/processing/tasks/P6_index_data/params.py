@@ -7,6 +7,7 @@ class IndexDatasetPlanParams:
     collectionname: str
     collection_dataset: str
     plan_hash: str
+    op_id: str = ""
 
 @dataclass
 class PlanShardsParams:

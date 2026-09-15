@@ -95,6 +95,7 @@ class ExtractEntitiesForPlan:
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
             item_hashes=failed_hashes,
+            op_id=params.op_id,
         )
 
         log.info(f"[P4] Done: entity extraction for plan {params.collection_dataset} {params.plan_hash}")
@@ -165,6 +166,7 @@ class ScanRegexEntitiesForPlan:
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
             item_hashes=failed_hashes,
+            op_id=params.op_id,
         )
 
         log.info(f"[P4] Done: regex entity scan for plan {params.collection_dataset} {params.plan_hash}")

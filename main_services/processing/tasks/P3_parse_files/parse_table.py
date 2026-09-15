@@ -108,6 +108,7 @@ class ParseTableParams:
     #: `file_types.mime_encodings`, so a delimited file is decoded with the recorded
     #: codec instead of a guess.
     mime_encodings: list[str] | None = None
+    op_id: str = ""
 
 
 @dataclass
@@ -442,7 +443,7 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
 
 
 def _record_skip(params: ParseTableParams, run_time_ms: int, reason: str) -> None:
-    """Record what this reader could not do, without failing the activity."""
+    """Record a table reader Error without failing the activity."""
     from tasks.P2_execute_plan.activities import (
         RecordProcessingErrorsParams,
         record_processing_errors,
@@ -456,6 +457,7 @@ def _record_skip(params: ParseTableParams, run_time_ms: int, reason: str) -> Non
             "task_name": "parse_table_and_store",
             "run_time_ms": run_time_ms,
             "error_logs": f"{reason}: {params.file_path}",
+            "op_id": params.op_id,
         }],
     ))
 
@@ -510,8 +512,7 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
     started = time.time()
     reader = table_reader_for(params.mime_types or [], params.file_path)
     if not reader:
-        _record_skip(params, 0, "table_no_reader")
-        return {"status": "skipped", "reason": "no reader for this file"}
+        return SkippedOutcome({"status": "skipped", "reason": "no reader for this file"})
     table_format = table_format_for(reader, params.file_path)
 
     with get_collection_client(params.collectionname) as client:

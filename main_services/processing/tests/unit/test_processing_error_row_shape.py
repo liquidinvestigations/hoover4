@@ -14,7 +14,7 @@ from temporalio.converter import value_to_type
 
 from tasks.P2_execute_plan.activities import RecordProcessingErrorsParams
 
-ROW_KEYS = ("collection_dataset", "hash", "task_name", "run_time_ms", "error_logs")
+ROW_KEYS = ("collection_dataset", "hash", "task_name", "run_time_ms", "error_logs", "op_id")
 
 
 def _round_trip(value):
@@ -31,6 +31,7 @@ def test_error_row_round_trips():
         "task_name": "detector_error_tika",
         "run_time_ms": 12,
         "error_logs": "ActivityError: tika said no",
+        "op_id": "operation-1",
     }
     params = _round_trip(RecordProcessingErrorsParams(collectionname="testdata", errors=[row]))
     assert params.errors == [row]

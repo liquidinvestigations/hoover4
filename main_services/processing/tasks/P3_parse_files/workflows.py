@@ -82,6 +82,7 @@ class ParseSingleFileParams:
     item_hash: str
     file_path: str
     file_size_bytes: int | None = None
+    op_id: str = ""
 
 
 @workflow.defn
@@ -263,6 +264,7 @@ class ParseSingleFile:
                         file_hash=params.item_hash,
                         file_path=params.file_path,
                         timeout_seconds=proc_secs,
+                        op_id=params.op_id,
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -291,6 +293,7 @@ class ParseSingleFile:
                         timeout_seconds=proc_secs,
                         mime_types=mime_types,
                         mime_encodings=mime_encodings,
+                        op_id=params.op_id,
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -311,6 +314,7 @@ class ParseSingleFile:
                         pdf_hash=params.item_hash,
                         file_path=params.file_path,
                         timeout_seconds=proc_secs,
+                        op_id=params.op_id,
                     ),
                     task_queue="processing-common-queue",
                     id=child_id,
@@ -358,6 +362,7 @@ class ParseSingleFile:
                             file_path=params.file_path,
                             engine=engine,
                             timeout_seconds=proc_secs,
+                            op_id=params.op_id,
                         ),
                         start_to_close_timeout=timedelta(seconds=proc_secs),
                         heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -422,6 +427,7 @@ class ParseSingleFile:
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 item_hashes=[params.item_hash] * len(detector_results),
+                op_id=params.op_id,
                 default_task_name="detector_error_unknown",
             )
         except Exception:
@@ -439,6 +445,7 @@ class ParseSingleFile:
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
             item_hashes=[params.item_hash] * len(task_ids),
+            op_id=params.op_id,
             start_to_close_timeout_seconds=proc_secs,
         )
         return "ok"

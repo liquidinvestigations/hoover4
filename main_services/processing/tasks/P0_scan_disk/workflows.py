@@ -260,6 +260,7 @@ class IngestDiskDatasetParams:
     collectionname: str
     collection_dataset: str
     dataset_path: str
+    op_id: str = ""
 
 
 @workflow.defn
@@ -365,6 +366,7 @@ class IngestAndProcessDataset:
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 base_temp_dir="/tmp/hoover4",
+                op_id=params.op_id,
             ),
             id=f"execute-plans-{params.collection_dataset}-{run}",
             task_queue="processing-common-queue",

@@ -36,6 +36,7 @@ def _record_errors(monkeypatch, count: int, error_log: str):
             collectionname="collection",
             collection_dataset="dataset",
             item_hashes=[f"hash-{index}" for index in range(count)],
+            op_id="operation-1",
         )
     )
     return inserted, scheduled

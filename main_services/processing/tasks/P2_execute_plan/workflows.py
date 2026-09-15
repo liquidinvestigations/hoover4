@@ -90,6 +90,7 @@ class ExecutePlansParams:
     base_temp_dir: str
     starting_plan_hash: str | None = None
     recursivity_depth: int | None = None
+    op_id: str = ""
 
 
 @workflow.defn
@@ -117,7 +118,7 @@ class ExecutePlans:
         # 1) Fetch up to 1001 plan hashes (to know if we need to execute_as_new)
         plan_hashes = await workflow.execute_activity(
             list_pending_plans,
-            ListPendingPlansParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, starting_plan_hash=(params.starting_plan_hash or "")),
+            ListPendingPlansParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, starting_plan_hash=(params.starting_plan_hash or ""), op_id=params.op_id),
             start_to_close_timeout=timedelta(minutes=15),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
@@ -149,6 +150,7 @@ class ExecutePlans:
                         "starting_plan_hash": None,
                         "base_temp_dir": params.base_temp_dir,
                         "recursivity_depth": recursivity_depth + 1,
+                        "op_id": params.op_id,
                     },
                     id=f"execute-plans-{params.collection_dataset}-restart",
                     task_queue="processing-common-queue",
@@ -196,7 +198,7 @@ class ExecutePlans:
             def _plan_factory(ph):
                 return lambda: workflow.execute_child_workflow(
                     ExecuteSinglePlan.run,
-                    {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset, "plan_hash": ph, "base_temp_dir": params.base_temp_dir},
+                    {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset, "plan_hash": ph, "base_temp_dir": params.base_temp_dir, "op_id": params.op_id},
                     id=f"execute-plan-{params.collection_dataset}-{ph}",
                     task_queue="processing-common-queue",
                     search_attributes=dataset_search_attributes(params.collection_dataset),
@@ -285,6 +287,7 @@ class ExecutePlans:
                     "starting_plan_hash": continuation_hash,
                     "base_temp_dir": params.base_temp_dir,
                     "recursivity_depth": recursivity_depth + 1,
+                    "op_id": params.op_id,
                 },
                 id=f"execute-plans-{params.collection_dataset}-cont-{continuation_hash}",
                 task_queue="processing-common-queue",
@@ -316,6 +319,7 @@ class ExecutePlans:
                         "starting_plan_hash": None,
                         "base_temp_dir": params.base_temp_dir,
                         "recursivity_depth": recursivity_depth + 1,
+                        "op_id": params.op_id,
                     },
                     id=f"execute-plans-{params.collection_dataset}-restart-{recursivity_depth+1}",
                     task_queue="processing-common-queue",
@@ -336,6 +340,7 @@ class ExecuteSinglePlanParams:
     collection_dataset: str
     plan_hash: str
     base_temp_dir: str
+    op_id: str = ""
 
 
 @workflow.defn
@@ -427,6 +432,7 @@ class ExecuteSinglePlan:
                     plan_hash=params.plan_hash,
                     out_dir=dl.get("out_dir"),
                     items=group,
+                    op_id=params.op_id,
                 ),
                 id=f"process-batches-{params.collection_dataset}-{params.plan_hash}-{index}",
                 task_queue="processing-common-queue",
@@ -500,21 +506,21 @@ class ExecuteSinglePlan:
         stage_results = await asyncio.gather(
             workflow.execute_child_workflow(
                 ExtractEntitiesForPlan.run,
-                ExtractEntitiesForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+                ExtractEntitiesForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, op_id=params.op_id),
                 id=f"extract-entities-{params.collection_dataset}-{params.plan_hash}",
                 task_queue="processing-common-queue",
                 search_attributes=dataset_search_attributes(params.collection_dataset),
             ),
             workflow.execute_child_workflow(
                 ScanRegexEntitiesForPlan.run,
-                ScanRegexEntitiesForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+                ScanRegexEntitiesForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, op_id=params.op_id),
                 id=f"scan-regex-entities-{params.collection_dataset}-{params.plan_hash}",
                 task_queue="processing-common-queue",
                 search_attributes=dataset_search_attributes(params.collection_dataset),
             ),
             workflow.execute_child_workflow(
                 ChunkEmbedForPlan.run,
-                ChunkEmbedForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+                ChunkEmbedForPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, op_id=params.op_id),
                 id=f"chunk-embed-{params.collection_dataset}-{params.plan_hash}",
                 task_queue="processing-common-queue",
                 search_attributes=dataset_search_attributes(params.collection_dataset),
@@ -528,7 +534,7 @@ class ExecuteSinglePlan:
         # 8) Indexing stage
         await workflow.execute_child_workflow(
             IndexDatasetPlan.run,
-            IndexDatasetPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+            IndexDatasetPlanParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, op_id=params.op_id),
             id=f"index-dataset-plan-{params.collection_dataset}-{params.plan_hash}",
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
@@ -555,6 +561,7 @@ class ProcessItemsBatchedParams:
     plan_hash: str
     out_dir: str
     items: list
+    op_id: str = ""
 
 
 @workflow.defn
@@ -593,6 +600,7 @@ class ProcessItemsBatched:
                 item_hash=it.get('item_hash'),
                 file_path=f"{params.out_dir}/{it.get('item_hash')}",
                 file_size_bytes=it.get('file_size_bytes'),
+                op_id=params.op_id,
             )
             return lambda: workflow.execute_child_workflow(
                 ParseSingleFile.run,
@@ -613,6 +621,7 @@ class ProcessItemsBatched:
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
             item_hashes=item_hashes,
+            op_id=params.op_id,
         )
 
         if remaining:
@@ -622,5 +631,6 @@ class ProcessItemsBatched:
                 plan_hash=params.plan_hash,
                 out_dir=params.out_dir,
                 items=remaining,
+                op_id=params.op_id,
             ))
         return f"processed {len(results)} items"

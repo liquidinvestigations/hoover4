@@ -91,6 +91,7 @@ class ChunkEmbedForPlan:
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
             item_hashes=failed_hashes,
+            op_id=params.op_id,
         )
 
         log.info(f"[P5] Done: chunk+embed for plan {params.collection_dataset} {params.plan_hash}")

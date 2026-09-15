@@ -153,6 +153,7 @@ class IndexDatasetPlan:
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
             item_hashes=failed_hashes,
+            op_id=params.op_id,
         )
 
         # Record what actually reached a shard before refreshing the ledger:

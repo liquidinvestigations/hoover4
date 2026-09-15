@@ -449,6 +449,7 @@ class PdfProcessingWorkflowParams:
     pdf_hash: str
     file_path: str
     timeout_seconds: int
+    op_id: str = ""
 
 
 
@@ -493,6 +494,7 @@ class PdfProcessingAndScan:
                     file_path=params.file_path,
                     engine=engine,
                     timeout_seconds=params.timeout_seconds,
+                    op_id=params.op_id,
                 ),
                 start_to_close_timeout=timedelta(seconds=max(params.timeout_seconds, 3600)),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -601,6 +603,7 @@ class PdfProcessingAndScan:
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 item_hashes=[params.pdf_hash] * len(OCR_ENGINES),
+                op_id=params.op_id,
                 start_to_close_timeout_seconds=params.timeout_seconds,
             )
 

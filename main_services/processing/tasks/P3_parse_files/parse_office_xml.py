@@ -437,6 +437,7 @@ class ParseOfficeXmlParams:
     file_hash: str
     file_path: str
     timeout_seconds: int
+    op_id: str = ""
 
 
 def _record_skip(params: ParseOfficeXmlParams, run_time_ms: int, reason: str) -> None:
@@ -460,6 +461,7 @@ def _record_skip(params: ParseOfficeXmlParams, run_time_ms: int, reason: str) ->
             "task_name": "parse_office_xml_and_store",
             "run_time_ms": run_time_ms,
             "error_logs": f"{reason}: {params.file_path}",
+            "op_id": params.op_id,
         }],
     ))
 

@@ -47,14 +47,13 @@ class RunOcrParams:
     file_path: str
     engine: str
     timeout_seconds: int
+    op_id: str = ""
 
 
 def _record_skip(params: RunOcrParams, run_time_ms: int, reason: str) -> None:
-    """Record a skip in `processing_errors` without failing the activity.
+    """Record an OCR Error without failing the activity.
 
-    A skip is a *data* fact (an undecodable image, a disabled engine), and must not
-    consume retries or hold up the plan. An unreachable but configured service is not a
-    skip: that raises, so Temporal retries it.
+    An unreadable image is an Error. An unreachable configured service raises for retry.
     """
     from tasks.P2_execute_plan.activities import (
         RecordProcessingErrorsParams,
@@ -66,9 +65,10 @@ def _record_skip(params: RunOcrParams, run_time_ms: int, reason: str) -> None:
         errors=[{
             "collection_dataset": params.collection_dataset,
             "hash": params.file_hash,
-            "task_name": "run_ocr_and_store",
+            "task_name": f"run_ocr_and_store[{params.engine}]",
             "run_time_ms": run_time_ms,
             "error_logs": f"{reason}: {params.file_path}",
+            "op_id": params.op_id,
         }],
     ))
 
@@ -123,15 +123,11 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
         # Not an error: a box with no GPU tier produces no EasyOCR variants.
         log.info("[P3] OCR engine %s not configured, no variant for %s",
                  params.engine, params.file_path)
-        _record_skip(params, 0,
-                     f"ocr_engine_not_configured: {params.engine} has no endpoint")
-        return f"ocr_skipped_{params.engine}_not_configured"
+        return SkippedOutcome(f"ocr_skipped_{params.engine}_not_configured")
 
     passes = _passes_for(params.engine, params.collection_dataset)
     if not passes:
-        _record_skip(params, 0,
-                     f"ocr_no_languages: {params.engine} has no languages for this dataset")
-        return "ocr_skipped_no_languages"
+        return SkippedOutcome("ocr_skipped_no_languages")
 
     heartbeat = HeartbeatClock()
     image_bytes = None
@@ -157,8 +153,7 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
                     _record_skip(params, 0, f"ocr_skipped_unreadable: {exc}")
                     return "ocr_skipped_unreadable"
                 if not image_bytes:
-                    _record_skip(params, 0, "ocr_skipped_empty: file is zero bytes")
-                    return "ocr_skipped_empty"
+                    return SkippedOutcome("ocr_skipped_empty")
 
                 # The size gate. An image whose shorter edge is under
                 # MIN_OCR_IMAGE_PX is an icon, a bullet, a rule or a signature scrap --

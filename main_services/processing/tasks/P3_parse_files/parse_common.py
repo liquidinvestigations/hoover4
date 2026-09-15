@@ -298,6 +298,7 @@ async def record_errors_from_results(
     collectionname: str,
     collection_dataset: str,
     item_hashes: Sequence[str],
+    op_id: str,
     default_task_name: str = "unknown_task",
     start_to_close_timeout_seconds: int = 120,
 ) -> int:
@@ -333,6 +334,7 @@ async def record_errors_from_results(
                 "error_logs": err_str,
                 "attempt": 0,
                 "workflow_run_id": run_id,
+                "op_id": op_id,
             })
 
     if not error_rows:
@@ -351,6 +353,7 @@ async def record_errors_from_results(
             + len(str(row.get("hash") or "").encode("utf-8"))
             + len(str(row.get("task_name") or "").encode("utf-8"))
             + len(str(row.get("workflow_run_id") or "").encode("utf-8"))
+            + len(str(row.get("op_id") or "").encode("utf-8"))
             + 128
         )
 

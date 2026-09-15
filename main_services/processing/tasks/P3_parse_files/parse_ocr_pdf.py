@@ -28,6 +28,7 @@ from typing import List, Optional
 from temporalio import activity
 
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
+from tasks.task_timing import SkippedOutcome
 from tasks.text_sources import ENGINE_EASYOCR, ENGINE_TESSERACT
 
 log = logging.getLogger(__name__)
@@ -46,14 +47,14 @@ class RunOcrPdfParams:
     file_path: str
     engine: str
     timeout_seconds: int
+    op_id: str = ""
 
 
 def _record_skip(params: RunOcrPdfParams, run_time_ms: int, reason: str) -> None:
-    """Record a skip in `processing_errors` without failing the activity.
+    """Record an OCR-PDF Error without failing the activity.
 
-    A skip is a *data* or *deployment* fact (no endpoint, no languages, an unreadable
-    file), and must not consume retries. A configured-but-unreachable service is not a
-    skip: that raises, so Temporal retries it.
+    An unreadable source or missing source object is an Error. An unreachable service
+    raises for retry.
     """
     from tasks.P2_execute_plan.activities import (
         RecordProcessingErrorsParams,
@@ -65,9 +66,10 @@ def _record_skip(params: RunOcrPdfParams, run_time_ms: int, reason: str) -> None
         errors=[{
             "collection_dataset": params.collection_dataset,
             "hash": params.pdf_hash,
-            "task_name": "run_ocr_pdf_and_store",
+            "task_name": f"run_ocr_pdf_and_store[{params.engine}]",
             "run_time_ms": run_time_ms,
             "error_logs": f"{reason}: {params.file_path}",
+            "op_id": params.op_id,
         }],
     ))
 
@@ -146,7 +148,7 @@ def _source_key(client, collection_dataset: str, pdf_hash: str) -> Optional[str]
 
 @activity.defn
 @with_heartbeat
-def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str:
+def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str | SkippedOutcome:
     import pyarrow as pa
 
     from database.clickhouse import get_collection_client, insert_arrow_idempotent
@@ -157,8 +159,7 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str:
     if not service_configured():
         # Not an error: `ocr_pdf_enabled = false` means no searchable PDFs.
         log.info("[P3] ocr-pdf service not configured, no OCR'd PDF for %s", params.file_path)
-        _record_skip(params, 0, "ocr_pdf_not_configured: no OCR_PDF_URL")
-        return "ocr_pdf_skipped_not_configured"
+        return SkippedOutcome("ocr_pdf_skipped_not_configured")
 
     if params.engine not in engines_for_provider():
         # `pdf_ocr_provider` decides which engines produce a PDF, independently of which
@@ -170,9 +171,7 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str:
 
     passes = _passes_for(params.engine, params.collection_dataset)
     if not passes:
-        _record_skip(params, 0,
-                     f"ocr_pdf_no_languages: {params.engine} has no languages for this dataset")
-        return "ocr_pdf_skipped_no_languages"
+        return SkippedOutcome("ocr_pdf_skipped_no_languages")
 
     heartbeat = HeartbeatClock()
     inline_b64: Optional[str] = None
@@ -201,8 +200,7 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str:
                     _record_skip(params, 0, f"ocr_pdf_skipped_unreadable: {exc}")
                     return "ocr_pdf_skipped_unreadable"
                 if not raw:
-                    _record_skip(params, 0, "ocr_pdf_skipped_empty: file is zero bytes")
-                    return "ocr_pdf_skipped_empty"
+                    return SkippedOutcome("ocr_pdf_skipped_empty")
                 if len(raw) > MAX_INLINE_PDF_BYTES:
                     _record_skip(
                         params, 0,

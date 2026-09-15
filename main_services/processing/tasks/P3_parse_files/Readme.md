@@ -202,9 +202,8 @@ Two rules decide whether something is a table at all, and the asymmetry is the p
 binary spreadsheet is a table on the strength of its format, so one non-empty cell is
 enough. Delimited text has to be at least 2 rows by 2 columns, because its bytes are also
 the bytes of prose, of mail and of a log file. A single-column list is a text file and a
-single-line file is a text file. Below the threshold no manifest row is written and the
-outcome is recorded as `table_not_a_table` in `processing_errors`, which means no
-evidence, no `table` canonical type, no glyph and no grid.
+single-line file is a text file. Below the threshold, no manifest row is written. The
+activity returns a skipped outcome and writes no `processing_errors` row.
 
 Every cap in `table_formats.py` that fires is recorded in three parallel arrays on the
 manifest row (the limit's stable name, its maximum and the sheet it fired on), so the

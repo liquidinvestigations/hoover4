@@ -193,6 +193,7 @@ class Operation:
                 "collectionname": params.collectionname,
                 "collection_dataset": params.collection_dataset,
                 "dataset_path": params.dataset_path,
+                "op_id": params.op_id,
             },
             id=f"ingest-and-process-{params.op_id}",
             task_queue="processing-common-queue",
@@ -267,6 +268,7 @@ class Operation:
                 "collectionname": params.collectionname,
                 "collection_dataset": params.collection_dataset,
                 "base_temp_dir": "/tmp/hoover4",
+                "op_id": params.op_id,
             },
             id=f"execute-plans-{params.op_id}",
             task_queue="processing-common-queue",
@@ -548,6 +550,7 @@ class Operation:
         common = {
             "collectionname": params.collectionname,
             "collection_dataset": params.collection_dataset,
+            "op_id": params.op_id,
         }
         attributes = dataset_search_attributes(params.collection_dataset)
         if plan.retry_kind == "plan":

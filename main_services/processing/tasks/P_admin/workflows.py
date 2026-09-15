@@ -191,6 +191,7 @@ class ChangeOcrLanguages:
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
                     base_temp_dir="/tmp/hoover4",
+                    op_id=params.op_id,
                 ),
                 id=f"ocr-languages-execute-{params.op_id}",
                 task_queue="processing-common-queue",
