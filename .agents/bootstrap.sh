@@ -77,11 +77,15 @@ if [ -f "$REPO_ROOT/.codex/config.toml" ] \
 else
     note "MISSING or changed .codex/config.toml -- copy .agents/harnesses/codex.toml"
 fi
-if [ -f "$REPO_ROOT/.codex/agents/executor.toml" ] \
-   && [ -f "$REPO_ROOT/.codex/agents/reviewer.toml" ]; then
-    note "ok      .codex/agents has the executor and reviewer"
-else
-    note "MISSING executor or reviewer in .codex/agents"
+codex_roles_present=1
+for role in organizer executor-light executor-heavy reviewer; do
+    if [ ! -f "$REPO_ROOT/.codex/agents/$role.toml" ]; then
+        note "MISSING $role.toml in .codex/agents"
+        codex_roles_present=0
+    fi
+done
+if [ "$codex_roles_present" = 1 ]; then
+    note "ok      .codex/agents has the four role definitions"
 fi
 if python3 "$REPO_ROOT/.agents/update-codex-config.py" --check >/dev/null 2>&1; then
     note "ok      Codex user privacy settings match the tracked template"

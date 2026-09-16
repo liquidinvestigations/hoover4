@@ -151,7 +151,9 @@ commands = [
     for handler in event.get("hooks", [])
 ]
 valid = (
-    data.get("features", {}).get("hooks") is True
+    data.get("model") == "gpt-5.6-sol"
+    and data.get("model_reasoning_effort") == "high"
+    and data.get("features", {}).get("hooks") is True
     and "experimental_use_rmcp_client" not in data.get("features", {})
     and data.get("agents", {}).get("max_concurrent_threads_per_session") == 2
     and set(data.get("mcp_servers", {})) == expected
@@ -220,21 +222,28 @@ from pathlib import Path
 import sys
 import tomllib
 
-expected = {"executor": ("gpt-5.6-terra", "medium"), "reviewer": ("gpt-5.6-sol", "high")}
-valid = True
+expected = {
+    "organizer": ("gpt-5.6-sol", "high"),
+    "executor-light": ("gpt-5.6-terra", "high"),
+    "executor-heavy": ("gpt-5.6-sol", "medium"),
+    "reviewer": ("gpt-5.6-sol", "xhigh"),
+}
+root = Path(sys.argv[1])
+valid = not (root / "executor.toml").exists()
 for name, (model, effort) in expected.items():
-    with (Path(sys.argv[1]) / f"{name}.toml").open("rb") as handle:
+    with (root / f"{name}.toml").open("rb") as handle:
         data = tomllib.load(handle)
     valid = valid and data.get("name") == name
     valid = valid and data.get("model") == model
     valid = valid and data.get("model_reasoning_effort") == effort
-    valid = valid and bool(data.get("description")) and bool(data.get("developer_instructions"))
+    valid = valid and bool(data.get("description"))
+    valid = valid and f".claude/agents/{name}.md" in data.get("developer_instructions", "")
 print("ok" if valid else "fail")
 PY
 )
 [ "$codex_agents" = ok ] \
-    && ok "Codex executor and reviewer pin their selected models" \
-    || no "Codex executor or reviewer has an incorrect definition"
+    && ok "Codex organizer, executor-light, executor-heavy and reviewer pin their selected models" \
+    || no "a Codex role file is missing or has an incorrect definition"
 
 # 6. The Claude harness declares its hooks. A hook that exists and is not declared is a hook
 #    that never runs, and the two states look identical from the filesystem.
@@ -254,16 +263,23 @@ else
     no "settings.json does not declare the budget hook -- merge the block from .agents/harnesses/claude-settings.json"
 fi
 
-# 7. The Claude agent definitions are reachable, and each one pins a model. A definition with no
-#     model field runs on whatever the organizer runs, which is the expensive default.
-if [ -n "$(find -L "$REPO_ROOT/.claude/agents" -name '*.md' -print -quit 2>/dev/null)" ]; then
-    n=$(find -L "$REPO_ROOT/.claude/agents" -name '*.md' | wc -l)
-    unpinned=$(grep -L '^model:' "$REPO_ROOT"/.agents/agents/*.md 2>/dev/null | wc -l)
-    [ "$unpinned" -eq 0 ] \
-        && ok ".claude/agents resolves to $n definitions, each pinning a model" \
-        || no "$unpinned agent definition(s) do not pin a model"
+# 7. The Claude role definitions are real files, one for each logical role, and each one pins
+#    a model and an effort. A definition with no model runs on whatever the organizer runs.
+agents_dir="$REPO_ROOT/.claude/agents"
+if [ -d "$agents_dir" ] && [ ! -L "$agents_dir" ] && [ ! -e "$REPO_ROOT/.agents/agents" ]; then
+    bad=0
+    for role in organizer executor-light executor-heavy reviewer; do
+        f="$agents_dir/$role.md"
+        { [ -f "$f" ] && grep -q '^model: ' "$f" && grep -q '^effort: ' "$f"; } || bad=$((bad + 1))
+    done
+    n=$(find "$agents_dir" -maxdepth 1 -name '*.md' | wc -l)
+    if [ "$bad" -eq 0 ] && [ "$n" -eq 4 ]; then
+        ok ".claude/agents holds the four role definitions, each pinning a model and an effort"
+    else
+        no ".claude/agents: $bad role definition(s) lack a file, a model or an effort, $n files found"
+    fi
 else
-    no ".claude/agents has no definitions -- the symlink into .agents/agents is missing"
+    no ".claude/agents must be a real folder, and .agents/agents must not exist"
 fi
 
 # 8. The five path-scoped rules are present and each declares the paths it covers.
@@ -416,9 +432,9 @@ else
 fi
 
 if python3 "$REPO_ROOT/.agents/harnesses/render_cursor_agents.py" --check >/dev/null 2>&1; then
-    ok "Cursor organizer, executor, and reviewer pin their selected models"
+    ok "Cursor organizer, executor-light, executor-heavy and reviewer pin their selected models"
 else
-    no "Cursor agent files differ from .agents/agents with Cursor model pins"
+    no "Cursor agent files differ from .claude/agents with Cursor model pins"
 fi
 
 if python3 "$REPO_ROOT/.agents/test-harnesses.py"; then

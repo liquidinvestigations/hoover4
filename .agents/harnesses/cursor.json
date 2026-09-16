@@ -3,9 +3,10 @@
   "max_concurrent_subagents": 2,
   "passthrough_subagent_types": ["explore", "shell", "bash", "browser"],
   "models": {
-    "organizer": "cursor-grok-4.6-high",
-    "reviewer": "cursor-grok-4.6-xhigh",
-    "executor": "cursor-grok-4.6-medium"
+    "organizer": "grok-4.6[effort=high]",
+    "executor-light": "composer-2.5[fast=false]",
+    "executor-heavy": "grok-4.6[effort=medium]",
+    "reviewer": "grok-4.6[effort=xhigh]"
   },
   "agent_extra": {
     "reviewer": {

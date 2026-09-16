@@ -1,5 +1,7 @@
 # Codex project settings. Keep the project config and reference config identical.
 # Codex loads AGENTS.md and .agents/skills without an adapter.
+model = "gpt-5.6-sol"
+model_reasoning_effort = "high"
 
 [features]
 hooks = true

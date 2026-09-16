@@ -37,9 +37,9 @@ or in the `SessionStart` hook's `compact` path.
 
 ## The layout
 
-`.agents/` is the single source of truth. Everything under `.claude/` is a symlink into it,
-so no file is authored twice. Cursor reads `AGENTS.md` and `.agents/skills` directly, and
-keeps generated adapters under `.cursor/`.
+`.agents/` holds shared skills, rules, hooks, and harness settings. Claude Code reads its role
+files from `.claude/agents/`. Codex role files point to those files. Cursor generates its role
+files from them. Cursor reads `AGENTS.md` and `.agents/skills` directly.
 
 ```
 .agents/
@@ -47,19 +47,19 @@ keeps generated adapters under `.cursor/`.
   rules/<name>.md               paths:-gated
   hooks/*.py|*.sh               real executables, run from here by absolute path
   harnesses/                    reference config per harness, copied out by bootstrap.sh
-  agents/*.md                   organizer, executor, and reviewer
   bootstrap.sh                  wires the per-harness adapters
   verify-wiring.sh              proves the wiring, in well under a minute
 .claude/skills    -> ../.agents/skills          directory symlink
 .claude/rules     -> ../.agents/rules           directory symlink
+.claude/agents/*.md                            four role definitions
 .claude/settings.json                           declares the hooks by their .agents/ path
 .codex/config.toml                               Codex project settings and hook commands
-.codex/agents/*.toml                             Codex executor and reviewer definitions
+.codex/agents/*.toml                             Codex definitions for the four roles
 .cursor/mcp.json                                Cursor MCP servers
 .cursor/hooks.json                              Cursor hook commands, via cursor-wrap.py
 .cursor/permissions.json                        Cursor Auto-review and MCP allowlist
 .cursor/cli.json                                Cursor CLI allowlist for this checkout
-.cursor/agents/*.md                             generated from .agents/agents with Cursor models
+.cursor/agents/*.md                             generated from .claude/agents with Cursor models
 AGENTS.md                                       the shared root instruction file
 CLAUDE.md                                       one line: @AGENTS.md
 ```
@@ -85,7 +85,7 @@ the user config. Review `.agents/harnesses/codex-user.toml`, then run
 
 Cursor reads `.cursor/mcp.json`, `.cursor/hooks.json`, `.cursor/permissions.json`,
 `.cursor/cli.json`, `AGENTS.md`, and `.agents/skills` from the checkout. Agent files under
-`.cursor/agents/` are generated from `.agents/agents/` with Cursor model names.
+`.cursor/agents/` are generated from `.claude/agents/` with Cursor model names.
 `.cursor/rules/*.mdc` is generated from `.agents/rules/` and is not tracked.
 Cursor user privacy settings, the MCP allowlist, and host-specific Auto-review text stay
 in the user config. Review `.agents/harnesses/cursor-user-permissions.json`, then run
@@ -259,10 +259,10 @@ not as support to rely on.
 
 | harness | agent definitions | model per agent |
 |---|---|---|
-| Claude Code | `.claude/agents/*.md`, a symlink to `.agents/agents/` | `model` in frontmatter, with `effort` and `maxTurns` |
+| Claude Code | `.claude/agents/*.md` | `model` and `effort` in frontmatter |
 | OpenAI Codex CLI | `.codex/agents/*.toml` | `model` and `model_reasoning_effort` |
 | opencode | `.opencode/agents/*.md`, or the `agent` key in `opencode.json` | `model` as `provider/model-id` |
-| Cursor | `.cursor/agents/*.md`, generated from `.agents/agents/` | `model` in frontmatter |
+| Cursor | `.cursor/agents/*.md`, generated from `.claude/agents/` | `model` in frontmatter |
 | Gemini CLI | `GEMINI.md` | unverified |
 | Kimi Code | built-in coder, explore and plan sub-agents; no project definitions | `[secondary_model]` pool in user `config.toml` |
 | Google Antigravity | `AGENTS.md` | unverified |
@@ -274,7 +274,7 @@ Each Codex session permits two sub-agent threads at a time.
 Each Cursor workspace permits two counted sub-agents at a time. Built-in explore, shell, and browser sub-agents are not counted.
 Each Kimi Code session permits two counted background tasks at a time, sub-agents and background shells together.
 These configuration limits do not replace the repository instruction to run sub-agent passes one at a time.
-Claude Code, Codex, and Cursor give browser work instructions to the existing executor and reviewer roles.
+Claude Code, Codex, and Cursor give browser work instructions to both executor roles and the reviewer role.
 Those instructions require capture inspection, coverage reporting, and evidence links.
 Agents read the ignored `website/TEST_LOGIN.env` when a work package selects the local test account.
 `website/TEST_LOGIN.env.example` defines its keys without account values.
@@ -368,7 +368,7 @@ Heredocs remain legitimate for throwaway analysis that writes nothing into the r
 ## Publication and privacy
 
 **All of this is tracked and public**: `.agents/`, `.codex/`, the two `.claude/` symlinks,
-`.claude/settings.json`, `.cursor/mcp.json`, `.cursor/hooks.json`, `.cursor/permissions.json`,
+`.claude/agents/`, `.claude/settings.json`, `.cursor/mcp.json`, `.cursor/hooks.json`, `.cursor/permissions.json`,
 `.cursor/cli.json`, `.cursor/agents/`, `.kimi-code/mcp.json`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`. Git is the backup, and a
 fresh checkout has the whole configuration already: `bootstrap.sh` only creates the
 machine-local per-harness adapters on top of it.

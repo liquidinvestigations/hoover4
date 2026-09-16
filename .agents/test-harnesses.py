@@ -109,6 +109,23 @@ class HarnessTests(unittest.TestCase):
             self.hook("subagent-stop", payload, env)
             self.assertEqual(self.hook("subagent-start", payload, env)["permission"], "allow")
 
+    def test_cursor_agents_render_from_claude_roles(self):
+        path = ROOT / ".agents" / "harnesses" / "render_cursor_agents.py"
+        spec = importlib.util.spec_from_file_location("render_cursor_agents", path)
+        render = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(render)
+        models = json.loads((ROOT / ".agents/harnesses/cursor.json").read_text())["models"]
+        files = render.render_all()
+        self.assertEqual(set(files), {"organizer", "executor-light", "executor-heavy", "reviewer"})
+        for role, text in files.items():
+            with self.subTest(role=role):
+                self.assertTrue(text.startswith(f"---\nname: {role}\n"))
+                self.assertIn(f"\nmodel: {models[role]}\n", text)
+                self.assertNotIn("\neffort:", text)
+                self.assertEqual("\nreadonly: true\n" in text, role == "reviewer")
+        result = subprocess.run([sys.executable, str(path), "--check"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

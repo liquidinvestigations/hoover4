@@ -1,0 +1,8 @@
+name = "executor-light"
+description = "Applies one ordinary original work package and runs its named checks."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "high"
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Read `.claude/agents/executor-light.md` before you start. That file holds the rules for this role.
+"""
