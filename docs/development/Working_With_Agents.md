@@ -267,9 +267,10 @@ not as support to rely on.
 | Kimi Code | built-in coder, explore and plan sub-agents; no project definitions | `[secondary_model]` pool in user `config.toml` |
 | Google Antigravity | `AGENTS.md` | unverified |
 
-Claude Code uses Sonnet for execution and Opus for review.
-Codex uses `gpt-5.6-terra` with medium reasoning for execution and `gpt-5.6-sol` with high reasoning for review.
-Cursor uses Composer 2.5 for execution and Grok 4.6 Extra High for organizing and review.
+Claude Code maps `executor-light` to Sonnet 5 and the other roles to Opus 5.
+Codex maps `executor-light` to GPT-5.6 Terra and the other roles to GPT-5.6 Sol.
+Cursor maps `executor-light` to Composer 2.5 and the other roles to Grok 4.6.
+The [model mappings](../../.agents/harnesses/model-mappings.md) list effort values for each role.
 Each Codex session permits two sub-agent threads at a time.
 Each Cursor workspace permits two counted sub-agents at a time. Built-in explore, shell, and browser sub-agents are not counted.
 Each Kimi Code session permits two counted background tasks at a time, sub-agents and background shells together.

@@ -15,15 +15,15 @@ Walk the folder's reports and sort every finding into one of four destinations:
 | a trap that cost hours | the skill or rule that fires in the situation where it bites |
 | **work that was wanted and not built** | **`plans/TODO.md`**, one standing file, features as sentences |
 | **a defect or limitation still true today** | **`plans/DEFECTS.md`**, then `docs/development/Known_Defects.md` once re-verified |
+| **an agent decision from an unattended run that a person has not ratified** | **`plans/DECISIONS.md`**, with its question and provisional status |
 
 Everything else (what was tried, what order things happened in, who decided what) is
 deliberately dropped. `git log` and `git blame` already hold it, and they hold it correctly.
 
-**The two standing files are the reason a folder can be archived at all.** A pass always ends
-with unbuilt intent and unfixed defects; without somewhere for them to go, archiving either
-loses them or is never done. They are single files at the top of `plans/`, they are appended to
-rather than recreated, and neither is numbered. The numbering is what made two folders' defect
-lists collide.
+**The standing files retain work that an archived folder cannot settle.** Keep unbuilt work
+in `TODO.md`, unverified defects in `DEFECTS.md` and provisional unattended decisions in
+`DECISIONS.md`. Append to each applicable file before archiving. Do not replace an earlier
+decision with a new summary. Keep its original question, choice and reversal path.
 
 **A defect goes to `plans/DEFECTS.md` first, not straight into the tree.** A finding lifted
 from a report is a claim, and later work often fixed it incidentally. Re-verify against the

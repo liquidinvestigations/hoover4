@@ -24,7 +24,7 @@ suspension.
 | suspended | where it is stated | what replaces it |
 |---|---|---|
 | ask the frontier through the asking tool | `AGENTS.md`, "An assumption written into a deliverable"; `planning-work`, the question round | write the question and the choice into `OPEN_QUESTIONS.md`, and carry on |
-| a scope change needs a question round first | `AGENTS.md`, "The organizer does not change the scope"; `planning-work`, "A scope change re-opens the round" | record the change, the reason and how to undo it in `OPEN_QUESTIONS.md`, then implement it |
+| an objective change needs a person's answer | `AGENTS.md`, the organizer scope rule; `planning-work`, the question round | record the change, reason and reversal path in `OPEN_QUESTIONS.md`, then implement it provisionally |
 | stop and ask on what the intent does not settle | `running-consecutive-subagents`, "Resolving a conflict" | choose the reading that keeps the plan's checks runnable, record both readings, carry on |
 
 **The payment is `OPEN_QUESTIONS.md`.** It sits beside the plan folder's `TODO.md` and it is the
@@ -112,6 +112,11 @@ Three files, updated as work lands rather than at the end.
 - The plan folder's `TODO.md`, ticked item by item.
 - `OPEN_QUESTIONS.md`, appended to as decisions are taken.
 - The organizer log, carrying decisions in the order they were taken.
+
+The organizer log opens with run state. It names the Git writer, branch, package commit,
+reviewed unstaged paths, live unreviewed paths and checkpoint commit. Update pass and review
+batch state as the run progresses. Before archive, copy every unratified agent decision from
+`OPEN_QUESTIONS.md` into `plans/DECISIONS.md`, with its question, choice and reversal path.
 
 Then a final report that restates the plan's estimate table with an actuals column, records the
 forecast pass count against the actual pass count, and lists every item that was attempted and

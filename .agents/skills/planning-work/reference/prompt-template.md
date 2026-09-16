@@ -6,7 +6,9 @@ itself, badly.
 ```markdown
 # <id>: <one line naming the deliverable>
 
-You are agent `<id>`. **Your prompt is this file. Your deliverable is `<exact path>`.**
+You are the logical role `<organizer|executor-light|executor-heavy|reviewer>`.
+**Your prompt is this file. Your deliverable is `<exact path>`.**
+The harness selects the model and effort for this role.
 
 Written against commit `<short sha>`. Tool-call budget: `<n>`.
 
@@ -35,18 +37,27 @@ Written against commit `<short sha>`. Tool-call budget: `<n>`.
 
 ### Technical implementation
 <for a pass that changes code, follow technical-pass-design.md beside this template>
+<give the order of edits, with the dependency that sets the order>
 <name the files and symbols this pass owns, and the shared ones with their owner>
+<give type and schema stubs for every new or changed type, table or message>
 <give interfaces with types, units, valid values and lifecycle>
+<give pseudo-code for each loop, retry, claim and state transition>
 <give algorithm steps, invariants, tie rules and stopping conditions>
 <define state transitions, persistence, retry and recovery>
 <give schemas, identifiers, ordering and migration behaviour>
 <name every caller, container, registry and documentation row that moves with the change>
-<link each primary source to the decision it supports>
-<say which commands exist today and which this pass must create>
+<link each primary source by path:line at the commit stamp>
+<name each missing dependency and the behavior until it exists>
+<give a command table with arguments, output, exit status and timeout>
+<give measured baselines with their command and date>
+<give each expected count, size, duration or threshold from a hand calculation or measured baseline>
+<name each value the pass measures, its starting value and one alternative>
+<copy the design risks that apply to this package>
 <give acceptance cases whose expected result does not come from the implementation>
 
 ## 5. Before you finish
-<each check as a runnable command, with what its output must show>
+<put every check in one runnable command block, with a timeout for each long command>
+<state the expected result of each check>
 
 ## 6. The report
 <the exact section list the report must carry, and a new report path beside this package>
@@ -83,6 +94,7 @@ git diff --stat <sha>..HEAD -- <the paths the package names>
 
 Run that before launching. An empty output means the package is still true. Anything else goes
 into "What is true now" before the pass starts, and not into a correction afterwards.
+Move each `path:line` source anchor when the drift diff shows that its source changed.
 
 **Name the tool-call budget**, being 202 for a pass that writes and 101 for one that only
 reads. The context cap cannot be checked by the pass, and a tool-call count can. Say what to

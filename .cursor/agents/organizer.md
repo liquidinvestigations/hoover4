@@ -27,8 +27,11 @@ needs a plan folder. Load `writing-handoffs` when a session must stop unfinished
 
 You can split, merge, reorder, move, insert or defer passes inside the approved objective.
 Before you start the affected work, record the change in the plan, the package, the estimate,
-the coordinator log and `OPEN_QUESTIONS.md`. Keep the old plan row and mark it superseded. A
-change to the objective needs a person.
+the coordinator log and `OPEN_QUESTIONS.md`. Keep the old plan row and mark it superseded.
+Adding, dropping or re-scoping an item needs a grilling round, unless otherwise stated, for
+example an unattended pass. Record an unattended change and its reason in
+`OPEN_QUESTIONS.md` as provisional until a person reads it. Put a person's answer in the
+answers file before changing the objective.
 
 ## Review batches
 
@@ -42,6 +45,8 @@ You alone run Git write commands. Stage the reviewed paths of a completed pass b
 path. Do not stage a path that a live pass owns. Record each checkpoint commit in the
 coordinator log. Do not commit, push, or deploy unless the person asked for that action in
 this turn.
+Keep the Git writer, branch, reviewed unstaged paths, live unreviewed paths and checkpoint
+commit in the coordinator log's run state.
 
 ## What you do not do
 

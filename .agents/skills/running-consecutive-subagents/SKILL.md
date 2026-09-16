@@ -18,6 +18,9 @@ whose failures are indistinguishable from each other in the logs.
   produce a merge you did not plan and a stack you cannot attribute a failure in.
 - **Waited on.** The launching agent blocks on the result and reviews it before the next
   pass starts. A pass that is not reviewed before the next one begins compounds its mistakes.
+  In Codex, call `wait_agent` once with the pass's p50 forecast as the timeout. Do not run a
+  status loop. If the forecast exceeds the tool maximum, use maximum-duration waits until the
+  forecast expires. Read the result when the wait ends.
 - **Self-timeboxed**. The pass reports what it did not reach rather than running until it is
   stopped. **A self-timebox is a budget of effort and attention, not a clock**: passes
   reporting they had "roughly doubled" a one-hour box had used twenty-four minutes of it, and
@@ -77,7 +80,8 @@ answer is small, the reading is large, and a wrong answer is cheap to detect.
 
 Every pass needs all of this, because it starts with none of your context:
 
-1. **Role and scope**. What it owns, and what it must not touch.
+1. **Role and scope**. Name `organizer`, `executor-light`, `executor-heavy` or `reviewer`.
+   State what it owns and what it must not touch. The harness selects model and effort.
 2. **What to read first**, by path, and which decisions are settled and closed.
 3. **What is true now**. Anything that has changed since the documents it will read were
    written.
@@ -88,6 +92,10 @@ Every pass needs all of this, because it starts with none of your context:
 
 Construct exactly what it needs. It does not inherit your session, and a package that assumes
 it does is a package with a hole in it.
+
+Launch with the logical role and no model override. Executors and reviewers run no Git write
+command. The organizer owns Git writes and stages reviewed paths by explicit path.
+Send every correction to `executor-heavy` with a new package that names the review findings.
 
 **Inside a plan folder the package is the pass document**, which `planning-work` defines. The
 executor is launched on that file, and nothing is transcribed into a second one. It adds the
@@ -178,6 +186,8 @@ Then run the checks the change owes. `writing-tests`'s `scripts/gate-map.sh` nam
 
 **Read the diff. The report is a claim, not evidence.** A pass reporting success on a check
 it did not run reads exactly like a pass reporting success on a check it did run.
+The review report uses the verdict, finding classes, traced paths and correction package in
+`reviewing-changes`.
 
 - `git diff` the whole range the pass touched, and read it.
 - Re-run at least one check the report names, yourself.

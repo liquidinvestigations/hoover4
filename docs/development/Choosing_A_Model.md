@@ -1,28 +1,31 @@
 # Choosing a model
 
-This repository runs two models rather than one. This page says why, and how a model qualifies
-to run work here.
+This repository assigns four roles to planned work. This page explains how a model qualifies
+for an executor role.
 
 ## Contents
 
-- [Two roles](#two-roles)
+- [Four roles](#four-roles)
 - [The four gates](#the-four-gates)
 - [Cost per resolved pass](#cost-per-resolved-pass)
 - [Where the names live](#where-the-names-live)
 
-## Two roles
+## Four roles
 
-**A planner reads, decides and reviews.** It scopes the work, writes the work package, reads the
-diff that comes back, and decides whether it is accepted. A wrong decision here propagates into
-every pass that follows, so this role takes the strongest model available.
+**The organizer scopes work and writes packages.** It assigns one logical role to each pass,
+reads the review result and owns Git checkpoints. It does not implement a package.
 
-**An executor applies a written work package and runs the checks it names.** Its scope is a named
-list, its checks are commands with an expected output, and its diff is read by the planner before
-anything else happens. A weaker model is viable here because the work is bounded and the result
-is checked.
+**The executor-light applies an ordinary original package.** The plan gives it named paths,
+checks and expected results. A reviewer reads its diff.
 
-The roles differ in what they need, so they differ in model. Pairing them is only worthwhile when
-the executor is genuinely cheaper and genuinely capable, which is what the gates below test.
+**The executor-heavy applies corrections and selected original packages.** The plan selects
+eligible original passes by the score in `planning-work`. Every correction uses this role.
+
+**The reviewer reads the completed diff.** It reports findings by defect class and writes a
+correction package when it rejects the pass. It runs no Git write command.
+
+The roles have different model mappings. The gates below qualify the `executor-light` model
+against the `executor-heavy` model of the same harness.
 
 ## The four gates
 
@@ -34,7 +37,7 @@ list of names that are too weak goes stale in the direction that blocks a good m
 | **context** | the window must be at least 1.7 times the pass cap, so a pass has room above its budget |
 | **tool loop** | the model must sustain a 150-tool-call pass without losing the work package |
 | **self-hosting** | the model must be served by a harness this repository can configure |
-| **acceptance** | its cost per resolved pass must beat the planner's |
+| **acceptance** | the `executor-light` model's cost per resolved pass must beat the `executor-heavy` model's cost in the same harness |
 
 The first three are read off a specification sheet. **Only the fourth can exclude a model that
 looks capable and is not**, and it needs a measurement rather than a reputation.
@@ -69,9 +72,9 @@ reproduce, or a second revision round still not meeting the done criteria are ea
 
 ## Where the names live
 
-`.agents/harnesses/model-pairs.md` holds the current pair per harness, and nothing else in the
-tree names a model. That file is expected to go stale and says so. **The gates on this page do
-not go stale**, so a reader who finds the names out of date can still decide correctly.
+`.agents/harnesses/model-mappings.md` lists the four models per harness. The project role
+files set the identifiers used by each harness. Apply the gates on this page when a model
+mapping changes.
 
 Which model a sub-agent runs is set in the agent definition, and the paths per harness are in
 [`Working_With_Agents.md`](Working_With_Agents.md).

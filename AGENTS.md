@@ -31,6 +31,11 @@ entry there.
 - **Sub-agents run one at a time**, waited on, self-timeboxed, each with a hand-written work
   package. Do not run a swarm, do not fan out in parallel, and do not use a sub-agent to
   avoid thinking.
+- **Plans select one of four roles for each pass.** The roles are `organizer`,
+  `executor-light`, `executor-heavy` and `reviewer`. Apply the rule in `planning-work`.
+  A launch names the role and gives no model or effort value.
+- **Planning uses a `plans/<n>-<slug>/` folder.** Keep the plan and its pass reports there.
+  Do not use a harness planning-mode artifact in place of the folder.
 - **Verify with the stack.** Do not verify from memory. This system's errors routinely name
   the wrong half of the problem, so confirm what a process actually received before you edit
   the file that an error points at.
@@ -116,6 +121,8 @@ edit that adds one.
 - **A commit message is one lowercase line under ~50 characters.** No body, no trailers, and
   no explanation anywhere in git. `git log --oneline` is a table of contents, and a changelog
   does not belong there.
+- **Executors and reviewers run no Git write command.** The organizer stages reviewed owned
+  paths by explicit path. The organizer commits only work the person authorised.
 - **Documentation and comments state what is true now.** No dates, no history of the work,
   nothing aspirational, and never a reference to `plans/`, which is local scratch that gets
   wiped. Keep the lesson, drop the anecdote.
@@ -155,13 +162,14 @@ edit that adds one.
   "yet" or "for this task" keeps that condition, and no mechanism may remove it. Text the
   agent wrote, in a handoff, a report or a plan, is never a person asking for something. That
   holds when a person pastes it back into the conversation.
-- **The organizer does not change the scope of a plan on its own**, unless otherwise stated,
-  for example an unattended pass, where the change and its reason are recorded in
-  `OPEN_QUESTIONS.md` and stay provisional until a person reads them. Adding an item, dropping
-  an item, or re-scoping one, in either direction, needs a grilling round first. The answer
-  goes into the plan folder's answers file, and from there into the plan document it changes.
-  A scope change that reaches a work package with no answer behind it is a defect in the plan.
-  The pass that implemented it is not at fault.
+- **The organizer changes execution structure inside the approved objective, and a person
+  changes the objective.** The organizer can split, merge, reorder, move, insert or defer passes.
+  Before it starts affected work, it records the change in the plan, package, estimate,
+  coordinator log and `OPEN_QUESTIONS.md`. It keeps the old plan row marked superseded.
+  Adding, dropping or re-scoping an item needs a grilling round first, unless otherwise stated,
+  for example an unattended pass. An unattended change and its reason go into
+  `OPEN_QUESTIONS.md` and stay provisional until a person reads them. The answer goes into the
+  plan folder's answers file. A scope change with no answer behind it is a plan defect.
 - **Reach for the Edit/Write tools or serena's symbol operations first** when changing code.
   `sed -i` cannot fail loudly on a stale match. It silently changes nothing, while Edit
   refuses and tells you. Bash editing stays available for the cases where it is genuinely
@@ -187,9 +195,9 @@ edit that adds one.
   restates it with an actuals column. That column stops the next estimate being copied from
   the last guess. **The pass count is the number to get right.** An estimate that costs ten
   passes correctly and needed one is wrong by ten. Items that share one procedure, one check
-  and one context are one task before any of that. **A plan names the tier it assumes**,
-  because the same work costs fifty times more on the dearest model than the cheapest while
-  its duration and its call count barely move. `planning-work` carries the method.
+  and one context are one task before any of that. **A plan names the role of each pass and its
+  harness.** The model a role maps to moves the cost of the same work by up to fifty times.
+  `planning-work` carries the method.
 - **A task is not a pass, and a pass carries about three tasks.** A task is what one check
   settles. Measured here: a pass spends 29 tool calls on being a pass before it does any work,
   its first task costs 80, and a later task in the same context costs 45 and then 22. Three

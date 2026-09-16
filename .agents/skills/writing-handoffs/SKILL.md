@@ -26,6 +26,13 @@ missing one.
    a line range. Never describe a state without naming where it lives.
 5. **The next steps**, in order, each with its known risks and open questions.
 
+## Organizer run state
+
+An organizer handoff names the Git writer and the run state from the coordinator log.
+Record the branch, package commit and checkpoint commit. List **Reviewed unstaged paths** and
+**Live unreviewed paths** separately, with `none` when a list is empty. Name each pass and
+review batch state. An executor or reviewer handoff never tells its receiver to commit.
+
 ## Say who wrote it, in the first line
 
 A handoff opens by naming its author and the session it closes. Everything after that line is

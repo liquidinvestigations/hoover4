@@ -51,3 +51,7 @@ document's grid of sheets, columns and cells.
 In search-query syntax, a term is a word or phrase typed into a query and matched against the
 index. In the search index, a term is a facet's normalised value, kept in a term dictionary
 and distinct from the entity it was extracted from.
+
+**Tier**:
+In `ai_services/`, a tier is the GPU service tier. A planned pass names a logical role.
+The harness maps that role to a model. The plan names its harness for cost estimates.

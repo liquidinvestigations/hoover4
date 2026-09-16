@@ -183,6 +183,22 @@ The difference is in the package.
 - **A pass that stops with tasks unreached has reported the scope, not failed.** Ask what it
   did not reach, never how long it took.
 
+### 1e. Select roles and correction capacity
+
+Score original implementation passes against the five conditions in
+[`planning-work`](../SKILL.md#selecting-pass-roles). Record a concrete path or behavior for
+each point. A score of two or more makes a pass eligible for `executor-heavy`.
+The allowance is `floor(original implementation passes / 5)`. Assign it to the highest scores.
+Break ties by a weak oracle, then a cross-runtime invariant, then the number of dependent later
+passes. Assign other original passes to `executor-light`. Every correction uses
+`executor-heavy` outside the allowance.
+
+One review batch contains one original pass, its review and at most two corrections. End the
+batch when a defect class occurs a second time, even if the correction limit remains. Record
+each unresolved finding as `move`, `insert` or `observe`. A later inserted pass starts a new
+batch with its own correction count.
+The [triage marker study](triage-marker-study.md) explains the evidence for the score.
+
 ### 2. Bucket each task
 
 The bucket sets the cost, **not the task's apparent difficulty**. That refusal to look at the
@@ -362,7 +378,7 @@ one task and a packed pass carries three. Four pinned conversions do it.
 |---|---|---|
 | minutes at p50 | 12.4 seconds a call | 109 calls gives 23 minutes against the pinned 23 |
 | minutes at p90 | p50 times 4.0 | the ratio the implementation row carries, at 23 and 93 |
-| dollars | $0.120 a call pooled, $0.140 at the workhorse tier | the two rows of the cost table below |
+| dollars | $0.120 a call pooled, $0.140 on `claude-opus-5` | the cost table below |
 | peak tokens | `27,179 + 1,489 x calls` | 109 calls gives 189,450 against the pinned 185,042 |
 
 **Tool calls do not predict wall clock here**, at a correlation of 0.26 against the 0.92 that
@@ -389,21 +405,13 @@ the same 24 sessions. Across the whole recorded corpus the sessions cost $4,546.
 passes they launched cost $2,828.82, and **61 of 85 sessions launched no pass at all**, so the
 coordinator is where the money is and where nothing looks.
 
-### 5. Name the tier, because the model moves the money by fifty times
+### 5. Name the harness, because the role mapping moves the money by fifty times
 
 Duration and tool calls barely move with the model. Price moves by a factor of fifty. A plan
 that states one money figure has stated the model it assumed, whether or not it says so.
 
-| tier | models | against the workhorse tier |
-|---|---|---:|
-| frontier | `gpt-6-astra`, `claude-fable-5-1` | 2.00x, 1.03x |
-| **workhorse** | `claude-opus-5`, `gpt-5.6-sol` | **1.00x**, 0.80x |
-| value | `grok-4.6`, `kimi-code/k3`, `gpt-5.6-terra`, `claude-sonnet-5` | 0.76x to 0.40x |
-| cheap | `kimi-code/k2.7-code`, `claude-haiku-4-5`, `gpt-5.6-luna` | 0.30x to 0.04x |
-
-The multipliers come from repricing the token counts of all 141 priced implementation passes
-at each model's list rate, so the work is identical in every row and the spread is the price
-of the model and nothing else.
+The cost table keeps the measured prices per model. Use the role mapping for the harness to
+select a row. The [model mappings](../../../harnesses/model-mappings.md) name each model.
 
 | model | dollars a tool call | n |
 |---|---:|---:|
@@ -413,8 +421,14 @@ of the model and nothing else.
 | `gpt-5.6-terra` | $0.232 | 6 |
 | pooled, implementation | $0.120 | 141 |
 
-**A plan names its tier. A plan that names none has named the workhorse tier.** The final
-report records the tier that actually ran.
+| harness | organizer | `executor-light` | `executor-heavy` | reviewer |
+|---|---:|---:|---:|---:|
+| Claude Code | $0.140 | $0.061 | $0.140 | $0.052 for a read-only pass |
+| Codex | $0.509 | $0.232 | $0.509 | $0.509 |
+| Cursor | no price | no price | no price | no price |
+
+The Codex reviewer uses the implementation price because no read-only Codex price is measured.
+A plan names its harness. The final report records the harness and models that ran.
 
 **These are list API rates and the work here runs on subscriptions.** They are the only
 per-model figure comparable across providers, which is what an estimate needs. **They are also
@@ -426,7 +440,7 @@ and xAI charges more above 200,000, and the p90 pass here peaks at 288,230.
 ```markdown
 ## Estimate
 
-**Tier:** workhorse. **Method:** reference class,
+**Harness:** Claude Code. **Method:** reference class,
 `.agents/skills/planning-work/reference/estimating.md`.
 
 **The tasks.** One row a task, costed at its marginal call count: 80 for the first in a
@@ -440,10 +454,10 @@ pass, 45 for the second, 22 for each later one.
 **The passes.** One row a pass, at 29 calls of its own fixed cost plus the tasks it carries,
 and 38 coordinator calls on top.
 
-| # | pass | tasks | bucket | in-pass | plan | work | min p50 | min p90 | cost |
-|---|---|---|---|---:|---:|---:|---:|---:|---:|
-| `W1` | <the pass> | `W1.1`-`W1.3` | implementation | 175 | 213 | 69% | 36 | 145 | $33.50 |
-| | **totals** | | | **N** | **N** | | **min p50** | **min p90** | **$** |
+| # | pass | tasks | triage points | assigned role | reason | bucket | in-pass | plan | work | min p50 | min p90 | cost |
+|---|---|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|
+| `W1` | <the pass> | `W1.1`-`W1.3` | 0 | `executor-light` | <scored evidence> | implementation | 175 | 213 | 69% | 36 | 145 | $19.68 |
+| | **totals** | | | | | | **N** | **N** | | **min p50** | **min p90** | **$** |
 
 The work column is marginal calls over plan calls. **It is at least 60% on every row**, or
 that row carries the line saying what stopped it filling.
@@ -451,6 +465,8 @@ that row carries the line saying what stopped it filling.
 **Passes:** N tasks packed into P passes against the target of 183 in-pass calls, plus the
 reviews and the corrections. Then that count times 1.2, which is the measured rate at which a
 plan here discovers passes it did not have.
+**Heavy allowance:** `floor(original implementation passes / 5)`, with the selected passes and
+their score evidence. Corrections do not use this allowance.
 **Why P and not fewer:** the packing arithmetic, then one line per pass that came out under
 the target saying what stopped it filling.
 **Context:** forecast peak prompt of the largest pass at `27,179 + 1,489 x calls`, against the
@@ -459,8 +475,8 @@ cap of 300,000, and say whether the pass is expected to grow at the median rate 
 **Agent wall clock:** the p50 to the p90 minutes, and say which passes wait on the stack, because
 calls do not convert to minutes for those.
 **Session wall clock:** 50 minutes of session span a pass.
-**Cost:** $0.140 a call at the workhorse tier, $0.052 for a pass that only reads, plus $9.00
-a pass of coordinator cost.
+**Cost:** use the per-call price of the model the assigned role maps to. Add $9.00 a pass of
+coordinator cost.
 ```
 
 **The final report restates every column with an actual beside it, read from the transcript.**

@@ -75,6 +75,26 @@ naming a conflict-policy field the HTTP API rejects outright. `cargo check` and 
 both green over it; it failed as an error string in a database row, and the feature had never
 worked. **A call across a wire is verified by making the call**, never by the build.
 
+**A retried activity repeats a write.** Temporal runs the whole activity again after a failure.
+An insert before the failure can run twice. Ask for each write's idempotency key or the
+immutable input used by a count.
+
+**Two writers replace one row.** A writer that reads a whole row and writes it back can erase
+another writer's update. Name every writer and require a per-column update or one writer.
+
+**Workflow history grows with input.** A history stops at 51,200 events. Require a hand
+calculation of events per unit times the largest unit count, and a split when it exceeds the
+limit.
+
+**A check and insert use separate statements.** Two callers can pass the read. Require an
+atomic statement or a lock.
+
+**An identifier uses a one-second clock without another unique part.** Two calls in one second
+can repeat the value. Require the clock resolution, call rate and random or sequence part.
+
+**Retry and heartbeat settings disagree.** Two components can disagree on when one activity
+has failed. Name the attempt count and timeout in each component and its setting file.
+
 **A gate that cannot fail.** A verification function was called in a `|| true` list, which
 discarded its return, so the run printed *all checks passed* over a check that had aborted at
 its first step. Note that `if ! f` does **not** fix this. Inverting a return value suppresses
@@ -105,6 +125,36 @@ and a plan folder holds the scope it agreed.
 Read the scope list against the diff, and report, item by item, what the diff did not do. Keep
 this separate from the silent-failure checklist above, which is about defects rather than about
 scope.
+
+## Review batches and corrections
+
+The reviewer gives each finding a defect class that names its failure mechanism. Use the same
+class for the same mechanism throughout a review batch. One batch contains one original pass,
+its review and at most two correction passes. The initial review can record the first
+occurrence of a class. End the batch when one class occurs a second time, even if the correction
+limit remains. The organizer starts no more correction for another item in that batch.
+
+After a stop, record each unresolved finding as `move` when a later existing pass owns it,
+`insert` when it needs a new prerequisite pass, or `observe` when evidence is insufficient.
+A later inserted pass starts a new batch. A dependent pass stays closed until its required
+invariant or acceptance case is resolved. Independent work can continue.
+
+The report contains these sections in order.
+
+1. **Verdict.** Give `accept` or `reject`, the passes and the commit ranges read.
+2. **Blocking findings.** Give the defect class, `path:line`, fault and condition that would
+   make it wrong in practice for each finding.
+3. **Non-blocking findings.** Use the same columns.
+4. **Shape tests.** Report each of the four tests below.
+5. **Traced paths.** Follow each acceptance behavior from entry point to final write, with
+   one `path:line` per step.
+6. **Checks.** Separate checks the reviewer ran from results taken from a pass report.
+7. **Correction package.** On `reject`, write the complete work package from
+   [`prompt-template.md`](../planning-work/reference/prompt-template.md) for `executor-heavy`.
+
+The reviewer runs no Git write command. A correction addresses each blocking finding at its
+cause and reports any finding it did not fix. The organizer starts no dependent pass while
+blocking findings remain.
 
 ## The four shape tests
 

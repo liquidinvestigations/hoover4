@@ -22,10 +22,10 @@ scratch and is wiped when the work finishes.** Everything follows from that:
   lands, not afterwards. Afterwards never comes.
 - Archive a finished folder by moving it under `plans/old/<DDMMYYYY>/`. **Never delete one**:
   `plans/` is gitignored, so an archived folder exists only on this disk.
-- Two standing files sit at the top of `plans/` and outlive every folder: **`TODO.md`** for
-  work that was wanted and not built, and **`DEFECTS.md`** for defects and limitations awaiting
-  re-verification before they move into `docs/development/`. A pass ends by appending to them.
-  Without somewhere for unbuilt intent and open defects to go, a folder can never be archived.
+- Three standing files sit at the top of `plans/`. **`TODO.md`** holds unbuilt work.
+  **`DEFECTS.md`** holds defects pending verification. **`DECISIONS.md`** holds decisions an
+  agent took during an unattended run that a person has not ratified. A pass updates the
+  applicable files before its folder is archived.
 
 ## The file sequence
 
@@ -37,10 +37,12 @@ Numbered so the reading order is the order they were written.
 | `1-research-report.md` | what is true today: the code as it is, measured, with file paths |
 | `2-questions.md` | the frontier, asked in one round, with a recommended answer each |
 | `3-scope-and-cuts.md` | what lands, what does not, and the reason for each cut |
+| `N-technical-design.md` | the interfaces, algorithms, state and data that technical passes share |
+| `N-design-review.md` | the review verdict and findings for the technical design |
 | `N-execution-and-checks.md` | the container commands, the commands the plan must create, the documentation rows each pass owns, and the report contract. Every pass document links it instead of restating it |
 | `N-prompt-NN-<pass>.md` | the work package for one pass |
 | `N-report-NN-<pass>.md` | that pass's report, written by whoever ran it |
-| `N-coordinator-log.md` | decisions taken mid-flight, in the order they were taken |
+| `N-coordinator-log.md` | the run state, pass state, review batches and decisions in order |
 | `N-final-report.md` | what landed, what did not, and what the next session needs |
 
 **A plan of more than two passes carries the execution-and-checks document.** Every check in
@@ -51,6 +53,33 @@ presented as an existing one is how a pass reports a check it never ran.
 
 Prompt and report are **paired and adjacent**: a prompt with no report beside it is a pass
 that did not finish, and that is visible at a glance from the directory listing.
+
+The coordinator log opens with `## Run state`. Record the Git writer, branch, package commit,
+reviewed unstaged paths, live unreviewed paths and checkpoint commit. Follow it with
+`## Pass state`, `## Review batches` and `## Log`. Update these records when state changes.
+
+```markdown
+## Run state
+
+- Git writer: <harness and session>.
+- Branch: <branch>.
+- Packages written against: <sha>.
+- Reviewed unstaged paths: <paths or none>.
+- Live unreviewed paths: <paths or none>.
+- Checkpoint commit: <sha>.
+
+## Pass state
+
+| pass | package | role | state | start commit | checkpoint commit |
+|---|---|---|---|---|---|
+
+## Review batches
+
+| batch | passes | review | verdict | corrections used |
+|---|---|---|---|---|
+
+## Log
+```
 
 **Two numbering conventions are legal.** The table above numbers by stage. A folder may
 instead number by the order its documents were written, which gives `1-plan.md`,
@@ -117,8 +146,8 @@ sub-agent out with a slug and a cost.
 
 Each one carries, in this order:
 
-1. **The address block.** Which agent this is, that this file is its prompt, the exact
-   deliverable path, and the commit stamp the package was written against.
+1. **The address block.** Name the logical role, the prompt, the exact deliverable path and
+   the commit stamp. The harness selects the model and effort.
 2. **The `## Key` table**, because the document uses short tags and has to
    decode them where it stands.
 3. **The estimate table's header and this pass's row**, copied from the plan. One row is
@@ -129,12 +158,10 @@ Each one carries, in this order:
 5. **Where each task came from**, as a table: every source, what it holds, and a link.
 6. **Each task's item, copied, with the date of the copy.** Verbatim, including whatever
    register the source was written in. A quoted line keeps its exact wording.
-7. **The technical design**, for a pass that changes code, a data format, an algorithm or
-   runtime behaviour. `reference/technical-pass-design.md` says what it must carry: the files
-   and symbols this pass owns, the interfaces with their types and units, the ordered steps of
-   any algorithm, the state transitions, the migration behaviour, and the acceptance cases
-   with an expected result that does not come from the implementation. A package that leaves
-   the architecture to the executor gets a second architecture.
+7. **The technical design link**, for a pass that changes code, a data format, an algorithm or
+   runtime behaviour. Link the exact accepted design section. The package carries its owned
+   paths, interfaces, algorithms, state transitions, migration behavior and acceptance cases.
+   A package that leaves these choices to the executor is incomplete.
 8. **The six package sections** from `running-consecutive-subagents`: read before you start,
    what lands, what is true now, what must not happen, before you finish, and the report.
 
@@ -242,15 +269,13 @@ asked**, which is whether the ten items were the same shape.
   Read the draft before you say so.
 - **Stop when the frontier is empty**, and say so.
 
-**A scope change re-opens the round**, unless otherwise stated, for example an unattended pass,
-where the change is recorded in `OPEN_QUESTIONS.md` and stays provisional until a person reads
-it. An item added to the plan, an item dropped, or an item
-re-scoped, needs its own question before it reaches a work package. This holds in both
-directions, so removing work is asked about in the same way as adding it. The answer goes into
-the answers file, and from there into the plan document it changes. An item that the plan
-describes as implementing a rule the tree already carries is still a scope change. A mechanism
-that enforces a rule is a different thing from the rule, and it is the mechanism that takes the
-condition away.
+**The organizer can change execution structure inside the approved objective.** It can split,
+merge, reorder, move, insert or defer passes. Before affected work starts, record the change in
+the plan, package, estimate, coordinator log and `OPEN_QUESTIONS.md`. Keep the old row marked
+superseded. Adding, dropping or re-scoping an item re-opens the question round, unless otherwise
+stated, for example an unattended pass. Record an unattended change and its reason in
+`OPEN_QUESTIONS.md` as provisional. Put a person's answer in the answers file, then update the
+plan. A mechanism that enforces a rule is a scope item even when the tree already states the rule.
 
 ## Provenance, in every decision table
 
@@ -377,6 +402,38 @@ When the plan is choosing how something should be structured rather than what it
 for reading a diff and they work as well on a design, and the alternative is discovering at
 review that the shape was decided without them.
 
+## Selecting pass roles
+
+Every plan uses four logical roles. The `organizer` writes packages and owns Git checkpoints.
+The `reviewer` reads diffs and reports findings. An `executor-light` applies an ordinary original
+package. An `executor-heavy` applies every correction and selected original packages.
+
+Score each original implementation pass from its actual operations. Give one point for each
+condition that applies. Record the concrete evidence beside each point.
+
+1. Two runtimes or independent implementations must keep the same behavior, such as a Python
+   constant mirrored in Rust or the CPU and GPU implementations.
+2. Persistent state, a protocol, compatibility, recovery, ordering or a configuration schema
+   changes, such as a Temporal workflow signature or a `hoover4.ini` key.
+3. An algorithm, rule meaning or concurrency behavior changes, such as the rerun selector or
+   the organizer scope rule.
+4. Acceptance depends on a person, live system, browser, nondeterministic result or weak
+   oracle, such as a browser walk or model output.
+5. A shared contract, generated result or configuration has several independent consumers,
+   such as the text-page writer contract or the role definitions.
+
+Literal terms do not earn points. The words `unattended`, `review`, `correction` and `research`
+do not score original work. The [triage marker study](reference/triage-marker-study.md) found
+one significant run-mode term and no significant task-related term. The result shows an
+association and does not show causation. A pass with at least two points is eligible for
+`executor-heavy`. Allocate at most `floor(original implementation passes / 5)` heavy original
+passes. Rank eligible passes by points. Break ties by a weak oracle, then a cross-runtime
+invariant, then the number of dependent later passes.
+Every correction uses `executor-heavy` outside this allowance. Name only the logical role in
+each package. The harness selects the model and effort.
+
+`reference/estimating.md` includes the role in each pass estimate.
+
 ## Estimating it
 
 **Cost work in passes, never in developer days.** A pass is one sub-agent invocation, and its
@@ -393,11 +450,11 @@ task has bought the fixed part of a pass once for every task.
 percent of a plan's calls spent on work. A plan that fails the floor on several passes is a
 plan with too many passes in it, and merging them is what the floor is for.
 
-**A plan also carries a money figure, a tier and a tool-call budget.** A call costs about
-$0.120 at the workhorse tier, the coordinator adds $9.00 a pass, and the budget is 202 calls
-for a pass that writes and 101 for one that only reads. **The tier is named**, because the
-same work costs fifty times more on the dearest model than the cheapest while its duration and
-its call count barely move.
+**A plan carries a money figure, a harness, roles and a tool-call budget.** Use the per-call
+prices of `executor-light` and `executor-heavy` for the named harness in
+`reference/estimating.md`. The coordinator adds $9.00 a pass. The budget is 202 calls for a
+pass that writes and 101 for one that only reads. The role mapping changes cost while duration
+and call count stay near their measured values.
 
 **There is no verification adder.** Every bucket figure already contains the checks the
 sampled passes ran, so adding a stack verification or a browser walk on top counts those
@@ -428,12 +485,12 @@ and never a step inside a plan.
 
 ## What a prompt file must contain
 
-**A technical pass carries an implementation design.** Read
+**A plan with a technical pass writes a technical design before its packages.** Read
 [`reference/technical-pass-design.md`](reference/technical-pass-design.md) when a pass changes
-code, a data format, an algorithm or runtime behaviour. Put the design in the pass document,
-or in a document beside it inside the same plan folder, and link the exact section. A weaker
-executor must have enough detail to implement the agreed design without repeating the
-architecture research.
+code, a data format, an algorithm or runtime behaviour. A `reviewer` reads the design against
+the source at its commit stamp and gives an `accept` or `reject` verdict. Correct a rejected
+design before writing a package. Link each package to the exact accepted design section.
+The executor must have enough detail to implement the design without repeating research.
 
 Ask architecture questions before writing the design they affect. Continue independent
 research while the answers are pending. Record each answer and what it changes before writing
