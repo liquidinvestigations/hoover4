@@ -229,11 +229,11 @@ Admin dashboard, collections, users, groups, settings, metrics, and operations.
 | `626-admin-failures-sort` | Exercises signature sort in both directions on the failures list. | none named | `--names admin-failures-sort` |
 | `627-admin-failures-page-two` | Exercises page two of the grouped failures list. | none named | `--names admin-failures-page-two` |
 | `628-admin-failures-expand` | Exercises expanding a grouped failure row to its instances. | none named | `--names admin-failures-expand` |
-| `629-admin-failure-detail` | Exercises the failure tree detail page. | `reruns` | `--names admin-failure-detail` |
-| `630-admin-operations-failure-link` | Exercises the operations-page link into a captured failure tree. | `reruns` | `--names admin-operations-failure-link` |
+| `629-admin-failure-detail` | Exercises the failure tree detail page. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-failure-detail` |
+| `630-admin-operations-failure-link` | Exercises the operations-page link into a captured failure tree. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-operations-failure-link` |
 | `631-admin-operations-temporal-link` | Exercises the Temporal deep link on an operations row. | none named | `--names admin-operations-temporal-link` |
-| `632-admin-failure-scrubbed` | Exercises the scrubbed-copy control on a failure tree. | `reruns` | `--names admin-failure-scrubbed` |
-| `633-admin-operation-detail` | Exercises the operation detail page. | `reruns`, with the failed import | `--names admin-operation-detail` |
+| `632-admin-failure-scrubbed` | Exercises the scrubbed-copy control on a failure tree. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-failure-scrubbed` |
+| `633-admin-operation-detail` | Exercises the operation detail page. | `reruns`, with the failed import from `main_services/verify-reruns.sh` | `--names admin-operation-detail` |
 
 ## Manual QA procedures
 

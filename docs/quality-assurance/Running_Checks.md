@@ -12,6 +12,7 @@ evidence for something it never examined.
 - [Python unit tests](#python-unit-tests)
 - [Stack tests](#stack-tests)
 - [Whole-stack verification](#whole-stack-verification)
+- [Rerun acceptance](#rerun-acceptance)
 - [Test reachability](#test-reachability)
 - [Screenshots](#screenshots)
 - [Remote targets](#remote-targets)
@@ -96,6 +97,15 @@ mandatory.
 page list and the stack integration tests. Away from that corpus they fail by naming a dataset that
 does not exist, which reads as a broken site and is not. Check the fixtures before concluding
 anything from a wall of red lines.
+
+## Rerun acceptance
+
+`main_services/verify-reruns.sh` recreates the local `reruns` collection and checks retry
+selection, recovery, locking, skipped OCR work, input projection, and a failed import. It
+stops the regex scanner for the failure cases and starts it again on exit.
+
+Run it after `main_services/verify-stack.sh`. It takes up to 30 minutes and leaves the failed
+import that the rerun browser scenarios read.
 
 ### Restart resilience
 
