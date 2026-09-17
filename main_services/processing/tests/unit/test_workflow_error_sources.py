@@ -220,6 +220,56 @@ def test_p3_detector_and_parser_ids_follow_scheduled_results(monkeypatch, parser
         [["parse-run", "P3.parser", 0]] if parser_present else [])
 
 
+def test_p3_email_child_schedules_and_parent_records_operation(monkeypatch):
+    children = []
+    recorded = []
+    local = {"detectors": {
+        name: {"coarse_types": ["email"], "mime_types": []}
+        for name in parse_workflows.LOCAL_DETECTORS
+    }}
+
+    def execute_activity(fn, _params, **_kwargs):
+        async def result():
+            if fn is parse_workflows.detect_mime_all:
+                return local
+            if fn is parse_workflows.run_tika_and_store:
+                return {"coarse_types": [], "mime_types": []}
+            raise AssertionError(fn.__name__)
+        return result()
+
+    def execute_child(run, child, **kwargs):
+        children.append((run, child, kwargs))
+
+        async def result():
+            return "email complete"
+        return result()
+
+    async def record(results, **kwargs):
+        recorded.append((results, kwargs))
+        return len(results)
+
+    monkeypatch.setattr(parse_workflows.workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(parse_workflows.workflow, "execute_child_workflow", execute_child)
+    monkeypatch.setattr(parse_workflows.workflow, "now", lambda:
+                        datetime(2026, 1, 1, tzinfo=timezone.utc))
+    monkeypatch.setattr(parse_workflows.workflow, "info", lambda:
+                        SimpleNamespace(run_id="email-run"))
+    monkeypatch.setattr(parse_workflows, "record_errors_from_results", record)
+
+    params = parse_workflows.ParseSingleFileParams(
+        "collection", "dataset", "plan", "email-hash", "/tmp/mail.eml", 0, "operation")
+    assert asyncio.run(parse_workflows.ParseSingleFile().run(params)) == "ok"
+
+    assert len(children) == 1
+    run, child, options = children[0]
+    assert run is parse_workflows.EmailExtractionAndScan.run
+    assert child.email_hash == "email-hash"
+    assert child.file_path == "/tmp/mail.eml"
+    assert options["id"] == "email-scan-dataset-email-hash"
+    assert recorded[1][1]["task_ids"] == ["email_scan"]
+    assert recorded[1][1]["op_id"] == "operation"
+
+
 def test_pdf_ocr_ids_follow_engine_results_when_one_fails(monkeypatch):
     captured = []
     assert len(parse_pdf.OCR_ENGINES) >= 2

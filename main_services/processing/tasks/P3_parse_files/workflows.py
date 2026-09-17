@@ -220,7 +220,6 @@ class ParseSingleFile:
                         email_hash=params.item_hash,
                         file_path=params.file_path,
                         timeout_seconds=proc_secs,
-                        op_id=params.op_id,
                     ),
                     task_queue="processing-common-queue",
                     id=child_id,
