@@ -488,30 +488,30 @@ require_filename_hit_fixture() {
     fi
     fail "filename-hit fixture missing at $fixture"
 }
-restart_embeddings_url() {
-    local env_file="$1"
+generated_env_value() {
+    local env_file="$1" key="$2"
     local setting
     if [ ! -f "$env_file" ] || [ ! -r "$env_file" ]; then
-        fail "restart resilience: cannot read generated environment file $env_file" >&2
+        fail "cannot read generated environment file $env_file" >&2
         return 1
     fi
-    if setting=$(grep '^EMBEDDINGS_URL=' "$env_file"); then
+    if setting=$(grep "^${key}=" "$env_file"); then
         :
     elif [ "$?" -eq 1 ]; then
-        fail "restart resilience: EMBEDDINGS_URL is missing from $env_file" >&2
+        fail "$key is missing from $env_file" >&2
         return 1
     else
-        fail "restart resilience: cannot read generated environment file $env_file" >&2
+        fail "cannot read generated environment file $env_file" >&2
         return 1
     fi
     if [[ "$setting" == *$'\n'* ]]; then
-        fail "restart resilience: EMBEDDINGS_URL occurs more than once in $env_file" >&2
+        fail "$key occurs more than once in $env_file" >&2
         return 1
     fi
-    printf '%s\n' "${setting#EMBEDDINGS_URL=}"
+    printf '%s\n' "${setting#*=}"
 }
 if [ "$RESTART_RESILIENCE" = "1" ]; then
-    if ! emb_url=$(restart_embeddings_url ops/docker/.env); then
+    if ! emb_url=$(generated_env_value ops/docker/.env EMBEDDINGS_URL); then
         exit 1
     fi
     if [ -z "$emb_url" ]; then
@@ -619,8 +619,11 @@ echo "     collections under test: $(echo $COLLECTIONS)"
 # when the embedding dimension has been probed (`knn_dims` is fixed at creation and
 # cannot be altered, so it is never guessed), so the expectation has to follow the same
 # switch rather than assume either answer.
-serving_dim=$(CH "SELECT argMax(value, updated_at) FROM Hoover4_Processing.server_settings
-                  WHERE key = 'embeddings_serving_dim'" 2>/dev/null || true)
+if ! serving_dim=$(CH "SELECT argMax(value, updated_at) FROM Hoover4_Processing.server_settings
+                  WHERE key = 'embeddings_serving_dim'" 2>/dev/null); then
+    fail "cannot read the serving embedding dimension"
+    exit 1
+fi
 case "$serving_dim" in
     ""|0) EXPECT_VECTOR_SHARDS=0 ;;
     *)    EXPECT_VECTOR_SHARDS=1 ;;
@@ -793,8 +796,12 @@ done
 #     picks one location and makes the other one's folder filter return nothing.
 #     Filtering on each location's folder node must find the archive's
 #     child under BOTH.
-if [ -n "$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL
-               WHERE collection_dataset = 'testdata_zips' AND is_deleted = 0")" ]; then
+if ! zips_dataset=$(CH "SELECT collection_dataset FROM Hoover4_Processing.dataset FINAL
+               WHERE collection_dataset = 'testdata_zips' AND is_deleted = 0"); then
+    fail "cannot read the zip fixture registry row"
+    exit 1
+fi
+if [ -n "$zips_dataset" ]; then
     for location in location-1 location-2; do
         node_key=$(printf 'testdata_zips\037\037/%s' "$location")
         term_id=$(CH "SELECT term_id FROM Hoover4_Collection_testdata.string_term_text_to_id FINAL
@@ -856,8 +863,10 @@ code=$(WEB -o /dev/null -w '%{http_code}' "$WEBSITE_URL/")
 #     what the ai-services host reports from /health. A mismatch PRINTS both. It
 #     does not fail the stack, because a deliberate difference is legal.
 main_env="ops/docker/.env"
-expected_fp=$(grep -E '^HOOVER4_CONFIG_FINGERPRINT=' "$main_env" 2>/dev/null | cut -d= -f2 || true)
-ner_url=$(grep -E '^NER_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
+if ! expected_fp=$(generated_env_value "$main_env" HOOVER4_CONFIG_FINGERPRINT) \
+    || ! ner_url=$(generated_env_value "$main_env" NER_URL); then
+    exit 1
+fi
 if [ -n "$expected_fp" ] && [ -n "$ner_url" ]; then
     # Probe from INSIDE the worker, not from the host. NER_URL is written in container
     # terms -- on a single-box setup deploy.py rewrites it to
@@ -881,7 +890,7 @@ fi
 #     `languages_available` comes from `tesseract --list-langs`, not from config: a
 #     dataset configured for a language whose traineddata is not in the image fails per
 #     file, and this is the only place that mismatch is visible before it does.
-ocr_url=$(grep -E '^OCR_TESSERACT_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
+if ! ocr_url=$(generated_env_value "$main_env" OCR_TESSERACT_URL); then exit 1; fi
 if [ -n "$ocr_url" ]; then
     ocr_health=$(docker exec hoover4-worker curl -s --max-time 5 "${ocr_url%/ocr}/health" 2>/dev/null || true)
     case "$ocr_health" in
@@ -900,7 +909,7 @@ fi
 #     tier above), so the interesting half of its /health is `engines`, which reports which
 #     engines it has an ENDPOINT for. A dataset configured for an engine with no endpoint
 #     produces no OCR'd PDF at all, and this is where that mismatch is visible.
-ocrpdf_url=$(grep -E '^OCR_PDF_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
+if ! ocrpdf_url=$(generated_env_value "$main_env" OCR_PDF_URL); then exit 1; fi
 if [ -n "$ocrpdf_url" ]; then
     ocrpdf_health=$(docker exec "$WORKER" curl -s --max-time 5 "${ocrpdf_url%/ocr-pdf}/health" 2>/dev/null || true)
     case "$ocrpdf_health" in
@@ -920,15 +929,17 @@ fi
 #     embeddings_serving_model/_dim into server_settings. P5/P6 build _vectors tables
 #     from that probed dimension, never from the ini, because a Manticore knn_dims
 #     cannot be altered after creation.
-emb_url=$(grep -E '^EMBEDDINGS_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
-rerank_url=$(grep -E '^RERANK_URL=' "$main_env" 2>/dev/null | cut -d= -f2- || true)
+if ! emb_url=$(generated_env_value "$main_env" EMBEDDINGS_URL) \
+    || ! rerank_url=$(generated_env_value "$main_env" RERANK_URL); then
+    exit 1
+fi
 if [ -n "$emb_url" ]; then
     if run_step probe-embeddings; then
         ok "embeddings probe wrote server_settings"
     else
         fail "embeddings probe failed"
     fi
-    expected_dim=$(grep -E '^EMBEDDINGS_DIM=' "$SCRIPT_DIR/../ai_services/.env" 2>/dev/null | cut -d= -f2 || true)
+    if ! expected_dim=$(generated_env_value "$SCRIPT_DIR/../ai_services/.env" EMBEDDINGS_DIM); then exit 1; fi
     served_dim=$(CH "SELECT argMax(value, updated_at) FROM Hoover4_Processing.server_settings WHERE key = 'embeddings_serving_dim'" 2>/dev/null || true)
     if [ -n "$expected_dim" ] && [ "$served_dim" = "$expected_dim" ]; then
         ok "serving embedding dim ($served_dim) matches the ini"
@@ -989,9 +1000,16 @@ ms_sources=$(printf '%s' "$ms_health" | grep -oE '"sources":\[[^]]*\]' || true)
 #     for the OCR'd PDFs that loop bills OCR time on every lap. `chat_artifacts` and
 #     `pdf_ocr_results` are the sole indexes of those objects, and a `blobs` row pointing
 #     into `derived/` is the signature of the loop having started.
+if ! collection_dbs=$(CH "SELECT name FROM system.databases WHERE name LIKE 'Hoover4\\_Collection\\_%'" 2>/dev/null); then
+    fail "cannot list collection databases"
+    exit 1
+fi
 derived_blobs=0
-for db in $(CH "SELECT name FROM system.databases WHERE name LIKE 'Hoover4\\_Collection\\_%'" 2>/dev/null || true); do
-    count=$(CH "SELECT count() FROM ${db}.blobs WHERE s3_path LIKE '%derived/%'" 2>/dev/null || echo 0)
+for db in $collection_dbs; do
+    if ! count=$(CH "SELECT count() FROM ${db}.blobs WHERE s3_path LIKE '%derived/%'" 2>/dev/null); then
+        fail "cannot read derived blob count in $db"
+        continue
+    fi
     derived_blobs=$((derived_blobs + count))
 done
 if [ "$derived_blobs" -eq 0 ]; then
@@ -1060,8 +1078,15 @@ fi
 # 7h. The bootstrap is idempotent. It runs on every deploy, so a version that only works
 #     against a blank node breaks the NEXT deploy rather than the first one -- the harder
 #     failure to recognise. A settled cluster has a role assigned and nothing staged.
-if docker inspect garage >/dev/null 2>&1; then
-    layout=$(docker exec garage /garage layout show 2>&1 || true)
+if ! garage_names=$(docker ps -a --format '{{.Names}}'); then
+    fail "cannot list containers before garage bootstrap checks"
+    exit 1
+fi
+if printf '%s\n' "$garage_names" | grep -qx garage; then
+    if ! layout=$(docker exec garage /garage layout show 2>&1); then
+        fail "cannot read garage layout: $(printf '%s' "$layout" | head -c 200)"
+        exit 1
+    fi
     if printf '%s' "$layout" | grep -qi "NO ROLE ASSIGNED"; then
         fail "garage has no role assigned -- the bootstrap did not finish (docker logs garage-init)"
     elif printf '%s' "$layout" | grep -qiE "staged|pending"; then
@@ -1089,7 +1114,11 @@ if docker inspect garage >/dev/null 2>&1; then
     # an ingest error hours later.
     bucket_prefix="${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
     missing_buckets=""
-    for coll in $(CH "SELECT DISTINCT collectionname FROM Hoover4_Processing.dataset FINAL WHERE is_deleted = 0" 2>/dev/null || true); do
+    if ! collection_names=$(CH "SELECT DISTINCT collectionname FROM Hoover4_Processing.dataset FINAL WHERE is_deleted = 0" 2>/dev/null); then
+        fail "cannot list registered collection names"
+        exit 1
+    fi
+    for coll in $collection_names; do
         if ! has_bucket "${bucket_prefix}${coll}"; then
             missing_buckets="$missing_buckets ${bucket_prefix}${coll}"
         fi
@@ -1110,20 +1139,29 @@ fi
 #     column. `sweep_orphan_table_cells` is what releases the cells a purged dataset left
 #     behind, and an orphan here is that sweep not having run or having refused.
 orphan_cells=0
-for db in $(CH "SELECT name FROM system.databases WHERE name LIKE 'Hoover4\\_Collection\\_%'" 2>/dev/null || true); do
-    has_cells=$(CH "SELECT count() FROM system.tables WHERE database = '${db}' AND name = 'table_cells'" 2>/dev/null || echo 0)
+for db in $collection_dbs; do
+    if ! has_cells=$(CH "SELECT count() FROM system.tables WHERE database = '${db}' AND name = 'table_cells'" 2>/dev/null); then
+        fail "cannot read table_cells presence in $db"
+        continue
+    fi
     [ "$has_cells" -eq 0 ] && continue
     # A collection whose every dataset has been purged has an EMPTY manifest, and
     # `sweep_orphan_table_cells` refuses to run against one on purpose: an authority
     # table with no rows is a symptom, never a licence to delete every cell. Asserting
     # here would turn that deliberate refusal into a failure, so skip the collection the
     # sweep will not touch and say so.
-    manifest=$(CH "SELECT count() FROM ${db}.table_documents FINAL" 2>/dev/null || echo 0)
+    if ! manifest=$(CH "SELECT count() FROM ${db}.table_documents FINAL" 2>/dev/null); then
+        fail "cannot read table_documents count in $db"
+        continue
+    fi
     if [ "$manifest" -eq 0 ]; then
         echo "NOTE - $db has no table_documents rows; the orphan sweep declines an empty manifest"
         continue
     fi
-    count=$(CH "SELECT count() FROM ${db}.table_cells WHERE file_hash NOT IN (SELECT hash FROM ${db}.table_documents FINAL WHERE status IN ('ok', 'parsing'))" 2>/dev/null || echo 0)
+    if ! count=$(CH "SELECT count() FROM ${db}.table_cells WHERE file_hash NOT IN (SELECT hash FROM ${db}.table_documents FINAL WHERE status IN ('ok', 'parsing'))" 2>/dev/null); then
+        fail "cannot read orphan table_cells count in $db"
+        continue
+    fi
     orphan_cells=$((orphan_cells + count))
 done
 if [ "$orphan_cells" -eq 0 ]; then
@@ -1242,8 +1280,11 @@ else
     #     `blobs` is per-collection, so the row has to be looked for one database at a
     #     time -- there is no default database holding it.
     dl_row=""
-    for db in $(CH "SELECT name FROM system.databases WHERE name LIKE 'Hoover4\\_Collection\\_%'" 2>/dev/null || true); do
-        dl_row=$(CH "SELECT concat(collection_dataset, ' ', blob_hash, ' ', toString(blob_size_bytes)) FROM ${db}.blobs FINAL WHERE stored_in_clickhouse = 0 ORDER BY blob_size_bytes DESC LIMIT 1" 2>/dev/null || true)
+    for db in $collection_dbs; do
+        if ! dl_row=$(CH "SELECT concat(collection_dataset, ' ', blob_hash, ' ', toString(blob_size_bytes)) FROM ${db}.blobs FINAL WHERE stored_in_clickhouse = 0 ORDER BY blob_size_bytes DESC LIMIT 1" 2>/dev/null); then
+            fail "cannot read the download blob in $db"
+            exit 1
+        fi
         [ -n "$dl_row" ] && break
     done
     if [ -z "$dl_row" ]; then
@@ -1264,7 +1305,9 @@ else
             fail "downloading $dl_ds/$dl_hash answered HTTP $dl_code"
         elif [ "$dl_got" != "$dl_size" ]; then
             fail "downloaded $dl_got bytes for a blob ClickHouse records as $dl_size"
-        elif [ -n "$dl_sha" ] && [ "$dl_sha" != "$dl_hash" ]; then
+        elif [ -z "$dl_sha" ]; then
+            fail "could not hash downloaded bytes for $dl_ds/$dl_hash"
+        elif [ "$dl_sha" != "$dl_hash" ]; then
             fail "downloaded bytes hash to $dl_sha, not the $dl_hash they are filed under"
         else
             ok "downloaded $dl_got bytes through the website and the sha3-256 matches the blob hash"

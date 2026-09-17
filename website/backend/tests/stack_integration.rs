@@ -1,8 +1,8 @@
-//! Integration tests against the live docker stack.
+//! Local prerequisite tests and integration tests against the live stack.
 //!
-//! Run with the stack up and the canonical two-collection corpus ingested
-//! (`main_services/verify-stack.sh`): `cargo test -p backend -- --ignored`.
-//! They need ClickHouse on `CLICKHOUSE_URL` (default http://localhost:8123) and
+//! Run the live tests with the canonical corpus ingested by
+//! `main_services/verify-stack.sh`: `cargo test -p backend -- --ignored`.
+//! Live tests need ClickHouse on `CLICKHOUSE_URL` (default http://localhost:8123) and
 //! Manticore on `MANTICORE_URL` (default http://127.0.0.1:9308).
 
 use backend::db_utils::clickhouse_utils::{
@@ -181,14 +181,34 @@ fn registry_presence_distinguishes_absence_from_failure() {
 /// flunk the healthy-stack assertions of tests running concurrently.
 static GLOBAL_SEARCH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+fn operation_detail_collection_present(collection: &str, read: anyhow::Result<bool>) -> bool {
+    match read {
+        Ok(true) => true,
+        Ok(false) => {
+            eprintln!("[stack] skip: {collection} collection database is absent");
+            false
+        }
+        Err(error) => panic!("{collection} collection database read failed: {error}"),
+    }
+}
+
+#[test]
+fn operation_detail_prerequisite_distinguishes_absence_from_failure() {
+    assert!(operation_detail_collection_present("reruns", Ok(true)));
+    assert!(!operation_detail_collection_present("reruns", Ok(false)));
+    assert!(std::panic::catch_unwind(|| {
+        operation_detail_collection_present("reruns", Err(anyhow::anyhow!("read failed")))
+    })
+    .is_err());
+}
+
 #[tokio::test]
 #[ignore = "needs live stack"]
 async fn operation_detail_lists_rerun_plans_and_error_events() {
-    if !backend::db_auth::collections::collection_db_ready("reruns")
-        .await
-        .unwrap_or(false)
-    {
-        eprintln!("[stack] skip: reruns collection does not exist");
+    if !operation_detail_collection_present(
+        "reruns",
+        backend::db_auth::collections::collection_db_ready("reruns").await,
+    ) {
         return;
     }
 
