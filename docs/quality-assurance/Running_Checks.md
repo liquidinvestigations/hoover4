@@ -74,10 +74,11 @@ breaks.
 
 ## Stack tests
 
-Every test in the backend's stack integration suite needs a live stack, so the ignore
-attribute cannot also mean "slow". Slowness is carried in the test **name** instead: the ones
+The backend's stack integration suite includes one registry classification test without a live stack.
+The live tests use the ignore attribute, so it cannot also mean "slow".
+Slowness is carried in the test **name** instead: the ones
 that wait on something with its own clock carry a prefix and are skipped by default. Every
-other test asserts its own wall time against a budget, which is what notices an endpoint that
+other live test asserts its own wall time against a budget, which is what notices an endpoint that
 quietly starts doing a full scan. Without that budget, a test that grows from a third of a
 second to nine seconds still passes.
 

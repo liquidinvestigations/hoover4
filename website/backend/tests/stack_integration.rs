@@ -65,48 +65,61 @@ fn admin_user() -> CurrentUser {
     }
 }
 
-/// The four datasets `main_services/verify-stack.sh` ingests, and the presence check that
-/// lets a corpus-dependent test skip instead of failing when they are not this run's
-/// corpus. `TESTFILES`, `SHAPES` and `EMAILS` are also used, unmodified, by the
-/// assertions below.
+/// The four datasets `main_services/verify-stack.sh` ingests. Corpus checks skip after a
+/// registry read or explicit test override confirms absence. Query failures fail the test.
 const TESTFILES: &str = "testdata_testfiles";
 const ZIPS: &str = "testdata_zips";
 const SHAPES: &str = "testdata_shapes";
 const EMAILS: &str = "other_emails";
 const CORPUS_DATASETS: [&str; 4] = [TESTFILES, ZIPS, SHAPES, EMAILS];
 
-/// Whether `dataset` is in the corpus this run can see.
-///
-/// Reads `HOOVER4_STACK_TEST_PRESENT_DATASETS` (comma-separated dataset names) when it is
-/// set, and answers from that list alone -- this is how a run simulates an absent corpus
-/// without deleting or un-ingesting anything. Unset, it asks the live stack.
-async fn dataset_present(dataset: &str) -> bool {
+/// Classify a registry read without treating a failed read as an absent dataset.
+fn registry_dataset_present(
+    dataset: &str,
+    rows: anyhow::Result<Vec<String>>,
+) -> anyhow::Result<bool> {
+    let rows = rows.map_err(|error| {
+        error.context(format!("dataset registry query failed for {dataset}"))
+    })?;
+    Ok(!rows.is_empty())
+}
+
+/// Read the explicit corpus override or the live registry.
+async fn dataset_present(dataset: &str) -> anyhow::Result<bool> {
     if let Ok(list) = std::env::var("HOOVER4_STACK_TEST_PRESENT_DATASETS") {
-        return list.split(',').map(str::trim).any(|d| d == dataset);
+        return Ok(list.split(',').map(str::trim).any(|d| d == dataset));
     }
-    resolve_collection(dataset).await.is_ok()
+    let rows = get_global_client()
+        .query(
+            "SELECT collectionname FROM dataset FINAL \
+             WHERE collection_dataset = ? AND is_deleted = 0 LIMIT 1",
+        )
+        .bind(dataset)
+        .fetch_all::<String>()
+        .await
+        .map_err(anyhow::Error::from);
+    registry_dataset_present(dataset, rows)
 }
 
 /// Whether any of the four corpus datasets is in this run's corpus. For a test that needs
 /// the corpus in general rather than one dataset it names.
-async fn corpus_present() -> bool {
+async fn corpus_present() -> anyhow::Result<bool> {
     for dataset in CORPUS_DATASETS {
-        if dataset_present(dataset).await {
-            return true;
+        if dataset_present(dataset).await? {
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
 }
 
-/// Whether every one of the four corpus datasets is in this run's corpus. For a test whose
-/// arithmetic spans all of them.
-async fn full_corpus_present() -> bool {
+/// Return the first absent dataset when a test needs all four corpus datasets.
+async fn first_absent_corpus_dataset() -> anyhow::Result<Option<&'static str>> {
     for dataset in CORPUS_DATASETS {
-        if !dataset_present(dataset).await {
-            return false;
+        if !dataset_present(dataset).await? {
+            return Ok(Some(dataset));
         }
     }
-    true
+    Ok(None)
 }
 
 /// Skips the calling test, with a named reason, when `dataset` is not in the corpus this
@@ -115,7 +128,10 @@ async fn full_corpus_present() -> bool {
 /// reads as a broken site.
 macro_rules! skip_unless_dataset {
     ($dataset:expr) => {
-        if !dataset_present($dataset).await {
+        if !dataset_present($dataset)
+            .await
+            .unwrap_or_else(|error| panic!("{error}"))
+        {
             eprintln!("[stack] skip: {} is not in this run's corpus", $dataset);
             return;
         }
@@ -125,22 +141,39 @@ macro_rules! skip_unless_dataset {
 /// Same, gated on [`corpus_present`]: any one of the four corpus datasets is enough.
 macro_rules! skip_unless_corpus {
     () => {
-        if !corpus_present().await {
-            eprintln!("[stack] skip: no corpus dataset is in this run's corpus");
+        if !corpus_present()
+            .await
+            .unwrap_or_else(|error| panic!("{error}"))
+        {
+            eprintln!("[stack] skip: none of {} is in this run's corpus", CORPUS_DATASETS.join(", "));
             return;
         }
     };
 }
 
-/// Same, gated on [`full_corpus_present`]: every one of the four corpus datasets must be
-/// present.
+/// Skip when the registry confirms that a required corpus dataset is absent.
 macro_rules! skip_unless_full_corpus {
     () => {
-        if !full_corpus_present().await {
-            eprintln!("[stack] skip: not every corpus dataset is in this run's corpus");
+        if let Some(dataset) = first_absent_corpus_dataset()
+            .await
+            .unwrap_or_else(|error| panic!("{error}"))
+        {
+            eprintln!("[stack] skip: {dataset} is not in this run's corpus");
             return;
         }
     };
+}
+
+#[test]
+fn registry_presence_distinguishes_absence_from_failure() {
+    assert!(!registry_dataset_present(TESTFILES, Ok(vec![])).unwrap());
+    assert!(registry_dataset_present(TESTFILES, Ok(vec!["testdata".to_string()])).unwrap());
+    let failure = registry_dataset_present(TESTFILES, Err(anyhow::anyhow!("registry read failed")));
+    assert_eq!(
+        failure.as_ref().unwrap_err().to_string(),
+        "dataset registry query failed for testdata_testfiles"
+    );
+    assert_eq!(failure.unwrap_err().root_cause().to_string(), "registry read failed");
 }
 
 /// Serialises the tests that assert the global partial flag: the missing-shard
@@ -1737,7 +1770,10 @@ async fn slow_qa_pdf_sources_match_bytes_in_both_orders_and_keep_individual_coun
 
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
     let dataset = "testdata_manualqa";
-    assert!(dataset_present(dataset).await, "prepare the manual QA fixture profile first");
+    assert!(
+        dataset_present(dataset).await.unwrap(),
+        "prepare the manual QA fixture profile first"
+    );
     let doc = DocumentIdentifier {
         collection_dataset: dataset.into(),
         file_hash: "d21ccff5b16f15e99148bc3faaa2a2975b071a18fbd1562c9a429c634ad3aee3".into(),

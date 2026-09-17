@@ -488,8 +488,32 @@ require_filename_hit_fixture() {
     fi
     fail "filename-hit fixture missing at $fixture"
 }
+restart_embeddings_url() {
+    local env_file="$1"
+    local setting
+    if [ ! -f "$env_file" ] || [ ! -r "$env_file" ]; then
+        fail "restart resilience: cannot read generated environment file $env_file" >&2
+        return 1
+    fi
+    if setting=$(grep '^EMBEDDINGS_URL=' "$env_file"); then
+        :
+    elif [ "$?" -eq 1 ]; then
+        fail "restart resilience: EMBEDDINGS_URL is missing from $env_file" >&2
+        return 1
+    else
+        fail "restart resilience: cannot read generated environment file $env_file" >&2
+        return 1
+    fi
+    if [[ "$setting" == *$'\n'* ]]; then
+        fail "restart resilience: EMBEDDINGS_URL occurs more than once in $env_file" >&2
+        return 1
+    fi
+    printf '%s\n' "${setting#EMBEDDINGS_URL=}"
+}
 if [ "$RESTART_RESILIENCE" = "1" ]; then
-    emb_url=$(grep -E '^EMBEDDINGS_URL=' ops/docker/.env 2>/dev/null | cut -d= -f2- || true)
+    if ! emb_url=$(restart_embeddings_url ops/docker/.env); then
+        exit 1
+    fi
     if [ -z "$emb_url" ]; then
         echo 'SKIP restart resilience: embeddings stage is off'
         exit 0
