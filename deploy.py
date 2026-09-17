@@ -620,6 +620,7 @@ def render_main_env(cfg):
     # /v1/rerank, so one base URL covers both). No CPU twin exists yet.
     # Embeddings_cpu_port is reserved but nothing serves it, so "cpu" renders empty and
     # the embed activity will fail fast naming the setting rather than hang.
+    env["EMBEDDINGS_DIM"] = cfg.get("ai_services", "embeddings_dim")
     emb_provider = cfg.get(m, "embeddings_provider")
     if emb_provider == "gpu" and _ai_tier_present(cfg):
         env["EMBEDDINGS_URL"] = "http://%s:%s/v1" % (

@@ -924,8 +924,8 @@ else
     echo "NOTE - no OCR_PDF_URL rendered (ocr_pdf_enabled = false); skipping ocr-pdf check"
 fi
 
-# 7d. The AI server serves the embedding model the ini asks for, at the ini's
-#     dimension, and the reranker answers when enabled. The probe writes
+# 7d. The AI server serves embeddings at the dimension in the main env.
+#     The reranker answers when enabled. The probe writes
 #     embeddings_serving_model/_dim into server_settings. P5/P6 build _vectors tables
 #     from that probed dimension, never from the ini, because a Manticore knn_dims
 #     cannot be altered after creation.
@@ -939,11 +939,15 @@ if [ -n "$emb_url" ]; then
     else
         fail "embeddings probe failed"
     fi
-    if ! expected_dim=$(generated_env_value "$SCRIPT_DIR/../ai_services/.env" EMBEDDINGS_DIM); then exit 1; fi
+    if ! expected_dim=$(generated_env_value "$main_env" EMBEDDINGS_DIM); then exit 1; fi
+    if [ -z "$expected_dim" ]; then
+        fail "EMBEDDINGS_DIM is empty in $main_env"
+        exit 1
+    fi
     served_dim=$(CH "SELECT argMax(value, updated_at) FROM Hoover4_Processing.server_settings WHERE key = 'embeddings_serving_dim'" 2>/dev/null || true)
-    if [ -n "$expected_dim" ] && [ "$served_dim" = "$expected_dim" ]; then
+    if [ "$served_dim" = "$expected_dim" ]; then
         ok "serving embedding dim ($served_dim) matches the ini"
-    elif [ -n "$expected_dim" ]; then
+    else
         fail "serving embedding dim ($served_dim) != ini embeddings_dim ($expected_dim)"
     fi
 else
