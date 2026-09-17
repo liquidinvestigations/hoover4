@@ -630,16 +630,35 @@ case "$serving_dim" in
 esac
 
 # 1. The global database holds only global tables (no per-collection tables).
-#    The expected set is parsed from the migration files (CREATEs minus DROPs,
-#    plus schema_versions) so the check does not drift from the schema.
+#    The expected set is parsed from migration files. A RENAME consumes its
+#    source table, and the destination remains in the set.
 tables_expected() {
     local dir="$1"
-    comm -23 \
-        <(grep -hoiE 'CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+`?[a-z_]+`?' "$dir"/*.sql \
-            | awk '{print $NF}' | tr -d '`' | { cat -; echo schema_versions; } | sort -u) \
-        <(grep -hoiE 'DROP\s+TABLE\s+(IF\s+EXISTS\s+)?`?[a-z_]+`?' "$dir"/*.sql \
-            | awk '{print $NF}' | tr -d '`' | sort -u) \
-        | tr '\n' ' '
+    awk '
+        BEGIN { RS=";"; tables["schema_versions"]=1 }
+        {
+            statement=$0
+            gsub(/--[^\n]*/, "", statement)
+            n=split(statement, words, /[[:space:],`]+/)
+            for (i=1; i<=n; i++) {
+                if (toupper(words[i]) == "CREATE" && toupper(words[i+1]) == "TABLE") {
+                    j=i+2
+                    if (toupper(words[j]) == "IF") j+=3
+                    tables[words[j]]=1
+                } else if (toupper(words[i]) == "DROP" && toupper(words[i+1]) == "TABLE") {
+                    j=i+2
+                    if (toupper(words[j]) == "IF") j+=2
+                    delete tables[words[j]]
+                } else if (toupper(words[i]) == "RENAME" && toupper(words[i+1]) == "TABLE") {
+                    for (j=i+2; j+2<=n && toupper(words[j+1]) == "TO"; j+=3) {
+                        delete tables[words[j]]
+                        tables[words[j+2]]=1
+                    }
+                }
+            }
+        }
+        END { for (name in tables) print name }
+    ' "$dir"/*.sql | sort -u | tr '\n' ' '
 }
 expected_global=$(tables_expected processing/database/db_global_migrations)
 global_tables=$(CH "SHOW TABLES FROM Hoover4_Processing" | sort | tr '\n' ' ')
@@ -650,7 +669,7 @@ else
 fi
 
 # 2. Every collection DB has the full collection table set (parsed from the
-#    migration files, plus schema_versions, minus tables later migrations drop).
+#    migration files, plus schema_versions, minus consumed or dropped tables).
 expected_collection=$(tables_expected processing/database/db_collection_migrations)
 for coll in $COLLECTIONS; do
     coll_db="Hoover4_Collection_$coll"

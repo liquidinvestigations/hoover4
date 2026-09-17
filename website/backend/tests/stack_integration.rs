@@ -843,7 +843,17 @@ async fn qa_sort_relevance_matches_raw_scores_across_shards_and_pages() {
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
     skip_unless_full_corpus!();
     let _budget = Budget::start("qa_sort_relevance_matches_raw_scores_across_shards_and_pages");
-    let query = SearchQuery { query_string: "the".to_string(), ..SearchQuery::default() };
+    let mut query = SearchQuery {
+        query_string: "the | and | to | from | in | of | file | pdf".to_string(),
+        ..SearchQuery::default()
+    };
+    query.facet_filters.insert(
+        "collection_dataset".to_string(),
+        CORPUS_DATASETS
+            .iter()
+            .map(|dataset| common::search_result::FacetOriginalValue::String((*dataset).to_string()))
+            .collect(),
+    );
     let mut raw = Vec::new();
     for collection in ["testdata", "other"] {
         for shard in list_shards(collection).await.unwrap() {
