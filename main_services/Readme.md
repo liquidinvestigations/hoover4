@@ -11,6 +11,7 @@ This directory contains the core data plane for Hoover4. It includes database in
 - `task-time-report.sh`, where processing time went, out of `processing_task_runs`: per-task-type totals, shares, counts, mean/p50/p95/p99/max, per-queue and per-dataset splits, the twenty slowest single executions, the headline trio of summed task time, wall clock and achieved parallelism, plus the per-activity overhead floor, per-file wall-vs-busy, and dataset-scoped P6 repeats. `--csv` for a spreadsheet, `--since '<UTC timestamp>'` to scope it to one ingest, `--dataset NAME` to restrict to one `collection_dataset`. Read-only, and it ingests nothing.
 - `bench-ingest.sh`, repeatable ingest of a named fixture (`smoke` / `medium` / `large`) into collection `bench`. Purges first, waits for quiescence, asserts correctness, writes `Hoover4_Processing.bench_runs`, then purges again unless `--keep`.
 - `bench-overhead.py`, per-probe p50/mean/min/max for ClickHouse client/insert, Magika, extractous and `file`, including the pooled-client and helper-pool paths. Runs inside `hoover4-worker`: `docker exec -i hoover4-worker uv run python - < main_services/bench-overhead.py`.
+- `verify-reruns.sh` tests Error selection and recovery against the local stack. It removes its test collection and Failure trees before each run. It writes a browser operation id under `website/test_reports/`.
 
 ## Subdirectories
 

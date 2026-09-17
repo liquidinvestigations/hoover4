@@ -95,7 +95,10 @@ def submit_operation(kind: str, collectionname: str = "", collection_dataset: st
     import temporalio.common
     from temporalio.client import Client as TemporalClient
 
-    from database.operations import create_operation, finish_operation
+    from database.operations import DRIVEN_KINDS, create_operation, finish_operation
+
+    if kind not in DRIVEN_KINDS:
+        raise ValueError(f"Operation kind has no workflow driver: {kind}")
 
     from .params import OperationParams
 
@@ -132,14 +135,10 @@ def submit_operation(kind: str, collectionname: str = "", collection_dataset: st
 
 
 def request_cancel(op_id: str) -> str:
-    """Ask Temporal to cancel an operation and land its row in `cancelled`.
-
-    The row is written here rather than by the workflow because a cancelled workflow
-    cannot schedule further activities: a cleanup write attempted inside it would be
-    cancelled with it, and the row would stay non-terminal for ever, holding the lock
-    that cancelling was meant to release.
-    """
-    from database.operations import finish_operation, get_operation
+    """Run the cancellation finalizer and wait for its terminal result."""
+    import temporalio.common
+    from temporalio.exceptions import WorkflowAlreadyStartedError
+    from database.operations import get_operation
 
     row = get_operation(op_id)
     if row is None:
@@ -147,15 +146,19 @@ def request_cancel(op_id: str) -> str:
 
     async def _cancel():
         from temporalio.client import Client as TemporalClient
-        client = await TemporalClient.connect("temporal:7233")
-        handle = client.get_workflow_handle(op_id)
-        await handle.cancel()
+        from .workflows import CancelOperation
 
-    try:
-        asyncio.run(_cancel())
-    except Exception as exc:
-        # A workflow the server no longer knows about is the normal case for an
-        # operation whose history has aged out. The row still has to be released.
-        log.warning("Temporal cancellation of %s: %s", op_id, exc)
-    finish_operation(op_id, "cancelled", "Cancelled by request.")
-    return op_id
+        client = await TemporalClient.connect("temporal:7233")
+        finalizer_id = f"cancel-{op_id}"
+        try:
+            handle = await client.start_workflow(
+                CancelOperation.run, op_id, id=finalizer_id,
+                task_queue="operations-queue",
+                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.REJECT_DUPLICATE,
+            )
+        except WorkflowAlreadyStartedError:
+            handle = client.get_workflow_handle(finalizer_id)
+        return await handle.result()
+
+    return asyncio.run(_cancel())

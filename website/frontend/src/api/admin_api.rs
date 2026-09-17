@@ -80,7 +80,7 @@ admin_server_fn!(admin_task_time_live, backend::api::admin::processing::admin_ta
 admin_server_fn!(admin_list_operations, backend::api::admin::operations::admin_list_operations, (state: String, collectionname: String, limit: u32, offset: u32) -> OperationsPage);
 admin_server_fn!(admin_get_operation_detail, backend::api::admin::operations::admin_get_operation_detail, (op_id: String, plans_page: u32, events_page: u32) -> OperationDetail);
 admin_server_fn!(admin_rerun_operation, backend::api::admin::operations::admin_rerun_operation, (op_id: String, confirm_target: String) -> String);
-admin_server_fn!(admin_cancel_operation, backend::api::admin::operations::admin_cancel_operation, (op_id: String));
+admin_server_fn!(admin_cancel_operation, backend::api::admin::operations::admin_cancel_operation, (op_id: String) -> String);
 admin_server_fn!(admin_list_operation_failures, backend::api::admin::failures::admin_list_operation_failures, (filter: FailureListFilter, sort: FailureListSort, limit: u32, offset: u32) -> FailuresPage);
 admin_server_fn!(admin_list_failure_instances, backend::api::admin::failures::admin_list_failure_instances, (filter: FailureListFilter, signature: String, limit: u32, offset: u32) -> Vec<FailureInstanceRow>);
 admin_server_fn!(admin_get_failure_tree, backend::api::admin::failures::admin_get_failure_tree, (op_id: String) -> FailureTree);

@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.plan_utils import FetchPlanHashesParams, fetch_plan_hashes
-    from tasks.P3_parse_files.parse_common import record_errors_from_results
+    from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id
     from .params import (
         BuildEmailGraphParams,
         BuildVfsNodesParams,
@@ -57,6 +57,7 @@ class ScheduledChunk:
     started: datetime
     pages_future: Any
     vectors_future: Any
+    ordinal: int
 
 
 @workflow.defn
@@ -99,10 +100,12 @@ class IndexDatasetPlan:
                     plan_hash=params.plan_hash,
                     shard_name=assignment.shard_name,
                     hashes=chunk_hashes,
+                    op_id=params.op_id,
                 )
                 chunks.append(ScheduledChunk(
                     shard_name=assignment.shard_name,
                     hashes=chunk_hashes,
+                    ordinal=len(chunks),
                     started=workflow.now(),
                     pages_future=workflow.execute_activity(
                         index_text_pages,
@@ -131,6 +134,7 @@ class IndexDatasetPlan:
         failed_task_ids = []
         failed_starts = []
         failed_hashes = []
+        failed_source_ids = []
         # index_state entries: the union of the hashes each successful writer
         # reports as written. A permanently failed writer chunk contributes nothing.
         indexed_entries: set[tuple[str, str]] = set()
@@ -143,11 +147,16 @@ class IndexDatasetPlan:
                         failed_task_ids.append(task_id)
                         failed_starts.append(chunk.started)
                         failed_hashes.append(item_hash)
+                        failed_source_ids.append(source_execution_id(
+                            workflow.info().run_id,
+                            "P6.text" if task_id == "P6_IndexTextPages" else "P6.vectors",
+                            chunk.ordinal))
                 else:
                     for item_hash in res:
                         indexed_entries.add((chunk.shard_name, item_hash))
         await record_errors_from_results(
             failed_results,
+            source_execution_ids=failed_source_ids,
             task_ids=failed_task_ids,
             starts=failed_starts,
             collectionname=params.collectionname,

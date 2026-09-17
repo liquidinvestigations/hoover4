@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 from types import SimpleNamespace
 
 import pyarrow as pa
@@ -60,12 +61,15 @@ def test_progress_uses_recorded_plans_and_operation_errors(monkeypatch):
     monkeypatch.setattr(
         operations,
         "get_operation",
-        lambda _op_id: {"started_at": datetime.now(timezone.utc)},
+        lambda _op_id: {
+            "started_at": datetime.now(timezone.utc),
+            "state": "running", "row_version": 1, "progress_done": 0,
+            "progress_total": 0,
+        },
     )
-    monkeypatch.setattr(operations, "update_operation", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         operations,
-        "merge_detail",
+        "update_operation",
         lambda _op_id, **fields: details.append(fields),
     )
 
@@ -76,4 +80,8 @@ def test_progress_uses_recorded_plans_and_operation_errors(monkeypatch):
     assert result == [3, 7]
     assert "op_id = {op:String}" in client.queries[0][0]
     assert client.queries[0][1] == {"ds": "dataset", "op": "operation"}
-    assert details == [{"failed_documents": 1, "failed_tasks": 2}]
+    assert len(details) == 1
+    assert details[0]["base_row"]["row_version"] == 1
+    assert json.loads(details[0]["detail"]) == {
+        "failed_documents": 1, "failed_tasks": 2,
+    }

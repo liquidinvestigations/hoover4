@@ -3,6 +3,7 @@
 # Exports HOOVER4_TEST_USERNAME and HOOVER4_TEST_PASSWORD when a pair is present.
 # Exports HOOVER4_SITE_URL from the login-env file when the environment does not set it.
 # Defines require_capture_target, which exits 2 when --target and HOOVER4_SITE_URL are both empty.
+# The screenshot wrapper calls require_explicit_capture_target after target resolution.
 # Credential values never appear in this file's arguments.
 
 read_login_env_value() {
@@ -73,4 +74,11 @@ require_capture_target() {
     echo "error: no capture target. Pass --target URL, or set HOOVER4_SITE_URL in the environment or in the login-env file." >&2
     echo "       (checked --target, HOOVER4_SITE_URL, ${LOGIN_ENV_FILE:-no login-env file})" >&2
     exit 2
+}
+
+require_explicit_capture_target() {
+    if [ "${TARGET_SOURCE:-}" = "${LOGIN_ENV_FILE:-}" ] && [ "${REMOTE_TARGET:-0}" != 1 ]; then
+        echo "error: the login file supplies the only target. Pass --target URL or --remote-target." >&2
+        exit 2
+    fi
 }

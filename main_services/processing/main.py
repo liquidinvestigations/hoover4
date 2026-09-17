@@ -316,7 +316,7 @@ def operations_rerun(op_id: str, wait: bool):
 @operations.command(name="cancel")
 @click.argument("op_id", type=str)
 def operations_cancel(op_id: str):
-    """Cancel an operation and release the lock it holds.
+    """Request cancellation and print the operation's terminal state.
 
     `cancelled` is a state of its own, not a failure, and it is re-runnable: every
     pipeline stage is idempotent, so stopping one part-way loses progress and nothing
@@ -324,8 +324,8 @@ def operations_cancel(op_id: str):
     """
     from tasks.P_ops.cli import request_cancel
 
-    request_cancel(op_id)
-    click.echo(f"{op_id} cancelled")
+    state = request_cancel(op_id)
+    click.echo(f"{op_id} {state}")
 
 
 async def _open_index_workflows(collectionname: str) -> list[str]:
@@ -659,15 +659,15 @@ def purge_dataset(collectionname: str, collection_dataset: str, apply: bool, all
 @click.option("--dataset", "collection_dataset", type=str, default="",
               help="Limit to one `<collectionname>_<dataset_name>`.")
 @click.option("--task", "task_name", type=str, default="",
-              help="The `processing_errors.task_name` to retry, e.g. P4_ExtractEntities. "
-                   "Required for --apply.")
+              help="Select one `processing_errors.task_name`, such as P4_ExtractEntities. "
+                   "--apply requires this option.")
 @click.option("--apply/--dry-run", default=False, show_default=True,
               help="--dry-run (the default) only reports what failed and how it would be retried.")
 def retry_failed_files(collectionname: str, collection_dataset: str, task_name: str, apply: bool):
     """Select historical Error rows, execute their plans, and reconcile the result.
 
-    The dry run reads Error groups. `--apply` dispatches one operation for each selected
-    dataset. The selector clears stage state and reopens selected plans before execution.
+    The dry run reads current Error groups. `--apply` dispatches one operation for each
+    selected dataset. Recovery requires a matching task run and document outcome.
     """
     from database.clickhouse import validate_collectionname
     from database.operations import OperationLocked
@@ -756,6 +756,8 @@ def purge_unattributed_entities(collectionname: str, apply: bool):
         print(f"{collectionname}: no unattributed entity_hit rows")
     if not apply:
         print("dry run; pass --apply to submit the collection operation")
+        return
+    if not orphan_rows:
         return
     try:
         op_id = submit_operation(

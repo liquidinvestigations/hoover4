@@ -15,6 +15,7 @@ class ExtractPlaintextParams:
     file_hash: str
     file_path: str
     timeout_seconds: int
+    op_id: str = ""
 
 
 @activity.defn
@@ -26,5 +27,4 @@ def extract_plaintext_chunks(params: ExtractPlaintextParams) -> int:
     with open(params.file_path, "rb") as f:
         data = f.read()
     return insert_text_chunks(params.collectionname, params.collection_dataset, params.file_hash, "raw_text", data)
-
 

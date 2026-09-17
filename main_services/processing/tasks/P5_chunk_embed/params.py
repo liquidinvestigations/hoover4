@@ -17,6 +17,7 @@ class ChunkEmbedParams:
     collection_dataset: str
     plan_hash: str
     hashes: list[str]
+    op_id: str = ""
 
 
 @dataclass

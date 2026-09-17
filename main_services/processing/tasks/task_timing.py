@@ -148,6 +148,14 @@ _RUNS_COLUMNS = [
     "workflow_id",
     "workflow_run_id",
     "workflow_type",
+    "op_id",
+    "activity_id",
+]
+
+_OUTCOME_COLUMNS = [
+    "op_id", "collection_dataset", "hash", "error_task_name",
+    "activity_name", "workflow_run_id", "activity_id", "attempt",
+    "outcome", "recorded_at",
 ]
 
 _INFLIGHT_COLUMNS = [
@@ -244,6 +252,7 @@ class _ActivityFields:
     workflow_id: str
     workflow_run_id: str
     workflow_type: str
+    activity_id: str
 
 
 def _activity_fields(input: ExecuteActivityInput) -> _ActivityFields:
@@ -262,6 +271,7 @@ def _activity_fields(input: ExecuteActivityInput) -> _ActivityFields:
             workflow_id="",
             workflow_run_id="",
             workflow_type="",
+            activity_id="",
         )
     scheduled = _naive_utc(getattr(info, "scheduled_time", None))
     started = _naive_utc(getattr(info, "started_time", None))
@@ -276,6 +286,7 @@ def _activity_fields(input: ExecuteActivityInput) -> _ActivityFields:
         workflow_id=getattr(info, "workflow_id", None) or "",
         workflow_run_id=getattr(info, "workflow_run_id", None) or "",
         workflow_type=getattr(info, "workflow_type", None) or "",
+        activity_id=getattr(info, "activity_id", None) or "",
     )
 
 
@@ -648,12 +659,65 @@ class SkippedOutcome:
         self.value = value
 
 
+def _outcome_rows(args: Sequence[Any], fields: _ActivityFields,
+                  op_id: str, dataset: str, outcome: str, result: Any) -> list[list]:
+    """Build document evidence for a successful activity execution."""
+    if not op_id or outcome not in ("ok", "skipped") or not args:
+        return []
+    params = args[0]
+    name = fields.task_name
+    names = {
+        "run_tika_and_store": "detector_error_tika",
+        "extract_plaintext_chunks": "extract_plaintext_chunks",
+        "parse_office_xml_and_store": "parse_office_xml_and_store",
+        "parse_table_and_store": "parse_table_and_store",
+        "parse_image_metadata_and_store": "parse_image_metadata_and_store",
+        "parse_audio_metadata_and_store": "parse_audio_metadata_and_store",
+        "extract_entities_for_hashes": "P4_ExtractEntities",
+        "scan_regex_entities_for_hashes": "P4_ScanRegexEntities",
+        "chunk_embed_for_hashes": "P5_ChunkEmbed",
+        "index_text_pages": "P6_IndexTextPages",
+        "index_vectors": "P6_IndexVectors",
+    }
+    if name in ("run_ocr_and_store", "run_ocr_pdf_and_store"):
+        error_name = f"{name}[{getattr(params, 'engine', '')}]"
+    else:
+        error_name = names.get(name)
+    if not error_name:
+        return []
+    if name in ("index_text_pages", "index_vectors"):
+        hashes = result if isinstance(result, (list, tuple)) else []
+    elif name in ("extract_entities_for_hashes", "scan_regex_entities_for_hashes",
+                  "chunk_embed_for_hashes"):
+        hashes = getattr(params, "hashes", [])
+    else:
+        hashes = [getattr(params, "file_hash", None) or
+                  getattr(params, "pdf_hash", None)]
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return [[op_id, dataset, hash, error_name, name, fields.workflow_run_id,
+             fields.activity_id, min(max(fields.attempt, 0), 65535), outcome, now]
+            for hash in dict.fromkeys(hashes) if hash]
+
+
+def _write_operation_result(collectionname: str, row: list, outcomes: list[list]) -> None:
+    """Write document evidence before its matching activity run."""
+    from database.clickhouse import get_collection_client, insert_durable
+
+    with get_collection_client(collectionname) as client:
+        if outcomes:
+            insert_durable(client, "processing_document_outcomes", outcomes,
+                           column_names=_OUTCOME_COLUMNS)
+        insert_durable(client, "processing_task_runs", [row],
+                       column_names=_RUNS_COLUMNS)
+
+
 class _TimingActivityInbound(ActivityInboundInterceptor):
     """Times one activity execution and hands the row to the buffer."""
 
     async def execute_activity(self, input: ExecuteActivityInput) -> Any:
         fields = _activity_fields(input)
         collectionname, dataset, item_hash = identify(input.args)
+        op_id = _first_attr(input.args, ("op_id",))
 
         unroutable = not collectionname
         if unroutable:
@@ -665,6 +729,7 @@ class _TimingActivityInbound(ActivityInboundInterceptor):
         started_at = datetime.now(timezone.utc).replace(tzinfo=None)
         start = time.monotonic()
         outcome = "ok"
+        result = None
         try:
             result = await self.next.execute_activity(input)
         except BaseException:
@@ -680,9 +745,7 @@ class _TimingActivityInbound(ActivityInboundInterceptor):
             run_time_ms = max(0, int((time.monotonic() - start) * 1000))
             if token is not None:
                 _recorder.end(token)
-            _recorder.record(
-                collectionname,
-                [
+            row = [
                     dataset,
                     fields.task_name,
                     item_hash,
@@ -698,8 +761,14 @@ class _TimingActivityInbound(ActivityInboundInterceptor):
                     fields.workflow_id,
                     fields.workflow_run_id,
                     fields.workflow_type,
-                ],
-            )
+                    op_id,
+                    fields.activity_id,
+                ]
+            if op_id and outcome in ("ok", "skipped") and collectionname:
+                _write_operation_result(collectionname, row, _outcome_rows(
+                    input.args, fields, op_id, dataset, outcome, result))
+            else:
+                _recorder.record(collectionname, row)
 
 
 class TaskTimingInterceptor(Interceptor):

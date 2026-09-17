@@ -17,6 +17,7 @@ class DetectMimeParams:
     file_hash: str
     file_path: str
     timeout_seconds: int
+    op_id: str = ""
 
 
 def _run_file_multi(file_path: str) -> Tuple[List[str], List[str], List[str]]:

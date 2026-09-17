@@ -366,7 +366,7 @@ class IngestAndProcessDataset:
             search_attributes=attributes,
         )
         if params.op_id:
-            await workflow.execute_activity(
+            selection = await workflow.execute_activity(
                 select_historical_errors,
                 SelectErrorsParams(
                     op_id=params.op_id,
@@ -376,7 +376,7 @@ class IngestAndProcessDataset:
                 task_queue="processing-common-queue",
                 start_to_close_timeout=timedelta(minutes=60),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
         await workflow.execute_child_workflow(
             ExecutePlans.run,
@@ -391,7 +391,7 @@ class IngestAndProcessDataset:
             search_attributes=attributes,
         )
         if params.op_id:
-            await workflow.execute_activity(
+            reconciliation = await workflow.execute_activity(
                 reconcile_selected_errors,
                 ReconcileErrorsParams(
                     op_id=params.op_id,
@@ -401,6 +401,16 @@ class IngestAndProcessDataset:
                 task_queue="processing-common-queue",
                 start_to_close_timeout=timedelta(minutes=60),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
+            return {
+                "message": f"ingested and processed {params.collection_dataset}",
+                "selector_counts": {
+                    "errors_before_run": selection.errors_before_run,
+                    "selected_errors": selection.selected_errors,
+                    "removed_stage_off_errors": selection.removed_stage_off_errors,
+                    "without_plan_errors": selection.without_plan_errors,
+                    **reconciliation,
+                },
+            }
         return f"ingested and processed {params.collection_dataset}"

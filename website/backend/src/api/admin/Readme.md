@@ -27,7 +27,8 @@ the actual gate.
   destructive; a kind added on one side must be added on the other. **Every long thing a
   button starts goes through here**, so each click gets its own timestamped workflow id
   and its own row. A fixed workflow id would make the second click resolve to the first
-  click's execution and quietly do nothing.
+  click's execution and quietly do nothing. Cancellation starts `CancelOperation` with
+  `cancel-{op_id}` and returns the recorded terminal state after it closes.
 - `failures.rs`, the grouped list and per-operation tree behind `/admin/failures`. Reads
   of the global `operation_failures` table only. Grouping is by the stored `signature`
   column. A scrubbed copy is built at read time for the copy control. The stored rows

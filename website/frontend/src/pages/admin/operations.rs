@@ -329,7 +329,9 @@ fn OperationTableRow(
 
     rsx! {
         tr {
+            "data-op-id": "{row.op_id}",
             td { style: TD,
+                code { "{row.kind}" }
                 Link {
                     to: Route::AdminOperationDetailPage {
                         op_id: row.op_id.clone(),
@@ -338,7 +340,7 @@ fn OperationTableRow(
                     },
                     class: "x-ops-detail-link",
                     style: LINK,
-                    code { "{row.kind}" }
+                    code { "{row.op_id}" }
                 }
                 if row.destructive {
                     div { style: "font-size: 11px; color: {C_DANGER}; text-transform: uppercase; letter-spacing: 0.5px;",
@@ -387,8 +389,8 @@ fn OperationTableRow(
                                 let op_id = op_id.clone();
                                 spawn(async move {
                                     match admin_cancel_operation(op_id).await {
-                                        Ok(()) => {
-                                            msg.set(Some("Cancellation requested.".into()));
+                                        Ok(state) => {
+                                            msg.set(Some(format!("Operation {state}.")));
                                             on_changed.call(());
                                         }
                                         Err(e) => error_msg.set(Some(user_facing_message(&e))),

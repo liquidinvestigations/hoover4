@@ -522,6 +522,11 @@ async def wait_css(tab, selector: str, timeout: float = PAGE_TIMEOUT_S) -> None:
 
 
 async def run_action(tab, base_url: str, verb: str, argument: str):
+    if "{{operation_id}}" in argument:
+        operation_id = os.environ.get("HOOVER4_SCREENSHOT_OPERATION_ID", "")
+        if not operation_id:
+            raise IncompleteCapture("pass --operation-id for this operation scenario")
+        argument = argument.replace("{{operation_id}}", json.dumps(operation_id))
     if verb == "goto":
         await tab.get(base_url + argument)
     elif verb == "wait_text":

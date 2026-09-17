@@ -2,6 +2,9 @@
 
 This stage indexes parsed text and metadata into Manticore to enable search and entity retrieval. It is P6, not P4 or P5: entity extraction (P4) and chunk embedding (P5) both run before it.
 
+An operation-owned writer records document outcomes only for hashes it returns as committed.
+Text and vector writers keep separate outcomes for each shard chunk.
+
 ## Key Responsibilities
 
 - Load plan item hashes and fetch text content for indexing.

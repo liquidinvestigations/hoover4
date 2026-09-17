@@ -64,6 +64,7 @@ of the AI stack.
 Same as P4: errors are not swallowed. The activity fails, Temporal retries
 (`maximum_attempts=3`), and an exhausted chunk becomes one `processing_errors` row per
 hash. A document with no vectors is a visible failure, never a silently empty result.
+An operation-owned successful chunk records one document outcome per member hash.
 
 ## Navigation
 

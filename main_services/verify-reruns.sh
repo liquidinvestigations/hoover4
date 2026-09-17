@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Verify retry selection and recovery on the local development stack.
+# The failed import also supplies local browser paging fixtures and an operation id.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd)"
@@ -24,6 +25,10 @@ IMAGES_OP=""
 FAILURE_OP=""
 PROBE_HASH=""
 OP_ID=""
+EXPECTED_SELECTED_KNOWN=0
+EXPECTED_UNKNOWN=0
+EXPECTED_WITHOUT_PLAN=0
+EXPECTED_ERRORS_BEFORE=0
 
 url_host() {
     local url="$1" rest host
@@ -40,7 +45,7 @@ url_host() {
 
 website_url_default() {
     local bind
-    bind="$(grep -E '^WEBSITE_BIND_IP=' ../ops/docker/.env 2>/dev/null | cut -d= -f2- || true)"
+    bind="$(grep -E '^WEBSITE_BIND_IP=' ops/docker/.env 2>/dev/null | cut -d= -f2- || true)"
     case "$bind" in
         ""|0.0.0.0) printf '%s' 'http://localhost:12345' ;;
         *) printf '%s' "http://$bind:12345" ;;
@@ -53,7 +58,7 @@ website_url_is_local() {
     case "$host" in
         localhost|127.0.0.1|0.0.0.0|::1) return 0 ;;
     esac
-    bind="$(grep -E '^WEBSITE_BIND_IP=' ../ops/docker/.env 2>/dev/null | cut -d= -f2- || true)"
+    bind="$(grep -E '^WEBSITE_BIND_IP=' ops/docker/.env 2>/dev/null | cut -d= -f2- || true)"
     [ -n "$bind" ] && [ "$host" = "$bind" ] && return 0
     case "$host" in
         hoover4-*.*) ;;
@@ -87,6 +92,10 @@ save_state() {
         printf 'IMAGES_OP=%q\n' "$IMAGES_OP"
         printf 'FAILURE_OP=%q\n' "$FAILURE_OP"
         printf 'PROBE_HASH=%q\n' "$PROBE_HASH"
+        printf 'EXPECTED_SELECTED_KNOWN=%q\n' "$EXPECTED_SELECTED_KNOWN"
+        printf 'EXPECTED_UNKNOWN=%q\n' "$EXPECTED_UNKNOWN"
+        printf 'EXPECTED_WITHOUT_PLAN=%q\n' "$EXPECTED_WITHOUT_PLAN"
+        printf 'EXPECTED_ERRORS_BEFORE=%q\n' "$EXPECTED_ERRORS_BEFORE"
     } >"$STATE_FILE"
 }
 
@@ -188,6 +197,15 @@ if client.bucket_exists(bucket):
         client.remove_object(bucket, item.object_name)
     client.remove_bucket(bucket)
 with get_global_client() as global_client:
+    operation_ids = [row[0] for row in global_client.query(
+        "SELECT op_id FROM operations FINAL WHERE collectionname = {name:String}",
+        parameters={"name": name},
+    ).result_rows]
+    if operation_ids:
+        global_client.command(
+            "DELETE FROM operation_failures WHERE op_id IN {ids:Array(String)} SETTINGS mutations_sync = 1",
+            parameters={"ids": operation_ids},
+        )
     global_client.command("DELETE FROM operations WHERE collectionname = {name:String} SETTINGS mutations_sync = 1", parameters={"name": name})
     global_client.command("DELETE FROM dataset WHERE collectionname = {name:String}", parameters={"name": name})
     global_client.command("DELETE FROM collections WHERE collectionname = {name:String}", parameters={"name": name})'
@@ -213,8 +231,16 @@ case_first_run() {
 case_inject_history() {
     load_state
     [ -n "$PROBE_HASH" ] || fail 'first-run state is unavailable'
-    ch_collection "INSERT INTO $COLLECTION_DB.processing_errors (collection_dataset, hash, task_name, run_time_ms, error_logs, timestamp, op_id) VALUES ('$DATASET', '$PROBE_HASH', 'P4_ExtractEntities', 0, 'acceptance history', now(), 'acceptance-history'), ('$DATASET', '', 'P3_ParseSingleFile', 0, 'acceptance history', now(), 'acceptance-history'), ('$DATASET', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'extract_plaintext_chunks', 0, 'acceptance history', now(), 'acceptance-history'), ('$DATASET', '$PROBE_HASH', 'acceptance_unknown_task', 0, 'acceptance history', now(), 'acceptance-history')"
+    ch_collection "INSERT INTO $COLLECTION_DB.processing_errors (collection_dataset, hash, task_name, run_time_ms, error_logs, timestamp, op_id) VALUES ('$DATASET', '$PROBE_HASH', 'extract_plaintext_chunks', 0, 'acceptance history', now(), 'acceptance-history'), ('$DATASET', '', 'P3_ParseSingleFile', 0, 'acceptance history', now(), 'acceptance-history'), ('$DATASET', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'extract_plaintext_chunks', 0, 'acceptance history', now(), 'acceptance-history'), ('$DATASET', '$PROBE_HASH', 'acceptance_unknown_task', 0, 'acceptance history', now(), 'acceptance-history')"
     expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET'" 5 'injected Error rows'
+    EXPECTED_SELECTED_KNOWN="$(ch_collection "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name IN ('P4_ScanRegexEntities', 'extract_plaintext_chunks')")"
+    EXPECTED_UNKNOWN="$(ch_collection "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'acceptance_unknown_task'")"
+    EXPECTED_WITHOUT_PLAN="$(ch_collection "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND (hash = '' OR hash = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')")"
+    expect_equal "$EXPECTED_SELECTED_KNOWN" 2 'known selected fixture pairs'
+    expect_equal "$EXPECTED_UNKNOWN" 1 'unknown selected fixture pair'
+    expect_equal "$EXPECTED_WITHOUT_PLAN" 2 'without-plan fixture pairs'
+    EXPECTED_ERRORS_BEFORE=$((EXPECTED_SELECTED_KNOWN + EXPECTED_UNKNOWN + EXPECTED_WITHOUT_PLAN))
+    save_state
 }
 
 case_dispatch_is_clean() {
@@ -239,7 +265,7 @@ detail = subprocess.check_output(
 allowed = {
     "dataset_path", "errors_before_run", "selected_errors",
     "removed_stage_off_errors", "without_plan_errors", "recovered_errors",
-    "still_failing_errors", "failed_documents", "failed_tasks",
+    "still_failing_errors", "unknown_task_errors", "failed_documents", "failed_tasks",
 }
 keys = set(json.loads(detail))
 unexpected = keys - allowed
@@ -252,15 +278,16 @@ PY
 case_repeat_failure() {
     load_state
     wait_terminal "$REPEAT_OP" finished
-    check_detail_number "$REPEAT_OP" errors_before_run 5
-    check_detail_number "$REPEAT_OP" removed_stage_off_errors 1
-    check_detail_number "$REPEAT_OP" without_plan_errors 2
-    check_detail_number "$REPEAT_OP" selected_errors 2
+    check_detail_number "$REPEAT_OP" errors_before_run "$EXPECTED_ERRORS_BEFORE"
+    check_detail_number "$REPEAT_OP" removed_stage_off_errors 0
+    check_detail_number "$REPEAT_OP" without_plan_errors "$EXPECTED_WITHOUT_PLAN"
+    check_detail_number "$REPEAT_OP" selected_errors "$((EXPECTED_SELECTED_KNOWN + EXPECTED_UNKNOWN))"
     check_detail_number "$REPEAT_OP" still_failing_errors 1
     check_detail_number "$REPEAT_OP" recovered_errors 1
+    check_detail_number "$REPEAT_OP" unknown_task_errors "$EXPECTED_UNKNOWN"
     expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'P4_ScanRegexEntities' AND op_id = '$REPEAT_OP'" 1 'repeat-failure current regex Error'
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'P4_ExtractEntities'" 0 'repeat-failure extracted Error removal'
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'acceptance_unknown_task'" 0 'repeat-failure unknown Error removal'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'extract_plaintext_chunks'" 0 'repeat-failure plaintext Error recovery'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'acceptance_unknown_task'" 1 'repeat-failure unknown Error retention'
     expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'P3_ParseSingleFile'" 1 'repeat-failure empty-hash Error retention'
     expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' AND task_name = 'extract_plaintext_chunks'" 1 'repeat-failure unmappable Error retention'
     check_detail_number "$REPEAT_OP" failed_documents 1
@@ -305,12 +332,14 @@ case_recovery() {
     run_new_operation ../main_services/run.sh operations rerun "$THIRD_OP" --no-wait
     RECOVERY_OP="$OP_ID"
     wait_terminal "$RECOVERY_OP" finished
-    check_detail_number "$RECOVERY_OP" errors_before_run 3
-    check_detail_number "$RECOVERY_OP" selected_errors 1
-    check_detail_number "$RECOVERY_OP" without_plan_errors 2
+    check_detail_number "$RECOVERY_OP" errors_before_run "$((EXPECTED_ERRORS_BEFORE - 1))"
+    check_detail_number "$RECOVERY_OP" selected_errors "$((EXPECTED_SELECTED_KNOWN + EXPECTED_UNKNOWN - 1))"
+    check_detail_number "$RECOVERY_OP" without_plan_errors "$EXPECTED_WITHOUT_PLAN"
     check_detail_number "$RECOVERY_OP" recovered_errors 1
     check_detail_number "$RECOVERY_OP" still_failing_errors 0
+    check_detail_number "$RECOVERY_OP" unknown_task_errors "$EXPECTED_UNKNOWN"
     expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'P4_ScanRegexEntities'" 0 'recovery regex Error removal'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'acceptance_unknown_task'" 1 'recovery unknown Error retention'
     local scans
     scans="$(ch_collection "SELECT count() FROM $COLLECTION_DB.regex_scanned WHERE collection_dataset = '$DATASET' AND file_hash = '$PROBE_HASH'")"
     [ "$scans" -ge 1 ] || fail 'recovery has no regex scan for the probe hash'
@@ -365,6 +394,11 @@ case_failure_fixture() {
     read -r operation_node import_node <<<"$operation_failures"
     [ "$operation_node" -ge 1 ] && [ "$import_node" -ge 1 ] || fail 'failure-fixture failure tree is incomplete'
     expect_count "SELECT count() FROM system.databases WHERE name = '$COLLECTION_DB'" 1 'failure-fixture collection database'
+    ch_collection "INSERT INTO $COLLECTION_DB.operation_plans (op_id, collection_dataset, plan_hash, source) SELECT '$FAILURE_OP', '$DATASET', leftPad(toString(number), 64, '0'), 'listed' FROM numbers(101)"
+    ch_collection "INSERT INTO $COLLECTION_DB.operation_error_events (op_id, collection_dataset, hash, task_name, event, error_logs, created_at) SELECT '$FAILURE_OP', '$DATASET', leftPad(toString(number), 64, '0'), concat('acceptance_page_', toString(number)), 'error', 'acceptance paging', now64(3) FROM numbers(101)"
+    expect_count "SELECT count() FROM $COLLECTION_DB.operation_plans FINAL WHERE op_id = '$FAILURE_OP'" 101 'failure-fixture plan pages'
+    expect_count "SELECT count() FROM $COLLECTION_DB.operation_error_events FINAL WHERE op_id = '$FAILURE_OP'" 101 'failure-fixture Error event pages'
+    printf 'RERUNS_FAILURE_OP=%q\n' "$FAILURE_OP" > ../website/test_reports/reruns-browser-fixture.env
     save_state
 }
 
@@ -388,6 +422,7 @@ run_cases() {
     DEADLINE_EPOCH=$(( $(date +%s) + 1800 ))
     export VERIFY_RERUNS_DEADLINE_EPOCH="$DEADLINE_EPOCH"
     : >"$STATE_FILE"
+    rm -f ../website/test_reports/reruns-browser-fixture.env
     drop_reruns
     local failures=0 case_name
     for case_name in first-run inject-history dispatch-is-clean repeat-failure lock recovery ocr-skip projection failure-fixture; do

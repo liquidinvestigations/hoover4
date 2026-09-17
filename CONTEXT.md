@@ -21,8 +21,8 @@ series. In storage and database code, a driver is a client library for ClickHous
 or another datastore.
 
 **Error**:
-A per-document processing failure is stored in `processing_errors`. Each row is one
-document and one task.
+A per-document processing failure is stored in `processing_errors`. Each current row
+identifies one source execution, document and task.
 
 **Failure**:
 An above-document record of why a pipeline operation or stage stopped is stored in

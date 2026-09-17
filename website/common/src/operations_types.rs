@@ -60,6 +60,8 @@ pub struct OperationRow {
     pub removed_stage_off_errors: Option<u64>,
     /// Error rows the selector could not attach to an operation plan.
     pub without_plan_errors: Option<u64>,
+    /// Selected Error pairs with no supported recovery activity.
+    pub unknown_task_errors: Option<u64>,
     /// The `detail` JSON as stored, for the parameters the operation was dispatched
     /// with.
     pub detail: String,
@@ -110,9 +112,10 @@ pub fn rerun_outcome_summary(row: &OperationRow) -> Option<String> {
     let still_failing = row.still_failing_errors.unwrap_or(0);
     let removed = row.removed_stage_off_errors.unwrap_or(0);
     let without_plan = row.without_plan_errors.unwrap_or(0);
+    let unknown = row.unknown_task_errors.unwrap_or(0);
     let partial = if row.state == "cancelled" { "partial " } else { "" };
     Some(format!(
-        "{partial}{recovered} recovered, {still_failing} still failing, {removed} removed (stage off), {without_plan} without a plan, {before} before this run"
+        "{partial}{recovered} recovered, {still_failing} still failing, {removed} removed (stage off), {without_plan} without a plan, {unknown} unknown task, {before} before this run"
     ))
 }
 
@@ -186,6 +189,7 @@ mod tests {
             still_failing_errors: Some(1),
             removed_stage_off_errors: Some(2),
             without_plan_errors: Some(0),
+            unknown_task_errors: Some(0),
             detail: String::new(),
             has_failure_tree: false,
             temporal_url: String::new(),
@@ -196,7 +200,7 @@ mod tests {
     fn rerun_outcome_summary_formats_finished_cancelled_and_unknown_rows() {
         assert_eq!(
             rerun_outcome_summary(&row("finished", Some(12))),
-            Some("3 recovered, 1 still failing, 2 removed (stage off), 0 without a plan, 12 before this run".into())
+            Some("3 recovered, 1 still failing, 2 removed (stage off), 0 without a plan, 0 unknown task, 12 before this run".into())
         );
         let mut cancelled = row("cancelled", Some(4));
         cancelled.recovered_errors = Some(0);
@@ -204,7 +208,7 @@ mod tests {
         cancelled.removed_stage_off_errors = Some(0);
         assert_eq!(
             rerun_outcome_summary(&cancelled),
-            Some("partial 0 recovered, 0 still failing, 0 removed (stage off), 0 without a plan, 4 before this run".into())
+            Some("partial 0 recovered, 0 still failing, 0 removed (stage off), 0 without a plan, 0 unknown task, 4 before this run".into())
         );
         assert_eq!(rerun_outcome_summary(&row("finished", None)), None);
     }

@@ -1,10 +1,19 @@
 """P3 valid no-work cases return skipped outcomes without Error rows."""
 
 from types import SimpleNamespace
+import pytest
 
 from database import clickhouse
-from tasks.P3_parse_files import parse_ocr, parse_table
+from tasks.P3_parse_files import parse_ocr, parse_ocr_pdf, parse_table
 from tasks.task_timing import SkippedOutcome
+
+
+@pytest.fixture(autouse=True)
+def activity_source(monkeypatch):
+    from tasks.P3_parse_files import parse_common
+    monkeypatch.setattr(parse_common.activity, "info", lambda: SimpleNamespace(
+        workflow_run_id="run", activity_id="activity", attempt=1,
+    ))
 
 
 class _Client:
@@ -58,6 +67,19 @@ def test_ocr_without_languages_is_skipped(monkeypatch):
     assert isinstance(result, SkippedOutcome)
     assert result.value == "ocr_skipped_no_languages"
     assert calls == []
+
+
+def test_ocr_pdf_engine_excluded_by_provider_is_skipped(monkeypatch):
+    monkeypatch.setattr("tasks.ocr_pdf_client.service_configured", lambda: True)
+    monkeypatch.setattr("tasks.ocr_pdf_client.engines_for_provider", lambda: ["tesseract"])
+    params = parse_ocr_pdf.RunOcrPdfParams(
+        "collection", "dataset", "pdf-hash", "pdf", "easyocr", 30, "operation"
+    )
+
+    result = parse_ocr_pdf.run_ocr_pdf_and_store(params)
+
+    assert isinstance(result, SkippedOutcome)
+    assert result.value == "ocr_pdf_skipped_easyocr_not_requested"
 
 
 def test_ocr_empty_input_is_skipped(monkeypatch, tmp_path):

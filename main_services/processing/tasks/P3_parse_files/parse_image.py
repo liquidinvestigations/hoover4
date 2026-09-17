@@ -64,6 +64,7 @@ class ParseImageParams:
     file_hash: str
     file_path: str
     timeout_seconds: int
+    op_id: str = ""
 
 
 @activity.defn
@@ -112,5 +113,4 @@ def parse_image_metadata_and_store(params: ParseImageParams) -> str:
             pass
 
     return "image_ok"
-
 

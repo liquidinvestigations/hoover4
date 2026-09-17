@@ -7,7 +7,7 @@
 //!
 //! Three properties of the table decide the shape of everything below.
 //!
-//! * It is a `ReplacingMergeTree(updated_at)`, so every read says `FINAL` or it will
+//! * It is a `ReplacingMergeTree(row_version)`, so every read says `FINAL` or it will
 //!   see one operation several times, once per state transition.
 //! * `started_at` leads the sort key and is immutable for a given `op_id`, so
 //!   newest-first paging reads the tail of the primary key instead of sorting.
@@ -175,14 +175,15 @@ fn is_destructive(kind: &str) -> bool {
     kind_entry(kind).map(|(_, _, d)| *d).unwrap_or(false)
 }
 
-fn lock_clause(target_kind: &str) -> &'static str {
+fn lock_clause(target_kind: &str) -> anyhow::Result<&'static str> {
     match target_kind {
         "dataset" => {
-            "state IN ('pending', 'running') AND \
+            Ok("state IN ('pending', 'running') AND \
              (collection_dataset = ? OR (target_kind = 'collection' AND collectionname = ?))"
+            )
         }
-        "collection" => "state IN ('pending', 'running') AND collectionname = ?",
-        _ => "state IN ('pending', 'running')",
+        "collection" => Ok("state IN ('pending', 'running') AND collectionname = ?"),
+        _ => anyhow::bail!("unknown operation target kind: {target_kind}"),
     }
 }
 
@@ -222,6 +223,7 @@ struct OperationDbRow {
     error: String,
     user_id: String,
     rerun_of: String,
+    row_version: u64,
 }
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
@@ -249,7 +251,20 @@ struct OperationErrorEventDbRow {
 const COLUMNS: &str = "op_id, kind, target_kind, collectionname, collection_dataset, \
                        state, started_at, finished_at, updated_at, \
                        progress_done, progress_total, eta_seconds, \
-                       detail, error, user_id, rerun_of";
+                       detail, error, user_id, rerun_of, row_version";
+
+const VERSION_BITS: u32 = 62;
+
+fn row_version(state: &str, prior: u64) -> u64 {
+    let rank = match state {
+        "cancelled" => 2,
+        "finished" | "errored" => 1,
+        _ => 0,
+    };
+    let micros = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000;
+    let lower = (micros as u64).max((prior & ((1_u64 << VERSION_BITS) - 1)) + 1);
+    ((rank as u64) << VERSION_BITS) | lower
+}
 
 fn format_datetime(dt: time::OffsetDateTime) -> String {
     dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
@@ -298,6 +313,7 @@ fn to_display_row(r: OperationDbRow) -> OperationRow {
         still_failing_errors: detail_u64(&r.detail, "still_failing_errors"),
         removed_stage_off_errors: detail_u64(&r.detail, "removed_stage_off_errors"),
         without_plan_errors: detail_u64(&r.detail, "without_plan_errors"),
+        unknown_task_errors: detail_u64(&r.detail, "unknown_task_errors"),
         duration_seconds: (end - r.started_at.unix_timestamp()).max(0) as u64,
         started_at: format_datetime(r.started_at),
         finished_at: finished_at_of(r.finished_at),
@@ -654,10 +670,10 @@ pub async fn dispatch_operation(
     let target = match *target_kind {
         "dataset" => collection_dataset,
         "collection" => collectionname,
-        _ => "global",
+        _ => anyhow::bail!("unknown operation target kind: {target_kind}"),
     };
     let now = time::OffsetDateTime::now_utc();
-    let op_id = format!("{kind}-{target}-{}", now.unix_timestamp());
+    let op_id = new_operation_id(kind, target, now);
 
     // The lock is one rule with one owner: a dataset operation holds its dataset and a
     // collection operation holds its collection. A stale row is NOT free. A run that
@@ -669,7 +685,7 @@ pub async fn dispatch_operation(
                 .query(&format!(
                     "SELECT op_id, kind, state FROM operations FINAL WHERE {} \
                      ORDER BY started_at DESC",
-                    lock_clause(target_kind)
+                    lock_clause(target_kind)?
                 ))
                 .bind(collection_dataset)
                 .bind(collectionname)
@@ -681,7 +697,7 @@ pub async fn dispatch_operation(
                 .query(&format!(
                     "SELECT op_id, kind, state FROM operations FINAL WHERE {} \
                      ORDER BY started_at DESC",
-                    lock_clause(target_kind)
+                    lock_clause(target_kind)?
                 ))
                 .bind(collectionname)
                 .fetch_all::<(String, String, String)>()
@@ -723,6 +739,7 @@ pub async fn dispatch_operation(
         error: String::new(),
         user_id: user_id.to_string(),
         rerun_of: rerun_of.to_string(),
+        row_version: row_version("pending", 0),
     };
     let mut insert = client.insert::<OperationDbRow>("operations").await?;
     insert.write(&row).await?;
@@ -737,6 +754,7 @@ pub async fn dispatch_operation(
             failed.error = format!("{e}");
             failed.finished_at = time::OffsetDateTime::now_utc();
             failed.updated_at = failed.finished_at;
+            failed.row_version = row_version("errored", failed.row_version);
             // `started_at` is carried through untouched: it is in the sort key, and a
             // different one inserts a second row instead of replacing the first, which
             // shows one operation twice in the log.
@@ -746,6 +764,12 @@ pub async fn dispatch_operation(
             Err(e)
         }
     }
+}
+
+fn new_operation_id(kind: &str, target: &str, now: time::OffsetDateTime) -> String {
+    format!(
+        "{kind}-{target}-{}-{:016x}", now.unix_timestamp_nanos(), rand::random::<u64>()
+    )
 }
 
 /// The parameters an operation was dispatched with, as its `detail` JSON. A disk
@@ -829,57 +853,159 @@ async fn start_operation_workflow(
     Ok(())
 }
 
-/// Ask Temporal to cancel an operation and land its row in `cancelled`.
-///
-/// The terminal row is written **here, by the canceller**, and not by the workflow. A
-/// cancelled workflow cannot schedule further activities, so a cleanup write attempted
-/// inside it is cancelled with it and the row stays non-terminal for ever, holding the
-/// lock that cancelling was meant to release.
-pub async fn admin_cancel_operation(user: &CurrentUser, op_id: String) -> anyhow::Result<()> {
+/// Start or reuse the cancellation finalizer and wait for its terminal result.
+pub async fn admin_cancel_operation(user: &CurrentUser, op_id: String) -> anyhow::Result<String> {
     guard::require_admin(user)?;
-    let base_url = std::env::var("TEMPORAL_HTTP_URL")
-        .unwrap_or_else(|_| "http://localhost:21908".to_string());
-    let url =
-        format!("{base_url}/api/v1/namespaces/default/workflows/{op_id}/cancel");
-    // A workflow that has already finished cannot be cancelled, and that is not a
-    // failure of this call: the row still has to be landed either way.
-    let _ = reqwest::Client::new()
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .json(&serde_json::json!({}))
-        .send()
-        .await;
-
     let client = get_global_client();
     let sql = format!("SELECT {COLUMNS} FROM operations FINAL WHERE op_id = ? LIMIT 1");
+    let rows = client
+        .query(&sql)
+        .bind(&op_id)
+        .fetch_all::<OperationDbRow>()
+        .await?;
+    if rows.is_empty() {
+        anyhow::bail!("operation not found: {op_id}");
+    }
+
+    let base_url = std::env::var("TEMPORAL_HTTP_URL")
+        .unwrap_or_else(|_| "http://localhost:21908".to_string());
+    request_cancel_finalizer(&base_url, &op_id).await?;
     let mut rows = client
         .query(&sql)
         .bind(&op_id)
         .fetch_all::<OperationDbRow>()
         .await?;
-    let Some(mut row) = rows.pop() else {
-        anyhow::bail!("operation not found: {op_id}");
-    };
-    if ["finished", "errored", "cancelled"].contains(&row.state.as_str()) {
-        return Ok(());
+    let row = rows.pop().ok_or_else(|| anyhow::anyhow!("operation not found: {op_id}"))?;
+    if !["finished", "errored", "cancelled"].contains(&row.state.as_str()) {
+        anyhow::bail!("cancellation workflow left operation open: {op_id}");
     }
-    row.state = "cancelled".to_string();
-    row.finished_at = time::OffsetDateTime::now_utc();
-    row.updated_at = row.finished_at;
-    let mut insert = client.insert::<OperationDbRow>("operations").await?;
-    insert.write(&row).await?;
-    insert.end().await?;
-    Ok(())
+    Ok(row.state)
+}
+
+async fn request_cancel_finalizer(base_url: &str, op_id: &str) -> anyhow::Result<()> {
+    let finalizer_id = format!("cancel-{op_id}");
+    let url = format!("{base_url}/api/v1/namespaces/default/workflows/{finalizer_id}");
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+    let lookup = http.get(&url).send().await?;
+    if lookup.status() == reqwest::StatusCode::NOT_FOUND {
+        let response = http
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "workflowType": { "name": "CancelOperation" },
+                "taskQueue": { "name": "operations-queue" },
+                "input": [op_id],
+            }))
+            .send()
+            .await?;
+        if !response.status().is_success()
+            && response.status() != reqwest::StatusCode::CONFLICT
+        {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("could not start cancellation ({status}): {body}");
+        }
+    } else if !lookup.status().is_success() {
+        anyhow::bail!("could not read cancellation workflow: {}", lookup.status());
+    }
+
+    for _ in 0..240 {
+        let response = http.get(&url).send().await?;
+        if !response.status().is_success() {
+            anyhow::bail!("could not read cancellation workflow: {}", response.status());
+        }
+        let body: serde_json::Value = response.json().await?;
+        let status = body
+            .pointer("/workflowExecutionInfo/status")
+            .or_else(|| body.get("status"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        match status {
+            "WORKFLOW_EXECUTION_STATUS_COMPLETED" => return Ok(()),
+            "WORKFLOW_EXECUTION_STATUS_FAILED"
+            | "WORKFLOW_EXECUTION_STATUS_CANCELED"
+            | "WORKFLOW_EXECUTION_STATUS_TERMINATED"
+            | "WORKFLOW_EXECUTION_STATUS_TIMED_OUT" => {
+                anyhow::bail!("cancellation workflow ended with {status}")
+            }
+            "WORKFLOW_EXECUTION_STATUS_RUNNING" => {}
+            _ => anyhow::bail!("unknown cancellation workflow status: {status}"),
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    anyhow::bail!("cancellation workflow did not close within 120 seconds")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{lock_clause, project_inputs};
+    use super::{lock_clause, new_operation_id, project_inputs, request_cancel_finalizer, row_version, VERSION_BITS};
+
+    #[test]
+    fn immediate_dispatch_ids_differ() {
+        let now = time::OffsetDateTime::now_utc();
+        let first = new_operation_id("execute_plans", "dataset", now);
+        let second = new_operation_id("execute_plans", "dataset", now);
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn terminal_versions_exceed_open_versions() {
+        let open = row_version("running", 0);
+        let cancelled = row_version("cancelled", open);
+        assert_eq!(cancelled >> VERSION_BITS, 2);
+        assert!(cancelled > row_version("running", cancelled));
+    }
+
+    #[tokio::test]
+    async fn website_cancellation_reuses_the_terminal_finalizer() {
+        use axum::{http::StatusCode, routing::get, Json, Router};
+        use std::sync::{atomic::{AtomicUsize, Ordering}, Arc};
+
+        let starts = Arc::new(AtomicUsize::new(0));
+        let reads = starts.clone();
+        let writes = starts.clone();
+        let app = Router::new().route(
+            "/api/v1/namespaces/default/workflows/cancel-op",
+            get(move || {
+                let reads = reads.clone();
+                async move {
+                    if reads.load(Ordering::SeqCst) == 0 {
+                        (StatusCode::NOT_FOUND, Json(serde_json::json!({})))
+                    } else {
+                        (StatusCode::OK, Json(serde_json::json!({
+                            "workflowExecutionInfo": {
+                                "status": "WORKFLOW_EXECUTION_STATUS_COMPLETED"
+                            }
+                        })))
+                    }
+                }
+            })
+            .post(move |Json(body): Json<serde_json::Value>| {
+                let writes = writes.clone();
+                async move {
+                    assert_eq!(body["workflowType"]["name"], "CancelOperation");
+                    assert_eq!(body["input"], serde_json::json!(["op"]));
+                    writes.fetch_add(1, Ordering::SeqCst);
+                    StatusCode::OK
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let url = format!("http://{address}");
+        request_cancel_finalizer(&url, "op").await.unwrap();
+        request_cancel_finalizer(&url, "op").await.unwrap();
+        assert_eq!(starts.load(Ordering::SeqCst), 1);
+        server.abort();
+    }
 
     #[test]
     fn dataset_lock_clause_blocks_the_dataset_and_collection() {
         assert_eq!(
-            lock_clause("dataset"),
+            lock_clause("dataset").unwrap(),
             "state IN ('pending', 'running') AND (collection_dataset = ? OR \
              (target_kind = 'collection' AND collectionname = ?))"
         );
@@ -888,9 +1014,14 @@ mod tests {
     #[test]
     fn collection_lock_clause_blocks_the_collection() {
         assert_eq!(
-            lock_clause("collection"),
+            lock_clause("collection").unwrap(),
             "state IN ('pending', 'running') AND collectionname = ?"
         );
+    }
+
+    #[test]
+    fn unknown_target_kind_is_refused() {
+        assert!(lock_clause("unknown").is_err());
     }
 
     #[test]

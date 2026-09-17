@@ -331,7 +331,8 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
     Writes to the collection database selected by ``params.collectionname``.
     Expected params:
       - errors: List[Dict[str, Any]] where each item has keys:
-            collection_dataset, hash, task_name, run_time_ms, error_logs, op_id
+            collection_dataset, hash, task_name, run_time_ms, error_logs,
+            error_identity, op_id
     """
     from database.clickhouse import get_collection_client
     errors: List[Dict[str, Any]] = list(params.errors or [])
@@ -358,10 +359,17 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
     attempt_vals: List[int] = []
     run_id_vals: List[str] = []
     op_id_vals: List[str] = []
+    identity_vals: List[str] = []
+    version_vals: List[int] = []
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     for e in errors:
+        identity = str(e.get("error_identity") or "")
+        if not identity:
+            raise ValueError("Each Error row needs a nonempty error_identity")
+        identity_vals.append(identity)
+        version_vals.append(int(datetime.now(timezone.utc).timestamp() * 1_000_000))
         coll_vals.append((e.get("collection_dataset") or ""))
         hash_vals.append((e.get("hash") or ""))
         task_vals.append((e.get("task_name") or ""))
@@ -395,6 +403,8 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
             "attempt": pa.array(attempt_vals, type=pa.uint16()),
             "workflow_run_id": pa.array(run_id_vals, type=pa.string()),
             "op_id": pa.array(op_id_vals, type=pa.string()),
+            "error_identity": pa.array(identity_vals, type=pa.string()),
+            "write_version": pa.array(version_vals, type=pa.uint64()),
         })
         client.insert_arrow("processing_errors", tbl)
 

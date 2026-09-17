@@ -26,6 +26,7 @@ class RunTikaParams:
     file_hash: str
     file_path: str
     timeout_seconds: int
+    op_id: str = ""
 
 
 def _coarse_from_mime(mime: str) -> str:

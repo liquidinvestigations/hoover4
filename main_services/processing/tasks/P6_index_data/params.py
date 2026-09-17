@@ -23,6 +23,7 @@ class IndexShardParams:
     plan_hash: str
     shard_name: str
     hashes: list[str]
+    op_id: str = ""
 
 @dataclass
 class BuildVfsNodesParams:

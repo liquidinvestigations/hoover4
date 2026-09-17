@@ -60,13 +60,17 @@ def _record_skip(params: RunOcrPdfParams, run_time_ms: int, reason: str) -> None
         RecordProcessingErrorsParams,
         record_processing_errors,
     )
+    from tasks.P3_parse_files.parse_common import direct_error_fields
+
+    task_name = f"run_ocr_pdf_and_store[{params.engine}]"
 
     record_processing_errors(RecordProcessingErrorsParams(
         collectionname=params.collectionname,
         errors=[{
             "collection_dataset": params.collection_dataset,
             "hash": params.pdf_hash,
-            "task_name": f"run_ocr_pdf_and_store[{params.engine}]",
+            "task_name": task_name,
+            **direct_error_fields(params, task_name, params.pdf_hash),
             "run_time_ms": run_time_ms,
             "error_logs": f"{reason}: {params.file_path}",
             "op_id": params.op_id,
@@ -167,7 +171,7 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str | SkippedOutcome:
         # a full pass, so it gets its own switch.
         log.info("[P3] pdf_ocr_provider excludes %s, no OCR'd PDF for %s",
                  params.engine, params.file_path)
-        return f"ocr_pdf_skipped_{params.engine}_not_requested"
+        return SkippedOutcome(f"ocr_pdf_skipped_{params.engine}_not_requested")
 
     passes = _passes_for(params.engine, params.collection_dataset)
     if not passes:

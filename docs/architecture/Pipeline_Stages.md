@@ -117,8 +117,9 @@ succeeded. An ingest or plan-execution operation selects historical Error pairs 
 and before plan execution. It deletes Errors for disabled stages and keeps Errors without a
 plan. It clears the selected hashes' model and regex scan watermarks, then reopens their plans.
 
-After successful plan execution, reconciliation removes the selected historical Error rows.
-It keeps an Error row the operation wrote for a repeated failure. The operation record keeps
-the historical, selected, recovered, still-failing, disabled-stage and unmappable pair counts.
+Reconciliation removes a selected historical Error only when this operation records a
+matching successful task run and document outcome. A current Error event replaces an older
+Error for the pair. The operation record keeps separate counts for selection, recovery,
+current failures, disabled stages, missing plans and unsupported task names.
 
 `main_services/processing/Readme.md` lists those entry points with their flags.

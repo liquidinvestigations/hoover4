@@ -17,6 +17,7 @@ class ExtractEntitiesParams:
     collection_dataset: str
     plan_hash: str
     hashes: list[str]
+    op_id: str = ""
 
 
 @dataclass
@@ -39,6 +40,7 @@ class ScanRegexEntitiesParams:
     collection_dataset: str
     plan_hash: str
     hashes: list[str]
+    op_id: str = ""
 
 
 @dataclass

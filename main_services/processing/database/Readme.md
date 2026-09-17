@@ -54,7 +54,23 @@ ClickHouse storage is split across `1 + N` databases.
 | | Database | Migrations | Holds |
 |---|---|---|---|
 | Global | `Hoover4_Processing` | `db_global_migrations/` | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings), `processing_queue_backlog`, `bench_runs` |
-| Per collection | `Hoover4_Collection_<collectionname>` | `db_collection_migrations/` | blobs, VFS, parsed content, plans, errors, term dictionaries, NLP watermark, Manticore shard ledger |
+| Per collection | `Hoover4_Collection_<collectionname>` | `db_collection_migrations/` | blobs, VFS, parsed content, plans, errors, task runs, document outcomes, term dictionaries, NLP watermark, Manticore shard ledger |
+
+`operation_error_events` stores `selection_complete` after all selector class events.
+Its JSON value stores the filter and counts. A missing marker permits synchronous removal
+of partial class events. `processing_document_outcomes` stores a document hash for each
+successful operation activity. The matching task run has the same workflow run, activity id,
+attempt and outcome.
+
+`processing_errors` uses `error_identity` as its replacement key. Each source execution
+assigns an identity before it calls the recorder. Recorder retries keep that identity.
+The table stores later writes with `write_version`, and current-row queries use `FINAL`.
+Migration copies retain equal-key historical rows with separate legacy identities.
+
+The global `operations` table uses `ReplacingMergeTree(row_version)`. Open rows use rank
+zero. Finished and errored rows use rank one. Cancelled rows use rank two. Each row keeps
+its `started_at` sort key and raises the microsecond part of `row_version`. A late open
+insert cannot replace a terminal row in a `FINAL` read.
 
 `collectionname` is a slug matching `[a-z0-9_]{1,48}` that may not end in `_<digits>`
 (collides with a Manticore shard name), may not end in `_pages`, `_meta` or `_vectors`
@@ -107,6 +123,11 @@ that is never planned and never noticed.
 |---|---|
 | Do not wait | every P3 parser output: `file_types`, `text_content`, `tika_metadata`, `emails`, `email_headers`, `email_addresses`, `archives`, `pdfs`, `pdf_metadata`, `pdfs_image`, `pdf_ocr_results`, `raw_ocr_results`, `image`, `image_metadata`, `audio_metadata`, `video_metadata`, `document_dates`, `table_documents`, `table_sheets`, `table_columns`, `table_cells`; plus `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry` |
 | Wait | `blobs`, `blob_values`, `vfs_files`, `vfs_directories`, `processing_plan_finished`, `index_state`, `manticore_shards`, `manticore_shard_assignments`, `dataset`, `processing_plans`, `schema_versions` |
+
+The Error recorder waits for its row insert before it writes the operation event.
+This order lets a retry repair an event write without creating another logical Error.
+`processing_task_runs` records worker execution duration and queue wait separately.
+Execution duration includes worker hand-off time. It excludes time before worker acceptance.
 
 The wait is not a rounding error. One waited insert costs ~60 ms against ~1 ms without;
 `parse_email_extract_text_headers` writes three rows per email, so leaving them durable
@@ -258,11 +279,12 @@ returns without infix indexing, not equal to it.
 
 ## Migrations above the collapsed baseline
 
-`COLLAPSED_BASELINE` is `{global: 28, collection: 48}`. No migration is above either
-baseline. A later schema change adds one numbered file and one row to this section.
+`COLLAPSED_BASELINE` is `{global: 28, collection: 48}`. New numbered migrations
+change the operation and Error tables, and add document outcomes. The Error replacement
+preserves historical rows and creates `processing_errors_identity_ready` last.
 
 **The readiness sentinel names the table that the last table-creating migration creates**.
-It is `operation_plans`. Update both sentinel copies when a later table-creating migration
+It is `processing_errors_identity_ready`. Update both sentinel copies when a later table-creating migration
 is added.
 
 ## `table_cells` is keyed by hash, and that is why it needs a sweeper

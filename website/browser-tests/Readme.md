@@ -5,6 +5,8 @@ Each file in this directory is one capture scenario. The file name is the slug:
 order. `website/tools/capture_screenshots.py` is that engine.
 
 `summary` is one sentence that says what the case exercises.
+Operation scenarios use `{{operation_id}}` in JavaScript actions. Pass `--operation-id ID`
+to the screenshot wrapper for these scenarios.
 
 ## Hundred-block numbers
 

@@ -3,7 +3,8 @@
 # 1080p by default.
 #
 # Usage: ./take-screenshots.sh [--target URL] [--out DIR] [--only SUBSTRING] [--names CSV]
-#                               [--login-env FILE] [--resolutions LIST] [--shards N]
+#                               [--login-env FILE] [--remote-target] [--operation-id ID]
+#                               [--resolutions LIST] [--shards N]
 # Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
 # Credential values are not accepted as wrapper arguments and are not placed in
 # Docker or Python argument lists.
@@ -74,6 +75,8 @@ OUT_ARG=""
 ONLY=""
 NAMES=""
 LOGIN_ENV_ARG=""
+REMOTE_TARGET=0
+OPERATION_ID=""
 RESOLUTIONS_ARG=""
 SHARDS=4
 
@@ -87,6 +90,8 @@ while [ $# -gt 0 ]; do
             echo "error: $1 is not accepted. Set HOOVER4_TEST_USERNAME and HOOVER4_TEST_PASSWORD, or pass --login-env FILE." >&2
             exit 2 ;;
         --login-env) LOGIN_ENV_ARG="${2:?--login-env needs a value}"; shift 2 ;;
+        --remote-target) REMOTE_TARGET=1; shift ;;
+        --operation-id) OPERATION_ID="${2:?--operation-id needs a value}"; shift 2 ;;
         --resolutions) RESOLUTIONS_ARG="${2:?--resolutions needs a value}"; shift 2 ;;
         --shards) SHARDS="${2:?--shards needs a value}"; shift 2 ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
@@ -112,13 +117,14 @@ fi
 
 # ---------------------------------------------------------------------------------
 # Target precedence: --target, then HOOVER4_SITE_URL in the environment or the
-# login-env file. There is no built-in default. A missing target exits 2 and names
-# the sources that were checked.
+# login-env file. There is no built-in default. A file-only target needs
+# --remote-target. A missing target exits 2 and names the sources checked.
 # ---------------------------------------------------------------------------------
 
 # shellcheck source=tools/capture_credentials.sh
 source "$SCRIPT_DIR/tools/capture_credentials.sh"
 require_capture_target
+require_explicit_capture_target
 echo "== target: $SITE_URL (source: $TARGET_SOURCE) =="
 
 # ---------------------------------------------------------------------------------
@@ -243,6 +249,7 @@ PASS_THROUGH_ENV=()
 # form would place the secret in the host argument list.
 [ -n "$CRED_USERNAME" ] && PASS_THROUGH_ENV+=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
 [ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && PASS_THROUGH_ENV+=(-e HOOVER4_CAPTURE_REVISION)
+[ -n "$OPERATION_ID" ] && PASS_THROUGH_ENV+=(-e "HOOVER4_SCREENSHOT_OPERATION_ID=$OPERATION_ID")
 
 run_capture_python() {
     docker exec "${PASS_THROUGH_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/capture_screenshots.py" \

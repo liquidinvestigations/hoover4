@@ -37,12 +37,10 @@ because they never get built. `cargo check --workspace --tests` (fast) or `cargo
 (slower, and produces the binaries) is what closes that gap; run one of them alongside
 `cargo check` whenever a public signature moves.
 
-**Both fixture-driven suites are welded to the corpus `main_services/verify-stack.sh`
-ingests**: `website/browser-tests/` routes and `stack_integration.rs`'s `TESTFILES`, `SHAPES`,
-`ZIPS` and `other`. On any other corpus they fail by naming a dataset that does not exist,
-which reads as a broken page or a broken endpoint and is neither. Run `verify-stack.sh`
-before either of them, or read their failures as a missing precondition rather than a
-regression.
+Both fixture-driven suites use the corpus from `main_services/verify-stack.sh`.
+Browser scenarios record missing datasets as incomplete execution.
+Stack tests skip an absent required dataset or stage and print the reason.
+Run `verify-stack.sh` before a full acceptance run.
 
 ## Screenshots
 
@@ -65,8 +63,9 @@ website/take-screenshots.sh --login-env path/to/file   # credentials from a file
 
 The capture target is `--target`, then `HOOVER4_SITE_URL` in the environment, then
 `HOOVER4_SITE_URL` from the login-env file. There is no built-in default. The wrapper
-exits 2 when all three are empty. `TEST_LOGIN.env.example` names the key. The real
-value lives in the gitignored login file.
+exits 2 when all three are empty. A target supplied only by the login file also needs
+`--remote-target`. Operation-specific scenarios need `--operation-id ID`.
+`TEST_LOGIN.env.example` names the key. The real value lives in the gitignored login file.
 
 With no `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` pair or `--login-env` file, the run
 proceeds unauthenticated (a screenshot page runner can go on without an identity;

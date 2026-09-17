@@ -24,6 +24,12 @@ This stage parses downloaded files by type and writes structured content and met
   `table_readers.py` and the delimited-text sniff in `sniff_table.py`
 - Helpers: `parse_common.py` for text page/segment writing and error recording
 
+The workflow Error helper requires one source execution id for each result. It builds the
+id from the workflow run, call site and source schedule ordinal. Replay uses the same id.
+A later source schedule gets another id.
+Direct OCR, OCR-PDF, table and Office XML writers identify Errors by workflow run,
+activity id, attempt, task name and document hash. Recorder retries keep that identity.
+
 ## How text is stored: `page_id` is a page number
 
 `text_content.page_id` is a **1-based page number** for paged formats and a **1-based

@@ -212,7 +212,7 @@ async fn dataset_aggregates(collectionname: &str) -> anyhow::Result<Vec<DatasetA
     let errors: Vec<(String, u64)> = client
         .query(
             "SELECT collection_dataset, count() AS value \
-             FROM processing_errors GROUP BY collection_dataset",
+             FROM processing_errors FINAL GROUP BY collection_dataset",
         )
         .fetch_all()
         .await?;

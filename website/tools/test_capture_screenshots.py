@@ -1,5 +1,6 @@
 import importlib.util
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -30,6 +31,49 @@ def _corpus_pages():
 
 
 class ScenarioParsingTests(unittest.TestCase):
+    def test_operation_actions_require_an_id(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(MODULE.IncompleteCapture, "--operation-id"):
+                import asyncio
+                asyncio.run(MODULE.run_action(None, "", "eval", "return {{operation_id}};"))
+
+    def test_operation_id_is_a_js_string(self) -> None:
+        import asyncio
+        with patch.dict(os.environ, {"HOOVER4_SCREENSHOT_OPERATION_ID": "rerun-123"}):
+            with patch.object(MODULE, "js", new_callable=AsyncMock) as js:
+                asyncio.run(MODULE.run_action(None, "", "eval", "return {{operation_id}};"))
+        js.assert_awaited_once_with(None, 'return "rerun-123";')
+
+    def test_login_file_target_needs_remote_flag(self) -> None:
+        helper = Path(__file__).with_name("capture_credentials.sh")
+        with tempfile.TemporaryDirectory() as directory:
+            login_file = Path(directory) / "login.env"
+            login_file.write_text("HOOVER4_SITE_URL=https://example.invalid\n", encoding="utf-8")
+            command = ["bash", "-c", 'source "$1"; require_capture_target; require_explicit_capture_target', "bash", str(helper)]
+            base = {"PATH": os.environ["PATH"], "LOGIN_ENV_FILE": str(login_file), "TARGET_ARG": "", "REMOTE_TARGET": "0"}
+            refused = subprocess.run(command, env=base, capture_output=True, text=True)
+            self.assertEqual(refused.returncode, 2)
+            self.assertIn("--remote-target", refused.stderr)
+            remote = subprocess.run(command, env={**base, "REMOTE_TARGET": "1"}, capture_output=True, text=True)
+            self.assertEqual(remote.returncode, 0, remote.stderr)
+            explicit = subprocess.run(command, env={**base, "TARGET_ARG": "http://localhost:12345"}, capture_output=True, text=True)
+            self.assertEqual(explicit.returncode, 0, explicit.stderr)
+            environment = subprocess.run(command, env={**base, "HOOVER4_SITE_URL": "http://localhost:12345"}, capture_output=True, text=True)
+            self.assertEqual(environment.returncode, 0, environment.stderr)
+
+    def test_operation_scenarios_select_an_id_and_both_detail_pages(self) -> None:
+        pages = _corpus_pages()
+        if pages is None:
+            self.skipTest("browser scenario files are not beside the copied tools")
+        for name in ("admin-failure-detail", "admin-operations-failure-link", "admin-failure-scrubbed", "admin-operation-detail"):
+            actions = pages[name].actions
+            self.assertTrue(any("{{operation_id}}" in argument for _, argument in actions), name)
+            self.assertFalse(any(verb == "click_css" and argument == ".x-ops-failure-link" for verb, argument in actions), name)
+        detail = pages["admin-operation-detail"].actions
+        self.assertIn(("click_css", "#x-op-detail-plans-next"), detail)
+        self.assertIn(("click_css", "#x-op-detail-events-next"), detail)
+        self.assertTrue(any("acceptance_page_100" in argument for _, argument in detail))
+
     def test_initial_script_is_specific_to_its_scenario(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             ini = Path(directory) / "screenshots.ini"
@@ -249,7 +293,8 @@ class CredentialAndInventoryTests(unittest.TestCase):
         self.assertNotIn("click_text", verbs)
         self.assertNotIn("pointer_click_css", verbs)
         self.assertTrue(any("wrong-target" in argument for verb, argument in confirm.actions if verb == "eval"))
-        self.assertTrue(any("clicked:false" in argument for verb, argument in confirm.actions if verb == "eval"))
+        self.assertTrue(any("clicked:false" in argument for verb, argument in confirm.actions if verb == "wait_eval"))
+        self.assertTrue(all("row.querySelectorAll('button')" in argument for verb, argument in confirm.actions if "button" in argument))
         self.assertTrue(any("incomplete" in argument for verb, argument in empty.actions))
         self.assertEqual(rescan.actions, [("wait_text", "Rescan disk"), ("sleep", "800")])
 

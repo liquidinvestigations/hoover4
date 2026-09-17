@@ -452,6 +452,7 @@ def _record_skip(params: ParseOfficeXmlParams, run_time_ms: int, reason: str) ->
         RecordProcessingErrorsParams,
         record_processing_errors,
     )
+    from tasks.P3_parse_files.parse_common import direct_error_fields
 
     record_processing_errors(RecordProcessingErrorsParams(
         collectionname=params.collectionname,
@@ -459,6 +460,7 @@ def _record_skip(params: ParseOfficeXmlParams, run_time_ms: int, reason: str) ->
             "collection_dataset": params.collection_dataset,
             "hash": params.file_hash,
             "task_name": "parse_office_xml_and_store",
+            **direct_error_fields(params, "parse_office_xml_and_store", params.file_hash),
             "run_time_ms": run_time_ms,
             "error_logs": f"{reason}: {params.file_path}",
             "op_id": params.op_id,

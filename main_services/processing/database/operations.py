@@ -18,14 +18,15 @@ Two rules run through everything below and neither is negotiable:
   deliberately no staleness timeout here. Cancelling the operation is how a lock is
   released early.
 
-The table is a `ReplacingMergeTree(updated_at)` ordered by `(started_at, op_id)`, so an
-update is an insert of the whole row with a newer `updated_at` **and the original
+The table is a `ReplacingMergeTree(row_version)` ordered by `(started_at, op_id)`, so an
+update is an insert of the whole row with a higher `row_version` **and the original
 `started_at`**. Changing `started_at` writes a second row rather than replacing the
 first, which is why every update path here reads the current row before writing.
 """
 
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 
 import pyarrow as pa
@@ -86,8 +87,20 @@ COLUMNS = (
     "op_id", "kind", "target_kind", "collectionname", "collection_dataset",
     "state", "started_at", "finished_at", "updated_at",
     "progress_done", "progress_total", "eta_seconds",
-    "detail", "error", "user_id", "rerun_of",
+    "detail", "error", "user_id", "rerun_of", "row_version",
 )
+
+VERSION_BITS = 62
+VERSION_MASK = (1 << VERSION_BITS) - 1
+STATE_RANK = {"finished": 1, "errored": 1, "cancelled": 2}
+
+
+def next_row_version(state: str, prior: int = 0) -> int:
+    """Give terminal states priority over late progress inserts."""
+    rank = STATE_RANK.get(state, 0)
+    now_us = int(datetime.now(timezone.utc).timestamp() * 1_000_000)
+    lower = max(now_us, (int(prior) & VERSION_MASK) + 1)
+    return (rank << VERSION_BITS) | lower
 
 
 class OperationLocked(Exception):
@@ -122,12 +135,12 @@ def target_of(kind: str, collectionname: str, collection_dataset: str) -> str:
     Which identifier is the target is a property of the kind. The value is also part of
     the operation id, so it keeps repeated dispatches distinct.
     """
-    target_kind = KINDS.get(kind, {}).get("target_kind", "global")
+    target_kind = KINDS[kind]["target_kind"]
     if target_kind == "dataset":
         return collection_dataset
     if target_kind == "collection":
         return collectionname
-    return ""
+    raise ValueError(f"Unknown operation target kind: {target_kind}")
 
 
 def _now() -> datetime:
@@ -138,13 +151,11 @@ def _now() -> datetime:
 def new_op_id(kind: str, collectionname: str, collection_dataset: str) -> str:
     """Mint an operation id: kind, target and a timestamp, and also the workflow id.
 
-    The timestamp is what makes it unique per dispatch, so the reuse policy on the
-    workflow stops deciding anything and a re-run is always a new execution with a
-    history of its own.
+    A microsecond timestamp and random suffix distinguish immediate dispatches.
     """
     target = target_of(kind, collectionname, collection_dataset) or "global"
-    stamp = int(datetime.now(timezone.utc).timestamp())
-    return f"{kind}-{target}-{stamp}"
+    stamp = int(datetime.now(timezone.utc).timestamp() * 1_000_000)
+    return f"{kind}-{target}-{stamp}-{uuid.uuid4().hex[:12]}"
 
 
 def _row_dicts(result) -> list[dict]:
@@ -191,6 +202,7 @@ def _insert_row(row: dict) -> None:
         "error": pa.array([row["error"]], type=pa.string()),
         "user_id": pa.array([row["user_id"]], type=pa.string()),
         "rerun_of": pa.array([row["rerun_of"]], type=pa.string()),
+        "row_version": pa.array([int(row["row_version"])], type=pa.uint64()),
     })
     with get_global_client() as client:
         insert_arrow_durable(client, "operations", table)
@@ -199,7 +211,7 @@ def _insert_row(row: dict) -> None:
 def lock_clause(kind: str, collectionname: str,
                 collection_dataset: str) -> tuple[str, dict]:
     """Return the live-row lock clause and its bound parameters."""
-    target_kind = KINDS.get(kind, {}).get("target_kind", "global")
+    target_kind = KINDS[kind]["target_kind"]
     if target_kind == "dataset":
         return (
             "state IN ('pending', 'running') AND "
@@ -215,7 +227,7 @@ def lock_clause(kind: str, collectionname: str,
             "state IN ('pending', 'running') AND collectionname = {collectionname:String}",
             {"collectionname": collectionname},
         )
-    return "state IN ('pending', 'running')", {}
+    raise ValueError(f"Unknown operation target kind: {target_kind}")
 
 
 def blocking_operations(kind: str, collectionname: str,
@@ -256,11 +268,8 @@ def create_operation(kind: str, collectionname: str = "", collection_dataset: st
                      rerun_of: str = "", op_id: str | None = None) -> dict:
     """Take the lock and write the `pending` row. Returns the row.
 
-    Raises `OperationLocked` if the target is already held. The check and the insert are
-    not atomic (ClickHouse offers no way to make them so), and that is acceptable
-    because the workflow id is the second guard: two dispatches that pass the check in
-    the same second still mint different ids, and the underlying pipeline stages are
-    idempotent.
+    Raises `OperationLocked` if the target is already held. The lock check and row
+    insert are separate statements. Concurrent callers can both pass the check.
     """
     if kind not in KINDS:
         raise ValueError(f"Unknown operation kind: {kind}")
@@ -285,6 +294,7 @@ def create_operation(kind: str, collectionname: str = "", collection_dataset: st
         "error": "",
         "user_id": user_id,
         "rerun_of": rerun_of,
+        "row_version": next_row_version("pending"),
     }
     _insert_row(row)
     log.info("operation %s created (%s)", row["op_id"], kind)
@@ -313,25 +323,28 @@ def list_operations(state: str = "", collectionname: str = "", kind: str = "",
     return _select(" AND ".join(clauses), parameters, limit=limit)
 
 
-def update_operation(op_id: str, **changes) -> dict | None:
+def update_operation(op_id: str, *, base_row: dict | None = None, **changes) -> dict | None:
     """Rewrite a row with the given fields changed. Returns the new row, or None.
 
     `started_at` is in the sort key and is carried through untouched: writing a
     different one inserts a second row instead of replacing the first, and the log then
     shows one operation twice.
     """
-    current = get_operation(op_id)
+    current = base_row if base_row is not None else get_operation(op_id)
     if current is None:
         log.warning("operation %s not found; nothing updated", op_id)
         return None
+    if current["state"] in TERMINAL_STATES:
+        return current
     row = dict(current)
     for key, value in changes.items():
-        if key not in COLUMNS or key in ("op_id", "started_at"):
+        if key not in COLUMNS or key in ("op_id", "started_at", "row_version"):
             raise ValueError(f"Not an updatable operations column: {key}")
         row[key] = value
     if isinstance(row.get("detail"), dict):
         row["detail"] = json.dumps(row["detail"], sort_keys=True)
     row["updated_at"] = _now()
+    row["row_version"] = next_row_version(row["state"], current["row_version"])
     _insert_row(row)
     return row
 

@@ -22,6 +22,10 @@ class OperationParams:
     collection_dataset: str = ""
     dataset_path: str = ""
     detail: dict = field(default_factory=dict)
+    plan_cursor: list[str] = field(default_factory=list)
+    plan_total: int = 0
+    plan_done: int = 0
+    clear_complete: bool = False
 @dataclass
 class OperationStateParams:
     """One write to the operations row."""
@@ -40,6 +44,9 @@ class DatasetProgressParams:
     op_id: str
     collectionname: str
     collection_dataset: str
+    selector_counts: dict[str, int] = field(default_factory=dict)
+    terminal_state: str = ""
+    terminal_error: str = ""
 
 
 @dataclass

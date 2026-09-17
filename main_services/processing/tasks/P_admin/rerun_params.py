@@ -15,6 +15,9 @@ class SelectErrorsParams:
 @dataclass
 class SelectionResult:
     selected_errors: int = 0
+    errors_before_run: int = 0
+    removed_stage_off_errors: int = 0
+    without_plan_errors: int = 0
     plan_hashes: list[str] = field(default_factory=list)
 
 

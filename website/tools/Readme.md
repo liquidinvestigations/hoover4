@@ -27,6 +27,8 @@ processes by default. `--shards 1` runs one process. `--shard I/N` on
 Image stems keep the global position in the selected list. A merge step writes one
 `report.md`, one `report.html` and one `image_inventory.json`. A shard that exits
 with a code other than 0, 1 or 2 is incomplete execution over the scenarios it held.
+The screenshot wrapper requires `--remote-target` when the login file supplies its only target.
+Operation scenarios use `--operation-id ID` to select a row by its exact operation id.
 
 Screenshot scenarios can use `pointer_click_css`, `press_key`, and `wait_eval` for CDP
 input and bounded assertions. Set `color_scheme` to `light` or `dark` before navigation.

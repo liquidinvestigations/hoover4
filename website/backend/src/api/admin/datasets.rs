@@ -65,7 +65,7 @@ async fn fetch_stats(collection_dataset: &str, collectionname: &str) -> anyhow::
         .fetch_one()
         .await?;
     let error_count: u64 = client
-        .query("SELECT count() FROM processing_errors WHERE collection_dataset = ?")
+        .query("SELECT count() FROM processing_errors FINAL WHERE collection_dataset = ?")
         .bind(collection_dataset)
         .fetch_one()
         .await?;

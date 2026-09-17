@@ -1,6 +1,7 @@
 """Read and write the Error events and plan records of an operation."""
 
 from collections.abc import Mapping
+import json
 
 PAIR_SEPARATOR = "\x1f"
 ERROR_EXCERPT_CHARS = 2000
@@ -11,6 +12,7 @@ EVENTS = (
     "without_plan",
     "recovered",
     "still_failing",
+    "selection_complete",
 )
 PLAN_SOURCES = ("listed", "backfill")
 
@@ -118,6 +120,45 @@ def pairs_with_event(
             parameters={"op": op_id, "ds": collection_dataset, "event": event},
         ).result_rows
     return [(str(hash), str(task_name)) for hash, task_name in rows]
+
+
+def selection_snapshot(collectionname: str, op_id: str, dataset: str):
+    """Read a complete selector snapshot, or remove its partial class events."""
+    from .clickhouse import get_collection_client
+
+    with get_collection_client(collectionname) as client:
+        markers = client.query(
+            "SELECT error_logs FROM operation_error_events FINAL "
+            "WHERE op_id = {op:String} AND collection_dataset = {ds:String} "
+            "AND event = 'selection_complete'",
+            parameters={"op": op_id, "ds": dataset},
+        ).result_rows
+        if not markers:
+            client.command(
+                "ALTER TABLE operation_error_events DELETE WHERE op_id = {op:String} "
+                "AND collection_dataset = {ds:String} "
+                "AND event IN ('selected', 'removed_stage_off', 'without_plan')",
+                parameters={"op": op_id, "ds": dataset},
+                settings={"mutations_sync": 2},
+            )
+            return None
+        if len(markers) != 1:
+            raise ValueError("Selection has more than one complete marker")
+        counts = json.loads(markers[0][0])
+        rows = client.query(
+            "SELECT hash, task_name, event FROM operation_error_events FINAL "
+            "WHERE op_id = {op:String} AND collection_dataset = {ds:String} "
+            "AND event IN ('selected', 'removed_stage_off', 'without_plan')",
+            parameters={"op": op_id, "ds": dataset},
+        ).result_rows
+    classes = {name: [] for name in ("selected", "removed_stage_off", "without_plan")}
+    for hash, task_name, event in rows:
+        classes[str(event)].append((str(hash), str(task_name)))
+    if any(len(classes[name]) != counts[name] for name in classes):
+        raise ValueError("Selection marker does not match its class events")
+    if sum(map(len, classes.values())) != counts["errors_before_run"]:
+        raise ValueError("Selection marker does not match the historical count")
+    return counts, classes
 
 
 def run_plan_counts(

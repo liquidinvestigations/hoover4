@@ -697,7 +697,7 @@ async def run_operations_worker():
   needs.
   """
   from .P_ops.activities import (
-      count_dataset_rows_activity, record_operation_state, reindex_collection_activity,
+      cancel_target_operation, count_dataset_rows_activity, record_operation_state, reindex_collection_activity,
       sample_dataset_progress, tombstone_dataset_row,
   )
   from .P_ops.backup import (
@@ -708,7 +708,7 @@ async def run_operations_worker():
       begin_import, finish_import, import_clickhouse, import_manticore,
       import_object_store,
   )
-  from .P_ops.workflows import Operation
+  from .P_ops.workflows import CancelOperation, Operation
   from .visibility import ensure_search_attributes
   log.info("Starting Operations worker...")
   client = await Client.connect("temporal:7233")
@@ -724,8 +724,8 @@ async def run_operations_worker():
       workflow_runner=sandboxed_runner(),
       task_queue="operations-queue",
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
-      workflows=[Operation],
-      activities=[record_operation_state, sample_dataset_progress,
+      workflows=[Operation, CancelOperation],
+      activities=[cancel_target_operation, record_operation_state, sample_dataset_progress,
                   reindex_collection_activity, count_dataset_rows_activity,
                   tombstone_dataset_row, begin_export, finish_export,
                   begin_import, finish_import, capture_operation_failure],

@@ -174,6 +174,7 @@ skip applies to `ner_provider = none` and to a GPU provider with the GPU tier of
 NER errors are **not** swallowed. The activity fails and Temporal retries it
 (`maximum_attempts=3`, 30 min `start_to_close_timeout`); after retries are
 exhausted the workflow records one `processing_errors` row per affected hash.
+An operation-owned successful chunk records one document outcome per member hash.
 A document with no entities is a visible failure, never a silently empty result.
 
 ## Usage

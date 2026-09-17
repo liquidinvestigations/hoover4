@@ -1,6 +1,6 @@
 """Activities that list finished plans for collection-wide backfill operations."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from temporalio import activity
 
@@ -13,16 +13,32 @@ class CollectionBackfillParams:
 
     op_id: str
     collectionname: str
+    cursor: list[str] = field(default_factory=list)
+    total: int = 0
 
 
-def _record_finished_plans(params: CollectionBackfillParams) -> list[list[str]]:
+@dataclass
+class FinishedPlanPage:
+    plans: list[list[str]]
+    cursor: list[str]
+    total: int
+
+
+def _record_finished_plans(params: CollectionBackfillParams) -> FinishedPlanPage:
     from database.clickhouse import get_collection_client
     from database.operation_ledger import insert_operation_plans
 
     with get_collection_client(params.collectionname) as client:
+        total = params.total or int(client.query(
+            "SELECT count() FROM processing_plan_finished FINAL"
+        ).result_rows[0][0])
+        where = ("WHERE (collection_dataset, plan_hash) > "
+                 "({ds:String}, {hash:String}) " if params.cursor else "")
         rows = client.query(
             "SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL "
-            "ORDER BY collection_dataset, plan_hash"
+            + where + "ORDER BY collection_dataset, plan_hash LIMIT 100",
+            parameters={"ds": params.cursor[0], "hash": params.cursor[1]}
+            if params.cursor else {},
         ).result_rows
     plans = [[str(collection_dataset), str(plan_hash)] for collection_dataset, plan_hash in rows]
     by_dataset: dict[str, list[str]] = {}
@@ -36,13 +52,13 @@ def _record_finished_plans(params: CollectionBackfillParams) -> list[list[str]]:
             plan_hashes,
             "backfill",
         )
-    return plans
+    return FinishedPlanPage(plans, plans[-1] if plans else params.cursor, total)
 
 
 @activity.defn
 @with_heartbeat
-def clear_unattributed_entities(params: CollectionBackfillParams) -> list[list[str]]:
-    """Delete unattributed entity rows and return the finished plans to re-run."""
+def clear_unattributed_entities(params: CollectionBackfillParams) -> None:
+    """Delete unattributed entity rows before any plan runs."""
     from database.clickhouse import get_collection_client
 
     with get_collection_client(params.collectionname) as client:
@@ -56,11 +72,11 @@ def clear_unattributed_entities(params: CollectionBackfillParams) -> list[list[s
         client.command(
             "ALTER TABLE entity_hit DELETE WHERE nlp_model = ''", settings=settings
         )
-    return _record_finished_plans(params)
+    return None
 
 
 @activity.defn
 @with_heartbeat
-def list_finished_plans(params: CollectionBackfillParams) -> list[list[str]]:
-    """Return the finished plans that require vector backfill."""
+def list_finished_plans(params: CollectionBackfillParams) -> FinishedPlanPage:
+    """Return at most 100 finished plans and record their operation ledger rows."""
     return _record_finished_plans(params)

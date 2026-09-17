@@ -59,13 +59,17 @@ def _record_skip(params: RunOcrParams, run_time_ms: int, reason: str) -> None:
         RecordProcessingErrorsParams,
         record_processing_errors,
     )
+    from tasks.P3_parse_files.parse_common import direct_error_fields
+
+    task_name = f"run_ocr_and_store[{params.engine}]"
 
     record_processing_errors(RecordProcessingErrorsParams(
         collectionname=params.collectionname,
         errors=[{
             "collection_dataset": params.collection_dataset,
             "hash": params.file_hash,
-            "task_name": f"run_ocr_and_store[{params.engine}]",
+            "task_name": task_name,
+            **direct_error_fields(params, task_name, params.file_hash),
             "run_time_ms": run_time_ms,
             "error_logs": f"{reason}: {params.file_path}",
             "op_id": params.op_id,

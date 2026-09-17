@@ -228,6 +228,11 @@ worker process, plus queue-wait (`scheduled_at`, `schedule_to_start_ms`,
 `@with_heartbeat` for one reason: it cannot be forgotten by the next activity someone
 adds. `tests/unit/test_task_timing.py` asserts every `Worker(...)` installs it.
 
+Operation-owned successful and skipped rows are durable before an activity returns.
+The interceptor writes document outcomes first for direct P3 activities, P4 and P5
+chunk members, and hashes returned by P6 writers. Each outcome and task run share
+the Temporal execution identity.
+
 Three properties decide what the table can answer:
 
 - **Failures are in the same table.** An activity that raises is recorded with

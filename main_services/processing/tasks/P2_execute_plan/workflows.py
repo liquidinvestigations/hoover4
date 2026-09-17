@@ -55,7 +55,7 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P1_compute_plans.activities import count_new_blobs, CountNewBlobsParams
     from tasks.P1_compute_plans.workflows import ComputePlans
     from tasks.P3_parse_files.workflows import ParseSingleFile
-    from tasks.P3_parse_files.parse_common import record_errors_from_results
+    from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id
     from tasks.P3_parse_files.document_dates import (
         resolve_document_dates,
         ResolveDocumentDatesParams,
@@ -616,6 +616,8 @@ class ProcessItemsBatched:
         # byte-bounded activity batches in sequence.
         await record_errors_from_results(
             results,
+            source_execution_ids=[source_execution_id(workflow.info().run_id,
+                "P2.parse_file", ordinal) for ordinal, _ in enumerate(this_run)],
             task_ids=["P3_ParseSingleFile"] * len(results),
             starts=[started_at] * len(results),
             collectionname=params.collectionname,

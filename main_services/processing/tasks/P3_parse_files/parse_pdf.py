@@ -595,9 +595,11 @@ class PdfProcessingAndScan:
         if ocr_pdf_futures:
             results = await asyncio.gather(*ocr_pdf_futures, return_exceptions=True)
             with workflow.unsafe.imports_passed_through():
-                from tasks.P3_parse_files.parse_common import record_errors_from_results
+                from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id
             await record_errors_from_results(
                 results,
+                source_execution_ids=[source_execution_id(workflow.info().run_id,
+                    "P3.pdf_ocr", ordinal) for ordinal, _ in enumerate(OCR_ENGINES)],
                 task_ids=[f"run_ocr_pdf_and_store[{engine}]" for engine in OCR_ENGINES],
                 starts=[workflow.now()] * len(OCR_ENGINES),
                 collectionname=params.collectionname,

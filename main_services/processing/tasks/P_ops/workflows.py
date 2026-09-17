@@ -7,8 +7,8 @@ without consequence: the work is not in the caller, and the caller's only unique
 knowledge is a string it already printed.
 
 The workflow owns the row's lifecycle. It writes `running` when it starts, samples
-progress while the real work runs beneath it, and writes exactly one of `finished`,
-`errored` or `cancelled` with `finished_at` set. That terminal write is also what
+progress while the real work runs beneath it, and writes `finished` or `errored`
+with `finished_at` set. The cancellation finalizer writes `cancelled`. That write
 releases the operations lock, which is why it is on the way out of every path.
 """
 
@@ -17,10 +17,11 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ApplicationError
 
 with workflow.unsafe.imports_passed_through():
     from .activities import (
-        count_dataset_rows_activity, record_operation_state,
+        cancel_target_operation, count_dataset_rows_activity, record_operation_state,
         reindex_collection_activity, sample_dataset_progress,
         tombstone_dataset_row,
     )
@@ -34,12 +35,12 @@ with workflow.unsafe.imports_passed_through():
         OperationParams, OperationStateParams,
     )
     from tasks.P_admin.rerun_params import ReconcileErrorsParams, SelectErrorsParams, SelectionResult
-    from tasks.P_admin.collection_backfill import CollectionBackfillParams
+    from tasks.P_admin.collection_backfill import CollectionBackfillParams, FinishedPlanPage
     from .restore import (
         begin_import, finish_import, import_clickhouse, import_manticore,
         import_object_store,
     )
-    from ..heartbeat import HEARTBEAT_TIMEOUT
+    from ..heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from ..visibility import dataset_search_attributes
 
 #: How often a running operation refreshes its progress counters.
@@ -67,6 +68,55 @@ EXPORT_STORE_TIMEOUT = timedelta(hours=24)
 #: The row writes are small, idempotent and on the critical path of the lock being
 #: released, so they retry patiently rather than giving up and stranding the lock.
 ROW_RETRY = RetryPolicy(maximum_attempts=10, initial_interval=timedelta(seconds=1))
+COLLECTION_PLANS_PER_RUN = 500
+
+
+@workflow.defn
+class CancelOperation:
+    """Close one target and write its final sampled operation row."""
+
+    @workflow.run
+    async def run(self, op_id: str) -> str:
+        context = await workflow.execute_activity(
+            cancel_target_operation, op_id,
+            task_queue="operations-queue",
+            start_to_close_timeout=timedelta(hours=24),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=ROW_RETRY,
+        )
+        if context["state"] in ("finished", "errored", "cancelled"):
+            return context["state"]
+        target_status = context.get("target_status", "")
+        state = ("finished" if target_status == "COMPLETED" else
+                 "errored" if target_status in ("FAILED", "TIMED_OUT", "TERMINATED") else
+                 "cancelled")
+        error = ("Cancelled by request." if state == "cancelled" else
+                 "Target workflow ended with an error." if state == "errored" else "")
+        if context["collection_dataset"]:
+            await workflow.execute_activity(
+                sample_dataset_progress,
+                DatasetProgressParams(op_id, context["collectionname"],
+                                      context["collection_dataset"],
+                                      terminal_state=state, terminal_error=error),
+                task_queue="operations-queue",
+                start_to_close_timeout=timedelta(minutes=2),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=ROW_RETRY,
+            )
+        result = await workflow.execute_activity(
+            record_operation_state,
+            OperationStateParams(op_id=op_id, state=state,
+                                 error=error),
+            task_queue="operations-queue",
+            start_to_close_timeout=timedelta(minutes=2),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=ROW_RETRY,
+        )
+        if context["history_missing"]:
+            raise ApplicationError(
+                f"target workflow history is absent: {op_id}", non_retryable=True
+            )
+        return result
 
 
 @workflow.defn
@@ -86,37 +136,28 @@ class Operation:
         try:
             result = await self._dispatch(params)
         except asyncio.CancelledError:
-            # The row is landed in `cancelled` by whoever requested the cancellation:
-            # once a workflow is cancelled it cannot schedule further activities, so a
-            # cleanup write attempted here would itself be cancelled and the row would
-            # be stranded non-terminal, holding the lock for ever.
+            # The separate finalizer writes the terminal row after this workflow closes.
             raise
         except Exception as exc:
-            # A cancellation reaches this branch wrapped, as an activity failure whose
-            # cause is a cancellation, so it is not caught above. It is still a
-            # cancellation and the row must say so: writing `errored` here races the
-            # `cancelled` the canceller writes from outside, and whichever lands second
-            # decides the state. Deciding it from the failure chain instead means both
-            # writers agree and there is nothing left to race.
-            state = "cancelled" if _is_cancellation(exc) else "errored"
+            if _is_cancellation(exc):
+                raise
             await workflow.execute_activity(
                 record_operation_state,
-                OperationStateParams(op_id=params.op_id, state=state,
+                OperationStateParams(op_id=params.op_id, state="errored",
                                      error=_failure_message(exc)),
                 task_queue="operations-queue",
                 start_to_close_timeout=timedelta(minutes=2),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=ROW_RETRY,
             )
-            if state != "cancelled":
-                await capture_failure_best_effort(
-                    exc,
-                    op_id=params.op_id,
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    stage="",
-                    task_name="Operation",
-                )
+            await capture_failure_best_effort(
+                exc,
+                op_id=params.op_id,
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+                stage="",
+                task_name="Operation",
+            )
             raise
         await workflow.execute_activity(
             record_operation_state,
@@ -205,8 +246,22 @@ class Operation:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
         await self._sample_plans_until_done(child, params)
-        await child
+        child_result = await child
+        await self._sample_selector_counts(params, child_result["selector_counts"])
         return f"ingested and processed {params.collection_dataset}"
+
+    async def _sample_selector_counts(self, params: OperationParams,
+                                      counts: dict[str, int]) -> None:
+        """Write final selector counts through the progress activity."""
+        await workflow.execute_activity(
+            sample_dataset_progress,
+            DatasetProgressParams(params.op_id, params.collectionname,
+                                  params.collection_dataset, counts),
+            task_queue="operations-queue",
+            start_to_close_timeout=timedelta(minutes=2),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=ROW_RETRY,
+        )
 
     async def _sample_plans_until_done(self, child, params: OperationParams) -> None:
         """Refresh the row's plan counters until the child workflow finishes.
@@ -267,7 +322,7 @@ class Operation:
         archive computes plans for what was inside it), and that is the corpus being
         discovered, not the counter reporting a wrong number: the number moves in both parts.
         """
-        await workflow.execute_activity(
+        selection = await workflow.execute_activity(
             "select_historical_errors",
             SelectErrorsParams(
                 op_id=params.op_id,
@@ -280,7 +335,7 @@ class Operation:
             task_queue="processing-common-queue",
             start_to_close_timeout=timedelta(minutes=60),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         child = asyncio.ensure_future(workflow.execute_child_workflow(
             "ExecutePlans",
@@ -296,19 +351,26 @@ class Operation:
         ))
         await self._sample_plans_until_done(child, params)
         result = await child
-        await workflow.execute_activity(
+        reconciliation = await workflow.execute_activity(
             "reconcile_selected_errors",
             ReconcileErrorsParams(
                 op_id=params.op_id,
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
             ),
-            result_type=str,
+            result_type=dict,
             task_queue="processing-common-queue",
             start_to_close_timeout=timedelta(minutes=60),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
+        await self._sample_selector_counts(params, {
+            "errors_before_run": selection.errors_before_run,
+            "selected_errors": selection.selected_errors,
+            "removed_stage_off_errors": selection.removed_stage_off_errors,
+            "without_plan_errors": selection.without_plan_errors,
+            **reconciliation,
+        })
         return result
 
     async def _record(self, op_id: str, done: int, total: int) -> None:
@@ -555,7 +617,7 @@ class Operation:
         doc_hash = str(params.detail.get("hash", ""))
         if not task_name and not doc_hash:
             raise ApplicationErrorDetail(params.kind, "task_name or hash")
-        await workflow.execute_activity(
+        selection = await workflow.execute_activity(
             "select_historical_errors",
             SelectErrorsParams(
                 op_id=params.op_id,
@@ -568,7 +630,7 @@ class Operation:
             task_queue="processing-common-queue",
             start_to_close_timeout=timedelta(minutes=60),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
         child = asyncio.ensure_future(workflow.execute_child_workflow(
             "ExecutePlans",
@@ -584,94 +646,98 @@ class Operation:
         ))
         await self._sample_plans_until_done(child, params)
         result = await child
-        await workflow.execute_activity(
+        reconciliation = await workflow.execute_activity(
             "reconcile_selected_errors",
             ReconcileErrorsParams(
                 op_id=params.op_id,
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
             ),
-            result_type=str,
+            result_type=dict,
             task_queue="processing-common-queue",
             start_to_close_timeout=timedelta(minutes=60),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
+        await self._sample_selector_counts(params, {
+            "errors_before_run": selection.errors_before_run,
+            "selected_errors": selection.selected_errors,
+            "removed_stage_off_errors": selection.removed_stage_off_errors,
+            "without_plan_errors": selection.without_plan_errors,
+            **reconciliation,
+        })
         return result
 
     async def _purge_unattributed_entities(self, params: OperationParams) -> str:
         """Re-run entity extraction and indexing after unattributed rows are deleted."""
-        plans = await workflow.execute_activity(
-            "clear_unattributed_entities",
-            CollectionBackfillParams(params.op_id, params.collectionname),
-            result_type=list[list[str]],
-            task_queue="processing-common-queue",
-            start_to_close_timeout=timedelta(minutes=60),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
-        )
-        total = len(plans)
-        await self._record(params.op_id, 0, total)
-        for done, (collection_dataset, plan_hash) in enumerate(plans, 1):
-            child_params = {
-                "collectionname": params.collectionname,
-                "collection_dataset": collection_dataset,
-                "plan_hash": plan_hash,
-                "op_id": params.op_id,
-            }
-            await workflow.execute_child_workflow(
-                "ExtractEntitiesForPlan",
-                child_params,
-                id=f"purge-unattributed-ner-{params.op_id}-{plan_hash}",
+        if not params.clear_complete:
+            await workflow.execute_activity(
+                "clear_unattributed_entities",
+                CollectionBackfillParams(params.op_id, params.collectionname),
                 task_queue="processing-common-queue",
-                search_attributes=dataset_search_attributes(collection_dataset),
+                start_to_close_timeout=timedelta(minutes=60),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=3),
             )
-            await workflow.execute_child_workflow(
-                "IndexDatasetPlan",
-                child_params,
-                id=f"purge-unattributed-index-{params.op_id}-{plan_hash}",
-                task_queue="processing-common-queue",
-                search_attributes=dataset_search_attributes(collection_dataset),
-            )
-            await self._record(params.op_id, done, total)
-        return f"re-ran entity extraction and indexing for {total} plan(s)"
+            params.clear_complete = True
+        return await self._run_collection_plans(params, "purge-unattributed")
 
     async def _backfill_vectors(self, params: OperationParams) -> str:
         """Run embedding and indexing for every finished plan in a collection."""
-        plans = await workflow.execute_activity(
-            "list_finished_plans",
-            CollectionBackfillParams(params.op_id, params.collectionname),
-            result_type=list[list[str]],
-            task_queue="processing-common-queue",
-            start_to_close_timeout=timedelta(minutes=60),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
-        )
-        total = len(plans)
-        await self._record(params.op_id, 0, total)
-        for done, (collection_dataset, plan_hash) in enumerate(plans, 1):
-            child_params = {
-                "collectionname": params.collectionname,
-                "collection_dataset": collection_dataset,
-                "plan_hash": plan_hash,
-                "op_id": params.op_id,
-            }
-            await workflow.execute_child_workflow(
-                "ChunkEmbedForPlan",
-                child_params,
-                id=f"backfill-embed-{params.op_id}-{plan_hash}",
+        return await self._run_collection_plans(params, "backfill")
+
+    async def _run_collection_plans(self, params: OperationParams, mode: str) -> str:
+        """Process bounded pages and continue before the history grows too large."""
+        run_done = 0
+        while True:
+            page = await workflow.execute_activity(
+                "list_finished_plans",
+                CollectionBackfillParams(
+                    params.op_id, params.collectionname, params.plan_cursor, params.plan_total,
+                ),
+                result_type=FinishedPlanPage,
                 task_queue="processing-common-queue",
-                search_attributes=dataset_search_attributes(collection_dataset),
+                start_to_close_timeout=timedelta(minutes=60),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=3),
             )
-            await workflow.execute_child_workflow(
-                "IndexDatasetPlan",
-                child_params,
-                id=f"backfill-index-{params.op_id}-{plan_hash}",
-                task_queue="processing-common-queue",
-                search_attributes=dataset_search_attributes(collection_dataset),
-            )
-            await self._record(params.op_id, done, total)
-        return f"backfilled vectors and indexing for {total} plan(s)"
+            params.plan_total = page.total
+            if not page.plans:
+                break
+            for collection_dataset, plan_hash in page.plans:
+                child_params = {
+                    "collectionname": params.collectionname,
+                    "collection_dataset": collection_dataset,
+                    "plan_hash": plan_hash,
+                    "op_id": params.op_id,
+                }
+                first = ("ExtractEntitiesForPlan" if mode == "purge-unattributed"
+                         else "ChunkEmbedForPlan")
+                prefix = ("purge-unattributed-ner" if mode == "purge-unattributed"
+                          else "backfill-embed")
+                await workflow.execute_child_workflow(
+                    first, child_params,
+                    id=f"{prefix}-{params.op_id}-{collection_dataset}-{plan_hash}",
+                    task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(collection_dataset),
+                )
+                await workflow.execute_child_workflow(
+                    "IndexDatasetPlan", child_params,
+                    id=f"{mode}-index-{params.op_id}-{collection_dataset}-{plan_hash}",
+                    task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(collection_dataset),
+                )
+                params.plan_done += 1
+                run_done += 1
+                params.plan_cursor = [collection_dataset, plan_hash]
+                await self._record(params.op_id, params.plan_done, params.plan_total)
+                if run_done >= COLLECTION_PLANS_PER_RUN and params.plan_done < params.plan_total:
+                    workflow.continue_as_new(params)
+            if params.plan_done >= params.plan_total:
+                break
+        if mode == "purge-unattributed":
+            return f"re-ran entity extraction and indexing for {params.plan_done} plan(s)"
+        return f"backfilled vectors and indexing for {params.plan_done} plan(s)"
 
 
 def _failure_message(exc: Exception) -> str:

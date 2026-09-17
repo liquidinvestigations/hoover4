@@ -488,9 +488,17 @@ require_filename_hit_fixture() {
     fi
     fail "filename-hit fixture missing at $fixture"
 }
-require_filename_hit_fixture
-
 if [ "$RESTART_RESILIENCE" = "1" ]; then
+    emb_url=$(grep -E '^EMBEDDINGS_URL=' ops/docker/.env 2>/dev/null | cut -d= -f2- || true)
+    if [ -z "$emb_url" ]; then
+        echo 'SKIP restart resilience: embeddings stage is off'
+        exit 0
+    fi
+    restart_root="${INGEST_ROOT_RESTART:-$INGEST_ROOT_TESTDATA}"
+    if ! docker exec "$WORKER" test -d "$restart_root"; then
+        echo 'SKIP restart resilience: the selected fixture directory is absent'
+        exit 0
+    fi
     # A bare `|| true` threw the non-zero return away, so the summary below announced
     # that all checks passed over a check that never finished.
     #
@@ -510,6 +518,8 @@ if [ "$RESTART_RESILIENCE" = "1" ]; then
     echo "verify-stack --restart-resilience: all checks passed"
     exit 0
 fi
+
+require_filename_hit_fixture
 
 # These block until each dataset is fully ingested, which is correct: the three
 # stages (scan, compute plans, execute plans) must run in order, and only the

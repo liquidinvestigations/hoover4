@@ -23,12 +23,12 @@ A missing `requires_dataset` value is recorded as `none named`. The literal
 
 ## How to reproduce a case
 
-Set `HOOVER4_SITE_URL` in the environment or in `website/TEST_LOGIN.env`,
-or pass `--target URL`. Credentials come from the same login file.
+Pass `--target URL` for a local capture. A remote capture can use a target from
+`website/TEST_LOGIN.env` with `--remote-target`. Credentials come from the login file.
 Then run:
 
 ```
-website/take-screenshots.sh --names SECTION
+website/take-screenshots.sh --target URL --names SECTION
 ```
 
 `SECTION` is the ini section name in the reproduce column. More than one name may be comma-separated.
@@ -36,6 +36,9 @@ website/take-screenshots.sh --names SECTION
 With no `--names` and no `--only`, the wrapper captures every file.
 The default run splits the list into four cost-balanced processes and writes one report.
 `--shards 1` runs the list in one process.
+The operation-specific scenarios 629, 630, 632 and 633 require `--operation-id ID`.
+`main_services/verify-reruns.sh` writes the local id to
+`website/test_reports/reruns-browser-fixture.env` as `RERUNS_FAILURE_OP`.
 
 Output lands in `website/test_reports/screenshots/run-<stamp>-<pid>/`.
 See [Capture report format](Capture_Report_Format.md) for the table that run writes.
@@ -221,7 +224,7 @@ Admin dashboard, collections, users, groups, settings, metrics, and operations.
 | `618-admin-dataset-rescan-dispatch` | Exercises the admin dataset rescan dispatch case. | `testdata_diskfiles` | `--names admin-dataset-rescan-dispatch` |
 | `619-admin-operations-running` | Exercises the admin operations running case. | none named | `--names admin-operations-running` |
 | `620-admin-operations-partial-failure` | Exercises the admin operations partial failure case. | none named | `--names admin-operations-partial-failure` |
-| `621-admin-operations-destructive-confirm` | Exercises the admin operations destructive confirm case. | none named | `--names admin-operations-destructive-confirm` |
+| `621-admin-operations-destructive-confirm` | Exercises confirmation and render states within one destructive operation row. | none named | `--names admin-operations-destructive-confirm` |
 | `622-admin-operations-rerun` | Exercises the admin operations rerun case. | none named | `--names admin-operations-rerun` |
 | `623-admin-collection-operations` | Exercises the admin collection operations case. | none named | `--names admin-collection-operations` |
 | `624-admin-failures` | Exercises the admin failures list with rows present. | none named | `--names admin-failures` |
@@ -229,11 +232,11 @@ Admin dashboard, collections, users, groups, settings, metrics, and operations.
 | `626-admin-failures-sort` | Exercises signature sort in both directions on the failures list. | none named | `--names admin-failures-sort` |
 | `627-admin-failures-page-two` | Exercises page two of the grouped failures list. | none named | `--names admin-failures-page-two` |
 | `628-admin-failures-expand` | Exercises expanding a grouped failure row to its instances. | none named | `--names admin-failures-expand` |
-| `629-admin-failure-detail` | Exercises the failure tree detail page. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-failure-detail` |
-| `630-admin-operations-failure-link` | Exercises the operations-page link into a captured failure tree. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-operations-failure-link` |
+| `629-admin-failure-detail` | Exercises the failure tree detail page. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-failure-detail --operation-id ID` |
+| `630-admin-operations-failure-link` | Exercises the operations-page link into a captured failure tree. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-operations-failure-link --operation-id ID` |
 | `631-admin-operations-temporal-link` | Exercises the Temporal deep link on an operations row. | none named | `--names admin-operations-temporal-link` |
-| `632-admin-failure-scrubbed` | Exercises the scrubbed-copy control on a failure tree. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-failure-scrubbed` |
-| `633-admin-operation-detail` | Exercises the operation detail page. | `reruns`, with the failed import from `main_services/verify-reruns.sh` | `--names admin-operation-detail` |
+| `632-admin-failure-scrubbed` | Exercises the scrubbed-copy control on a failure tree. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-failure-scrubbed --operation-id ID` |
+| `633-admin-operation-detail` | Exercises both second-page controls and rows on the operation detail page. | `reruns`, with the failed import from `main_services/verify-reruns.sh` | `--names admin-operation-detail --operation-id ID` |
 
 ## Manual QA procedures
 

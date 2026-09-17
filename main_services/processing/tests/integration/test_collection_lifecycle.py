@@ -27,10 +27,10 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(3600)]
 
 
 def _table_count(collectionname: str, table: str) -> int:
-    # No FINAL: `processing_errors` is a plain MergeTree (FINAL is illegal there)
-    # and every assertion below only cares about > 0.
+    # The Error table replaces retries by identity. Count its current rows.
     with get_collection_client(collectionname) as client:
-        return client.query(f"SELECT count() FROM {table}").result_rows[0][0]
+        final = " FINAL" if table == "processing_errors" else ""
+        return client.query(f"SELECT count() FROM {table}{final}").result_rows[0][0]
 
 
 def test_collection_lifecycle(temp_collection, tiny_dataset):

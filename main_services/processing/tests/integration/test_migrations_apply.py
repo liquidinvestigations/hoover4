@@ -37,6 +37,7 @@ def _expected_tables() -> set[str]:
         found = _CREATE_TABLE_RE.findall(sql)
         assert found or _ALTER_TABLE_RE.search(sql), f"no table statement in {path.name}"
         tables.update(found)
+    tables.discard("processing_errors_next")
     return tables
 
 

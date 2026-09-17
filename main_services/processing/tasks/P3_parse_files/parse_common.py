@@ -4,6 +4,7 @@ from temporalio import activity
 from typing import Dict, Any, List, Sequence
 import logging
 import json
+import hashlib
 from dataclasses import dataclass
 from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
 from tasks.operation_failure_capture import TEMPORAL_BLOB_LIMIT_BYTES
@@ -26,6 +27,24 @@ DEFAULT_TEXT_SEGMENT_BYTES = 256 * 1024
 # `error_logs`.
 ERROR_PAYLOAD_BUDGET_BYTES = TEMPORAL_BLOB_LIMIT_BYTES // 2
 ERROR_PAYLOAD_TRUNCATION_MARKER = "\n[error log truncated for the Temporal payload limit]"
+
+
+def direct_error_fields(params: Any, task_name: str, item_hash: str) -> Dict[str, Any]:
+    """Identify one source activity attempt across its recorder writes."""
+    info = activity.info()
+    source = (info.workflow_run_id, info.activity_id, info.attempt, task_name, item_hash)
+    cached = getattr(params, "_direct_error_source", None)
+    if cached is not None and cached[0] == source:
+        return cached[1]
+    fields = {
+        "error_identity": hashlib.sha256(
+            json.dumps(source, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "attempt": info.attempt,
+        "workflow_run_id": info.workflow_run_id,
+    }
+    params._direct_error_source = (source, fields)
+    return fields
 
 
 def _split_utf8_bytes_to_chunks(data: bytes, max_bytes: int) -> List[str]:
@@ -290,6 +309,14 @@ def format_temporal_exception_chain(err: BaseException) -> str:
     return "\n".join(lines)
 
 
+def source_execution_id(run_id: str, call_site: str, ordinal: int) -> str:
+    """Return a stable identity for one scheduled workflow source."""
+    if not run_id or not call_site or not isinstance(ordinal, int) or ordinal < 0:
+        raise ValueError("A source needs a run id, call site and schedule ordinal")
+    return json.dumps([run_id, call_site, ordinal], ensure_ascii=False,
+                      separators=(",", ":"))
+
+
 async def record_errors_from_results(
     results: Sequence[Any],
     *,
@@ -298,6 +325,7 @@ async def record_errors_from_results(
     collectionname: str,
     collection_dataset: str,
     item_hashes: Sequence[str],
+    source_execution_ids: Sequence[str],
     op_id: str,
     default_task_name: str = "unknown_task",
     start_to_close_timeout_seconds: int = 120,
@@ -310,6 +338,9 @@ async def record_errors_from_results(
     from datetime import timedelta as _td
     from temporalio.common import RetryPolicy as _RetryPolicy
     from temporalio import workflow as _wf
+
+    if len(source_execution_ids) != len(results) or any(not value for value in source_execution_ids):
+        raise ValueError("Each result needs one nonempty source execution id")
 
     now_ts = _wf.now()
     try:
@@ -326,6 +357,11 @@ async def record_errors_from_results(
             err_str = format_temporal_exception_chain(res)
             task_name = task_ids[idx] if idx < len(task_ids) else default_task_name
             item_hash = item_hashes[idx] if idx < len(item_hashes) else ""
+            identity_input = [source_execution_ids[idx], task_name,
+                              collection_dataset, item_hash]
+            error_identity = hashlib.sha256(json.dumps(
+                identity_input, ensure_ascii=False, separators=(",", ":")
+            ).encode("utf-8")).hexdigest()
             error_rows.append({
                 "collection_dataset": collection_dataset,
                 "hash": item_hash,
@@ -335,6 +371,7 @@ async def record_errors_from_results(
                 "attempt": 0,
                 "workflow_run_id": run_id,
                 "op_id": op_id,
+                "error_identity": error_identity,
             })
 
     if not error_rows:
@@ -354,6 +391,7 @@ async def record_errors_from_results(
             + len(str(row.get("task_name") or "").encode("utf-8"))
             + len(str(row.get("workflow_run_id") or "").encode("utf-8"))
             + len(str(row.get("op_id") or "").encode("utf-8"))
+            + len(str(row.get("error_identity") or "").encode("utf-8"))
             + 128
         )
 

@@ -113,6 +113,7 @@ import that the rerun browser scenarios read.
 before them. It ingests one fixture dataset, stops and starts the worker in the middle of it,
 and then asserts what the workflow status does not: that every document ends up with chunks,
 with vectors, and with an index row.
+It prints a skip reason when the embeddings stage or selected fixture directory is absent.
 
 **That last part is what the assertion exists for.** A plan is marked finished when its stages *ran*, not
 when every document succeeded, so workflow status reports success over documents whose

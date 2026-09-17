@@ -56,6 +56,7 @@ class ParseAudioParams:
     file_hash: str
     file_path: str
     timeout_seconds: int
+    op_id: str = ""
 
 
 @activity.defn
@@ -82,5 +83,4 @@ def parse_audio_metadata_and_store(params: ParseAudioParams) -> str:
         insert_arrow_idempotent(client, "audio_metadata", tbl_meta)
 
     return "audio_ok"
-
 

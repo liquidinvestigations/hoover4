@@ -10,9 +10,13 @@ dragging the pipeline's C extensions through that importer fails with a bare
 """
 
 import logging
+import json
 import time
+import asyncio
 
 from temporalio import activity
+from temporalio.client import Client, WorkflowExecutionStatus, WorkflowFailureError
+from temporalio.service import RPCError, RPCStatusCode
 
 from ..heartbeat import with_heartbeat
 from .params import (
@@ -31,12 +35,8 @@ def record_operation_state(params: OperationStateParams) -> str:
     database: the row is the only thing outside Temporal that knows this run exists,
     and it has to be written by something that can fail and be retried.
 
-    **A row that has already landed terminal is never moved again.** Cancelling an
-    operation lands its row from the outside, because a cancelled workflow cannot
-    schedule the activity that would land it from the inside; the workflow then unwinds
-    and its own failure path arrives here a moment later. Without this guard that late
-    write relabels every cancellation as an error, which is the row reporting the
-    opposite of what happened.
+    A terminal row stays terminal. The cancellation finalizer writes it after the target
+    closes, and a late target activity cannot change it.
     """
     from database.operations import (
         finish_operation, get_operation, update_operation, TERMINAL_STATES,
@@ -48,8 +48,8 @@ def record_operation_state(params: OperationStateParams) -> str:
                  params.op_id, current["state"])
         return current["state"]
     if params.state in TERMINAL_STATES:
-        finish_operation(params.op_id, params.state, params.error)
-        return params.state
+        row = finish_operation(params.op_id, params.state, params.error)
+        return row["state"] if row else "missing"
     changes: dict = {}
     if params.state:
         changes["state"] = params.state
@@ -59,6 +59,75 @@ def record_operation_state(params: OperationStateParams) -> str:
     if changes:
         update_operation(params.op_id, **changes)
     return params.state or "unchanged"
+
+
+@activity.defn
+@with_heartbeat
+def cancel_target_operation(op_id: str) -> dict:
+    """Cancel the target, wait for closure, and return its recorded context."""
+    return asyncio.run(_cancel_target_operation(op_id))
+
+
+async def _cancel_target_operation(op_id: str) -> dict:
+    """Use the Temporal client after the activity enters its worker thread."""
+    from database.operations import get_operation, TERMINAL_STATES
+
+    row = get_operation(op_id)
+    if row is None:
+        raise ValueError(f"operation not found: {op_id}")
+    context = {
+        "state": row["state"],
+        "collectionname": row["collectionname"],
+        "collection_dataset": row["collection_dataset"],
+        "history_missing": False,
+    }
+    if row["state"] in TERMINAL_STATES:
+        return context
+
+    client = await Client.connect("temporal:7233")
+    handle = client.get_workflow_handle(op_id)
+    try:
+        description = await handle.describe()
+    except RPCError as exc:
+        if exc.status == RPCStatusCode.NOT_FOUND:
+            context["history_missing"] = True
+            return context
+        raise
+    if description.status == WorkflowExecutionStatus.RUNNING:
+        try:
+            await handle.cancel()
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.NOT_FOUND:
+                raise
+            try:
+                description = await handle.describe()
+            except RPCError as lookup_error:
+                if lookup_error.status == RPCStatusCode.NOT_FOUND:
+                    context["history_missing"] = True
+                    return context
+                raise
+            if description.status == WorkflowExecutionStatus.RUNNING:
+                raise
+            context["target_status"] = description.status.name
+            return context
+        try:
+            await handle.result()
+        except WorkflowFailureError:
+            pass
+        except RPCError as exc:
+            if exc.status == RPCStatusCode.NOT_FOUND:
+                context["history_missing"] = True
+                return context
+            raise
+        try:
+            description = await handle.describe()
+        except RPCError as exc:
+            if exc.status == RPCStatusCode.NOT_FOUND:
+                context["history_missing"] = True
+                return context
+            raise
+    context["target_status"] = description.status.name
+    return context
 
 
 @activity.defn
@@ -80,7 +149,11 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
     """
     from database.clickhouse import get_collection_client
     from database.operation_ledger import run_plan_counts
-    from database.operations import get_operation, merge_detail, update_operation
+    from database.operations import get_operation, update_operation, TERMINAL_STATES, _now
+
+    row = get_operation(params.op_id)
+    if row is None or row["state"] in ("finished", "errored", "cancelled"):
+        return [int(row["progress_done"]), int(row["progress_total"])] if row else [0, 0]
 
     done = total = 0
     failed_documents = failed_tasks = 0
@@ -91,7 +164,7 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
     with get_collection_client(params.collectionname) as client:
         rows = client.query(
             "SELECT uniqExactIf(hash, hash != '') AS failed_documents, count() AS failed_tasks "
-            "FROM processing_errors WHERE collection_dataset = {ds:String} "
+            "FROM processing_errors FINAL WHERE collection_dataset = {ds:String} "
             "AND op_id = {op:String}",
             parameters={"ds": params.collection_dataset, "op": params.op_id},
         ).result_rows
@@ -99,16 +172,24 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
         failed_tasks = int(rows[0][1])
 
     eta = 0
-    row = get_operation(params.op_id)
     if row and total and done:
         elapsed = max(1.0, time.time() - row["started_at"].timestamp())
         eta = max(0, int(elapsed / done * (total - done)))
-    update_operation(params.op_id, progress_done=done, progress_total=total,
-                     eta_seconds=eta)
-    # Merged, not written over the whole field: `detail` also carries the parameters the
-    # operation was dispatched with, and another writer's counters.
-    merge_detail(params.op_id, failed_documents=failed_documents,
-                 failed_tasks=failed_tasks)
+    detail = json.loads(row.get("detail") or "{}") if row else {}
+    detail.update(failed_documents=failed_documents, failed_tasks=failed_tasks)
+    detail.update(params.selector_counts)
+    changes = {
+        "progress_done": done, "progress_total": total,
+        "eta_seconds": eta, "detail": json.dumps(detail, sort_keys=True),
+    }
+    if params.terminal_state:
+        if params.terminal_state not in TERMINAL_STATES:
+            raise ValueError(f"Invalid terminal state: {params.terminal_state}")
+        changes.update(
+            state=params.terminal_state, finished_at=_now(),
+            error=params.terminal_error[:4000],
+        )
+    update_operation(params.op_id, base_row=row, **changes)
     return [done, total]
 
 

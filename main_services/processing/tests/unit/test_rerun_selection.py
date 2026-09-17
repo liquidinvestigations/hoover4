@@ -1,4 +1,8 @@
 from types import SimpleNamespace
+import json
+import asyncio
+
+import pytest
 
 from tasks.P_admin import rerun_selection
 from tasks.P_admin.rerun_params import ReconcileErrorsParams, SelectErrorsParams
@@ -36,7 +40,6 @@ def test_selection_records_events_before_deleting_or_reopening(monkeypatch):
 
     client = _Client(
         [
-            ("SELECT count() FROM (SELECT DISTINCT", [(4,)]),
             (
                 "SELECT DISTINCT hash, task_name FROM processing_errors",
                 [
@@ -51,7 +54,7 @@ def test_selection_records_events_before_deleting_or_reopening(monkeypatch):
     )
     calls = []
     monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
-    monkeypatch.setattr(operations, "merge_detail", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ledger, "selection_snapshot", lambda *_args: None)
     monkeypatch.setattr(
         ledger,
         "insert_error_events",
@@ -96,17 +99,19 @@ def test_selection_records_events_before_deleting_or_reopening(monkeypatch):
     assert result.selected_errors == 1
     assert result.plan_hashes == ["plan-good"]
     assert [name for name, _ in calls] == [
-        "events", "events", "events", "delete", "nlp", "regex", "reopen"
+        "events", "events", "events", "events", "delete", "nlp", "regex", "reopen"
     ]
+    assert calls[3][1][0]["event"] == "selection_complete"
+    assert result.errors_before_run == 4
 
 
 def test_reconciliation_preserves_current_errors_and_records_outcomes(monkeypatch):
     import database.clickhouse as clickhouse
     import database.operation_ledger as ledger
-    import database.operations as operations
-
     client = _Client(
-        [("FROM processing_errors", [("h-fail", "P4_ScanRegexEntities")])]
+        [("FROM processing_document_outcomes", [
+            ("h-recovered", "P4_ScanRegexEntities", "scan_regex_entities_for_hashes")
+        ])]
     )
     calls = []
     monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
@@ -116,7 +121,7 @@ def test_reconciliation_preserves_current_errors_and_records_outcomes(monkeypatc
         lambda *_args: [
             ("h-recovered", "P4_ScanRegexEntities"),
             ("h-fail", "P4_ScanRegexEntities"),
-        ],
+        ] if _args[-1] == "selected" else [("h-fail", "P4_ScanRegexEntities")],
     )
     monkeypatch.setattr(
         ledger,
@@ -128,14 +133,14 @@ def test_reconciliation_preserves_current_errors_and_records_outcomes(monkeypatc
         "insert_error_events",
         lambda _collection, rows: calls.append(("events", rows)),
     )
-    monkeypatch.setattr(operations, "merge_detail", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(rerun_selection.activity, "heartbeat", lambda: None)
 
     result = rerun_selection.reconcile_selected_errors(
         ReconcileErrorsParams("op", "collection", "dataset")
     )
 
-    assert result == "reconciled 2 Error pairs"
+    assert result == {"recovered_errors": 1, "still_failing_errors": 1,
+                      "unknown_task_errors": 0}
     assert calls[0][0] == "delete"
     assert {row["event"] for _, rows in calls[1:] for row in rows} == {
         "recovered",
@@ -158,3 +163,249 @@ def test_clear_regex_state_deletes_the_watermark_before_hits(monkeypatch):
     assert retry.clear_regex_state("collection", "dataset", ["hash"]) == (2, 3)
     assert "ALTER TABLE regex_scanned DELETE" in client.commands[0][0]
     assert "ALTER TABLE regex_entity_hit DELETE" in client.commands[1][0]
+
+
+def test_incomplete_snapshot_removes_partial_events_synchronously(monkeypatch):
+    import database.clickhouse as clickhouse
+    import database.operation_ledger as ledger
+
+    client = _Client([("event = 'selection_complete'", [])])
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
+
+    assert ledger.selection_snapshot("collection", "op", "dataset") is None
+    assert "ALTER TABLE operation_error_events DELETE" in client.commands[0][0]
+    assert client.commands[0][2] == {"mutations_sync": 2}
+
+
+def test_empty_selection_writes_complete_zero_marker(monkeypatch):
+    import database.clickhouse as clickhouse
+    import database.operation_ledger as ledger
+    import tasks.P_admin.failed_file_retry as retry
+
+    client = _Client([("SELECT DISTINCT hash, task_name FROM processing_errors", [])])
+    events = []
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
+    monkeypatch.setattr(ledger, "selection_snapshot", lambda *_args: None)
+    monkeypatch.setattr(ledger, "insert_error_events", lambda _name, rows:
+                        events.extend(rows))
+    monkeypatch.setattr(retry, "plans_for_hashes", lambda *_args: [])
+    monkeypatch.setattr(rerun_selection.activity, "heartbeat", lambda: None)
+
+    result = rerun_selection.select_historical_errors(
+        SelectErrorsParams("op", "collection", "dataset"))
+
+    assert result.errors_before_run == 0
+    assert len(events) == 1
+    assert events[0]["event"] == "selection_complete"
+    assert json.loads(events[0]["error_logs"])["selected"] == 0
+
+
+def test_complete_snapshot_preserves_count_after_error_deletion(monkeypatch):
+    import database.clickhouse as clickhouse
+    import database.operation_ledger as ledger
+
+    counts = {"errors_before_run": 2, "selected": 1,
+              "removed_stage_off": 1, "without_plan": 0,
+              "task_name": "P4_ExtractEntities", "hash": ""}
+    client = _Client([
+        ("event = 'selection_complete'", [(json.dumps(counts),)]),
+        ("event IN ('selected'", [
+            ("h1", "P4_ExtractEntities", "selected"),
+            ("h2", "P4_ExtractEntities", "removed_stage_off"),
+        ]),
+    ])
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
+    stored, classes = ledger.selection_snapshot("collection", "op", "dataset")
+
+    assert stored["errors_before_run"] == 2
+    assert classes["selected"] == [("h1", "P4_ExtractEntities")]
+    assert client.commands == []
+
+
+def test_selector_retry_uses_filtered_snapshot_after_disabled_row_deletion(monkeypatch):
+    import database.operation_ledger as ledger
+    import tasks.P_admin.failed_file_retry as retry
+
+    counts = {"errors_before_run": 1, "selected": 0,
+              "removed_stage_off": 1, "without_plan": 0,
+              "task_name": "P4_ExtractEntities", "hash": "h"}
+    classes = {"selected": [], "removed_stage_off": [("h", "P4_ExtractEntities")],
+               "without_plan": []}
+    monkeypatch.setattr(ledger, "selection_snapshot", lambda *_args:
+                        (counts, classes))
+    monkeypatch.setattr(rerun_selection, "_candidate_pairs", lambda _params:
+                        pytest.fail("A complete retry must not read changed Errors"))
+    deleted = []
+    monkeypatch.setattr(ledger, "delete_error_pairs", lambda *_args:
+                        deleted.extend(_args[-1]))
+    monkeypatch.setattr(retry, "plans_for_hashes", lambda *_args: [])
+    monkeypatch.setattr(rerun_selection.activity, "heartbeat", lambda: None)
+
+    result = rerun_selection.select_historical_errors(SelectErrorsParams(
+        "op", "collection", "dataset", "P4_ExtractEntities", "h"))
+
+    assert result.errors_before_run == 1
+    assert result.removed_stage_off_errors == 1
+    assert deleted == [("h", "P4_ExtractEntities")]
+
+
+def test_complete_snapshot_rejects_partial_class_events(monkeypatch):
+    import database.clickhouse as clickhouse
+    import database.operation_ledger as ledger
+
+    client = _Client([
+        ("event = 'selection_complete'", [(json.dumps({
+            "errors_before_run": 2, "selected": 2,
+            "removed_stage_off": 0, "without_plan": 0,
+        }),)]),
+        ("event IN ('selected'", [("h1", "P5_ChunkEmbed", "selected")]),
+    ])
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
+    with pytest.raises(ValueError, match="does not match"):
+        ledger.selection_snapshot("collection", "op", "dataset")
+
+
+def test_recovery_needs_exact_outcome_and_current_error_veto(monkeypatch):
+    import database.clickhouse as clickhouse
+    import database.operation_ledger as ledger
+
+    selected = [(f"h{i}", "P6_IndexTextPages") for i in range(1, 5)]
+    selected += [("h5", "parse_office_xml_and_store"),
+                 ("h6", "unknown_task")]
+    client = _Client([("FROM processing_document_outcomes", [
+        ("h1", "P6_IndexTextPages", "index_text_pages"),
+        ("h2", "P6_IndexTextPages", "index_text_pages"),
+        ("h5", "parse_office_xml_and_store", "parse_office_xml_and_store"),
+    ])])
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
+    monkeypatch.setattr(ledger, "pairs_with_event", lambda *_args:
+                        selected if _args[-1] == "selected" else
+                        [("h2", "P6_IndexTextPages"),
+                         ("h5", "parse_office_xml_and_store")])
+    deleted = []
+    monkeypatch.setattr(ledger, "delete_error_pairs", lambda *_args:
+                        deleted.extend(_args[-1]))
+    monkeypatch.setattr(ledger, "insert_error_events", lambda *_args: None)
+    monkeypatch.setattr(rerun_selection.activity, "heartbeat", lambda: None)
+
+    result = rerun_selection.reconcile_selected_errors(
+        ReconcileErrorsParams("op", "collection", "dataset"))
+
+    assert result == {"recovered_errors": 1, "still_failing_errors": 4,
+                      "unknown_task_errors": 1}
+    assert set(deleted) == {selected[0], selected[1], selected[4]}
+    assert "r.activity_id = o.activity_id" in client.queries[0][0]
+    assert "r.outcome = o.outcome" in client.queries[0][0]
+
+
+def test_reconciliation_retains_unproven_rows_on_retry(monkeypatch):
+    import database.clickhouse as clickhouse
+    import database.operation_ledger as ledger
+
+    supported = ("h-unproven", "P6_IndexTextPages")
+    unknown = ("h-unknown", "unknown_task")
+    recovered = ("h-recovered", "P6_IndexTextPages")
+    replaced = ("h-replaced", "P6_IndexTextPages")
+    current_only = ("h-current", "P6_IndexTextPages")
+    selected = [supported, unknown, recovered, replaced]
+    older_rows = set(selected) | {current_only}
+    current_rows = {replaced, current_only}
+    events = []
+
+    class DeletingClient(_Client):
+        def command(self, query, parameters, settings):
+            super().command(query, parameters, settings)
+            assert "ALTER TABLE processing_errors DELETE" in query
+            assert settings == {"mutations_sync": 2}
+            assert parameters["op"] == "op"
+            for key in parameters["keys"]:
+                older_rows.discard(tuple(key.split(chr(31), 1)))
+
+    client = DeletingClient([("FROM processing_document_outcomes", [
+        (recovered[0], recovered[1], "index_text_pages"),
+    ])])
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
+    monkeypatch.setattr(ledger, "pairs_with_event", lambda *_args:
+                        selected if _args[-1] == "selected" else list(current_rows))
+    monkeypatch.setattr(ledger, "insert_error_events", lambda _name, rows:
+                        events.extend(rows))
+    monkeypatch.setattr(rerun_selection.activity, "heartbeat", lambda: None)
+    params = ReconcileErrorsParams("op", "collection", "dataset")
+
+    for _ in range(2):
+        assert rerun_selection.reconcile_selected_errors(params) == {
+            "recovered_errors": 1, "still_failing_errors": 2,
+            "unknown_task_errors": 1,
+        }
+        assert older_rows == {supported, unknown}
+
+    assert len(client.commands) == 2
+    assert {tuple(key.split(chr(31), 1)) for key in client.commands[0][1]["keys"]} == {
+        recovered, replaced, current_only,
+    }
+    assert [row["event"] for row in events].count("recovered") == 2
+    assert [row["event"] for row in events].count("still_failing") == 4
+
+
+def test_office_xml_direct_error_vetoes_same_execution_outcome(monkeypatch):
+    import database.clickhouse as clickhouse
+    import database.operation_ledger as ledger
+    import tasks.P2_execute_plan.activities as error_writer
+    import tasks.P3_parse_files.parse_office_xml as office
+    import tasks.P3_parse_files.parse_common as parse_common
+    from tasks import task_timing
+    from temporalio.worker import ActivityInboundInterceptor, ExecuteActivityInput
+
+    params = office.ParseOfficeXmlParams(
+        "collection", "dataset", "hash", "/tmp/document.docx", 30, "op")
+    monkeypatch.setattr(office, "extract_office_xml_text", lambda *_args, **_kwargs:
+                        SimpleNamespace(ok=False, kind="docx", dropped=["bad part"],
+                                        parts_read=[], text=""))
+    error_rows = []
+    monkeypatch.setattr(error_writer, "record_processing_errors", lambda arg:
+                        error_rows.extend(arg.errors))
+    fields = SimpleNamespace(
+        task_name="parse_office_xml_and_store", attempt=1, task_queue="queue",
+        scheduled_at=task_timing._EPOCH, schedule_to_start_ms=0,
+        retry_backoff_ms=0, workflow_id="workflow", workflow_run_id="run",
+        workflow_type="ParseSingleFile", activity_id="activity")
+    monkeypatch.setattr(parse_common.activity, "info", lambda: fields)
+    monkeypatch.setattr(task_timing, "_activity_fields", lambda _input: fields)
+    monkeypatch.setattr(task_timing, "_recorder", SimpleNamespace(
+        begin=lambda *_args: 1, end=lambda _token: None))
+    written = []
+    monkeypatch.setattr(task_timing, "_write_operation_result", lambda _collection,
+                        row, outcomes: written.append((row, outcomes)))
+
+    class Next(ActivityInboundInterceptor):
+        def __init__(self):
+            pass
+
+        async def execute_activity(self, _input):
+            return office.parse_office_xml_and_store.__wrapped__(params)
+
+    input = ExecuteActivityInput(
+        fn=office.parse_office_xml_and_store, args=[params], executor=None, headers={})
+    result = asyncio.run(task_timing._TimingActivityInbound(Next()).execute_activity(input))
+    assert isinstance(result, dict)
+    assert error_rows[0]["op_id"] == "op"
+    assert error_rows[0]["hash"] == "hash"
+    run_row, outcomes = written[0]
+    columns = dict(zip(task_timing._RUNS_COLUMNS, run_row))
+    assert columns["outcome"] == "ok"
+    assert columns["op_id"] == outcomes[0][0] == "op"
+    assert (columns["workflow_run_id"], columns["activity_id"], columns["attempt"]) == \
+        (outcomes[0][5], outcomes[0][6], outcomes[0][7])
+
+    client = _Client([("FROM processing_document_outcomes", [
+        ("hash", "parse_office_xml_and_store", "parse_office_xml_and_store")])])
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
+    pair = ("hash", "parse_office_xml_and_store")
+    monkeypatch.setattr(ledger, "pairs_with_event", lambda *_args: [pair])
+    monkeypatch.setattr(ledger, "delete_error_pairs", lambda *_args: None)
+    monkeypatch.setattr(ledger, "insert_error_events", lambda *_args: None)
+    monkeypatch.setattr(rerun_selection.activity, "heartbeat", lambda: None)
+    counts = rerun_selection.reconcile_selected_errors(
+        ReconcileErrorsParams("op", "collection", "dataset"))
+    assert counts["recovered_errors"] == 0
+    assert counts["still_failing_errors"] == 1

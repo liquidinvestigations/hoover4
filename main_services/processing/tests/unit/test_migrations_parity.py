@@ -89,6 +89,8 @@ EXPECTED_COLLECTION_TABLES = {
     "pdfs",
     "pdfs_image",
     "processing_errors",
+    "processing_errors_identity_ready",
+    "processing_document_outcomes",
     "operation_error_events",
     "operation_plans",
     "processing_plan_finished",
@@ -242,11 +244,19 @@ def test_no_comment_only_statement_fragment(path):
 
 
 def test_global_tables_match_expected():
-    assert set(_table_names(GLOBAL_MIGRATIONS_PATH)) == EXPECTED_GLOBAL_TABLES
+    created = set(_table_names(GLOBAL_MIGRATIONS_PATH))
+    assert created - {"operations_row_version"} == EXPECTED_GLOBAL_TABLES
+    migration = Path(GLOBAL_MIGRATIONS_PATH, "00030_operations_row_version.sql").read_text()
+    assert "FROM operations FINAL" in migration
+    assert "operations_row_version TO operations" in migration
+    assert "DROP TABLE operations_updated_at" in migration
 
 
 def test_collection_tables_match_expected():
-    assert set(_table_names(COLLECTION_MIGRATIONS_PATH)) == EXPECTED_COLLECTION_TABLES
+    assert set(_table_names(COLLECTION_MIGRATIONS_PATH)) - {"processing_errors_next"} == EXPECTED_COLLECTION_TABLES
+    migration = Path(COLLECTION_MIGRATIONS_PATH, "00051_processing_errors_identity.sql").read_text()
+    assert "ReplacingMergeTree(write_version)" in migration
+    assert "processing_errors_next TO processing_errors" in migration
 
 
 #: Tables that must not reappear. The Milvus alignment trio is gone: nothing ever wrote

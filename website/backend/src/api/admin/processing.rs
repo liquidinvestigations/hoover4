@@ -265,7 +265,7 @@ pub async fn admin_collection_processing(
     let errors = grouped_counts(
         &client,
         "SELECT collection_dataset, count() AS value \
-         FROM processing_errors GROUP BY collection_dataset",
+         FROM processing_errors FINAL GROUP BY collection_dataset",
     )
     .await?;
 
@@ -276,7 +276,7 @@ pub async fn admin_collection_processing(
     let failure_rows = client
         .query(
             "SELECT collection_dataset, task_name, uniqExact(hash) AS value \
-             FROM processing_errors WHERE hash != '' GROUP BY collection_dataset, task_name",
+             FROM processing_errors FINAL WHERE hash != '' GROUP BY collection_dataset, task_name",
         )
         .fetch_all::<(String, String, u64)>()
         .await?;
@@ -944,7 +944,7 @@ pub async fn admin_list_task_failures(
                     uniqExact(hash) AS document_count, \
                     toInt64(toUnixTimestamp(max(timestamp))) AS last_seen, \
                     argMax(error_logs, timestamp) AS sample_error \
-             FROM processing_errors \
+             FROM processing_errors FINAL \
              GROUP BY collection_dataset, task_name \
              ORDER BY last_seen DESC LIMIT ?",
         )
@@ -1002,7 +1002,7 @@ pub async fn admin_list_document_failures(
                 count() AS error_count, \
                 toInt64(toUnixTimestamp(max(timestamp))) AS last_seen, \
                 argMax(error_logs, timestamp) AS last_error \
-         FROM processing_errors {dataset_filter} \
+         FROM processing_errors FINAL {dataset_filter} \
          GROUP BY collection_dataset, hash \
          ORDER BY last_seen DESC LIMIT ?"
     );

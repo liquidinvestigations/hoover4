@@ -20,7 +20,7 @@ with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P3_parse_files.parse_pdf import PdfProcessingWorkflowParams
     from tasks.P3_parse_files.parse_email import EmailExtractionWorkflowParams
-    from tasks.P3_parse_files.parse_common import record_errors_from_results
+    from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id
     from tasks.P3_parse_files.parse_archives import ArchiveExtractionAndScan
     from tasks.P3_parse_files.parse_email import parse_email_extract_text_headers, EmailExtractionAndScan
     from tasks.P3_parse_files.parse_text import extract_plaintext_chunks
@@ -111,6 +111,7 @@ class ParseSingleFile:
                 file_hash=params.item_hash,
                 file_path=params.file_path,
                 timeout_seconds=proc_secs,
+                op_id=params.op_id,
             ),
             start_to_close_timeout=timedelta(seconds=proc_secs),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -125,6 +126,7 @@ class ParseSingleFile:
                 file_hash=params.item_hash,
                 file_path=params.file_path,
                 timeout_seconds=1000+proc_secs,
+                op_id=params.op_id,
             ),
             start_to_close_timeout=timedelta(seconds=1000+proc_secs),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -218,6 +220,7 @@ class ParseSingleFile:
                         email_hash=params.item_hash,
                         file_path=params.file_path,
                         timeout_seconds=proc_secs,
+                        op_id=params.op_id,
                     ),
                     task_queue="processing-common-queue",
                     id=child_id,
@@ -238,6 +241,7 @@ class ParseSingleFile:
                         file_hash=params.item_hash,
                         file_path=params.file_path,
                         timeout_seconds=proc_secs,
+                        op_id=params.op_id,
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -334,6 +338,7 @@ class ParseSingleFile:
                         file_hash=params.item_hash,
                         file_path=params.file_path,
                         timeout_seconds=proc_secs,
+                        op_id=params.op_id,
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -383,6 +388,7 @@ class ParseSingleFile:
                         file_hash=params.item_hash,
                         file_path=params.file_path,
                         timeout_seconds=proc_secs,
+                        op_id=params.op_id,
                     ),
                     start_to_close_timeout=timedelta(seconds=proc_secs),
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -422,6 +428,8 @@ class ParseSingleFile:
         try:
             await record_errors_from_results(
                 detector_results_for_error_capture,
+                source_execution_ids=[source_execution_id(workflow.info().run_id,
+                    "P3.detector", ordinal) for ordinal, _ in enumerate(detector_names)],
                 task_ids=[f"detector_error_{name}" for name in detector_names],
                 starts=[detectors_started_at] * len(detector_results),
                 collectionname=params.collectionname,
@@ -440,6 +448,8 @@ class ParseSingleFile:
             )
         await record_errors_from_results(
             results,
+            source_execution_ids=[source_execution_id(workflow.info().run_id,
+                "P3.parser", ordinal) for ordinal, _ in enumerate(futs)],
             task_ids=task_ids,
             starts=starts,
             collectionname=params.collectionname,

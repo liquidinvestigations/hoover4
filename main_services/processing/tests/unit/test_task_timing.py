@@ -16,6 +16,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -112,6 +113,39 @@ def test_identify_falls_back_to_the_plan_hash():
 
 def test_identify_reports_no_collection_when_the_params_have_none():
     assert identify([_NoCollectionParams()]) == ("", "", "")
+
+
+def test_document_outcomes_keep_chunk_members_and_p6_returned_subset():
+    fields = SimpleNamespace(task_name="extract_entities_for_hashes",
+                             workflow_run_id="run", activity_id="activity", attempt=1)
+    params = SimpleNamespace(hashes=["h1", "h2", "h1"])
+    rows = task_timing._outcome_rows([params], fields, "op", "dataset", "ok", None)
+    assert [row[2] for row in rows] == ["h1", "h2"]
+    assert all(row[4:8] == ["extract_entities_for_hashes", "run", "activity", 1]
+               for row in rows)
+
+    fields.task_name = "index_text_pages"
+    rows = task_timing._outcome_rows([params], fields, "op", "dataset",
+                                     "ok", ["h2"])
+    assert [row[2] for row in rows] == ["h2"]
+    assert rows[0][3] == "P6_IndexTextPages"
+
+
+def test_durable_operation_result_writes_outcomes_before_task_run(monkeypatch):
+    import database.clickhouse as clickhouse
+
+    written = []
+    class Client:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: Client())
+    monkeypatch.setattr(clickhouse, "insert_durable", lambda _client, table, *_args,
+                        **_kwargs: written.append(table))
+
+    task_timing._write_operation_result("collection", ["task"], [["outcome"]])
+    assert written == ["processing_document_outcomes", "processing_task_runs"]
 
 
 # -- the interceptor ---------------------------------------------------------

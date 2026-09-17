@@ -90,6 +90,7 @@ def test_failed_writer_chunk_does_not_inflate_ledger(temp_collection, tiny_datas
             "task_name": task_name,
             "run_time_ms": 1,
             "error_logs": "simulated writer failure (integration test)",
+            "error_identity": f"writer-test-{item_hash}-{task_name}",
         }
         for assignment in assignments
         for item_hash in assignment.hashes
@@ -133,7 +134,7 @@ def test_failed_writer_chunk_does_not_inflate_ledger(temp_collection, tiny_datas
         ).result_rows[0]
         # ...and every failed document is individually visible as an error.
         error_count = client.query(
-            "SELECT count() FROM processing_errors"
+            "SELECT count() FROM processing_errors FINAL"
         ).result_rows[0][0]
 
     assert int(assignment_count) == len(hashes)

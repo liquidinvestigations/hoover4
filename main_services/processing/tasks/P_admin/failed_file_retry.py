@@ -51,7 +51,7 @@ def list_failures(collectionname: str, collection_dataset: str = "") -> list[Fai
                    uniqExact(hash) AS documents,
                    toString(min(timestamp)) AS first_seen,
                    toString(max(timestamp)) AS last_seen
-            FROM processing_errors
+            FROM processing_errors FINAL
             {where}
             GROUP BY collection_dataset, task_name
             ORDER BY last_seen DESC, task_name ASC
@@ -66,7 +66,7 @@ def failed_hashes(collectionname: str, collection_dataset: str, task_name: str) 
 
     with get_collection_client(collectionname) as client:
         rows = client.query(
-            "SELECT DISTINCT hash FROM processing_errors "
+            "SELECT DISTINCT hash FROM processing_errors FINAL "
             "WHERE collection_dataset = {ds:String} AND task_name = {task:String} "
             "AND hash != '' ORDER BY hash",
             parameters={"ds": collection_dataset, "task": task_name},

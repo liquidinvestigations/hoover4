@@ -7,7 +7,10 @@ This stage executes processing plans by downloading planned blobs, coordinating 
 - Enumerate pending plans and schedule execution in batches.
 - Download plan files from Garage or ClickHouse into temp directories.
 - Spawn per-file parsing workflows and record processing errors.
+- Keep a source id from the workflow run and schedule ordinal for each failed child result.
 - Cleanup temporary artifacts and mark plans complete.
+
+The Error helper records each source id with its failed document hash.
 
 ## Entry Points
 

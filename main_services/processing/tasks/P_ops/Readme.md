@@ -32,7 +32,12 @@ not a failure, and re-runnable, because every pipeline stage is idempotent.
 
 The lock check and the row insert are not atomic, and cannot be against ClickHouse. The
 workflow id is the second guard: two dispatches that both pass the check still mint
-different ids and both run, and the stages underneath them tolerate that.
+different ids with a microsecond timestamp and random suffix. Both runs can proceed.
+
+Collection backfills list at most 100 finished plans per activity result. They continue
+as new after 500 completed plans. An unattributed-entity purge deletes orphan rows before
+it lists the first page. Later pages and continued runs keep that deletion complete.
+An apply command with no orphan rows starts no purge operation.
 
 ## Who writes the row
 
@@ -48,21 +53,16 @@ failing pipeline workflow runs the same capture, so a root write that itself fai
 leaves the child records. The capture never raises into the failing workflow. If
 ClickHouse is unreachable the write is logged and dropped.
 
-`cancelled` is the exception, and it is written by whoever requested the cancellation. A
-cancelled workflow cannot schedule further activities, so a cleanup write attempted inside
-it would be cancelled with it and the row would stay non-terminal for ever, holding the lock
-that cancelling was meant to release.
+The CLI and website start `CancelOperation` with the id `cancel-{op_id}`. The finalizer
+cancels the target and waits for it to close. It samples the dataset's failures before it
+writes `cancelled`. A repeated request reads the same finalizer result. If target history
+is absent, the finalizer closes a live row and returns an error. A transport error leaves
+the row open for another request.
 
-**A row that has already landed terminal is never moved again.** A cancellation lands the
-row from outside while the workflow is still unwinding, and the workflow's own failure path
-arrives a moment later; without that rule the late write relabels the cancellation as an
-error, and the row then reports the opposite of what happened.
-
-**And the workflow's own late write says `cancelled` too.** A cancellation reaches the
-failure path wrapped as an activity failure, so the guard above is not enough on its own:
-the two writes can land in the same second and whichever is second decides the state. The
-state is therefore read off the failure chain (a chain containing a cancellation is a
-cancellation), so both writers agree and the order between them stops mattering.
+The row uses `row_version` as its merge version. Open rows have rank zero. Finished and
+errored rows have rank one. Cancelled rows have rank two. Each rank includes a
+microsecond value above the prior row's value. A late progress insert cannot replace a
+terminal row. A progress sample reads the row before counting and stops if it is terminal.
 
 ## What each kind drives
 
@@ -87,6 +87,10 @@ accepts more kinds than the workflow drives, on purpose, so a row can exist for 
 surface performs.
 
 ## Progress and estimates
+
+The progress activity writes selector and reconciliation counts in the operations row.
+The child pipeline returns those counts to `Operation` after plan execution. A periodic
+sample preserves selector counts while it updates progress and current failures.
 
 Progress is whatever that kind can actually count, and the unit differs by kind: an ingest,
 an OCR-language change and a plan execution count **plans**, a retry counts the plans it

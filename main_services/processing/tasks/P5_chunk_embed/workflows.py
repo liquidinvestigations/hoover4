@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.plan_utils import FetchPlanHashesParams, fetch_plan_hashes
-    from tasks.P3_parse_files.parse_common import record_errors_from_results
+    from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id
     from .activities import chunk_embed_for_hashes
     from .params import ChunkEmbedForPlanParams, ChunkEmbedParams
 
@@ -36,6 +36,7 @@ class ScheduledChunk:
     hashes: list[str]
     started: datetime
     future: Any
+    ordinal: int
 
 
 @workflow.defn
@@ -58,10 +59,11 @@ class ChunkEmbedForPlan:
             chunk_hashes = plan_hashes[chunk_start:chunk_start+EMBED_CHUNK_SIZE]
             chunks.append(ScheduledChunk(
                 hashes=chunk_hashes,
+                ordinal=len(chunks),
                 started=workflow.now(),
                 future=workflow.execute_activity(
                     chunk_embed_for_hashes,
-                    ChunkEmbedParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, hashes=chunk_hashes),
+                    ChunkEmbedParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, hashes=chunk_hashes, op_id=params.op_id),
                     start_to_close_timeout=EMBED_TIMEOUT,
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
@@ -77,6 +79,7 @@ class ChunkEmbedForPlan:
         failed_task_ids = []
         failed_starts = []
         failed_hashes = []
+        failed_source_ids = []
         for res, chunk in zip(results, chunks):
             if isinstance(res, Exception):
                 for item_hash in chunk.hashes:
@@ -84,8 +87,11 @@ class ChunkEmbedForPlan:
                     failed_task_ids.append("P5_ChunkEmbed")
                     failed_starts.append(chunk.started)
                     failed_hashes.append(item_hash)
+                    failed_source_ids.append(source_execution_id(
+                        workflow.info().run_id, "P5.embed", chunk.ordinal))
         await record_errors_from_results(
             failed_results,
+            source_execution_ids=failed_source_ids,
             task_ids=failed_task_ids,
             starts=failed_starts,
             collectionname=params.collectionname,
