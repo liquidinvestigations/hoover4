@@ -11,6 +11,8 @@ from database import clickhouse, operation_ledger
 from database.clickhouse import COLLECTION_MIGRATIONS_PATH, _client, _cluster, get_global_client
 from tasks.P2_execute_plan.activities import RecordProcessingErrorsParams, record_processing_errors
 from tasks.P3_parse_files import parse_common, parse_ocr, parse_ocr_pdf, parse_office_xml, parse_table
+from tasks.P_admin.rerun_params import SelectErrorsParams
+from tasks.P_admin import rerun_selection
 
 pytestmark = pytest.mark.integration
 
@@ -153,3 +155,30 @@ def test_migration_keeps_equal_key_historical_rows():
     finally:
         with get_global_client() as admin:
             admin.command(f"DROP DATABASE IF EXISTS {database} SYNC")
+
+
+def test_manual_rerun_fixture_has_five_logical_errors(isolated_errors):
+    _, client = isolated_errors
+    client.command(
+        "INSERT INTO processing_errors (collection_dataset, hash, task_name, "
+        "run_time_ms, error_logs, timestamp, op_id, error_identity, write_version) VALUES "
+        "('dataset', 'probe', 'P4_ScanRegexEntities', 0, 'fixture', now(), 'first', 'first-regex', 1), "
+        "('dataset', 'probe', 'extract_plaintext_chunks', 0, 'fixture', now(), 'history', 'acceptance-history-plaintext', 1), "
+        "('dataset', '', 'P3_ParseSingleFile', 0, 'fixture', now(), 'history', 'acceptance-history-empty-hash', 1), "
+        "('dataset', 'without-plan', 'extract_plaintext_chunks', 0, 'fixture', now(), 'history', 'acceptance-history-without-plan', 1), "
+        "('dataset', 'probe', 'acceptance_unknown_task', 0, 'fixture', now(), 'history', 'acceptance-history-unknown', 1)"
+    )
+    assert client.query(
+        "SELECT count(), uniqExact(error_identity) FROM processing_errors FINAL "
+        "WHERE collection_dataset = 'dataset'"
+    ).result_rows == [(5, 5)]
+    pairs = rerun_selection._candidate_pairs(
+        SelectErrorsParams('repeat', 'collection', 'dataset')
+    )
+    classes = rerun_selection.classify_pairs(
+        pairs, {'probe': ['plan']}, lambda _task: False
+    )
+    assert len(classes['selected']) == 3
+    assert len(classes['without_plan']) == 2
+    assert sum(rerun_selection.recovery_activity(task) is not None for _, task in classes['selected']) == 2
+    assert sum(rerun_selection.recovery_activity(task) is None for _, task in classes['selected']) == 1

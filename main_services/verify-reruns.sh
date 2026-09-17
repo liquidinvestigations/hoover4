@@ -218,9 +218,9 @@ case_first_run() {
         /testdata/hoover-testdata/qa/filenames --no-wait
     FIRST_OP="$OP_ID"
     wait_terminal "$FIRST_OP" finished
-    PROBE_HASH="$(ch_collection "SELECT hash FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'P4_ScanRegexEntities' AND op_id = '$FIRST_OP' LIMIT 1")"
+    PROBE_HASH="$(ch_collection "SELECT hash FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND task_name = 'P4_ScanRegexEntities' AND op_id = '$FIRST_OP' LIMIT 1")"
     [ -n "$PROBE_HASH" ] || fail 'first run did not write the regex Error'
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'P4_ScanRegexEntities' AND op_id = '$FIRST_OP'" 1 'first-run Error row'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'P4_ScanRegexEntities' AND op_id = '$FIRST_OP'" 1 'first-run Error row'
     expect_count "SELECT count() FROM $COLLECTION_DB.operation_error_events FINAL WHERE op_id = '$FIRST_OP' AND event = 'error'" 1 'first-run error event'
     expect_count "SELECT count() FROM $COLLECTION_DB.operation_plans WHERE op_id = '$FIRST_OP'" 1 'first-run operation plan'
     check_detail_number "$FIRST_OP" failed_documents 1
@@ -231,11 +231,11 @@ case_first_run() {
 case_inject_history() {
     load_state
     [ -n "$PROBE_HASH" ] || fail 'first-run state is unavailable'
-    ch_collection "INSERT INTO $COLLECTION_DB.processing_errors (collection_dataset, hash, task_name, run_time_ms, error_logs, timestamp, op_id) VALUES ('$DATASET', '$PROBE_HASH', 'extract_plaintext_chunks', 0, 'acceptance history', now(), 'acceptance-history'), ('$DATASET', '', 'P3_ParseSingleFile', 0, 'acceptance history', now(), 'acceptance-history'), ('$DATASET', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'extract_plaintext_chunks', 0, 'acceptance history', now(), 'acceptance-history'), ('$DATASET', '$PROBE_HASH', 'acceptance_unknown_task', 0, 'acceptance history', now(), 'acceptance-history')"
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET'" 5 'injected Error rows'
-    EXPECTED_SELECTED_KNOWN="$(ch_collection "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name IN ('P4_ScanRegexEntities', 'extract_plaintext_chunks')")"
-    EXPECTED_UNKNOWN="$(ch_collection "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'acceptance_unknown_task'")"
-    EXPECTED_WITHOUT_PLAN="$(ch_collection "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND (hash = '' OR hash = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')")"
+    ch_collection "INSERT INTO $COLLECTION_DB.processing_errors (collection_dataset, hash, task_name, run_time_ms, error_logs, timestamp, op_id, error_identity, write_version) VALUES ('$DATASET', '$PROBE_HASH', 'extract_plaintext_chunks', 0, 'acceptance history', now(), 'acceptance-history', 'acceptance-history-plaintext', 1), ('$DATASET', '', 'P3_ParseSingleFile', 0, 'acceptance history', now(), 'acceptance-history', 'acceptance-history-empty-hash', 1), ('$DATASET', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'extract_plaintext_chunks', 0, 'acceptance history', now(), 'acceptance-history', 'acceptance-history-without-plan', 1), ('$DATASET', '$PROBE_HASH', 'acceptance_unknown_task', 0, 'acceptance history', now(), 'acceptance-history', 'acceptance-history-unknown', 1)"
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET'" 5 'injected Error rows'
+    EXPECTED_SELECTED_KNOWN="$(ch_collection "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name IN ('P4_ScanRegexEntities', 'extract_plaintext_chunks')")"
+    EXPECTED_UNKNOWN="$(ch_collection "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'acceptance_unknown_task'")"
+    EXPECTED_WITHOUT_PLAN="$(ch_collection "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND (hash = '' OR hash = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')")"
     expect_equal "$EXPECTED_SELECTED_KNOWN" 2 'known selected fixture pairs'
     expect_equal "$EXPECTED_UNKNOWN" 1 'unknown selected fixture pair'
     expect_equal "$EXPECTED_WITHOUT_PLAN" 2 'without-plan fixture pairs'
@@ -285,11 +285,11 @@ case_repeat_failure() {
     check_detail_number "$REPEAT_OP" still_failing_errors 1
     check_detail_number "$REPEAT_OP" recovered_errors 1
     check_detail_number "$REPEAT_OP" unknown_task_errors "$EXPECTED_UNKNOWN"
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'P4_ScanRegexEntities' AND op_id = '$REPEAT_OP'" 1 'repeat-failure current regex Error'
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'extract_plaintext_chunks'" 0 'repeat-failure plaintext Error recovery'
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'acceptance_unknown_task'" 1 'repeat-failure unknown Error retention'
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'P3_ParseSingleFile'" 1 'repeat-failure empty-hash Error retention'
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND hash = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' AND task_name = 'extract_plaintext_chunks'" 1 'repeat-failure unmappable Error retention'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'P4_ScanRegexEntities' AND op_id = '$REPEAT_OP'" 1 'repeat-failure current regex Error'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND hash = '$PROBE_HASH' AND task_name = 'extract_plaintext_chunks'" 0 'repeat-failure plaintext Error recovery'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND task_name = 'acceptance_unknown_task'" 0 'repeat-failure unknown older Error deletion'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND task_name = 'P3_ParseSingleFile'" 1 'repeat-failure empty-hash Error retention'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND hash = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' AND task_name = 'extract_plaintext_chunks'" 1 'repeat-failure unmappable Error retention'
     check_detail_number "$REPEAT_OP" failed_documents 1
     save_state
 }
@@ -332,14 +332,14 @@ case_recovery() {
     run_new_operation ../main_services/run.sh operations rerun "$THIRD_OP" --no-wait
     RECOVERY_OP="$OP_ID"
     wait_terminal "$RECOVERY_OP" finished
-    check_detail_number "$RECOVERY_OP" errors_before_run "$((EXPECTED_ERRORS_BEFORE - 1))"
-    check_detail_number "$RECOVERY_OP" selected_errors "$((EXPECTED_SELECTED_KNOWN + EXPECTED_UNKNOWN - 1))"
+    check_detail_number "$RECOVERY_OP" errors_before_run "$((EXPECTED_ERRORS_BEFORE - 1 - EXPECTED_UNKNOWN))"
+    check_detail_number "$RECOVERY_OP" selected_errors "$((EXPECTED_SELECTED_KNOWN - 1))"
     check_detail_number "$RECOVERY_OP" without_plan_errors "$EXPECTED_WITHOUT_PLAN"
     check_detail_number "$RECOVERY_OP" recovered_errors 1
     check_detail_number "$RECOVERY_OP" still_failing_errors 0
-    check_detail_number "$RECOVERY_OP" unknown_task_errors "$EXPECTED_UNKNOWN"
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'P4_ScanRegexEntities'" 0 'recovery regex Error removal'
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = '$DATASET' AND task_name = 'acceptance_unknown_task'" 1 'recovery unknown Error retention'
+    check_detail_number "$RECOVERY_OP" unknown_task_errors 0
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND task_name = 'P4_ScanRegexEntities'" 0 'recovery regex Error removal'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = '$DATASET' AND task_name = 'acceptance_unknown_task'" 0 'recovery unknown older Error deletion'
     local scans
     scans="$(ch_collection "SELECT count() FROM $COLLECTION_DB.regex_scanned WHERE collection_dataset = '$DATASET' AND file_hash = '$PROBE_HASH'")"
     [ "$scans" -ge 1 ] || fail 'recovery has no regex scan for the probe hash'
@@ -351,7 +351,7 @@ case_ocr_skip() {
     run_new_operation ../main_services/run.sh add-disk-dataset reruns images /testdata/hoover-testdata/data/disk-files/img --no-wait
     IMAGES_OP="$OP_ID"
     wait_terminal "$IMAGES_OP" finished
-    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors WHERE collection_dataset = 'reruns_images' AND task_name LIKE 'run_ocr_and_store%easyocr%'" 0 'ocr-skip EasyOCR Error rows'
+    expect_count "SELECT count() FROM $COLLECTION_DB.processing_errors FINAL WHERE collection_dataset = 'reruns_images' AND task_name LIKE 'run_ocr_and_store%easyocr%'" 0 'ocr-skip EasyOCR Error rows'
     local skipped
     skipped="$(ch_collection "SELECT count() FROM $COLLECTION_DB.processing_task_runs WHERE collection_dataset = 'reruns_images' AND task_name LIKE 'run_ocr_and_store%' AND toString(outcome) = 'skipped'")"
     [ "$skipped" -ge 1 ] || fail 'ocr-skip has no skipped OCR task run'

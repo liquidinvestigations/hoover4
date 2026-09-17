@@ -223,7 +223,7 @@ def reconcile_selected_errors(params: ReconcileErrorsParams) -> dict:
     still_failing = [pair for pair in selected
                      if recovery_activity(pair[1]) is not None and pair not in recovered]
 
-    for values in chunked(sorted(set(recovered) | current)):
+    for values in chunked(sorted(set(selected) | current)):
         delete_error_pairs(
             params.collectionname, params.collection_dataset, params.op_id, values
         )

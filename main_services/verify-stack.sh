@@ -495,9 +495,24 @@ if [ "$RESTART_RESILIENCE" = "1" ]; then
         exit 0
     fi
     restart_root="${INGEST_ROOT_RESTART:-$INGEST_ROOT_TESTDATA}"
-    if ! docker exec "$WORKER" test -d "$restart_root"; then
-        echo 'SKIP restart resilience: the selected fixture directory is absent'
-        exit 0
+    worker_running="$(docker inspect --format '{{.State.Running}}' "$WORKER")" || {
+        fail 'restart resilience: could not inspect the worker'
+        exit 1
+    }
+    [ "$worker_running" = true ] || {
+        fail 'restart resilience: the worker is not running'
+        exit 1
+    }
+    if docker exec "$WORKER" sh -c 'if [ -d "$1" ]; then exit 0; else exit 42; fi' sh "$restart_root"; then
+        :
+    else
+        status=$?
+        if [ "$status" -eq 42 ]; then
+            echo 'SKIP restart resilience: the selected fixture directory is absent'
+            exit 0
+        fi
+        fail "restart resilience: worker fixture check failed with status $status"
+        exit 1
     fi
     # A bare `|| true` threw the non-zero return away, so the summary below announced
     # that all checks passed over a check that never finished.

@@ -1050,13 +1050,12 @@ pub async fn admin_list_document_failures(
 // Retries
 // ---------------------------------------------------------------------------
 
-/// Re-run the stage that failed, for the documents it failed on.
+/// Reopen the plans for documents with a selected Error.
 ///
 /// Dispatched as a `retry_failed_files` operation, so the retry takes the dataset's lock,
-/// leaves a row saying what was retried and how it ended, and re-runs only the stage that
-/// recorded the failures rather than the whole pipeline. The error rows survive until the
-/// documents they describe are demonstrably fixed: clearing them up front would lose the
-/// record of every retry that fails the same way.
+/// records the selected pairs and runs their affected plans. Reconciliation deletes older
+/// Error rows for selected pairs. It counts recovery only with a matching document outcome
+/// and an `ok` or `skipped` task run from this operation.
 pub async fn admin_retry_failed_task(
     user: &CurrentUser,
     collectionname: String,
@@ -1082,7 +1081,7 @@ pub async fn admin_retry_failed_task(
 /// Retry the processing of a single document.
 ///
 /// Dispatches a `retry_failed_files` operation for the document hash. The selector
-/// reopens its plans and reconciliation keeps its Error rows until they recover.
+/// reopens its plans. Reconciliation deletes older rows for selected Error pairs.
 pub async fn admin_retry_document(
     user: &CurrentUser,
     collectionname: String,

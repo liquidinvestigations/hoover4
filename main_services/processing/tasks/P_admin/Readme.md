@@ -105,11 +105,10 @@ The selector stores class events and a `selection_complete` marker before it cha
 The marker stores the filtered count. A retry uses the complete snapshot.
 The selector clears NLP and regex state and reopens selected plans.
 
-Reconciliation requires an exact document outcome and task run from this operation.
-A current Error event replaces an older Error row for its pair. A recovered pair also
-loses its older row. A selected pair without exact recovery or a current Error keeps
-its older row. Supported unresolved pairs count as still failing. Unsupported task
-names count separately. ClickHouse mutations use `mutations_sync = 2`.
+Reconciliation requires a matching document outcome and an `ok` or `skipped` task run to count recovery.
+It deletes older Error rows for every selected pair and every pair with a current Error.
+Supported unresolved pairs count as still failing. Unsupported task names count separately.
+ClickHouse mutations use `mutations_sync = 2`.
 
 ## A finished plan is not a successful one
 

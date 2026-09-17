@@ -293,12 +293,12 @@ def test_recovery_needs_exact_outcome_and_current_error_veto(monkeypatch):
 
     assert result == {"recovered_errors": 1, "still_failing_errors": 4,
                       "unknown_task_errors": 1}
-    assert set(deleted) == {selected[0], selected[1], selected[4]}
+    assert set(deleted) == set(selected)
     assert "r.activity_id = o.activity_id" in client.queries[0][0]
     assert "r.outcome = o.outcome" in client.queries[0][0]
 
 
-def test_reconciliation_retains_unproven_rows_on_retry(monkeypatch):
+def test_reconciliation_deletes_selected_older_rows_on_retry(monkeypatch):
     import database.clickhouse as clickhouse
     import database.operation_ledger as ledger
 
@@ -337,11 +337,11 @@ def test_reconciliation_retains_unproven_rows_on_retry(monkeypatch):
             "recovered_errors": 1, "still_failing_errors": 2,
             "unknown_task_errors": 1,
         }
-        assert older_rows == {supported, unknown}
+        assert older_rows == set()
 
     assert len(client.commands) == 2
     assert {tuple(key.split(chr(31), 1)) for key in client.commands[0][1]["keys"]} == {
-        recovered, replaced, current_only,
+        supported, unknown, recovered, replaced, current_only,
     }
     assert [row["event"] for row in events].count("recovered") == 2
     assert [row["event"] for row in events].count("still_failing") == 4
