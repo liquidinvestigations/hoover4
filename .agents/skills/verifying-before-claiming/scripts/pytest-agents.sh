@@ -23,7 +23,8 @@ for container in hoover4-mcp-browser hoover4-mcp-collections hoover4-mcp-metasea
     # whois image's interpreter is a virtualenv that PATH is the only thing pointing at.
     # Under -l that container reports pytest as not installed while it is.
     if ! docker exec -w /app "${container}" sh -c \
-        "python -m pytest ${target} -q 2>&1 | tail -15"; then
+        'output=$(mktemp); python -m pytest "$1" -q > "$output" 2>&1; status=$?; tail -15 "$output"; rm -f "$output"; exit "$status"' \
+        sh "${target}"; then
         failed=1
     fi
 done

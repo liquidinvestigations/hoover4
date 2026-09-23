@@ -315,6 +315,7 @@ class PageInput:
     input: dict  # the validated tool input, for the continuation
     raw_artifact_id: str | None
     position_after: Callable[[int], dict | None]  # None means the source is exhausted
+    fields: dict[str, Any] | None = None  # response fields outside the paged units
 
 
 @dataclass(frozen=True)
@@ -343,6 +344,7 @@ def _envelope(
     total_units: int,
     raw_artifact_id: str | None,
     continuation: str | None,
+    fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     envelope: dict[str, Any] = {
         "success": True,
@@ -357,6 +359,8 @@ def _envelope(
     }
     if shape == "table" and columns is not None:
         envelope["columns"] = columns
+    if fields:
+        envelope["fields"] = fields
     return envelope
 
 
@@ -432,7 +436,7 @@ def _build_units(p: PageInput, limit: PageLimit, max_allowed: int) -> tuple[list
         continuation = _continuation(p, len(items))
         envelope = _envelope(
             p.tool_name, p.shape, items, columns, len(items), p.total_units,
-            p.raw_artifact_id, continuation,
+            p.raw_artifact_id, continuation, p.fields,
         )
         if _measure(canonical_page_bytes(envelope), limit) <= max_allowed:
             return items, len(items)
@@ -456,7 +460,7 @@ def _build_blob(p: PageInput, limit: PageLimit, max_allowed: int) -> tuple[str, 
         continuation = _continuation(p, cut) if cut else None
         envelope = _envelope(
             p.tool_name, "blob", [candidate], None, cut, total_bytes,
-            p.raw_artifact_id, continuation,
+            p.raw_artifact_id, continuation, p.fields,
         )
         if _measure(canonical_page_bytes(envelope), limit) <= max_allowed:
             best_text, best_len = candidate, cut
@@ -491,6 +495,6 @@ def build_page(p: PageInput, limit: PageLimit) -> tuple[str, PageMeasure]:
     columns = p.columns if p.shape == "table" else None
     envelope = _envelope(
         p.tool_name, p.shape, items, columns, returned_units, p.total_units,
-        p.raw_artifact_id, continuation,
+        p.raw_artifact_id, continuation, p.fields,
     )
     return _finish(envelope, limit, returned_units, p.total_units, STATUS_OK)

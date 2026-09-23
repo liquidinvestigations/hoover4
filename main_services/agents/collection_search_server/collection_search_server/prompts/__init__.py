@@ -40,6 +40,22 @@ SERVER_TOOLS: Tuple[str, ...] = (
     "read_documents",
     "list_document_entities",
     "cite_documents",
+    "read_more",
+    "search_facet_values",
+    "search_date_histogram",
+    "search_entity_explainer",
+    "doc_sources",
+    "doc_metadata",
+    "doc_email",
+    "doc_diff_sources",
+    "pdf_search",
+    "table_overview",
+    "table_page",
+    "table_column_values",
+    "table_search_cells",
+    "folder_overview",
+    "folder_list",
+    "folder_search",
 )
 
 

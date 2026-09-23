@@ -1,8 +1,7 @@
 # Collection search MCP server
 
-ACL-bounded full-text search of the user's own documents. Port `21930`, container
-`hoover4-mcp-collections`. **Both** agents use it, and it is the only tool the
-internal-search agent has.
+ACL-bounded search and document reads for the user's permitted collections. Port `21930`,
+container `hoover4-mcp-collections`. Both agents use this server.
 
 Search goes through **Manticore**, not vectors: the pipeline writes its page text to
 Manticore shards and its extracted text to ClickHouse. The Milvus tier was removed
@@ -12,11 +11,39 @@ because nothing ever populated it.
 
 | Tool | Purpose |
 |---|---|
-| `list_collections` | what this user may read, always call first |
-| `search_collections` | full-text search across the permitted shards |
-| `read_documents` | the extracted text of several documents, each by `collectionname` + `file_hash`, sharing one budget |
+| `list_collections` | collection names and dataset counts this user may read |
+| `search_collections` | documents, total count, and facets from permitted collections |
+| `read_documents` | extracted text and hit positions for selected documents |
 | `list_document_entities` | what the pipeline found in several documents, in two tiers, sharing one budget |
 | `cite_documents` | put documents forward as evidence, with a verified quote and a `[Dn]` handle |
+
+The agent API supplies the extended `list_collections`, `search_collections`, and
+`read_documents` tools. It also supplies search, document, PDF, table, and folder read tools.
+Each returns one canonical result page. A page can contain a continuation token for
+`read_more`. The server forwards only the caller identity and collection headers to the API.
+The API checks every requested collection.
+Row and tree pages keep other response fields in `fields`. Folder items carry their
+`children` or `files` field name. A large response uses a UTF-8 blob of its response JSON.
+A cut page stores its complete backend response as a required raw artifact.
+
+| Tool | Purpose |
+|---|---|
+| `read_more` | read the next page from a result page continuation |
+| `search_facet_values` | find values for a search facet |
+| `search_date_histogram` | return document or mentioned-date buckets |
+| `search_entity_explainer` | explain one extracted entity value |
+| `doc_sources` | list extracted text sources for a document |
+| `doc_metadata` | return document metadata, dates, locations, and links |
+| `doc_email` | return email fields, attachments, and graph links |
+| `doc_diff_sources` | compare two extracted document sources |
+| `pdf_search` | find text positions in a PDF source |
+| `table_overview` | list table sheets and columns |
+| `table_page` | return a sorted and filtered table page |
+| `table_column_values` | list values for one table column |
+| `table_search_cells` | find matching cells in a table sheet |
+| `folder_overview` | return storage counts for a collection or dataset |
+| `folder_list` | return a folder breadcrumb, children, and files |
+| `folder_search` | find folders and files by name |
 
 ## Two tiers of entity, and why they are not merged
 

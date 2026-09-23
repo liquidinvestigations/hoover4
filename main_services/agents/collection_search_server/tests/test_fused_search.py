@@ -194,12 +194,10 @@ class TestResultBudget:
     def test_the_default_is_well_under_the_cap(self):
         assert server.DEFAULT_MAX_RESULTS < server.MAX_ALLOWED_RESULTS
 
-    def test_the_tool_description_names_the_default_it_wants_left_alone(self):
-        # The description is the only text a model reads before its first call; if it
-        # does not say what the default is, "more" is always the safe-looking choice.
-        description = server.search_collections.description
-        assert str(server.DEFAULT_MAX_RESULTS) in description
-        assert "max_results" in description
+    def test_the_active_tool_description_names_its_result(self):
+        description = server.mcp._tool_manager._tools["search_collections"].description
+        assert "documents" in description
+        assert "document hashes" in description
 
     def test_a_small_result_set_keeps_the_full_snippet(self):
         response = _response(8, snippet_chars=1500)

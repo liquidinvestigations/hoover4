@@ -145,6 +145,8 @@ languages.
 | `F-chat-19b` | Tell the model plainly, in its own instructions, when the conversation can read no collection at all, instead of leaving it to infer that from three empty searches | `prompts.render`'s `collections_hint`, `agent._create_graph` |
 | `F-chat-20` | Turn off the three internet-facing MCP servers (browser, metasearch, whois) so they do not start, and bind the full-research agent to collections and todo only | `internet_tools_enabled`, `deploy.py`, `compose/internet-tools.yaml` |
 | `F-chat-21` | Turn all chat features off at runtime from `/admin/settings` (`chat_enabled`). The backend refuses a new turn when the switch is off, when no provider is configured, or when a non-self-hosted provider has no API key. The composer overlay names which of those three applies. An in-flight turn finishes. | `server_settings.chat_enabled`, `website/backend/src/api/chat/gate.rs`, `website/frontend/src/components/chat_components/gate_overlay.rs` |
+| `F-chat-22` | Read permitted collection, search, document, PDF, table, and folder data through typed collection MCP tools. Each tool forwards the caller identity and permitted collections to the website agent API. | `collection_search_server/backend_client.py`, `collection_search_server/tools_*.py`, `website/backend/src/api/agent/` |
+| `F-chat-22a` | Return each collection MCP data read as one canonical result page. Store the complete backend response for a cut page as a required `detail.json` artifact. Continue through `read_more`. | `collection_search_server/paging.py`, `agent_common/result_pages.py`, `agent_common/artifacts.py` |
 
 ## Administration
 

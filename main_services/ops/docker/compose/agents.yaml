@@ -22,6 +22,7 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=8085
+      - AGENT_API_BASE_URL=${AGENT_API_BASE_URL:-http://hoover4-website:8080}
       - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
@@ -272,4 +273,3 @@ services:
       start_period: 60s
     networks:
       - hoover4
-

@@ -361,13 +361,6 @@ def _shard_tables(collectionname: str) -> list[str]:
     return [f"{r['shard_name']}_pages" for r in rows if r.get("shard_name")]
 
 
-@mcp.tool(
-    name="list_collections",
-    description=(
-        "List the document collections this user is allowed to search. Always call "
-        "this before searching so you use real collection names."
-    ),
-)
 def list_collections() -> list[CollectionInfo]:
     acl = _caller()
     log.info("list_collections user=%s acl=%s", acl.username, list(acl.collections))
@@ -460,26 +453,6 @@ def _apply_payload_budget(response: SearchResponse) -> tuple[int, int]:
     return size, dropped
 
 
-@mcp.tool(
-    name="search_collections",
-    description=(
-        "Full-text search across the user's document collections. Returns matching "
-        "text passages with the document id needed to read the full document.\n\n"
-        "**Pass several queries at once** in `queries`, as different angles on the same "
-        "question, phrased as sentences or several descriptive words rather than single "
-        "keywords. They run together and the results are merged, and **every hit lists "
-        "the queries that found it** in `matched_queries`: a passage three of your "
-        "queries agree on is better corroborated than one only a single query returned. "
-        "Two or three distinct angles in one call beats the same number of separate "
-        "calls. Repeating a query you already sent does nothing and is reported back "
-        "to you.\n\n"
-        f"Leave max_results at the default of {DEFAULT_MAX_RESULTS}: it is already a "
-        "broad look at the collections. One result set has a fixed size budget shared "
-        "across all your queries, so asking for more returns a shorter passage from "
-        "each and then drops the weakest hits, never more to read. Use read_documents "
-        "to read hits in full."
-    ),
-)
 def search_collections(
     queries: list[str] | str | None = None,
     collections: list[str] | str | None = None,
@@ -899,18 +872,6 @@ def _attach_paths(hits: list[SearchHit]) -> None:
             hit.path = paths.get(hit.file_hash)
 
 
-@mcp.tool(
-    name="read_documents",
-    description=(
-        "Read the extracted text of several documents at once. Each entry names its "
-        "collection and the file_hash a search returned. Pass them as "
-        "`[{\"collectionname\": \"...\", \"file_hash\": \"...\"}, ...]`, or as two "
-        "parallel lists in `collectionname` and `file_hash`. Read every promising hit "
-        "in one call rather than one per turn. The character budget is shared across "
-        "the batch, so a document that had to be cut says so, and documents that did "
-        "not fit are named rather than dropped silently."
-    ),
-)
 def read_documents(
     documents: list[dict] | str | None = None,
     collectionname: list[str] | str | None = None,
@@ -1562,6 +1523,14 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
         session, citation.collectionname, citation.file_hash
     )
     return result
+
+
+# Tool modules import this object and register their decorators at import time. The legacy
+# query helpers above remain callable by the unchanged citation and entity tools.
+if __name__ == "__main__":
+    import sys
+    sys.modules["collection_search_server.server"] = sys.modules[__name__]
+from collection_search_server import paging, tools_document, tools_folder, tools_search, tools_table  # noqa: E402,F401
 
 
 @mcp.custom_route("/health", methods=["GET"])
