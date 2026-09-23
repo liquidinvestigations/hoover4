@@ -34,6 +34,28 @@ TOOL_PAYLOAD_CHARS = 24_000
 TOOL_SUMMARY_CHARS = 400
 
 
+def _canonical_json(value: Any) -> str:
+    """Mirrors `agent_common.result_pages.canonical_json`, a copy rather than an import:
+    `hoover4-worker` has no `agent_common` on its import path (`python -c 'import
+    agent_common'` fails inside the running container). `tests/unit/test_agent_trajectory.py`
+    confirms the two copies agree on the same fixtures."""
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def is_canonical_page(text: str) -> bool:
+    """Mirrors `agent_common.result_pages.is_canonical_page`. See `_canonical_json` for
+    why this is a copy. True when `text` parses to a `result_page` object whose canonical
+    re-serialization is `text` itself, byte for byte -- the fixed-point test the byte
+    rule relies on to recognise a broker page with no side channel."""
+    try:
+        value = json.loads(text)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return False
+    if not isinstance(value, dict) or value.get("kind") != "result_page":
+        return False
+    return _canonical_json(value) == text
+
+
 @dataclass
 class PairedToolCall:
     tool_name: str
@@ -196,6 +218,21 @@ def _dumps(value: Any) -> str:
         return str(value)
 
 
+def _page_candidate_text(result: Any) -> str | None:
+    """The text `result` would carry if it is a broker page: a string result as is, or
+    the `text` field of the first `type: text` block of a content-block list. `None` for
+    every other shape, which keeps the legacy truncation path."""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, list):
+        for block in result:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text")
+                return text if isinstance(text, str) else None
+        return None
+    return None
+
+
 def pair_tool_calls(tool_calls: list[dict[str, Any]]) -> list[PairedToolCall]:
     """Pair start events with their end events, one row per completed call.
 
@@ -239,8 +276,17 @@ def pair_tool_calls(tool_calls: list[dict[str, Any]]) -> list[PairedToolCall]:
         # pane shows the result rather than a second copy of the arguments.
         output = _as_dict(content.get("output"))
         result = output.get("content", content)
-        # Inside the JSON, never across it. See `truncate_json`.
-        tool_output = truncate_json(_dumps(result))
+
+        page_text = _page_candidate_text(result)
+        if page_text is not None and is_canonical_page(page_text):
+            # The byte rule: this is the broker's own bytes, already sized to a budget.
+            # Neither `_dumps` nor `truncate_json` runs, because either one would
+            # reformat the text and break the fixed-point test a reader uses to
+            # recognise a page. See `agent_common.result_pages`, "The byte rule".
+            tool_output = page_text
+        else:
+            # Inside the JSON, never across it. See `truncate_json`.
+            tool_output = truncate_json(_dumps(result))
 
         name = _tool_name(content)
         if name == "tool":

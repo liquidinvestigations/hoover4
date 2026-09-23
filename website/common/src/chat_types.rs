@@ -226,7 +226,8 @@ pub struct ChatMessageItem {
     /// JSON arguments the model passed to the tool (role = tool).
     #[serde(default)]
     pub tool_input: String,
-    /// JSON result, truncated to [`TOOL_PAYLOAD_CHARS`] (role = tool).
+    /// JSON result (role = tool). Cut to [`TOOL_PAYLOAD_CHARS`], except a broker result
+    /// page ([`is_canonical_page`]), which is stored and read whole.
     #[serde(default)]
     pub tool_output: String,
     /// JSON array of [`ChatDocRef`] this step surfaced.
@@ -470,11 +471,37 @@ pub const MAX_MESSAGE_CHARS: usize = 8_000;
 /// How many characters of the first user message become the session title fallback.
 pub const TITLE_CHARS: usize = 60;
 
-/// Cap on `tool_output` (and a soft cap on `tool_input`) stored in `chat_messages`.
-/// A `search_collections` result set with long snippets is large; this table is read on
-/// every page load. Sized for the richer web_search payload, the search-detail artifact
-/// absorbs anything bigger.
+/// Cap on `tool_output` (and a soft cap on `tool_input`) stored in `chat_messages`, for
+/// every tool result **except** a broker result page (see [`is_canonical_page`]), which
+/// is already sized to its own budget and is stored and read whole. A `search_collections`
+/// result set with long snippets is large; this table is read on every page load. Sized
+/// for the richer web_search payload, the search-detail artifact absorbs anything bigger.
 pub const TOOL_PAYLOAD_CHARS: usize = 24_000;
+
+/// True when `text` is a broker result page: a `result_page` object whose canonical
+/// re-serialization (sorted keys, compact separators) reproduces `text` byte for byte.
+///
+/// Mirrors `agent_common.result_pages.is_canonical_page` and
+/// `tasks.P_agent.trajectory.is_canonical_page` on the Python side. `serde_json::Value`'s
+/// object is a `BTreeMap`, not an `IndexMap` (`preserve_order` is not enabled anywhere in
+/// this workspace's `Cargo.lock`, confirmed by the absence of an `indexmap` dependency on
+/// `serde_json` there), so `serde_json::to_string` already sorts keys, and its default
+/// formatting is already compact. That is what makes this comparison exact rather than
+/// approximate: `serde_json::to_string(&value)` is the same canonical form Python's
+/// `json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))` builds,
+/// non-ASCII characters left unescaped on both sides.
+pub fn is_canonical_page(text: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+        return false;
+    };
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    if obj.get("kind").and_then(|v| v.as_str()) != Some("result_page") {
+        return false;
+    }
+    matches!(serde_json::to_string(&value), Ok(rendered) if rendered == text)
+}
 
 /// Derive a session title from its first user message.
 pub fn title_from_message(message: &str) -> String {
@@ -542,6 +569,12 @@ const MIN_CLIPPABLE_STRING: usize = 80;
 /// scalar with nothing to drop) falls back to [`truncate_payload`]; the cards render the
 /// raw bytes in that case rather than claiming there was nothing to render.
 pub fn truncate_tool_payload(text: &str, max_chars: usize) -> String {
+    if is_canonical_page(text) {
+        // A broker page is already sized to its own budget. Cutting it here, by the
+        // fixed-point rule `is_canonical_page` checks, would produce bytes the broker
+        // never built, which breaks the test a reader uses to recognise a page.
+        return text.to_string();
+    }
     if text.chars().count() <= max_chars {
         return text.to_string();
     }
@@ -1327,6 +1360,52 @@ mod tests {
     fn a_payload_that_already_fits_is_returned_byte_for_byte() {
         let raw = search_payload(2, 40);
         assert_eq!(truncate_tool_payload(&raw, 24_000), raw);
+    }
+
+    /// A canonical page: sorted keys, compact separators, a non-ASCII character left
+    /// unescaped, a nested object, and a number. Built with `serde_json` directly
+    /// (rather than by hand) so the fixture is the same canonical form `is_canonical_page`
+    /// itself would build, which is the property under test.
+    fn canonical_page_fixture() -> String {
+        let value = serde_json::json!({
+            "kind": "result_page",
+            "success": true,
+            "tool_name": "doc_metadata",
+            "shape": "rows",
+            "items": [{"title": "café", "meta": {"pages": 3, "ocr": false}}],
+            "returned_units": 1,
+            "total_units": 1,
+            "raw_artifact_id": serde_json::Value::Null,
+            "continuation": serde_json::Value::Null,
+        });
+        serde_json::to_string(&value).expect("a JSON value always serialises")
+    }
+
+    #[test]
+    fn is_canonical_page_true_for_the_built_fixture() {
+        let page = canonical_page_fixture();
+        assert!(is_canonical_page(&page));
+        assert!(page.contains("café"), "non-ASCII stays unescaped, as on the Python side");
+    }
+
+    #[test]
+    fn is_canonical_page_false_after_one_byte_changes() {
+        let page = canonical_page_fixture();
+        let changed = format!("{page} ");
+        assert!(!is_canonical_page(&changed));
+    }
+
+    #[test]
+    fn is_canonical_page_false_for_a_different_kind() {
+        assert!(!is_canonical_page(r#"{"kind":"something_else"}"#));
+        assert!(!is_canonical_page("not json"));
+    }
+
+    #[test]
+    fn truncate_tool_payload_never_cuts_a_canonical_page() {
+        let page = canonical_page_fixture();
+        // A budget far smaller than the page: the legacy path would otherwise clip it.
+        assert_eq!(truncate_tool_payload(&page, 5), page);
     }
 
     #[test]

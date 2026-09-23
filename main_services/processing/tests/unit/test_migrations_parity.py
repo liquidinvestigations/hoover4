@@ -33,6 +33,10 @@ COLLAPSED_BASELINE = {
 #: Every table a global migration creates. It mirrors the `CREATE TABLE` statements in
 #: the directory and the collapsed migration set. The set creates every listed table.
 EXPECTED_GLOBAL_TABLES = {
+    "agent_plan_snapshots",
+    "agent_plan_runs",
+    "agent_plan_documents",
+    "agent_plan_decisions",
     "api_events",
     "chat_artifacts",
     "chat_compactions",

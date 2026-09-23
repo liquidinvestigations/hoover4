@@ -11,7 +11,9 @@ import json
 from tasks.P_agent.trajectory import (
     TOOL_PAYLOAD_CHARS,
     TOOL_SUMMARY_CHARS,
+    _canonical_json,
     extract_doc_refs,
+    is_canonical_page,
     pair_tool_calls,
     truncate,
 )
@@ -226,3 +228,63 @@ def test_the_summary_is_the_arguments_not_the_whole_event():
 def test_truncate_leaves_short_text_alone():
     assert truncate("short", 100) == "short"
     assert truncate("abcdef", 3) == "abc…"
+
+
+# --------------------------------------------------------------------------------------
+# The byte rule's store step: a broker result page is stored unchanged.
+# --------------------------------------------------------------------------------------
+
+#: A page-shaped envelope, canonical: sorted keys, compact separators, matching what
+#: `agent_common.result_pages.canonical_page_bytes` would build for the same object.
+_PAGE_ENVELOPE = {
+    "continuation": None,
+    "items": [{"path": "a.txt"}],
+    "kind": "result_page",
+    "raw_artifact_id": None,
+    "returned_units": 1,
+    "shape": "rows",
+    "success": True,
+    "tool_name": "search_collections",
+    "total_units": 1,
+}
+_PAGE_TEXT = json.dumps(_PAGE_ENVELOPE, sort_keys=True, separators=(",", ":"))
+
+
+def test_is_canonical_page_true_for_the_fixture_false_after_a_change():
+    # Parity with `agent_common.result_pages.is_canonical_page`, which cannot be
+    # imported here (`hoover4-worker` has no `agent_common` on its import path -- see
+    # `_canonical_json`'s docstring). Both copies are exercised against the same shape
+    # of fixture in their own suite; this asserts what this copy does with it.
+    assert is_canonical_page(_PAGE_TEXT) is True
+    assert is_canonical_page(_PAGE_TEXT + " ") is False
+    assert is_canonical_page(json.dumps(_PAGE_ENVELOPE)) is False  # unsorted, spaced
+    assert is_canonical_page("not json") is False
+    assert is_canonical_page(_canonical_json({"kind": "not_a_page"})) is False
+
+
+def test_a_string_result_that_is_a_canonical_page_is_stored_unchanged():
+    paired = pair_tool_calls([_start(query="x"), _end("search_collections", _PAGE_TEXT)])
+    assert paired[0].tool_output == _PAGE_TEXT
+
+
+def test_a_content_block_list_carrying_a_page_is_stored_unchanged():
+    # The LangChain content-block shape: [{"type": "text", "text": "..."}].
+    result = [{"type": "text", "text": _PAGE_TEXT}]
+    paired = pair_tool_calls([_start(query="x"), _end("search_collections", result)])
+    assert paired[0].tool_output == _PAGE_TEXT
+
+
+def test_a_non_canonical_page_shaped_result_keeps_the_legacy_path():
+    # Same kind, but not the canonical byte form (extra whitespace): the fixed-point
+    # test must fail it, and it falls back to the ordinary _dumps/truncate_json path.
+    almost_page = json.dumps(_PAGE_ENVELOPE, indent=2)
+    paired = pair_tool_calls([_start(query="x"), _end("search_collections", almost_page)])
+    # The legacy path treats a string result as a JSON *value* to encode, not as JSON
+    # text to pass through, so it comes back re-encoded as a string literal.
+    assert paired[0].tool_output != almost_page
+    assert json.loads(paired[0].tool_output) == almost_page
+
+
+def test_an_ordinary_result_is_unaffected_by_the_page_guard():
+    paired = pair_tool_calls([_start(query="x"), _end("web_search", {"n": 1})])
+    assert paired[0].tool_output == '{"n": 1}'

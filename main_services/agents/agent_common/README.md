@@ -49,6 +49,15 @@ Every part of this decides whether the write lands in the right place:
 * **A failed artifact never fails the tool.** The search still happened; the page was still
   read. `write()` returns `None` and logs, and the caller omits the id.
 
+`write()` covers `search_detail` and `page_capture`. Two more kinds, `agent_raw_result` and
+`agent_plan_document`, go through **`write_required()`** instead: a required write, for a
+body the caller has already decided must have a working link. It raises
+`ArtifactWriteFailed` rather than returning `None`, and it takes the artifact id and an
+idempotency key from the caller so a retry after a partial failure lands on the same object
+key and the same row. It stores the object, inserts the row with the body's SHA-256 in
+`body_sha256`, then reads the row back `FINAL` and confirms the digest before returning the
+id. `body_sha256` and `idempotency_key` are empty on every row `write()` produces.
+
 Path components are sanitised in `s3_store._safe`: the session id arrives in an HTTP
 header, and a header carrying `../../blobs` would otherwise write outside the prefix that
 this module exists to enforce.

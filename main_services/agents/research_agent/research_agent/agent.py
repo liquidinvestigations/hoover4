@@ -27,7 +27,15 @@ def recurse_json_decode(d):
         elif isinstance(d, list):
             return [recurse_json_decode(item) for item in d]
         elif isinstance(d, str):
-            return recurse_json_decode(json.loads(d))
+            parsed = json.loads(d)
+            if isinstance(parsed, dict) and parsed.get("kind") == "result_page":
+                # A broker result page. The byte rule requires this string to reach
+                # `trajectory.py` unchanged: decoding it into a dict here and
+                # re-serializing it later would produce bytes the broker never wrote,
+                # which breaks the fixed-point test that recognises a page on the way
+                # in. See `agent_common.result_pages`, "The byte rule".
+                return d
+            return recurse_json_decode(parsed)
         else:
             return d
     except (JSONDecodeError, TypeError):
