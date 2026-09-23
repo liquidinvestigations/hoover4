@@ -25,6 +25,18 @@ pub const CUSTOM_ROUTE_PREFIXES: [&str; 3] = [
 /// The one path a caller with no identity may still reach.
 const OPEN_PATH: &str = "/favicon.ico";
 
+/// Every stable read route a tool-calling agent may reach.
+///
+/// `session_middleware` resolves the identity on this prefix from the `X-Hoover4-User`
+/// header rather than from a proxy identity header or a session cookie. See
+/// [`crate::auth::session_middleware::session_middleware`].
+pub const AGENT_ROUTE_PREFIX: &str = "/api/agent/v1/";
+
+/// Is this path one of the agent's own routes?
+pub fn is_agent_route(path: &str) -> bool {
+    path.starts_with(AGENT_ROUTE_PREFIX)
+}
+
 /// Must this request already carry a resolved identity?
 ///
 /// True for every path except [`OPEN_PATH`].
@@ -60,6 +72,43 @@ mod tests {
         ] {
             assert!(requires_session(path), "{path} must require a session");
         }
+    }
+
+    #[test]
+    fn every_agent_route_requires_a_session_and_carries_the_prefix() {
+        // The literal paths mounted in `api::agent::mod`, written out rather than
+        // derived, so a route added there and forgotten here fails a test instead of
+        // shipping open.
+        for path in [
+            "/api/agent/v1/collections/list",
+            "/api/agent/v1/search/results",
+            "/api/agent/v1/search/facet_values",
+            "/api/agent/v1/search/date_histogram",
+            "/api/agent/v1/search/entity_explainer",
+            "/api/agent/v1/documents/read",
+            "/api/agent/v1/documents/sources",
+            "/api/agent/v1/documents/metadata",
+            "/api/agent/v1/documents/email",
+            "/api/agent/v1/documents/diff_sources",
+            "/api/agent/v1/documents/pdf_search",
+            "/api/agent/v1/tables/overview",
+            "/api/agent/v1/tables/page",
+            "/api/agent/v1/tables/column_values",
+            "/api/agent/v1/tables/search_cells",
+            "/api/agent/v1/folders/overview",
+            "/api/agent/v1/folders/list",
+            "/api/agent/v1/folders/search",
+        ] {
+            assert!(requires_session(path), "{path} must require a session");
+            assert!(is_agent_route(path), "{path} must carry the agent prefix");
+        }
+    }
+
+    #[test]
+    fn the_agent_prefix_does_not_match_an_ordinary_api_path() {
+        assert!(!is_agent_route("/api/search_for_results16667617515180422573"));
+        assert!(!is_agent_route("/api/agent"));
+        assert!(!is_agent_route("/api/agentv1/x"));
     }
 
     #[test]

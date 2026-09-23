@@ -286,6 +286,84 @@ async fn resolve_identity(
     Some(user)
 }
 
+/// The body of a refusal on the agent prefix: a typed name beside the text, matching the
+/// shape every agent handler uses for its own refusals.
+fn agent_refusal(status: axum::http::StatusCode, error: &str, message: &str) -> Response {
+    let body = serde_json::json!({"error": error, "message": message}).to_string();
+    axum::response::Response::builder()
+        .status(status)
+        .header(axum::http::header::CONTENT_TYPE, "application/json")
+        .body(axum::body::Body::from(body))
+        .unwrap_or_else(|_| axum::response::Response::default())
+}
+
+/// Identify the caller of a request on [`crate::auth::route_policy::AGENT_ROUTE_PREFIX`],
+/// from the request's headers alone, with no `.await`.
+///
+/// The proxy in front of this deployment asserts a `X-Forwarded-User` header, or a
+/// session cookie, on every browser request it forwards. A caller presenting either one
+/// therefore came through the proxy, and rule 1 refuses it: a browser session must never
+/// reach an agent route. A caller with neither is inside the firewalled network and
+/// identifies itself with `X-Hoover4-User`, returned here unresolved.
+///
+/// Kept synchronous and returning an owned `String`, rather than resolving the user row
+/// itself, so no borrow of `Request` (and so no `Body`, which is not `Sync`) is ever
+/// held across an `.await`. `axum::middleware::from_fn` demands a `Send` future, and a
+/// held `&Request` makes the async caller's future not `Send`; the resulting error names
+/// the middleware layer's `.layer(...)` call, not this function.
+fn agent_caller(request: &Request) -> Result<String, Response> {
+    if parse_headers(request).is_some() || cookie_session_id(request).is_some() {
+        return Err(agent_refusal(
+            axum::http::StatusCode::FORBIDDEN,
+            "permission_denied",
+            "agent routes are not reachable through the proxy",
+        ));
+    }
+    request
+        .headers()
+        .get("x-hoover4-user")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            agent_refusal(
+                axum::http::StatusCode::UNAUTHORIZED,
+                "unauthenticated",
+                "agent routes need x-hoover4-user",
+            )
+        })
+}
+
+/// Resolve an already-identified agent caller's username against the existing user
+/// table, by [`build_current_user_from_db`]. **No row is written here**: the
+/// header-identity sync path above provisions a browser user and would overwrite this
+/// user's stored groups with an empty list, which is exactly the write this path must
+/// not make.
+///
+/// Takes the owned username [`agent_caller`] already extracted, never `&Request`: an
+/// async fn parameter of type `&Request` stays part of the generated future's state for
+/// its whole body, even past the point its last use precedes an `.await`, so a
+/// `resolve_agent_identity(request: &Request)` that only *reads* the request before
+/// awaiting is not `Send` either. `Request`'s body, `axum::body::Body`, is not `Sync`,
+/// so a `&Request` held anywhere in the future's state is not `Send`, and
+/// `axum::middleware::from_fn` demands a `Send` future. The resulting error names the
+/// middleware layer's `.layer(...)` call, not the function holding the reference.
+async fn resolve_agent_user(username: &str) -> Result<CurrentUser, Response> {
+    // `build_current_user_from_db` reads the row and errors when it is absent, which
+    // covers a deleted user the same way: `users::get_user` filters `is_deleted` (see
+    // `db_auth::users::get_user`), so a deleted username resolves to no row and this
+    // branch is taken exactly as it is for a username nobody has ever synced.
+    match build_current_user_from_db(username).await {
+        Ok(user) => Ok(user),
+        Err(_) => Err(agent_refusal(
+            axum::http::StatusCode::UNAUTHORIZED,
+            "unauthenticated",
+            "unknown user",
+        )),
+    }
+}
+
 /// The response an endpoint gives when nothing identified the caller.
 fn no_session_response() -> Response {
     axum::response::Response::builder()
@@ -297,9 +375,38 @@ fn no_session_response() -> Response {
         .unwrap_or_else(|_| axum::response::Response::default())
 }
 
-pub async fn session_middleware(mut request: Request, next: Next) -> Response {
+pub async fn session_middleware(request: Request, next: Next) -> Response {
     let path = request.uri().path().to_string();
     let (route_class, function_name) = telemetry::classify_path(&path);
+
+    if crate::auth::route_policy::is_agent_route(&path) {
+        // `agent_caller` runs synchronously, before any `.await`, so the `&request` it
+        // borrows never becomes part of this function's suspended state. Only the owned
+        // `username` it returns crosses into `resolve_agent_user`'s `.await`.
+        let refuse = |refusal: Response| {
+            if let Some(fn_name) = function_name {
+                telemetry::record_api_event(
+                    ANONYMOUS,
+                    telemetry::EVENT_USER_OTHER_REQUEST,
+                    fn_name,
+                    false,
+                    0,
+                    0,
+                    0,
+                );
+            }
+            refusal
+        };
+        let username = match agent_caller(&request) {
+            Ok(username) => username,
+            Err(refusal) => return refuse(refusal),
+        };
+        let current_user = match resolve_agent_user(&username).await {
+            Ok(user) => user,
+            Err(refusal) => return refuse(refusal),
+        };
+        return run_authenticated(request, next, current_user, route_class, function_name).await;
+    }
 
     let Some(current_user) =
         resolve_identity(cookie_session_id(&request), parse_headers(&request)).await
@@ -326,8 +433,22 @@ pub async fn session_middleware(mut request: Request, next: Next) -> Response {
         return next.run(request).await;
     };
 
-    // Telemetry + rate limiting for API calls (server functions and the
-    // download route). Static assets are neither limited nor recorded.
+    run_authenticated(request, next, current_user, route_class, function_name).await
+}
+
+/// The shared tail of [`session_middleware`], once a caller is identified: rate limiting,
+/// the `CurrentUser` extension, and the before/after telemetry. A browser request and an
+/// agent request reach here the same way, because both are, from this point on, an
+/// authenticated call on an instrumented path.
+async fn run_authenticated(
+    mut request: Request,
+    next: Next,
+    current_user: CurrentUser,
+    route_class: telemetry::RouteClass,
+    function_name: Option<&'static str>,
+) -> Response {
+    // Telemetry + rate limiting for API calls (server functions, the download routes and
+    // the agent routes). Static assets are neither limited nor recorded.
     let bytes_in = request
         .headers()
         .get(axum::http::header::CONTENT_LENGTH)
@@ -396,4 +517,48 @@ pub async fn session_middleware(mut request: Request, next: Next) -> Response {
     }
 
     response
+}
+
+#[cfg(test)]
+mod agent_identity_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request as HttpRequest;
+
+    fn request_with_headers(headers: &[(&str, &str)]) -> Request {
+        let mut builder = HttpRequest::builder().uri("/api/agent/v1/collections/list");
+        for (name, value) in headers {
+            builder = builder.header(*name, *value);
+        }
+        builder.body(Body::empty()).unwrap()
+    }
+
+    /// A proxied identity header names a browser session, not an agent caller. An agent
+    /// route must refuse it rather than resolve it.
+    #[test]
+    fn a_proxy_identity_header_is_refused() {
+        let request = request_with_headers(&[("x-forwarded-user", "alice")]);
+        let refusal = agent_caller(&request).unwrap_err();
+        assert_eq!(refusal.status(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    /// A session cookie also names a browser session and is refused the same way.
+    #[test]
+    fn a_session_cookie_is_refused() {
+        let request = request_with_headers(&[(
+            "cookie",
+            &format!("{SESSION_COOKIE}=some-session-id"),
+        )]);
+        let refusal = agent_caller(&request).unwrap_err();
+        assert_eq!(refusal.status(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    /// No proxy header, no cookie, and no `x-hoover4-user` either: there is nothing to
+    /// identify a caller from.
+    #[test]
+    fn a_request_with_no_agent_header_is_refused() {
+        let request = request_with_headers(&[]);
+        let refusal = agent_caller(&request).unwrap_err();
+        assert_eq!(refusal.status(), axum::http::StatusCode::UNAUTHORIZED);
+    }
 }

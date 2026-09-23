@@ -1,6 +1,7 @@
 //! HTTP API router setup and module wiring.
 
 pub mod admin;
+pub mod agent;
 pub mod chat;
 pub mod documents;
 pub mod list_datasets;

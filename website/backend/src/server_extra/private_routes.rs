@@ -30,10 +30,14 @@ use axum::{
 /// ([`crate::auth::route_policy::CUSTOM_ROUTE_PREFIXES`]), read from there rather than
 /// restated: a route that is private enough to need an ACL is private enough to need a
 /// session, and two copies of the list would eventually disagree about one of them.
-use crate::auth::route_policy::CUSTOM_ROUTE_PREFIXES as PRIVATE_PREFIXES;
+use crate::auth::route_policy::{self, CUSTOM_ROUTE_PREFIXES as PRIVATE_PREFIXES};
 
+/// A path is private when it serves bytes behind a per-request permission check: the
+/// three custom byte routes, or an agent route. An agent route answers a caller with no
+/// proxy identity header and no session cookie, so a shared cache or a permissive CORS
+/// header on it is as wrong as it is on `/_chat_artifact/…`.
 pub fn is_private_path(path: &str) -> bool {
-    PRIVATE_PREFIXES.iter().any(|p| path.starts_with(p))
+    PRIVATE_PREFIXES.iter().any(|p| path.starts_with(p)) || route_policy::is_agent_route(path)
 }
 
 pub async fn strip_cors_on_private_routes(request: Request, next: Next) -> Response {
@@ -63,5 +67,11 @@ mod tests {
         assert!(!is_private_path("/api/search_for_results1234"));
         // Prefix, not `contains`: a path that merely mentions the route is not it.
         assert!(!is_private_path("/x/_chat_artifact/abc/page.html"));
+    }
+
+    #[test]
+    fn the_agent_prefix_is_private_too() {
+        assert!(is_private_path("/api/agent/v1/collections/list"));
+        assert!(!is_private_path("/api/agentv1/collections/list"));
     }
 }

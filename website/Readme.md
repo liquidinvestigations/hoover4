@@ -33,6 +33,30 @@ The explanations live in `docs/`, because they outlive any one change here:
 | the suites, the screenshot harness, the two diagnostics | [`docs/quality-assurance/Testing_The_Website.md`](../docs/quality-assurance/Testing_The_Website.md) |
 | what the site does, per route, as agreed | [`docs/technical-specification/`](../docs/technical-specification/Readme.md) |
 
+## Agent routes
+
+Every path under `/api/agent/v1/` is a stable read route for a tool-calling agent, mounted
+beside the ordinary Dioxus server functions and covered by the same session middleware. Each
+route is `POST` with a JSON body and a JSON response, defined in `common::agent_api` and
+implemented in `backend::api::agent`.
+
+**The identity rule differs from every other route.** A caller reaches an agent route from
+inside the network, never through the reverse proxy: a request carrying `X-Forwarded-User` or
+a session cookie is refused with `403`, because that shape only ever comes from the proxy in
+front of a browser session. A request identifies itself with `X-Hoover4-User` instead,
+resolved against the existing user table. An absent header, or a username with no matching
+row, is refused with `401`. No user or group row is written on this path: the header-identity
+sync a browser request triggers would overwrite a resolved user's stored groups with an empty
+list, so the agent branch reads the row and never writes it.
+
+A request also carries `X-Hoover4-Collections`, a comma-separated list narrowing the caller's
+own permitted collections; an empty header means the whole permitted set. A named collection
+outside that set is refused with `403`, not `404`: the caller asked for something that exists
+and was refused, which is a different fact from asking for something absent.
+
+`scripts/test-agent-api-contract.sh` calls every route against the running site, plus the four
+identity refusals and one forbidden-collection case, and exits nonzero on the first failure.
+
 ## Testing
 
 | what | how |
@@ -42,6 +66,7 @@ The explanations live in `docs/`, because they outlive any one change here:
 | hook order | `dx check --package frontend`; `run-stack-tests.sh` and `development.sh` both run it first |
 | live stack | `./run-stack-tests.sh` (fast only), `./run-stack-tests.sh --slow` (everything) |
 | whole stack | `main_services/verify-stack.sh` |
+| agent routes | `scripts/test-agent-api-contract.sh`, against the running site |
 | screenshots | `./take-screenshots.sh` |
 | chat observation | `./observe-chat.sh` |
 

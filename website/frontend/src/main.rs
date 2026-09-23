@@ -70,6 +70,11 @@ fn main() {
                     "/_chat_artifact/{artifact_id}/{asset}",
                     axum::routing::get(backend::server_extra::chat_artifact::chat_artifact),
                 )
+                // The agent's eighteen stable read routes, under
+                // `backend::auth::route_policy::AGENT_ROUTE_PREFIX`. Merged in here, before
+                // the session-middleware layer below, so that layer's agent branch resolves
+                // the caller for each one before its handler runs.
+                .merge(backend::api::agent::router())
                 // we can apply a layer to the entire router using axum's `.layer` method
                 .layer(axum::middleware::from_fn(
                     backend::auth::session_middleware::session_middleware,
