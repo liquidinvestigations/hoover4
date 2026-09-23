@@ -40,10 +40,8 @@ beside the ordinary Dioxus server functions and covered by the same session midd
 route is `POST` with a JSON body and a JSON response, defined in `common::agent_api` and
 implemented in `backend::api::agent`.
 
-**The identity rule differs from every other route.** A caller reaches an agent route from
-inside the network, never through the reverse proxy: a request carrying `X-Forwarded-User` or
-a session cookie is refused with `403`, because that shape only ever comes from the proxy in
-front of a browser session. A request identifies itself with `X-Hoover4-User` instead,
+An agent route refuses `X-Forwarded-User` and session cookies with `403`.
+A request identifies itself with `X-Hoover4-User`,
 resolved against the existing user table. An absent header, or a username with no matching
 row, is refused with `401`. No user or group row is written on this path: the header-identity
 sync a browser request triggers would overwrite a resolved user's stored groups with an empty

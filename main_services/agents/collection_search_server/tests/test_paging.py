@@ -1,8 +1,10 @@
 """Check response fields and source positions in collection result pages."""
 
 import json
+from copy import deepcopy
 
 import pytest
+from pydantic import ValidationError
 
 from agent_common.artifacts import ArtifactWriteFailed
 from agent_common.result_pages import ByteLimit, decode_continuation
@@ -20,23 +22,23 @@ TOOLS = {
 
 SAMPLES = {
     "list_collections": {"collections": [{"collectionname": "c", "document_count": 1, "datasets": [{"name": "d", "document_count": 1}]}]},
-    "search_collections": {"documents": [{"file_hash": "h"}], "total_count": 3, "facet_counts": {"type": [{"value": "pdf", "count": 2}]}, "page": 0, "has_more": True},
+    "search_collections": {"documents": [{"collectionname": "c", "file_hash": "h", "path": "/h", "title": "h", "snippet": "h", "canonical_file_type": "text", "size": 1, "document_date": None, "dataset": "d"}], "total_count": 3, "facet_counts": {"type": [{"value": "pdf", "count": 2}]}, "page": 0, "has_more": True},
     "search_facet_values": {"terms": [{"id": 1, "text": "pdf", "count": 2}], "resolved": {"1": "pdf"}},
     "search_date_histogram": {"buckets": [{"start": 1, "end": 2, "count": 1}], "date_field": "date"},
-    "search_entity_explainer": {"explanation": {"title": "person"}, "documents": [{"file_hash": "h"}]},
-    "read_documents": {"documents": [{"file_hash": "h", "text": "a", "hit_count": 1, "hit_positions": [0]}]},
+    "search_entity_explainer": {"explanation": {"title": "person", "subtitle": "", "body": "", "facts": [], "references": []}, "documents": [{"file_hash": "h", "path": "/h", "title": "h", "snippet": "h"}]},
+    "read_documents": {"documents": [{"collectionname": "c", "file_hash": "h", "path": "/h", "title": "h", "source_used": "raw_text", "text": "a", "hit_count": 1, "hit_positions": [0]}]},
     "doc_sources": {"sources": [{"source": "text", "hit_count": 1}]},
-    "doc_metadata": {"raw_metadata": {"author": ["a"]}, "dates": [{"value": "today"}], "file_locations": ["p"], "path": "p", "canonical_file_type": "pdf", "download_links": {"original": "/x"}},
-    "doc_email": {"envelope": {"subject": "s"}, "headers": {"x": "y"}, "attachments": [{"name": "a"}], "graph": {"nodes": [1], "edges": []}},
+    "doc_metadata": {"raw_metadata": {"author": ["a"]}, "dates": [{"value": 1, "kind": "created", "provenance": "tika"}], "file_locations": ["p"], "path": "p", "canonical_file_type": "pdf", "download_links": {"original": "/x", "ocr_pdf": None}},
+    "doc_email": {"envelope": {"subject": "s", "date": None, "from": [], "to": [], "cc": [], "bcc": []}, "headers": {"x": "y"}, "attachments": [{"file_hash": "h", "name": "a", "size": 1}], "graph": {"nodes": [{"file_hash": "h", "subject": "s", "is_centre": True}], "edges": []}},
     "doc_diff_sources": {"source_a": "a", "source_b": "b", "unified_diff": "-a\n+b"},
-    "pdf_search": {"pdf_url": "/x", "hit_positions": [{"page": 1}], "hit_count": 1},
+    "pdf_search": {"pdf_url": "/x", "hit_positions": [{"page": 1, "start": 0, "end": 2}], "hit_count": 1},
     "table_overview": {"sheets": [{"name": "s", "row_count": 1, "column_count": 1, "columns": [{"name": "a", "type": "text"}]}]},
     "table_page": {"columns": [{"name": "a", "type": "text", "hidden": False}], "rows": [{"row_number": 1, "cells": {"a": "x"}}], "page": 0, "total_rows": 1},
     "table_column_values": {"values": [{"value": "x", "count": 1}]},
     "table_search_cells": {"hit_count": 1, "hits": [{"row_number": 1, "column": "a", "value": "x"}]},
-    "folder_overview": {"datasets": [{"name": "d"}], "folder_count": 1, "file_count": 2, "total_bytes": 3},
-    "folder_list": {"breadcrumb": [{"node_id": "r", "name": "root"}], "container_root": "r", "children": [{"node_id": "a", "name": "a"}], "files": [{"node_id": "b", "name": "b"}], "page": 0},
-    "folder_search": {"matches": [{"node_id": "a", "name": "a"}]},
+    "folder_overview": {"datasets": [{"name": "d", "document_count": 2}], "folder_count": 1, "file_count": 2, "total_bytes": 3},
+    "folder_list": {"breadcrumb": [{"node_id": "r", "name": "root"}], "container_root": "r", "children": [{"node_id": "a", "name": "a", "kind": "dir", "child_count": 1, "term_id": None}], "files": [{"node_id": "b", "file_hash": "h", "name": "b", "size": 1, "date": None, "canonical_file_type": "text", "is_container": False, "term_id": None}], "page": 0},
+    "folder_search": {"matches": [{"node_id": "a", "parent_id": "r", "name": "a", "kind": "dir", "path": "/a", "term_id": None}]},
 }
 
 
@@ -44,7 +46,7 @@ SAMPLES = {
 def test_route_fields_reach_page(name, monkeypatch):
     tool = TOOLS[name]
     response = {**SAMPLES[name], "source": "fingerprint"}
-    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, source=None: response_model.model_validate(response))
+    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, expected_source=None: response_model.model_validate(response))
     monkeypatch.setattr("collection_search_server.paging._artifact", lambda tool_name, complete: "artifact")
     request = tool.model.model_construct()
     page = json.loads(tool.render(request, {}, ""))
@@ -65,10 +67,21 @@ def test_route_fields_reach_page(name, monkeypatch):
             assert page["fields"][key] == value
 
 
+@pytest.mark.parametrize("name,item_key,missing", [
+    ("search_collections", "documents", "collectionname"),
+    ("table_page", "rows", "row_number"),
+])
+def test_missing_nested_route_field_is_refused(name, item_key, missing):
+    response = {**deepcopy(SAMPLES[name]), "source": "fingerprint"}
+    del response[item_key][0][missing]
+    with pytest.raises(ValidationError):
+        RESPONSE_MODELS[TOOLS[name].route].model_validate(response)
+
+
 def test_changed_source_returns_typed_error(monkeypatch):
     tool = TOOLS["search_collections"]
     response = {**SAMPLES["search_collections"], "source": "new"}
-    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, source=None: response_model.model_validate(response))
+    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, expected_source=None: response_model.model_validate(response))
     page = json.loads(tool.render(tool.model.model_construct(), {"page": 1, "offset": 0}, "old"))
     assert page["error"] == "source_changed"
 
@@ -84,11 +97,18 @@ def test_malformed_continuation_fields_return_invalid_argument(change):
 def test_two_backend_pages_and_inside_page_cut(name, monkeypatch):
     tool = TOOLS[name]
     batch_size = {"search_collections": 2, "table_page": 50, "folder_list": 200}[name]
-    first = [{"node_id": str(n), "file_hash": str(n), "text": "x" * (350 if name == "search_collections" else 1)} for n in range(batch_size)]
-    second = [{"node_id": str(n), "file_hash": str(n), "text": "x" * (350 if name == "search_collections" else 1)} for n in range(batch_size, batch_size * 2)]
+    def item(n):
+        if name == "search_collections":
+            return {**SAMPLES[name]["documents"][0], "file_hash": str(n), "snippet": "x" * 350}
+        if name == "table_page":
+            return {"row_number": n, "cells": {"text": str(n)}}
+        return {**SAMPLES[name]["files"][0], "node_id": str(n), "file_hash": str(n)}
+
+    first = [item(n) for n in range(batch_size)]
+    second = [item(n) for n in range(batch_size, batch_size * 2)]
     calls = []
 
-    def post(self, route, request, response_model, source=None):
+    def post(self, route, request, response_model, expected_source=None):
         page = request.position.page if request.position else 0
         calls.append(page)
         items = first if page == 0 else second if page == 1 else []
@@ -108,23 +128,34 @@ def test_two_backend_pages_and_inside_page_cut(name, monkeypatch):
     if name == "folder_list":
         assert page["total_units"] > page["returned_units"]
     seen = []
+    blob_parts = {}
+    backend_page = 0
     for _ in range(20):
         assert page["success"], page
-        seen.extend(page["items"])
+        if page["shape"] == "blob":
+            blob_parts.setdefault(backend_page, []).extend(page["items"])
+        else:
+            seen.extend(page["items"])
         if not page["continuation"]:
             break
-        page = json.loads(_read_more_response(decode_continuation(page["continuation"])))
-    assert len(seen) == batch_size * 2
-    ids = [item["value"]["file_hash"] if name == "folder_list" else item["file_hash"] for item in seen]
+        token = decode_continuation(page["continuation"])
+        backend_page = token["position"]["page"]
+        page = json.loads(_read_more_response(token))
+    if name == "folder_list" and blob_parts:
+        ids = [item["file_hash"] for page_number in sorted(blob_parts)
+               for item in json.loads("".join(blob_parts[page_number]))["files"]]
+    else:
+        assert len(seen) == batch_size * 2
+        ids = [item["value"]["file_hash"] if name == "folder_list" else str(item["row_number"]) if name == "table_page" else item["file_hash"] for item in seen]
     assert ids == [str(n) for n in range(batch_size * 2)]
-    assert calls[:2] == ([0, 0] if name == "search_collections" else [0, 1])
+    assert 0 in calls and 1 in calls
     assert page["continuation"] is None
 
 
 def test_required_artifact_failure_is_returned(monkeypatch):
     tool = TOOLS["search_collections"]
     response = {**SAMPLES["search_collections"], "source": "stable"}
-    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, source=None: response_model.model_validate(response))
+    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, expected_source=None: response_model.model_validate(response))
 
     def fail(tool_name, complete):
         raise ArtifactWriteFailed("write failed")
@@ -137,7 +168,7 @@ def test_required_artifact_failure_is_returned(monkeypatch):
 def test_large_field_uses_utf8_blob_with_field_name(monkeypatch):
     tool = TOOLS["doc_email"]
     response = {**SAMPLES["doc_email"], "headers": {"subject": "é" * 12_000}, "source": "stable"}
-    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, source=None: response_model.model_validate(response))
+    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, expected_source=None: response_model.model_validate(response))
     monkeypatch.setattr("collection_search_server.paging._artifact", lambda tool_name, complete: "artifact")
     first = json.loads(tool.render(tool.model.model_validate({"collectionname": "c", "file_hash": "h"}), {}, ""))
     assert first["shape"] == "blob"

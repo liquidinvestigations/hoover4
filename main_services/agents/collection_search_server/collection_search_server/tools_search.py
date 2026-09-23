@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from agent_common.result_pages import canonical_json
 from collection_search_server.backend_client import (
-    AgentError, CollectionsListRequest, SearchDateHistogramRequest,
+    AgentError, AgentSort, CollectionsListRequest, SearchDateHistogramRequest,
     SearchEntityExplainerRequest, SearchFacetValuesRequest, SearchResultsRequest,
 )
 from collection_search_server.paging import PagedTool, error_text
@@ -41,7 +41,7 @@ def list_collections() -> str:
 
 
 @mcp.tool(name="search_collections", description="Search permitted collections for documents. Use it to find document hashes and paths before reading documents.")
-def search_collections(collectionname: list[str] | None = None, query: str = "", sort: dict[str, str] | None = None, date_after: int | None = None, date_before: int | None = None, date_confirmed_only: bool | None = None, size_min: int | None = None, size_max: int | None = None, folder_term_id: int | None = None, filename_only: bool | None = None, facet_filters: dict[str, list[str]] | None = None) -> str:
+def search_collections(collectionname: list[str] | None = None, query: str = "", sort: AgentSort | None = None, date_after: int | None = None, date_before: int | None = None, date_confirmed_only: bool | None = None, size_min: int | None = None, size_max: int | None = None, folder_term_id: int | None = None, filename_only: bool | None = None, facet_filters: dict[str, list[str]] | None = None) -> str:
     return _render(SEARCH_COLLECTIONS, {"collectionname": collectionname or [], "query": query, "sort": sort, "date_after": date_after, "date_before": date_before, "date_confirmed_only": date_confirmed_only, "size_min": size_min, "size_max": size_max, "folder_term_id": folder_term_id, "filename_only": filename_only, "facet_filters": facet_filters or {}})
 
 

@@ -1,7 +1,6 @@
 """`recurse_json_decode` must carry a broker result page through unchanged.
 
-The byte rule (`4-technical-design.md#the-byte-rule`) requires the exact string a tool
-call returned to reach `trajectory.py`. Decoding a page's nested string into a dict here,
+The transcript stores the exact string the tool returns. Decoding a page's nested string into a dict here,
 the way every other JSON-shaped string is decoded, would leave `trajectory.py` a dict
 that a later `_dumps` call re-serializes into different bytes than the broker built.
 """

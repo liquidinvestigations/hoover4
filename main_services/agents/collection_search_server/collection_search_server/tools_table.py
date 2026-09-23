@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from agent_common.result_pages import canonical_json
-from collection_search_server.backend_client import TablesColumnValuesRequest, TablesOverviewRequest, TablesPageRequest, TablesSearchCellsRequest
+from collection_search_server.backend_client import AgentTableFilter, AgentTableSort, TablesColumnValuesRequest, TablesOverviewRequest, TablesPageRequest, TablesSearchCellsRequest
 from collection_search_server.paging import PagedTool
 from collection_search_server.server import mcp
 
@@ -32,7 +32,7 @@ def table_overview(collectionname: str, file_hash: str) -> str:
 
 
 @mcp.tool(name="table_page", description="Return one sorted and filtered table page. Use it to read table rows and visible columns.")
-def table_page(collectionname: str, file_hash: str, sheet: int, sort: dict[str, Any] | None = None, filters: list[dict[str, Any]] | None = None, hidden_columns: list[int] | None = None, search: str = "") -> str:
+def table_page(collectionname: str, file_hash: str, sheet: int, sort: AgentTableSort | None = None, filters: list[AgentTableFilter] | None = None, hidden_columns: list[int] | None = None, search: str = "") -> str:
     return _render(TABLE_PAGE, {"collectionname": collectionname, "file_hash": file_hash, "sheet": sheet, "sort": sort, "filters": filters or [], "hidden_columns": hidden_columns or [], "search": search})
 
 

@@ -62,10 +62,10 @@ class PagedTool:
             return canonical_json({"success": False, "error": "invalid_argument", "message": "continuation position is invalid"})
         if "position" in type(request).model_fields:
             request = request.model_copy(update={"position": AgentPosition(page=page)})
-        result = BackendClient().post(self.route, request, RESPONSE_MODELS[self.route], source=source or None)
+        result = BackendClient().post(self.route, request, RESPONSE_MODELS[self.route], expected_source=source or None)
         if isinstance(result, AgentError):
             return error_text(result)
-        result = result.model_dump(mode="json")
+        result = result.model_dump(mode="json", by_alias=True)
         if source and result.get("source", "") != source:
             return canonical_json({"success": False, "error": "source_changed", "message": "the source changed after the prior page"})
         encoded = canonical_json(result).encode("utf-8")

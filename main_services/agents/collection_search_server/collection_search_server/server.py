@@ -2,7 +2,7 @@
 
 Tools:
     ``list_collections``      what the calling user may read
-    ``search_collections``    hybrid search across the permitted Manticore shards
+    ``search_collections``    search through the website agent API
     ``read_documents``        the extracted text of several documents
     ``list_document_entities`` named entities found in one document
 
@@ -10,7 +10,7 @@ Every tool resolves the caller's ACL from request headers (see :mod:`.acl`) befo
 touches a database, and every collection name reaching SQL has been validated against
 the shared collectionname rule.
 
-Search is **hybrid** when the embeddings stack is probed (`server_settings.
+The legacy search path is **hybrid** when the embeddings stack is probed (`server_settings.
 embeddings_serving_model` + `EMBEDDINGS_URL`): a keyword ranking from the `_pages`
 shards and a vector ranking from the `_vectors` shards are RRF-fused
 (`agent_common.fusion`, the same module metasearch uses), reranked through the same

@@ -47,8 +47,8 @@ if [[ ! "$session_id" =~ ^[a-zA-Z0-9-]+$ || ! "$seq" =~ ^[0-9]+$ ]]; then
 fi
 row="$(docker exec clickhouse sh -lc 'clickhouse-client -u "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --query "$1"' _ "SELECT base64Encode(tool_output) FROM Hoover4_Processing.chat_messages FINAL WHERE session_id = '$session_id' AND seq = $seq AND tool_name = '$tool' LIMIT 1" )"
 if [[ -z "$row" ]]; then
-  echo 'stored row: not checked'
-  exit 0
+  echo 'stored row selector found no row' >&2
+  exit 1
 fi
 stored_digest="$(printf '%s' "$row" | base64 -d | sha256sum | cut -d' ' -f1)"
 broker_digest="${AGENT_PAGE_BROKER_SHA256:-}"

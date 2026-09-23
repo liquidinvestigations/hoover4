@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import requests
+import pytest
+from pydantic import ValidationError
 
 from collection_search_server import backend_client
 
@@ -85,3 +87,37 @@ def test_timeout_is_typed_and_retried(monkeypatch):
 
     assert result.error == "timed_out"
     assert len(session.calls) == 2
+
+
+def test_continuation_keeps_document_source(monkeypatch):
+    session = Session([Response(200, {"documents": [], "source": "file:raw_text"})])
+    client = backend_client.BackendClient("http://agent-api", session)
+    monkeypatch.setattr(client, "caller_headers", lambda: {})
+    request = backend_client.DocumentsReadRequest(
+        collectionname="testdata", file_hash=["file"], source="raw_text"
+    )
+
+    client.post("documents/read", request, backend_client.DocumentsReadResponse, expected_source="file:raw_text")
+
+    assert session.calls[0][1]["json"]["source"] == "raw_text"
+    assert session.calls[0][1]["json"]["expected_source"] == "file:raw_text"
+
+
+@pytest.mark.parametrize("values", [
+    {"query": "bad\nquery"},
+    {"sort": {"field": "invalid", "direction": "desc"}},
+    {"sort": {"field": "date", "direction": "invalid"}},
+    {"facet_filters": {"file_types": ["bad\x00value"]}},
+    {"position": {"page": -1}},
+])
+def test_invalid_search_input_is_refused(values):
+    with pytest.raises(ValidationError):
+        backend_client.SearchResultsRequest.model_validate(values)
+
+
+def test_invalid_table_filter_is_refused():
+    with pytest.raises(ValidationError):
+        backend_client.TablesPageRequest.model_validate({
+            "collectionname": "c", "file_hash": "h", "sheet": 0,
+            "filters": [{"column": 0, "contains": "x", "equals": "x"}],
+        })

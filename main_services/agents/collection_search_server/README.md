@@ -12,7 +12,7 @@ because nothing ever populated it.
 | Tool | Purpose |
 |---|---|
 | `list_collections` | collection names and dataset counts this user may read |
-| `search_collections` | documents, total count, and facets from permitted collections |
+| `search_collections` | documents and a total count from selected permitted collections |
 | `read_documents` | extracted text and hit positions for selected documents |
 | `list_document_entities` | what the pipeline found in several documents, in two tiers, sharing one budget |
 | `cite_documents` | put documents forward as evidence, with a verified quote and a `[Dn]` handle |
@@ -96,19 +96,12 @@ is bounded and evicts whole sessions rather than individual handles: a session t
 out gets fresh numbering, and `[D3]` meaning two documents inside one conversation is worse
 than `[D1]` starting over.
 
-## The ACL
+## Collection access
 
-The agent acts *on behalf of a user*, so every call is bounded by two headers:
-
-* `Authorization: Bearer <MCP_SHARED_SECRET>`, proves the caller is the website/agent
-  tier and not something else that found the port.
-* `X-Hoover4-Collections`, the user's permitted collections, resolved by the website
-  backend, which is the only component that can read `collection_group_permissions`.
-
-**This server never derives permissions**, it only enforces the list it is handed. Putting
-the ACL in a tool argument would let the model choose its own permissions; re-deriving it
-here would mean a second implementation of the group/public union that could drift from
-the website's. See [`collection_search_server/acl.py`](collection_search_server/acl.py).
+The server forwards caller identity and collection headers to the website agent API.
+The API checks access for every requested collection.
+The server checks collection access for tools that read the datastore directly.
+See [`collection_search_server/acl.py`](collection_search_server/acl.py).
 
 ## MATCH syntax: operators pass through
 

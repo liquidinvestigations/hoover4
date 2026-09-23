@@ -222,5 +222,45 @@ run_case "folders/search" 200 \
   "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
   -d '{"collectionname":"testdata","dataset":"testdata_testfiles","query":"easychair"}' "$BASE_URL/api/agent/v1/folders/search"
 
+run_case "empty search list respects selected collection" 200 \
+  'import json,sys; b=json.load(sys.stdin); assert b["documents"] and all(d["collectionname"]=="testdata" for d in b["documents"]), b' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" -H 'X-Hoover4-Collections: testdata' "${JSON_HEADER[@]}" \
+  -d '{"collectionname":[],"query":""}' "$BASE_URL/api/agent/v1/search/results"
+
+run_case "dataset facet cannot replace selected collection" 403 \
+  'import json,sys; b=json.load(sys.stdin); assert b["error"]=="permission_denied", b' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" -H 'X-Hoover4-Collections: testdata' "${JSON_HEADER[@]}" \
+  -d '{"collectionname":["testdata"],"query":"","facet_filters":{"collection_dataset":["other_emails"]}}' "$BASE_URL/api/agent/v1/search/results"
+
+run_case "folder list rejects another collection dataset" 403 \
+  'import json,sys; b=json.load(sys.stdin); assert b["error"]=="permission_denied", b' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" -H 'X-Hoover4-Collections: testdata' "${JSON_HEADER[@]}" \
+  -d '{"collectionname":"testdata","dataset":"other_emails"}' "$BASE_URL/api/agent/v1/folders/list"
+
+run_case "folder search rejects another collection dataset" 403 \
+  'import json,sys; b=json.load(sys.stdin); assert b["error"]=="permission_denied", b' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" -H 'X-Hoover4-Collections: testdata' "${JSON_HEADER[@]}" \
+  -d '{"collectionname":"testdata","dataset":"other_emails","query":"mail"}' "$BASE_URL/api/agent/v1/folders/search"
+
+run_case "invalid sort is refused" 400 \
+  'import json,sys; b=json.load(sys.stdin); assert b["error"]=="invalid_argument", b' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
+  -d '{"collectionname":["testdata"],"query":"","sort":{"field":"invalid","direction":"invalid"}}' "$BASE_URL/api/agent/v1/search/results"
+
+run_case "selected document source stays selected" 200 \
+  'import json,sys; b=json.load(sys.stdin); assert len(b["documents"])==1 and b["documents"][0]["source_used"]=="raw_text", b' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
+  -d "{\"collectionname\":\"testdata\",\"file_hash\":[\"$TWO_SOURCE_DOC\"],\"source\":\"raw_text\"}" "$BASE_URL/api/agent/v1/documents/read"
+
+run_case "search continuation rejects changed source" 409 \
+  'import json,sys; b=json.load(sys.stdin); assert b["error"]=="source_changed", b' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
+  -d '{"collectionname":["testdata","other"],"query":"","expected_source":"stale"}' "$BASE_URL/api/agent/v1/search/results"
+
+run_case "folder continuation rejects changed tree" 409 \
+  'import json,sys; b=json.load(sys.stdin); assert b["error"]=="source_changed", b' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
+  -d '{"collectionname":"testdata","dataset":"testdata_testfiles","expected_source":"stale"}' "$BASE_URL/api/agent/v1/folders/list"
+
 echo "all agent API contract cases passed"
 exit 0

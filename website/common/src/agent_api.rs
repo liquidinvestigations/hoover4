@@ -1,13 +1,12 @@
 //! Request and response types for the agent routes under `/api/agent/v1/`.
 //!
 //! One struct pair per route. Every `serde` field name equals the field name the agent
-//! tool catalogue names for that route. A later pass mirrors these shapes in Python for
-//! the tools that call these routes.
+//! tool catalogue names for that route. The collection server mirrors these shapes in Python.
 //!
 //! Every response that a search, document, table or folder read produces carries
 //! `source`, the fingerprint a later `read_more` call compares against. A document or
 //! table route uses the file hash plus the source name it read; a search or folder route
-//! uses the collection's index generation, or the empty string where none exists.
+//! uses the searched collections or requested folder tree.
 
 use std::collections::BTreeMap;
 
@@ -23,7 +22,7 @@ pub struct AgentErrorBody {
 }
 
 /// A page number, the only thing a search, folder or table route reads out of the
-/// optional `position` object. A text read ignores `position`, because `W4` pages text
+/// optional `position` object. A text read ignores `position`, because the broker pages text
 /// inside the broker.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct AgentPosition {
@@ -71,6 +70,8 @@ pub struct AgentSort {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SearchResultsRequest {
     #[serde(default)]
+    pub expected_source: Option<String>,
+    #[serde(default)]
     pub collectionname: Vec<String>,
     #[serde(default)]
     pub query: String,
@@ -102,14 +103,14 @@ pub struct AgentSearchDocument {
     pub file_hash: String,
     /// The first storage location the structure index has for this file, or empty when
     /// none was found. Absent from the source `search_for_results` struct; composed with
-    /// one `get_first_vfs_path` lookup per result. See the report's "Route sources".
+    /// one `get_first_vfs_path` lookup per result.
     pub path: String,
     pub title: String,
     pub snippet: String,
     pub canonical_file_type: String,
-    /// No source in `search_for_results`'s public result type at this commit.
+    /// Absent when the search result has no size.
     pub size: Option<i64>,
-    /// No source in `search_for_results`'s public result type at this commit.
+    /// Absent when the search result has no date.
     pub document_date: Option<i64>,
     pub dataset: String,
 }
@@ -124,8 +125,7 @@ pub struct AgentFacetCount {
 pub struct SearchResultsResponse {
     pub documents: Vec<AgentSearchDocument>,
     pub total_count: u64,
-    /// Empty at this commit: no single composed read returns every facet's buckets
-    /// alongside a result page. See the report's "Route sources".
+    /// A map of facet fields to counts. Empty when no facet was read.
     pub facet_counts: BTreeMap<String, Vec<AgentFacetCount>>,
     pub page: u64,
     pub has_more: bool,
@@ -215,7 +215,7 @@ pub struct SearchDateHistogramResponse {
 pub struct SearchEntityExplainerRequest {
     pub collectionname: String,
     /// The scanner's `rule_id`, e.g. `bank.iban`. Named `entity_type` to match the tool
-    /// catalogue; see the report's "Deviations from the design".
+    /// catalogue.
     pub entity_type: String,
     /// The stored value JSON exactly as the scan stage wrote it. Named `entity_value` to
     /// match the tool catalogue.
@@ -255,8 +255,7 @@ pub struct AgentEntityDocument {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchEntityExplainerResponse {
     pub explanation: Option<AgentEntityExplanation>,
-    /// Always empty at this commit: no backend read composes a document list for one
-    /// rule/value pair. See the report's "Route sources".
+    /// Documents that match this entity value, when the search read supplies them.
     pub documents: Vec<AgentEntityDocument>,
     pub source: String,
 }
@@ -636,8 +635,7 @@ pub struct FoldersOverviewRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FoldersOverviewResponse {
     pub datasets: Vec<AgentDatasetSummary>,
-    /// No source at this commit: `DatasetAggregates` carries a document count and a byte
-    /// total but no folder count. Always 0.
+    /// Number of folder nodes in the selected datasets.
     pub folder_count: u64,
     pub file_count: u64,
     pub total_bytes: u64,
@@ -650,6 +648,8 @@ pub struct FoldersOverviewResponse {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FoldersListRequest {
+    #[serde(default)]
+    pub expected_source: Option<String>,
     pub collectionname: String,
     pub dataset: String,
     #[serde(default)]
@@ -670,8 +670,7 @@ pub struct AgentFolderChild {
     pub name: String,
     /// `dir`, `file` or `container`.
     pub kind: String,
-    /// No source at this commit: the structure index's `VfsTreeNode` carries no count of
-    /// a directory's own children. Always absent.
+    /// Number of direct child nodes, when available.
     pub child_count: Option<u64>,
     pub term_id: Option<u64>,
 }
@@ -682,10 +681,9 @@ pub struct AgentFolderFile {
     pub file_hash: String,
     pub name: String,
     pub size: i64,
-    /// No source at this commit: `VfsTreeNode` carries no date. Always absent.
+    /// File date, when available.
     pub date: Option<i64>,
-    /// No source at this commit: `VfsTreeNode` carries no canonical file type. Always
-    /// absent; `doc_metadata` names it for one file at a time.
+    /// Canonical file type, when available.
     pub canonical_file_type: Option<String>,
     pub is_container: bool,
     pub term_id: Option<u64>,

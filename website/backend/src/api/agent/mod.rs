@@ -158,6 +158,38 @@ fn require_collection(permitted: &PermissionSet, collectionname: &str) -> Result
     }
 }
 
+fn verify_expected_source(expected: Option<&str>, current: &str) -> Result<(), AgentError> {
+    if expected.is_some_and(|value| value != current) {
+        return Err(AgentError::new(StatusCode::CONFLICT, "source_changed", "the source changed after the prior page"));
+    }
+    Ok(())
+}
+
+async fn require_collection_dataset(
+    user: &CurrentUser,
+    permitted: &PermissionSet,
+    collectionname: &str,
+    dataset: &str,
+) -> Result<(), AgentError> {
+    require_collection(permitted, collectionname)?;
+    let datasets = datasets_of_collection(user, collectionname).await.map_err(AgentError::from_anyhow)?;
+    if !datasets.iter().any(|name| name == dataset) {
+        return Err(AgentError::permission_denied("the dataset is outside the selected collection"));
+    }
+    permissions::assert_can_read(user, dataset).await.map_err(AgentError::from_anyhow)
+}
+
+async fn folder_source_fingerprint(collectionname: &str, dataset: &str) -> Result<String, AgentError> {
+    collection_db_name(collectionname).map_err(|error| AgentError::invalid_argument(error.to_string()))?;
+    let tree: (u64, u64) = get_collection_client(collectionname)
+        .query("SELECT count(), sum(cityHash64(node_key, parent_key, path, kind, file_hash, file_size_bytes, updated_at)) FROM vfs_nodes FINAL WHERE collection_dataset = ?")
+        .bind(dataset)
+        .fetch_one()
+        .await
+        .map_err(|error| AgentError::new(StatusCode::SERVICE_UNAVAILABLE, "backend_unavailable", error.to_string()))?;
+    Ok(format!("{collectionname}:{dataset}:{}:{}", tree.0, tree.1))
+}
+
 /// Resolve `collectionname` and `file_hash` to the `collection_dataset` that holds it,
 /// restricted to datasets the caller may read.
 ///
@@ -166,7 +198,7 @@ fn require_collection(permitted: &PermissionSet, collectionname: &str) -> Result
 /// result it came from). The agent names a document by collection and hash alone, so
 /// this one query is new: `SELECT DISTINCT collection_dataset FROM blobs WHERE
 /// blob_hash = ?`, scoped to the collection's own database exactly as every other read
-/// in this module is. See the report's "Route sources".
+/// in this module is.
 async fn resolve_document_dataset(
     user: &CurrentUser,
     permitted: &PermissionSet,
@@ -203,17 +235,18 @@ async fn datasets_of_collection(user: &CurrentUser, collectionname: &str) -> any
         .unwrap_or_default())
 }
 
-/// The `source` fingerprint for a search or folder route: the first searched
-/// collection's shard generation, or the empty string when none was searched or the
-/// generation could not be read.
-async fn collection_source_fingerprint(collections: &[String]) -> String {
-    let Some(first) = collections.first() else {
-        return String::new();
-    };
-    match crate::db_utils::clickhouse_utils::shard_generation(first).await {
-        Ok(generation) => format!("{first}@{generation}"),
-        Err(_) => String::new(),
+/// Include every searched collection in the continuation fingerprint.
+async fn collection_source_fingerprint(collections: &[String]) -> Result<String, AgentError> {
+    let mut names = collections.to_vec();
+    names.sort();
+    let mut parts = Vec::with_capacity(names.len());
+    for name in names {
+        let generation = crate::db_utils::clickhouse_utils::shard_generation(&name)
+            .await
+            .map_err(AgentError::from_anyhow)?;
+        parts.push(format!("{name}@{generation}"));
     }
+    Ok(parts.join("|"))
 }
 
 // ===================================================================================
@@ -255,15 +288,21 @@ pub async fn collections_list(
 // search/results
 // ===================================================================================
 
-fn sort_spec_from_agent(sort: Option<&AgentSort>) -> SortSpec {
-    let Some(sort) = sort else { return SortSpec::default() };
+fn sort_spec_from_agent(sort: Option<&AgentSort>) -> Result<SortSpec, AgentError> {
+    let Some(sort) = sort else { return Ok(SortSpec::default()) };
     let key = match sort.field.as_str() {
+        "relevance" => SortKey::Relevance,
         "date" => SortKey::Date,
         "file_size" => SortKey::FileSize,
         "name" => SortKey::Name,
-        _ => SortKey::Relevance,
+        _ => return Err(AgentError::invalid_argument("invalid sort field")),
     };
-    SortSpec { key, desc: sort.direction != "asc" }
+    let desc = match sort.direction.as_str() {
+        "asc" => false,
+        "desc" => true,
+        _ => return Err(AgentError::invalid_argument("invalid sort direction")),
+    };
+    Ok(SortSpec { key, desc })
 }
 
 /// Build the shared `SearchQuery` the search routes compose, from the agent's request
@@ -284,20 +323,37 @@ async fn build_search_query(
     facet_filters: &BTreeMap<String, Vec<String>>,
     sort: SortSpec,
 ) -> Result<SearchQuery, AgentError> {
+    let selected: Vec<String> = if collectionnames.is_empty() {
+        match permitted {
+            PermissionSet::All => list_permitted_collections(user).await.map_err(AgentError::from_anyhow)?,
+            PermissionSet::Some(names) => names.iter().cloned().collect(),
+        }
+    } else {
+        collectionnames.to_vec()
+    };
     let mut collection_datasets: Vec<String> = Vec::new();
-    for name in collectionnames {
+    for name in &selected {
         require_collection(permitted, name)?;
         collection_datasets.extend(datasets_of_collection(user, name).await.map_err(AgentError::from_anyhow)?);
     }
-
-    let mut query = SearchQuery { query_string: query_string.to_string(), sort, ..Default::default() };
-    if !collection_datasets.is_empty() {
-        query.facet_filters.insert(
-            "collection_dataset".to_string(),
-            collection_datasets.into_iter().map(FacetOriginalValue::String).collect(),
-        );
+    if collection_datasets.is_empty() {
+        return Err(AgentError::permission_denied("no selected dataset is readable"));
     }
+    collection_datasets.sort();
+    collection_datasets.dedup();
+    if let Some(wanted) = facet_filters.get("collection_dataset") {
+        collection_datasets.retain(|dataset| wanted.contains(dataset));
+        if collection_datasets.is_empty() {
+            return Err(AgentError::permission_denied("the dataset facet is outside the selected collections"));
+        }
+    }
+    let mut query = SearchQuery { query_string: query_string.to_string(), sort, ..Default::default() };
+    query.facet_filters.insert(
+        "collection_dataset".to_string(),
+        collection_datasets.into_iter().map(FacetOriginalValue::String).collect(),
+    );
     for (facet, values) in facet_filters {
+        if facet == "collection_dataset" { continue; }
         query.facet_filters.insert(
             facet.clone(),
             values.iter().cloned().map(FacetOriginalValue::String).collect(),
@@ -357,7 +413,7 @@ pub async fn search_results(
 ) -> AgentResult<SearchResultsResponse> {
     let header = requested_collections_header(&headers);
     let permitted = permitted_collectionnames(&user, &header).await?;
-    let sort = sort_spec_from_agent(body.sort.as_ref());
+    let sort = sort_spec_from_agent(body.sort.as_ref())?;
     let query = build_search_query(
         &user,
         &permitted,
@@ -417,7 +473,8 @@ pub async fn search_results(
     }
 
     let collections = fanout::permitted_search_collections(&user, &query).await.map_err(AgentError::from_anyhow)?;
-    let source = collection_source_fingerprint(&collections).await;
+    let source = collection_source_fingerprint(&collections).await?;
+    verify_expected_source(body.expected_source.as_deref(), &source)?;
 
     Ok(Json(SearchResultsResponse {
         documents,
@@ -471,7 +528,7 @@ pub async fn search_facet_values(
     }
 
     let collections = fanout::permitted_search_collections(&user, &query).await.map_err(AgentError::from_anyhow)?;
-    let source = collection_source_fingerprint(&collections).await;
+    let source = collection_source_fingerprint(&collections).await?;
     Ok(Json(SearchFacetValuesResponse { terms, resolved, source }))
 }
 
@@ -519,7 +576,7 @@ pub async fn search_date_histogram_handler(
     };
 
     let collections = fanout::permitted_search_collections(&user, &query).await.map_err(AgentError::from_anyhow)?;
-    let source = collection_source_fingerprint(&collections).await;
+    let source = collection_source_fingerprint(&collections).await?;
     Ok(Json(SearchDateHistogramResponse {
         buckets: histogram
             .buckets
@@ -629,11 +686,12 @@ pub async fn documents_read(
             .unwrap_or_default();
 
         last_source = format!("{file_hash}:{}", chosen.extracted_by);
+        let title = path.rsplit('/').next().unwrap_or(&path).to_string();
         documents.push(AgentDocumentText {
             collectionname: body.collectionname.clone(),
             file_hash: file_hash.clone(),
             path,
-            title: String::new(),
+            title,
             source_used: chosen.extracted_by.clone(),
             text,
             hit_count,
@@ -1140,8 +1198,7 @@ pub async fn tables_search_cells(
     // No existing read returns cell-level positions for a search inside one sheet, only
     // a whole-document match count (`table_browse::count_table_cell_matches`) and a
     // row-filtering `search` on `get_table_page`. This composes the row filter with a
-    // wide page and reads the matching cells back out of it, capped at one page. See
-    // the report's "Route sources".
+    // wide page and reads the matching cells back out of it, capped at one page.
     let view_query = TableViewQuery {
         sheet_id: body.sheet,
         visible_columns: Vec::new(),
@@ -1212,7 +1269,17 @@ pub async fn folders_overview(
         .sum();
     let file_count = datasets.iter().map(|d| d.document_count).sum();
 
-    Ok(Json(FoldersOverviewResponse { datasets, folder_count: 0, file_count, total_bytes, source: String::new() }))
+    let mut folder_count = 0;
+    for dataset in overview.datasets.iter().filter(|d| matches_dataset(&d.dataset_name, &d.collection_dataset)) {
+        let count: u64 = get_collection_client(&body.collectionname)
+            .query("SELECT countIf(kind != 'file') FROM vfs_nodes FINAL WHERE collection_dataset = ?")
+            .bind(&dataset.collection_dataset)
+            .fetch_one()
+            .await
+            .map_err(|error| AgentError::new(StatusCode::SERVICE_UNAVAILABLE, "backend_unavailable", error.to_string()))?;
+        folder_count += count;
+    }
+    Ok(Json(FoldersOverviewResponse { datasets, folder_count, file_count, total_bytes, source: String::new() }))
 }
 
 // ===================================================================================
@@ -1236,8 +1303,10 @@ pub async fn folders_list(
 ) -> AgentResult<FoldersListResponse> {
     let header = requested_collections_header(&headers);
     let permitted = permitted_collectionnames(&user, &header).await?;
-    require_collection(&permitted, &body.collectionname)?;
-    permissions::assert_can_read(&user, &body.dataset).await.map_err(AgentError::from_anyhow)?;
+    require_collection_dataset(&user, &permitted, &body.collectionname, &body.dataset).await?;
+
+    let source = folder_source_fingerprint(&body.collectionname, &body.dataset).await?;
+    verify_expected_source(body.expected_source.as_deref(), &source)?;
 
     let node_key = body.node_id.clone().unwrap_or_else(|| dataset_root_key(&body.dataset));
     let page = body.position.map(|p| p.page).unwrap_or(0);
@@ -1330,7 +1399,7 @@ pub async fn folders_list(
         None
     };
 
-    Ok(Json(FoldersListResponse { breadcrumb, container_root, children, files, page, source: String::new() }))
+    Ok(Json(FoldersListResponse { breadcrumb, container_root, children, files, page, source }))
 }
 
 // ===================================================================================
@@ -1344,8 +1413,7 @@ pub async fn folders_search(
 ) -> AgentResult<FoldersSearchResponse> {
     let header = requested_collections_header(&headers);
     let permitted = permitted_collectionnames(&user, &header).await?;
-    require_collection(&permitted, &body.collectionname)?;
-    permissions::assert_can_read(&user, &body.dataset).await.map_err(AgentError::from_anyhow)?;
+    require_collection_dataset(&user, &permitted, &body.collectionname, &body.dataset).await?;
 
     let node_key = body.node_id.clone().unwrap_or_else(|| dataset_root_key(&body.dataset));
     let results = vfs_api::vfs_search_in_folder(&user, body.dataset.clone(), node_key, body.query, 200)

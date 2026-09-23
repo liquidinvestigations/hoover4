@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 import requests
 from fastmcp.server.dependencies import get_http_headers
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 CONNECT_TIMEOUT = 30.0
 TOTAL_TIMEOUT = 60.0
@@ -26,8 +26,59 @@ class AgentModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class AgentPosition(AgentModel):
-    page: int = 0
+class AgentRequest(AgentModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_control_characters(cls, value: Any) -> Any:
+        def visit(item: Any) -> None:
+            if isinstance(item, str) and any(ord(char) < 32 or ord(char) == 127 for char in item):
+                raise ValueError("control characters are not allowed")
+            if isinstance(item, dict):
+                for key, nested in item.items():
+                    visit(key)
+                    visit(nested)
+            if isinstance(item, (list, tuple)):
+                for nested in item:
+                    visit(nested)
+
+        visit(value)
+        return value
+
+
+class AgentPosition(AgentRequest):
+    page: int = Field(default=0, ge=0)
+
+
+class AgentSort(AgentRequest):
+    field: Literal["relevance", "date", "file_size", "name"]
+    direction: Literal["asc", "desc"]
+
+
+class AgentTableSort(AgentRequest):
+    column: int = Field(ge=0)
+    direction: Literal["asc", "desc"]
+
+
+class AgentTableFilter(AgentRequest):
+    column: int = Field(ge=0)
+    contains: str | None = None
+    equals: str | None = None
+    starts_with: str | None = None
+    is_empty: bool | None = None
+    number_min: float | None = None
+    number_max: float | None = None
+    date_min: str | None = None
+    date_max: str | None = None
+
+    @model_validator(mode="after")
+    def one_filter(self) -> "AgentTableFilter":
+        values = (self.contains, self.equals, self.starts_with, self.is_empty,
+                  self.number_min, self.number_max, self.date_min, self.date_max)
+        if sum(value is not None for value in values) != 1:
+            raise ValueError("a table filter needs exactly one value")
+        return self
 
 
 class AgentError(AgentModel):
@@ -36,14 +87,15 @@ class AgentError(AgentModel):
     message: str
 
 
-class CollectionsListRequest(AgentModel):
+class CollectionsListRequest(AgentRequest):
     pass
 
 
-class SearchResultsRequest(AgentModel):
+class SearchResultsRequest(AgentRequest):
+    expected_source: str | None = None
     collectionname: list[str] = Field(default_factory=list)
     query: str = ""
-    sort: dict[str, str] | None = None
+    sort: AgentSort | None = None
     date_after: int | None = None
     date_before: int | None = None
     date_confirmed_only: bool | None = None
@@ -55,7 +107,7 @@ class SearchResultsRequest(AgentModel):
     position: AgentPosition | None = None
 
 
-class SearchFacetValuesRequest(AgentModel):
+class SearchFacetValuesRequest(AgentRequest):
     collectionname: list[str] = Field(default_factory=list)
     facet: str
     query: str | None = None
@@ -63,30 +115,30 @@ class SearchFacetValuesRequest(AgentModel):
 
 
 class SearchDateHistogramRequest(SearchResultsRequest):
-    date_field: str
+    date_field: Literal["date", "mentioned_date"]
     position: AgentPosition | None = None
 
 
-class SearchEntityExplainerRequest(AgentModel):
+class SearchEntityExplainerRequest(AgentRequest):
     collectionname: str
     entity_type: str
     entity_value: str
 
 
-class DocumentsReadRequest(AgentModel):
+class DocumentsReadRequest(AgentRequest):
     collectionname: str
     file_hash: list[str]
     source: str | None = None
     query: str | None = None
 
 
-class DocumentsSourcesRequest(AgentModel):
+class DocumentsSourcesRequest(AgentRequest):
     collectionname: str
     file_hash: str
     query: str | None = None
 
 
-class DocumentsMetadataRequest(AgentModel):
+class DocumentsMetadataRequest(AgentRequest):
     collectionname: str
     file_hash: str
 
@@ -111,8 +163,8 @@ class TablesOverviewRequest(DocumentsMetadataRequest):
 
 class TablesPageRequest(DocumentsMetadataRequest):
     sheet: int
-    sort: dict[str, Any] | None = None
-    filters: list[dict[str, Any]] = Field(default_factory=list)
+    sort: AgentTableSort | None = None
+    filters: list[AgentTableFilter] = Field(default_factory=list)
     hidden_columns: list[int] = Field(default_factory=list)
     search: str = ""
     position: AgentPosition | None = None
@@ -128,85 +180,282 @@ class TablesSearchCellsRequest(TablesOverviewRequest):
     query: str
 
 
-class FoldersOverviewRequest(AgentModel):
+class FoldersOverviewRequest(AgentRequest):
     collectionname: str
     dataset: str | None = None
 
 
-class FoldersListRequest(AgentModel):
+class FoldersListRequest(AgentRequest):
+    expected_source: str | None = None
     collectionname: str
     dataset: str
     node_id: str | None = None
     position: AgentPosition | None = None
 
 
-class FoldersSearchRequest(AgentModel):
+class FoldersSearchRequest(AgentRequest):
     collectionname: str
     dataset: str
     node_id: str | None = None
     query: str
 
 
-# Response models keep the website route contract visible in the broker. Nested route
-# items stay JSON objects because Rust uses maps and arbitrary metadata JSON in several
-# of these fields.
+class DatasetSummary(AgentModel):
+    name: str
+    document_count: int
+
+
+class CollectionSummary(AgentModel):
+    collectionname: str
+    document_count: int
+    datasets: list[DatasetSummary]
+
+
+class SearchDocument(AgentModel):
+    collectionname: str
+    file_hash: str
+    path: str
+    title: str
+    snippet: str
+    canonical_file_type: str
+    size: int | None
+    document_date: int | None
+    dataset: str
+
+
+class FacetCount(AgentModel):
+    value: str
+    count: int
+
+
+class FacetTerm(AgentModel):
+    id: int
+    text: str
+    count: int | None
+
+
+class HistogramBucket(AgentModel):
+    start: int
+    end: int
+    count: int
+
+
+class EntityFact(AgentModel):
+    label: str
+    value: str
+
+
+class EntityLink(AgentModel):
+    title: str
+    url: str
+    note: str
+
+
+class EntityExplanation(AgentModel):
+    title: str
+    subtitle: str
+    body: str
+    facts: list[EntityFact]
+    references: list[EntityLink]
+
+
+class EntityDocument(AgentModel):
+    file_hash: str
+    path: str
+    title: str
+    snippet: str
+
+
+class DocumentText(AgentModel):
+    collectionname: str
+    file_hash: str
+    path: str
+    title: str
+    source_used: str
+    text: str
+    hit_count: int
+    hit_positions: list[int]
+
+
+class SourceHitCount(AgentModel):
+    source: str
+    hit_count: int
+
+
+class DocumentDate(AgentModel):
+    value: int
+    kind: str
+    provenance: str
+
+
+class DownloadLinks(AgentModel):
+    original: str
+    ocr_pdf: str | None
+
+
+class EmailEnvelope(AgentModel):
+    subject: str
+    date: int | None
+    from_: list[str] = Field(alias="from")
+    to: list[str]
+    cc: list[str]
+    bcc: list[str]
+
+
+class EmailAttachment(AgentModel):
+    file_hash: str
+    name: str
+    size: int
+
+
+class EmailGraphNode(AgentModel):
+    file_hash: str
+    subject: str
+    is_centre: bool
+
+
+class EmailGraphEdge(AgentModel):
+    src_file_hash: str
+    dst_file_hash: str
+    kind: str
+    confidence: float
+
+
+class EmailGraph(AgentModel):
+    nodes: list[EmailGraphNode]
+    edges: list[EmailGraphEdge]
+
+
+class PdfHit(AgentModel):
+    page: int
+    start: int
+    end: int
+
+
+class TableColumnInfo(AgentModel):
+    name: str
+    column_type: str = Field(alias="type")
+
+
+class TableSheet(AgentModel):
+    name: str
+    row_count: int
+    column_count: int
+    columns: list[TableColumnInfo]
+
+
+class TablePageColumn(TableColumnInfo):
+    hidden: bool
+
+
+class TableRow(AgentModel):
+    row_number: int
+    cells: dict[str, str]
+
+
+class ColumnValue(AgentModel):
+    value: str
+    count: int
+
+
+class CellHit(AgentModel):
+    row_number: int
+    column: str
+    value: str
+
+
+class BreadcrumbNode(AgentModel):
+    node_id: str
+    name: str
+
+
+class FolderChild(AgentModel):
+    node_id: str
+    name: str
+    kind: str
+    child_count: int | None
+    term_id: int | None
+
+
+class FolderFile(AgentModel):
+    node_id: str
+    file_hash: str
+    name: str
+    size: int
+    date: int | None
+    canonical_file_type: str | None
+    is_container: bool
+    term_id: int | None
+
+
+class FolderMatch(AgentModel):
+    node_id: str
+    parent_id: str
+    name: str
+    kind: str
+    path: str
+    term_id: int | None
+
+
+# Response models mirror the website route records. Raw metadata and email headers
+# remain JSON because those Rust fields use serde_json::Value.
 class CollectionsListResponse(AgentModel):
-    collections: list[dict[str, Any]]
+    collections: list[CollectionSummary]
     source: str
 
 
 class SearchResultsResponse(AgentModel):
-    documents: list[dict[str, Any]]
+    documents: list[SearchDocument]
     total_count: int
-    facet_counts: dict[str, list[dict[str, Any]]]
+    facet_counts: dict[str, list[FacetCount]]
     page: int
     has_more: bool
     source: str
 
 
 class SearchFacetValuesResponse(AgentModel):
-    terms: list[dict[str, Any]]
+    terms: list[FacetTerm]
     resolved: dict[str, str]
     source: str
 
 
 class SearchDateHistogramResponse(AgentModel):
-    buckets: list[dict[str, Any]]
+    buckets: list[HistogramBucket]
     date_field: str
     source: str
 
 
 class SearchEntityExplainerResponse(AgentModel):
-    explanation: dict[str, Any] | None
-    documents: list[dict[str, Any]]
+    explanation: EntityExplanation | None
+    documents: list[EntityDocument]
     source: str
 
 
 class DocumentsReadResponse(AgentModel):
-    documents: list[dict[str, Any]]
+    documents: list[DocumentText]
     source: str
 
 
 class DocumentsSourcesResponse(AgentModel):
-    sources: list[dict[str, Any]]
+    sources: list[SourceHitCount]
     source: str
 
 
 class DocumentsMetadataResponse(AgentModel):
     raw_metadata: dict[str, list[Any]]
-    dates: list[dict[str, Any]]
+    dates: list[DocumentDate]
     file_locations: list[str]
     path: str
     canonical_file_type: str
-    download_links: dict[str, Any]
+    download_links: DownloadLinks
     source: str
 
 
 class DocumentsEmailResponse(AgentModel):
-    envelope: dict[str, Any] | None
+    envelope: EmailEnvelope | None
     headers: Any
-    attachments: list[dict[str, Any]]
-    graph: dict[str, Any]
+    attachments: list[EmailAttachment]
+    graph: EmailGraph
     source: str
 
 
@@ -220,36 +469,36 @@ class DocumentsDiffSourcesResponse(AgentModel):
 class DocumentsPdfSearchResponse(AgentModel):
     source: str
     pdf_url: str
-    hit_positions: list[dict[str, Any]]
+    hit_positions: list[PdfHit]
     hit_count: int
 
 
 class TablesOverviewResponse(AgentModel):
-    sheets: list[dict[str, Any]]
+    sheets: list[TableSheet]
     source: str
 
 
 class TablesPageResponse(AgentModel):
-    columns: list[dict[str, Any]]
-    rows: list[dict[str, Any]]
+    columns: list[TablePageColumn]
+    rows: list[TableRow]
     page: int
     total_rows: int
     source: str
 
 
 class TablesColumnValuesResponse(AgentModel):
-    values: list[dict[str, Any]]
+    values: list[ColumnValue]
     source: str
 
 
 class TablesSearchCellsResponse(AgentModel):
     hit_count: int
-    hits: list[dict[str, Any]]
+    hits: list[CellHit]
     source: str
 
 
 class FoldersOverviewResponse(AgentModel):
-    datasets: list[dict[str, Any]]
+    datasets: list[DatasetSummary]
     folder_count: int
     file_count: int
     total_bytes: int
@@ -257,16 +506,16 @@ class FoldersOverviewResponse(AgentModel):
 
 
 class FoldersListResponse(AgentModel):
-    breadcrumb: list[dict[str, Any]]
+    breadcrumb: list[BreadcrumbNode]
     container_root: str | None
-    children: list[dict[str, Any]]
-    files: list[dict[str, Any]]
+    children: list[FolderChild]
+    files: list[FolderFile]
     page: int
     source: str
 
 
 class FoldersSearchResponse(AgentModel):
-    matches: list[dict[str, Any]]
+    matches: list[FolderMatch]
     source: str
 
 
@@ -295,11 +544,11 @@ class BackendClient:
             "X-Hoover4-Collections": headers.get("x-hoover4-collections", ""),
         }
 
-    def post(self, route: str, request: AgentModel, response_model: type[T] | None = None, source: str | None = None) -> T | dict[str, Any] | AgentError:
+    def post(self, route: str, request: AgentModel, response_model: type[T] | None = None, expected_source: str | None = None) -> T | dict[str, Any] | AgentError:
         url = f"{self.base_url}/api/agent/v1/{route.lstrip('/')}"
-        body = request.model_dump(mode="json", exclude_none=True)
-        if source is not None:
-            body["source"] = source
+        body = request.model_dump(mode="json", exclude_none=True, by_alias=True)
+        if expected_source is not None:
+            body["expected_source"] = expected_source
         started = time.monotonic()
         for attempt in range(2):
             remaining = TOTAL_TIMEOUT - (time.monotonic() - started)
