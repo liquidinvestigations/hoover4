@@ -256,6 +256,9 @@ pub async fn search_for_results(
                 matched_by_filename: hit._source.has_text_match == 0,
                 // Filled in below, from `file_type_canonical`.
                 file_type: String::new(),
+                file_size_bytes: (hit._source.file_size_bytes >= 0).then_some(hit._source.file_size_bytes),
+                document_date: (hit._source.date_min != common::search_query::DATE_UNKNOWN)
+                    .then_some(hit._source.date_min),
             }
         })
         .collect::<Vec<_>>();

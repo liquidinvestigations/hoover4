@@ -133,7 +133,7 @@ run_case "collections/list" 200 \
   "${POST[@]}" "${AGENT_HEADER[@]}" "$BASE_URL/api/agent/v1/collections/list"
 
 run_case "search/results" 200 \
-  'import json,sys; b=json.load(sys.stdin); assert "documents" in b and "total_count" in b, b' \
+  'import json,sys; b=json.load(sys.stdin); assert b["documents"] and b["total_count"]>0 and any(d["size"] is not None for d in b["documents"]), b; assert b["facet_counts"]["collection_dataset"] and b["facet_counts"]["file_types"], b' \
   "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
   -d '{"collectionname":["testdata"],"query":""}' "$BASE_URL/api/agent/v1/search/results"
 
@@ -148,7 +148,7 @@ run_case "search/date_histogram" 200 \
   -d '{"collectionname":["testdata"],"query":"","date_field":"date"}' "$BASE_URL/api/agent/v1/search/date_histogram"
 
 run_case "search/entity_explainer" 200 \
-  'import json,sys; b=json.load(sys.stdin); assert b["explanation"] is not None and b["explanation"]["title"], b' \
+  'import json,sys; b=json.load(sys.stdin); assert b["explanation"] is not None and b["explanation"]["title"], b; assert b["documents"] and all(d["file_hash"] and d["path"] for d in b["documents"]), b' \
   "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
   -d '{"collectionname":"testdata","entity_type":"email.basic","entity_value":"{\"address\":\"author@nrim.go.jp\",\"domain\":\"nrim.go.jp\",\"kind\":\"email\",\"local\":\"author\"}"}' \
   "$BASE_URL/api/agent/v1/search/entity_explainer"
@@ -213,7 +213,7 @@ run_case "folders/overview" 200 \
   -d '{"collectionname":"testdata"}' "$BASE_URL/api/agent/v1/folders/overview"
 
 run_case "folders/list" 200 \
-  'import json,sys; b=json.load(sys.stdin); names={f["name"] for f in b["files"]}; assert "easychair.txt" in names, b' \
+  'import json,sys; b=json.load(sys.stdin); names={f["name"] for f in b["files"]}; assert "easychair.txt" in names, b; assert all(c["child_count"] is not None for c in b["children"]), b; assert any(f["canonical_file_type"] for f in b["files"]), b' \
   "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
   -d '{"collectionname":"testdata","dataset":"testdata_testfiles"}' "$BASE_URL/api/agent/v1/folders/list"
 
@@ -261,6 +261,26 @@ run_case "folder continuation rejects changed tree" 409 \
   'import json,sys; b=json.load(sys.stdin); assert b["error"]=="source_changed", b' \
   "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
   -d '{"collectionname":"testdata","dataset":"testdata_testfiles","expected_source":"stale"}' "$BASE_URL/api/agent/v1/folders/list"
+
+run_case "search rejects reversed dates" 400 \
+  'import json,sys; assert json.load(sys.stdin)["error"]=="invalid_argument"' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
+  -d '{"collectionname":["testdata"],"date_after":20,"date_before":10}' "$BASE_URL/api/agent/v1/search/results"
+
+run_case "table page rejects invalid date filter" 400 \
+  'import json,sys; assert json.load(sys.stdin)["error"]=="invalid_argument"' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
+  -d "{\"collectionname\":\"testdata\",\"file_hash\":\"$NO_SUCH_HASH\",\"sheet\":0,\"filters\":[{\"column\":1,\"date_min\":\"2026-99-99\"}]}" "$BASE_URL/api/agent/v1/tables/page"
+
+run_case "table cell search rejects empty query" 400 \
+  'import json,sys; assert json.load(sys.stdin)["error"]=="invalid_argument"' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
+  -d "{\"collectionname\":\"testdata\",\"file_hash\":\"$NO_SUCH_HASH\",\"sheet\":0,\"query\":\"\"}" "$BASE_URL/api/agent/v1/tables/search_cells"
+
+run_case "folder list rejects oversized position" 400 \
+  'import json,sys; assert json.load(sys.stdin)["error"]=="invalid_argument"' \
+  "${POST[@]}" "${AGENT_HEADER[@]}" "${JSON_HEADER[@]}" \
+  -d '{"collectionname":"testdata","dataset":"testdata_testfiles","position":{"page":1000001}}' "$BASE_URL/api/agent/v1/folders/list"
 
 echo "all agent API contract cases passed"
 exit 0

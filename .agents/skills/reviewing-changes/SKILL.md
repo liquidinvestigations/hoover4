@@ -129,8 +129,9 @@ scope.
 ## Review batches and corrections
 
 The reviewer gives each finding a defect class that names its failure mechanism. Use the same
-class for the same mechanism throughout a review batch. One batch contains one original pass,
-its review and at most two correction passes. The initial review can record the first
+class for the same mechanism throughout a review batch. One batch contains two or three
+original passes and one review of their combined diff. A correction runs only when the review
+rejects the batch, and a batch has at most two. The initial review can record the first
 occurrence of a class. End the batch when one class occurs a second time, even if the correction
 limit remains. The organizer starts no more correction for another item in that batch.
 
@@ -138,6 +139,20 @@ After a stop, record each unresolved finding as `move` when a later existing pas
 `insert` when it needs a new prerequisite pass, or `observe` when evidence is insufficient.
 A later inserted pass starts a new batch. A dependent pass stays closed until its required
 invariant or acceptance case is resolved. Independent work can continue.
+
+**A correction package carries blocking findings only.** The organizer copies each
+non-blocking finding into the plan's `TODO.md`, and no correction carries it.
+
+**A review of a correction reads that correction's diff** and the findings the correction was
+sent to close. It reports whether each of those findings is closed, and whether the correction's
+own diff is correct. A defect it sees outside that diff is a non-blocking finding with the action
+`observe`, and it cannot reject the correction.
+
+**A defect class that occurs a third time in one plan**, counted across every batch, goes to
+the person when it blocks the current work. The organizer stops that line of work and asks. In an
+unattended run it writes the question into `OPEN_QUESTIONS.md`. A third occurrence that does not
+block the current work goes into the plan's `TODO.md` and the final report, and the work
+continues.
 
 The report contains these sections in order.
 
@@ -151,6 +166,7 @@ The report contains these sections in order.
 6. **Checks.** Separate checks the reviewer ran from results taken from a pass report.
 7. **Correction package.** On `reject`, write the complete work package from
    [`prompt-template.md`](../planning-work/reference/prompt-template.md) for `executor-heavy`.
+   It carries the blocking findings and no others.
 
 The reviewer runs no Git write command. A correction addresses each blocking finding at its
 cause and reports any finding it did not fix. The organizer starts no dependent pass while

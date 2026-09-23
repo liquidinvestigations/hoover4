@@ -98,7 +98,7 @@ def main():
     print("only comparison that holds, because it holds the work constant.\n")
     work = [r for r in priced if r["bucket"] == "implementation"]
     print(f"{'model':<26} {'tier':<10} {'total':>10} {'per pass p50':>13} "
-          f"{'vs opus 5':>10}")
+          f"{'vs opus 5.5':>10}")
     baseline = None
     for model in PRICES:
         repriced = []
@@ -111,7 +111,7 @@ def main():
         if not repriced:
             continue
         total = sum(repriced)
-        if model == "claude-opus-5":
+        if model == "claude-opus-5-5":
             baseline = total
         ratio = f"{total / baseline:9.2f}x" if baseline else "        -"
         print(f"{model:<26} {tier_of(model) or '-':<10} {total:10.2f} "

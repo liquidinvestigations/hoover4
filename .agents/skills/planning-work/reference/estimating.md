@@ -183,7 +183,7 @@ The difference is in the package.
 - **A pass that stops with tasks unreached has reported the scope, not failed.** Ask what it
   did not reach, never how long it took.
 
-### 1e. Select roles and correction capacity
+### 1e. Select roles and review batches
 
 Score original implementation passes against the five conditions in
 [`planning-work`](../SKILL.md#selecting-pass-roles). Record a concrete path or behavior for
@@ -193,10 +193,16 @@ Break ties by a weak oracle, then a cross-runtime invariant, then the number of 
 passes. Assign other original passes to `executor-light`. Every correction uses
 `executor-heavy` outside the allowance.
 
-One review batch contains one original pass, its review and at most two corrections. End the
-batch when a defect class occurs a second time, even if the correction limit remains. Record
-each unresolved finding as `move`, `insert` or `observe`. A later inserted pass starts a new
-batch with its own correction count.
+**A review batch holds two or three original passes and one review of their combined diff.**
+Put passes that share code or a check in the same batch. A plan of six implementation passes
+therefore plans two or three reviews. A pass whose later passes depend on a reviewed result
+can end a batch early, and the plan says why.
+
+**A plan does not plan a correction.** A correction runs only when a review rejects its batch,
+and the organizer writes it then, from the review's findings. The coordinator log and the
+final report's actuals record every correction that ran. End a batch's corrections when a
+defect class occurs a second time, or after two corrections. Record each unresolved finding as
+`move`, `insert` or `observe`. A later inserted pass starts a new batch.
 The [triage marker study](triage-marker-study.md) explains the evidence for the score.
 
 ### 2. Bucket each task
@@ -369,7 +375,7 @@ Count rebuilds separately: two tasks needing the same rebuild pay for it once *i
 the same pass* and twice if they are not. This is the only place batching genuinely saves
 time.
 
-### 4. Sum, raise the pass count, and add the coordinator
+### 4. Sum the passes, and add the coordinator
 
 **A packed pass is costed from its call count**, because the bucket row is a pass that carried
 one task and a packed pass carries three. Four pinned conversions do it.
@@ -378,7 +384,7 @@ one task and a packed pass carries three. Four pinned conversions do it.
 |---|---|---|
 | minutes at p50 | 12.4 seconds a call | 109 calls gives 23 minutes against the pinned 23 |
 | minutes at p90 | p50 times 4.0 | the ratio the implementation row carries, at 23 and 93 |
-| dollars | $0.120 a call pooled, $0.140 on `claude-opus-5` | the cost table below |
+| dollars | $0.120 a call pooled | the cost table below |
 | peak tokens | `27,179 + 1,489 x calls` | 109 calls gives 189,450 against the pinned 185,042 |
 
 **Tool calls do not predict wall clock here**, at a correlation of 0.26 against the 0.92 that
@@ -390,11 +396,13 @@ operational or deploy row instead.
 The p50 total is the sum of the pass rows and the p90 total the same. **Report both, never a
 single figure.** The distribution is long-tailed and a mean is a commitment nobody can keep.
 
-**Multiply the forecast pass count by 1.2.** Three plans here forecast 7, 16 and 0 passes and
-ran 9, 19 and 5. The three causes are the same every time: a pass that answers a review's
-findings, a pass found once the work starts, and the passes that produced the plan itself.
-**A plan carries a correction-pass row for every review pass it plans.** A packed plan has a
-fourth cause, being a pass that reaches its budget with a task unreached and hands over.
+**Count the passes the plan has, and add no forecast of others.** The count is the
+implementation passes, the reviews of their batches, and the design review when the plan has
+a technical design. Past plans ran corrections and found passes after they started, and those
+counts do not predict this plan. A plan that reserves passes for corrections invites
+corrections that no review asked for. When a pass is found, or a review asks for a correction,
+the organizer records it in the plan, the coordinator log and the final report, and the
+actuals column shows the difference.
 
 **Session wall clock is about 50 minutes of session span a pass**, over the 24 sessions that
 launched one. Span is the first to the last timestamp of the session file, so a person can
@@ -410,25 +418,26 @@ coordinator is where the money is and where nothing looks.
 Duration and tool calls barely move with the model. Price moves by a factor of fifty. A plan
 that states one money figure has stated the model it assumed, whether or not it says so.
 
-The cost table keeps the measured prices per model. Use the role mapping for the harness to
-select a row. The [model mappings](../../../harnesses/model-mappings.md) name each model.
+The cost table keeps measured prices when the sample exists. It uses the pooled rate for a
+configured model with no local sample. The
+[model mappings](../../../harnesses/model-mappings.md) name each model.
 
 | model | dollars a tool call | n |
 |---|---:|---:|
-| `claude-opus-5` | $0.140 | 80 |
+| `claude-opus-5-5` | $0.120 pooled | 0 |
 | `claude-sonnet-5` | $0.061 | 55 |
-| `gpt-5.6-sol` | $0.509 | 7 |
+| `gpt-6-sol` | $0.120 pooled | 0 |
 | `gpt-5.6-terra` | $0.232 | 6 |
 | pooled, implementation | $0.120 | 141 |
 
 | harness | organizer | `executor-light` | `executor-heavy` | reviewer |
 |---|---:|---:|---:|---:|
-| Claude Code | $0.140 | $0.061 | $0.140 | $0.052 for a read-only pass |
-| Codex | $0.509 | $0.232 | $0.509 | $0.509 |
+| Claude Code | $0.120 | $0.061 | $0.120 | $0.120 |
+| Codex | $0.120 | $0.232 | $0.120 | $0.120 |
 | Cursor | no price | no price | no price | no price |
 
-The Codex reviewer uses the implementation price because no read-only Codex price is measured.
-A plan names its harness. The final report records the harness and models that ran.
+The upgraded models use the pooled implementation price until a local sample exists. A plan
+names its harness. The final report records the harness and models that ran.
 
 **These are list API rates and the work here runs on subscriptions.** They are the only
 per-model figure comparable across providers, which is what an estimate needs. **They are also
@@ -462,9 +471,9 @@ and 38 coordinator calls on top.
 The work column is marginal calls over plan calls. **It is at least 60% on every row**, or
 that row carries the line saying what stopped it filling.
 
-**Passes:** N tasks packed into P passes against the target of 183 in-pass calls, plus the
-reviews and the corrections. Then that count times 1.2, which is the measured rate at which a
-plan here discovers passes it did not have.
+**Passes:** N tasks packed into P passes against the target of 183 in-pass calls, plus one
+review for each batch of two or three passes, plus the design review when there is one. No
+correction row and no multiplier.
 **Heavy allowance:** `floor(original implementation passes / 5)`, with the selected passes and
 their score evidence. Corrections do not use this allowance.
 **Why P and not fewer:** the packing arithmetic, then one line per pass that came out under

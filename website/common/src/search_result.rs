@@ -56,6 +56,10 @@ pub struct SearchResultDocumentItem {
     /// about what a file is. Empty for a document the type resolver has not reached.
     #[serde(default)]
     pub file_type: String,
+    #[serde(default)]
+    pub file_size_bytes: Option<i64>,
+    #[serde(default)]
+    pub document_date: Option<i64>,
 }
 
 impl SearchResultDocumentItem {

@@ -77,6 +77,8 @@ class PagedTool:
                 has_more = (page + 1) * 50 < result["total_rows"]
             elif self.route == "folders/list":
                 has_more = len({value["node_id"] for value in [*result["children"], *result["files"]]}) >= 200
+            elif self.route == "tables/search_cells":
+                has_more = result["has_more"]
             else:
                 has_more = False
             def after_blob(count: int):
@@ -120,6 +122,8 @@ class PagedTool:
         else:
             items = items[offset:]
             total = int(result.get("total_count", result.get("total_rows", offset + len(items))))
+            if self.route == "tables/search_cells":
+                total = result["hit_count"]
             start = {"page": page, "offset": offset}
             has_more = bool(result.get("has_more"))
             if self.route == "tables/page":

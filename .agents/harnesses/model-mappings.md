@@ -7,9 +7,9 @@ changes. The gates in `docs/development/Choosing_A_Model.md` define how a model 
 
 | harness | organizer | `executor-light` | `executor-heavy` | reviewer |
 |---|---|---|---|---|
-| Claude Code | `claude-opus-5`, high | `claude-sonnet-5`, high | `claude-opus-5`, medium | `claude-opus-5`, xhigh |
-| Codex | `gpt-5.6-sol`, high | `gpt-5.6-terra`, high | `gpt-5.6-sol`, medium | `gpt-5.6-sol`, xhigh |
-| Cursor | `grok-4.6[effort=high]` | `composer-2.5[fast=false]` | `grok-4.6[effort=medium]` | `grok-4.6[effort=xhigh]` |
+| Claude Code | `claude-opus-5-5`, high | `claude-sonnet-5`, high | `claude-opus-5-5`, medium | `claude-opus-5-5`, high |
+| Codex | `gpt-6-sol`, high | `gpt-5.6-terra`, high | `gpt-6-sol`, medium | `gpt-6-sol`, high |
+| Cursor | `grok-4.7[effort=high]` | `composer-2.5[fast=false]` | `grok-4.7[effort=medium]` | `grok-4.7[effort=high]` |
 
 ## Other harnesses
 
@@ -37,9 +37,8 @@ window limit and the pass cap when sizing a package.
 
 ## Four things the table does not make clear
 
-**Composer 2.5 has a lower coding score and a lower price than Grok 4.6.** Cursor's published
-benchmark places it about fourteen points below Grok 4.6. Its context window is unpublished.
-Use it only when the pass peak is known to fit.
+**Composer 2.5 has an unpublished context window.** Use it only when the pass peak is known
+to fit.
 
 **Antigravity uses the Flash line for both candidates.** The current Flash line leads the Pro
 line on the published coding benchmarks cited in the model selection research.

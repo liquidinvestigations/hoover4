@@ -532,6 +532,8 @@ pub struct AgentTableFilter {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TablesPageRequest {
+    #[serde(default)]
+    pub expected_source: Option<String>,
     pub collectionname: String,
     pub file_hash: String,
     pub sheet: u16,
@@ -601,10 +603,14 @@ pub struct TablesColumnValuesResponse {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TablesSearchCellsRequest {
+    #[serde(default)]
+    pub expected_source: Option<String>,
     pub collectionname: String,
     pub file_hash: String,
     pub sheet: u16,
     pub query: String,
+    #[serde(default)]
+    pub position: Option<AgentPosition>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -618,6 +624,7 @@ pub struct AgentCellHit {
 pub struct TablesSearchCellsResponse {
     pub hit_count: u64,
     pub hits: Vec<AgentCellHit>,
+    pub has_more: bool,
     pub source: String,
 }
 

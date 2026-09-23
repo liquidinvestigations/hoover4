@@ -30,7 +30,7 @@ from prices import PRICES, price_of
 
 #: The model an unrecognised name is priced at. It is the dearer of the two tiers a pass
 #: here runs on, so an unknown model is priced high rather than low.
-FALLBACK_MODEL = "claude-opus-5"
+FALLBACK_MODEL = "claude-opus-5-5"
 
 #: A drop of more than this many prompt tokens between two assistant turns is a compaction.
 COMPACTION_DROP = 50_000

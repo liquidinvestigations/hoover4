@@ -151,7 +151,7 @@ commands = [
     for handler in event.get("hooks", [])
 ]
 valid = (
-    data.get("model") == "gpt-5.6-sol"
+    data.get("model") == "gpt-6-sol"
     and data.get("model_reasoning_effort") == "high"
     and data.get("features", {}).get("hooks") is True
     and "experimental_use_rmcp_client" not in data.get("features", {})
@@ -223,10 +223,10 @@ import sys
 import tomllib
 
 expected = {
-    "organizer": ("gpt-5.6-sol", "high"),
+    "organizer": ("gpt-6-sol", "high"),
     "executor-light": ("gpt-5.6-terra", "high"),
-    "executor-heavy": ("gpt-5.6-sol", "medium"),
-    "reviewer": ("gpt-5.6-sol", "xhigh"),
+    "executor-heavy": ("gpt-6-sol", "medium"),
+    "reviewer": ("gpt-6-sol", "high"),
 }
 root = Path(sys.argv[1])
 valid = not (root / "executor.toml").exists()

@@ -37,6 +37,7 @@ use crate::api::documents::{
 use crate::api::search::{
     date_histogram, explain_entity, fanout, fetch_db_terms_for_ints, search_entity_terms,
     search_for_results, search_for_results_hit_count, search_mentioned_date_histogram,
+    search_string_facet,
     term_field_for_column,
 };
 use crate::api::{list_datasets, vfs as vfs_api};
@@ -162,6 +163,36 @@ fn verify_expected_source(expected: Option<&str>, current: &str) -> Result<(), A
     if expected.is_some_and(|value| value != current) {
         return Err(AgentError::new(StatusCode::CONFLICT, "source_changed", "the source changed after the prior page"));
     }
+    Ok(())
+}
+
+fn validate_plain_text(value: &str) -> Result<(), AgentError> {
+    if value.chars().any(char::is_control) {
+        return Err(AgentError::invalid_argument("control characters are not allowed"));
+    }
+    Ok(())
+}
+
+fn validate_position(position: Option<AgentPosition>) -> Result<(), AgentError> {
+    if position.is_some_and(|value| value.page > 1_000_000) {
+        return Err(AgentError::invalid_argument("position is too large"));
+    }
+    Ok(())
+}
+
+fn validate_calendar_date(value: &str) -> Result<(), AgentError> {
+    let pieces: Vec<&str> = value.split('-').collect();
+    if pieces.len() != 3 || pieces[0].len() != 4 || pieces[1].len() != 2 || pieces[2].len() != 2
+        || !value.bytes().all(|byte| byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err(AgentError::invalid_argument("date must use YYYY-MM-DD"));
+    }
+    let year: i32 = pieces[0].parse().map_err(|_| AgentError::invalid_argument("date is invalid"))?;
+    let month: u8 = pieces[1].parse().map_err(|_| AgentError::invalid_argument("date is invalid"))?;
+    let day: u8 = pieces[2].parse().map_err(|_| AgentError::invalid_argument("date is invalid"))?;
+    let month = time::Month::try_from(month).map_err(|_| AgentError::invalid_argument("date is invalid"))?;
+    time::Date::from_calendar_date(year, month, day)
+        .map_err(|_| AgentError::invalid_argument("date is invalid"))?;
     Ok(())
 }
 
@@ -323,6 +354,16 @@ async fn build_search_query(
     facet_filters: &BTreeMap<String, Vec<String>>,
     sort: SortSpec,
 ) -> Result<SearchQuery, AgentError> {
+    validate_plain_text(query_string)?;
+    if let (Some(after), Some(before)) = (date_after, date_before) {
+        if after > before {
+            return Err(AgentError::invalid_argument("date range is invalid"));
+        }
+    }
+    for (name, values) in facet_filters {
+        validate_plain_text(name)?;
+        for value in values { validate_plain_text(value)?; }
+    }
     let selected: Vec<String> = if collectionnames.is_empty() {
         match permitted {
             PermissionSet::All => list_permitted_collections(user).await.map_err(AgentError::from_anyhow)?,
@@ -411,6 +452,7 @@ pub async fn search_results(
     headers: HeaderMap,
     Json(body): Json<SearchResultsRequest>,
 ) -> AgentResult<SearchResultsResponse> {
+    validate_position(body.position)?;
     let header = requested_collections_header(&headers);
     let permitted = permitted_collectionnames(&user, &header).await?;
     let sort = sort_spec_from_agent(body.sort.as_ref())?;
@@ -466,8 +508,8 @@ pub async fn search_results(
             title: item.title.clone(),
             snippet: spans_to_snippet(&item.highlight_text_spans),
             canonical_file_type: item.file_type.clone(),
-            size: None,
-            document_date: None,
+            size: item.file_size_bytes,
+            document_date: item.document_date,
             dataset,
         });
     }
@@ -476,10 +518,35 @@ pub async fn search_results(
     let source = collection_source_fingerprint(&collections).await?;
     verify_expected_source(body.expected_source.as_deref(), &source)?;
 
+    let mut facet_counts = BTreeMap::new();
+    for (field, term_field) in [("collection_dataset", None), ("file_types", Some("filetype"))] {
+        let facets = search_string_facet(
+            &user,
+            query.clone(),
+            field.to_string(),
+            term_field.map(str::to_string),
+            None,
+        ).await.map_err(AgentError::from_anyhow)?;
+        let values = facets.facet_values.into_iter().filter_map(|item| {
+            if field == "collection_dataset" {
+                if let FacetOriginalValue::String(value) = &item.original_value {
+                    if !query.facet_filters.get("collection_dataset")
+                        .is_some_and(|selected| !selected.contains(&FacetOriginalValue::String(value.clone()))) {
+                        return Some(AgentFacetCount { value: item.display_string, count: item.count });
+                    }
+                }
+                None
+            } else {
+                Some(AgentFacetCount { value: item.display_string, count: item.count })
+            }
+        }).collect();
+        facet_counts.insert(field.to_string(), values);
+    }
+
     Ok(Json(SearchResultsResponse {
         documents,
         total_count: hit_count.total,
-        facet_counts: BTreeMap::new(),
+        facet_counts,
         page,
         has_more: results.next_hash.is_some(),
         source,
@@ -601,7 +668,7 @@ pub async fn search_entity_explainer(
     let permitted = permitted_collectionnames(&user, &header).await?;
     require_collection(&permitted, &body.collectionname)?;
 
-    let explanation = explain_entity(&user, body.entity_type, body.entity_value, None)
+    let explanation = explain_entity(&user, body.entity_type.clone(), body.entity_value.clone(), None)
         .await
         .map_err(AgentError::from_anyhow)?
         .map(|card| AgentEntityExplanation {
@@ -616,7 +683,29 @@ pub async fn search_entity_explainer(
                 .collect(),
         });
 
-    Ok(Json(SearchEntityExplainerResponse { explanation, documents: Vec::new(), source: String::new() }))
+    let tree = list_datasets::list_permitted_collection_tree(&user).await.map_err(AgentError::from_anyhow)?;
+    let mut documents = Vec::new();
+    for dataset in tree.iter().filter(|entry| entry.collectionname == body.collectionname)
+        .flat_map(|entry| entry.datasets.iter()) {
+        let rows: Vec<(String, String)> = get_collection_client(&body.collectionname)
+            .query("SELECT file_hash, any(surface_text) FROM (SELECT file_hash, entity_rule_ids, entity_value_json, entity_texts FROM regex_entity_hit FINAL WHERE collection_dataset = ? AND (file_hash, rule_set_version) IN (SELECT file_hash, max(rule_set_version) FROM regex_entity_hit FINAL WHERE collection_dataset = ? GROUP BY file_hash)) ARRAY JOIN entity_rule_ids AS rule_id, entity_value_json AS value_json, entity_texts AS surface_text WHERE rule_id = ? AND value_json = ? GROUP BY file_hash ORDER BY file_hash LIMIT 20")
+            .bind(&dataset.collection_dataset)
+            .bind(&dataset.collection_dataset)
+            .bind(&body.entity_type)
+            .bind(&body.entity_value)
+            .fetch_all()
+            .await
+            .map_err(|err| AgentError::from_anyhow(err.into()))?;
+        for (file_hash, snippet) in rows {
+            let identifier = DocumentIdentifier { collection_dataset: dataset.collection_dataset.clone(), file_hash: file_hash.clone() };
+            let path = vfs_api::get_first_vfs_path(&user, identifier).await
+                .map(|p| p.path)
+                .unwrap_or_default();
+            let title = path.rsplit('/').next().unwrap_or(&path).to_string();
+            documents.push(AgentEntityDocument { file_hash, path, title, snippet });
+        }
+    }
+    Ok(Json(SearchEntityExplainerResponse { explanation, documents, source: String::new() }))
 }
 
 // ===================================================================================
@@ -1086,6 +1175,29 @@ pub async fn tables_page(
     headers: HeaderMap,
     Json(body): Json<TablesPageRequest>,
 ) -> AgentResult<TablesPageResponse> {
+    validate_position(body.position)?;
+    validate_plain_text(&body.search)?;
+    if body.sort.as_ref().is_some_and(|sort| sort.direction != "asc" && sort.direction != "desc") {
+        return Err(AgentError::invalid_argument("sort direction is invalid"));
+    }
+    for filter in &body.filters {
+        for value in [&filter.contains, &filter.equals, &filter.starts_with] {
+            if let Some(value) = value { validate_plain_text(value)?; }
+        }
+        for date in [&filter.date_min, &filter.date_max] {
+            if let Some(date) = date { validate_calendar_date(date)?; }
+        }
+        if filter.number_min.is_some_and(|value| !value.is_finite())
+            || filter.number_max.is_some_and(|value| !value.is_finite())
+            || filter.number_min.zip(filter.number_max).is_some_and(|(min, max)| min > max)
+            || filter.date_min.as_ref().zip(filter.date_max.as_ref()).is_some_and(|(min, max)| min > max)
+        {
+            return Err(AgentError::invalid_argument("table filter range is invalid"));
+        }
+        if table_filter_kind(filter).is_none() {
+            return Err(AgentError::invalid_argument("table filter is invalid"));
+        }
+    }
     let header = requested_collections_header(&headers);
     let permitted = permitted_collectionnames(&user, &header).await?;
     let collection_dataset =
@@ -1104,7 +1216,8 @@ pub async fn tables_page(
             .filter_map(|f| table_filter_kind(f).map(|kind| TableColumnFilter { column_id: f.column, kind }))
             .collect(),
         search: body.search.clone(),
-        offset: page_number * limit as u64,
+        offset: page_number.checked_mul(limit as u64)
+            .ok_or_else(|| AgentError::invalid_argument("position is too large"))?,
         limit,
     };
 
@@ -1113,6 +1226,15 @@ pub async fn tables_page(
         .map_err(AgentError::from_anyhow)?
         .ok_or_else(|| AgentError::not_found("this document has no browsable table"))?;
     let sheet_columns = overview.columns_of(body.sheet);
+    let (cell_count, cell_sum): (u64, u64) = get_collection_client(&body.collectionname)
+        .query("SELECT count(), sum(cityHash64(row_id, column_id, cell_text, parsed_at)) FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ?")
+        .bind(&body.file_hash)
+        .bind(body.sheet)
+        .fetch_one()
+        .await
+        .map_err(|err| AgentError::from_anyhow(err.into()))?;
+    let source = sha256::digest(format!("{}:{}:{}:{}:{}", body.file_hash, body.sheet, cell_count, cell_sum, serde_json::to_string(&overview).map_err(|err| AgentError::from_anyhow(err.into()))?));
+    verify_expected_source(body.expected_source.as_deref(), &source)?;
 
     let page = table_browse::get_table_page(&user, identifier, view_query).await.map_err(AgentError::from_anyhow)?;
 
@@ -1144,7 +1266,7 @@ pub async fn tables_page(
         rows,
         page: page_number,
         total_rows: page.total_rows,
-        source: format!("{}:table:{}", body.file_hash, body.sheet),
+        source,
     }))
 }
 
@@ -1182,6 +1304,11 @@ pub async fn tables_search_cells(
     headers: HeaderMap,
     Json(body): Json<TablesSearchCellsRequest>,
 ) -> AgentResult<TablesSearchCellsResponse> {
+    validate_position(body.position)?;
+    validate_plain_text(&body.query)?;
+    if body.query.is_empty() {
+        return Err(AgentError::invalid_argument("query is required"));
+    }
     let header = requested_collections_header(&headers);
     let permitted = permitted_collectionnames(&user, &header).await?;
     let collection_dataset =
@@ -1195,39 +1322,48 @@ pub async fn tables_search_cells(
     let column_names: HashMap<u32, String> =
         overview.columns_of(body.sheet).into_iter().map(|c| (c.column_id, c.label())).collect();
 
-    // No existing read returns cell-level positions for a search inside one sheet, only
-    // a whole-document match count (`table_browse::count_table_cell_matches`) and a
-    // row-filtering `search` on `get_table_page`. This composes the row filter with a
-    // wide page and reads the matching cells back out of it, capped at one page.
-    let view_query = TableViewQuery {
-        sheet_id: body.sheet,
-        visible_columns: Vec::new(),
-        sort: None,
-        filters: Vec::new(),
-        search: body.query.clone(),
-        offset: 0,
-        limit: common::document_tables::MAX_TABLE_PAGE_ROWS,
-    };
-    let page = table_browse::get_table_page(&user, identifier, view_query).await.map_err(AgentError::from_anyhow)?;
-
-    let needle = body.query.to_lowercase();
-    let mut hits = Vec::new();
-    for row in &page.rows {
-        for cell in &row.cells {
-            if cell.text.to_lowercase().contains(&needle) {
-                hits.push(AgentCellHit {
-                    row_number: row.source_row,
-                    column: column_names.get(&cell.column_id).cloned().unwrap_or_default(),
-                    value: cell.text.clone(),
-                });
-            }
-        }
-    }
+    let client = get_collection_client(&body.collectionname);
+    let (hit_count, source_sum): (u64, u64) = client
+        .query("SELECT count(), sum(cityHash64(column_id, row_id, cell_text, parsed_at)) FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 AND row_id NOT IN (SELECT header_row FROM table_sheets FINAL WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? AND header_row > 0)")
+        .bind(&body.file_hash)
+        .bind(body.sheet)
+        .bind(&body.query)
+        .bind(&identifier.collection_dataset)
+        .bind(&body.file_hash)
+        .bind(body.sheet)
+        .fetch_one()
+        .await
+        .map_err(|err| AgentError::from_anyhow(err.into()))?;
+    let source = format!("{}:table:{}:{hit_count}:{source_sum}", body.file_hash, body.sheet);
+    verify_expected_source(body.expected_source.as_deref(), &source)?;
+    let page_number = body.position.map(|p| p.page).unwrap_or(0);
+    let offset = page_number.checked_mul(u64::from(common::document_tables::MAX_TABLE_PAGE_ROWS))
+        .ok_or_else(|| AgentError::invalid_argument("position is too large"))?;
+    let rows: Vec<(u64, u32, String)> = client
+        .query("SELECT source_row, column_id, cell_text FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 AND row_id NOT IN (SELECT header_row FROM table_sheets FINAL WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? AND header_row > 0) ORDER BY row_id, column_id LIMIT ? OFFSET ?")
+        .bind(&body.file_hash)
+        .bind(body.sheet)
+        .bind(&body.query)
+        .bind(&identifier.collection_dataset)
+        .bind(&body.file_hash)
+        .bind(body.sheet)
+        .bind(common::document_tables::MAX_TABLE_PAGE_ROWS)
+        .bind(offset)
+        .fetch_all()
+        .await
+        .map_err(|err| AgentError::from_anyhow(err.into()))?;
+    let hits: Vec<AgentCellHit> = rows.into_iter().map(|(row_number, column_id, value)| AgentCellHit {
+        row_number,
+        column: column_names.get(&column_id).cloned().unwrap_or_default(),
+        value,
+    }).collect();
+    let has_more = offset.saturating_add(hits.len() as u64) < hit_count;
 
     Ok(Json(TablesSearchCellsResponse {
-        hit_count: hits.len() as u64,
+        hit_count,
         hits,
-        source: format!("{}:table:{}", body.file_hash, body.sheet),
+        has_more,
+        source,
     }))
 }
 
@@ -1301,6 +1437,8 @@ pub async fn folders_list(
     headers: HeaderMap,
     Json(body): Json<FoldersListRequest>,
 ) -> AgentResult<FoldersListResponse> {
+    validate_position(body.position)?;
+    if let Some(node_id) = &body.node_id { validate_plain_text(node_id)?; }
     let header = requested_collections_header(&headers);
     let permitted = permitted_collectionnames(&user, &header).await?;
     require_collection_dataset(&user, &permitted, &body.collectionname, &body.dataset).await?;
@@ -1334,6 +1472,37 @@ pub async fn folders_list(
 
     let node_keys: Vec<String> = children_page.nodes.iter().map(|n| n.node_key.clone()).collect();
     let term_ids = vfs_api::tree::node_term_ids(&body.dataset, &node_keys).await.unwrap_or_default();
+    let child_counts: HashMap<String, u64> = get_collection_client(&body.collectionname)
+        .query("SELECT parent_key, count() FROM vfs_nodes FINAL WHERE collection_dataset = ? AND parent_key IN (?) GROUP BY parent_key")
+        .bind(&body.dataset)
+        .bind(&node_keys)
+        .fetch_all::<(String, u64)>()
+        .await
+        .map_err(|err| AgentError::from_anyhow(err.into()))?
+        .into_iter()
+        .collect();
+    let file_hashes: Vec<String> = children_page.nodes.iter()
+        .filter(|n| n.kind != common::vfs::VfsNodeKind::Dir)
+        .map(|n| n.file_hash.clone())
+        .collect();
+    let file_types: HashMap<String, String> = get_collection_client(&body.collectionname)
+        .query("SELECT hash, file_type FROM file_type_canonical FINAL WHERE collection_dataset = ? AND hash IN (?)")
+        .bind(&body.dataset)
+        .bind(&file_hashes)
+        .fetch_all::<(String, String)>()
+        .await
+        .map_err(|err| AgentError::from_anyhow(err.into()))?
+        .into_iter()
+        .collect();
+    let file_dates: HashMap<String, i64> = get_collection_client(&body.collectionname)
+        .query("SELECT hash, min(date) FROM document_dates FINAL WHERE collection_dataset = ? AND hash IN (?) GROUP BY hash")
+        .bind(&body.dataset)
+        .bind(&file_hashes)
+        .fetch_all::<(String, i64)>()
+        .await
+        .map_err(|err| AgentError::from_anyhow(err.into()))?
+        .into_iter()
+        .collect();
 
     let mut children = Vec::new();
     let mut files = Vec::new();
@@ -1346,8 +1515,8 @@ pub async fn folders_list(
                     file_hash: node.file_hash.clone(),
                     name: node.display_name().to_string(),
                     size: node.file_size_bytes,
-                    date: None,
-                    canonical_file_type: None,
+                    date: file_dates.get(&node.file_hash).copied(),
+                    canonical_file_type: file_types.get(&node.file_hash).cloned(),
                     is_container: false,
                     term_id,
                 });
@@ -1358,8 +1527,8 @@ pub async fn folders_list(
                     file_hash: node.file_hash.clone(),
                     name: node.display_name().to_string(),
                     size: node.file_size_bytes,
-                    date: None,
-                    canonical_file_type: None,
+                    date: file_dates.get(&node.file_hash).copied(),
+                    canonical_file_type: file_types.get(&node.file_hash).cloned(),
                     is_container: true,
                     term_id,
                 });
@@ -1367,7 +1536,7 @@ pub async fn folders_list(
                     node_id: node.node_key.clone(),
                     name: node.display_name().to_string(),
                     kind: node_kind_str(node.kind).to_string(),
-                    child_count: None,
+                    child_count: Some(*child_counts.get(&node.node_key).unwrap_or(&0)),
                     term_id,
                 });
             }
@@ -1376,7 +1545,7 @@ pub async fn folders_list(
                     node_id: node.node_key.clone(),
                     name: node.display_name().to_string(),
                     kind: node_kind_str(node.kind).to_string(),
-                    child_count: None,
+                    child_count: Some(*child_counts.get(&node.node_key).unwrap_or(&0)),
                     term_id,
                 });
             }

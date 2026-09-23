@@ -76,6 +76,8 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
         matched_by_filename: false,
         // The chat's document card draws no type glyph of its own.
         file_type: String::new(),
+        file_size_bytes: None,
+        document_date: None,
     };
 
     rsx! {

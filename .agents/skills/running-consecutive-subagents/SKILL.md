@@ -95,7 +95,9 @@ it does is a package with a hole in it.
 
 Launch with the logical role and no model override. Executors and reviewers run no Git write
 command. The organizer owns Git writes and stages reviewed paths by explicit path.
-Send every correction to `executor-heavy` with a new package that names the review findings.
+Send every correction to `executor-heavy` with a new package that names the review's blocking
+findings and no others. A correction runs only when a review rejects its batch, and a plan does
+not schedule one in advance.
 
 **Inside a plan folder the package is the pass document**, which `planning-work` defines. The
 executor is launched on that file, and nothing is transcribed into a second one. It adds the

@@ -1,7 +1,7 @@
 name = "reviewer"
 description = "Reads a completed pass diff and reports findings with a defect class."
-model = "gpt-5.6-sol"
-model_reasoning_effort = "xhigh"
+model = "gpt-6-sol"
+model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 developer_instructions = """
 Read `.claude/agents/reviewer.md` before you start. That file holds the rules for this role.

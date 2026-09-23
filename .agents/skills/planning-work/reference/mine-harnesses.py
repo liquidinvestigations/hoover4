@@ -106,7 +106,7 @@ APPLY_PATCH_RE = re.compile(r"\*\*\* (?:Update|Add|Delete) File:\s*(\S+)")
 #: Cursor prefixes a configured model and suffixes its reasoning effort. The tracker writes
 #: the bare name for the same model, so both are reduced to the bare name plus an effort.
 CURSOR_MODEL_RE = re.compile(
-    r"^(?:cursor-)?(.*?)(?:-(low|medium|high|xhigh|max|fast))?$")
+    r"^(?:cursor-)?(.*?)(?:-(low|medium|high|high|max|fast))?$")
 
 
 def split_model(name):

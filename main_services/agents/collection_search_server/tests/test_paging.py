@@ -35,7 +35,7 @@ SAMPLES = {
     "table_overview": {"sheets": [{"name": "s", "row_count": 1, "column_count": 1, "columns": [{"name": "a", "type": "text"}]}]},
     "table_page": {"columns": [{"name": "a", "type": "text", "hidden": False}], "rows": [{"row_number": 1, "cells": {"a": "x"}}], "page": 0, "total_rows": 1},
     "table_column_values": {"values": [{"value": "x", "count": 1}]},
-    "table_search_cells": {"hit_count": 1, "hits": [{"row_number": 1, "column": "a", "value": "x"}]},
+    "table_search_cells": {"hit_count": 1, "hits": [{"row_number": 1, "column": "a", "value": "x"}], "has_more": False},
     "folder_overview": {"datasets": [{"name": "d", "document_count": 2}], "folder_count": 1, "file_count": 2, "total_bytes": 3},
     "folder_list": {"breadcrumb": [{"node_id": "r", "name": "root"}], "container_root": "r", "children": [{"node_id": "a", "name": "a", "kind": "dir", "child_count": 1, "term_id": None}], "files": [{"node_id": "b", "file_hash": "h", "name": "b", "size": 1, "date": None, "canonical_file_type": "text", "is_container": False, "term_id": None}], "page": 0},
     "folder_search": {"matches": [{"node_id": "a", "parent_id": "r", "name": "a", "kind": "dir", "path": "/a", "term_id": None}]},
@@ -93,15 +93,17 @@ def test_malformed_continuation_fields_return_invalid_argument(change):
     assert json.loads(_read_more_response(token))["error"] == "invalid_argument"
 
 
-@pytest.mark.parametrize("name", ["search_collections", "table_page", "folder_list"])
+@pytest.mark.parametrize("name", ["search_collections", "table_page", "table_search_cells", "folder_list"])
 def test_two_backend_pages_and_inside_page_cut(name, monkeypatch):
     tool = TOOLS[name]
-    batch_size = {"search_collections": 2, "table_page": 50, "folder_list": 200}[name]
+    batch_size = {"search_collections": 2, "table_page": 50, "table_search_cells": 200, "folder_list": 200}[name]
     def item(n):
         if name == "search_collections":
             return {**SAMPLES[name]["documents"][0], "file_hash": str(n), "snippet": "x" * 350}
         if name == "table_page":
             return {"row_number": n, "cells": {"text": str(n)}}
+        if name == "table_search_cells":
+            return {"row_number": n, "column": "A", "value": str(n)}
         return {**SAMPLES[name]["files"][0], "node_id": str(n), "file_hash": str(n)}
 
     first = [item(n) for n in range(batch_size)]
@@ -116,6 +118,8 @@ def test_two_backend_pages_and_inside_page_cut(name, monkeypatch):
             body = {"documents": items, "total_count": 4, "facet_counts": {}, "page": page, "has_more": page == 0}
         elif name == "table_page":
             body = {"columns": [{"name": "text", "type": "text", "hidden": False}], "rows": items, "page": page, "total_rows": 100}
+        elif name == "table_search_cells":
+            body = {"hit_count": 400, "hits": items, "has_more": page == 0}
         else:
             body = {"breadcrumb": [], "container_root": None, "children": [], "files": items, "page": page}
         return response_model.model_validate({**body, "source": "stable"})
@@ -123,7 +127,7 @@ def test_two_backend_pages_and_inside_page_cut(name, monkeypatch):
     monkeypatch.setattr("collection_search_server.paging.BackendClient.post", post)
     monkeypatch.setattr("collection_search_server.paging._artifact", lambda tool_name, complete: "artifact")
     monkeypatch.setattr("collection_search_server.paging.PAGE_LIMIT", ByteLimit(1_000 if name == "search_collections" else 24_000))
-    request_values = {"search_collections": {}, "table_page": {"collectionname": "c", "file_hash": "h", "sheet": 0}, "folder_list": {"collectionname": "c", "dataset": "d"}}[name]
+    request_values = {"search_collections": {}, "table_page": {"collectionname": "c", "file_hash": "h", "sheet": 0}, "table_search_cells": {"collectionname": "c", "file_hash": "h", "sheet": 0, "query": "x"}, "folder_list": {"collectionname": "c", "dataset": "d"}}[name]
     page = json.loads(tool.render(tool.model.model_validate(request_values), {}, ""))
     if name == "folder_list":
         assert page["total_units"] > page["returned_units"]
@@ -146,7 +150,7 @@ def test_two_backend_pages_and_inside_page_cut(name, monkeypatch):
                for item in json.loads("".join(blob_parts[page_number]))["files"]]
     else:
         assert len(seen) == batch_size * 2
-        ids = [item["value"]["file_hash"] if name == "folder_list" else str(item["row_number"]) if name == "table_page" else item["file_hash"] for item in seen]
+        ids = [item["value"]["file_hash"] if name == "folder_list" else str(item["row_number"]) if name in ("table_page", "table_search_cells") else item["file_hash"] for item in seen]
     assert ids == [str(n) for n in range(batch_size * 2)]
     assert 0 in calls and 1 in calls
     assert page["continuation"] is None

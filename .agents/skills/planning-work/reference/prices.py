@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""The list price of every model this repository has been worked on.
+"""The list price of configured models and models found in historical transcripts.
 
     prices.py            print the table and what it does not cover
 
-Read from each provider's own documentation on 2026-09-11. Every row names the page it
-came from. A reseller's consolidated list is a secondary source and is used only to check
-that no model was missed.
+Each provider's documentation supplies its rows. A reseller's consolidated list is used
+only to check that no model is missing.
 
 Prices are US dollars per million tokens, at the standard tier and the short-context rate.
 
@@ -34,6 +33,8 @@ credits, so no row exists for it here.
 #: (input, cache_write, cache_read, output) in dollars per million tokens.
 #: The fourth column of the key names the page each row was read from.
 PRICES = {
+    # https://platform.claude.com/docs/en/models/opus-5-5/overview
+    "claude-opus-5-5": (4.00, 5.00, 0.20, 20.00),
     # https://platform.claude.com/docs/en/about-claude/pricing
     "claude-opus-5": (5.00, 6.25, 0.50, 25.00),
     "claude-opus-4.8": (5.00, 6.25, 0.50, 25.00),
@@ -42,6 +43,7 @@ PRICES = {
     "claude-fable-5-1": (10.00, 12.50, 0.25, 50.00),
     # https://developers.openai.com/api/docs/pricing
     "gpt-6-astra": (10.00, 12.50, 1.00, 50.00),
+    "gpt-6-sol": (2.00, 2.50, 0.20, 10.00),
     "gpt-5.6-sol": (4.00, 5.00, 0.40, 20.00),
     "gpt-5.6-terra": (2.00, 2.50, 0.20, 12.00),
     "gpt-5.6-luna": (0.20, 0.25, 0.02, 1.20),
@@ -51,6 +53,8 @@ PRICES = {
     "kimi-code/k2.7-code": (0.95, 0.95, 0.19, 4.00),
     # https://docs.x.ai/developers/models/grok-4.6
     "grok-4.6": (2.00, 2.00, 0.50, 6.00),
+    # https://docs.x.ai/developers/models/grok-4.7
+    "grok-4.7": (2.00, 2.00, 0.50, 6.00),
 }
 
 #: A model that has been used here and has no published token price.
@@ -71,8 +75,8 @@ ALIASES = {
 #: marketing name for the tier.
 TIERS = {
     "frontier": ("claude-fable-5-1", "gpt-6-astra"),
-    "workhorse": ("claude-opus-5", "gpt-5.6-sol"),
-    "value": ("claude-sonnet-5", "gpt-5.6-terra", "kimi-code/k3", "grok-4.6"),
+    "workhorse": ("claude-opus-5-5", "gpt-6-sol"),
+    "value": ("claude-sonnet-5", "gpt-5.6-terra", "kimi-code/k3", "grok-4.7"),
     "cheap": ("claude-haiku-4-5", "gpt-5.6-luna", "kimi-code/k2.7-code"),
 }
 

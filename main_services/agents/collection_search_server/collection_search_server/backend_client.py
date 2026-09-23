@@ -162,6 +162,7 @@ class TablesOverviewRequest(DocumentsMetadataRequest):
 
 
 class TablesPageRequest(DocumentsMetadataRequest):
+    expected_source: str | None = None
     sheet: int
     sort: AgentTableSort | None = None
     filters: list[AgentTableFilter] = Field(default_factory=list)
@@ -176,8 +177,10 @@ class TablesColumnValuesRequest(TablesOverviewRequest):
 
 
 class TablesSearchCellsRequest(TablesOverviewRequest):
+    expected_source: str | None = None
     sheet: int
     query: str
+    position: AgentPosition | None = None
 
 
 class FoldersOverviewRequest(AgentRequest):
@@ -494,6 +497,7 @@ class TablesColumnValuesResponse(AgentModel):
 class TablesSearchCellsResponse(AgentModel):
     hit_count: int
     hits: list[CellHit]
+    has_more: bool = False
     source: str
 
 
