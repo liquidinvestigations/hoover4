@@ -1,0 +1,76 @@
+term	tier	speaker	concept	source	review	note
+30 jours net	H	neutral	net 30	curated	mt-edited	
+60 jours net	H	neutral	net 60	curated	mt-edited	
+à 30 jours	H	neutral	net 30	curated	mt-edited	
+à régler à	H	neutral	remit to	curated	mt-edited	
+adresse de facturation	H	neutral	bill to	curated	mt-edited	
+autofacturation	H	neutral	self-billed invoice	uncl1001	mt-edited	
+date de facturation	H	neutral	invoice date	curated	mt-edited	
+date de facture	H	neutral	invoice date	curated	mt-edited	
+facture affacturée	H	neutral	factored invoice	uncl1001	mt-edited	
+facture auto-établie	H	neutral	self-billed invoice	uncl1001	mt-edited	
+facture cédée	H	neutral	factored invoice	uncl1001	mt-edited	
+facture commerciale	H	neutral	commercial invoice	curated	mt-edited	
+facture consulaire	H	neutral	consular invoice	uncl1001	mt-edited	
+facture de consignation	H	neutral	consignment invoice	uncl1001	mt-edited	
+facture de fret	H	neutral	freight invoice	uncl1001	mt-edited	
+facture de transitaire	H	neutral	forwarder's invoice	uncl1001	mt-edited	
+facture de transport	H	neutral	freight invoice	uncl1001	mt-edited	
+facture fiscale	H	neutral	tax invoice	curated	mt-edited	
+facture n°	H	neutral	invoice no	curated	mt-edited	
+facture no	H	neutral	invoice no	curated	mt-edited	
+facturer à	H	neutral	bill to	curated	mt-edited	
+merci de régler	H	neutral	please remit	curated	mt-edited	
+montant à payer	H	neutral	amount due	curated	mt-edited	
+montant dû	H	neutral	amount due	curated	mt-edited	
+montant total TTC	H	neutral	total due	curated	mt-edited	
+n° de facture	H	neutral	invoice no	curated	mt-edited	
+net à payer	H	neutral	amount due	curated	mt-edited	
+note de commission	H	neutral	commission note	uncl1001	mt-edited	
+numéro de facture	H	neutral	invoice number	curated	mt-edited	
+paiement à 30 jours	H	neutral	net 30	curated	mt-edited	
+paiement à 60 jours	H	neutral	net 60	curated	mt-edited	
+paiement à l'ordre de	H	neutral	remit to	curated	mt-edited	
+relevé de commissions	H	neutral	commission note	uncl1001	mt-edited	
+reste à payer	H	neutral	balance due	curated	mt-edited	
+solde à payer	H	neutral	balance due	curated	mt-edited	
+solde dû	H	neutral	balance due	curated	mt-edited	
+total à payer	H	neutral	total due	curated	mt-edited	
+total dû	H	neutral	total due	curated	mt-edited	
+veuillez régler	H	neutral	please remit	curated	mt-edited	
+veuillez virer	H	neutral	please remit	curated	mt-edited	
+adresse de livraison	M	neutral	ship to	curated	mt-edited	
+appel de fonds	M	neutral	request for payment	uncl1001	mt-edited	
+bon de commande	M	neutral	purchase order	curated	mt-edited	
+bon de commande n°	M	neutral	po number	curated	mt-edited	
+bons de commande	M	neutral	purchase order	curated	mt-edited	
+conditions de paiement	M	neutral	payment terms	curated	mt-edited	
+conditions de règlement	M	neutral	payment terms	curated	mt-edited	
+délai de paiement	M	neutral	payment terms	curated	mt-edited	
+demande de paiement	M	neutral	request for payment	uncl1001	mt-edited	
+facture	M	neutral	invoice	curated	mt-edited	
+facture d'avoir	M	neutral	credit note	curated	mt-edited	
+factures	M	neutral	invoice	curated	mt-edited	
+livrer à	M	neutral	ship to	curated	mt-edited	
+n° de commande	M	neutral	po number	curated	mt-edited	
+n° TVA intracommunautaire	M	neutral	vat number	curated	mt-edited	
+note de crédit	M	neutral	credit note	curated	mt-edited	
+note de débit	M	neutral	debit note	curated	mt-edited	
+numéro de commande	M	neutral	po number	curated	mt-edited	
+numéro de TVA	M	neutral	vat number	curated	mt-edited	
+numéro de TVA intracommunautaire	M	neutral	vat number	curated	mt-edited	
+numéro d'identification fiscale	M	neutral	tax id	curated	mt-edited	
+numéro fiscal	M	neutral	tax id	curated	mt-edited	
+P.U.	M	neutral	unit price	curated	mt-edited	
+prix unitaire	M	neutral	unit price	curated	mt-edited	
+SIRET	M	neutral	tax id	curated	mt-edited	
+sous-total	M	neutral	subtotal	curated	mt-edited	
+vendu à	M	neutral	sold to	curated	mt-edited	
+avoir	L	neutral	credit note	curated	mt-edited	
+client	L	neutral	sold to	curated	mt-edited	
+date d'échéance	L	neutral	due date	curated	mt-edited	
+échéance	L	neutral	due date	curated	mt-edited	
+HT	L	neutral	vat	curated	mt-edited	
+qté	L	neutral	qty	curated	mt-edited	
+TTC	L	neutral	vat	curated	mt-edited	
+TVA	L	neutral	vat	curated	mt-edited	

@@ -1,0 +1,37 @@
+term	tier	speaker	concept	source	review	note
+das wirst du bereuen	H	actor	you will regret	curated	mt-edited	
+dich fertigmachen	H	actor	ruin you	curated	mt-edited	
+dich ruinieren	H	actor	ruin you	curated	mt-edited	
+du wirst es bereuen	H	actor	you will regret	curated	mt-edited	
+Hetzkampagne*	H	accuser	smear campaign	investigator-list	mt-edited	
+mach dich fertig	H	actor	ruin you	curated	mt-edited	
+Rufmordkampagne*	H	accuser	smear campaign	investigator-list	mt-edited	
+Schmutzkampagne*	H	accuser	smear campaign	investigator-list	mt-edited	
+belästig*	M	accuser	harass*	curated	mt-edited	
+gemobbt	M	accuser	harass*	curated	mt-edited	
+halt den Mund	M	actor	shut up	investigator-list	mt-edited	
+halt die Klappe	M	actor	shut up	investigator-list	mt-edited	
+halts Maul	M	actor	shut up	investigator-list	mt-edited	
+herabwürdig*	M	accuser	disparag*	investigator-list	mt-edited	
+leck mich	M	actor	screw you	curated	mt-edited	
+mobbing	M	accuser	harass*	curated	mt-edited	
+scheiß auf dich	M	actor	screw you	curated	mt-edited	
+schlechtmach*	M	accuser	disparag*	investigator-list	mt-edited	
+Unterstellung*	M	accuser	innuendo	investigator-list	mt-edited	
+verpiss dich	M	actor	piss off	curated	mt-edited	
+verunglimpf*	M	accuser	disparag*	investigator-list	mt-edited	
+Andeutung*	L	accuser	innuendo	investigator-list	mt-edited	
+anschwärzen	L	accuser	smear	investigator-list	mt-edited	
+Arschloch*	L	actor	asshole	investigator-list	mt-edited	
+Blödsinn	L	actor	bullshit	curated	mt-edited	
+Hetze	L	accuser	smear	investigator-list	mt-edited	
+leg dich nicht an mit	L	actor	don't mess with	fca-hsbc-fx	mt-edited	
+leg dich nicht mit	L	actor	don't mess with	fca-hsbc-fx	mt-edited	
+Mist	L	actor	shit	investigator-list	mt-edited	
+Quatsch	L	actor	bullshit	curated	mt-edited	
+Scheiss	L	actor	fuck	investigator-list	mt-edited	
+Scheiße	L	actor	fuck	investigator-list	mt-edited	
+Schwachsinn	L	actor	bullshit	curated	mt-edited	
+verdammt	L	actor	fuck	investigator-list	mt-edited	
+verfickt*	L	actor	fuck	investigator-list	mt-edited	
+Wichser*	L	actor	asshole	investigator-list	mt-edited	

@@ -1,0 +1,150 @@
+term	tier	speaker	concept	source	review	note
+аудит этого не увидит	H	actor	no auditor will review it	ey-fbi-2013	mt-edited	
+без бумажного следа	H	actor	no paper trail	curated	mt-edited	
+без комплаенса	H	actor	keep compliance out of it	curated	mt-edited	
+в шредер	H	actor	shred the documents	curated	mt-edited	
+давай сохраним это в тайне	H	actor	let's keep this a secret	nice-actimize-lexicon	mt-edited	
+держать в тайне	H	actor	keep it under wraps	curated	mt-edited	
+держи в тайне	H	actor	keep it under wraps	curated	mt-edited	
+держи это в секрете	H	actor	keep this a secret	nice-actimize-lexicon	mt-edited	
+держи язык за зубами	H	actor	keep it quiet	curated	mt-edited	
+замести под ковер	H	actor	sweep it under the rug	curated	mt-edited	
+замяли	H	accuser	cover up	investigator-list	mt-edited	
+замять	H	accuser	cover up	investigator-list	mt-edited	
+замять дело	H	accuser	cover up	investigator-list	mt-edited	
+звони на другой номер	H	actor	use the other number	curated	mt-edited	
+комплаенсу ни слова	H	actor	don't tell compliance	curated	mt-edited	
+левая симка	H	actor	burner phone	curated	mt-edited	
+левую симку	H	actor	burner phone	curated	mt-edited	
+левый телефон	H	actor	burner phone	curated	mt-edited	
+между нами	H	actor	keep this between us	curated	mt-edited	
+на мой личный ящик	H	actor	use my personal email	curated	mt-edited	
+на мою личную почту	H	actor	send it to my gmail	curated	mt-edited	
+начальство не интересуется	H	actor	bosses don't ask	ey-fbi-2013	mt-edited	
+начальство не спрашивает	H	actor	bosses don't ask	ey-fbi-2013	mt-edited	
+не афишируй	H	actor	keep it quiet	curated	mt-edited	
+не вмешивай комплаенс	H	actor	keep compliance out of it	curated	mt-edited	
+не выдавай информацию сам	H	actor	do not volunteer information	investigator-list	mt-edited	
+не говори комплаенсу	H	actor	don't tell compliance	curated	mt-edited	
+не говори юристам	H	actor	don't tell legal	curated	mt-edited	
+не оставляй следов	H	actor	don't leave a trail	investigator-list	mt-edited	
+не оставлять следов	H	actor	don't leave a trail	investigator-list	mt-edited	
+не отражалось ни в каких книгах	H	actor	not be in any book	fsa-cftc-libor-chats	mt-edited	
+не пиши об этом	H	actor	don't put it in writing	curated	mt-edited	
+не распространяйся	H	actor	keep it quiet	curated	mt-edited	
+не фиксируй письменно	H	actor	don't put this in writing	curated	mt-edited	
+ни один аудитор не проверит	H	actor	no auditor will review it	ey-fbi-2013	mt-edited	
+никаких бумаг	H	actor	no paper trail	curated	mt-edited	
+никому не нужно знать	H	actor	nobody has to know	ey-fbi-2013	mt-edited	
+никто не должен знать	H	actor	nobody has to know	ey-fbi-2013	mt-edited	
+никто не заметит	H	actor	nobody will find out	investigator-list	mt-edited	
+никто не узнает	H	actor	nobody will find out	investigator-list	mt-edited	
+ничего не говори сам	H	actor	do not volunteer information	investigator-list	mt-edited	
+ничего не пиши	H	actor	don't put it in writing	curated	mt-edited	
+ничего письменно	H	actor	don't put it in writing	curated	mt-edited	
+одноразовый телефон	H	actor	burner phone	curated	mt-edited	
+пиши на личную почту	H	actor	use my personal email	curated	mt-edited	
+по другому номеру	H	actor	use the other number	curated	mt-edited	
+по другому телефону	H	actor	use the other phone	curated	mt-edited	
+подчистить документы	H	actor	scrub the records	curated	mt-edited	
+позвони мне на другой номер	H	actor	call me on the other phone	curated	mt-edited	
+позвони на другой телефон	H	actor	call me on the other phone	curated	mt-edited	
+почистить жесткий диск	H	actor	wipe the drive	curated	mt-edited	
+почистить записи	H	actor	scrub the records	curated	mt-edited	
+предоплаченный телефон	H	actor	pre-paid cell phone	sec-insider-trading-2026	mt-edited	
+пришли на мой gmail	H	actor	send it to my gmail	curated	mt-edited	
+пусть это останется между нами	H	actor	keep this between us	curated	mt-edited	
+с другого телефона	H	actor	use the other phone	curated	mt-edited	
+сжечь после прочтения	H	actor	burn after reading	curated	mt-edited	
+сокрытие	H	accuser	coverup	curated	mt-edited	
+сотри письмо	H	actor	delete this email	curated	mt-edited	
+сохрани в тайне	H	actor	keep this a secret	nice-actimize-lexicon	mt-edited	
+спустить на тормозах	H	actor	sweep it under the rug	curated	mt-edited	
+стереть диск	H	actor	wipe the drive	curated	mt-edited	
+телефон без регистрации	H	actor	pre-paid cell phone	sec-insider-trading-2026	mt-edited	
+удали после прочтения	H	actor	delete after reading	curated	mt-edited	
+удали это письмо	H	actor	delete this email	curated	mt-edited	
+удалите это письмо	H	actor	delete this email	curated	mt-edited	
+удалить после прочтения	H	actor	delete after reading	curated	mt-edited	
+уничтожить документы	H	actor	shred the documents	curated	mt-edited	
+уничтожить после прочтения	H	actor	burn after reading	curated	mt-edited	
+уничтожить файлы	H	actor	shred the files	curated	mt-edited	
+уничтожь бумаги	H	actor	shred the files	curated	mt-edited	
+юристам ни слова	H	actor	don't tell legal	curated	mt-edited	
+без копии	M	actor	don't cc	curated	mt-edited	
+боятся давать информацию	M	actor	scared to give info	fca-hsbc-fx	mt-edited	
+в политике ничего не сказано	M	actor	the policy does not say	ey-fbi-2013	mt-edited	
+в регламенте не сказано	M	actor	the policy does not say	ey-fbi-2013	mt-edited	
+в сигнале	M	actor	use signal	curated	mt-edited	
+высовываться	L	actor	head above the parapet	cftc-barclays-libor	mt-edited	
+высунуться	M	actor	head above the parapet	cftc-barclays-libor	mt-edited	
+другой ящик	M	actor	alternate e-mail	spamassassin-advance-fee	mt-edited	
+другую почту	M	actor	alternate e-mail	spamassassin-advance-fee	mt-edited	
+ему не обязательно знать	M	actor	don't need to know	investigator-list	mt-edited	
+зайди в кабинет	M	actor	come by my office	investigator-list	mt-edited	
+зайди ко мне	M	actor	come by my office	investigator-list	mt-edited	
+зайди ко мне в кабинет	M	actor	come by my office	investigator-list	mt-edited	
+звони на сотовый	M	actor	call my mobile	investigator-list	mt-edited	
+им не нужно знать	M	actor	don't need to know	investigator-list	mt-edited	
+исключи из переписки	M	actor	take him off the thread	curated	mt-edited	
+левый номер	M	actor	burner	curated	mt-edited	
+минимизация ущерба	M	actor	damage control	investigator-list	mt-edited	
+не в переписке	M	actor	take this offline	investigator-list	mt-edited	
+не в письме	M	actor	not in writing	curated	mt-edited	
+не для протокола	M	actor	off the record	curated	mt-edited	
+не письменно	M	actor	not in writing	curated	mt-edited	
+не по имейлу	M	actor	not on email	curated	mt-edited	
+не по почте	M	actor	not on email	curated	mt-edited	
+не по телефону	M	actor	let's discuss in person	curated	mt-edited	
+не под запись	M	actor	off the record	curated	mt-edited	
+не ставь в копию	M	actor	don't cc	curated	mt-edited	
+никому не говори	M	actor	don't tell anyone	nice-actimize-lexicon	mt-edited	
+никому ни слова	M	actor	don't tell anyone	nice-actimize-lexicon	mt-edited	
+никто не задает вопросов	M	actor	nobody asks anything	ey-fbi-2013	mt-edited	
+никто ничего не спрашивает	M	actor	nobody asks anything	ey-fbi-2013	mt-edited	
+обелить	M	accuser	whitewash	investigator-list	mt-edited	
+обсудим лично	M	actor	let's discuss in person	curated	mt-edited	
+обсудим отдельно	M	actor	take this offline	investigator-list	mt-edited	
+отмыть репутацию	M	accuser	whitewash	investigator-list	mt-edited	
+перейдем в сигнал	M	actor	switch to signal	curated	mt-edited	
+пиши в сигнал	M	actor	switch to signal	curated	mt-edited	
+по необходимости знать	M	actor	need to know basis	curated	mt-edited	
+подчистить бумаги	M	actor	clean up the files	curated	mt-edited	
+позвони на мобильный	M	actor	call my mobile	investigator-list	mt-edited	
+почистить файлы	M	actor	clean up the files	curated	mt-edited	
+при встрече	M	actor	let's discuss in person	curated	mt-edited	
+скрыть	L	accuser	cover up	investigator-list	mt-edited	
+сотри это	M	actor	delete this	curated	mt-edited	
+спасать ситуацию	M	actor	damage control	investigator-list	mt-edited	
+строго между нами	M	actor	between you and me	curated	mt-edited	
+убери его из переписки	M	actor	take him off the thread	curated	mt-edited	
+убери ее из переписки	M	actor	take her off the thread	curated	mt-edited	
+убери их из переписки	M	actor	take them off the thread	curated	mt-edited	
+удали это	M	actor	delete this	curated	mt-edited	
+уничтожь	M	actor	shred it	curated	mt-edited	
+через сигнал	M	actor	use signal	curated	mt-edited	
+чтобы это исчезло	M	actor	make it go away	curated	mt-edited	
+в ватсапе	L	actor	use whatsapp	curated	mt-edited	
+в вотсапе	L	actor	use whatsapp	curated	mt-edited	
+в секрете	L	actor	secret	investigator-list	mt-edited	
+для информации	L	actor	heads up	fca-hsbc-fx	mt-edited	
+информационная блокада	L	actor	blackout	investigator-list	mt-edited	
+конфиденциальн*	L	actor	confidential	investigator-list	mt-edited	
+личная почта	L	actor	private e-mail	spamassassin-advance-fee	mt-edited	
+личную почту	L	actor	private e-mail	spamassassin-advance-fee	mt-edited	
+молчание	L	actor	blackout	investigator-list	mt-edited	
+напиши в ватсап	L	actor	whatsapp me	curated	mt-edited	
+напиши в вотсап	L	actor	whatsapp me	curated	mt-edited	
+напиши в сигнал	L	actor	signal me	curated	mt-edited	
+не пересылай	L	actor	do not forward	curated	mt-edited	
+не пересылать	L	actor	do not forward	curated	mt-edited	
+предупреждаю	L	actor	heads up	fca-hsbc-fx	mt-edited	
+секрет	L	actor	secret	investigator-list	mt-edited	
+секретно	L	actor	secret	investigator-list	mt-edited	
+слив информации	L	actor	leak	investigator-list	mt-edited	
+слили	L	actor	leak	investigator-list	mt-edited	
+тайн*	L	actor	secret	investigator-list	mt-edited	
+телега	L	actor	telegram	curated	mt-edited	
+телеграм*	L	actor	telegram	curated	mt-edited	
+утечк*	L	actor	leak	investigator-list	mt-edited	
+через вотсап	L	actor	use whatsapp	curated	mt-edited	

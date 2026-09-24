@@ -1,0 +1,85 @@
+term	tier	speaker	concept	source	review	note
+Beweise beseitigen	H	actor	get rid of the evidence	curated	mt-edited	
+Beweise vernichten	H	actor	destroy the evidence	curated	mt-edited	
+Beweise verschwinden lassen	H	actor	get rid of the evidence	curated	mt-edited	
+Beweismittel vernichten	H	actor	destroy the evidence	curated	mt-edited	
+entführ*	H	accuser	kidnap*	curated	mt-edited	
+Entführung*	H	accuser	kidnap*	curated	mt-edited	
+erpress*	H	accuser	extort*	curated	mt-edited	
+Erpressung*	H	accuser	blackmail	curated	mt-edited	
+falsche Papiere	H	actor	fake documents	curated	mt-edited	
+falscher Pass	H	actor	fake passport	curated	mt-edited	
+gefälschte Dokumente	H	actor	fake documents	curated	mt-edited	
+gefälschte Papiere	H	actor	fake documents	curated	mt-edited	
+gefälschten Pass	H	actor	fake passport	curated	mt-edited	
+gefälschter Pass	H	actor	fake passport	curated	mt-edited	
+illegale Waffen	H	accuser	illegal weapons	curated	mt-edited	
+Waffenhandel*	H	accuser	illegal weapons	curated	mt-edited	
+zu zahlende Schmiergelder	H	accuser	kickbacks to be paid	sec-insider-trading-2026	mt-edited	
+Alibi*	M	accuser	alibi	curated	mt-edited	
+angeklagt wegen	M	accuser	charged with	curated	mt-edited	
+Betäubungsmittel*	M	accuser	narcotics	curated	mt-edited	
+Brandstiftung*	M	accuser	arson	curated	mt-edited	
+Crystal Meth	M	accuser	methamphetamine	curated	mt-edited	
+Drogendealer*	M	accuser	drug dealer	curated	mt-edited	
+Drogenhandel*	M	accuser	trafficking	curated	mt-edited	
+Einbruchdiebstahl*	M	accuser	burglary	curated	mt-edited	
+Erpressungstrojaner*	M	accuser	ransomware	curated	mt-edited	
+Falschgeld*	M	accuser	counterfeit	curated	mt-edited	
+gefälscht	M	accuser	forged	curated	mt-edited	
+gefälscht*	M	accuser	counterfeit	curated	mt-edited	
+geschmuggelt	M	accuser	smuggle	investigator-list	mt-edited	
+Helfershelfer*	M	accuser	accomplice	curated	mt-edited	
+Identitätsdiebstahl*	M	accuser	identity theft	curated	mt-edited	
+Kokain*	M	accuser	cocaine	curated	mt-edited	
+Komplize*	M	accuser	accomplice	curated	mt-edited	
+Komplizin*	M	accuser	accomplice	curated	mt-edited	
+Lösegeld*	M	accuser	ransom	curated	mt-edited	
+Methamphetamin*	M	accuser	methamphetamine	curated	mt-edited	
+Mittäter*	M	accuser	accomplice	curated	mt-edited	
+Raubkopie*	M	accuser	bootleg	investigator-list	mt-edited	
+Raubüberfall*	M	accuser	robbery	curated	mt-edited	
+Rauschgift*	M	accuser	narcotics	curated	mt-edited	
+Schmuggel*	M	accuser	smuggling	curated	mt-edited	
+Schmuggelware*	M	accuser	contraband	curated	mt-edited	
+schwarzgebrannt*	M	accuser	bootleg	investigator-list	mt-edited	
+Straftat*	M	accuser	felony	curated	mt-edited	
+Urkundenfälschung*	M	accuser	forgery	curated	mt-edited	
+wird beschuldigt	M	accuser	charged with	curated	mt-edited	
+Betrug*	L	accuser	fraud	curated	mt-edited	
+betrügerisch*	L	accuser	fraud	curated	mt-edited	
+Dealer	L	accuser	drug dealer	curated	mt-edited	
+Delikt*	L	accuser	offence	curated	mt-edited	
+Diebstahl*	L	accuser	theft	curated	mt-edited	
+Einbruch*	L	accuser	burglary	curated	mt-edited	
+Fälschung*	L	accuser	counterfeit	curated	mt-edited	
+festgenommen	L	accuser	arrested	curated	mt-edited	
+geächtet	L	accuser	outlaw	investigator-list	mt-edited	
+Gesetzlos*	L	accuser	outlaw	investigator-list	mt-edited	
+gesetzwidrig*	L	accuser	illegal	investigator-list	mt-edited	
+gesperrt	L	accuser	banned	investigator-list	mt-edited	
+gestohlen*	L	accuser	stolen	curated	mt-edited	
+illegal*	L	accuser	illegal	investigator-list	mt-edited	
+illegitim*	L	accuser	illegitimate	investigator-list	mt-edited	
+kriminell*	L	accuser	criminal	investigator-list	mt-edited	
+nicht zugelassen	L	accuser	unlicensed	investigator-list	mt-edited	
+ohne Genehmigung	L	accuser	unlicensed	investigator-list	mt-edited	
+ohne Lizenz	L	accuser	unlicensed	investigator-list	mt-edited	
+Ordnungswidrigkeit*	L	accuser	misdemeanor	curated	mt-edited	
+Raub	L	accuser	robbery	curated	mt-edited	
+rechtswidrig*	L	accuser	unlawful	investigator-list	mt-edited	
+strafbar*	L	accuser	criminal	investigator-list	mt-edited	
+Tabu*	L	accuser	taboo	investigator-list	mt-edited	
+Überfall*	L	accuser	robbery	curated	mt-edited	
+unbefugt*	L	accuser	unauthorised	investigator-list	mt-edited	
+unberechtigt*	L	accuser	unauthorised	investigator-list	mt-edited	
+unrechtmäßig*	L	accuser	illegitimate	investigator-list	mt-edited	
+untersagt	L	accuser	forbidden	investigator-list	mt-edited	
+unzulässig	L	accuser	prohibited	investigator-list	mt-edited	
+verboten	L	accuser	banned	investigator-list	mt-edited	
+Verbrechen*	L	accuser	felony	curated	mt-edited	
+Vergehen*	L	accuser	misdemeanor	curated	mt-edited	
+verhaftet	L	accuser	arrested	curated	mt-edited	
+Verletzung*	L	accuser	violation	investigator-list	mt-edited	
+Verstoß*	L	accuser	violation	investigator-list	mt-edited	
+widerrechtlich*	L	accuser	unlawful	investigator-list	mt-edited	

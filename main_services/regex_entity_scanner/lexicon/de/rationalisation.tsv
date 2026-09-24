@@ -1,0 +1,107 @@
+term	tier	speaker	concept	source	review	note
+da habe ich ein schlechtes Gefühl	H	insider	this doesn't feel right	curated	mt-edited	
+dafür bin ich nicht angetreten	H	insider	i didn't sign up for this	curated	mt-edited	
+dafür habe ich nicht unterschrieben	H	insider	i didn't sign up for this	curated	mt-edited	
+damit will ich nichts zu tun haben	H	insider	want no part of this	investigator-list	mt-edited	
+das fehlt denen nicht	H	insider	won't miss it	investigator-list	mt-edited	
+das fühlt sich falsch an	H	insider	this doesn't feel right	curated	mt-edited	
+das machen doch alle	H	insider	everybody does it	curated	mt-edited	
+das merken die nicht	H	insider	won't miss it	investigator-list	mt-edited	
+das merken die nie	H	insider	they'll never notice	curated	mt-edited	
+das steht mir zu	H	insider	they owe it to me	investigator-list	mt-edited	
+das wird nie auffallen	H	insider	they'll never notice	curated	mt-edited	
+das zahlen wir zurück	H	insider	we'll pay it back	curated	mt-edited	
+davon hängt mein Bonus ab	H	insider	my bonus depends on this	ey-fbi-2013	mt-edited	
+der Chef macht Druck	H	insider	bosses are pushing me	ey-fbi-2013	mt-edited	
+die Behörde einschalten	H	accuser	go to the regulator	curated	mt-edited	
+die Chefs machen Druck	H	insider	bosses are pushing me	ey-fbi-2013	mt-edited	
+die schulden mir das	H	insider	they owe it to me	investigator-list	mt-edited	
+die schulden mir was	H	insider	they owe me	ey-fbi-2013	mt-edited	
+die zahlen mir zu wenig	H	insider	they don't pay me enough	ey-fbi-2013	mt-edited	
+Druck von oben	H	insider	pressure from above	curated	mt-edited	
+es geht um meinen Job	H	insider	my job is on the line	curated	mt-edited	
+es kommt niemand zu Schaden	H	insider	nobody gets hurt	curated	mt-edited	
+formal legal	H	insider	technically legal	curated	mt-edited	
+ich habe nur Anweisungen befolgt	H	insider	just following orders	curated	mt-edited	
+ich werde unter Druck gesetzt	H	insider	bosses are pushing me	ey-fbi-2013	mt-edited	
+ich werde zu schlecht bezahlt	H	insider	they don't pay me enough	ey-fbi-2013	mt-edited	
+ich will damit nichts zu tun haben	H	insider	want no part of this	investigator-list	mt-edited	
+machen alle so	H	insider	everybody does it	curated	mt-edited	
+mein Bonus hängt davon ab	H	insider	my bonus depends on this	ey-fbi-2013	mt-edited	
+mein Job steht auf dem Spiel	H	insider	my job is on the line	curated	mt-edited	
+niemand wird geschädigt	H	insider	nobody gets hurt	curated	mt-edited	
+nur Befehle befolgt	H	insider	just following orders	curated	mt-edited	
+nur geliehen	H	insider	just borrowing	curated	mt-edited	
+nur leihen	H	insider	just borrowing	curated	mt-edited	
+rechtlich gerade noch zulässig	H	insider	technically legal	curated	mt-edited	
+schadet niemandem	H	insider	not hurting anyone	investigator-list	mt-edited	
+technisch legal	H	insider	technically legal	curated	mt-edited	
+tut niemandem weh	H	insider	not hurting anyone	investigator-list	mt-edited	
+wir zahlen es zurück	H	insider	we'll pay it back	curated	mt-edited	
+zur Aufsicht gehen	H	accuser	go to the regulator	curated	mt-edited	
+zur BaFin gehen	H	accuser	go to the regulator	curated	mt-edited	
+Alarmzeichen*	M	accuser	red flag	investigator-list	mt-edited	
+Bestandsgefährdung*	M	accuser	going concern	curated	mt-edited	
+bitte zu Protokoll	M	insider	i want it noted	curated	mt-edited	
+das ist nicht in Ordnung	M	insider	this isn't right	curated	mt-edited	
+das ist nicht richtig	M	insider	this isn't right	curated	mt-edited	
+das Ziel ist sehr hoch	M	insider	the goal is very high	ey-fbi-2013	mt-edited	
+dazu nicht berechtigt	M	insider	don't have the right	investigator-list	mt-edited	
+die Grenze überschreiten	M	insider	crossing the line	curated	mt-edited	
+die Zahlen erreichen	M	insider	reach the numbers	ey-fbi-2013	mt-edited	
+die Ziele sind unrealistisch	M	insider	the goal is very high	ey-fbi-2013	mt-edited	
+eine Grenze überschreiten	M	insider	crossing the line	curated	mt-edited	
+Fehlinvestition*	M	insider	failed investment	investigator-list	mt-edited	
+Fortführungsprognose*	M	accuser	going concern	curated	mt-edited	
+fühle mich nicht wohl	M	insider	not comfortable	investigator-list	mt-edited	
+Grauzone*	M	insider	grey area	investigator-list	mt-edited	
+habe nicht das Recht	M	insider	don't have the right	investigator-list	mt-edited	
+hat mich angewiesen	M	insider	told me to	investigator-list	mt-edited	
+hat mir gesagt	M	insider	told me to	investigator-list	mt-edited	
+Hinweisgeber*	M	accuser	whistleblower	curated	mt-edited	
+Hinweisgebersystem*	M	accuser	whistleblower hotline	ey-fbi-2013	mt-edited	
+ich bin mit diesem Vorgehen nicht einverstanden	M	accuser	i disagree with this approach	cftc-barclays-libor	mt-edited	
+ich erhebe Einspruch	M	accuser	i object	curated	mt-edited	
+ich habe Bauchschmerzen dabei	M	insider	i'm uneasy	curated	mt-edited	
+ich habe keine Wahl	M	insider	i have no choice	curated	mt-edited	
+ich hatte die Anweisung	M	insider	i was instructed to	curated	mt-edited	
+ich möchte das festgehalten haben	M	insider	i want it noted	curated	mt-edited	
+ich weigere mich	M	accuser	i refuse to	curated	mt-edited	
+ich widerspreche	M	accuser	i object	curated	mt-edited	
+ich wurde angewiesen	M	insider	i was instructed to	curated	mt-edited	
+Liquiditätsengpass*	M	insider	cash crunch	curated	mt-edited	
+Liquiditätsklemme*	M	insider	cash crunch	curated	mt-edited	
+mich absichern	M	insider	cover myself	curated	mt-edited	
+mich rückversichern	M	insider	cover myself	curated	mt-edited	
+mir ist nicht wohl dabei	M	insider	i'm uneasy	curated	mt-edited	
+nicht ethisch	M	accuser	not ethical	investigator-list	mt-edited	
+nicht wohl dabei	M	insider	not comfortable	investigator-list	mt-edited	
+nur ausnahmsweise	M	insider	just this once	curated	mt-edited	
+nur dieses eine Mal	M	insider	just this once	curated	mt-edited	
+ohne Opfer	M	insider	victimless	curated	mt-edited	
+opferlos	M	insider	victimless	curated	mt-edited	
+rote Flagge	M	accuser	red flag	investigator-list	mt-edited	
+unethisch	M	accuser	not ethical	investigator-list	mt-edited	
+Warnsignal*	M	accuser	red flag	investigator-list	mt-edited	
+Whistleblower*	M	accuser	whistleblower	curated	mt-edited	
+bankrott	L	insider	bankrupt	investigator-list	mt-edited	
+Betriebsschließung*	L	insider	shutdown	investigator-list	mt-edited	
+die Ziele erreichen	L	insider	reach the numbers	ey-fbi-2013	mt-edited	
+ernsthafte Bedenken	L	accuser	serious concerns	cftc-barclays-libor	mt-edited	
+fürs Protokoll	L	insider	for the record	curated	mt-edited	
+Gesetzeslücke*	L	insider	loophole	curated	mt-edited	
+große Bedenken	L	accuser	serious concerns	cftc-barclays-libor	mt-edited	
+insolvent	L	insider	bankrupt	investigator-list	mt-edited	
+Insolvenz*	L	insider	bankrupt	investigator-list	mt-edited	
+kein Bedauern	L	insider	no regrets	investigator-list	mt-edited	
+notgedrungen	L	insider	reluctantly	cftc-barclays-libor	mt-edited	
+ohne Reue	L	insider	no regrets	investigator-list	mt-edited	
+peinlich	L	insider	embarrassing	investigator-list	mt-edited	
+pleite	L	insider	bankrupt	investigator-list	mt-edited	
+Schließung*	L	insider	shutdown	investigator-list	mt-edited	
+Schlupfloch*	L	insider	loophole	curated	mt-edited	
+Stilllegung*	L	insider	shutdown	investigator-list	mt-edited	
+verdächtig*	L	accuser	suspicious	investigator-list	mt-edited	
+widerwillig	L	insider	reluctantly	cftc-barclays-libor	mt-edited	
+zahle es zurück	L	insider	just borrowing	curated	mt-edited	
+zur Dokumentation	L	insider	for the record	curated	mt-edited	

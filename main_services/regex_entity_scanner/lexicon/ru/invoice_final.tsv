@@ -1,0 +1,18 @@
+term	tier	speaker	concept	source	review	note
+окончательный расчет	H	neutral	final payment request	uncl1001	mt-edited	
+окончательный счет	H	neutral	final invoice	curated	mt-edited	
+окончательный счет за строительство	H	neutral	final construction invoice	uncl1001	mt-edited	
+оплачен полностью	H	neutral	paid in full	curated	mt-edited	
+оплачено полностью	H	neutral	paid in full	curated	mt-edited	
+требование окончательного платежа	H	neutral	final payment request	uncl1001	mt-edited	
+финальный счет	H	neutral	final invoice	curated	mt-edited	
+акт КС-2	M	neutral	final construction invoice	uncl1001	mt-edited	
+кассовый чек	M	neutral	fiscal receipt	curated	mt-edited	
+оплата получена	M	neutral	payment received	curated	mt-edited	
+оригинал счета	M	neutral	original invoice	curated	mt-edited	
+платеж получен	M	neutral	payment received	curated	mt-edited	
+счет выставлен	M	neutral	invoice issued	curated	mt-edited	
+фискальный чек	M	neutral	fiscal receipt	curated	mt-edited	
+квитанци*	L	neutral	receipted	curated	mt-edited	
+оплачен	L	neutral	paid	curated	mt-edited	
+оплачено	L	neutral	paid	curated	mt-edited	

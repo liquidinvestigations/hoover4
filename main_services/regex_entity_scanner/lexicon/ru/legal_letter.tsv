@@ -1,0 +1,47 @@
+term	tier	speaker	concept	source	review	note
+в интересах нашего доверителя	H	neutral	on behalf of our client	curated	mt-edited	
+действуя от имени	H	neutral	we act on behalf of	curated	mt-edited	
+досудебная претензия	H	neutral	letter before action	curated	mt-edited	
+мы представляем интересы	H	neutral	we act for	curated	mt-edited	
+настоящим требуем	H	neutral	we hereby demand	curated	mt-edited	
+обеспечить сохранность документов	H	neutral	preserve all documents	curated	mt-edited	
+обратиться в суд	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+оставляем за собой все права	H	neutral	we reserve all rights	curated	mt-edited	
+оставляем за собой право	H	neutral	reserve our rights	curated	mt-edited	
+от имени нашего доверителя	H	neutral	on behalf of our client	curated	mt-edited	
+от имени нашего клиента	H	neutral	on behalf of our client	curated	mt-edited	
+подать исковое заявление	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+прекратить нарушение	H	accuser	cease and desist	curated	mt-edited	
+претензионное письмо	H	neutral	letter before action	curated	mt-edited	
+с даты настоящего письма	H	neutral	of the date of this letter	curated	mt-edited	
+с момента получения настоящего письма	H	neutral	of the date of this letter	curated	mt-edited	
+сохранить все документы	H	neutral	preserve all documents	curated	mt-edited	
+требование о прекращении	H	accuser	cease and desist	curated	mt-edited	
+требуем от вас	H	neutral	we hereby demand	curated	mt-edited	
+адвокатское бюро	M	neutral	attorneys at law	curated	mt-edited	
+альтернативное разрешение споров	M	neutral	alternative dispute resolution	uk-cpr-pre-action	mt-edited	
+без дополнительного уведомления	M	neutral	without further notice	curated	mt-edited	
+без предупреждения	M	neutral	without further notice	curated	mt-edited	
+в десятидневный срок	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+в противном случае	M	neutral	failing which	curated	mt-edited	
+в судебном порядке	M	neutral	legal proceedings	curated	mt-edited	
+в течение 10 дней	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+в течение 14 дней	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+ваш доверитель	M	neutral	your client	curated	mt-edited	
+досудебное урегулирование	M	neutral	alternative dispute resolution	uk-cpr-pre-action	mt-edited	
+коллегия адвокатов	M	neutral	attorneys at law	curated	mt-edited	
+наш доверитель	M	neutral	our client	curated	mt-edited	
+официальное предупреждение	M	neutral	formal notice	curated	mt-edited	
+официальное уведомление	M	neutral	formal notice	curated	mt-edited	
+претензия об оплате	M	neutral	demand letter	curated	mt-edited	
+принять меры судебного характера	M	neutral	take legal action	curated	mt-edited	
+судебное разбирательство	M	neutral	legal proceedings	curated	mt-edited	
+судебный порядок	M	neutral	legal proceedings	curated	mt-edited	
+требование об оплате	M	neutral	demand letter	curated	mt-edited	
+юридическая фирма	M	neutral	attorneys at law	curated	mt-edited	
+адвокаты	L	neutral	solicitors	curated	mt-edited	
+ваш клиент	L	neutral	your client	curated	mt-edited	
+наш клиент	L	neutral	our client	curated	mt-edited	
+с уважением	L	neutral	yours faithfully	curated	mt-edited	
+уважаемые господа	L	neutral	dear sir or madam	curated	mt-edited	
+юристы	L	neutral	solicitors	curated	mt-edited	

@@ -1,0 +1,38 @@
+term	tier	speaker	concept	source	review	note
+amount due	H	neutral	amount due	curated	original	
+balance due	H	neutral	balance due	curated	original	
+bill to	H	neutral	bill to	curated	original	
+commercial invoice	H	neutral	commercial invoice	curated	original	
+commission note	H	neutral	commission note	uncl1001	original	UNTDID 1001
+consignment invoice	H	neutral	consignment invoice	uncl1001	original	UNTDID 1001
+consular invoice	H	neutral	consular invoice	uncl1001	original	UNTDID 1001
+factored invoice	H	neutral	factored invoice	uncl1001	original	UNTDID 1001
+forwarder's invoice	H	neutral	forwarder's invoice	uncl1001	original	UNTDID 1001
+freight invoice	H	neutral	freight invoice	uncl1001	original	UNTDID 1001
+invoice date	H	neutral	invoice date	curated	original	
+invoice no	H	neutral	invoice no	curated	original	
+invoice number	H	neutral	invoice number	curated	original	
+net 30	H	neutral	net 30	curated	original	
+net 60	H	neutral	net 60	curated	original	
+please remit	H	neutral	please remit	curated	original	
+remit to	H	neutral	remit to	curated	original	
+self-billed invoice	H	neutral	self-billed invoice	uncl1001	original	UNTDID 1001
+tax invoice	H	neutral	tax invoice	curated	original	
+total due	H	neutral	total due	curated	original	
+credit note	M	neutral	credit note	curated	original	
+debit note	M	neutral	debit note	curated	original	
+invoice	M	neutral	invoice	curated	original	
+payment terms	M	neutral	payment terms	curated	original	
+po number	M	neutral	po number	curated	original	
+purchase order	M	neutral	purchase order	curated	original	
+request for payment	M	neutral	request for payment	uncl1001	original	UNTDID 1001
+ship to	M	neutral	ship to	curated	original	
+sold to	M	neutral	sold to	curated	original	
+subtotal	M	neutral	subtotal	curated	original	
+tax id	M	neutral	tax id	curated	original	
+unit price	M	neutral	unit price	curated	original	
+vat number	M	neutral	vat number	curated	original	
+due date	L	neutral	due date	curated	original	
+gst	L	neutral	gst	curated	original	
+qty	L	neutral	qty	curated	original	
+vat	L	neutral	vat	curated	original	

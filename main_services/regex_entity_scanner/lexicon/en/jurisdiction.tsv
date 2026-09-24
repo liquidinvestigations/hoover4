@@ -1,0 +1,39 @@
+term	tier	speaker	concept	source	review	note
+arms export control act	H	neutral	arms export control act	fincen-bis-export-control	original	
+bank secrecy act	H	neutral	bank secrecy act	fincen-bis-export-control	original	
+exclusive jurisdiction	H	neutral	exclusive jurisdiction	curated	original	
+exclusive jurisdiction of the courts of	H	neutral	exclusive jurisdiction of the courts of	curated	original	
+financial services and markets act	H	neutral	financial services and markets act	fca-hsbc-fx	original	
+foreign corrupt practices act	H	neutral	foreign corrupt practices act	doj-sec-fcpa-guide	original	
+governed by the laws of	H	neutral	governed by the laws of	curated	original	
+governing law	H	neutral	governing law	curated	original	
+icc arbitration	H	neutral	icc arbitration	curated	original	
+international traffic in arms regulations	H	neutral	international traffic in arms regulations	fincen-bis-export-control	original	
+laws of england and wales	H	neutral	laws of england and wales	curated	original	
+laws of the state of	H	neutral	laws of the state of	curated	original	
+lcia	H	neutral	lcia	curated	original	
+market abuse regulation	H	neutral	market abuse regulation	global-relay-surveillance	original	
+non-exclusive jurisdiction	H	neutral	non-exclusive jurisdiction	curated	original	
+seat of arbitration	H	neutral	seat of arbitration	curated	original	
+submit to the jurisdiction	H	neutral	submit to the jurisdiction	curated	original	
+uncitral	H	neutral	uncitral	curated	original	
+adgm	M	neutral	adgm	curated	original	
+british virgin islands	M	neutral	british virgin islands	curated	original	
+cayman islands	M	neutral	cayman islands	curated	original	
+court of appeal	M	neutral	court of appeal	curated	original	
+difc	M	neutral	difc	curated	original	
+district court	M	neutral	district court	curated	original	
+english law	M	neutral	english law	curated	original	
+high court	M	neutral	high court	curated	original	
+hkiac	M	neutral	hkiac	curated	original	
+icsid	M	neutral	icsid	curated	original	
+mifid	M	neutral	mifid	global-relay-surveillance	original	
+new york law	M	neutral	new york law	curated	original	
+siac	M	neutral	siac	curated	original	
+state of delaware	M	neutral	state of delaware	curated	original	
+supreme court	M	neutral	supreme court	curated	original	
+supreme judicial court	M	neutral	supreme judicial court	courts-db	original	courts-db
+swiss law	M	neutral	swiss law	curated	original	
+upper tribunal	M	neutral	upper tribunal	fca-hsbc-fx	original	
+courts of	L	neutral	courts of	curated	original	
+venue	L	neutral	venue	curated	original	

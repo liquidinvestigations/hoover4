@@ -1,0 +1,91 @@
+term	tier	speaker	concept	source	review	note
+береги спину	H	actor	watch your back	curated	mt-edited	
+заказное убийство	H	actor	assassinat*	curated	mt-edited	
+заказуха	H	actor	contract killing	curated	mt-edited	
+замочу	H	actor	i will kill you	curated	mt-edited	
+знаем где ты живешь	H	actor	we know where you live	curated	mt-edited	
+казнить его	H	actor	execute him	curated	mt-edited	
+казнить ее	H	actor	execute her	curated	mt-edited	
+киллер*	H	actor	hit man	curated	mt-edited	
+мученическая операция	H	actor	martyrdom operation	curated	mt-edited	
+мы знаем где ты живешь	H	actor	we know where you live	curated	mt-edited	
+наезд на толпу	H	actor	vehicle ramming	curated	mt-edited	
+ноги переломаю	H	actor	break your legs	curated	mt-edited	
+ноги сломаю	H	actor	break your legs	curated	mt-edited	
+обезглав*	H	actor	behead*	curated	mt-edited	
+операция шахида	H	actor	martyrdom operation	curated	mt-edited	
+покушени*	H	actor	assassinat*	curated	mt-edited	
+пояс смертника	H	actor	suicide vest	curated	mt-edited	
+пояс шахида	H	actor	suicide vest	curated	mt-edited	
+расстрельный список	H	actor	hit list	curated	mt-edited	
+самодельная бомба	H	actor	pipe bomb	curated	mt-edited	
+самодельное взрывное устройство	H	actor	pipe bomb	curated	mt-edited	
+список на ликвидацию	H	actor	hit list	curated	mt-edited	
+схрон*	H	actor	weapons cache	curated	mt-edited	
+тайник с оружием	H	actor	weapons cache	curated	mt-edited	
+таран толпы	H	actor	vehicle ramming	curated	mt-edited	
+тебе конец	H	actor	you will die	curated	mt-edited	
+теракт*	H	actor	terror attack	curated	mt-edited	
+террористический акт	H	actor	terror attack	curated	mt-edited	
+ты труп	H	actor	you will die	curated	mt-edited	
+ты умрешь	H	actor	you will die	curated	mt-edited	
+убью тебя	H	actor	i will kill you	curated	mt-edited	
+урою	H	actor	i will kill you	curated	mt-edited	
+ходи и оглядывайся	H	actor	watch your back	curated	mt-edited	
+я тебя убью	H	actor	i will kill you	curated	mt-edited	
+боеприпас*	M	actor	ammo	curated	mt-edited	
+бомбу	M	actor	bomb	curated	mt-edited	
+бомбы	M	actor	bomb	curated	mt-edited	
+взорвать	M	actor	blow up	curated	mt-edited	
+взорвем	M	actor	blow up	curated	mt-edited	
+взрывное устройство	M	actor	explosive*	curated	mt-edited	
+взрывчат*	M	actor	explosive*	curated	mt-edited	
+взрывчатк*	M	actor	explosive*	curated	mt-edited	
+вооруженная группа	M	actor	armed group	curated	mt-edited	
+вооруженные формирования	M	actor	armed group	curated	mt-edited	
+граната	M	actor	grenade	curated	mt-edited	
+гранатомет*	M	actor	grenade	curated	mt-edited	
+гранату	M	actor	grenade	curated	mt-edited	
+гранаты	M	actor	grenade	curated	mt-edited	
+детонаци*	M	actor	detonat*	curated	mt-edited	
+другим в назидание	M	actor	make an example of	curated	mt-edited	
+заложник*	M	actor	hostage	curated	mt-edited	
+конспиративная квартира	M	actor	safe house	curated	mt-edited	
+незаконное вооруженное формирование	M	actor	armed group	curated	mt-edited	
+огнестрельн*	M	actor	firearm	curated	mt-edited	
+подорвать	M	actor	blow up	curated	mt-edited	
+показательно наказать	M	actor	make an example of	curated	mt-edited	
+радикализ*	M	accuser	radicalis*	curated	mt-edited	
+резню	M	accuser	massacre	curated	mt-edited	
+резня	M	accuser	massacre	curated	mt-edited	
+террорист-одиночка	M	actor	lone wolf	curated	mt-edited	
+террорист*	M	accuser	terrorist	curated	mt-edited	
+убийств*	M	actor	assassinat*	curated	mt-edited	
+убрать его	M	actor	execute him	curated	mt-edited	
+убрать ее	M	actor	execute her	curated	mt-edited	
+экстремист*	M	accuser	extremist	curated	mt-edited	
+автомат*	L	actor	rifle	curated	mt-edited	
+атак*	L	actor	attack	curated	mt-edited	
+боевик*	L	actor	militia	curated	mt-edited	
+бойн*	L	accuser	massacre	curated	mt-edited	
+бомба	L	actor	bomb	curated	mt-edited	
+винтовк*	L	actor	rifle	curated	mt-edited	
+волын*	L	actor	gun	curated	mt-edited	
+грохнуть	L	actor	kill	curated	mt-edited	
+завалить его	L	actor	take him out	fca-hsbc-fx	mt-edited	
+застрелить	L	actor	shoot	curated	mt-edited	
+калаш*	L	actor	rifle	curated	mt-edited	
+мочить	L	actor	kill	curated	mt-edited	
+нападени*	L	actor	attack	curated	mt-edited	
+одиночка	L	actor	lone wolf	curated	mt-edited	
+ополчени*	L	actor	militia	curated	mt-edited	
+патрон*	L	actor	ammo	curated	mt-edited	
+пистолет*	L	actor	gun	curated	mt-edited	
+подрыв*	L	actor	detonat*	curated	mt-edited	
+пристрелить	L	actor	shoot	curated	mt-edited	
+смотри в оба	L	actor	watch your back	curated	mt-edited	
+ствол	L	actor	firearm	curated	mt-edited	
+стрелять	L	actor	shoot	curated	mt-edited	
+убей	L	actor	kill	curated	mt-edited	
+убить	L	actor	kill	curated	mt-edited	
+явка	L	actor	safe house	curated	mt-edited	

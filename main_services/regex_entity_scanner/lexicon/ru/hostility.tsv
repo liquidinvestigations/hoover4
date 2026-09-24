@@ -1,0 +1,39 @@
+term	tier	speaker	concept	source	review	note
+вы пожалеете	H	actor	you will regret	curated	mt-edited	
+клеветническая кампания	H	accuser	smear campaign	investigator-list	mt-edited	
+пожалеешь	H	actor	you will regret	curated	mt-edited	
+разорю тебя	H	actor	ruin you	curated	mt-edited	
+ты пожалеешь	H	actor	you will regret	curated	mt-edited	
+уничтожу тебя	H	actor	ruin you	curated	mt-edited	
+черный пиар	H	accuser	smear campaign	investigator-list	mt-edited	
+я тебя уничтожу	H	actor	ruin you	curated	mt-edited	
+да пошел ты	M	actor	screw you	curated	mt-edited	
+домогател*	M	accuser	harass*	curated	mt-edited	
+закрой рот	M	actor	shut up	investigator-list	mt-edited	
+заткнись	M	actor	shut up	investigator-list	mt-edited	
+инсинуаци*	M	accuser	innuendo	investigator-list	mt-edited	
+отвали	M	actor	piss off	curated	mt-edited	
+очерн*	M	accuser	disparag*	investigator-list	mt-edited	
+порочащ*	M	accuser	disparag*	investigator-list	mt-edited	
+пошел вон	M	actor	piss off	curated	mt-edited	
+пошел ты	M	actor	screw you	curated	mt-edited	
+травл*	M	accuser	harass*	curated	mt-edited	
+блин	L	actor	fck	fca-hsbc-fx	mt-edited	
+бля	L	actor	fck	fca-hsbc-fx	mt-edited	
+бля*	L	actor	fuck	investigator-list	mt-edited	
+говн*	L	actor	shit	investigator-list	mt-edited	
+дерьм*	L	actor	shit	investigator-list	mt-edited	
+еба*	L	actor	fuck	investigator-list	mt-edited	
+козел	L	actor	asshole	investigator-list	mt-edited	
+мудак*	L	actor	asshole	investigator-list	mt-edited	
+намек*	L	accuser	innuendo	investigator-list	mt-edited	
+не лезь к	L	actor	don't mess with	fca-hsbc-fx	mt-edited	
+не связывайся с	L	actor	don't mess with	fca-hsbc-fx	mt-edited	
+пизд*	L	actor	fuck	investigator-list	mt-edited	
+преследовани*	L	accuser	harass*	curated	mt-edited	
+урод*	L	actor	asshole	investigator-list	mt-edited	
+фигня	L	actor	bullshit	curated	mt-edited	
+херня	L	actor	bullshit	curated	mt-edited	
+хрень	L	actor	bullshit	curated	mt-edited	
+хуй*	L	actor	fuck	investigator-list	mt-edited	
+чушь	L	actor	bullshit	curated	mt-edited	

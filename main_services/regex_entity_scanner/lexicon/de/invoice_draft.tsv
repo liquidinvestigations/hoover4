@@ -1,0 +1,45 @@
+term	tier	speaker	concept	source	review	note
+Abschlagsrechnung*	H	neutral	partial invoice	uncl1001	mt-edited	
+Anzahlungsrechnung*	H	neutral	prepayment invoice	uncl1001	mt-edited	
+Entwurf der Rechnung	H	neutral	draft invoice	curated	mt-edited	
+Entwurf – nicht zur	H	neutral	draft not for	curated	mt-edited	
+Entwurf nicht zur Weitergabe	H	neutral	draft not for	curated	mt-edited	
+ersetzt die Rechnung	H	neutral	replaces invoice	curated	mt-edited	
+ersetzt Rechnung	H	neutral	replaces invoice	curated	mt-edited	
+keine Rechnung im Sinne des UStG	H	neutral	not a tax invoice	curated	mt-edited	
+keine Steuerrechnung	H	neutral	not a tax invoice	curated	mt-edited	
+Pro-forma-Rechnung*	H	neutral	proforma invoice	curated	mt-edited	
+Pro-forma*	H	neutral	pro forma	curated	mt-edited	
+Proforma*	H	neutral	pro forma	curated	mt-edited	
+Proformarechnung*	H	neutral	proforma invoice	curated	mt-edited	
+Rechnungsentwurf*	H	neutral	draft invoice	curated	mt-edited	
+storniert Rechnung	H	neutral	replaces invoice	curated	mt-edited	
+Teilrechnung*	H	neutral	partial invoice	uncl1001	mt-edited	
+Vorauszahlungsrechnung*	H	neutral	prepayment invoice	uncl1001	mt-edited	
+Vorkassenrechnung*	H	neutral	prepayment invoice	uncl1001	mt-edited	
+berichtigte Rechnung	M	neutral	corrected invoice	curated	mt-edited	
+ersetzt	L	neutral	supersedes	curated	mt-edited	
+geänderte Rechnung	M	neutral	revised invoice	curated	mt-edited	
+korrigierte Rechnung	M	neutral	corrected invoice	curated	mt-edited	
+Kostenvoranschlag*	M	neutral	quotation	curated	mt-edited	
+Preisangebot*	M	neutral	quotation	curated	mt-edited	
+Rechnungskorrektur*	M	neutral	corrected invoice	curated	mt-edited	
+tritt an die Stelle	M	neutral	supersedes	curated	mt-edited	
+überarbeitete Rechnung	M	neutral	revised invoice	curated	mt-edited	
+zur Freigabe	M	neutral	for approval	curated	mt-edited	
+zur Genehmigung	M	neutral	for approval	curated	mt-edited	
+abgeändert*	L	neutral	amended	fatf-egmont-tbml	mt-edited	
+Angebot	L	neutral	quotation	curated	mt-edited	
+Entwurf*	L	neutral	draft	curated	mt-edited	
+geändert	L	neutral	amended	fatf-egmont-tbml	mt-edited	
+Kostenschätzung*	L	neutral	estimate	curated	mt-edited	
+revidiert*	L	neutral	revised	curated	mt-edited	
+Schätzung*	L	neutral	estimate	curated	mt-edited	
+storniert*	L	neutral	void	curated	mt-edited	
+überarbeitet*	L	neutral	revised	curated	mt-edited	
+ungültig*	L	neutral	void	curated	mt-edited	
+Vorab*	L	neutral	preliminary	curated	mt-edited	
+vorläufig	L	neutral	preliminary	curated	mt-edited	
+vorläufig*	L	neutral	provisional	curated	mt-edited	
+zur Durchsicht	L	neutral	for review	curated	mt-edited	
+zur Prüfung	L	neutral	for review	curated	mt-edited	

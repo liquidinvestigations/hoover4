@@ -1,0 +1,55 @@
+term	tier	speaker	concept	source	review	note
+маски-шоу	H	accuser	dawn raid	curated	mt-edited	
+обыск*	H	accuser	dawn raid	curated	mt-edited	
+арбитраж*	M	accuser	arbitration	investigator-list	mt-edited	
+большое жюри	M	accuser	grand jury	curated	mt-edited	
+встречного иска	M	accuser	counterclaim	uk-cpr-pre-action	mt-edited	
+встречный иск	M	accuser	counterclaim	uk-cpr-pre-action	mt-edited	
+выемк*	M	accuser	dawn raid	curated	mt-edited	
+вызов в суд	M	accuser	subpoena	curated	mt-edited	
+групповой иск	M	accuser	class action	curated	mt-edited	
+денежный штраф	M	accuser	financial penalty	fca-hsbc-fx	mt-edited	
+запрет на уничтожение документов	M	accuser	legal hold	curated	mt-edited	
+клевет*	M	accuser	defamation	curated	mt-edited	
+коллективный иск	M	accuser	class action	curated	mt-edited	
+мести	L	accuser	retaliat*	curated	mt-edited	
+месть	L	accuser	retaliat*	curated	mt-edited	
+наш адвокат	M	accuser	our lawyers	curated	mt-edited	
+наши юристы	M	accuser	our lawyers	curated	mt-edited	
+неуважение к суду	M	accuser	contempt of court	uk-cpr-pre-action	mt-edited	
+обвинительное заключение	M	accuser	indictment	curated	mt-edited	
+обеспечительные меры	M	accuser	injunction	curated	mt-edited	
+обеспечительных мер	M	accuser	injunction	curated	mt-edited	
+ордер на обыск	M	accuser	search warrant	curated	mt-edited	
+повестка в суд	M	accuser	subpoena	curated	mt-edited	
+повестку в суд	M	accuser	subpoena	curated	mt-edited	
+последнее предупреждение	M	accuser	final notice	fca-hsbc-fx	mt-edited	
+последнее уведомление	M	accuser	final notice	fca-hsbc-fx	mt-edited	
+предъявлено обвинение	M	accuser	indictment	curated	mt-edited	
+преследование за	M	accuser	retaliat*	curated	mt-edited	
+приостановление производства	M	accuser	stay of proceedings	uk-cpr-pre-action	mt-edited	
+прокуратур*	M	accuser	prosecut*	investigator-list	mt-edited	
+прокурор*	M	accuser	prosecut*	investigator-list	mt-edited	
+с чужих слов	M	accuser	hearsay	investigator-list	mt-edited	
+санкция на обыск	M	accuser	search warrant	curated	mt-edited	
+слухи	L	accuser	hearsay	investigator-list	mt-edited	
+сохранить документы	M	accuser	preserve documents	curated	mt-edited	
+сохранять документы	M	accuser	preserve documents	curated	mt-edited	
+судебный запрет	M	accuser	injunction	curated	mt-edited	
+третейск*	M	accuser	arbitration	investigator-list	mt-edited	
+уголовное преследование	M	accuser	prosecut*	investigator-list	mt-edited	
+иск	L	accuser	lawsuit	curated	mt-edited	
+иска	L	accuser	lawsuit	curated	mt-edited	
+исковая давность	L	accuser	limitation period	uk-cpr-pre-action	mt-edited	
+мировое соглашение	L	accuser	settlement	curated	mt-edited	
+подать в суд	L	accuser	lawsuit	curated	mt-edited	
+показани*	L	accuser	deposition	curated	mt-edited	
+претензи*	L	accuser	claim	investigator-list	mt-edited	
+проверк*	L	accuser	investigat*	investigator-list	mt-edited	
+расследовани*	L	accuser	investigat*	investigator-list	mt-edited	
+следстви*	L	accuser	investigat*	investigator-list	mt-edited	
+срок давности	L	accuser	limitation period	uk-cpr-pre-action	mt-edited	
+судебный процесс	L	accuser	lawsuit	curated	mt-edited	
+требовани*	L	accuser	claim	investigator-list	mt-edited	
+урегулирование	L	accuser	settlement	curated	mt-edited	
+штраф*	L	accuser	financial penalty	fca-hsbc-fx	mt-edited	

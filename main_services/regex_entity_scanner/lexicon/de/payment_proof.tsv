@@ -1,0 +1,66 @@
+term	tier	speaker	concept	source	review	note
+angewiesener Betrag	H	neutral	instructed amount	mt103-pacs008	mt-edited	
+auftraggebende Bank	H	neutral	ordering institution	mt103-pacs008	mt-edited	
+auftraggebender Kunde	H	neutral	ordering customer	curated	mt-edited	
+Auftragsbetrag*	H	neutral	instructed amount	mt103-pacs008	mt-edited	
+Bank des Auftraggebers	H	neutral	ordering institution	mt103-pacs008	mt-edited	
+Bank des Begünstigten	H	neutral	beneficiary bank	curated	mt-edited	
+Begünstigter Kunde	H	neutral	beneficiary customer	curated	mt-edited	
+Belastungsanzeige*	H	neutral	debit advice	curated	mt-edited	
+Einzahlungsbeleg*	H	neutral	deposit slip	curated	mt-edited	
+Einzahlungsschein*	H	neutral	deposit slip	curated	mt-edited	
+Empfängerbank*	H	neutral	beneficiary bank	curated	mt-edited	
+Gebühren des Auftraggebers	H	neutral	sender's charges	mt103-pacs008	mt-edited	
+Gebühren des Empfängers	H	neutral	receiver's charges	mt103-pacs008	mt-edited	
+Informationen vom Absender an den Empfänger	H	neutral	sender to receiver information	mt103-pacs008	mt-edited	
+kontoführende Bank	H	neutral	account with institution	mt103-pacs008	mt-edited	
+kontoführendes Institut	H	neutral	account with institution	mt103-pacs008	mt-edited	
+Kopie der MT103	H	neutral	mt103 copy	curated	mt-edited	
+Lastschriftavis*	H	neutral	debit advice	curated	mt-edited	
+MT103-Kopie*	H	neutral	mt103 copy	curated	mt-edited	
+Referenz des Auftraggebers	H	neutral	sender's reference	mt103-pacs008	mt-edited	
+SWIFT-Beleg*	H	neutral	swift copy	curated	mt-edited	
+SWIFT-Kopie*	H	neutral	swift copy	curated	mt-edited	
+Überweisung ausgeführt	H	neutral	transfer successful	curated	mt-edited	
+Überweisung erfolgreich	H	neutral	transfer successful	curated	mt-edited	
+Überweisungsavis*	H	neutral	remittance advice	curated	mt-edited	
+Überweisungsbestätigung*	H	neutral	payment confirmation	curated	mt-edited	
+Überweisungsnachweis*	H	neutral	proof of payment	curated	mt-edited	
+Valutadatum*	H	neutral	value date	curated	mt-edited	
+Wertstellung*	H	neutral	value date	curated	mt-edited	
+Zahlungsanzeige*	H	neutral	payment advice	curated	mt-edited	
+Zahlungsavis*	H	neutral	payment advice	curated	mt-edited	
+Zahlungsbeleg*	H	neutral	proof of payment	curated	mt-edited	
+Zahlungsbestätigung*	H	neutral	payment confirmation	curated	mt-edited	
+Zahlungsempfänger*	H	neutral	beneficiary customer	curated	mt-edited	
+Zahlungsnachweis*	H	neutral	proof of payment	curated	mt-edited	
+abgebucht	M	neutral	has been debited	curated	mt-edited	
+Auslandsüberweisung*	M	neutral	wire transfer	curated	mt-edited	
+Banküberweisung*	M	neutral	wire transfer	curated	mt-edited	
+Begünstigte	M	neutral	beneficiary	curated	mt-edited	
+Begünstigter	M	neutral	beneficiary	curated	mt-edited	
+Belastungskonto*	M	neutral	debit account	curated	mt-edited	
+Beleg-Nr	M	neutral	receipt no	curated	mt-edited	
+Belegnummer*	M	neutral	receipt no	curated	mt-edited	
+Betrag überwiesen	M	neutral	funds transferred	curated	mt-edited	
+Eingangsbestätigung*	M	neutral	acknowledgement of receipt	curated	mt-edited	
+Empfangsbestätigung*	M	neutral	acknowledgement of receipt	curated	mt-edited	
+erfolgreich bezahlt	M	neutral	payment successful	curated	mt-edited	
+Geld überwiesen	M	neutral	funds transferred	curated	mt-edited	
+gutgeschrieben	M	neutral	has been credited	curated	mt-edited	
+Quittungsnummer*	M	neutral	receipt no	curated	mt-edited	
+Transaktions-ID	M	neutral	transaction id	curated	mt-edited	
+Transaktionsnummer*	M	neutral	transaction id	curated	mt-edited	
+Transaktionsreferenz*	M	neutral	transaction reference	curated	mt-edited	
+Verwendungszweck*	M	neutral	remittance information	mt103-pacs008	mt-edited	
+wurde belastet	M	neutral	has been debited	curated	mt-edited	
+wurde gutgeschrieben	M	neutral	has been credited	curated	mt-edited	
+Zahlung erfolgreich	M	neutral	payment successful	curated	mt-edited	
+zu belastendes Konto	M	neutral	debit account	curated	mt-edited	
+Auftraggeber*	L	neutral	ordering customer	curated	mt-edited	
+belastet	L	neutral	has been debited	curated	mt-edited	
+Empfänger	L	neutral	beneficiary	curated	mt-edited	
+Referenznummer*	L	neutral	transaction reference	curated	mt-edited	
+Überweisung	L	neutral	wire transfer	curated	mt-edited	
+überwiesen	L	neutral	funds transferred	curated	mt-edited	
+Valuta	L	neutral	value date	curated	mt-edited	

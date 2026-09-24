@@ -1,0 +1,39 @@
+term	tier	speaker	concept	source	review	note
+annule et remplace	H	neutral	replaces invoice	curated	mt-edited	
+brouillon de facture	H	neutral	draft invoice	curated	mt-edited	
+ceci n'est pas une facture	H	neutral	not a tax invoice	curated	mt-edited	
+facture de prépaiement	H	neutral	prepayment invoice	uncl1001	mt-edited	
+facture partielle	H	neutral	partial invoice	uncl1001	mt-edited	
+facture pro forma	H	neutral	proforma invoice	curated	mt-edited	
+facture proforma	H	neutral	proforma invoice	curated	mt-edited	
+ne vaut pas facture	H	neutral	not a tax invoice	curated	mt-edited	
+projet de facture	H	neutral	draft invoice	curated	mt-edited	
+projet – ne pas diffuser	H	neutral	draft not for	curated	mt-edited	
+projet non définitif	H	neutral	draft not for	curated	mt-edited	
+remplace la facture	H	neutral	replaces invoice	curated	mt-edited	
+devis	M	neutral	quotation	curated	mt-edited	
+facture corrigée	M	neutral	corrected invoice	curated	mt-edited	
+facture d'acompte	M	neutral	partial invoice	uncl1001	mt-edited	
+facture modifiée	M	neutral	revised invoice	curated	mt-edited	
+facture rectificative	M	neutral	corrected invoice	curated	mt-edited	
+facture révisée	M	neutral	revised invoice	curated	mt-edited	
+offre de prix	M	neutral	quotation	curated	mt-edited	
+pour approbation	M	neutral	for approval	curated	mt-edited	
+pour validation	M	neutral	for approval	curated	mt-edited	
+amendé*	L	neutral	amended	fatf-egmont-tbml	mt-edited	
+annulé*	L	neutral	void	curated	mt-edited	
+bon pour accord	L	neutral	for approval	curated	mt-edited	
+brouillon*	L	neutral	draft	curated	mt-edited	
+devis estimatif	L	neutral	estimate	curated	mt-edited	
+estimation*	L	neutral	estimate	curated	mt-edited	
+modifié	L	neutral	amended	fatf-egmont-tbml	mt-edited	
+nul	L	neutral	void	curated	mt-edited	
+pour relecture	L	neutral	for review	curated	mt-edited	
+pour revue	L	neutral	for review	curated	mt-edited	
+préliminaire*	L	neutral	preliminary	curated	mt-edited	
+prévisionnel*	L	neutral	provisional	curated	mt-edited	
+projet	L	neutral	draft	curated	mt-edited	
+provisoire*	L	neutral	provisional	curated	mt-edited	
+remplace	L	neutral	supersedes	curated	mt-edited	
+révisé*	L	neutral	revised	curated	mt-edited	
+révision*	L	neutral	revised	curated	mt-edited	

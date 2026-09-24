@@ -1,0 +1,39 @@
+term	tier	speaker	concept	source	review	note
+банк-корреспондент*	H	neutral	correspondent bank	curated	mt-edited	
+банк-посредник	H	neutral	intermediary bank	curated	mt-edited	
+банк-посредника	H	neutral	intermediary bank	curated	mt-edited	
+зарубежный перевод	H	neutral	international wire	curated	mt-edited	
+комиссии за счет	H	neutral	details of charges	curated	mt-edited	
+конечный бенефициар	H	neutral	ultimate beneficiary	curated	mt-edited	
+конечный получатель	H	neutral	ultimate beneficiary	curated	mt-edited	
+корреспондент отправителя	H	neutral	sender's correspondent	mt103-pacs008	mt-edited	
+корреспондентский счет	H	neutral	correspondent bank	curated	mt-edited	
+корсчет*	H	neutral	correspondent bank	curated	mt-edited	
+международный перевод	H	neutral	cross-border payment	curated	mt-edited	
+покрывающий платеж	H	neutral	cover payment	mt103-pacs008	mt-edited	
+распределение комиссий	H	neutral	details of charges	curated	mt-edited	
+трансграничного перевода	H	neutral	cross-border payment	curated	mt-edited	
+трансграничный платеж	H	neutral	cross-border payment	curated	mt-edited	
+хавала	H	neutral	hawala	curated	mt-edited	
+хавалы	H	neutral	hawala	curated	mt-edited	
+цель перевода	H	neutral	purpose of payment	curated	mt-edited	
+SWIFT-код	M	neutral	swift code	curated	mt-edited	
+банк-отправитель	M	neutral	sending bank	curated	mt-edited	
+банк-получатель	M	neutral	receiving bank	curated	mt-edited	
+вестерн юнион*	M	neutral	western union	curated	mt-edited	
+код SWIFT	M	neutral	swift code	curated	mt-edited	
+код валютной операции	M	neutral	purpose code	curated	mt-edited	
+код вида валютной операции	M	neutral	purpose code	curated	mt-edited	
+код назначения платежа	M	neutral	purpose code	curated	mt-edited	
+комиссии за наш счет	M	neutral	our charges	curated	mt-edited	
+курс конвертации	M	neutral	fx rate	curated	mt-edited	
+расходы за счет плательщика	M	neutral	our charges	curated	mt-edited	
+трансграничн*	M	neutral	cross-border	curated	mt-edited	
+хунди	M	neutral	hundi	curated	mt-edited	
+БИК	L	neutral	swift code	curated	mt-edited	
+денежный перевод	L	neutral	remittance	curated	mt-edited	
+курс валют*	L	neutral	exchange rate	curated	mt-edited	
+курс обмена	L	neutral	fx rate	curated	mt-edited	
+обменный курс	L	neutral	exchange rate	curated	mt-edited	
+перевод средств	L	neutral	remittance	curated	mt-edited	
+свифт*	L	neutral	swift	curated	mt-edited	

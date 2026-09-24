@@ -1,0 +1,108 @@
+term	tier	speaker	concept	source	review	note
+Abtretungsausschluss*	H	neutral	anti-assignment	cuad	mt-edited	
+Abtretungsverbot*	H	neutral	anti-assignment	cuad	mt-edited	
+Aktienkaufvertrag*	H	neutral	share purchase agreement	curated	mt-edited	
+Anteilskaufvertrag*	H	neutral	share purchase agreement	curated	mt-edited	
+bleiben nach Beendigung	H	neutral	survive termination	contractnli	mt-edited	
+den Vertrag kündigen	H	neutral	terminate this agreement	curated	mt-edited	
+die Parteien dieses Vertrages	H	neutral	the parties hereto	curated	mt-edited	
+die Parteien vereinbaren	H	neutral	the parties agree	curated	mt-edited	
+die Vertragsparteien	H	neutral	the parties hereto	curated	mt-edited	
+diesen Vertrag kündigen	H	neutral	terminate this agreement	curated	mt-edited	
+Garantien und Zusicherungen	H	neutral	representations and warranties	curated	mt-edited	
+Geheimhaltungsvereinbarung*	H	neutral	confidentiality agreement	curated	mt-edited	
+gelten über die Beendigung hinaus	H	neutral	survive termination	contractnli	mt-edited	
+gesamte Vereinbarung	H	neutral	entire agreement	curated	mt-edited	
+Haftungsbegrenzung*	H	neutral	limitation of liability	curated	mt-edited	
+Haftungsbeschränkung*	H	neutral	limitation of liability	curated	mt-edited	
+Haftungsdeckel*	H	neutral	cap on liability	cuad	mt-edited	
+Haftungshöchstbetrag*	H	neutral	cap on liability	cuad	mt-edited	
+Haftungsobergrenze*	H	neutral	cap on liability	cuad	mt-edited	
+höhere Gewalt	H	neutral	force majeure	curated	mt-edited	
+keine Nebenabreden	H	neutral	entire agreement	curated	mt-edited	
+Kündigung ohne Grund	H	neutral	termination for convenience	curated	mt-edited	
+Laufzeit des Vertrages	H	neutral	term of this agreement	curated	mt-edited	
+Laufzeit dieses Vertrages	H	neutral	term of this agreement	curated	mt-edited	
+Leistungen nach Vertragsende	H	neutral	post-termination services	cuad	mt-edited	
+nachvertragliche Leistungen	H	neutral	post-termination services	cuad	mt-edited	
+NDA	H	neutral	non-disclosure agreement	curated	mt-edited	
+offenbarende Partei	H	neutral	disclosing party	contractnli	mt-edited	
+offenlegende Partei	H	neutral	disclosing party	contractnli	mt-edited	
+ordentliche Kündigung	H	neutral	termination for convenience	curated	mt-edited	
+ordnungsgemäß bevollmächtigt	H	neutral	duly authorised	curated	mt-edited	
+ordnungsgemäß unterzeichnet	H	neutral	duly executed	curated	mt-edited	
+pauschalierter Schadensersatz	H	neutral	liquidated damages	curated	mt-edited	
+Quellcode-Hinterlegung*	H	neutral	source code escrow	cuad	mt-edited	
+Rahmendienstleistungsvertrag*	H	neutral	master services agreement	curated	mt-edited	
+rechtsgültig unterzeichnet	H	neutral	duly executed	curated	mt-edited	
+salvatorische Klausel	H	neutral	severability	curated	mt-edited	
+schad- und klaglos halten	H	neutral	hold harmless	curated	mt-edited	
+schadlos halten	H	neutral	indemnify	curated	mt-edited	
+Schadloshaltung*	H	neutral	indemnification	curated	mt-edited	
+schließen folgenden Vertrag	H	neutral	agreement is made	curated	mt-edited	
+sofern er nicht vorher gekündigt wird	H	neutral	unless terminated earlier	cuad	mt-edited	
+sofern nicht vorher gekündigt	H	neutral	unless terminated earlier	cuad	mt-edited	
+unbegrenzte Haftung	H	neutral	uncapped liability	cuad	mt-edited	
+unbeschränkte Haftung	H	neutral	uncapped liability	cuad	mt-edited	
+vereinbaren die Parteien	H	neutral	the parties agree	curated	mt-edited	
+Verschwiegenheitsvereinbarung*	H	neutral	non-disclosure agreement	curated	mt-edited	
+Vertragslaufzeit*	H	neutral	term of this agreement	curated	mt-edited	
+Vertragsstrafe*	H	neutral	liquidated damages	curated	mt-edited	
+Vertraulichkeitsvereinbarung*	H	neutral	confidentiality agreement	curated	mt-edited	
+vertretungsberechtigt*	H	neutral	duly authorised	curated	mt-edited	
+Vollständigkeitsklausel*	H	neutral	entire agreement	curated	mt-edited	
+wesentliche Vertragsverletzung*	H	neutral	material breach	curated	mt-edited	
+wesentlicher Verstoß	H	neutral	material breach	curated	mt-edited	
+wird folgende Vereinbarung getroffen	H	neutral	agreement is made	curated	mt-edited	
+wird folgender Vertrag geschlossen	H	neutral	agreement is made	curated	mt-edited	
+Zusicherungen und Gewährleistungen	H	neutral	representations and warranties	curated	mt-edited	
+Abwerbeverbot*	M	neutral	no-solicit	cuad	mt-edited	
+Aktionärsvereinbarung*	M	neutral	shareholders agreement	curated	mt-edited	
+anfängliche Laufzeit	M	neutral	initial term	cuad	mt-edited	
+Auditrecht*	M	neutral	audit rights	cuad	mt-edited	
+Dienstgütevereinbarung*	M	neutral	service level agreement	curated	mt-edited	
+diese Vereinbarung	M	neutral	this agreement	curated	mt-edited	
+dieser Vertrag	M	neutral	this agreement	curated	mt-edited	
+dieses Vertrages	M	neutral	this agreement	curated	mt-edited	
+Einräumung von Nutzungsrechten	M	neutral	license grant	cuad	mt-edited	
+empfangende Partei	M	neutral	receiving party	contractnli	mt-edited	
+Empfänger der Informationen	M	neutral	receiving party	contractnli	mt-edited	
+Erstlaufzeit*	M	neutral	initial term	cuad	mt-edited	
+Freistellung*	M	neutral	indemnification	curated	mt-edited	
+Garantiezeit*	M	neutral	warranty duration	cuad	mt-edited	
+Gesellschaftervereinbarung*	M	neutral	shareholders agreement	curated	mt-edited	
+Gewährleistungsfrist*	M	neutral	warranty duration	cuad	mt-edited	
+in mehrfacher Ausfertigung	M	neutral	counterparts	curated	mt-edited	
+Leistungsbeschreibung*	M	neutral	statement of work	curated	mt-edited	
+Leistungsverzeichnis*	M	neutral	statement of work	curated	mt-edited	
+Lizenzeinräumung*	M	neutral	license grant	cuad	mt-edited	
+Meistbegünstigung*	M	neutral	most favored nation	cuad	mt-edited	
+Mindestabnahme*	M	neutral	minimum commitment	cuad	mt-edited	
+Mindestabnahmemenge*	M	neutral	minimum commitment	cuad	mt-edited	
+Mindestlaufzeit*	M	neutral	initial term	cuad	mt-edited	
+Nichtherabsetzung*	M	neutral	non-disparagement	cuad	mt-edited	
+Prüfungsrecht*	M	neutral	audit rights	cuad	mt-edited	
+Rahmenvertrag*	M	neutral	master services agreement	curated	mt-edited	
+Rechteeinräumung*	M	neutral	license grant	cuad	mt-edited	
+stillschweigend verlängert	M	neutral	automatically renewed	cuad	mt-edited	
+Stimmbindungsvertrag*	M	neutral	shareholders agreement	curated	mt-edited	
+Tag des Inkrafttretens	M	neutral	effective date	curated	mt-edited	
+Verbot herabsetzender Äußerungen	M	neutral	non-disparagement	cuad	mt-edited	
+verlängert sich automatisch	M	neutral	automatically renewed	cuad	mt-edited	
+Vertragsbruch*	M	neutral	breach of contract	curated	mt-edited	
+Vertragsverletzung*	M	neutral	breach of contract	curated	mt-edited	
+Wettbewerbsverbot*	M	neutral	non-compete	cuad	mt-edited	
+Wirksamkeitsdatum	M	neutral	effective date	curated	mt-edited	
+abgeschlossen	L	neutral	entered into	curated	mt-edited	
+Abtretung*	L	neutral	assignment	curated	mt-edited	
+AGB	L	neutral	terms and conditions	curated	mt-edited	
+Allgemeine Geschäftsbedingungen	L	neutral	terms and conditions	curated	mt-edited	
+Ausfertigungen	L	neutral	counterparts	curated	mt-edited	
+Ausschließlichkeit*	L	neutral	exclusivity	cuad	mt-edited	
+Entgelt	L	neutral	consideration	curated	mt-edited	
+Exklusivität*	L	neutral	exclusivity	cuad	mt-edited	
+freistellen	L	neutral	hold harmless	curated	mt-edited	
+Gegenleistung	L	neutral	consideration	curated	mt-edited	
+geschlossen	L	neutral	entered into	curated	mt-edited	
+Inkrafttreten	L	neutral	effective date	curated	mt-edited	
+vertrauliche Informationen	L	neutral	confidential information	contractnli	mt-edited	

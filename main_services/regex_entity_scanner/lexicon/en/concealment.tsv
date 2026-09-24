@@ -1,0 +1,83 @@
+term	tier	speaker	concept	source	review	note
+bosses don't ask	H	actor	bosses don't ask	ey-fbi-2013	original	opportunity
+burn after reading	H	actor	burn after reading	curated	original	
+burner phone	H	actor	burner phone	curated	original	
+call me on the other phone	H	actor	call me on the other phone	curated	original	
+cover up	H	accuser	cover up	investigator-list	original	`cover-up` folds to this; the joined `coverup` is its own row
+coverup	H	accuser	coverup	curated	original	
+delete after reading	H	actor	delete after reading	curated	original	
+delete this email	H	actor	delete this email	curated	original	
+do not volunteer information	H	actor	do not volunteer information	investigator-list	original	
+don't leave a trail	H	actor	don't leave a trail	investigator-list	original	
+don't put it in writing	H	actor	don't put it in writing	curated	original	
+don't put this in writing	H	actor	don't put this in writing	curated	original	
+don't tell compliance	H	actor	don't tell compliance	curated	original	
+don't tell legal	H	actor	don't tell legal	curated	original	
+keep compliance out of it	H	actor	keep compliance out of it	curated	original	
+keep it quiet	H	actor	keep it quiet	curated	original	
+keep it under wraps	H	actor	keep it under wraps	curated	original	
+keep this a secret	H	actor	keep this a secret	nice-actimize-lexicon	original	
+keep this between us	H	actor	keep this between us	curated	original	
+let's keep this a secret	H	actor	let's keep this a secret	nice-actimize-lexicon	original	NICE lexicon example
+no auditor will review it	H	actor	no auditor will review it	ey-fbi-2013	original	opportunity
+no paper trail	H	actor	no paper trail	curated	original	
+nobody has to know	H	actor	nobody has to know	ey-fbi-2013	original	
+nobody will find out	H	actor	nobody will find out	investigator-list	original	
+not be in any book	H	actor	not be in any book	fsa-cftc-libor-chats	original	I would prefer this not be in any book
+pre-paid cell phone	H	actor	pre-paid cell phone	sec-insider-trading-2026	original	insider trading
+scrub the records	H	actor	scrub the records	curated	original	
+send it to my gmail	H	actor	send it to my gmail	curated	original	
+shred the documents	H	actor	shred the documents	curated	original	
+shred the files	H	actor	shred the files	curated	original	
+sweep it under the rug	H	actor	sweep it under the rug	curated	original	
+use my personal email	H	actor	use my personal email	curated	original	
+use the other number	H	actor	use the other number	curated	original	
+use the other phone	H	actor	use the other phone	curated	original	
+wipe the drive	H	actor	wipe the drive	curated	original	
+alternate e-mail	M	actor	alternate e-mail	spamassassin-advance-fee	original	419
+alternate email	M	actor	alternate email	spamassassin-advance-fee	original	419
+between you and me	M	actor	between you and me	curated	original	
+burner	M	actor	burner	curated	original	
+call my mobile	M	actor	call my mobile	investigator-list	original	
+clean up the files	M	actor	clean up the files	curated	original	
+come by my office	M	actor	come by my office	investigator-list	original	
+damage control	M	actor	damage control	investigator-list	original	
+delete this	M	actor	delete this	curated	original	
+don't cc	M	actor	don't cc	curated	original	
+don't need to know	M	actor	don't need to know	investigator-list	original	
+don't tell anyone	M	actor	don't tell anyone	nice-actimize-lexicon	original	
+head above the parapet	M	actor	head above the parapet	cftc-barclays-libor	original	LIBOR
+let's discuss in person	M	actor	let's discuss in person	curated	original	
+make it go away	M	actor	make it go away	curated	original	
+need to know basis	M	actor	need to know basis	curated	original	
+nobody asks anything	M	actor	nobody asks anything	ey-fbi-2013	original	opportunity
+not in writing	M	actor	not in writing	curated	original	
+not on email	M	actor	not on email	curated	original	
+off the record	M	actor	off the record	curated	original	
+out of band	M	actor	out of band	investigator-list	original	routine in IT and security (out-of-band management)
+prepaid phone	M	actor	prepaid phone	sec-insider-trading-2026	original	
+scared to give info	M	actor	scared to give info	fca-hsbc-fx	original	FX
+shred it	M	actor	shred it	curated	original	
+switch to signal	M	actor	switch to signal	curated	original	
+take her off the thread	M	actor	take her off the thread	curated	original	
+take him off the thread	M	actor	take him off the thread	curated	original	
+take them off the thread	M	actor	take them off the thread	curated	original	
+take this offline	M	actor	take this offline	investigator-list	original	also ordinary meeting jargon
+the policy does not say	M	actor	the policy does not say	ey-fbi-2013	original	opportunity
+the policy doesn't say	M	actor	the policy doesn't say	ey-fbi-2013	original	opportunity
+threema	M	actor	threema	curated	original	
+use signal	M	actor	use signal	curated	original	
+whitewash	M	accuser	whitewash	investigator-list	original	
+wickr	M	actor	wickr	curated	original	
+blackout	L	actor	blackout	investigator-list	original	also blackout periods (insider trading windows) and power outages
+confidential	L	actor	confidential	investigator-list	original	appears in email disclaimers; needs boilerplate suppression
+do not forward	L	actor	do not forward	curated	original	
+heads up	L	actor	heads up	fca-hsbc-fx	original	FX; co-occurrence only
+leak	L	actor	leak	investigator-list	original	also plumbing and memory leaks
+private e-mail	L	actor	private e-mail	spamassassin-advance-fee	original	419
+private email	L	actor	private email	spamassassin-advance-fee	original	419
+secret	L	actor	secret	investigator-list	original	
+signal me	L	actor	signal me	curated	original	
+telegram	L	actor	telegram	curated	original	
+use whatsapp	L	actor	use whatsapp	curated	original	
+whatsapp me	L	actor	whatsapp me	curated	original	

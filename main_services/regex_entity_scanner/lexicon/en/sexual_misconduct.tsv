@@ -1,0 +1,42 @@
+term	tier	speaker	concept	source	review	note
+child abuse	H	accuser	child abuse	curated	original	
+child pornography	H	accuser	child pornography	curated	original	
+child sexual abuse	H	accuser	child sexual abuse	curated	original	
+commercial sex	H	accuser	commercial sex	fincen-human-trafficking	original	FinCEN HT
+commercial sexual exploitation	H	accuser	commercial sexual exploitation	curated	original	
+csam	H	accuser	csam	curated	original	
+don't tell your parents	H	actor	don't tell your parents	curated	original	grooming indicator
+forced prostitution	H	accuser	forced prostitution	curated	original	
+hostile work environment	H	accuser	hostile work environment	curated	original	
+human trafficking	H	accuser	human trafficking	curated	original	
+inappropriate touching	H	accuser	inappropriate touching	curated	original	
+indecent images	H	accuser	indecent images	curated	original	
+molest*	H	accuser	molest*	curated	original	
+non-consensual	H	accuser	non-consensual	curated	original	
+nonconsensual	H	accuser	nonconsensual	curated	original	
+our little secret	H	actor	our little secret	curated	original	grooming indicator
+revenge porn	H	accuser	revenge porn	curated	original	
+sex trafficking	H	accuser	sex trafficking	curated	original	
+sextortion	H	accuser	sextortion	curated	original	
+sexual abuse	H	accuser	sexual abuse	curated	original	
+sexual assault	H	accuser	sexual assault	curated	original	
+sexual harassment	H	accuser	sexual harassment	curated	original	
+sexual misconduct	H	accuser	sexual misconduct	curated	original	
+unwanted advances	H	accuser	unwanted advances	curated	original	
+brothel	M	accuser	brothel	curated	original	
+darknet market	M	accuser	darknet market	fincen-human-trafficking	original	FinCEN HT
+escort agency	M	accuser	escort agency	fincen-human-trafficking	original	FinCEN HT
+escort service	M	accuser	escort service	curated	original	
+groomed	M	accuser	groomed	curated	original	
+grooming	M	accuser	grooming	curated	original	
+intimate images	M	accuser	intimate images	curated	original	
+pimp	M	accuser	pimp	curated	original	
+rape	M	accuser	rape	curated	original	
+underage	M	accuser	underage	curated	original	
+without consent	M	accuser	without consent	curated	original	
+exploitation	L	accuser	exploitation	curated	original	
+massage business	L	accuser	massage business	fincen-human-trafficking	original	FinCEN HT
+minor	L	accuser	minor	curated	original	
+online classified	L	accuser	online classified	fincen-human-trafficking	original	FinCEN HT
+prepaid access card	L	accuser	prepaid access card	fincen-human-trafficking	original	FinCEN HT
+speaks on behalf of	L	accuser	speaks on behalf of	fincen-human-trafficking	original	FinCEN HT behavioural

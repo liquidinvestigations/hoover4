@@ -1,0 +1,75 @@
+term	tier	speaker	concept	source	review	note
+advance fee	H	actor	advance fee	curated	original	
+award notification	H	actor	award notification	spamassassin-advance-fee	original	419
+claim the money	H	actor	claim the money	spamassassin-advance-fee	original	419
+claim your prize	H	actor	claim your prize	curated	original	
+clearance fee	H	actor	clearance fee	curated	original	
+compensation fund	H	actor	compensation fund	curated	original	
+computer ballot system	H	actor	computer ballot system	spamassassin-advance-fee	original	419
+confidential business proposal	H	actor	confidential business proposal	curated	original	
+consignment box	H	actor	consignment box	curated	original	
+dear beneficiary	H	actor	dear beneficiary	curated	original	
+diplomatic courier	H	actor	diplomatic courier	curated	original	
+diplomatic transaction	H	actor	diplomatic transaction	spamassassin-advance-fee	original	419
+double your investment	H	actor	double your investment	curated	original	
+extended relative	H	actor	extended relative	spamassassin-advance-fee	original	419
+fiduciary agent	H	actor	fiduciary agent	spamassassin-advance-fee	original	419
+foreign business partner	H	actor	foreign business partner	spamassassin-advance-fee	original	419
+guaranteed returns	H	actor	guaranteed returns	curated	original	
+honest cooperation	H	actor	honest cooperation	spamassassin-advance-fee	original	419
+itunes card	H	actor	itunes card	curated	original	
+lottery coordinator	H	actor	lottery coordinator	spamassassin-advance-fee	original	419
+million united states dollars	H	actor	million united states dollars	spamassassin-advance-fee	original	419
+secure the funds	H	actor	secure the funds	spamassassin-advance-fee	original	419
+son of the late	H	actor	son of the late	spamassassin-advance-fee	original	419
+the late president	H	actor	the late president	spamassassin-advance-fee	original	419
+unclaimed funds	H	actor	unclaimed funds	curated	original	
+urgent and confidential	H	actor	urgent and confidential	spamassassin-advance-fee	original	419
+verify your account	H	actor	verify your account	curated	original	
+virtual currency kiosk	H	actor	virtual currency kiosk	fincen-pig-butchering	original	pig butchering
+wife of the late	H	actor	wife of the late	spamassassin-advance-fee	original	419
+winning notification	H	actor	winning notification	curated	original	
+you have won	H	actor	you have won	curated	original	
+your account has been suspended	H	actor	your account has been suspended	curated	original	
+100% safe	M	actor	100% safe	spamassassin-advance-fee	original	419
+arrest warrant	M	actor	arrest warrant	curated	original	
+as the beneficiary	M	actor	as the beneficiary	spamassassin-advance-fee	original	419
+atm card	M	actor	atm card	curated	original	
+dear friend	M	actor	dear friend	curated	original	
+deployed overseas	M	actor	deployed overseas	curated	original	
+foreign account	M	actor	foreign account	spamassassin-advance-fee	original	419
+free of risk	M	actor	free of risk	spamassassin-advance-fee	original	419
+furnish you with	M	actor	furnish you with	spamassassin-advance-fee	original	419
+gift card	M	actor	gift card	curated	original	
+i am a widow	M	actor	i am a widow	curated	original	
+i am contacting you	M	actor	i am contacting you	spamassassin-advance-fee	original	419
+investment opportunity	M	actor	investment opportunity	fincen-pig-butchering	original	pig butchering
+lottery	M	actor	lottery	curated	original	
+magnanimity	M	actor	magnanimity	spamassassin-advance-fee	original	419
+next of kin	M	actor	next of kin	curated	original	
+off-shore account	M	actor	off-shore account	spamassassin-advance-fee	original	419
+private lawyer	M	actor	private lawyer	spamassassin-advance-fee	original	419
+processing fee	M	actor	processing fee	curated	original	
+risk free	M	actor	risk free	spamassassin-advance-fee	original	419
+send the code	M	actor	send the code	curated	original	
+significant returns	M	actor	significant returns	fincen-pig-butchering	original	pig butchering
+silent partner	M	actor	silent partner	spamassassin-advance-fee	original	419
+strictly confidential	M	actor	strictly confidential	curated	original	
+the desk of	M	actor	the desk of	spamassassin-advance-fee	original	419
+the total sum	M	actor	the total sum	spamassassin-advance-fee	original	419
+urgent assistance	M	actor	urgent assistance	spamassassin-advance-fee	original	419
+urgent response	M	actor	urgent response	curated	original	
+vital documents	M	actor	vital documents	spamassassin-advance-fee	original	419
+withdrawal fees	M	actor	withdrawal fees	fincen-pig-butchering	original	pig butchering
+barrister	L	actor	barrister	curated	original	
+business partner	L	actor	business partner	spamassassin-advance-fee	original	419
+central bank of	L	actor	central bank of	spamassassin-advance-fee	original	419
+dating site	L	actor	dating site	fincen-pig-butchering	original	
+disbursement	L	actor	disbursement	spamassassin-advance-fee	original	419
+inheritance	L	actor	inheritance	curated	original	
+kindly	L	actor	kindly	curated	original	
+modalities	L	actor	modalities	spamassassin-advance-fee	original	419
+money manager	L	actor	money manager	fincen-pig-butchering	original	
+old friend	L	actor	old friend	fincen-pig-butchering	original	
+wallet address	L	actor	wallet address	curated	original	
+wrong number	L	actor	wrong number	fincen-pig-butchering	original	pig butchering opener

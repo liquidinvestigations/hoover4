@@ -1,0 +1,34 @@
+term	tier	speaker	concept	source	review	note
+Absichtserklärung*	H	neutral	letter of intent	curated	mt-edited	
+beabsichtigen die Parteien	H	neutral	the parties intend	curated	mt-edited	
+beabsichtigte gemeinsame Vorgehensweise	H	neutral	intended common line of action	mou-definition	mt-edited	
+begründet keine rechtlich bindenden Verpflichtungen	H	neutral	does not create legally binding obligations	curated	mt-edited	
+begründet keine rechtsverbindlichen Verpflichtungen	H	neutral	does not create legally binding obligations	curated	mt-edited	
+begründet keinerlei rechtliche Bindung	H	neutral	shall not create any legally binding	curated	mt-edited	
+die Parteien beabsichtigen	H	neutral	the parties intend	curated	mt-edited	
+Eckpunkte der Transaktion	H	neutral	heads of terms	curated	mt-edited	
+Eckpunktepapier*	H	neutral	heads of agreement	curated	mt-edited	
+Eckpunktevereinbarung*	H	neutral	heads of agreement	curated	mt-edited	
+Grundsatzvereinbarung*	H	neutral	memorandum of understanding	curated	mt-edited	
+nicht rechtsverbindlich	H	neutral	not legally binding	curated	mt-edited	
+Patronatserklärung*	H	neutral	letter of comfort	mou-definition	mt-edited	
+rechtlich nicht bindend	H	neutral	legally non-binding	mou-definition	mt-edited	
+rechtlich nicht verbindlich	H	neutral	not legally binding	curated	mt-edited	
+rechtlich unverbindlich	H	neutral	legally non-binding	mou-definition	mt-edited	
+Term Sheet	H	neutral	heads of terms	curated	mt-edited	
+Verständigungsschreiben*	H	neutral	letter of understanding	mou-definition	mt-edited	
+vorbehaltlich des Vertragsabschlusses	H	neutral	subject to contract	curated	mt-edited	
+vorbehaltlich eines Vertragsschlusses	H	neutral	subject to contract	curated	mt-edited	
+Willensübereinstimmung*	H	neutral	convergence of will	mou-definition	mt-edited	
+Interessenbekundung*	M	neutral	expression of interest	curated	mt-edited	
+Interessensbekundung*	M	neutral	expression of interest	curated	mt-edited	
+Kooperationsvereinbarung*	M	neutral	cooperation agreement	curated	mt-edited	
+Kooperationsvertrag*	M	neutral	cooperation agreement	curated	mt-edited	
+Rahmenvereinbarung*	M	neutral	framework agreement	curated	mt-edited	
+Termsheet	M	neutral	term sheet	curated	mt-edited	
+Ehrenwort	L	neutral	gentlemen's agreement	mou-definition	mt-edited	
+grundsätzlich	L	neutral	in principle	curated	mt-edited	
+im Grundsatz	L	neutral	in principle	curated	mt-edited	
+unverbindlich*	L	neutral	non-binding	curated	mt-edited	
+werden sich bemühen	L	neutral	will endeavour	curated	mt-edited	
+wird sich bemühen	L	neutral	will endeavour	curated	mt-edited	

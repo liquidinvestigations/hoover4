@@ -1,0 +1,78 @@
+term	tier	speaker	concept	source	review	note
+без согласия	H	accuser	non-consensual	curated	mt-edited	
+вербовка для проституции	H	accuser	sex trafficking	curated	mt-edited	
+враждебная рабочая обстановка	H	accuser	hostile work environment	curated	mt-edited	
+детская порнография	H	accuser	child pornography	curated	mt-edited	
+детское порно	H	accuser	child pornography	curated	mt-edited	
+детской порнографии	H	accuser	child pornography	curated	mt-edited	
+жестокое обращение с детьми	H	accuser	child abuse	curated	mt-edited	
+интим за деньги	H	accuser	commercial sex	fincen-human-trafficking	mt-edited	
+интим-услуги	H	accuser	commercial sex	fincen-human-trafficking	mt-edited	
+коммерческая сексуальная эксплуатация	H	accuser	commercial sexual exploitation	curated	mt-edited	
+коммерческий секс	H	accuser	commercial sex	fincen-human-trafficking	mt-edited	
+лапал*	H	accuser	inappropriate touching	curated	mt-edited	
+маме не говори	H	actor	don't tell your parents	curated	mt-edited	
+месть порно	H	accuser	revenge porn	curated	mt-edited	
+насилие над детьми	H	accuser	child abuse	curated	mt-edited	
+насильственные действия сексуального характера	H	accuser	sexual assault	curated	mt-edited	
+наш маленький секрет	H	actor	our little secret	curated	mt-edited	
+наш секрет	H	actor	our little secret	curated	mt-edited	
+не говори родителям	H	actor	don't tell your parents	curated	mt-edited	
+нежелательные ухаживания	H	accuser	unwanted advances	curated	mt-edited	
+непристойное поведение	H	accuser	sexual misconduct	curated	mt-edited	
+непристойные изображения	H	accuser	indecent images	curated	mt-edited	
+непристойные прикосновения	H	accuser	inappropriate touching	curated	mt-edited	
+педофил*	H	accuser	child sexual abuse	curated	mt-edited	
+порнографические изображения несовершеннолетних	H	accuser	indecent images	curated	mt-edited	
+порноместь	H	accuser	revenge porn	curated	mt-edited	
+принудительная проституция	H	accuser	forced prostitution	curated	mt-edited	
+принуждение к проституции	H	accuser	forced prostitution	curated	mt-edited	
+приставал*	M	accuser	molest*	curated	mt-edited	
+приставания	H	accuser	unwanted advances	curated	mt-edited	
+против воли	H	accuser	non-consensual	curated	mt-edited	
+развратные действия	H	accuser	molest*	curated	mt-edited	
+развратных действий	H	accuser	molest*	curated	mt-edited	
+родителям ни слова	H	actor	don't tell your parents	curated	mt-edited	
+секс-вымогательство	H	accuser	sextortion	curated	mt-edited	
+сексторшн	H	accuser	sextortion	curated	mt-edited	
+сексуальная эксплуатация	H	accuser	commercial sexual exploitation	curated	mt-edited	
+сексуального насилия	H	accuser	sexual abuse	curated	mt-edited	
+сексуальное домогательство	H	accuser	sexual harassment	curated	mt-edited	
+сексуальное нападение	H	accuser	sexual assault	curated	mt-edited	
+сексуальное насилие	H	accuser	sexual abuse	curated	mt-edited	
+сексуальное насилие над детьми	H	accuser	child sexual abuse	curated	mt-edited	
+сексуальном насилии	H	accuser	sexual abuse	curated	mt-edited	
+сексуальные домогательства	H	accuser	sexual harassment	curated	mt-edited	
+слив интимных фото	H	accuser	revenge porn	curated	mt-edited	
+токсичная обстановка	H	accuser	hostile work environment	curated	mt-edited	
+торговли людьми	H	accuser	human trafficking	curated	mt-edited	
+торговля людьми	H	accuser	human trafficking	curated	mt-edited	
+торговля людьми в целях сексуальной эксплуатации	H	accuser	sex trafficking	curated	mt-edited	
+шантаж интимными фото	H	accuser	sextortion	curated	mt-edited	
+без ее согласия	M	accuser	without consent	curated	mt-edited	
+бордел*	M	accuser	brothel	curated	mt-edited	
+груминг	M	accuser	grooming	curated	mt-edited	
+даркнет*	M	accuser	darknet market	fincen-human-trafficking	mt-edited	
+домогательств*	M	accuser	sexual harassment	curated	mt-edited	
+изнасиловал*	M	accuser	rape	curated	mt-edited	
+изнасиловани*	M	accuser	rape	curated	mt-edited	
+интимные фото	M	accuser	intimate images	curated	mt-edited	
+интимные фотографии	M	accuser	intimate images	curated	mt-edited	
+кибергруминг	M	accuser	grooming	curated	mt-edited	
+несовершеннолетн*	M	accuser	underage	curated	mt-edited	
+нюдсы	M	accuser	intimate images	curated	mt-edited	
+притон*	M	accuser	brothel	curated	mt-edited	
+сутенер*	M	accuser	pimp	curated	mt-edited	
+эскорт-агентств*	M	accuser	escort agency	fincen-human-trafficking	mt-edited	
+эскорт агентство	M	accuser	escort agency	fincen-human-trafficking	mt-edited	
+эскорт-услуг*	M	accuser	escort service	curated	mt-edited	
+эскорт услуги	M	accuser	escort service	curated	mt-edited	
+втерся в доверие	L	accuser	groomed	curated	mt-edited	
+гидра	L	accuser	darknet market	fincen-human-trafficking	mt-edited	
+говорит за него	L	accuser	speaks on behalf of	fincen-human-trafficking	mt-edited	
+говорит за нее	L	accuser	speaks on behalf of	fincen-human-trafficking	mt-edited	
+массажный салон	L	accuser	massage business	fincen-human-trafficking	mt-edited	
+объявления	L	accuser	online classified	fincen-human-trafficking	mt-edited	
+предоплаченная карта	L	accuser	prepaid access card	fincen-human-trafficking	mt-edited	
+салон массажа	L	accuser	massage business	fincen-human-trafficking	mt-edited	
+эксплуатаци*	L	accuser	exploitation	curated	mt-edited	

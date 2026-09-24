@@ -1,0 +1,23 @@
+term	tier	speaker	concept	source	review	note
+ruin you	H	actor	ruin you	curated	original	
+smear campaign	H	accuser	smear campaign	investigator-list	original	
+you will regret	H	actor	you will regret	curated	original	
+you'll regret	H	actor	you'll regret	curated	original	
+bash the fck out of it	M	actor	bash the fck out of it	fca-hsbc-fx	original	FX
+disparag*	M	accuser	disparag*	investigator-list	original	stem
+harass*	M	accuser	harass*	curated	original	
+innuendo	M	accuser	innuendo	investigator-list	original	
+piss off	M	actor	piss off	curated	original	
+screw you	M	actor	screw you	curated	original	
+shut up	M	actor	shut up	investigator-list	original	
+ashole	L	actor	ashole	curated	original	
+asshole	L	actor	asshole	investigator-list	original	
+bullshit	L	actor	bullshit	curated	original	
+don't mess with	L	actor	don't mess with	fca-hsbc-fx	original	FX
+fck	L	actor	fck	fca-hsbc-fx	original	vowel-dropped profanity
+fcking	L	actor	fcking	fca-hsbc-fx	original	
+fcuk	L	actor	fcuk	curated	original	
+fking	L	actor	fking	curated	original	
+fuck	L	actor	fuck	investigator-list	original	
+shit	L	actor	shit	investigator-list	original	
+smear	L	accuser	smear	investigator-list	original	

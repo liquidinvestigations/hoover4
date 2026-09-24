@@ -1,0 +1,23 @@
+term	tier	speaker	concept	source	review	note
+draft invoice	H	neutral	draft invoice	curated	original	
+draft not for	H	neutral	draft not for	curated	original	
+not a tax invoice	H	neutral	not a tax invoice	curated	original	
+partial invoice	H	neutral	partial invoice	uncl1001	original	UNTDID 1001
+prepayment invoice	H	neutral	prepayment invoice	uncl1001	original	UNTDID 1001
+pro forma	H	neutral	pro forma	curated	original	
+proforma	H	neutral	proforma	curated	original	
+proforma invoice	H	neutral	proforma invoice	curated	original	
+replaces invoice	H	neutral	replaces invoice	curated	original	
+corrected invoice	M	neutral	corrected invoice	curated	original	
+for approval	M	neutral	for approval	curated	original	
+provisional	M	neutral	provisional	curated	original	
+quotation	M	neutral	quotation	curated	original	
+revised invoice	M	neutral	revised invoice	curated	original	
+supersedes	M	neutral	supersedes	curated	original	
+amended	L	neutral	amended	fatf-egmont-tbml	original	FATF red flag when frequent
+draft	L	neutral	draft	curated	original	
+estimate	L	neutral	estimate	curated	original	
+for review	L	neutral	for review	curated	original	
+preliminary	L	neutral	preliminary	curated	original	
+revised	L	neutral	revised	curated	original	
+void	L	neutral	void	curated	original	

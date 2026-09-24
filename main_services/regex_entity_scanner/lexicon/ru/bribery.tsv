@@ -1,0 +1,115 @@
+term	tier	speaker	concept	source	review	note
+без досмотра	H	actor	no inspection	investigator-list	mt-edited	
+без проверки	H	actor	no inspection	investigator-list	mt-edited	
+взятк*	H	actor	backhander	curated	mt-edited	
+дать ей на лапу	H	actor	grease her palm	curated	mt-edited	
+дать ему на лапу	H	actor	grease his palm	curated	mt-edited	
+дать им на лапу	H	actor	grease their palm	curated	mt-edited	
+деньги в конверте	H	actor	cash in an envelope	curated	mt-edited	
+деньги за скорость	H	actor	speed money	curated	mt-edited	
+договорной тендер	H	actor	rigged tender	curated	mt-edited	
+дружеские платежи	H	actor	friendly payments	investigator-list	mt-edited	
+дружеский платеж	H	actor	friendly payment	investigator-list	mt-edited	
+ей будет выгодно	H	actor	make it worth her while	curated	mt-edited	
+ему будет выгодно	H	actor	make it worth his while	curated	mt-edited	
+за скорость	H	actor	expedite fee	curated	mt-edited	
+завышенная комиссия	H	actor	excessive commission	doj-sec-fcpa-guide	mt-edited	
+завышенные комиссионные	H	actor	excessive commission	doj-sec-fcpa-guide	mt-edited	
+заказной тендер	H	actor	rigged tender	curated	mt-edited	
+закрывать глаза	H	actor	turn a blind eye	curated	mt-edited	
+закрыть глаза	H	actor	look the other way	curated	mt-edited	
+занести за контракт	H	actor	pay to play	curated	mt-edited	
+зарплата в конверте	H	actor	cash in an envelope	curated	mt-edited	
+заявка для вида	H	actor	cover bid	curated	mt-edited	
+из-под полы	H	actor	under the table	curated	mt-edited	
+картельный сговор на торгах	H	actor	bid rigging	curated	mt-edited	
+конверт с деньгами	H	actor	brown envelope	curated	mt-edited	
+на лапу	H	actor	backhander	curated	mt-edited	
+наличные в конверте	H	actor	cash in an envelope	curated	mt-edited	
+наш друг в министерстве	H	actor	our friend in the ministry	curated	mt-edited	
+наш человек в министерстве	H	actor	our friend in the ministry	curated	mt-edited	
+необоснованно большая скидка	H	actor	unreasonably large discount	doj-sec-fcpa-guide	mt-edited	
+неясно описанные услуги	H	actor	vaguely described services	doj-sec-fcpa-guide	mt-edited	
+он не останется в обиде	H	actor	make it worth his while	curated	mt-edited	
+она не останется в обиде	H	actor	make it worth her while	curated	mt-edited	
+они не останутся в обиде	H	actor	make it worth their while	curated	mt-edited	
+особые сборы	H	actor	special fees	investigator-list	mt-edited	
+откат	H	accuser	kickback	curated	mt-edited	
+отката	H	accuser	kickback	curated	mt-edited	
+откатами	H	accuser	kickbacks	sec-insider-trading-2026	mt-edited	
+откатов	H	accuser	kickback	curated	mt-edited	
+откатом	H	accuser	kickback	curated	mt-edited	
+откату	H	accuser	kickback	curated	mt-edited	
+откаты	H	accuser	kickbacks	sec-insider-trading-2026	mt-edited	
+плата за ускорение	H	actor	expedite fee	curated	mt-edited	
+платеж за упрощение формальностей	H	actor	facilitation payment	curated	mt-edited	
+платить за вход	H	actor	pay to play	curated	mt-edited	
+под столом	H	actor	under the table	curated	mt-edited	
+подарок для министра	H	actor	gift for the minister	curated	mt-edited	
+подарок министру	H	actor	gift for the minister	curated	mt-edited	
+подмазать	H	actor	grease payment	curated	mt-edited	
+подмазать его	H	actor	grease his palm	curated	mt-edited	
+подмазать ее	H	actor	grease her palm	curated	mt-edited	
+подмазать их	H	actor	grease their palm	curated	mt-edited	
+проверки не будет	H	actor	no inspection	investigator-list	mt-edited	
+решить вопрос на таможне	H	actor	customs intervention	doj-sec-fcpa-guide	mt-edited	
+сговор на тендере	H	actor	bid rigging	curated	mt-edited	
+сговор на торгах	H	actor	bid rigging	curated	mt-edited	
+сговор о ценах	H	actor	price fixing	curated	mt-edited	
+смазать механизм	H	actor	grease the wheels	curated	mt-edited	
+смотреть сквозь пальцы	H	actor	look the other way	curated	mt-edited	
+специальные сборы	H	actor	special fees	investigator-list	mt-edited	
+стимулирующий платеж	H	actor	facilitation payment	curated	mt-edited	
+таможенное сопровождение	H	actor	customs intervention	doj-sec-fcpa-guide	mt-edited	
+тендер под своего	H	actor	rigged tender	curated	mt-edited	
+услуги без описания	H	actor	vaguely described services	doj-sec-fcpa-guide	mt-edited	
+фиктивная заявка	H	actor	cover bid	curated	mt-edited	
+ценовой сговор	H	actor	price fixing	curated	mt-edited	
+гонорар успеха	M	actor	success fee	curated	mt-edited	
+его доля	M	actor	his cut	curated	mt-edited	
+его процент	M	actor	his cut	curated	mt-edited	
+иностранное должностное лицо	M	actor	foreign official	doj-sec-fcpa-guide	mt-edited	
+иностранный чиновник	M	actor	foreign official	doj-sec-fcpa-guide	mt-edited	
+комиссия за поиск клиента	M	actor	finder's fee	curated	mt-edited	
+коррупци*	M	accuser	corruption	investigator-list	mt-edited	
+научные стимулы	M	actor	scientific incentives	doj-sec-fcpa-guide	mt-edited	
+отблагодарить его	M	actor	take care of him	curated	mt-edited	
+отблагодарить ее	M	actor	take care of her	curated	mt-edited	
+отблагодарить их	M	actor	take care of them	curated	mt-edited	
+плата за послепродажное обслуживание	M	actor	after sales service fees	doj-sec-fcpa-guide	mt-edited	
+подкуп*	M	accuser	bribe	investigator-list	mt-edited	
+позаботиться о ней	M	actor	take care of her	curated	mt-edited	
+позаботиться о нем	M	actor	take care of him	curated	mt-edited	
+премия за результат	M	actor	success fee	curated	mt-edited	
+раздел клиентов	M	actor	market allocation	curated	mt-edited	
+раздел рынка	M	actor	market allocation	curated	mt-edited	
+ты мне я тебе	M	actor	quid pro quo	curated	mt-edited	
+услуга за услугу	M	actor	quid pro quo	curated	mt-edited	
+агентское вознаграждение	L	actor	finder's fee	curated	mt-edited	
+благодарность	L	actor	friendly payment	investigator-list	mt-edited	
+бонус	L	actor	sweetener	curated	mt-edited	
+бутылка Боллинджер*	L	actor	bottle of bollinger	fsa-cftc-libor-chats	mt-edited	
+бутылку боллинджера	L	actor	bottle of bollinger	fsa-cftc-libor-chats	mt-edited	
+в конверте	L	actor	brown envelope	curated	mt-edited	
+грязн*	L	actor	dirty	investigator-list	mt-edited	
+комиссионные или роялти	L	actor	commissions or royalties	doj-sec-fcpa-guide	mt-edited	
+консалтинговые услуги	L	actor	consulting fees	doj-sec-fcpa-guide	mt-edited	
+консультационные услуги	L	actor	consultancy fee	curated	mt-edited	
+коррумпирован*	L	accuser	corrupt	investigator-list	mt-edited	
+маркетинговые расходы	L	actor	sales and marketing expenses	doj-sec-fcpa-guide	mt-edited	
+мутн*	L	accuser	shady	investigator-list	mt-edited	
+неофициальн*	L	actor	unofficial	investigator-list	mt-edited	
+нечист на руку	L	accuser	crooked	investigator-list	mt-edited	
+нечисты на руку	L	accuser	crooked	investigator-list	mt-edited	
+нечистый на руку	L	accuser	crooked	investigator-list	mt-edited	
+плата за консультации	L	actor	consultancy fee	curated	mt-edited	
+по-тихому	L	actor	unofficial	investigator-list	mt-edited	
+подарок	L	actor	sweetener	curated	mt-edited	
+представительские расходы	L	actor	travel and entertainment	doj-sec-fcpa-guide	mt-edited	
+расходы на продвижение	L	actor	sales and marketing expenses	doj-sec-fcpa-guide	mt-edited	
+ретробонус*	L	actor	rebates or discounts	doj-sec-fcpa-guide	mt-edited	
+с меня причитается	L	actor	i owe you big time	fsa-cftc-libor-chats	mt-edited	
+скидки или бонусы	L	actor	rebates or discounts	doj-sec-fcpa-guide	mt-edited	
+смазка	L	actor	grease payment	curated	mt-edited	
+сомнительн*	L	accuser	shady	investigator-list	mt-edited	
+я твой должник	L	actor	i owe you big time	fsa-cftc-libor-chats	mt-edited	

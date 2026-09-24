@@ -1,0 +1,87 @@
+term	tier	speaker	concept	source	review	note
+Abschussliste*	H	actor	hit list	curated	mt-edited	
+Amokfahrt*	H	actor	vehicle ramming	curated	mt-edited	
+Attentat*	H	actor	assassinat*	curated	mt-edited	
+Auftragskiller*	H	actor	hit man	curated	mt-edited	
+Auftragsmord*	H	actor	contract killing	curated	mt-edited	
+Auftragsmörder*	H	actor	hit man	curated	mt-edited	
+brech dir die Beine	H	actor	break your legs	curated	mt-edited	
+du bist tot	H	actor	you will die	curated	mt-edited	
+du wirst sterben	H	actor	you will die	curated	mt-edited	
+enthaupt*	H	actor	behead*	curated	mt-edited	
+ermorden	H	actor	assassinat*	curated	mt-edited	
+ermordet	H	actor	assassinat*	curated	mt-edited	
+ich brech dir die Beine	H	actor	break your legs	curated	mt-edited	
+ich bring dich um	H	actor	i will kill you	curated	mt-edited	
+ich töte dich	H	actor	i will kill you	curated	mt-edited	
+ich werde dich umbringen	H	actor	i will kill you	curated	mt-edited	
+ihn exekutieren	H	actor	execute him	curated	mt-edited	
+ihn hinrichten	H	actor	execute him	curated	mt-edited	
+in die Menge fahren	H	actor	vehicle ramming	curated	mt-edited	
+köpfen	H	actor	behead*	curated	mt-edited	
+Märtyreroperation*	H	actor	martyrdom operation	curated	mt-edited	
+Märtyrertod*	H	actor	martyrdom operation	curated	mt-edited	
+Mordanschlag*	H	actor	assassinat*	curated	mt-edited	
+pass bloß auf	H	actor	watch your back	curated	mt-edited	
+Rohrbombe*	H	actor	pipe bomb	curated	mt-edited	
+sie exekutieren	H	actor	execute her	curated	mt-edited	
+sie hinrichten	H	actor	execute her	curated	mt-edited	
+Sprengstoffgürtel*	H	actor	suicide vest	curated	mt-edited	
+Sprengstoffweste*	H	actor	suicide vest	curated	mt-edited	
+Terroranschlag*	H	actor	terror attack	curated	mt-edited	
+Todesliste*	H	actor	hit list	curated	mt-edited	
+Waffendepot*	H	actor	weapons cache	curated	mt-edited	
+Waffenlager*	H	actor	weapons cache	curated	mt-edited	
+Waffenversteck*	H	actor	weapons cache	curated	mt-edited	
+wir wissen, wo du wohnst	H	actor	we know where you live	curated	mt-edited	
+bewaffnete Gruppe*	M	actor	armed group	curated	mt-edited	
+bewaffneten Gruppe*	M	actor	armed group	curated	mt-edited	
+Blutbad*	M	accuser	massacre	curated	mt-edited	
+Bombe	M	actor	bomb	curated	mt-edited	
+detonier*	M	actor	detonat*	curated	mt-edited	
+ein Exempel statuieren	M	actor	make an example of	curated	mt-edited	
+einsamer Wolf	M	actor	lone wolf	curated	mt-edited	
+Einzeltäter*	M	actor	lone wolf	curated	mt-edited	
+Extremist*	M	accuser	extremist	curated	mt-edited	
+extremistisch*	M	accuser	extremist	curated	mt-edited	
+Feuerwaffe*	M	actor	firearm	curated	mt-edited	
+Geisel*	M	actor	hostage	curated	mt-edited	
+Geiselnahme*	M	actor	hostage	curated	mt-edited	
+Granate*	M	actor	grenade	curated	mt-edited	
+Handgranate*	M	actor	grenade	curated	mt-edited	
+in die Luft jagen	M	actor	blow up	curated	mt-edited	
+in die Luft sprengen	M	actor	blow up	curated	mt-edited	
+Massaker*	M	accuser	massacre	curated	mt-edited	
+Morde	M	accuser	murder	curated	mt-edited	
+Munition*	M	actor	ammo	curated	mt-edited	
+radikalisier*	M	accuser	radicalis*	curated	mt-edited	
+Schusswaffe*	M	actor	firearm	curated	mt-edited	
+sicheres Versteck	M	actor	safe house	curated	mt-edited	
+sprengen	L	actor	blow up	curated	mt-edited	
+Sprengsatz*	M	actor	bomb	curated	mt-edited	
+Sprengstoff*	M	actor	explosive*	curated	mt-edited	
+Terrorist*	M	accuser	terrorist	curated	mt-edited	
+terroristisch*	M	accuser	terrorist	curated	mt-edited	
+Unterschlupf*	M	actor	safe house	curated	mt-edited	
+zur Explosion bringen	M	actor	detonat*	curated	mt-edited	
+abknallen	L	actor	shoot	curated	mt-edited	
+Angriff*	L	actor	attack	curated	mt-edited	
+Anschlag*	L	actor	terror attack	curated	mt-edited	
+Bomben	L	actor	bomb	curated	mt-edited	
+erschießen	L	actor	shoot	curated	mt-edited	
+Gewehr*	L	actor	rifle	curated	mt-edited	
+ihn ausschalten	L	actor	take him out	fca-hsbc-fx	mt-edited	
+ihn umlegen	L	actor	take him out	fca-hsbc-fx	mt-edited	
+Knarre*	L	actor	gun	curated	mt-edited	
+Miliz*	L	actor	militia	curated	mt-edited	
+Mord	L	accuser	murder	curated	mt-edited	
+Muni	L	actor	ammo	curated	mt-edited	
+pass auf dich auf	L	actor	watch your back	curated	mt-edited	
+Pistole*	L	actor	gun	curated	mt-edited	
+schießen	L	actor	shoot	curated	mt-edited	
+Sturmgewehr*	L	actor	rifle	curated	mt-edited	
+töten	L	actor	kill	curated	mt-edited	
+umbringen	L	actor	kill	curated	mt-edited	
+umlegen	L	actor	kill	curated	mt-edited	
+Waffe*	L	actor	gun	curated	mt-edited	
+zünd*	L	actor	detonat*	curated	mt-edited	

@@ -1,0 +1,105 @@
+term	tier	speaker	concept	source	review	note
+appel d'offres truqué	H	actor	rigged tender	curated	mt-edited	
+argent pour accélérer	H	actor	speed money	curated	mt-edited	
+argent pour graisser la patte	H	actor	grease payment	curated	mt-edited	
+bakchich	H	actor	backhander	curated	mt-edited	
+cadeau pour le ministre	H	actor	gift for the minister	curated	mt-edited	
+commission excessive	H	actor	excessive commission	doj-sec-fcpa-guide	mt-edited	
+commission occulte	H	accuser	kickback	curated	mt-edited	
+commissions excessives	H	actor	excessive commission	doj-sec-fcpa-guide	mt-edited	
+commissions occultes	H	accuser	kickback	curated	mt-edited	
+dessous-de-table	H	actor	under the table	curated	mt-edited	
+elle y trouvera son compte	H	actor	make it worth her while	curated	mt-edited	
+entente sur les appels d'offres	H	actor	bid rigging	curated	mt-edited	
+entente sur les prix	H	actor	price fixing	curated	mt-edited	
+enveloppe d'argent	H	actor	brown envelope	curated	mt-edited	
+enveloppe kraft	H	actor	brown envelope	curated	mt-edited	
+enveloppe marron	H	actor	brown envelope	curated	mt-edited	
+espèces dans une enveloppe	H	actor	cash in an envelope	curated	mt-edited	
+fermer les yeux	H	actor	look the other way	curated	mt-edited	
+fermer les yeux sur	H	actor	turn a blind eye	curated	mt-edited	
+frais d'accélération	H	actor	expedite fee	curated	mt-edited	
+frais de dédouanement accéléré	H	actor	customs intervention	doj-sec-fcpa-guide	mt-edited	
+frais spéciaux	H	actor	special fees	investigator-list	mt-edited	
+graisser la patte	H	actor	grease his palm	curated	mt-edited	
+graisser les rouages	H	actor	grease the wheels	curated	mt-edited	
+honoraires spéciaux	H	actor	special fees	investigator-list	mt-edited	
+huiler les rouages	H	actor	grease the wheels	curated	mt-edited	
+il y trouvera son compte	H	actor	make it worth his while	curated	mt-edited	
+ils y trouveront leur compte	H	actor	make it worth their while	curated	mt-edited	
+intervention douanière	H	actor	customs intervention	doj-sec-fcpa-guide	mt-edited	
+leur graisser la patte	H	actor	grease their palm	curated	mt-edited	
+liquide dans une enveloppe	H	actor	cash in an envelope	curated	mt-edited	
+lui graisser la patte	H	actor	grease her palm	curated	mt-edited	
+marché truqué	H	actor	rigged tender	curated	mt-edited	
+notre ami au ministère	H	actor	our friend in the ministry	curated	mt-edited	
+notre homme au ministère	H	actor	our friend in the ministry	curated	mt-edited	
+offre de complaisance	H	actor	cover bid	curated	mt-edited	
+offre de couverture	H	actor	cover bid	curated	mt-edited	
+paiement d'accélération	H	actor	expedite fee	curated	mt-edited	
+paiement de complaisance	H	actor	friendly payment	investigator-list	mt-edited	
+paiement de facilitation	H	actor	facilitation payment	curated	mt-edited	
+paiements de complaisance	H	actor	friendly payments	investigator-list	mt-edited	
+paiements de facilitation	H	actor	facilitation payment	curated	mt-edited	
+pas de contrôle	H	actor	no inspection	investigator-list	mt-edited	
+payer pour jouer	H	actor	pay to play	curated	mt-edited	
+payer pour obtenir le marché	H	actor	pay to play	curated	mt-edited	
+pot-de-vin	H	actor	backhander	curated	mt-edited	
+pots-de-vin	H	actor	backhander	curated	mt-edited	
+prestations floues	H	actor	vaguely described services	doj-sec-fcpa-guide	mt-edited	
+prestations vaguement décrites	H	actor	vaguely described services	doj-sec-fcpa-guide	mt-edited	
+regarder ailleurs	H	actor	look the other way	curated	mt-edited	
+remise anormalement élevée	H	actor	unreasonably large discount	doj-sec-fcpa-guide	mt-edited	
+remise excessive	H	actor	unreasonably large discount	doj-sec-fcpa-guide	mt-edited	
+rétrocommission*	H	accuser	kickback	curated	mt-edited	
+sans contrôle	H	actor	no inspection	investigator-list	mt-edited	
+sous la table	H	actor	under the table	curated	mt-edited	
+trucage des offres	H	actor	bid rigging	curated	mt-edited	
+truquage des offres	H	actor	bid rigging	curated	mt-edited	
+versement amical	H	actor	friendly payment	investigator-list	mt-edited	
+agent public étranger	M	actor	foreign official	doj-sec-fcpa-guide	mt-edited	
+commission d'apport d'affaires	M	actor	finder's fee	curated	mt-edited	
+commission d'apporteur	M	actor	finder's fee	curated	mt-edited	
+commission de succès	M	actor	success fee	curated	mt-edited	
+compte bancaire offshore	M	actor	offshore bank account	doj-sec-fcpa-guide	mt-edited	
+donnant-donnant	M	actor	quid pro quo	curated	mt-edited	
+fixation des prix	M	actor	price fixing	curated	mt-edited	
+fonctionnaire étranger	M	actor	foreign official	doj-sec-fcpa-guide	mt-edited	
+frais de service après-vente	M	actor	after sales service fees	doj-sec-fcpa-guide	mt-edited	
+honoraires de résultat	M	actor	success fee	curated	mt-edited	
+incitations scientifiques	M	actor	scientific incentives	doj-sec-fcpa-guide	mt-edited	
+partage des marchés	M	actor	market allocation	curated	mt-edited	
+petit cadeau	M	actor	sweetener	curated	mt-edited	
+renvoi d'ascenseur	M	actor	quid pro quo	curated	mt-edited	
+répartition des marchés	M	actor	market allocation	curated	mt-edited	
+sa part	M	actor	his cut	curated	mt-edited	
+s'occuper de lui	M	actor	take care of him	curated	mt-edited	
+s'occuper d'elle	M	actor	take care of her	curated	mt-edited	
+s'occuper d'eux	M	actor	take care of them	curated	mt-edited	
+soudoyer	M	accuser	bribe	investigator-list	mt-edited	
+bouteille de Bollinger	L	actor	bottle of bollinger	fsa-cftc-libor-chats	mt-edited	
+commissions ou redevances	L	actor	commissions or royalties	doj-sec-fcpa-guide	mt-edited	
+corrompre	L	accuser	bribe	investigator-list	mt-edited	
+corrompu	L	accuser	corrupt	investigator-list	mt-edited	
+corrompus	L	accuser	corrupt	investigator-list	mt-edited	
+douteux	L	accuser	shady	investigator-list	mt-edited	
+enveloppe	L	actor	sweetener	curated	mt-edited	
+frais commerciaux et marketing	L	actor	sales and marketing expenses	doj-sec-fcpa-guide	mt-edited	
+frais de conseil	L	actor	consulting fees	doj-sec-fcpa-guide	mt-edited	
+frais de déplacement et de réception	L	actor	travel and entertainment	doj-sec-fcpa-guide	mt-edited	
+honoraires de conseil	L	actor	consultancy fee	curated	mt-edited	
+honoraires de consultant	L	actor	consulting fees	doj-sec-fcpa-guide	mt-edited	
+je te dois une fière chandelle	L	actor	i owe you big time	fsa-cftc-libor-chats	mt-edited	
+je te revaudrai ça	L	actor	i owe you big time	fsa-cftc-libor-chats	mt-edited	
+louche	L	accuser	shady	investigator-list	mt-edited	
+louches	L	accuser	shady	investigator-list	mt-edited	
+malhonnête	L	accuser	crooked	investigator-list	mt-edited	
+officieuse	L	actor	unofficial	investigator-list	mt-edited	
+officieusement	L	actor	unofficial	investigator-list	mt-edited	
+officieux	L	actor	unofficial	investigator-list	mt-edited	
+remises ou rabais	L	actor	rebates or discounts	doj-sec-fcpa-guide	mt-edited	
+ristournes	L	actor	rebates or discounts	doj-sec-fcpa-guide	mt-edited	
+sa commission	L	actor	his cut	curated	mt-edited	
+sale	L	actor	dirty	investigator-list	mt-edited	
+sales	L	actor	dirty	investigator-list	mt-edited	
+véreux	L	accuser	corrupt	investigator-list	mt-edited	

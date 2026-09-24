@@ -1,0 +1,50 @@
+term	tier	speaker	concept	source	review	note
+account with institution	H	neutral	account with institution	mt103-pacs008	original	
+bank operation code	H	neutral	bank operation code	mt103-pacs008	original	MT103 :23B:
+beneficiary bank	H	neutral	beneficiary bank	curated	original	
+beneficiary customer	H	neutral	beneficiary customer	curated	original	
+camt.056	H	neutral	camt.056	mt103-pacs008	original	recall request
+debit advice	H	neutral	debit advice	curated	original	
+deposit slip	H	neutral	deposit slip	curated	original	
+endtoendid	H	neutral	endtoendid	mt103-pacs008	original	ISO 20022
+fitoficstmrcdttrf	H	neutral	fitoficstmrcdttrf	mt103-pacs008	original	pacs.008 root
+gpi tracker	H	neutral	gpi tracker	mt103-pacs008	original	
+instructed amount	H	neutral	instructed amount	mt103-pacs008	original	MT103 :33B:
+intrbksttlmamt	H	neutral	intrbksttlmamt	mt103-pacs008	original	ISO 20022
+intrbksttlmdt	H	neutral	intrbksttlmdt	mt103-pacs008	original	ISO 20022
+mt 103	H	neutral	mt 103	curated	original	
+mt103	H	neutral	mt103	curated	original	
+mt103 copy	H	neutral	mt103 copy	curated	original	
+ordering customer	H	neutral	ordering customer	curated	original	
+ordering institution	H	neutral	ordering institution	mt103-pacs008	original	
+pacs.002	H	neutral	pacs.002	mt103-pacs008	original	status report
+pacs.008	H	neutral	pacs.008	curated	original	pacs.008 after the fold
+payment advice	H	neutral	payment advice	curated	original	
+payment confirmation	H	neutral	payment confirmation	curated	original	
+proof of payment	H	neutral	proof of payment	curated	original	
+receiver's charges	H	neutral	receiver's charges	mt103-pacs008	original	
+remittance advice	H	neutral	remittance advice	curated	original	
+rmtinf	H	neutral	rmtinf	mt103-pacs008	original	ISO 20022
+sender to receiver information	H	neutral	sender to receiver information	mt103-pacs008	original	
+sender's charges	H	neutral	sender's charges	mt103-pacs008	original	
+sender's reference	H	neutral	sender's reference	mt103-pacs008	original	MT103 :20:
+swift copy	H	neutral	swift copy	curated	original	
+transfer confirmation	H	neutral	transfer confirmation	curated	original	
+transfer successful	H	neutral	transfer successful	curated	original	
+uetr	H	neutral	uetr	curated	original	
+value date	H	neutral	value date	curated	original	
+wire confirmation	H	neutral	wire confirmation	curated	original	
+acknowledgement of receipt	M	neutral	acknowledgement of receipt	curated	original	
+beneficiary	M	neutral	beneficiary	curated	original	
+debit account	M	neutral	debit account	curated	original	
+funds transferred	M	neutral	funds transferred	curated	original	
+has been credited	M	neutral	has been credited	curated	original	
+has been debited	M	neutral	has been debited	curated	original	
+payment successful	M	neutral	payment successful	curated	original	
+receipt no	M	neutral	receipt no	curated	original	
+remittance information	M	neutral	remittance information	mt103-pacs008	original	
+transaction id	M	neutral	transaction id	curated	original	
+transaction reference	M	neutral	transaction reference	curated	original	
+wire transfer	M	neutral	wire transfer	curated	original	
+bank transfer	L	neutral	bank transfer	curated	original	
+originator	L	neutral	originator	curated	original	

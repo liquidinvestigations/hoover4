@@ -1,0 +1,69 @@
+term	tier	speaker	concept	source	review	note
+assassin*	M	actor	assassinat*	curated	mt-edited	
+attaque au camion	H	actor	vehicle ramming	curated	mt-edited	
+attaque terroriste	H	actor	terror attack	curated	mt-edited	
+attentat*	H	actor	terror attack	curated	mt-edited	
+bombe artisanale	H	actor	pipe bomb	curated	mt-edited	
+cache d'armes	H	actor	weapons cache	curated	mt-edited	
+ceinture explosive	H	actor	suicide vest	curated	mt-edited	
+contrat sur sa tête	H	actor	contract killing	curated	mt-edited	
+décapit*	H	actor	behead*	curated	mt-edited	
+dépôt d'armes	H	actor	weapons cache	curated	mt-edited	
+engin explosif artisanal	H	actor	pipe bomb	curated	mt-edited	
+fais gaffe à toi	H	actor	watch your back	curated	mt-edited	
+gilet explosif	H	actor	suicide vest	curated	mt-edited	
+je te tuerai	H	actor	i will kill you	curated	mt-edited	
+je vais te casser les jambes	H	actor	break your legs	curated	mt-edited	
+je vais te tuer	H	actor	i will kill you	curated	mt-edited	
+je vais vous tuer	H	actor	i will kill you	curated	mt-edited	
+l'exécuter	M	actor	execute her	curated	mt-edited	
+liste de cibles	H	actor	hit list	curated	mt-edited	
+meurtre commandité	H	actor	contract killing	curated	mt-edited	
+nous savons où vous habitez	H	actor	we know where you live	curated	mt-edited	
+on sait où tu habites	H	actor	we know where you live	curated	mt-edited	
+opération martyre	H	actor	martyrdom operation	curated	mt-edited	
+opérations martyres	H	actor	martyrdom operation	curated	mt-edited	
+surveille tes arrières	H	actor	watch your back	curated	mt-edited	
+te casser les jambes	H	actor	break your legs	curated	mt-edited	
+t'es mort	H	actor	you will die	curated	mt-edited	
+tu vas mourir	H	actor	you will die	curated	mt-edited	
+tueur à gages	H	actor	hit man	curated	mt-edited	
+voiture-bélier	H	actor	vehicle ramming	curated	mt-edited	
+appartement conspiratif	M	actor	safe house	curated	mt-edited	
+arme à feu	M	actor	firearm	curated	mt-edited	
+armes à feu	M	actor	firearm	curated	mt-edited	
+assassinat*	M	accuser	murder	curated	mt-edited	
+bombe	L	actor	bomb	curated	mt-edited	
+bombes	L	actor	bomb	curated	mt-edited	
+explosif*	M	actor	explosive*	curated	mt-edited	
+extrémiste*	M	accuser	extremist	curated	mt-edited	
+faire exploser	M	actor	blow up	curated	mt-edited	
+faire sauter	M	actor	blow up	curated	mt-edited	
+faire un exemple	M	actor	make an example of	curated	mt-edited	
+grenades	M	actor	grenade	curated	mt-edited	
+groupe armé	M	actor	armed group	curated	mt-edited	
+groupes armés	M	actor	armed group	curated	mt-edited	
+loup solitaire	M	actor	lone wolf	curated	mt-edited	
+massacre*	M	accuser	massacre	curated	mt-edited	
+meurtre*	M	accuser	murder	curated	mt-edited	
+munitions	M	actor	ammo	curated	mt-edited	
+otage*	M	actor	hostage	curated	mt-edited	
+planque	M	actor	safe house	curated	mt-edited	
+prise d'otage*	M	actor	hostage	curated	mt-edited	
+terroris*	M	accuser	terrorist	curated	mt-edited	
+tuerie*	M	accuser	massacre	curated	mt-edited	
+agression*	L	actor	attack	curated	mt-edited	
+arme	L	actor	gun	curated	mt-edited	
+attaque*	L	actor	attack	curated	mt-edited	
+buter	L	actor	kill	curated	mt-edited	
+descendre	L	actor	shoot	curated	mt-edited	
+flingue*	L	actor	gun	curated	mt-edited	
+fusil*	L	actor	rifle	curated	mt-edited	
+kalach*	L	actor	rifle	curated	mt-edited	
+le buter	L	actor	take him out	fca-hsbc-fx	mt-edited	
+le descendre	L	actor	take him out	fca-hsbc-fx	mt-edited	
+liste noire	L	actor	hit list	curated	mt-edited	
+milice*	L	actor	militia	curated	mt-edited	
+pistolet*	L	actor	gun	curated	mt-edited	
+tirer	L	actor	shoot	curated	mt-edited	
+tuer	L	actor	kill	curated	mt-edited	

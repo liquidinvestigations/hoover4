@@ -1,0 +1,45 @@
+term	tier	speaker	concept	source	review	note
+английское право	H	neutral	laws of england and wales	curated	mt-edited	
+арбитраж ICC	H	neutral	icc arbitration	curated	mt-edited	
+арбитраж МТП	H	neutral	icc arbitration	curated	mt-edited	
+законодательство штата	H	neutral	laws of the state of	curated	mt-edited	
+исключительная подсудность	H	neutral	exclusive jurisdiction	curated	mt-edited	
+исключительная юрисдикция	H	neutral	exclusive jurisdiction	curated	mt-edited	
+место арбитража	H	neutral	seat of arbitration	curated	mt-edited	
+место проведения арбитража	H	neutral	seat of arbitration	curated	mt-edited	
+неисключительная подсудность	H	neutral	non-exclusive jurisdiction	curated	mt-edited	
+неисключительная юрисдикция	H	neutral	non-exclusive jurisdiction	curated	mt-edited	
+подлежат разрешению в	H	neutral	exclusive jurisdiction of the courts of	curated	mt-edited	
+подчиняются подсудности	H	neutral	submit to the jurisdiction	curated	mt-edited	
+подчиняются юрисдикции	H	neutral	submit to the jurisdiction	curated	mt-edited	
+право Англии и Уэльса	H	neutral	laws of england and wales	curated	mt-edited	
+право штата	H	neutral	laws of the state of	curated	mt-edited	
+применимое законодательство	H	neutral	governing law	curated	mt-edited	
+применимое право	H	neutral	governing law	curated	mt-edited	
+применимым правом является	H	neutral	governed by the laws of	curated	mt-edited	
+регламент о злоупотреблениях на рынке	H	neutral	market abuse regulation	global-relay-surveillance	mt-edited	
+регулируется законодательством	H	neutral	governed by the laws of	curated	mt-edited	
+регулируется правом	H	neutral	governed by the laws of	curated	mt-edited	
+споры подлежат рассмотрению в	H	neutral	exclusive jurisdiction of the courts of	curated	mt-edited	
+ЮНСИТРАЛ	H	neutral	uncitral	curated	mt-edited	
+английского права	M	neutral	english law	curated	mt-edited	
+апелляционный суд	M	neutral	court of appeal	curated	mt-edited	
+БВО	M	neutral	british virgin islands	curated	mt-edited	
+Британские Виргинские острова	M	neutral	british virgin islands	curated	mt-edited	
+Британских Виргинских островах	M	neutral	british virgin islands	curated	mt-edited	
+Верховного суда	M	neutral	supreme court	curated	mt-edited	
+Верховный суд	M	neutral	supreme court	curated	mt-edited	
+Высокий суд	M	neutral	high court	curated	mt-edited	
+Делавэр*	M	neutral	state of delaware	curated	mt-edited	
+Каймановы острова	M	neutral	cayman islands	curated	mt-edited	
+Каймановых островах	M	neutral	cayman islands	curated	mt-edited	
+МЦУИС	M	neutral	icsid	curated	mt-edited	
+право Швейцарии	M	neutral	swiss law	curated	mt-edited	
+право штата Нью-Йорк	M	neutral	new york law	curated	mt-edited	
+районного суда	M	neutral	district court	curated	mt-edited	
+районный суд	M	neutral	district court	curated	mt-edited	
+швейцарское право	M	neutral	swiss law	curated	mt-edited	
+штат Делавэр	M	neutral	state of delaware	curated	mt-edited	
+место рассмотрения споров	L	neutral	venue	curated	mt-edited	
+подсудность	L	neutral	venue	curated	mt-edited	
+суды	L	neutral	courts of	curated	mt-edited	

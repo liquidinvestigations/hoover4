@@ -1,0 +1,53 @@
+term	tier	speaker	concept	source	review	note
+descente de police	H	accuser	dawn raid	curated	mt-edited	
+perquisition	H	accuser	dawn raid	curated	mt-edited	
+perquisitions	H	accuser	dawn raid	curated	mt-edited	
+visite domiciliaire	H	accuser	dawn raid	curated	mt-edited	
+acte d'accusation	M	accuser	indictment	curated	mt-edited	
+action de groupe	M	accuser	class action	curated	mt-edited	
+assignation*	M	accuser	subpoena	curated	mt-edited	
+calomnie*	M	accuser	slander	curated	mt-edited	
+citation à comparaître	M	accuser	subpoena	curated	mt-edited	
+commission rogatoire	M	accuser	search warrant	curated	mt-edited	
+conservation des preuves	M	accuser	legal hold	curated	mt-edited	
+conserver les documents	M	accuser	preserve documents	curated	mt-edited	
+demande reconventionnelle	M	accuser	counterclaim	uk-cpr-pre-action	mt-edited	
+dernier avis	M	accuser	final notice	fca-hsbc-fx	mt-edited	
+diffamation	M	accuser	defamation	curated	mt-edited	
+diffamation écrite	M	accuser	libel	curated	mt-edited	
+gel des documents	M	accuser	litigation hold	curated	mt-edited	
+gel des données	M	accuser	legal hold	curated	mt-edited	
+inculpation	M	accuser	indictment	curated	mt-edited	
+injonction	M	accuser	injunction	curated	mt-edited	
+mandat de perquisition	M	accuser	search warrant	curated	mt-edited	
+mise en demeure finale	M	accuser	final notice	fca-hsbc-fx	mt-edited	
+mise en examen	M	accuser	indictment	curated	mt-edited	
+nos avocats	M	accuser	our lawyers	curated	mt-edited	
+notre avocat	M	accuser	our lawyers	curated	mt-edited	
+ouï-dire	M	accuser	hearsay	investigator-list	mt-edited	
+outrage à magistrat	M	accuser	contempt of court	uk-cpr-pre-action	mt-edited	
+outrage au tribunal	M	accuser	contempt of court	uk-cpr-pre-action	mt-edited	
+préserver les documents	M	accuser	preserve documents	curated	mt-edited	
+procédure arbitrale	M	accuser	arbitration	investigator-list	mt-edited	
+procureur*	M	accuser	prosecut*	investigator-list	mt-edited	
+recours collectif	M	accuser	class action	curated	mt-edited	
+référé	M	accuser	injunction	curated	mt-edited	
+représailles	M	accuser	retaliat*	curated	mt-edited	
+sanction pécuniaire	M	accuser	financial penalty	fca-hsbc-fx	mt-edited	
+sursis à statuer	M	accuser	stay of proceedings	uk-cpr-pre-action	mt-edited	
+suspension de la procédure	M	accuser	stay of proceedings	uk-cpr-pre-action	mt-edited	
+tribunal arbitral	M	accuser	arbitration	investigator-list	mt-edited	
+accord transactionnel	L	accuser	settlement	curated	mt-edited	
+amende	L	accuser	financial penalty	fca-hsbc-fx	mt-edited	
+arbitrage	L	accuser	arbitration	investigator-list	mt-edited	
+délai de prescription	L	accuser	limitation period	uk-cpr-pre-action	mt-edited	
+déposition*	L	accuser	deposition	curated	mt-edited	
+enquête*	L	accuser	investigat*	investigator-list	mt-edited	
+parquet	L	accuser	prosecut*	investigator-list	mt-edited	
+poursuite judiciaire	L	accuser	lawsuit	curated	mt-edited	
+poursuivre en justice	L	accuser	lawsuit	curated	mt-edited	
+prescription	L	accuser	limitation period	uk-cpr-pre-action	mt-edited	
+prétention*	L	accuser	claim	investigator-list	mt-edited	
+procès	L	accuser	lawsuit	curated	mt-edited	
+réclamation*	L	accuser	claim	investigator-list	mt-edited	
+transaction	L	accuser	settlement	curated	mt-edited	

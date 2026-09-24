@@ -1,0 +1,47 @@
+term	tier	speaker	concept	source	review	note
+assassinat*	H	actor	assassinat*	curated	original	
+behead*	H	actor	behead*	curated	original	
+break your legs	H	actor	break your legs	curated	original	
+contract killing	H	actor	contract killing	curated	original	
+execute her	H	actor	execute her	curated	original	
+execute him	H	actor	execute him	curated	original	
+hit list	H	actor	hit list	curated	original	
+hit man	H	actor	hit man	curated	original	
+hitman	H	actor	hitman	curated	original	
+i will kill you	H	actor	i will kill you	curated	original	
+martyrdom operation	H	actor	martyrdom operation	curated	original	
+pipe bomb	H	actor	pipe bomb	curated	original	
+suicide vest	H	actor	suicide vest	curated	original	
+terror attack	H	actor	terror attack	curated	original	
+vehicle ramming	H	actor	vehicle ramming	curated	original	
+watch your back	H	actor	watch your back	curated	original	
+we know where you live	H	actor	we know where you live	curated	original	
+weapons cache	H	actor	weapons cache	curated	original	
+you will die	H	actor	you will die	curated	original	
+ammo	M	actor	ammo	curated	original	
+ammunition	M	actor	ammunition	curated	original	
+armed group	M	actor	armed group	curated	original	
+blow up	M	actor	blow up	curated	original	
+bomb	M	actor	bomb	curated	original	
+detonat*	M	actor	detonat*	curated	original	
+explosive*	M	actor	explosive*	curated	original	
+extremist	M	accuser	extremist	curated	original	
+firearm	M	actor	firearm	curated	original	
+grenade	M	actor	grenade	curated	original	
+hostage	M	actor	hostage	curated	original	
+lone wolf	M	actor	lone wolf	curated	original	
+make an example of	M	actor	make an example of	curated	original	
+massacre	M	accuser	massacre	curated	original	
+murder	M	accuser	murder	curated	original	
+radicalis*	M	accuser	radicalis*	curated	original	
+radicaliz*	M	accuser	radicaliz*	curated	original	
+safe house	M	actor	safe house	curated	original	
+terrorist	M	accuser	terrorist	curated	original	
+attack	L	actor	attack	curated	original	
+gun	L	actor	gun	curated	original	
+kill	L	actor	kill	curated	original	
+militia	L	actor	militia	curated	original	
+rifle	L	actor	rifle	curated	original	
+shoot	L	actor	shoot	curated	original	
+take her out	L	actor	take her out	curated	original	also ordinary slang
+take him out	L	actor	take him out	fca-hsbc-fx	original	FX used it for netting an order: a documented false-positive trap

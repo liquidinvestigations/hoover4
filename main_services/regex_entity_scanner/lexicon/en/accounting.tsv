@@ -1,0 +1,41 @@
+term	tier	speaker	concept	source	review	note
+backdate	H	actor	backdate	investigator-list	original	options backdating, contract backdating
+channel stuffing	H	actor	channel stuffing	curated	original	
+cook the books	H	actor	cook the books	curated	original	
+cookie jar reserve	H	actor	cookie jar reserve	curated	original	
+dummy invoice	H	actor	dummy invoice	curated	original	
+fake invoice	H	actor	fake invoice	curated	original	
+ghost employee	H	actor	ghost employee	curated	original	
+make the number	H	actor	make the number	investigator-list	original	also pressure (fraud triangle)
+make the quarter	H	actor	make the quarter	curated	original	
+massage the numbers	H	actor	massage the numbers	curated	original	
+off the books	H	actor	off the books	investigator-list	original	
+phantom vendor	H	actor	phantom vendor	curated	original	
+plug the number	H	actor	plug the number	curated	original	
+pull earnings forward	H	actor	pull earnings forward	investigator-list	original	
+push out the expenses	H	actor	push out the expenses	curated	original	
+recognise it early	H	actor	recognise it early	curated	original	UK spelling
+recognize it early	H	actor	recognize it early	curated	original	
+round tripping	H	actor	round tripping	curated	original	
+side agreement	H	actor	side agreement	curated	original	
+side letter	H	actor	side letter	curated	original	
+top-side entry	H	actor	top-side entry	curated	original	
+topside adjustment	H	actor	topside adjustment	curated	original	
+bill and hold	M	actor	bill and hold	curated	original	
+capitalise the expense	M	actor	capitalise the expense	curated	original	UK spelling
+capitalize the expense	M	actor	capitalize the expense	curated	original	
+fix it later	M	actor	fix it later	investigator-list	original	
+manual journal entry	M	actor	manual journal entry	curated	original	
+off balance sheet	M	actor	off balance sheet	investigator-list	original	also a legitimate accounting term (off-balance-sheet financing)
+restatement	M	accuser	restatement	curated	original	
+smooth earnings	M	actor	smooth earnings	curated	original	
+unreported	M	actor	unreported	investigator-list	original	
+window dressing	M	actor	window dressing	curated	original	
+write off	M	actor	write off	investigator-list	original	routine accounting; `write-off` folds to this, `writeoff` does not
+writeoff	M	actor	writeoff	curated	original	
+close the gap	L	actor	close the gap	curated	original	
+free goods	L	actor	free goods	doj-sec-fcpa-guide	original	FCPA
+intercompany accounts	L	actor	intercompany accounts	doj-sec-fcpa-guide	original	FCPA
+irregular	L	actor	irregular	investigator-list	original	
+miscellaneous expenses	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	original	FCPA
+petty cash withdrawal	L	actor	petty cash withdrawal	doj-sec-fcpa-guide	original	FCPA

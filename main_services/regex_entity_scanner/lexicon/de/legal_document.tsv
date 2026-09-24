@@ -1,0 +1,81 @@
+term	tier	speaker	concept	source	review	note
+Andienungsrecht*	H	neutral	right of first offer	cuad	mt-edited	
+anwaltlich vertraulich	H	neutral	legally privileged	curated	mt-edited	
+anwaltliche Schweigepflicht	H	neutral	attorney-client privilege	curated	mt-edited	
+Anwaltsgeheimnis*	H	neutral	attorney-client privilege	curated	mt-edited	
+beeidete Aussage	H	neutral	sworn statement	curated	mt-edited	
+begünstigter Dritter	H	neutral	third party beneficiary	cuad	mt-edited	
+eidesstattliche Erklärung*	H	neutral	affidavit	curated	mt-edited	
+eidesstattliche Versicherung*	H	neutral	affidavit	curated	mt-edited	
+in der Rechtssache	H	neutral	in the matter of	curated	mt-edited	
+Klageverzicht*	H	neutral	covenant not to sue	cuad	mt-edited	
+Mandatsgeheimnis*	H	neutral	attorney-client privilege	curated	mt-edited	
+mit Rechtsbindungswillen	H	neutral	intention to be legally bound	mou-definition	mt-edited	
+Notar	M	neutral	notary public	curated	mt-edited	
+Notars	M	neutral	notary public	curated	mt-edited	
+Notariat*	M	neutral	notary public	curated	mt-edited	
+Notarin	M	neutral	notary public	curated	mt-edited	
+ohne Anerkennung einer Rechtspflicht	H	neutral	without prejudice	curated	mt-edited	
+ohne Präjudiz	H	neutral	without prejudice	curated	mt-edited	
+Rechtsbindungswille*	H	neutral	intention to be legally bound	mou-definition	mt-edited	
+unpräjudiziell	H	neutral	without prejudice	curated	mt-edited	
+unter Eid	H	neutral	sworn statement	curated	mt-edited	
+unterliegt dem Anwaltsgeheimnis	H	neutral	legally privileged	curated	mt-edited	
+Verpflichtung zum Klageverzicht	H	neutral	covenant not to sue	cuad	mt-edited	
+Vertrag zugunsten Dritter	H	neutral	third party beneficiary	cuad	mt-edited	
+Vollmacht*	H	neutral	power of attorney	curated	mt-edited	
+vorgenannt*	M	neutral	aforesaid	curated	mt-edited	
+Vorhandrecht*	H	neutral	right of first offer	cuad	mt-edited	
+Vorkaufsrecht*	H	neutral	right of first refusal	cuad	mt-edited	
+vorstehend	M	neutral	hereinbefore	curated	mt-edited	
+zu Urkund dessen	H	neutral	in witness whereof	curated	mt-edited	
+zum Zeichen dessen	H	neutral	in witness whereof	curated	mt-edited	
+Aktenzeichen	M	neutral	case no	curated	mt-edited	
+Angebot und Annahme	M	neutral	offer and acceptance	mou-definition	mt-edited	
+Angeklagte*	M	neutral	defendant	curated	mt-edited	
+Beklagte*	M	neutral	defendant	curated	mt-edited	
+Beschluss des Gerichts	M	neutral	court order	curated	mt-edited	
+der Unterzeichnete	M	neutral	the undersigned	curated	mt-edited	
+die Unterzeichnenden	M	neutral	the undersigned	curated	mt-edited	
+die Unterzeichnete	M	neutral	the undersigned	curated	mt-edited	
+gerichtliche Anordnung	M	neutral	court order	curated	mt-edited	
+Gerichtsbeschluss*	M	neutral	court order	curated	mt-edited	
+hiermit	M	neutral	hereby	curated	mt-edited	
+in Anbetracht	M	neutral	whereas	curated	mt-edited	
+in Erwägung	M	neutral	whereas	curated	mt-edited	
+in Sachen	M	neutral	in the matter of	curated	mt-edited	
+Justiziar*	M	neutral	legal counsel	curated	mt-edited	
+Klägerseite	M	neutral	plaintiff	investigator-list	mt-edited	
+Kontrollwechsel*	M	neutral	change of control	cuad	mt-edited	
+nach Maßgabe	M	neutral	pursuant to	curated	mt-edited	
+nachfolgend	M	neutral	hereinafter	curated	mt-edited	
+notariell beglaubigt	M	neutral	notarised	curated	mt-edited	
+notariell beurkundet	M	neutral	notarised	curated	mt-edited	
+oben erwähnt*	M	neutral	aforementioned	curated	mt-edited	
+oben genannt*	M	neutral	aforementioned	curated	mt-edited	
+Rechtsbeistand*	M	neutral	legal counsel	curated	mt-edited	
+Syndikusanwalt*	M	neutral	legal counsel	curated	mt-edited	
+unbeschadet	M	neutral	notwithstanding	curated	mt-edited	
+ungeachtet	M	neutral	notwithstanding	curated	mt-edited	
+Verfahrensliste	M	neutral	docket	curated	mt-edited	
+vorbezeichnet*	M	neutral	aforementioned	curated	mt-edited	
+Antragsgegner*	L	neutral	respondent	curated	mt-edited	
+Antragsteller*	L	neutral	claimant	curated	mt-edited	
+aufgrund	L	neutral	pursuant to	curated	mt-edited	
+Beschluss	L	neutral	ruling	curated	mt-edited	
+Beschwerdegegner*	L	neutral	respondent	curated	mt-edited	
+derselben	L	neutral	thereof	curated	mt-edited	
+Entscheidung	L	neutral	ruling	curated	mt-edited	
+gemäß	L	neutral	pursuant to	curated	mt-edited	
+Geschäftszeichen	L	neutral	case no	curated	mt-edited	
+Gesetz	L	neutral	statute	curated	mt-edited	
+hierin	L	neutral	therein	curated	mt-edited	
+hiervon	L	neutral	thereof	curated	mt-edited	
+im Folgenden	L	neutral	hereinafter	curated	mt-edited	
+Kläger	L	neutral	claimant	curated	mt-edited	
+Klägerin	L	neutral	claimant	curated	mt-edited	
+Präambel	L	neutral	whereas	curated	mt-edited	
+Satzung	L	neutral	statute	curated	mt-edited	
+Urteil*	L	neutral	judgment	curated	mt-edited	
+Urteilsbegründung*	L	neutral	judgment	curated	mt-edited	
+weiter oben	L	neutral	hereinbefore	curated	mt-edited	

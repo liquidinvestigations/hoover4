@@ -1,0 +1,57 @@
+term	tier	speaker	concept	source	review	note
+bosses are pushing me	H	insider	bosses are pushing me	ey-fbi-2013	original	pressure
+everybody does it	H	insider	everybody does it	curated	original	
+everyone does it	H	insider	everyone does it	curated	original	
+go to the regulator	H	accuser	go to the regulator	curated	original	
+i didn't sign up for this	H	insider	i didn't sign up for this	curated	original	
+just borrowing	H	insider	just borrowing	curated	original	
+just following orders	H	insider	just following orders	curated	original	
+my bonus depends on this	H	insider	my bonus depends on this	ey-fbi-2013	original	pressure
+my job is on the line	H	insider	my job is on the line	curated	original	
+nobody gets hurt	H	insider	nobody gets hurt	curated	original	
+not hurting anyone	H	insider	not hurting anyone	investigator-list	original	rationalisation (victimless)
+pressure from above	H	insider	pressure from above	curated	original	
+technically legal	H	insider	technically legal	curated	original	
+they don't pay me enough	H	insider	they don't pay me enough	ey-fbi-2013	original	rationalisation
+they owe it to me	H	insider	they owe it to me	investigator-list	original	rationalisation (entitlement)
+they owe me	H	insider	they owe me	ey-fbi-2013	original	rationalisation
+they'll never notice	H	insider	they'll never notice	curated	original	
+this doesn't feel right	H	insider	this doesn't feel right	curated	original	
+want no part of this	H	insider	want no part of this	investigator-list	original	dissent
+we'll pay it back	H	insider	we'll pay it back	curated	original	
+won't miss it	H	insider	won't miss it	investigator-list	original	rationalisation (victimless)
+cash crunch	M	insider	cash crunch	curated	original	
+cover myself	M	insider	cover myself	curated	original	
+crossing the line	M	insider	crossing the line	curated	original	
+don't have the right	M	insider	don't have the right	investigator-list	original	
+failed investment	M	insider	failed investment	investigator-list	original	
+going concern	M	accuser	going concern	curated	original	
+gray area	M	insider	gray area	curated	original	US spelling
+grey area	M	insider	grey area	investigator-list	original	rationalisation
+i disagree with this approach	M	accuser	i disagree with this approach	cftc-barclays-libor	original	dissent
+i have no choice	M	insider	i have no choice	curated	original	
+i object	M	accuser	i object	curated	original	
+i refuse to	M	accuser	i refuse to	curated	original	
+i want it noted	M	insider	i want it noted	curated	original	
+i was instructed to	M	insider	i was instructed to	curated	original	
+i'm uneasy	M	insider	i'm uneasy	curated	original	
+just this once	M	insider	just this once	curated	original	
+not comfortable	M	insider	not comfortable	investigator-list	original	dissent
+not ethical	M	accuser	not ethical	investigator-list	original	dissent
+reach the numbers	M	insider	reach the numbers	ey-fbi-2013	original	pressure
+red flag	M	accuser	red flag	investigator-list	original	also compliance vocabulary
+the goal is very high	M	insider	the goal is very high	ey-fbi-2013	original	pressure
+this isn't right	M	insider	this isn't right	curated	original	
+told me to	M	insider	told me to	investigator-list	original	pressure, or a defence of "just following orders"
+victimless	M	insider	victimless	curated	original	
+whistleblower	M	accuser	whistleblower	curated	original	
+whistleblower hotline	M	accuser	whistleblower hotline	ey-fbi-2013	original	
+bankrupt	L	insider	bankrupt	investigator-list	original	also pressure
+embarrassing	L	insider	embarrassing	investigator-list	original	
+for the record	L	insider	for the record	curated	original	
+loophole	L	insider	loophole	curated	original	
+no regrets	L	insider	no regrets	investigator-list	original	
+reluctantly	L	insider	reluctantly	cftc-barclays-libor	original	LIBOR
+serious concerns	L	accuser	serious concerns	cftc-barclays-libor	original	dissent
+shutdown	L	insider	shutdown	investigator-list	original	
+suspicious	L	accuser	suspicious	investigator-list	original	

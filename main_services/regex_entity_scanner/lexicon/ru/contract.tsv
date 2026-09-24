@@ -1,0 +1,100 @@
+term	tier	speaker	concept	source	review	note
+NDA	H	neutral	non-disclosure agreement	curated	mt-edited	
+возместить убытки	H	neutral	indemnify	curated	mt-edited	
+возместить ущерб	H	neutral	indemnify	curated	mt-edited	
+возмещение убытков	H	neutral	indemnification	curated	mt-edited	
+возмещение ущерба	H	neutral	indemnification	curated	mt-edited	
+генеральное соглашение	H	neutral	master services agreement	curated	mt-edited	
+действуют после расторжения	H	neutral	survive termination	contractnli	mt-edited	
+действующего на основании устава	H	neutral	duly authorised	curated	mt-edited	
+действующей на основании устава	H	neutral	duly authorised	curated	mt-edited	
+делимость	H	neutral	severability	curated	mt-edited	
+депонирование исходного кода	H	neutral	source code escrow	cuad	mt-edited	
+договор купли-продажи акций	H	neutral	share purchase agreement	curated	mt-edited	
+договор купли-продажи доли	H	neutral	share purchase agreement	curated	mt-edited	
+если не будет расторгнут ранее	H	neutral	unless terminated earlier	cuad	mt-edited	
+заверения и гарантии	H	neutral	representations and warranties	curated	mt-edited	
+заверения об обстоятельствах	H	neutral	representations and warranties	curated	mt-edited	
+заключили настоящее соглашение	H	neutral	agreement is made	curated	mt-edited	
+заключили настоящий договор	H	neutral	agreement is made	curated	mt-edited	
+запрет на уступку	H	neutral	anti-assignment	cuad	mt-edited	
+запрет уступки	H	neutral	anti-assignment	cuad	mt-edited	
+надлежащим образом подписан*	H	neutral	duly executed	curated	mt-edited	
+надлежащим образом уполномочен*	H	neutral	duly authorised	curated	mt-edited	
+недействительность отдельных положений	H	neutral	severability	curated	mt-edited	
+неограниченная ответственность	H	neutral	uncapped liability	cuad	mt-edited	
+непреодолимой силы	H	neutral	force majeure	curated	mt-edited	
+неустойк*	M	neutral	liquidated damages	curated	mt-edited	
+оградить от претензий	H	neutral	hold harmless	curated	mt-edited	
+ограничение ответственности	H	neutral	limitation of liability	curated	mt-edited	
+ограничение суммы ответственности	H	neutral	cap on liability	cuad	mt-edited	
+одностороннее расторжение	H	neutral	termination for convenience	curated	mt-edited	
+освободить от ответственности	H	neutral	hold harmless	curated	mt-edited	
+отказ от договора без причин	H	neutral	termination for convenience	curated	mt-edited	
+полное соглашение	H	neutral	entire agreement	curated	mt-edited	
+полнота соглашения	H	neutral	entire agreement	curated	mt-edited	
+предел ответственности	H	neutral	cap on liability	cuad	mt-edited	
+рамочный договор оказания услуг	H	neutral	master services agreement	curated	mt-edited	
+раскрывающая сторона	H	neutral	disclosing party	contractnli	mt-edited	
+расторгнуть договор	H	neutral	terminate this agreement	curated	mt-edited	
+расторгнуть настоящий договор	H	neutral	terminate this agreement	curated	mt-edited	
+соглашение о конфиденциальности	H	neutral	confidentiality agreement	curated	mt-edited	
+соглашение о неразглашении	H	neutral	non-disclosure agreement	curated	mt-edited	
+сохраняют силу после прекращения	H	neutral	survive termination	contractnli	mt-edited	
+срок действия договора	H	neutral	term of this agreement	curated	mt-edited	
+срок действия настоящего договора	H	neutral	term of this agreement	curated	mt-edited	
+стороны договорились	H	neutral	the parties agree	curated	mt-edited	
+стороны настоящего договора	H	neutral	the parties hereto	curated	mt-edited	
+стороны пришли к соглашению	H	neutral	the parties agree	curated	mt-edited	
+существенного нарушения	H	neutral	material breach	curated	mt-edited	
+существенное нарушение	H	neutral	material breach	curated	mt-edited	
+услуги после расторжения	H	neutral	post-termination services	cuad	mt-edited	
+форс-мажор*	H	neutral	force majeure	curated	mt-edited	
+штрафная неустойка	H	neutral	liquidated damages	curated	mt-edited	
+автоматическая пролонгация	M	neutral	automatically renewed	cuad	mt-edited	
+автоматически пролонгируется	M	neutral	automatically renewed	cuad	mt-edited	
+акционерное соглашение	M	neutral	shareholders agreement	curated	mt-edited	
+в двух экземплярах	M	neutral	counterparts	curated	mt-edited	
+вступает в силу	M	neutral	effective date	curated	mt-edited	
+гарантийный срок	M	neutral	warranty duration	cuad	mt-edited	
+дата вступления в силу	M	neutral	effective date	curated	mt-edited	
+запрет конкуренции	M	neutral	non-compete	cuad	mt-edited	
+запрет на негативные высказывания	M	neutral	non-disparagement	cuad	mt-edited	
+запрет на переманивание	M	neutral	no-solicit	cuad	mt-edited	
+запрет переманивания	M	neutral	no-solicit	cuad	mt-edited	
+корпоративный договор	M	neutral	shareholders agreement	curated	mt-edited	
+лицензионный договор	M	neutral	license grant	cuad	mt-edited	
+минимальные обязательства	M	neutral	minimum commitment	cuad	mt-edited	
+минимальный объем закупок	M	neutral	minimum commitment	cuad	mt-edited	
+нарушение договора	M	neutral	breach of contract	curated	mt-edited	
+нарушение условий договора	M	neutral	breach of contract	curated	mt-edited	
+настоящего договора	M	neutral	this agreement	curated	mt-edited	
+настоящее соглашение	M	neutral	this agreement	curated	mt-edited	
+настоящий договор	M	neutral	this agreement	curated	mt-edited	
+неконкуренци*	M	neutral	non-compete	cuad	mt-edited	
+первоначальный срок	M	neutral	initial term	cuad	mt-edited	
+получающая сторона	M	neutral	receiving party	contractnli	mt-edited	
+право на аудит	M	neutral	audit rights	cuad	mt-edited	
+право проводить проверки	M	neutral	audit rights	cuad	mt-edited	
+предоставление лицензии	M	neutral	license grant	cuad	mt-edited	
+предоставляет право использования	M	neutral	license grant	cuad	mt-edited	
+продлевается автоматически	M	neutral	automatically renewed	cuad	mt-edited	
+режим наибольшего благоприятствования	M	neutral	most favored nation	cuad	mt-edited	
+соглашение акционеров	M	neutral	shareholders agreement	curated	mt-edited	
+соглашение об уровне обслуживания	M	neutral	service level agreement	curated	mt-edited	
+соглашение об уровне сервиса	M	neutral	service level agreement	curated	mt-edited	
+спецификация работ	M	neutral	statement of work	curated	mt-edited	
+срок гарантии	M	neutral	warranty duration	cuad	mt-edited	
+техническое задание	M	neutral	statement of work	curated	mt-edited	
+вознаграждение	L	neutral	consideration	curated	mt-edited	
+встречное предоставление	L	neutral	consideration	curated	mt-edited	
+заключен	L	neutral	entered into	curated	mt-edited	
+заключили	L	neutral	entered into	curated	mt-edited	
+исключительность	L	neutral	exclusivity	cuad	mt-edited	
+конфиденциальная информация	L	neutral	confidential information	contractnli	mt-edited	
+общие условия	L	neutral	terms and conditions	curated	mt-edited	
+условия договора	L	neutral	terms and conditions	curated	mt-edited	
+уступка	L	neutral	assignment	curated	mt-edited	
+цессия	L	neutral	assignment	curated	mt-edited	
+экземплярах	L	neutral	counterparts	curated	mt-edited	
+эксклюзивность	L	neutral	exclusivity	cuad	mt-edited	

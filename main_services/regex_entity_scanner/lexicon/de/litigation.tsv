@@ -1,0 +1,52 @@
+term	tier	speaker	concept	source	review	note
+Hausdurchsuchung*	H	accuser	dawn raid	curated	mt-edited	
+Razzia*	H	accuser	dawn raid	curated	mt-edited	
+Anklageerhebung*	M	accuser	indictment	curated	mt-edited	
+Anklageschrift*	M	accuser	indictment	curated	mt-edited	
+Aussetzung des Verfahrens	M	accuser	stay of proceedings	uk-cpr-pre-action	mt-edited	
+Benachteiligung wegen	M	accuser	retaliat*	curated	mt-edited	
+Dokumente aufbewahren	M	accuser	preserve documents	curated	mt-edited	
+Durchsuchung*	M	accuser	dawn raid	curated	mt-edited	
+Durchsuchungsbefehl*	M	accuser	search warrant	curated	mt-edited	
+Durchsuchungsbeschluss*	M	accuser	search warrant	curated	mt-edited	
+einstweilige Verfügung*	M	accuser	injunction	curated	mt-edited	
+Geldbuße*	M	accuser	financial penalty	fca-hsbc-fx	mt-edited	
+Hörensagen	M	accuser	hearsay	investigator-list	mt-edited	
+letzte Mahnung	M	accuser	final notice	fca-hsbc-fx	mt-edited	
+Löschstopp*	M	accuser	litigation hold	curated	mt-edited	
+Missachtung des Gerichts	M	accuser	contempt of court	uk-cpr-pre-action	mt-edited	
+Repressalie*	M	accuser	retaliat*	curated	mt-edited	
+Rufschädigung*	M	accuser	defamation	curated	mt-edited	
+Sammelklage*	M	accuser	class action	curated	mt-edited	
+Schiedsgericht*	M	accuser	arbitration	investigator-list	mt-edited	
+Schiedsverfahren*	M	accuser	arbitration	investigator-list	mt-edited	
+Staatsanwalt*	M	accuser	prosecut*	investigator-list	mt-edited	
+strafrechtlich verfolg*	M	accuser	prosecut*	investigator-list	mt-edited	
+Strafverfolg*	M	accuser	prosecut*	investigator-list	mt-edited	
+üble Nachrede	M	accuser	defamation	curated	mt-edited	
+unser Anwalt	M	accuser	our lawyers	curated	mt-edited	
+unsere Anwälte	M	accuser	our lawyers	curated	mt-edited	
+unsere Rechtsabteilung	M	accuser	our lawyers	curated	mt-edited	
+Unterlagen sichern	M	accuser	preserve documents	curated	mt-edited	
+Unterlassungsverfügung*	M	accuser	injunction	curated	mt-edited	
+Verfahrensaussetzung*	M	accuser	stay of proceedings	uk-cpr-pre-action	mt-edited	
+Vergeltung*	M	accuser	retaliat*	curated	mt-edited	
+Verleumdung*	M	accuser	defamation	curated	mt-edited	
+Vorladung*	M	accuser	subpoena	curated	mt-edited	
+Widerklage*	M	accuser	counterclaim	uk-cpr-pre-action	mt-edited	
+Zeugenladung*	M	accuser	subpoena	curated	mt-edited	
+Anspruch*	L	accuser	claim	investigator-list	mt-edited	
+Aufbewahrungspflicht*	L	accuser	legal hold	curated	mt-edited	
+außergerichtliche Einigung	L	accuser	settlement	curated	mt-edited	
+Bußgeld*	L	accuser	financial penalty	fca-hsbc-fx	mt-edited	
+eidliche Aussage*	L	accuser	deposition	curated	mt-edited	
+ermitteln	L	accuser	investigat*	investigator-list	mt-edited	
+Ermittlung*	L	accuser	investigat*	investigator-list	mt-edited	
+Forderung*	L	accuser	claim	investigator-list	mt-edited	
+Klage	L	accuser	lawsuit	curated	mt-edited	
+Klagen	L	accuser	lawsuit	curated	mt-edited	
+Untersuchung*	L	accuser	investigat*	investigator-list	mt-edited	
+Vergleich*	L	accuser	settlement	curated	mt-edited	
+Verjährung*	L	accuser	limitation period	uk-cpr-pre-action	mt-edited	
+verklagen	L	accuser	lawsuit	curated	mt-edited	
+Zeugenaussage*	L	accuser	deposition	curated	mt-edited	

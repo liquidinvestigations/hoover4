@@ -1,0 +1,126 @@
+term	tier	speaker	concept	source	review	note
+адрес массовой регистрации	H	accuser	mass registration address	fatf-egmont-tbml	mt-edited	
+бухгалтерское мошенничество	H	accuser	accounting fraud	curated	mt-edited	
+дробление платежей	H	actor	smurfing	curated	mt-edited	
+дробление сумм	H	actor	smurfing	curated	mt-edited	
+завышение цен	H	actor	over invoic*	spamassassin-advance-fee	mt-edited	
+завышения цен	H	actor	over invoic*	spamassassin-advance-fee	mt-edited	
+завышенные счета	H	actor	over invoic*	spamassassin-advance-fee	mt-edited	
+занижение цен	H	actor	under invoic*	fatf-egmont-tbml	mt-edited	
+занижения цен	H	actor	under invoic*	fatf-egmont-tbml	mt-edited	
+заниженные счета	H	actor	under invoic*	fatf-egmont-tbml	mt-edited	
+инсайдерская информация	H	accuser	insider information	curated	mt-edited	
+инсайдерская торговля	H	accuser	insider trading	curated	mt-edited	
+инсайдерские сделки	H	accuser	insider trading	curated	mt-edited	
+инсайдерской информации	H	accuser	insider information	curated	mt-edited	
+карусельная схема	H	accuser	carousel fraud	curated	mt-edited	
+карусельное мошенничество	H	accuser	carousel fraud	curated	mt-edited	
+карусельные схемы	H	accuser	carousel fraud	curated	mt-edited	
+круговые платежи	H	accuser	circular payments	fatf-egmont-tbml	mt-edited	
+манипулирование курсом	H	accuser	market manipulation	curated	mt-edited	
+манипулирование рынком	H	accuser	market manipulation	curated	mt-edited	
+манипуляция ценами	H	accuser	market manipulation	curated	mt-edited	
+мошенничество с НДС	H	accuser	vat fraud	curated	mt-edited	
+мошенничество с переводами	H	accuser	wire fraud	curated	mt-edited	
+мошенничество с ценными бумагами	H	accuser	securities fraud	curated	mt-edited	
+накачка и сброс	H	accuser	pump and dump	curated	mt-edited	
+налоговое мошенничество	H	accuser	tax fraud	curated	mt-edited	
+налоговые преступления	H	accuser	tax fraud	curated	mt-edited	
+не публиковать честные цены	H	actor	not posting honest prices	cftc-barclays-libor	mt-edited	
+незаконное возмещение НДС	H	accuser	vat fraud	curated	mt-edited	
+нечестно по определению	H	accuser	dishonest by definition	cftc-barclays-libor	mt-edited	
+ниже порога	H	actor	just below the threshold	fatf-egmont-tbml	mt-edited	
+ниже порога обязательного контроля	H	accuser	just below reporting thresholds	fatf-egmont-tbml	mt-edited	
+обойти санкции	H	accuser	evade sanctions	curated	mt-edited	
+обход санкций	H	accuser	evade sanctions	curated	mt-edited	
+обходить санкции	H	accuser	evade sanctions	curated	mt-edited	
+отмывание денег через торговлю	H	accuser	trade-based money laundering	curated	mt-edited	
+очень низкий фиксинг	H	actor	very low fix	fsa-cftc-libor-chats	mt-edited	
+памп	H	accuser	pump and dump	curated	mt-edited	
+платежи по кругу	H	accuser	circular payments	fatf-egmont-tbml	mt-edited	
+подозрительная операция	H	accuser	suspicious activity report	fincen-human-trafficking	mt-edited	
+подставная компания	H	accuser	front company	curated	mt-edited	
+подставная фирма	H	accuser	front company	curated	mt-edited	
+понци	H	accuser	ponzi	curated	mt-edited	
+разбить платеж	H	actor	split the payment	curated	mt-edited	
+разбить сумму	H	actor	split the payment	curated	mt-edited	
+раздробить платеж	H	actor	split the payment	curated	mt-edited	
+самосделк*	H	accuser	wash trade	curated	mt-edited	
+сообщение о подозрительной операции	H	accuser	suspicious activity report	fincen-human-trafficking	mt-edited	
+существенная непубличная информация	H	accuser	material non-public information	curated	mt-edited	
+схема понци	H	accuser	ponzi	curated	mt-edited	
+счет-прокладка	H	actor	pay-through account	fatf-egmont-tbml	mt-edited	
+торговля на инсайде	H	accuser	insider trading	curated	mt-edited	
+торговое отмывание	H	accuser	trade-based money laundering	curated	mt-edited	
+транзитный счет	H	actor	pay-through account	fatf-egmont-tbml	mt-edited	
+уклонение от налогов	H	accuser	tax evasion	curated	mt-edited	
+уклонение от санкций	H	accuser	sanctions evasion	curated	mt-edited	
+уклонение от уплаты налогов	H	accuser	tax evasion	curated	mt-edited	
+фальсификация отчетности	H	accuser	accounting fraud	curated	mt-edited	
+фиктивное выставление счетов	H	accuser	false invoicing	curated	mt-edited	
+фиктивные сделки	H	accuser	wash trade	curated	mt-edited	
+фиктивные счета	H	accuser	false invoicing	curated	mt-edited	
+финансовая пирамида	H	accuser	pyramid scheme	curated	mt-edited	
+финансовой пирамиды	H	accuser	pyramid scheme	curated	mt-edited	
+фирма-однодневка	H	accuser	missing trader	curated	mt-edited	
+фирма-прокладка	H	accuser	front company	curated	mt-edited	
+фронтраннинг	H	accuser	front running	curated	mt-edited	
+чуть ниже порога	H	accuser	just below reporting thresholds	fatf-egmont-tbml	mt-edited	
+большой фиксинг	M	actor	big fixing	cftc-barclays-libor	mt-edited	
+двойного назначения	M	accuser	dual use	fincen-bis-export-control	mt-edited	
+до 600 тысяч	M	actor	keep it under 10k	curated	mt-edited	
+заведомо ложн*	M	accuser	patently false	cftc-barclays-libor	mt-edited	
+закон о противодействии коррупции	M	accuser	bribery act	curated	mt-edited	
+инсайд	M	accuser	insider information	curated	mt-edited	
+легализация доходов	M	accuser	money laundering	investigator-list	mt-edited	
+меньше 600 тысяч	M	actor	keep it under 10k	curated	mt-edited	
+незаконное присвоение	M	accuser	misappropriat*	curated	mt-edited	
+номинальный акционер	M	actor	nominee shareholder	curated	mt-edited	
+номинальный директор	M	actor	nominee director	curated	mt-edited	
+номинальный собственник	M	actor	nominee shareholder	curated	mt-edited	
+обнал*	M	accuser	money laundering	investigator-list	mt-edited	
+отмывание денег	M	accuser	money laundering	investigator-list	mt-edited	
+отмыванию денег	M	accuser	money laundering	investigator-list	mt-edited	
+отмывания денег	M	accuser	money laundering	investigator-list	mt-edited	
+отмыть деньги	M	accuser	money laundering	investigator-list	mt-edited	
+оффшорный счет	M	actor	offshore account	curated	mt-edited	
+офшорный счет	M	actor	offshore account	curated	mt-edited	
+ПДЛ	M	accuser	politically exposed person	curated	mt-edited	
+перевалк*	M	accuser	transshipment	fincen-bis-export-control	mt-edited	
+подставной директор	M	actor	nominee director	curated	mt-edited	
+политически значимое лицо	M	accuser	politically exposed person	curated	mt-edited	
+политически значимых лиц	M	accuser	politically exposed person	curated	mt-edited	
+присвоение денег	M	accuser	embezzl*	curated	mt-edited	
+присвоение средств	M	accuser	embezzl*	curated	mt-edited	
+проверка ЦБ	M	accuser	sec investigation	curated	mt-edited	
+пропавший торговец	M	accuser	missing trader	curated	mt-edited	
+расследование SEC	M	accuser	sec investigation	curated	mt-edited	
+растрат*	M	accuser	embezzl*	curated	mt-edited	
+реэкспорт*	M	accuser	transshipment	fincen-bis-export-control	mt-edited	
+свободная таможенная зона	M	accuser	free trade zone	fatf-egmont-tbml	mt-edited	
+свободная экономическая зона	M	accuser	free trade zone	fatf-egmont-tbml	mt-edited	
+список организаций	M	accuser	entity list	fincen-bis-export-control	mt-edited	
+спуфинг	M	accuser	spoofing	curated	mt-edited	
+счет в офшоре	M	actor	offshore account	curated	mt-edited	
+фирма-пустышка	M	actor	shell company	investigator-list	mt-edited	
+фирмы-однодневки	M	actor	shell company	investigator-list	mt-edited	
+хищени*	M	accuser	embezzl*	curated	mt-edited	
+115-ФЗ	L	accuser	aml	curated	mt-edited	
+бенефициарный владелец	L	accuser	beneficial owner	curated	mt-edited	
+дроблени*	L	actor	structuring	curated	mt-edited	
+как можно выше	L	actor	as high as possible	cftc-barclays-libor	mt-edited	
+код ТН ВЭД	L	accuser	hs code	fincen-bis-export-control	mt-edited	
+конечное использование	L	accuser	end use	fincen-bis-export-control	mt-edited	
+конечный пользователь	L	accuser	end user	fincen-bis-export-control	mt-edited	
+круглые суммы	L	actor	round amounts	fatf-egmont-tbml	mt-edited	
+наводк*	L	actor	tipping	sec-insider-trading-2026	mt-edited	
+наслоение	L	accuser	layering	curated	mt-edited	
+номинальный держатель	L	accuser	nominee	curated	mt-edited	
+отмывание	L	accuser	money laundering	investigator-list	mt-edited	
+ПОД/ФТ	L	accuser	aml	curated	mt-edited	
+подставное лицо	L	accuser	nominee	curated	mt-edited	
+подставные лица	L	accuser	nominee	curated	mt-edited	
+противодействие отмыванию	L	accuser	aml	curated	mt-edited	
+расслоение	L	accuser	layering	curated	mt-edited	
+типовой договор	L	accuser	sample contract	fatf-egmont-tbml	mt-edited	
+ТН ВЭД	L	accuser	hs code	fincen-bis-export-control	mt-edited	

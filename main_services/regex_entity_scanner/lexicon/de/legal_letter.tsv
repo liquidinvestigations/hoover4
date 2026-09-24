@@ -1,0 +1,58 @@
+term	tier	speaker	concept	source	review	note
+ab Datum dieses Schreibens	H	neutral	of the date of this letter	curated	mt-edited	
+Abmahnung*	H	accuser	cease and desist	curated	mt-edited	
+alle Unterlagen aufbewahren	H	neutral	preserve all documents	curated	mt-edited	
+Anspruchsschreiben*	H	neutral	letter of claim	uk-cpr-pre-action	mt-edited	
+behalten uns rechtliche Schritte vor	H	neutral	reserve our rights	curated	mt-edited	
+behalten uns vor	H	neutral	reserve our rights	curated	mt-edited	
+Einleitung gerichtlicher Schritte	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+fordern wir Sie auf	H	neutral	we hereby demand	curated	mt-edited	
+Forderungsschreiben*	H	neutral	letter of claim	uk-cpr-pre-action	mt-edited	
+gerichtliche Schritte einleiten	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+im Auftrag unserer Mandantschaft	H	neutral	on behalf of our client	curated	mt-edited	
+Klageerhebung*	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+letzte Aufforderung vor Klage	H	neutral	letter before action	curated	mt-edited	
+nach Zugang dieses Schreibens	H	neutral	of the date of this letter	curated	mt-edited	
+namens und in Vollmacht unserer Mandantin	H	neutral	on behalf of our client	curated	mt-edited	
+namens und in Vollmacht unseres Mandanten	H	neutral	on behalf of our client	curated	mt-edited	
+sämtliche Unterlagen aufzubewahren	H	neutral	preserve all documents	curated	mt-edited	
+strafbewehrte Unterlassung*	H	accuser	cease and desist	curated	mt-edited	
+Unterlassungserklärung*	H	accuser	cease and desist	curated	mt-edited	
+widrigenfalls	H	neutral	failing which	curated	mt-edited	
+wir behalten uns alle Rechte vor	H	neutral	we reserve all rights	curated	mt-edited	
+wir fordern Sie hiermit auf	H	neutral	we hereby demand	curated	mt-edited	
+wir handeln im Auftrag von	H	neutral	we act on behalf of	curated	mt-edited	
+zeigen wir an, dass wir	H	neutral	we act for	curated	mt-edited	
+zeigen wir die Vertretung	H	neutral	we act for	curated	mt-edited	
+alternative Streitbeilegung	M	neutral	alternative dispute resolution	uk-cpr-pre-action	mt-edited	
+andernfalls	M	neutral	failing which	curated	mt-edited	
+Aufforderungsschreiben*	M	neutral	demand letter	curated	mt-edited	
+außergerichtliche Streitbeilegung	M	neutral	alternative dispute resolution	uk-cpr-pre-action	mt-edited	
+binnen 14 Tagen	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+den Rechtsweg beschreiten	M	neutral	take legal action	curated	mt-edited	
+förmliche Aufforderung	M	neutral	formal notice	curated	mt-edited	
+Frist von 14 Tagen	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+gerichtlich vorgehen	M	neutral	take legal action	curated	mt-edited	
+gerichtliche Schritte	M	neutral	legal proceedings	curated	mt-edited	
+Gerichtsverfahren*	M	neutral	legal proceedings	curated	mt-edited	
+Ihr Mandant	M	neutral	your client	curated	mt-edited	
+Ihre Mandantin	M	neutral	your client	curated	mt-edited	
+Ihre Mandantschaft	M	neutral	your client	curated	mt-edited	
+innerhalb von 14 Tagen	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+Inverzugsetzung*	M	neutral	formal notice	curated	mt-edited	
+ohne weitere Ankündigung	M	neutral	without further notice	curated	mt-edited	
+ohne weitere Vorankündigung	M	neutral	without further notice	curated	mt-edited	
+rechtliche Schritte	M	neutral	legal proceedings	curated	mt-edited	
+rechtliche Schritte einleiten	M	neutral	take legal action	curated	mt-edited	
+Rechtsanwälte	M	neutral	attorneys at law	curated	mt-edited	
+Rechtsanwaltsgesellschaft*	M	neutral	attorneys at law	curated	mt-edited	
+Rechtsanwaltskanzlei*	M	neutral	attorneys at law	curated	mt-edited	
+unser Mandant	M	neutral	our client	curated	mt-edited	
+unsere Mandantin	M	neutral	our client	curated	mt-edited	
+unsere Mandantschaft	M	neutral	our client	curated	mt-edited	
+alle Rechte vorbehalten	L	neutral	we reserve all rights	curated	mt-edited	
+hochachtungsvoll	L	neutral	yours faithfully	curated	mt-edited	
+Kanzlei	L	neutral	solicitors	curated	mt-edited	
+Mahnung*	L	neutral	demand letter	curated	mt-edited	
+mit freundlichen Grüßen	L	neutral	yours faithfully	curated	mt-edited	
+sehr geehrte Damen und Herren	L	neutral	dear sir or madam	curated	mt-edited	

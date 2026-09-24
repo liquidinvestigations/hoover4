@@ -1,0 +1,30 @@
+term	tier	speaker	concept	source	review	note
+dawn raid	H	accuser	dawn raid	curated	original	
+arbitration	M	accuser	arbitration	investigator-list	original	contracts; also a document-type signal
+class action	M	accuser	class action	curated	original	
+contempt of court	M	accuser	contempt of court	uk-cpr-pre-action	original	
+counterclaim	M	accuser	counterclaim	uk-cpr-pre-action	original	
+defamation	M	accuser	defamation	curated	original	
+final notice	M	accuser	final notice	fca-hsbc-fx	original	FCA
+financial penalty	M	accuser	financial penalty	fca-hsbc-fx	original	FCA
+grand jury	M	accuser	grand jury	curated	original	
+hearsay	M	accuser	hearsay	investigator-list	original	
+indictment	M	accuser	indictment	curated	original	
+injunction	M	accuser	injunction	curated	original	
+legal hold	M	accuser	legal hold	curated	original	
+libel	M	accuser	libel	curated	original	
+litigation hold	M	accuser	litigation hold	curated	original	
+our lawyers	M	accuser	our lawyers	curated	original	
+preserve documents	M	accuser	preserve documents	curated	original	
+prosecut*	M	accuser	prosecut*	investigator-list	original	stem
+retaliat*	M	accuser	retaliat*	curated	original	
+search warrant	M	accuser	search warrant	curated	original	
+slander	M	accuser	slander	curated	original	
+stay of proceedings	M	accuser	stay of proceedings	uk-cpr-pre-action	original	
+subpoena	M	accuser	subpoena	curated	original	
+claim	L	accuser	claim	investigator-list	original	insurance, patents and ordinary speech; the noisiest term in v1
+deposition	L	accuser	deposition	curated	original	
+investigat*	L	accuser	investigat*	investigator-list	original	stem; routine in many domains
+lawsuit	L	accuser	lawsuit	curated	original	
+limitation period	L	accuser	limitation period	uk-cpr-pre-action	original	
+settlement	L	accuser	settlement	curated	original	

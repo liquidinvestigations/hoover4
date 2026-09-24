@@ -1,0 +1,22 @@
+term	tier	speaker	concept	source	review	note
+acquittée	M	neutral	paid in full	curated	mt-edited	
+décompte général définitif	H	neutral	final construction invoice	uncl1001	mt-edited	
+demande de paiement final	H	neutral	final payment request	uncl1001	mt-edited	
+demande de solde	H	neutral	final payment request	uncl1001	mt-edited	
+facture de solde	H	neutral	final invoice	curated	mt-edited	
+facture définitive	H	neutral	final invoice	curated	mt-edited	
+facture finale	H	neutral	final invoice	curated	mt-edited	
+facture finale de travaux	H	neutral	final construction invoice	uncl1001	mt-edited	
+payé intégralement	H	neutral	paid in full	curated	mt-edited	
+réglé intégralement	H	neutral	paid in full	curated	mt-edited	
+acquitté	M	neutral	receipted	curated	mt-edited	
+facture émise	M	neutral	invoice issued	curated	mt-edited	
+facture établie	M	neutral	invoice issued	curated	mt-edited	
+facture originale	M	neutral	original invoice	curated	mt-edited	
+original de la facture	M	neutral	original invoice	curated	mt-edited	
+paiement reçu	M	neutral	payment received	curated	mt-edited	
+reçu fiscal	M	neutral	fiscal receipt	curated	mt-edited	
+règlement reçu	M	neutral	payment received	curated	mt-edited	
+payé	L	neutral	paid	curated	mt-edited	
+réglé	L	neutral	paid	curated	mt-edited	
+ticket de caisse	L	neutral	fiscal receipt	curated	mt-edited	

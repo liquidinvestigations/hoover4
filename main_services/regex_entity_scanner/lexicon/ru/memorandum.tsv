@@ -1,0 +1,37 @@
+term	tier	speaker	concept	source	review	note
+единство воли	H	neutral	convergence of will	mou-definition	mt-edited	
+меморандум о взаимопонимании	H	neutral	memorandum of understanding	curated	mt-edited	
+меморандум о сотрудничестве	H	neutral	memorandum of understanding	curated	mt-edited	
+намеченная общая линия действий	H	neutral	intended common line of action	mou-definition	mt-edited	
+не имеет обязательной юридической силы	H	neutral	legally non-binding	mou-definition	mt-edited	
+не имеет юридической силы	H	neutral	not legally binding	curated	mt-edited	
+не порождает юридических обязательств	H	neutral	does not create legally binding obligations	curated	mt-edited	
+не создает каких-либо юридически обязывающих	H	neutral	shall not create any legally binding	curated	mt-edited	
+не создает юридически обязывающих обязательств	H	neutral	does not create legally binding obligations	curated	mt-edited	
+не является юридически обязывающим	H	neutral	not legally binding	curated	mt-edited	
+основные условия сделки	H	neutral	heads of terms	curated	mt-edited	
+основные условия соглашения	H	neutral	heads of agreement	curated	mt-edited	
+письма о намерениях	H	neutral	letter of intent	curated	mt-edited	
+письмо о взаимопонимании	H	neutral	letter of understanding	mou-definition	mt-edited	
+письмо о намерениях	H	neutral	letter of intent	curated	mt-edited	
+письмо поддержки	H	neutral	letter of comfort	mou-definition	mt-edited	
+при условии заключения договора	H	neutral	subject to contract	curated	mt-edited	
+совпадение воли	H	neutral	convergence of will	mou-definition	mt-edited	
+стороны намереваются	H	neutral	the parties intend	curated	mt-edited	
+стороны намерены	H	neutral	the parties intend	curated	mt-edited	
+юридически необязывающ*	H	neutral	legally non-binding	mou-definition	mt-edited	
+выражение заинтересованности	M	neutral	expression of interest	curated	mt-edited	
+гарантийное письмо	M	neutral	letter of comfort	mou-definition	mt-edited	
+джентльменское соглашение	M	neutral	gentlemen's agreement	mou-definition	mt-edited	
+меморандум*	M	neutral	memorandum of understanding	curated	mt-edited	
+необязывающ*	M	neutral	non-binding	curated	mt-edited	
+перечень основных условий	M	neutral	term sheet	curated	mt-edited	
+рамочное соглашение	M	neutral	framework agreement	curated	mt-edited	
+рамочный договор	M	neutral	framework agreement	curated	mt-edited	
+соглашение о сотрудничестве	M	neutral	cooperation agreement	curated	mt-edited	
+терм-шит	M	neutral	term sheet	curated	mt-edited	
+в принципе	L	neutral	in principle	curated	mt-edited	
+приложат усилия	L	neutral	will endeavour	curated	mt-edited	
+приложит усилия	L	neutral	will endeavour	curated	mt-edited	
+принципиальное согласие	L	neutral	in principle	curated	mt-edited	
+устная договоренность	L	neutral	gentlemen's agreement	mou-definition	mt-edited	

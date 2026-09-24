@@ -1,0 +1,65 @@
+term	tier	speaker	concept	source	review	note
+агентский отчет	H	neutral	commission note	uncl1001	mt-edited	
+всего к оплате	H	neutral	total due	curated	mt-edited	
+дата выставления счета	H	neutral	invoice date	curated	mt-edited	
+дата счета	H	neutral	invoice date	curated	mt-edited	
+инвойс*	H	neutral	commercial invoice	curated	mt-edited	
+итого к оплате	H	neutral	amount due	curated	mt-edited	
+коммерческий инвойс	H	neutral	commercial invoice	curated	mt-edited	
+консульская фактура	H	neutral	consular invoice	uncl1001	mt-edited	
+консульский счет	H	neutral	consular invoice	uncl1001	mt-edited	
+налоговая накладная	H	neutral	tax invoice	curated	mt-edited	
+номер счета	H	neutral	invoice number	curated	mt-edited	
+номер счета-фактуры	H	neutral	invoice number	curated	mt-edited	
+оплата в течение 30 дней	H	neutral	net 30	curated	mt-edited	
+оплата в течение 60 дней	H	neutral	net 60	curated	mt-edited	
+остаток к оплате	H	neutral	balance due	curated	mt-edited	
+отсрочка 30 дней	H	neutral	net 30	curated	mt-edited	
+отсрочка 60 дней	H	neutral	net 60	curated	mt-edited	
+отчет агента	H	neutral	commission note	uncl1001	mt-edited	
+платеж в пользу	H	neutral	remit to	curated	mt-edited	
+просим оплатить	H	neutral	please remit	curated	mt-edited	
+просим перечислить	H	neutral	please remit	curated	mt-edited	
+сумма к оплате	H	neutral	amount due	curated	mt-edited	
+счет №	H	neutral	invoice no	curated	mt-edited	
+счет за перевозку	H	neutral	freight invoice	uncl1001	mt-edited	
+счет за фрахт	H	neutral	freight invoice	uncl1001	mt-edited	
+счет на оплату №	H	neutral	invoice no	curated	mt-edited	
+счет по договору консигнации	H	neutral	consignment invoice	uncl1001	mt-edited	
+счет по факторингу	H	neutral	factored invoice	uncl1001	mt-edited	
+счет самовыставления	H	neutral	self-billed invoice	uncl1001	mt-edited	
+счет-фактур*	H	neutral	tax invoice	curated	mt-edited	
+счет-фактура №	H	neutral	invoice no	curated	mt-edited	
+счет экспедитора	H	neutral	forwarder's invoice	uncl1001	mt-edited	
+адрес доставки	M	neutral	ship to	curated	mt-edited	
+грузополучатель	M	neutral	ship to	curated	mt-edited	
+дебет-нота	M	neutral	debit note	curated	mt-edited	
+заказ на поставку	M	neutral	purchase order	curated	mt-edited	
+запрос на оплату	M	neutral	request for payment	uncl1001	mt-edited	
+заявка на закупку	M	neutral	purchase order	curated	mt-edited	
+инвойс	M	neutral	invoice	curated	mt-edited	
+ИНН	M	neutral	tax id	curated	mt-edited	
+ИНН плательщика НДС	M	neutral	vat number	curated	mt-edited	
+кредит-нота	M	neutral	credit note	curated	mt-edited	
+кредитовое авизо	M	neutral	credit note	curated	mt-edited	
+номер заказа	M	neutral	po number	curated	mt-edited	
+номер плательщика НДС	M	neutral	vat number	curated	mt-edited	
+подытог	M	neutral	subtotal	curated	mt-edited	
+продано	L	neutral	sold to	curated	mt-edited	
+промежуточный итог	M	neutral	subtotal	curated	mt-edited	
+срок оплаты	M	neutral	payment terms	curated	mt-edited	
+счет на оплату	M	neutral	invoice	curated	mt-edited	
+счета на оплату	M	neutral	invoice	curated	mt-edited	
+условия оплаты	M	neutral	payment terms	curated	mt-edited	
+факторинг*	M	neutral	factored invoice	uncl1001	mt-edited	
+цена за ед	M	neutral	unit price	curated	mt-edited	
+цена за единицу	M	neutral	unit price	curated	mt-edited	
+без НДС	L	neutral	vat	curated	mt-edited	
+в т.ч. НДС	L	neutral	vat	curated	mt-edited	
+задолженность	L	neutral	balance due	curated	mt-edited	
+кол-во	L	neutral	qty	curated	mt-edited	
+колич*	L	neutral	qty	curated	mt-edited	
+КПП	L	neutral	tax id	curated	mt-edited	
+НДС	L	neutral	vat	curated	mt-edited	
+оплатить до	L	neutral	due date	curated	mt-edited	
+покупатель	L	neutral	bill to	curated	mt-edited	

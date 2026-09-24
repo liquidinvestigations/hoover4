@@ -1,0 +1,75 @@
+term	tier	speaker	concept	source	review	note
+abus sexuel	H	accuser	sexual abuse	curated	mt-edited	
+abus sexuel sur mineur	H	accuser	child sexual abuse	curated	mt-edited	
+abus sexuels	H	accuser	sexual abuse	curated	mt-edited	
+abus sexuels sur mineurs	H	accuser	child sexual abuse	curated	mt-edited	
+agression sexuelle	H	accuser	sexual assault	curated	mt-edited	
+agressions sexuelles	H	accuser	sexual assault	curated	mt-edited	
+attouchement*	H	accuser	inappropriate touching	curated	mt-edited	
+attouchements sexuels	H	accuser	molest*	curated	mt-edited	
+avances insistantes	H	accuser	unwanted advances	curated	mt-edited	
+avances non désirées	H	accuser	unwanted advances	curated	mt-edited	
+chantage sexuel	H	accuser	sextortion	curated	mt-edited	
+climat de travail hostile	H	accuser	hostile work environment	curated	mt-edited	
+comportement sexuel inapproprié	H	accuser	sexual misconduct	curated	mt-edited	
+environnement de travail hostile	H	accuser	hostile work environment	curated	mt-edited	
+exploitation sexuelle	H	accuser	commercial sexual exploitation	curated	mt-edited	
+exploitation sexuelle commerciale	H	accuser	commercial sexual exploitation	curated	mt-edited	
+gestes déplacés	H	accuser	inappropriate touching	curated	mt-edited	
+harcèlement sexuel	H	accuser	sexual harassment	curated	mt-edited	
+images indécentes	H	accuser	indecent images	curated	mt-edited	
+images pédopornographiques	H	accuser	indecent images	curated	mt-edited	
+inconduite sexuelle	H	accuser	sexual misconduct	curated	mt-edited	
+maltraitance d'enfant*	H	accuser	child abuse	curated	mt-edited	
+maltraitance des enfants	H	accuser	child abuse	curated	mt-edited	
+ne dis rien à tes parents	H	actor	don't tell your parents	curated	mt-edited	
+ne le dis pas à tes parents	H	actor	don't tell your parents	curated	mt-edited	
+non consenti	H	accuser	non-consensual	curated	mt-edited	
+non consentie	H	accuser	non-consensual	curated	mt-edited	
+notre petit secret	H	actor	our little secret	curated	mt-edited	
+pédocriminalité	H	accuser	child sexual abuse	curated	mt-edited	
+pédopornographi*	H	accuser	child pornography	curated	mt-edited	
+porno vengeur	H	accuser	revenge porn	curated	mt-edited	
+pornodivulgation	H	accuser	revenge porn	curated	mt-edited	
+pornographie enfantine	H	accuser	child pornography	curated	mt-edited	
+pornographie infantile	H	accuser	child pornography	curated	mt-edited	
+prostitution forcée	H	accuser	forced prostitution	curated	mt-edited	
+proxénétisme	H	accuser	sex trafficking	curated	mt-edited	
+sans consentement	H	accuser	non-consensual	curated	mt-edited	
+sexe tarifé	H	accuser	commercial sex	fincen-human-trafficking	mt-edited	
+sextorsion	H	accuser	sextortion	curated	mt-edited	
+traite aux fins d'exploitation sexuelle	H	accuser	sex trafficking	curated	mt-edited	
+traite des êtres humains	H	accuser	human trafficking	curated	mt-edited	
+traite d'êtres humains	H	accuser	human trafficking	curated	mt-edited	
+violence sur mineur*	H	accuser	child abuse	curated	mt-edited	
+violences sexuelles	H	accuser	sexual abuse	curated	mt-edited	
+agence d'escort*	M	accuser	escort agency	fincen-human-trafficking	mt-edited	
+agence d'escorte	M	accuser	escort agency	fincen-human-trafficking	mt-edited	
+darknet	M	accuser	darknet market	fincen-human-trafficking	mt-edited	
+escort girl*	M	accuser	escort service	curated	mt-edited	
+images intimes	M	accuser	intimate images	curated	mt-edited	
+maison close	M	accuser	brothel	curated	mt-edited	
+maisons closes	M	accuser	brothel	curated	mt-edited	
+marché du darknet	M	accuser	darknet market	fincen-human-trafficking	mt-edited	
+mineur	L	accuser	underage	curated	mt-edited	
+mineure	L	accuser	underage	curated	mt-edited	
+mineures	L	accuser	underage	curated	mt-edited	
+mineurs	L	accuser	underage	curated	mt-edited	
+nudes	M	accuser	intimate images	curated	mt-edited	
+pédophilie	M	accuser	child sexual abuse	curated	mt-edited	
+pédopiégeage	M	accuser	grooming	curated	mt-edited	
+photos intimes	M	accuser	intimate images	curated	mt-edited	
+prostitution	M	accuser	commercial sex	fincen-human-trafficking	mt-edited	
+proxénète*	M	accuser	pimp	curated	mt-edited	
+sans son consentement	M	accuser	without consent	curated	mt-edited	
+service d'escort*	M	accuser	escort service	curated	mt-edited	
+violée	L	accuser	rape	curated	mt-edited	
+violer	L	accuser	rape	curated	mt-edited	
+carte prépayée	L	accuser	prepaid access card	fincen-human-trafficking	mt-edited	
+mac	L	accuser	pimp	curated	mt-edited	
+manipulé	L	accuser	groomed	curated	mt-edited	
+parle à sa place	L	accuser	speaks on behalf of	fincen-human-trafficking	mt-edited	
+petites annonces	L	accuser	online classified	fincen-human-trafficking	mt-edited	
+salon de massage	L	accuser	massage business	fincen-human-trafficking	mt-edited	
+viol	L	accuser	rape	curated	mt-edited	
+viols	L	accuser	rape	curated	mt-edited	

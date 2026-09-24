@@ -1,0 +1,46 @@
+term	tier	speaker	concept	source	review	note
+anwendbares Recht	H	neutral	governing law	curated	mt-edited	
+anzuwendendes Recht	H	neutral	governing law	curated	mt-edited	
+ausschließliche Zuständigkeit	H	neutral	exclusive jurisdiction	curated	mt-edited	
+ausschließlicher Gerichtsstand	H	neutral	exclusive jurisdiction	curated	mt-edited	
+ausschließlicher Gerichtsstand ist	H	neutral	exclusive jurisdiction of the courts of	curated	mt-edited	
+englischem Recht	H	neutral	laws of england and wales	curated	mt-edited	
+Gerichtsstand ist	H	neutral	exclusive jurisdiction of the courts of	curated	mt-edited	
+ICC-Schiedsgericht*	H	neutral	icc arbitration	curated	mt-edited	
+ICC-Schiedsverfahren*	H	neutral	icc arbitration	curated	mt-edited	
+Marktmissbrauchsverordnung*	H	neutral	market abuse regulation	global-relay-surveillance	mt-edited	
+nicht ausschließlicher Gerichtsstand	H	neutral	non-exclusive jurisdiction	curated	mt-edited	
+Recht des Bundesstaates	H	neutral	laws of the state of	curated	mt-edited	
+Recht des Staates	H	neutral	laws of the state of	curated	mt-edited	
+Recht von England und Wales	H	neutral	laws of england and wales	curated	mt-edited	
+Rechtswahl*	H	neutral	governing law	curated	mt-edited	
+Schiedsort*	H	neutral	seat of arbitration	curated	mt-edited	
+Sitz des Schiedsgerichts	H	neutral	seat of arbitration	curated	mt-edited	
+unterliegt dem Recht	H	neutral	governed by the laws of	curated	mt-edited	
+unterliegt dem Recht der	H	neutral	governed by the laws of	curated	mt-edited	
+unterliegt dem Recht von	H	neutral	governed by the laws of	curated	mt-edited	
+unterliegt deutschem Recht	H	neutral	governed by the laws of	curated	mt-edited	
+unterwerfen sich der Gerichtsbarkeit	H	neutral	submit to the jurisdiction	curated	mt-edited	
+unterwerfen sich der Zuständigkeit	H	neutral	submit to the jurisdiction	curated	mt-edited	
+Amtsgericht*	M	neutral	district court	curated	mt-edited	
+Berufungsgericht*	M	neutral	court of appeal	curated	mt-edited	
+BGH	M	neutral	supreme court	curated	mt-edited	
+Britische Jungferninseln	M	neutral	british virgin islands	curated	mt-edited	
+Britischen Jungferninseln	M	neutral	british virgin islands	curated	mt-edited	
+Bundesgerichtshof*	M	neutral	supreme court	curated	mt-edited	
+Bundesstaat Delaware	M	neutral	state of delaware	curated	mt-edited	
+Delaware	M	neutral	state of delaware	curated	mt-edited	
+englisches Recht	M	neutral	english law	curated	mt-edited	
+Gerichtsstand	M	neutral	courts of	curated	mt-edited	
+Kaimaninseln	M	neutral	cayman islands	curated	mt-edited	
+Landgericht*	M	neutral	district court	curated	mt-edited	
+New Yorker Recht	M	neutral	new york law	curated	mt-edited	
+Oberlandesgericht*	M	neutral	court of appeal	curated	mt-edited	
+Oberster Gerichtshof	M	neutral	supreme court	curated	mt-edited	
+Recht des Staates New York	M	neutral	new york law	curated	mt-edited	
+Schweizer Recht	M	neutral	swiss law	curated	mt-edited	
+schweizerisches Recht	M	neutral	swiss law	curated	mt-edited	
+Erfüllungsort*	L	neutral	venue	curated	mt-edited	
+Gerichte in	L	neutral	courts of	curated	mt-edited	
+Gerichtsstand*	L	neutral	venue	curated	mt-edited	
+Oberstes Gericht	L	neutral	high court	curated	mt-edited	

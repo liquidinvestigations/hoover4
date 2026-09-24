@@ -1,0 +1,77 @@
+term	tier	speaker	concept	source	review	note
+адвокатская тайна	H	neutral	attorney-client privilege	curated	mt-edited	
+адвокатской тайны	H	neutral	attorney-client privilege	curated	mt-edited	
+аффидевит*	H	neutral	affidavit	curated	mt-edited	
+без признания обязательств	H	neutral	without prejudice	curated	mt-edited	
+без ущерба для	H	neutral	without prejudice	curated	mt-edited	
+в подтверждение чего	H	neutral	in witness whereof	curated	mt-edited	
+в удостоверение чего	H	neutral	in witness whereof	curated	mt-edited	
+выгодоприобретатель	H	neutral	third party beneficiary	cuad	mt-edited	
+вышеуказанн*	H	neutral	aforesaid	curated	mt-edited	
+доверенност*	H	neutral	power of attorney	curated	mt-edited	
+договор в пользу третьего лица	H	neutral	third party beneficiary	cuad	mt-edited	
+именуемая в дальнейшем	H	neutral	hereinafter	curated	mt-edited	
+именуемое в дальнейшем	H	neutral	hereinafter	curated	mt-edited	
+именуемый в дальнейшем	H	neutral	hereinafter	curated	mt-edited	
+к настоящему договору	H	neutral	hereto	curated	mt-edited	
+к настоящему соглашению	H	neutral	hereto	curated	mt-edited	
+намерение принять на себя юридические обязательства	H	neutral	intention to be legally bound	mou-definition	mt-edited	
+нотариально	H	neutral	notary public	curated	mt-edited	
+нотариус*	H	neutral	notary public	curated	mt-edited	
+обязательство не подавать иск	H	neutral	covenant not to sue	cuad	mt-edited	
+отказ от иска	H	neutral	covenant not to sue	cuad	mt-edited	
+письменные показания под присягой	H	neutral	affidavit	curated	mt-edited	
+под присягой	H	neutral	sworn statement	curated	mt-edited	
+показания под присягой	H	neutral	sworn statement	curated	mt-edited	
+право первого предложения	H	neutral	right of first offer	cuad	mt-edited	
+право преимущественной покупки	H	neutral	right of first refusal	cuad	mt-edited	
+преимущественное право покупки	H	neutral	right of first refusal	cuad	mt-edited	
+ранее упомянутый	H	neutral	hereinbefore	curated	mt-edited	
+составляет адвокатскую тайну	H	neutral	legally privileged	curated	mt-edited	
+в нем содержащ*	M	neutral	therein	curated	mt-edited	
+вышеупомянут*	M	neutral	aforementioned	curated	mt-edited	
+дело №	M	neutral	case no	curated	mt-edited	
+дело номер	M	neutral	case no	curated	mt-edited	
+истец	M	neutral	claimant	curated	mt-edited	
+истца	M	neutral	claimant	curated	mt-edited	
+истцом	M	neutral	plaintiff	investigator-list	mt-edited	
+истцу	M	neutral	plaintiff	investigator-list	mt-edited	
+настоящим	M	neutral	hereby	curated	mt-edited	
+нижеподписавш*	M	neutral	the undersigned	curated	mt-edited	
+номер дела	M	neutral	case no	curated	mt-edited	
+номер производства	M	neutral	docket	curated	mt-edited	
+нотариально заверен*	M	neutral	notarised	curated	mt-edited	
+нотариально удостоверен*	M	neutral	notarised	curated	mt-edited	
+обвиняем*	M	neutral	defendant	curated	mt-edited	
+определение суда	M	neutral	court order	curated	mt-edited	
+ответчик*	M	neutral	defendant	curated	mt-edited	
+оферт*	M	neutral	offer and acceptance	mou-definition	mt-edited	
+оферта и акцепт	M	neutral	offer and acceptance	mou-definition	mt-edited	
+переход контроля	M	neutral	change of control	cuad	mt-edited	
+подсудим*	M	neutral	defendant	curated	mt-edited	
+постановление суда	M	neutral	court order	curated	mt-edited	
+принимая во внимание	M	neutral	whereas	curated	mt-edited	
+решение суда	M	neutral	court order	curated	mt-edited	
+смена контроля	M	neutral	change of control	cuad	mt-edited	
+такового	L	neutral	thereof	curated	mt-edited	
+таковой	L	neutral	thereof	curated	mt-edited	
+упомянутый выше	M	neutral	aforementioned	curated	mt-edited	
+учитывая, что	M	neutral	whereas	curated	mt-edited	
+юридический советник	M	neutral	legal counsel	curated	mt-edited	
+юрисконсульт*	M	neutral	legal counsel	curated	mt-edited	
+в соответствии с	L	neutral	pursuant to	curated	mt-edited	
+далее	L	neutral	hereinafter	curated	mt-edited	
+заинтересованное лицо	L	neutral	respondent	curated	mt-edited	
+закон	L	neutral	statute	curated	mt-edited	
+заявитель	L	neutral	claimant	curated	mt-edited	
+на основании	L	neutral	pursuant to	curated	mt-edited	
+независимо от	L	neutral	notwithstanding	curated	mt-edited	
+несмотря на	L	neutral	notwithstanding	curated	mt-edited	
+определени*	L	neutral	ruling	curated	mt-edited	
+ответчик	L	neutral	respondent	curated	mt-edited	
+по делу	L	neutral	in the matter of	curated	mt-edited	
+постановлени*	L	neutral	ruling	curated	mt-edited	
+приговор*	L	neutral	judgment	curated	mt-edited	
+решения суда	L	neutral	judgment	curated	mt-edited	
+согласно	L	neutral	pursuant to	curated	mt-edited	
+статья	L	neutral	statute	curated	mt-edited	

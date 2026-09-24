@@ -1,0 +1,56 @@
+term	tier	speaker	concept	source	review	note
+blackmail	H	accuser	blackmail	curated	original	
+destroy the evidence	H	actor	destroy the evidence	curated	original	
+extort*	H	accuser	extort*	curated	original	
+fake documents	H	actor	fake documents	curated	original	
+fake passport	H	actor	fake passport	curated	original	
+get rid of the evidence	H	actor	get rid of the evidence	curated	original	
+illegal weapons	H	accuser	illegal weapons	curated	original	
+kickbacks to be paid	H	accuser	kickbacks to be paid	sec-insider-trading-2026	original	
+kidnap*	H	accuser	kidnap*	curated	original	
+tipping scheme	H	accuser	tipping scheme	sec-insider-trading-2026	original	
+accomplice	M	accuser	accomplice	curated	original	
+alibi	M	accuser	alibi	curated	original	
+arson	M	accuser	arson	curated	original	
+bootleg	M	accuser	bootleg	investigator-list	original	
+burglary	M	accuser	burglary	curated	original	
+charged with	M	accuser	charged with	curated	original	
+cocaine	M	accuser	cocaine	curated	original	
+contraband	M	accuser	contraband	curated	original	
+counterfeit	M	accuser	counterfeit	curated	original	
+drug dealer	M	accuser	drug dealer	curated	original	
+felony	M	accuser	felony	curated	original	
+fentanyl	M	accuser	fentanyl	curated	original	
+forged	M	accuser	forged	curated	original	
+forgery	M	accuser	forgery	curated	original	
+heroin	M	accuser	heroin	curated	original	
+identity theft	M	accuser	identity theft	curated	original	
+methamphetamine	M	accuser	methamphetamine	curated	original	
+misdemeanor	M	accuser	misdemeanor	curated	original	
+narcotics	M	accuser	narcotics	curated	original	
+ransom	M	accuser	ransom	curated	original	
+ransomware	M	accuser	ransomware	curated	original	
+robbery	M	accuser	robbery	curated	original	
+smuggle	M	accuser	smuggle	investigator-list	original	
+smuggling	M	accuser	smuggling	curated	original	
+trafficking	M	accuser	trafficking	curated	original	
+arrested	L	accuser	arrested	curated	original	
+banned	L	accuser	banned	investigator-list	original	
+crime	L	accuser	crime	curated	original	
+criminal	L	accuser	criminal	investigator-list	original	
+forbidden	L	accuser	forbidden	investigator-list	original	also HTTP 403 in logs
+fraud	L	accuser	fraud	curated	original	
+illegal	L	accuser	illegal	investigator-list	original	
+illegitimate	L	accuser	illegitimate	investigator-list	original	
+offence	L	accuser	offence	curated	original	
+offense	L	accuser	offense	curated	original	
+outlaw	L	accuser	outlaw	investigator-list	original	
+prohibited	L	accuser	prohibited	investigator-list	original	contracts use it constantly
+stolen	L	accuser	stolen	curated	original	
+taboo	L	accuser	taboo	investigator-list	original	
+theft	L	accuser	theft	curated	original	
+unauthorised	L	accuser	unauthorised	investigator-list	original	UK spelling
+unauthorized	L	accuser	unauthorized	investigator-list	original	also HTTP 401 and access logs
+unlawful	L	accuser	unlawful	investigator-list	original	
+unlicensed	L	accuser	unlicensed	investigator-list	original	
+violation	L	accuser	violation	investigator-list	original	also access-violation errors and building codes

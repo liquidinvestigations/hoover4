@@ -1,0 +1,127 @@
+term	tier	speaker	concept	source	review	note
+à brûler après lecture	H	actor	burn after reading	curated	mt-edited	
+à effacer après lecture	H	actor	delete after reading	curated	mt-edited	
+appelle-moi sur l'autre portable	H	actor	call me on the other phone	curated	mt-edited	
+appelle-moi sur l'autre téléphone	H	actor	call me on the other phone	curated	mt-edited	
+aucun auditeur ne le verra	H	actor	no auditor will review it	ey-fbi-2013	mt-edited	
+aucun commissaire aux comptes ne le verra	H	actor	no auditor will review it	ey-fbi-2013	mt-edited	
+aucune trace écrite	H	actor	no paper trail	curated	mt-edited	
+ça reste entre nous	H	actor	keep this between us	curated	mt-edited	
+déchiqueter les dossiers	H	actor	shred the files	curated	mt-edited	
+détruire après lecture	H	actor	burn after reading	curated	mt-edited	
+détruire les documents	H	actor	shred the documents	curated	mt-edited	
+dissimuler	M	accuser	cover up	investigator-list	mt-edited	
+efface ce mail	H	actor	delete this email	curated	mt-edited	
+effacer le disque	H	actor	wipe the drive	curated	mt-edited	
+envoie-le sur mon gmail	H	actor	send it to my gmail	curated	mt-edited	
+étouffement	M	accuser	coverup	curated	mt-edited	
+étouffer l'affaire	H	accuser	cover up	investigator-list	mt-edited	
+faire le ménage dans les dossiers	H	actor	scrub the records	curated	mt-edited	
+formater le disque	H	actor	wipe the drive	curated	mt-edited	
+garde ça secret	H	actor	keep this a secret	nice-actimize-lexicon	mt-edited	
+garde le secret	H	actor	keep this a secret	nice-actimize-lexicon	mt-edited	
+garder ça pour nous	H	actor	keep it quiet	curated	mt-edited	
+garder secret	H	actor	keep it under wraps	curated	mt-edited	
+garder sous le coude	H	actor	keep it under wraps	curated	mt-edited	
+gardons ça secret	H	actor	let's keep this a secret	nice-actimize-lexicon	mt-edited	
+glisser sous le tapis	H	actor	sweep it under the rug	curated	mt-edited	
+laisse la conformité en dehors de ça	H	actor	keep compliance out of it	curated	mt-edited	
+l'autre portable	H	actor	use the other phone	curated	mt-edited	
+le chef ne demande rien	H	actor	bosses don't ask	ey-fbi-2013	mt-edited	
+les patrons ne demandent rien	H	actor	bosses don't ask	ey-fbi-2013	mt-edited	
+mettre sous le tapis	H	actor	sweep it under the rug	curated	mt-edited	
+n'apparaisse dans aucun livre	H	actor	not be in any book	fsa-cftc-libor-chats	mt-edited	
+ne dis rien à la conformité	H	actor	don't tell compliance	curated	mt-edited	
+ne dis rien au compliance	H	actor	don't tell compliance	curated	mt-edited	
+ne dis rien au juridique	H	actor	don't tell legal	curated	mt-edited	
+ne donne aucune information spontanément	H	actor	do not volunteer information	investigator-list	mt-edited	
+ne laisse pas de traces	H	actor	don't leave a trail	investigator-list	mt-edited	
+ne laissez aucune trace	H	actor	don't leave a trail	investigator-list	mt-edited	
+ne le mets pas par écrit	H	actor	don't put it in writing	curated	mt-edited	
+ne mets pas ça par écrit	H	actor	don't put this in writing	curated	mt-edited	
+ne pas ébruiter	H	actor	keep it quiet	curated	mt-edited	
+ne préviens pas le service juridique	H	actor	don't tell legal	curated	mt-edited	
+ne rien dire de toi-même	H	actor	do not volunteer information	investigator-list	mt-edited	
+nettoyer les dossiers	H	actor	scrub the records	curated	mt-edited	
+pas de trace écrite	H	actor	no paper trail	curated	mt-edited	
+passer les documents au broyeur	H	actor	shred the documents	curated	mt-edited	
+personne n'a à le savoir	H	actor	nobody has to know	ey-fbi-2013	mt-edited	
+personne n'a besoin de savoir	H	actor	nobody has to know	ey-fbi-2013	mt-edited	
+personne ne le saura	H	actor	nobody will find out	investigator-list	mt-edited	
+personne ne s'en rendra compte	H	actor	nobody will find out	investigator-list	mt-edited	
+portable jetable	H	actor	burner phone	curated	mt-edited	
+portable prépayé	H	actor	pre-paid cell phone	sec-insider-trading-2026	mt-edited	
+que ça reste entre nous	H	actor	keep this between us	curated	mt-edited	
+rien par écrit	H	actor	don't put it in writing	curated	mt-edited	
+supprime ce mail	H	actor	delete this email	curated	mt-edited	
+supprimer après lecture	H	actor	delete after reading	curated	mt-edited	
+supprimez cet e-mail	H	actor	delete this email	curated	mt-edited	
+sur mon adresse perso	H	actor	send it to my gmail	curated	mt-edited	
+téléphone jetable	H	actor	burner phone	curated	mt-edited	
+téléphone prépayé	H	actor	pre-paid cell phone	sec-insider-trading-2026	mt-edited	
+utilise l'autre numéro	H	actor	use the other number	curated	mt-edited	
+utilise l'autre téléphone	H	actor	use the other phone	curated	mt-edited	
+utilise mon adresse personnelle	H	actor	use my personal email	curated	mt-edited	
+utilise mon mail perso	H	actor	use my personal email	curated	mt-edited	
+adresse mail secondaire	M	actor	alternate e-mail	spamassassin-advance-fee	mt-edited	
+appelle-moi sur mon portable	M	actor	call my mobile	investigator-list	mt-edited	
+autre adresse e-mail	M	actor	alternate e-mail	spamassassin-advance-fee	mt-edited	
+blanchir	L	accuser	whitewash	investigator-list	mt-edited	
+broie-le	M	actor	shred it	curated	mt-edited	
+efface ça	M	actor	delete this	curated	mt-edited	
+en off	M	actor	off the record	curated	mt-edited	
+enterrer l'affaire	M	actor	make it go away	curated	mt-edited	
+entre nous	M	actor	between you and me	curated	mt-edited	
+entre toi et moi	M	actor	between you and me	curated	mt-edited	
+étouffer	M	accuser	whitewash	investigator-list	mt-edited	
+faire disparaître ça	M	actor	make it go away	curated	mt-edited	
+faire le ménage dans les fichiers	M	actor	clean up the files	curated	mt-edited	
+la politique ne dit rien	M	actor	the policy does not say	ey-fbi-2013	mt-edited	
+la procédure ne dit rien	M	actor	the policy does not say	ey-fbi-2013	mt-edited	
+limiter les dégâts	M	actor	damage control	investigator-list	mt-edited	
+n'a pas besoin de savoir	M	actor	don't need to know	investigator-list	mt-edited	
+ne le dis à personne	M	actor	don't tell anyone	nice-actimize-lexicon	mt-edited	
+ne mets personne en copie	M	actor	don't cc	curated	mt-edited	
+n'en parle à personne	M	actor	don't tell anyone	nice-actimize-lexicon	mt-edited	
+n'ont pas besoin de savoir	M	actor	don't need to know	investigator-list	mt-edited	
+on en parle en personne	M	actor	let's discuss in person	curated	mt-edited	
+on en parle en privé	M	actor	take this offline	investigator-list	mt-edited	
+parlons-en de vive voix	M	actor	let's discuss in person	curated	mt-edited	
+pas de copie	M	actor	don't cc	curated	mt-edited	
+pas par e-mail	M	actor	not on email	curated	mt-edited	
+pas par écrit	M	actor	not in writing	curated	mt-edited	
+pas par mail	M	actor	not on email	curated	mt-edited	
+passe à mon bureau	M	actor	come by my office	investigator-list	mt-edited	
+passe-le au broyeur	M	actor	shred it	curated	mt-edited	
+passe me voir	M	actor	come by my office	investigator-list	mt-edited	
+passons sur Signal	M	actor	switch to signal	curated	mt-edited	
+personne ne pose de questions	M	actor	nobody asks anything	ey-fbi-2013	mt-edited	
+peur de donner des infos	M	actor	scared to give info	fca-hsbc-fx	mt-edited	
+retire-la de la boucle	M	actor	take her off the thread	curated	mt-edited	
+retire-le de la boucle	M	actor	take him off the thread	curated	mt-edited	
+retire-le de la conversation	M	actor	take him off the thread	curated	mt-edited	
+retire-les de la boucle	M	actor	take them off the thread	curated	mt-edited	
+sortir du bois	M	actor	head above the parapet	cftc-barclays-libor	mt-edited	
+strictement nécessaire	M	actor	need to know basis	curated	mt-edited	
+supprime ça	M	actor	delete this	curated	mt-edited	
+sur Signal	M	actor	use signal	curated	mt-edited	
+utilise Signal	M	actor	use signal	curated	mt-edited	
+voyons ça en aparté	M	actor	take this offline	investigator-list	mt-edited	
+black-out	L	actor	blackout	investigator-list	mt-edited	
+confidentiel	L	actor	confidential	investigator-list	mt-edited	
+confidentielle	L	actor	confidential	investigator-list	mt-edited	
+dissimulation	L	accuser	cover up	investigator-list	mt-edited	
+e-mail personnel	L	actor	private e-mail	spamassassin-advance-fee	mt-edited	
+écris-moi sur Signal	L	actor	signal me	curated	mt-edited	
+écris-moi sur WhatsApp	L	actor	whatsapp me	curated	mt-edited	
+fuite	L	actor	leak	investigator-list	mt-edited	
+fuites	L	actor	leak	investigator-list	mt-edited	
+je te préviens	L	actor	heads up	fca-hsbc-fx	mt-edited	
+jetable	L	actor	burner	curated	mt-edited	
+mail perso	L	actor	private e-mail	spamassassin-advance-fee	mt-edited	
+ne pas faire suivre	L	actor	do not forward	curated	mt-edited	
+ne pas transférer	L	actor	do not forward	curated	mt-edited	
+par WhatsApp	L	actor	use whatsapp	curated	mt-edited	
+petite alerte	L	actor	heads up	fca-hsbc-fx	mt-edited	
+secrète	L	actor	secret	investigator-list	mt-edited	
+silence radio	L	actor	blackout	investigator-list	mt-edited	

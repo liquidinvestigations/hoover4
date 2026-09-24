@@ -1,0 +1,34 @@
+term	tier	speaker	concept	source	review	note
+cease and desist	H	accuser	cease and desist	curated	original	
+commencing proceedings	H	neutral	commencing proceedings	uk-cpr-pre-action	original	
+early neutral evaluation	H	neutral	early neutral evaluation	uk-cpr-pre-action	original	
+failing which	H	neutral	failing which	curated	original	
+letter before action	H	neutral	letter before action	curated	original	
+letter before claim	H	neutral	letter before claim	curated	original	
+letter of claim	H	neutral	letter of claim	uk-cpr-pre-action	original	
+of the date of this letter	H	neutral	of the date of this letter	curated	original	
+on behalf of our client	H	neutral	on behalf of our client	curated	original	
+part 36 offer	H	neutral	part 36 offer	uk-cpr-pre-action	original	
+pre-action protocol	H	accuser	pre-action protocol	uk-cpr-pre-action	original	
+preserve all documents	H	neutral	preserve all documents	curated	original	
+reserve our rights	H	neutral	reserve our rights	curated	original	
+save as to costs	H	neutral	save as to costs	curated	original	
+we act for	H	neutral	we act for	curated	original	
+we act on behalf of	H	neutral	we act on behalf of	curated	original	
+we hereby demand	H	neutral	we hereby demand	curated	original	
+we reserve all rights	H	neutral	we reserve all rights	curated	original	
+alternative dispute resolution	M	neutral	alternative dispute resolution	uk-cpr-pre-action	original	
+attorneys at law	M	neutral	attorneys at law	curated	original	
+demand letter	M	neutral	demand letter	curated	original	
+formal notice	M	neutral	formal notice	curated	original	
+indemnity basis	M	neutral	indemnity basis	uk-cpr-pre-action	original	
+legal proceedings	M	neutral	legal proceedings	curated	original	
+our client	M	neutral	our client	curated	original	
+practice direction	M	neutral	practice direction	uk-cpr-pre-action	original	
+solicitors	M	neutral	solicitors	curated	original	
+take legal action	M	neutral	take legal action	curated	original	
+within 14 days	M	neutral	within 14 days	uk-cpr-pre-action	original	
+without further notice	M	neutral	without further notice	curated	original	
+your client	M	neutral	your client	curated	original	
+dear sir or madam	L	neutral	dear sir or madam	curated	original	
+yours faithfully	L	neutral	yours faithfully	curated	original	

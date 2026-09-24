@@ -1,0 +1,36 @@
+term	tier	speaker	concept	source	review	note
+correspondent bank	H	neutral	correspondent bank	curated	original	
+cover payment	H	neutral	cover payment	mt103-pacs008	original	
+cross-border payment	H	neutral	cross-border payment	curated	original	
+details of charges	H	neutral	details of charges	curated	original	MT103 field 71A
+hawala	H	neutral	hawala	curated	original	
+intermediary bank	H	neutral	intermediary bank	curated	original	
+intermediary institution	H	neutral	intermediary institution	mt103-pacs008	original	MT103 :56A:
+international wire	H	neutral	international wire	curated	original	
+intrmyagt1	H	neutral	intrmyagt1	mt103-pacs008	original	ISO 20022
+mtcn	H	neutral	mtcn	curated	original	Western Union control number
+purpose of payment	H	neutral	purpose of payment	curated	original	
+sender's correspondent	H	neutral	sender's correspondent	mt103-pacs008	original	
+ultimate beneficiary	H	neutral	ultimate beneficiary	curated	original	
+ultmtcdtr	H	neutral	ultmtcdtr	mt103-pacs008	original	ISO 20022
+ultmtdbtr	H	neutral	ultmtdbtr	mt103-pacs008	original	ISO 20022
+cbpr	M	neutral	cbpr	mt103-pacs008	original	CBPR+
+cross-border	M	neutral	cross-border	curated	original	
+fedwire	M	neutral	fedwire	curated	original	
+fx rate	M	neutral	fx rate	curated	original	
+hundi	M	neutral	hundi	curated	original	
+moneygram	M	neutral	moneygram	curated	original	
+our charges	M	neutral	our charges	curated	original	
+purpose code	M	neutral	purpose code	curated	original	
+receiving bank	M	neutral	receiving bank	curated	original	
+sending bank	M	neutral	sending bank	curated	original	
+sepa	M	neutral	sepa	curated	original	
+swift code	M	neutral	swift code	curated	original	
+target2	M	neutral	target2	curated	original	
+western union	M	neutral	western union	curated	original	
+bic	L	neutral	bic	curated	original	
+exchange rate	L	neutral	exchange rate	curated	original	
+iban	L	neutral	iban	curated	original	
+remittance	L	neutral	remittance	curated	original	
+sort code	L	neutral	sort code	curated	original	
+swift	L	neutral	swift	curated	original	

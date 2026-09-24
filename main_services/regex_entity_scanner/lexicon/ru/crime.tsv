@@ -1,0 +1,88 @@
+term	tier	speaker	concept	source	review	note
+вымога*	H	accuser	extort*	curated	mt-edited	
+избавиться от доказательств	H	actor	get rid of the evidence	curated	mt-edited	
+избавиться от улик	H	actor	get rid of the evidence	curated	mt-edited	
+левый паспорт	H	actor	fake passport	curated	mt-edited	
+липовые документы	H	actor	fake documents	curated	mt-edited	
+незаконное оружие	H	accuser	illegal weapons	curated	mt-edited	
+незарегистрированное оружие	H	accuser	illegal weapons	curated	mt-edited	
+откаты к выплате	H	accuser	kickbacks to be paid	sec-insider-trading-2026	mt-edited	
+поддельные документы	H	actor	fake documents	curated	mt-edited	
+поддельный паспорт	H	actor	fake passport	curated	mt-edited	
+похитил*	H	accuser	kidnap*	curated	mt-edited	
+похитить	H	accuser	kidnap*	curated	mt-edited	
+похищени*	H	accuser	kidnap*	curated	mt-edited	
+уничтожить доказательства	H	actor	destroy the evidence	curated	mt-edited	
+уничтожить улики	H	actor	destroy the evidence	curated	mt-edited	
+фальшивые документы	H	actor	fake documents	curated	mt-edited	
+фальшивый паспорт	H	actor	fake passport	curated	mt-edited	
+шантаж*	H	accuser	blackmail	curated	mt-edited	
+алиби	M	accuser	alibi	curated	mt-edited	
+барыг*	M	accuser	drug dealer	curated	mt-edited	
+вирус-вымогатель	M	accuser	ransomware	curated	mt-edited	
+героин*	M	accuser	heroin	curated	mt-edited	
+грабеж*	M	accuser	robbery	curated	mt-edited	
+закладчик*	M	accuser	drug dealer	curated	mt-edited	
+кокаин*	M	accuser	cocaine	curated	mt-edited	
+контрабанд*	M	accuser	contraband	curated	mt-edited	
+контрафакт*	M	accuser	bootleg	investigator-list	mt-edited	
+кража личност*	M	accuser	identity theft	curated	mt-edited	
+кража персональных данных	M	accuser	identity theft	curated	mt-edited	
+кража со взломом	M	accuser	burglary	curated	mt-edited	
+метамфетамин*	M	accuser	methamphetamine	curated	mt-edited	
+наркодилер*	M	accuser	drug dealer	curated	mt-edited	
+наркоти*	M	accuser	narcotics	curated	mt-edited	
+наркотрафик*	M	accuser	trafficking	curated	mt-edited	
+обвинен в	M	accuser	charged with	curated	mt-edited	
+обвиняется в	M	accuser	charged with	curated	mt-edited	
+ограблени*	M	accuser	burglary	curated	mt-edited	
+паленая	M	accuser	bootleg	investigator-list	mt-edited	
+паленый	M	accuser	bootleg	investigator-list	mt-edited	
+переправить контрабандой	M	accuser	smuggle	investigator-list	mt-edited	
+подделан*	M	accuser	forged	curated	mt-edited	
+подделк*	M	accuser	counterfeit	curated	mt-edited	
+поддельн*	M	accuser	forged	curated	mt-edited	
+поджог*	M	accuser	arson	curated	mt-edited	
+подлог*	M	accuser	forgery	curated	mt-edited	
+провезти контрабандой	M	accuser	smuggle	investigator-list	mt-edited	
+программа-вымогатель	M	accuser	ransomware	curated	mt-edited	
+разбой*	M	accuser	robbery	curated	mt-edited	
+сообщник*	M	accuser	accomplice	curated	mt-edited	
+соучастник*	M	accuser	accomplice	curated	mt-edited	
+требует выкуп	M	accuser	ransom	curated	mt-edited	
+требуют выкуп	M	accuser	ransom	curated	mt-edited	
+тяжкого преступления	M	accuser	felony	curated	mt-edited	
+тяжкое преступление	M	accuser	felony	curated	mt-edited	
+фальшивк*	M	accuser	counterfeit	curated	mt-edited	
+фентанил*	M	accuser	fentanyl	curated	mt-edited	
+шифровальщик*	M	accuser	ransomware	curated	mt-edited	
+арестован*	L	accuser	arrested	curated	mt-edited	
+без лицензии	L	accuser	unlicensed	investigator-list	mt-edited	
+без разрешения	L	accuser	unauthorised	investigator-list	mt-edited	
+вне закона	L	accuser	outlaw	investigator-list	mt-edited	
+выкуп	L	accuser	ransom	curated	mt-edited	
+задержан*	L	accuser	arrested	curated	mt-edited	
+запрещен*	L	accuser	banned	investigator-list	mt-edited	
+краден*	L	accuser	stolen	curated	mt-edited	
+краж*	L	accuser	theft	curated	mt-edited	
+криминал*	L	accuser	criminal	investigator-list	mt-edited	
+мет	L	accuser	methamphetamine	curated	mt-edited	
+мошенник*	L	accuser	fraud	curated	mt-edited	
+мошенничеств*	L	accuser	fraud	curated	mt-edited	
+нарушени*	L	accuser	violation	investigator-list	mt-edited	
+незаконн*	L	accuser	illegal	investigator-list	mt-edited	
+нелегальн*	L	accuser	illegal	investigator-list	mt-edited	
+нелегитимн*	L	accuser	illegitimate	investigator-list	mt-edited	
+нелицензионн*	L	accuser	unlicensed	investigator-list	mt-edited	
+неправомерн*	L	accuser	illegitimate	investigator-list	mt-edited	
+несанкционированн*	L	accuser	unauthorised	investigator-list	mt-edited	
+похищен*	L	accuser	stolen	curated	mt-edited	
+правонарушени*	L	accuser	misdemeanor	curated	mt-edited	
+преступлени*	L	accuser	crime	curated	mt-edited	
+преступн*	L	accuser	criminal	investigator-list	mt-edited	
+проступок	L	accuser	misdemeanor	curated	mt-edited	
+противозаконн*	L	accuser	unlawful	investigator-list	mt-edited	
+противоправн*	L	accuser	unlawful	investigator-list	mt-edited	
+табу	L	accuser	taboo	investigator-list	mt-edited	
+уголовн*	L	accuser	criminal	investigator-list	mt-edited	
+украден*	L	accuser	stolen	curated	mt-edited	

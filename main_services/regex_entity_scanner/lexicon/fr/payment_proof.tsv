@@ -1,0 +1,61 @@
+term	tier	speaker	concept	source	review	note
+avis de débit	H	neutral	debit advice	curated	mt-edited	
+avis de paiement	H	neutral	payment advice	curated	mt-edited	
+avis de règlement	H	neutral	payment advice	curated	mt-edited	
+avis de versement	H	neutral	remittance advice	curated	mt-edited	
+avis de virement	H	neutral	remittance advice	curated	mt-edited	
+banque bénéficiaire	H	neutral	beneficiary bank	curated	mt-edited	
+banque du bénéficiaire	H	neutral	account with institution	mt103-pacs008	mt-edited	
+banque du donneur d'ordre	H	neutral	ordering institution	mt103-pacs008	mt-edited	
+bordereau de remise	H	neutral	deposit slip	curated	mt-edited	
+bordereau de versement	H	neutral	deposit slip	curated	mt-edited	
+client bénéficiaire	H	neutral	beneficiary customer	curated	mt-edited	
+confirmation de paiement	H	neutral	payment confirmation	curated	mt-edited	
+confirmation de virement	H	neutral	payment confirmation	curated	mt-edited	
+confirmation de virement bancaire	H	neutral	wire confirmation	curated	mt-edited	
+copie du MT103	H	neutral	mt103 copy	curated	mt-edited	
+copie du SWIFT	H	neutral	swift copy	curated	mt-edited	
+copie MT103	H	neutral	mt103 copy	curated	mt-edited	
+copie SWIFT	H	neutral	swift copy	curated	mt-edited	
+date de valeur	H	neutral	value date	curated	mt-edited	
+donneur d'ordre	H	neutral	ordering customer	curated	mt-edited	
+donneur d'ordre bénéficiaire	H	neutral	beneficiary customer	curated	mt-edited	
+établissement teneur de compte	H	neutral	account with institution	mt103-pacs008	mt-edited	
+frais de l'expéditeur	H	neutral	sender's charges	mt103-pacs008	mt-edited	
+frais du bénéficiaire	H	neutral	receiver's charges	mt103-pacs008	mt-edited	
+frais du donneur d'ordre	H	neutral	sender's charges	mt103-pacs008	mt-edited	
+informations de l'expéditeur au destinataire	H	neutral	sender to receiver information	mt103-pacs008	mt-edited	
+justificatif de paiement	H	neutral	payment confirmation	curated	mt-edited	
+justificatif de virement	H	neutral	proof of payment	curated	mt-edited	
+montant de l'ordre	H	neutral	instructed amount	mt103-pacs008	mt-edited	
+montant ordonné	H	neutral	instructed amount	mt103-pacs008	mt-edited	
+preuve de paiement	H	neutral	proof of payment	curated	mt-edited	
+référence de l'expéditeur	H	neutral	sender's reference	mt103-pacs008	mt-edited	
+référence du donneur d'ordre	H	neutral	sender's reference	mt103-pacs008	mt-edited	
+virement effectué	H	neutral	transfer successful	curated	mt-edited	
+virement réussi	H	neutral	transfer successful	curated	mt-edited	
+a été crédité	M	neutral	has been credited	curated	mt-edited	
+a été créditée	M	neutral	has been credited	curated	mt-edited	
+a été débité	M	neutral	has been debited	curated	mt-edited	
+a été débitée	M	neutral	has been debited	curated	mt-edited	
+accusé de réception	M	neutral	acknowledgement of receipt	curated	mt-edited	
+bénéficiaire*	M	neutral	beneficiary	curated	mt-edited	
+compte à débiter	M	neutral	debit account	curated	mt-edited	
+compte débité	M	neutral	debit account	curated	mt-edited	
+fonds virés	M	neutral	funds transferred	curated	mt-edited	
+ID de transaction	M	neutral	transaction id	curated	mt-edited	
+identifiant de transaction	M	neutral	transaction id	curated	mt-edited	
+libellé du virement	M	neutral	remittance information	mt103-pacs008	mt-edited	
+motif du virement	M	neutral	remittance information	mt103-pacs008	mt-edited	
+numéro de reçu	M	neutral	receipt no	curated	mt-edited	
+numéro de transaction	M	neutral	transaction id	curated	mt-edited	
+paiement accepté	M	neutral	payment successful	curated	mt-edited	
+paiement effectué	M	neutral	payment successful	curated	mt-edited	
+paiement réussi	M	neutral	payment successful	curated	mt-edited	
+porté au crédit	M	neutral	has been credited	curated	mt-edited	
+reçu n°	M	neutral	receipt no	curated	mt-edited	
+référence de la transaction	M	neutral	transaction reference	curated	mt-edited	
+référence de l'opération	M	neutral	transaction reference	curated	mt-edited	
+référence du virement	M	neutral	remittance information	mt103-pacs008	mt-edited	
+virement bancaire	M	neutral	wire transfer	curated	mt-edited	
+virement	L	neutral	wire transfer	curated	mt-edited	

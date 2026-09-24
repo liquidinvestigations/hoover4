@@ -1,0 +1,64 @@
+term	tier	speaker	concept	source	review	note
+backhander	H	actor	backhander	curated	original	
+bid rigging	H	actor	bid rigging	curated	original	
+brown envelope	H	actor	brown envelope	curated	original	
+cash in an envelope	H	actor	cash in an envelope	curated	original	
+cover bid	H	actor	cover bid	curated	original	
+customs intervention	H	actor	customs intervention	doj-sec-fcpa-guide	original	FCPA
+excessive commission	H	actor	excessive commission	doj-sec-fcpa-guide	original	FCPA red flag
+expedite fee	H	actor	expedite fee	curated	original	
+facilitation payment	H	actor	facilitation payment	curated	original	
+friendly payment	H	actor	friendly payment	investigator-list	original	
+friendly payments	H	actor	friendly payments	investigator-list	original	
+gift for the minister	H	actor	gift for the minister	curated	original	
+grease her palm	H	actor	grease her palm	curated	original	
+grease his palm	H	actor	grease his palm	curated	original	
+grease payment	H	actor	grease payment	curated	original	
+grease the wheels	H	actor	grease the wheels	curated	original	
+grease their palm	H	actor	grease their palm	curated	original	
+kickback	H	accuser	kickback	curated	original	
+kickbacks	H	accuser	kickbacks	sec-insider-trading-2026	original	
+look the other way	H	actor	look the other way	curated	original	
+make it worth her while	H	actor	make it worth her while	curated	original	
+make it worth his while	H	actor	make it worth his while	curated	original	
+make it worth their while	H	actor	make it worth their while	curated	original	
+no inspection	H	actor	no inspection	investigator-list	original	
+our friend in the ministry	H	actor	our friend in the ministry	curated	original	
+pay to play	H	actor	pay to play	curated	original	
+price fixing	H	actor	price fixing	curated	original	
+rigged tender	H	actor	rigged tender	curated	original	
+special fees	H	actor	special fees	investigator-list	original	
+speed money	H	actor	speed money	curated	original	
+tea money	H	actor	tea money	curated	original	
+turn a blind eye	H	actor	turn a blind eye	curated	original	
+under the table	H	actor	under the table	curated	original	
+unreasonably large discount	H	actor	unreasonably large discount	doj-sec-fcpa-guide	original	FCPA red flag
+vaguely described services	H	actor	vaguely described services	doj-sec-fcpa-guide	original	FCPA red flag
+after sales service fees	M	actor	after sales service fees	doj-sec-fcpa-guide	original	FCPA
+bribe	M	accuser	bribe	investigator-list	original	also compliance training
+corruption	M	accuser	corruption	investigator-list	original	also compliance training and news
+finder's fee	M	actor	finder's fee	curated	original	
+foreign official	M	actor	foreign official	doj-sec-fcpa-guide	original	FCPA
+his cut	M	actor	his cut	curated	original	
+market allocation	M	actor	market allocation	curated	original	
+offshore bank account	M	actor	offshore bank account	doj-sec-fcpa-guide	original	FCPA red flag
+quid pro quo	M	actor	quid pro quo	curated	original	
+scientific incentives	M	actor	scientific incentives	doj-sec-fcpa-guide	original	FCPA
+success fee	M	actor	success fee	curated	original	
+sweetener	M	actor	sweetener	curated	original	
+take care of her	M	actor	take care of her	curated	original	
+take care of him	M	actor	take care of him	curated	original	
+take care of them	M	actor	take care of them	curated	original	
+bottle of bollinger	L	actor	bottle of bollinger	fsa-cftc-libor-chats	original	LIBOR reciprocity
+commissions or royalties	L	actor	commissions or royalties	doj-sec-fcpa-guide	original	FCPA
+consultancy fee	L	actor	consultancy fee	curated	original	
+consulting fees	L	actor	consulting fees	doj-sec-fcpa-guide	original	FCPA mischaracterisation
+corrupt	L	accuser	corrupt	investigator-list	original	also corrupt files
+crooked	L	accuser	crooked	investigator-list	original	
+dirty	L	actor	dirty	investigator-list	original	
+i owe you big time	L	actor	i owe you big time	fsa-cftc-libor-chats	original	LIBOR reciprocity
+rebates or discounts	L	actor	rebates or discounts	doj-sec-fcpa-guide	original	FCPA
+sales and marketing expenses	L	actor	sales and marketing expenses	doj-sec-fcpa-guide	original	FCPA
+shady	L	accuser	shady	investigator-list	original	
+travel and entertainment	L	actor	travel and entertainment	doj-sec-fcpa-guide	original	FCPA
+unofficial	L	actor	unofficial	investigator-list	original	

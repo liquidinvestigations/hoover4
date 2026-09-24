@@ -1,0 +1,74 @@
+term	tier	speaker	concept	source	review	note
+accounting fraud	H	accuser	accounting fraud	curated	original	
+carousel fraud	H	accuser	carousel fraud	curated	original	
+circular payments	H	accuser	circular payments	fatf-egmont-tbml	original	
+dishonest by definition	H	accuser	dishonest by definition	cftc-barclays-libor	original	LIBOR
+evade sanctions	H	accuser	evade sanctions	curated	original	
+false invoicing	H	accuser	false invoicing	curated	original	
+front company	H	accuser	front company	curated	original	
+front running	H	accuser	front running	curated	original	
+insider information	H	accuser	insider information	curated	original	
+insider trading	H	accuser	insider trading	curated	original	
+just below reporting thresholds	H	accuser	just below reporting thresholds	fatf-egmont-tbml	original	
+just below the threshold	H	actor	just below the threshold	fatf-egmont-tbml	original	structuring
+keep it under 10k	H	actor	keep it under 10k	curated	original	
+market manipulation	H	accuser	market manipulation	curated	original	
+mass registration address	H	accuser	mass registration address	fatf-egmont-tbml	original	TBML paraphrase
+material non-public information	H	accuser	material non-public information	curated	original	
+material nonpublic information	H	accuser	material nonpublic information	sec-insider-trading-2026	original	
+missing trader	H	accuser	missing trader	curated	original	
+mnpi	H	accuser	mnpi	curated	original	
+not posting honest prices	H	actor	not posting honest prices	cftc-barclays-libor	original	LIBOR
+over invoic*	H	actor	over invoic*	spamassassin-advance-fee	original	TBML
+pay-through account	H	actor	pay-through account	fatf-egmont-tbml	original	
+ponzi	H	accuser	ponzi	curated	original	
+pump and dump	H	accuser	pump and dump	curated	original	
+pyramid scheme	H	accuser	pyramid scheme	curated	original	
+sanctions evasion	H	accuser	sanctions evasion	curated	original	
+sdn list	H	accuser	sdn list	fincen-bis-export-control	original	sanctions
+securities fraud	H	accuser	securities fraud	curated	original	
+smurfing	H	actor	smurfing	curated	original	
+split the payment	H	actor	split the payment	curated	original	
+suspicious activity report	H	accuser	suspicious activity report	fincen-human-trafficking	original	
+tax evasion	H	accuser	tax evasion	curated	original	
+tax fraud	H	accuser	tax fraud	curated	original	
+trade-based money laundering	H	accuser	trade-based money laundering	curated	original	
+under invoic*	H	actor	under invoic*	fatf-egmont-tbml	original	TBML
+vat fraud	H	accuser	vat fraud	curated	original	
+very low fix	H	actor	very low fix	fsa-cftc-libor-chats	original	LIBOR
+wash trade	H	accuser	wash trade	curated	original	
+wash trading	H	accuser	wash trading	curated	original	
+wire fraud	H	accuser	wire fraud	curated	original	
+big fixing	M	actor	big fixing	cftc-barclays-libor	original	LIBOR
+bribery act	M	accuser	bribery act	curated	original	
+dual use	M	accuser	dual use	fincen-bis-export-control	original	export control
+embezzl*	M	accuser	embezzl*	curated	original	
+entity list	M	accuser	entity list	fincen-bis-export-control	original	sanctions
+fcpa	M	accuser	fcpa	curated	original	
+free trade zone	M	accuser	free trade zone	fatf-egmont-tbml	original	
+misappropriat*	M	accuser	misappropriat*	curated	original	
+money laundering	M	accuser	money laundering	investigator-list	original	also compliance training and AML policies; negation and quotation matter
+nominee director	M	actor	nominee director	curated	original	
+nominee shareholder	M	actor	nominee shareholder	curated	original	
+offshore account	M	actor	offshore account	curated	original	
+patently false	M	accuser	patently false	cftc-barclays-libor	original	LIBOR
+politically exposed person	M	accuser	politically exposed person	curated	original	
+sample contract	M	accuser	sample contract	fatf-egmont-tbml	original	TBML paraphrase
+sec investigation	M	accuser	sec investigation	curated	original	
+shell company	M	actor	shell company	investigator-list	original	
+spoofing	M	accuser	spoofing	curated	original	
+transit account	M	actor	transit account	fatf-egmont-tbml	original	
+transshipment	M	accuser	transshipment	fincen-bis-export-control	original	sanctions
+ultimate consignee	M	accuser	ultimate consignee	fincen-bis-export-control	original	sanctions
+aml	L	accuser	aml	curated	original	
+as high as possible	L	actor	as high as possible	cftc-barclays-libor	original	LIBOR fix request
+beneficial owner	L	accuser	beneficial owner	curated	original	
+end use	L	accuser	end use	fincen-bis-export-control	original	sanctions
+end user	L	accuser	end user	fincen-bis-export-control	original	sanctions
+hs code	L	accuser	hs code	fincen-bis-export-control	original	
+kyc	L	accuser	kyc	curated	original	
+layering	L	accuser	layering	curated	original	
+nominee	L	accuser	nominee	curated	original	
+round amounts	L	actor	round amounts	fatf-egmont-tbml	original	
+structuring	L	actor	structuring	curated	original	
+tipping	L	actor	tipping	sec-insider-trading-2026	original	

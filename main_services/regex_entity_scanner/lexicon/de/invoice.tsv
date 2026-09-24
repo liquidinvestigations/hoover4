@@ -1,0 +1,81 @@
+term	tier	speaker	concept	source	review	note
+30 Tage netto	H	neutral	net 30	curated	mt-edited	
+60 Tage netto	H	neutral	net 60	curated	mt-edited	
+abgetretene Rechnung*	H	neutral	factored invoice	uncl1001	mt-edited	
+bitte begleichen Sie	H	neutral	please remit	curated	mt-edited	
+bitte überweisen Sie	H	neutral	please remit	curated	mt-edited	
+Endbetrag*	H	neutral	total due	curated	mt-edited	
+Factoring-Rechnung*	H	neutral	factored invoice	uncl1001	mt-edited	
+fälliger Betrag	H	neutral	amount due	curated	mt-edited	
+Frachtrechnung*	H	neutral	freight invoice	uncl1001	mt-edited	
+Gesamtbetrag*	H	neutral	total due	curated	mt-edited	
+Gutschrift im Gutschriftverfahren	H	neutral	self-billed invoice	uncl1001	mt-edited	
+Gutschriftsverfahren*	H	neutral	self-billed invoice	uncl1001	mt-edited	
+Handelsfaktura*	H	neutral	commercial invoice	curated	mt-edited	
+Handelsrechnung*	H	neutral	commercial invoice	curated	mt-edited	
+Konsignationsrechnung*	H	neutral	consignment invoice	uncl1001	mt-edited	
+Konsulatsfaktura*	H	neutral	consular invoice	uncl1001	mt-edited	
+Konsulatsrechnung*	H	neutral	consular invoice	uncl1001	mt-edited	
+netto 30 Tage	H	neutral	net 30	curated	mt-edited	
+netto 60 Tage	H	neutral	net 60	curated	mt-edited	
+offener Betrag	H	neutral	balance due	curated	mt-edited	
+offener Saldo	H	neutral	balance due	curated	mt-edited	
+Provisionsabrechnung*	H	neutral	commission note	uncl1001	mt-edited	
+Provisionsgutschrift*	H	neutral	commission note	uncl1001	mt-edited	
+Rechnung im Sinne des UStG	H	neutral	tax invoice	curated	mt-edited	
+Rechnung Nr	H	neutral	invoice no	curated	mt-edited	
+Rechnungs-Nr	H	neutral	invoice no	curated	mt-edited	
+Rechnungsadresse*	H	neutral	bill to	curated	mt-edited	
+Rechnungsbetrag*	H	neutral	amount due	curated	mt-edited	
+Rechnungsdatum*	H	neutral	invoice date	curated	mt-edited	
+Rechnungsempfänger*	H	neutral	bill to	curated	mt-edited	
+Rechnungsnr	H	neutral	invoice no	curated	mt-edited	
+Rechnungsnummer*	H	neutral	invoice number	curated	mt-edited	
+Restbetrag*	H	neutral	balance due	curated	mt-edited	
+Speditionsrechnung*	H	neutral	forwarder's invoice	uncl1001	mt-edited	
+Steuerrechnung	H	neutral	tax invoice	curated	mt-edited	
+wir bitten um Überweisung	H	neutral	please remit	curated	mt-edited	
+zahlbar an	H	neutral	remit to	curated	mt-edited	
+zahlbar innerhalb 30 Tagen	H	neutral	net 30	curated	mt-edited	
+Zahlung an	H	neutral	remit to	curated	mt-edited	
+zu zahlen	H	neutral	total due	curated	mt-edited	
+zu zahlender Betrag	H	neutral	amount due	curated	mt-edited	
+Auftragsnummer*	M	neutral	po number	curated	mt-edited	
+Bestellnummer*	M	neutral	po number	curated	mt-edited	
+Bestellschein*	M	neutral	purchase order	curated	mt-edited	
+Einzelpreis*	M	neutral	unit price	curated	mt-edited	
+Faktura*	M	neutral	invoice	curated	mt-edited	
+Gutschriftsanzeige*	M	neutral	credit note	curated	mt-edited	
+Lastschriftanzeige*	M	neutral	debit note	curated	mt-edited	
+Lieferadresse*	M	neutral	ship to	curated	mt-edited	
+Lieferanschrift*	M	neutral	ship to	curated	mt-edited	
+Steuer-ID	M	neutral	tax id	curated	mt-edited	
+Steuernummer*	M	neutral	tax id	curated	mt-edited	
+Stückpreis*	M	neutral	unit price	curated	mt-edited	
+UID-Nummer	M	neutral	tax id	curated	mt-edited	
+Umsatzsteuer-ID	M	neutral	vat number	curated	mt-edited	
+Umsatzsteuer-Identifikationsnummer*	M	neutral	vat number	curated	mt-edited	
+USt-ID	M	neutral	vat number	curated	mt-edited	
+USt-IdNr	M	neutral	tax id	curated	mt-edited	
+Zahlungsanforderung*	M	neutral	request for payment	uncl1001	mt-edited	
+Zahlungsaufforderung*	M	neutral	request for payment	uncl1001	mt-edited	
+Zahlungsbedingungen	M	neutral	payment terms	curated	mt-edited	
+Zahlungsziel*	M	neutral	payment terms	curated	mt-edited	
+Zwischensumme*	M	neutral	subtotal	curated	mt-edited	
+Auftrag	L	neutral	purchase order	curated	mt-edited	
+Auftraggeber	L	neutral	sold to	curated	mt-edited	
+Bankverbindung	L	neutral	remit to	curated	mt-edited	
+Bestellung	L	neutral	purchase order	curated	mt-edited	
+fällig am	L	neutral	due date	curated	mt-edited	
+Fälligkeitsdatum*	L	neutral	due date	curated	mt-edited	
+Gutschrift*	L	neutral	credit note	curated	mt-edited	
+Käufer	L	neutral	sold to	curated	mt-edited	
+Mehrwertsteuer	L	neutral	vat	curated	mt-edited	
+Menge	L	neutral	qty	curated	mt-edited	
+MwSt	L	neutral	vat	curated	mt-edited	
+Rechnung	L	neutral	invoice	curated	mt-edited	
+Rechnungen	L	neutral	invoice	curated	mt-edited	
+Stk	L	neutral	qty	curated	mt-edited	
+Umsatzsteuer	L	neutral	vat	curated	mt-edited	
+USt	L	neutral	vat	curated	mt-edited	
+Zahlungsfrist*	L	neutral	due date	curated	mt-edited	

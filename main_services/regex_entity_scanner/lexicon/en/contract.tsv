@@ -1,0 +1,57 @@
+term	tier	speaker	concept	source	review	note
+agreement is made	H	neutral	agreement is made	curated	original	
+anti-assignment	H	neutral	anti-assignment	cuad	original	CUAD
+by and between	H	neutral	by and between	curated	original	
+cap on liability	H	neutral	cap on liability	cuad	original	CUAD
+confidentiality agreement	H	neutral	confidentiality agreement	curated	original	
+disclosing party	H	neutral	disclosing party	contractnli	original	ContractNLI
+duly authorised	H	neutral	duly authorised	curated	original	
+duly authorized	H	neutral	duly authorized	curated	original	
+duly executed	H	neutral	duly executed	curated	original	
+entire agreement	H	neutral	entire agreement	curated	original	
+force majeure	H	neutral	force majeure	curated	original	
+hold harmless	H	neutral	hold harmless	curated	original	
+indemnification	H	neutral	indemnification	curated	original	
+indemnify	H	neutral	indemnify	curated	original	
+limitation of liability	H	neutral	limitation of liability	curated	original	
+liquidated damages	H	neutral	liquidated damages	curated	original	
+master services agreement	H	neutral	master services agreement	curated	original	
+material breach	H	neutral	material breach	curated	original	
+non-disclosure agreement	H	neutral	non-disclosure agreement	curated	original	
+post-termination services	H	neutral	post-termination services	cuad	original	CUAD
+representations and warranties	H	neutral	representations and warranties	curated	original	
+severability	H	neutral	severability	curated	original	
+share purchase agreement	H	neutral	share purchase agreement	curated	original	
+source code escrow	H	neutral	source code escrow	cuad	original	CUAD
+survive termination	H	neutral	survive termination	contractnli	original	ContractNLI
+term of this agreement	H	neutral	term of this agreement	curated	original	
+terminate this agreement	H	neutral	terminate this agreement	curated	original	
+termination for convenience	H	neutral	termination for convenience	curated	original	
+the parties agree	H	neutral	the parties agree	curated	original	
+the parties hereto	H	neutral	the parties hereto	curated	original	
+uncapped liability	H	neutral	uncapped liability	cuad	original	CUAD
+unless terminated earlier	H	neutral	unless terminated earlier	cuad	original	
+audit rights	M	neutral	audit rights	cuad	original	CUAD
+automatically renewed	M	neutral	automatically renewed	cuad	original	
+breach of contract	M	neutral	breach of contract	curated	original	
+counterparts	M	neutral	counterparts	curated	original	
+effective date	M	neutral	effective date	curated	original	
+entered into	M	neutral	entered into	curated	original	
+initial term	M	neutral	initial term	cuad	original	
+license grant	M	neutral	license grant	cuad	original	CUAD
+minimum commitment	M	neutral	minimum commitment	cuad	original	CUAD
+most favored nation	M	neutral	most favored nation	cuad	original	CUAD
+no-solicit	M	neutral	no-solicit	cuad	original	CUAD
+non-compete	M	neutral	non-compete	cuad	original	CUAD
+non-disparagement	M	neutral	non-disparagement	cuad	original	CUAD
+receiving party	M	neutral	receiving party	contractnli	original	
+service level agreement	M	neutral	service level agreement	curated	original	
+shareholders agreement	M	neutral	shareholders agreement	curated	original	
+statement of work	M	neutral	statement of work	curated	original	
+this agreement	M	neutral	this agreement	curated	original	
+warranty duration	M	neutral	warranty duration	cuad	original	CUAD
+assignment	L	neutral	assignment	curated	original	
+confidential information	L	neutral	confidential information	contractnli	original	
+consideration	L	neutral	consideration	curated	original	
+exclusivity	L	neutral	exclusivity	cuad	original	CUAD
+terms and conditions	L	neutral	terms and conditions	curated	original	

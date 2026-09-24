@@ -1,0 +1,37 @@
+term	tier	speaker	concept	source	review	note
+banque correspondant	H	neutral	correspondent bank	curated	mt-edited	
+banque correspondante	H	neutral	correspondent bank	curated	mt-edited	
+banque intermédiaire	H	neutral	intermediary bank	curated	mt-edited	
+bénéficiaire final	H	neutral	ultimate beneficiary	curated	mt-edited	
+bénéficiaire ultime	H	neutral	ultimate beneficiary	curated	mt-edited	
+correspondant de l'expéditeur	H	neutral	sender's correspondent	mt103-pacs008	mt-edited	
+établissement intermédiaire	H	neutral	intermediary institution	mt103-pacs008	mt-edited	
+imputation des frais	H	neutral	details of charges	curated	mt-edited	
+motif du paiement	H	neutral	purpose of payment	curated	mt-edited	
+objet du paiement	H	neutral	purpose of payment	curated	mt-edited	
+ordre de couverture	H	neutral	cover payment	mt103-pacs008	mt-edited	
+paiement de couverture	H	neutral	cover payment	mt103-pacs008	mt-edited	
+paiement transfrontalier	H	neutral	cross-border payment	curated	mt-edited	
+paiement transfrontière	H	neutral	cross-border payment	curated	mt-edited	
+répartition des frais	H	neutral	details of charges	curated	mt-edited	
+virement international	H	neutral	cross-border payment	curated	mt-edited	
+virements internationaux	H	neutral	international wire	curated	mt-edited	
+banque destinataire	M	neutral	receiving bank	curated	mt-edited	
+banque émettrice	M	neutral	sending bank	curated	mt-edited	
+banque expéditrice	M	neutral	sending bank	curated	mt-edited	
+banque réceptrice	M	neutral	receiving bank	curated	mt-edited	
+code BIC	M	neutral	swift code	curated	mt-edited	
+code de motif économique	M	neutral	purpose code	curated	mt-edited	
+code motif	M	neutral	purpose code	curated	mt-edited	
+code SWIFT	M	neutral	swift code	curated	mt-edited	
+cours de change	M	neutral	fx rate	curated	mt-edited	
+frais à notre charge	M	neutral	our charges	curated	mt-edited	
+tous frais à la charge du donneur d'ordre	M	neutral	our charges	curated	mt-edited	
+transfrontalier*	M	neutral	cross-border	curated	mt-edited	
+transfrontière*	M	neutral	cross-border	curated	mt-edited	
+virement SEPA	M	neutral	sepa	curated	mt-edited	
+code banque	L	neutral	sort code	curated	mt-edited	
+code guichet	L	neutral	sort code	curated	mt-edited	
+remise	L	neutral	remittance	curated	mt-edited	
+taux de change	L	neutral	fx rate	curated	mt-edited	
+transfert d'argent	L	neutral	remittance	curated	mt-edited	

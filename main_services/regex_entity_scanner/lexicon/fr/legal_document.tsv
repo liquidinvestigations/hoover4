@@ -1,0 +1,78 @@
+term	tier	speaker	concept	source	review	note
+attestation sur l'honneur	H	neutral	affidavit	curated	mt-edited	
+aux présentes	H	neutral	hereto	curated	mt-edited	
+ci-après dénommé*	H	neutral	hereinafter	curated	mt-edited	
+ci-avant	H	neutral	hereinbefore	curated	mt-edited	
+confidentialité avocat-client	H	neutral	attorney-client privilege	curated	mt-edited	
+couvert par le secret professionnel	H	neutral	legally privileged	curated	mt-edited	
+déclaration solennelle	H	neutral	statutory declaration	curated	mt-edited	
+déclaration sous serment	H	neutral	affidavit	curated	mt-edited	
+des présentes	H	neutral	hereto	curated	mt-edited	
+droit de préemption	H	neutral	right of first refusal	cuad	mt-edited	
+droit de premier refus	H	neutral	right of first refusal	cuad	mt-edited	
+droit de première offre	H	neutral	right of first offer	cuad	mt-edited	
+en foi de quoi	H	neutral	in witness whereof	curated	mt-edited	
+en l'affaire	H	neutral	in the matter of	curated	mt-edited	
+engagement de ne pas poursuivre	H	neutral	covenant not to sue	cuad	mt-edited	
+intention de s'engager juridiquement	H	neutral	intention to be legally bound	mou-definition	mt-edited	
+intention d'être juridiquement lié	H	neutral	intention to be legally bound	mou-definition	mt-edited	
+notaire*	M	neutral	notary public	curated	mt-edited	
+précité*	H	neutral	aforesaid	curated	mt-edited	
+procuration*	M	neutral	power of attorney	curated	mt-edited	
+protégé par le secret professionnel	H	neutral	legally privileged	curated	mt-edited	
+renonciation à agir	H	neutral	covenant not to sue	cuad	mt-edited	
+sans reconnaissance de responsabilité	H	neutral	without prejudice	curated	mt-edited	
+secret professionnel de l'avocat	H	neutral	attorney-client privilege	curated	mt-edited	
+sous réserve de tous droits	H	neutral	without prejudice	curated	mt-edited	
+stipulation pour autrui	H	neutral	third party beneficiary	cuad	mt-edited	
+susdit*	H	neutral	aforesaid	curated	mt-edited	
+témoignage sous serment	H	neutral	sworn statement	curated	mt-edited	
+tiers bénéficiaire	H	neutral	third party beneficiary	cuad	mt-edited	
+acte notarié	M	neutral	notarised	curated	mt-edited	
+attendu que	M	neutral	whereas	curated	mt-edited	
+avocat-conseil	M	neutral	legal counsel	curated	mt-edited	
+changement de contrôle	M	neutral	change of control	cuad	mt-edited	
+ci-après	M	neutral	hereinafter	curated	mt-edited	
+conseil juridique	M	neutral	legal counsel	curated	mt-edited	
+considérant que	M	neutral	whereas	curated	mt-edited	
+décision de justice	M	neutral	court order	curated	mt-edited	
+défenderesse	M	neutral	defendant	curated	mt-edited	
+défendeur	M	neutral	defendant	curated	mt-edited	
+demanderesse	M	neutral	claimant	curated	mt-edited	
+juriste d'entreprise	M	neutral	legal counsel	curated	mt-edited	
+la soussignée	M	neutral	the undersigned	curated	mt-edited	
+le soussigné	M	neutral	the undersigned	curated	mt-edited	
+les soussignés	M	neutral	the undersigned	curated	mt-edited	
+mentionné ci-dessus	M	neutral	aforementioned	curated	mt-edited	
+n° RG	M	neutral	case no	curated	mt-edited	
+nonobstant	M	neutral	notwithstanding	curated	mt-edited	
+notarié	M	neutral	notarised	curated	mt-edited	
+numéro d'affaire	M	neutral	case no	curated	mt-edited	
+numéro de rôle	M	neutral	case no	curated	mt-edited	
+offre et acceptation	M	neutral	offer and acceptance	mou-definition	mt-edited	
+ordonnance du tribunal	M	neutral	court order	curated	mt-edited	
+ordonnance judiciaire	M	neutral	court order	curated	mt-edited	
+par la présente	M	neutral	hereby	curated	mt-edited	
+par les présentes	M	neutral	hereby	curated	mt-edited	
+partie demanderesse	M	neutral	plaintiff	investigator-list	mt-edited	
+registre du greffe	M	neutral	docket	curated	mt-edited	
+requérant*	M	neutral	claimant	curated	mt-edited	
+susmentionné*	M	neutral	aforementioned	curated	mt-edited	
+y afférent*	M	neutral	therein	curated	mt-edited	
+y figurant	M	neutral	therein	curated	mt-edited	
+arrêt	L	neutral	judgment	curated	mt-edited	
+certifié conforme	L	neutral	notarised	curated	mt-edited	
+ci-dessus	L	neutral	hereinbefore	curated	mt-edited	
+conformément à	L	neutral	pursuant to	curated	mt-edited	
+dans l'affaire	L	neutral	in the matter of	curated	mt-edited	
+de celle-ci	L	neutral	thereof	curated	mt-edited	
+de celui-ci	L	neutral	thereof	curated	mt-edited	
+décision	L	neutral	ruling	curated	mt-edited	
+demandeur	L	neutral	claimant	curated	mt-edited	
+en vertu de	L	neutral	pursuant to	curated	mt-edited	
+intimé*	L	neutral	respondent	curated	mt-edited	
+jugement*	L	neutral	judgment	curated	mt-edited	
+loi	L	neutral	statute	curated	mt-edited	
+mandat	L	neutral	power of attorney	curated	mt-edited	
+prévenu	L	neutral	defendant	curated	mt-edited	
+statut	L	neutral	statute	curated	mt-edited	

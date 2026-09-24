@@ -1,0 +1,22 @@
+term	tier	speaker	concept	source	review	note
+Bauschlussrechnung*	H	neutral	final construction invoice	uncl1001	mt-edited	
+Betrag dankend erhalten	H	neutral	paid in full	curated	mt-edited	
+Endabrechnung*	H	neutral	final invoice	curated	mt-edited	
+letzte Zahlungsanforderung	H	neutral	final payment request	uncl1001	mt-edited	
+Schlussrechnung Bau	H	neutral	final construction invoice	uncl1001	mt-edited	
+Schlussrechnung*	H	neutral	final invoice	curated	mt-edited	
+Schlusszahlungsanforderung*	H	neutral	final payment request	uncl1001	mt-edited	
+vollständig beglichen	H	neutral	paid in full	curated	mt-edited	
+vollständig bezahlt	H	neutral	paid in full	curated	mt-edited	
+Kassenbeleg*	M	neutral	fiscal receipt	curated	mt-edited	
+Originalrechnung*	M	neutral	original invoice	curated	mt-edited	
+quittiert	M	neutral	receipted	curated	mt-edited	
+Rechnung ausgestellt	M	neutral	invoice issued	curated	mt-edited	
+Rechnung gestellt	M	neutral	invoice issued	curated	mt-edited	
+Rechnungsoriginal*	M	neutral	original invoice	curated	mt-edited	
+Zahlung erhalten	M	neutral	payment received	curated	mt-edited	
+Zahlungseingang*	M	neutral	payment received	curated	mt-edited	
+beglichen	L	neutral	paid	curated	mt-edited	
+bezahlt	L	neutral	paid	curated	mt-edited	
+Kassenbon*	L	neutral	fiscal receipt	curated	mt-edited	
+Quittung*	L	neutral	receipted	curated	mt-edited	

@@ -1,0 +1,105 @@
+term	tier	speaker	concept	source	review	note
+adresse de domiciliation de masse	H	accuser	mass registration address	fatf-egmont-tbml	mt-edited	
+arnaque au président	H	accuser	wire fraud	curated	mt-edited	
+blanchiment commercial	H	accuser	trade-based money laundering	curated	mt-edited	
+blanchiment par le commerce	H	accuser	trade-based money laundering	curated	mt-edited	
+carrousel de TVA	H	accuser	carousel fraud	curated	mt-edited	
+chaîne de Ponzi	H	accuser	ponzi	curated	mt-edited	
+compte de passage	H	actor	pay-through account	fatf-egmont-tbml	mt-edited	
+compte de transit	H	actor	pay-through account	fatf-egmont-tbml	mt-edited	
+contournement des sanctions	H	accuser	sanctions evasion	curated	mt-edited	
+contourner les sanctions	H	accuser	evade sanctions	curated	mt-edited	
+déclaration de soupçon	H	accuser	suspicious activity report	fincen-human-trafficking	mt-edited	
+déclarations de soupçon	H	accuser	suspicious activity report	fincen-human-trafficking	mt-edited	
+délit d'initié	H	accuser	insider trading	curated	mt-edited	
+délits d'initiés	H	accuser	insider trading	curated	mt-edited	
+domiciliation collective	H	accuser	mass registration address	fatf-egmont-tbml	mt-edited	
+escroquerie au virement	H	accuser	wire fraud	curated	mt-edited	
+évasion fiscale	H	accuser	tax evasion	curated	mt-edited	
+falsification des comptes	H	accuser	accounting fraud	curated	mt-edited	
+fausse facturation	H	accuser	false invoicing	curated	mt-edited	
+fausses factures	H	accuser	false invoicing	curated	mt-edited	
+fixing très bas	H	actor	very low fix	fsa-cftc-libor-chats	mt-edited	
+fractionner le paiement	H	actor	split the payment	curated	mt-edited	
+fractionner les paiements	H	actor	split the payment	curated	mt-edited	
+fraude à la TVA	H	accuser	vat fraud	curated	mt-edited	
+fraude au virement	H	accuser	wire fraud	curated	mt-edited	
+fraude boursière	H	accuser	securities fraud	curated	mt-edited	
+fraude carrousel	H	accuser	carousel fraud	curated	mt-edited	
+fraude comptable	H	accuser	accounting fraud	curated	mt-edited	
+fraude fiscale	H	accuser	tax evasion	curated	mt-edited	
+fraude sur titres	H	accuser	securities fraud	curated	mt-edited	
+gonflement et vente	H	accuser	pump and dump	curated	mt-edited	
+information privilégiée	H	accuser	insider information	curated	mt-edited	
+information privilégiée non publique	H	accuser	material non-public information	curated	mt-edited	
+informations privilégiées	H	accuser	insider information	curated	mt-edited	
+juste en dessous du seuil	H	actor	just below the threshold	fatf-egmont-tbml	mt-edited	
+juste en dessous du seuil de déclaration	H	accuser	just below reporting thresholds	fatf-egmont-tbml	mt-edited	
+juste sous le seuil	H	actor	just below the threshold	fatf-egmont-tbml	mt-edited	
+malhonnête par définition	H	accuser	dishonest by definition	cftc-barclays-libor	mt-edited	
+manipulation de cours	H	accuser	market manipulation	curated	mt-edited	
+manipulation de marché	H	accuser	market manipulation	curated	mt-edited	
+moins de 10 000	H	actor	keep it under 10k	curated	mt-edited	
+ne pas publier de prix honnêtes	H	actor	not posting honest prices	cftc-barclays-libor	mt-edited	
+opérateur défaillant	H	accuser	missing trader	curated	mt-edited	
+opération d'initié	H	accuser	insider trading	curated	mt-edited	
+opérations fictives	H	accuser	wash trade	curated	mt-edited	
+paiements circulaires	H	accuser	circular payments	fatf-egmont-tbml	mt-edited	
+pyramide de Ponzi	H	accuser	ponzi	curated	mt-edited	
+rester sous les 10 000	H	actor	keep it under 10k	curated	mt-edited	
+schtroumpfage	H	actor	smurfing	curated	mt-edited	
+société écran	H	accuser	front company	curated	mt-edited	
+sociétés écrans	H	accuser	front company	curated	mt-edited	
+sous-factur*	H	actor	under invoic*	fatf-egmont-tbml	mt-edited	
+surfactur*	H	actor	over invoic*	spamassassin-advance-fee	mt-edited	
+système de Ponzi	H	accuser	ponzi	curated	mt-edited	
+système pyramidal	H	accuser	pyramid scheme	curated	mt-edited	
+transaction fictive	H	accuser	wash trade	curated	mt-edited	
+vente pyramidale	H	accuser	pyramid scheme	curated	mt-edited	
+abus de biens sociaux	M	accuser	embezzl*	curated	mt-edited	
+actionnaire prête-nom	M	actor	nominee shareholder	curated	mt-edited	
+appropriation illicite	M	accuser	misappropriat*	curated	mt-edited	
+biens à double usage	M	accuser	dual use	fincen-bis-export-control	mt-edited	
+blanchiment	M	accuser	money laundering	investigator-list	mt-edited	
+blanchiment d'argent	M	accuser	money laundering	investigator-list	mt-edited	
+blanchiment de capitaux	M	accuser	money laundering	investigator-list	mt-edited	
+blanchir de l'argent	M	accuser	money laundering	investigator-list	mt-edited	
+compte off-shore	M	actor	offshore account	curated	mt-edited	
+compte offshore	M	actor	offshore account	curated	mt-edited	
+coquille vide	M	actor	shell company	investigator-list	mt-edited	
+destinataire final	M	accuser	ultimate consignee	fincen-bis-export-control	mt-edited	
+détournement de fonds	M	accuser	embezzl*	curated	mt-edited	
+détournement*	M	accuser	misappropriat*	curated	mt-edited	
+directeur prête-nom	M	actor	nominee director	curated	mt-edited	
+double usage	M	accuser	dual use	fincen-bis-export-control	mt-edited	
+enquête de la SEC	M	accuser	sec investigation	curated	mt-edited	
+enquête de l'AMF	M	accuser	sec investigation	curated	mt-edited	
+gros fixing	M	actor	big fixing	cftc-barclays-libor	mt-edited	
+liste des entités	M	accuser	entity list	fincen-bis-export-control	mt-edited	
+loi Sapin	M	accuser	bribery act	curated	mt-edited	
+manifestement faux	M	accuser	patently false	cftc-barclays-libor	mt-edited	
+personne politiquement exposée	M	accuser	politically exposed person	curated	mt-edited	
+prête-nom*	M	actor	nominee director	curated	mt-edited	
+réexpédition	M	accuser	transshipment	fincen-bis-export-control	mt-edited	
+société boîte aux lettres	M	actor	shell company	investigator-list	mt-edited	
+transbordement*	M	accuser	transshipment	fincen-bis-export-control	mt-edited	
+zone de libre-échange	M	accuser	free trade zone	fatf-egmont-tbml	mt-edited	
+zone franche	M	accuser	free trade zone	fatf-egmont-tbml	mt-edited	
+aussi haut que possible	L	actor	as high as possible	cftc-barclays-libor	mt-edited	
+bénéficiaire effectif	L	accuser	beneficial owner	curated	mt-edited	
+bénéficiaires effectifs	L	accuser	beneficial owner	curated	mt-edited	
+code SH	L	accuser	hs code	fincen-bis-export-control	mt-edited	
+détourn*	L	accuser	embezzl*	curated	mt-edited	
+dissimulation des fonds	L	accuser	layering	curated	mt-edited	
+empilement*	L	accuser	layering	curated	mt-edited	
+fractionnement*	L	actor	structuring	curated	mt-edited	
+LCB-FT	L	accuser	aml	curated	mt-edited	
+lutte contre le blanchiment	L	accuser	aml	curated	mt-edited	
+modèle de contrat	L	accuser	sample contract	fatf-egmont-tbml	mt-edited	
+montants ronds	L	actor	round amounts	fatf-egmont-tbml	mt-edited	
+nomenclature douanière	L	accuser	hs code	fincen-bis-export-control	mt-edited	
+PPE	L	accuser	politically exposed person	curated	mt-edited	
+tuyau	L	actor	tipping	sec-insider-trading-2026	mt-edited	
+tuyaux	L	actor	tipping	sec-insider-trading-2026	mt-edited	
+utilisateur final	L	accuser	end user	fincen-bis-export-control	mt-edited	
+utilisation finale	L	accuser	end use	fincen-bis-export-control	mt-edited	

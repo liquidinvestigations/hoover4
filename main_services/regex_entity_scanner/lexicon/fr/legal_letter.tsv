@@ -1,0 +1,49 @@
+term	tier	speaker	concept	source	review	note
+à compter de la date de la présente	H	neutral	of the date of this letter	curated	mt-edited	
+à défaut de quoi	H	neutral	failing which	curated	mt-edited	
+à réception de la présente	H	neutral	of the date of this letter	curated	mt-edited	
+au nom de notre client	H	neutral	on behalf of our client	curated	mt-edited	
+au nom de notre cliente	H	neutral	on behalf of our client	curated	mt-edited	
+cessation immédiate	H	accuser	cease and desist	curated	mt-edited	
+conserver l'ensemble des documents	H	neutral	preserve all documents	curated	mt-edited	
+conserver tous les documents	H	neutral	preserve all documents	curated	mt-edited	
+engager une procédure	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+faute de quoi	H	neutral	failing which	curated	mt-edited	
+introduire une action en justice	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+lettre de mise en demeure	H	neutral	letter before action	curated	mt-edited	
+lettre de réclamation	H	neutral	letter of claim	uk-cpr-pre-action	mt-edited	
+mise en demeure	H	neutral	letter before action	curated	mt-edited	
+mise en demeure de cesser	H	accuser	cease and desist	curated	mt-edited	
+nous agissons pour le compte de	H	neutral	we act on behalf of	curated	mt-edited	
+nous intervenons pour	H	neutral	we act for	curated	mt-edited	
+nous réservons nos droits	H	neutral	reserve our rights	curated	mt-edited	
+nous réservons tous nos droits	H	neutral	we reserve all rights	curated	mt-edited	
+nous vous demandons par la présente	H	neutral	we hereby demand	curated	mt-edited	
+nous vous mettons en demeure	H	neutral	we hereby demand	curated	mt-edited	
+pour le compte de notre client	H	neutral	on behalf of our client	curated	mt-edited	
+sous toutes réserves	H	neutral	reserve our rights	curated	mt-edited	
+sous toutes réserves de droit	H	neutral	we reserve all rights	curated	mt-edited	
+agir en justice	M	neutral	take legal action	curated	mt-edited	
+avocats au barreau	M	neutral	attorneys at law	curated	mt-edited	
+cabinet d'avocats	M	neutral	attorneys at law	curated	mt-edited	
+dans un délai de quinze jours	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+engager des poursuites	M	neutral	take legal action	curated	mt-edited	
+mode alternatif de règlement des différends	M	neutral	alternative dispute resolution	uk-cpr-pre-action	mt-edited	
+notre client	M	neutral	our client	curated	mt-edited	
+notre cliente	M	neutral	our client	curated	mt-edited	
+nous représentons	M	neutral	we act for	curated	mt-edited	
+poursuites judiciaires	M	neutral	legal proceedings	curated	mt-edited	
+procédure judiciaire	M	neutral	legal proceedings	curated	mt-edited	
+règlement amiable	M	neutral	alternative dispute resolution	uk-cpr-pre-action	mt-edited	
+saisir la justice	M	neutral	take legal action	curated	mt-edited	
+sans autre préavis	M	neutral	without further notice	curated	mt-edited	
+sans nouvel avis	M	neutral	without further notice	curated	mt-edited	
+sommation de payer	M	neutral	demand letter	curated	mt-edited	
+sous huitaine	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+sous quinzaine	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+votre client	M	neutral	your client	curated	mt-edited	
+votre cliente	M	neutral	your client	curated	mt-edited	
+avocats	L	neutral	solicitors	curated	mt-edited	
+je vous prie d'agréer	L	neutral	yours faithfully	curated	mt-edited	
+madame, monsieur	L	neutral	dear sir or madam	curated	mt-edited	
+veuillez agréer	L	neutral	yours faithfully	curated	mt-edited	

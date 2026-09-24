@@ -1,0 +1,33 @@
+term	tier	speaker	concept	source	review	note
+campagne de dénigrement	H	accuser	smear campaign	investigator-list	mt-edited	
+campagne de diffamation	H	accuser	smear campaign	investigator-list	mt-edited	
+je vais te ruiner	H	actor	ruin you	curated	mt-edited	
+te couler	H	actor	ruin you	curated	mt-edited	
+te détruire	H	actor	ruin you	curated	mt-edited	
+tu vas le regretter	H	actor	you will regret	curated	mt-edited	
+vous allez le regretter	H	actor	you will regret	curated	mt-edited	
+casse-toi	M	actor	piss off	curated	mt-edited	
+dégage	M	actor	piss off	curated	mt-edited	
+dénigr*	M	accuser	disparag*	investigator-list	mt-edited	
+ferme-la	M	actor	shut up	investigator-list	mt-edited	
+harcel*	M	accuser	harass*	curated	mt-edited	
+insinuation*	M	accuser	innuendo	investigator-list	mt-edited	
+sous-entendu*	M	accuser	innuendo	investigator-list	mt-edited	
+ta gueule	M	actor	shut up	investigator-list	mt-edited	
+tais-toi	M	actor	shut up	investigator-list	mt-edited	
+va te faire foutre	M	actor	screw you	curated	mt-edited	
+va te faire voir	M	actor	screw you	curated	mt-edited	
+bordel	L	actor	fuck	investigator-list	mt-edited	
+connard	L	actor	asshole	investigator-list	mt-edited	
+connards	L	actor	asshole	investigator-list	mt-edited	
+connerie	L	actor	bullshit	curated	mt-edited	
+conneries	L	actor	bullshit	curated	mt-edited	
+enfoiré*	L	actor	asshole	investigator-list	mt-edited	
+foutaises	L	actor	bullshit	curated	mt-edited	
+merde	L	actor	fuck	investigator-list	mt-edited	
+ne joue pas avec	L	actor	don't mess with	fca-hsbc-fx	mt-edited	
+ne te frotte pas à	L	actor	don't mess with	fca-hsbc-fx	mt-edited	
+ptin	L	actor	fck	fca-hsbc-fx	mt-edited	
+ptn	L	actor	fck	fca-hsbc-fx	mt-edited	
+putain	L	actor	fuck	investigator-list	mt-edited	
+salir	L	accuser	smear	investigator-list	mt-edited	

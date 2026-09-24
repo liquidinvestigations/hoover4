@@ -1,0 +1,44 @@
+term	tier	speaker	concept	source	review	note
+affidavit	H	neutral	affidavit	curated	original	
+aforesaid	H	neutral	aforesaid	curated	original	
+attorney-client privilege	H	neutral	attorney-client privilege	curated	original	
+covenant not to sue	H	neutral	covenant not to sue	cuad	original	CUAD
+hereinafter	H	neutral	hereinafter	curated	original	
+hereinbefore	H	neutral	hereinbefore	curated	original	
+hereto	H	neutral	hereto	curated	original	
+in the matter of	H	neutral	in the matter of	curated	original	
+in witness whereof	H	neutral	in witness whereof	curated	original	
+intention to be legally bound	H	neutral	intention to be legally bound	mou-definition	original	
+legally privileged	H	neutral	legally privileged	curated	original	
+notary public	H	neutral	notary public	curated	original	
+party of the first part	H	neutral	party of the first part	curated	original	
+power of attorney	H	neutral	power of attorney	curated	original	
+right of first offer	H	neutral	right of first offer	cuad	original	CUAD
+right of first refusal	H	neutral	right of first refusal	cuad	original	CUAD
+statutory declaration	H	neutral	statutory declaration	curated	original	
+sworn statement	H	neutral	sworn statement	curated	original	
+third party beneficiary	H	neutral	third party beneficiary	cuad	original	CUAD
+without prejudice	H	neutral	without prejudice	curated	original	
+aforementioned	M	neutral	aforementioned	curated	original	
+case no	M	neutral	case no	curated	original	case number header
+change of control	M	neutral	change of control	cuad	original	CUAD
+claimant	M	neutral	claimant	curated	original	
+court order	M	neutral	court order	curated	original	
+defendant	M	neutral	defendant	curated	original	
+docket	M	neutral	docket	curated	original	
+hereby	M	neutral	hereby	curated	original	
+legal counsel	M	neutral	legal counsel	curated	original	
+notarised	M	neutral	notarised	curated	original	
+notarized	M	neutral	notarized	curated	original	
+notwithstanding	M	neutral	notwithstanding	curated	original	
+offer and acceptance	M	neutral	offer and acceptance	mou-definition	original	
+plaintiff	M	neutral	plaintiff	investigator-list	original	legal documents; also a document-type signal
+pursuant to	M	neutral	pursuant to	curated	original	
+the undersigned	M	neutral	the undersigned	curated	original	
+therein	M	neutral	therein	curated	original	
+thereof	M	neutral	thereof	curated	original	
+whereas	M	neutral	whereas	curated	original	
+judgment	L	neutral	judgment	curated	original	
+respondent	L	neutral	respondent	curated	original	
+ruling	L	neutral	ruling	curated	original	
+statute	L	neutral	statute	curated	original	

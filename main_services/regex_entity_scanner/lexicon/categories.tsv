@@ -1,0 +1,24 @@
+id	title	catches	does_not_prove
+concealment	Concealment	Hiding facts, keeping them out of writing, destroying records, or moving a conversation to a channel that is not retained.	That anything was hidden. Confidentiality is routine, and secrecy words fill email disclaimers.
+accounting	Accounting manipulation	Earnings management, off-ledger entries, and false, backdated or disguised records.	A misstatement. Several of these phrases are also ordinary accounting vocabulary.
+bribery	Bribery and corruption	Euphemisms for improper payments, fees that disguise them, avoided controls, and collusion on tenders and prices.	That a payment was made, or that it was improper.
+rationalisation	Pressure, rationalisation and dissent	The human side of the fraud triangle: pressure to perform, financial distress, excuses, and the unease or objection of people asked to take part.	Wrongdoing. The writer may be the person refusing it.
+hostility	Hostility and intimidation	Profanity, insults, smears and intimidation that stops short of a physical threat.	A conflict of any legal significance.
+litigation	Legal exposure	Investigations, lawsuits, prosecution, regulators' actions and the preservation of documents.	That the writer is involved. Lawyers, compliance staff and journalists write these words.
+crime	Crime	Labels of illegality and the names of common offences.	That an offence took place. These are mostly the words of accusers, reporters and policies.
+financial_crime	Financial crime	Money laundering, sanctions and export-control evasion, market manipulation, insider dealing, tax fraud and embezzlement.	That an offence took place. Compliance training and policies use the same words.
+violence	Violence and terrorism	Physical threats, weapons, attacks and violent extremism.	A threat. News, fiction and figures of speech use the same words.
+sexual_misconduct	Sexual misconduct and exploitation	Harassment, assault, grooming and trafficking indicators, in the published legal and financial-intelligence vocabulary.	That misconduct occurred.
+coded_language	Coded language	Oblique references and documented code words from trading chat rooms and drug-trade slang.	Anything on its own. Most of these are everyday words and count only beside other signals.
+scam	Scam	Advance-fee, lottery, investment, romance and impersonation scripts.	That anyone was defrauded, or who wrote the script.
+marketing	Marketing and bulk mail	Unsubscribe footers, offers and newsletter furniture.	What kind of document this is. Transactional mail carries some of the same furniture.
+legal_document	Legal register	The drafting vocabulary of legal instruments, pleadings and sworn statements.	What kind of document this is. The vocabulary is quoted and discussed as often as it is used.
+contract	Contract	Clause headings and the operative language of contracts.	That a contract exists or was signed.
+legal_letter	Legal letter	Letters before action, demands, formal notices and correspondence between lawyers.	What kind of document this is. The vocabulary is quoted and discussed as often as it is used.
+memorandum	Memorandum of understanding	Memoranda of understanding, letters of intent, heads of terms and other instruments that state intent without binding.	That an agreement was reached.
+invoice	Invoice	Invoice fields and invoice types.	That a document is an invoice. Orders, statements and quotations share the fields.
+invoice_draft	Draft or superseded invoice	Pro forma, draft, corrected and partial invoices, and quotations.	Which version is final.
+invoice_final	Final invoice	Final and settled invoices, and receipts.	That payment was made.
+payment_proof	Proof of payment	Payment confirmations, remittance advices, and the fields of SWIFT MT103 and ISO 20022 payment messages.	That money moved. Payment screenshots and message copies are easy to forge.
+international_transfer	International transfer	Correspondent and intermediary banking, cross-border charges and purpose codes, money transfer operators and hawala.	That a transfer crossed a border. The validated IBAN and BIC entities are the stronger evidence.
+jurisdiction	Jurisdiction	Governing-law and forum clauses, courts, arbitral institutions, statutes and offshore centres.	Which law applies. A document names many places it is not governed by.

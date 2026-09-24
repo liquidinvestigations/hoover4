@@ -1,0 +1,11 @@
+term	tier	speaker	concept	source	review	note
+final construction invoice	H	neutral	final construction invoice	uncl1001	original	UNTDID 1001
+final invoice	H	neutral	final invoice	curated	original	
+final payment request	H	neutral	final payment request	uncl1001	original	UNTDID 1001
+paid in full	H	neutral	paid in full	curated	original	
+fiscal receipt	M	neutral	fiscal receipt	curated	original	
+invoice issued	M	neutral	invoice issued	curated	original	
+original invoice	M	neutral	original invoice	curated	original	
+payment received	M	neutral	payment received	curated	original	
+receipted	M	neutral	receipted	curated	original	
+paid	L	neutral	paid	curated	original	

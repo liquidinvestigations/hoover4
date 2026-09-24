@@ -1,0 +1,85 @@
+term	tier	speaker	concept	source	review	note
+accord parallèle	H	actor	side agreement	curated	mt-edited	
+anticiper le chiffre d'affaires	H	actor	pull earnings forward	investigator-list	mt-edited	
+anticiper les revenus	H	actor	pull earnings forward	investigator-list	mt-edited	
+antidaté	H	actor	backdate	investigator-list	mt-edited	
+antidatée	H	actor	backdate	investigator-list	mt-edited	
+antidater	H	actor	backdate	investigator-list	mt-edited	
+antidatés	H	actor	backdate	investigator-list	mt-edited	
+arranger les chiffres	H	actor	massage the numbers	curated	mt-edited	
+avancer le chiffre d'affaires	H	actor	pull earnings forward	investigator-list	mt-edited	
+bidouiller les chiffres	H	actor	massage the numbers	curated	mt-edited	
+bourrage des canaux de distribution	H	actor	channel stuffing	curated	mt-edited	
+comptabiliser par anticipation	H	actor	recognise it early	curated	mt-edited	
+comptes maquillés	H	actor	cook the books	curated	mt-edited	
+comptes truqués	H	actor	cook the books	curated	mt-edited	
+constater par anticipation	H	actor	recognise it early	curated	mt-edited	
+contre-lettre	H	actor	side agreement	curated	mt-edited	
+contre-lettres	H	actor	side agreement	curated	mt-edited	
+décaler les charges	H	actor	push out the expenses	curated	mt-edited	
+emploi fictif	H	actor	ghost employee	curated	mt-edited	
+emplois fictifs	H	actor	ghost employee	curated	mt-edited	
+facture fictive	H	actor	dummy invoice	curated	mt-edited	
+factures fictives	H	actor	dummy invoice	curated	mt-edited	
+faire le chiffre	H	actor	make the number	investigator-list	mt-edited	
+fausse facture	H	actor	fake invoice	curated	mt-edited	
+forcer le chiffre	H	actor	plug the number	curated	mt-edited	
+forcer l'écart	H	actor	plug the number	curated	mt-edited	
+fournisseur fictif	H	actor	phantom vendor	curated	mt-edited	
+fournisseurs fictifs	H	actor	phantom vendor	curated	mt-edited	
+gonflement des stocks des distributeurs	H	actor	channel stuffing	curated	mt-edited	
+hors comptabilité	H	actor	off the books	investigator-list	mt-edited	
+lettre parallèle	H	actor	side letter	curated	mt-edited	
+maquiller les chiffres	H	actor	massage the numbers	curated	mt-edited	
+maquiller les comptes	H	actor	cook the books	curated	mt-edited	
+non comptabilisé	H	actor	off the books	investigator-list	mt-edited	
+non comptabilisés	H	actor	off the books	investigator-list	mt-edited	
+opérations aller-retour	H	actor	round tripping	curated	mt-edited	
+reporter les charges	H	actor	push out the expenses	curated	mt-edited	
+repousser les dépenses	H	actor	push out the expenses	curated	mt-edited	
+réserve occulte	H	actor	cookie jar reserve	curated	mt-edited	
+salarié fictif	H	actor	ghost employee	curated	mt-edited	
+salariés fictifs	H	actor	ghost employee	curated	mt-edited	
+sauver le trimestre	H	actor	make the quarter	curated	mt-edited	
+tenir le chiffre	H	actor	make the number	investigator-list	mt-edited	
+transactions circulaires	H	actor	round tripping	curated	mt-edited	
+truquer les comptes	H	actor	cook the books	curated	mt-edited	
+au noir	M	actor	off the books	investigator-list	mt-edited	
+boucler le trimestre	M	actor	make the quarter	curated	mt-edited	
+capitaliser les dépenses	M	actor	capitalise the expense	curated	mt-edited	
+comptes retraités	M	accuser	restatement	curated	mt-edited	
+écriture manuelle	M	actor	manual journal entry	curated	mt-edited	
+écritures manuelles	M	actor	manual journal entry	curated	mt-edited	
+facturation sans livraison	M	actor	bill and hold	curated	mt-edited	
+facturé non livré	M	actor	bill and hold	curated	mt-edited	
+habillage des comptes	M	actor	window dressing	curated	mt-edited	
+habillage du bilan	M	actor	window dressing	curated	mt-edited	
+hors bilan	M	actor	off balance sheet	investigator-list	mt-edited	
+immobiliser les charges	M	actor	capitalise the expense	curated	mt-edited	
+lettre annexe	M	actor	side letter	curated	mt-edited	
+lissage des résultats	M	actor	smooth earnings	curated	mt-edited	
+lisser les résultats	M	actor	smooth earnings	curated	mt-edited	
+non déclaré	M	actor	unreported	investigator-list	mt-edited	
+non déclarée	M	actor	unreported	investigator-list	mt-edited	
+non déclarées	M	actor	unreported	investigator-list	mt-edited	
+non déclarés	M	actor	unreported	investigator-list	mt-edited	
+on corrigera plus tard	M	actor	fix it later	investigator-list	mt-edited	
+on régularisera après	M	actor	fix it later	investigator-list	mt-edited	
+on régularisera plus tard	M	actor	fix it later	investigator-list	mt-edited	
+passer en perte	M	actor	write off	investigator-list	mt-edited	
+passer en pertes	M	actor	write off	investigator-list	mt-edited	
+provisions excessives	M	actor	cookie jar reserve	curated	mt-edited	
+radier	M	actor	write off	investigator-list	mt-edited	
+retraitement des comptes	M	accuser	restatement	curated	mt-edited	
+sans facture	M	actor	off the books	investigator-list	mt-edited	
+combler l'écart	L	actor	close the gap	curated	mt-edited	
+comptes intersociétés	L	actor	intercompany accounts	doj-sec-fcpa-guide	mt-edited	
+comptes intragroupe	L	actor	intercompany accounts	doj-sec-fcpa-guide	mt-edited	
+dépenses diverses	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	mt-edited	
+frais divers	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	mt-edited	
+irrégularité*	L	actor	irregular	investigator-list	mt-edited	
+irrégulier	L	actor	irregular	investigator-list	mt-edited	
+marchandises gratuites	L	actor	free goods	doj-sec-fcpa-guide	mt-edited	
+petite caisse	L	actor	petty cash withdrawal	doj-sec-fcpa-guide	mt-edited	
+retrait de petite caisse	L	actor	petty cash withdrawal	doj-sec-fcpa-guide	mt-edited	
+unités gratuites	L	actor	free goods	doj-sec-fcpa-guide	mt-edited	

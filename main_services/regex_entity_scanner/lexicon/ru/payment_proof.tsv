@@ -1,0 +1,71 @@
+term	tier	speaker	concept	source	review	note
+авизо о переводе	H	neutral	remittance advice	curated	mt-edited	
+авизо о платеже	H	neutral	payment advice	curated	mt-edited	
+авизо о списании	H	neutral	debit advice	curated	mt-edited	
+банк бенефициара	H	neutral	account with institution	mt103-pacs008	mt-edited	
+банк отправителя	H	neutral	ordering institution	mt103-pacs008	mt-edited	
+банк плательщика	H	neutral	ordering institution	mt103-pacs008	mt-edited	
+банк получателя	H	neutral	account with institution	mt103-pacs008	mt-edited	
+дата валютировани*	H	neutral	value date	curated	mt-edited	
+дебетовое авизо	H	neutral	debit advice	curated	mt-edited	
+информация отправителя получателю	H	neutral	sender to receiver information	mt103-pacs008	mt-edited	
+квитанция о взносе	H	neutral	deposit slip	curated	mt-edited	
+комиссия отправителя	H	neutral	sender's charges	mt103-pacs008	mt-edited	
+комиссия получателя	H	neutral	receiver's charges	mt103-pacs008	mt-edited	
+копию свифта	H	neutral	swift copy	curated	mt-edited	
+копия MT103	H	neutral	mt103 copy	curated	mt-edited	
+копия SWIFT	H	neutral	swift copy	curated	mt-edited	
+копия свифта	H	neutral	mt103 copy	curated	mt-edited	
+отправитель перевода	H	neutral	ordering customer	curated	mt-edited	
+перевод выполнен	H	neutral	transfer successful	curated	mt-edited	
+перевод отправлен	H	neutral	transfer successful	curated	mt-edited	
+перевод успешно выполнен	H	neutral	transfer successful	curated	mt-edited	
+платежка	H	neutral	proof of payment	curated	mt-edited	
+платежку	H	neutral	proof of payment	curated	mt-edited	
+платежное авизо	H	neutral	payment advice	curated	mt-edited	
+платежное поручение	H	neutral	proof of payment	curated	mt-edited	
+подтверждение банковского перевода	H	neutral	wire confirmation	curated	mt-edited	
+подтверждение о переводе	H	neutral	transfer confirmation	curated	mt-edited	
+подтверждение оплаты	H	neutral	payment confirmation	curated	mt-edited	
+подтверждение перевода	H	neutral	payment confirmation	curated	mt-edited	
+подтверждение платежа	H	neutral	payment confirmation	curated	mt-edited	
+получатель платежа	H	neutral	beneficiary customer	curated	mt-edited	
+получатель средств	H	neutral	beneficiary customer	curated	mt-edited	
+приходный кассовый ордер	H	neutral	deposit slip	curated	mt-edited	
+расходы отправителя	H	neutral	sender's charges	mt103-pacs008	mt-edited	
+расходы получателя	H	neutral	receiver's charges	mt103-pacs008	mt-edited	
+референс отправителя	H	neutral	sender's reference	mt103-pacs008	mt-edited	
+свифт-копия	H	neutral	mt103 copy	curated	mt-edited	
+сумма поручения	H	neutral	instructed amount	mt103-pacs008	mt-edited	
+уведомление о переводе	H	neutral	remittance advice	curated	mt-edited	
+ID транзакции	M	neutral	transaction id	curated	mt-edited	
+банковский перевод	M	neutral	wire transfer	curated	mt-edited	
+бенефициар*	M	neutral	beneficiary	curated	mt-edited	
+деньги переведены	M	neutral	funds transferred	curated	mt-edited	
+идентификатор транзакции	M	neutral	transaction id	curated	mt-edited	
+квитанция №	M	neutral	receipt no	curated	mt-edited	
+назначение платежа	M	neutral	remittance information	mt103-pacs008	mt-edited	
+номер квитанции	M	neutral	receipt no	curated	mt-edited	
+номер операции	M	neutral	transaction reference	curated	mt-edited	
+номер транзакции	M	neutral	transaction id	curated	mt-edited	
+оплата прошла	M	neutral	payment successful	curated	mt-edited	
+оплата прошла успешно	M	neutral	payment successful	curated	mt-edited	
+платеж проведен	M	neutral	payment successful	curated	mt-edited	
+подтверждение получения	M	neutral	acknowledgement of receipt	curated	mt-edited	
+поступили на счет	M	neutral	has been credited	curated	mt-edited	
+референс транзакции	M	neutral	transaction reference	curated	mt-edited	
+списаны со счета	M	neutral	has been debited	curated	mt-edited	
+средства перечислены	M	neutral	funds transferred	curated	mt-edited	
+счет плательщика	M	neutral	debit account	curated	mt-edited	
+счет списания	M	neutral	debit account	curated	mt-edited	
+уведомление о вручении	M	neutral	acknowledgement of receipt	curated	mt-edited	
+чек №	M	neutral	receipt no	curated	mt-edited	
+безналичный перевод	L	neutral	wire transfer	curated	mt-edited	
+зачислен*	L	neutral	has been credited	curated	mt-edited	
+инициатор перевода	L	neutral	originator	curated	mt-edited	
+отправитель	L	neutral	originator	curated	mt-edited	
+перечислены	L	neutral	funds transferred	curated	mt-edited	
+плательщик	L	neutral	ordering customer	curated	mt-edited	
+получатель	L	neutral	beneficiary	curated	mt-edited	
+списан*	L	neutral	has been debited	curated	mt-edited	
+сумма перевода	L	neutral	instructed amount	mt103-pacs008	mt-edited	

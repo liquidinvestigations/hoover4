@@ -1,0 +1,50 @@
+term	tier	speaker	concept	source	review	note
+акция заканчивается	H	neutral	sale ends	curated	mt-edited	
+больше не хотите получать	H	neutral	no longer wish to receive	curated	mt-edited	
+веб-версия	H	neutral	view in browser	curated	mt-edited	
+вы получаете это письмо	H	neutral	you are receiving this email because	curated	mt-edited	
+вы получили это письмо, потому что	H	neutral	you are receiving this email because	curated	mt-edited	
+действуйте сейчас	H	neutral	act now	curated	mt-edited	
+изменить настройки рассылки	H	neutral	manage your preferences	curated	mt-edited	
+настройки подписки	H	neutral	email preferences	curated	mt-edited	
+настройки рассылки	H	neutral	email preferences	curated	mt-edited	
+не хотите получать	H	neutral	no longer wish to receive	curated	mt-edited	
+ограниченное предложение	H	neutral	limited time offer	curated	mt-edited	
+отказаться от рассылки	H	neutral	unsubscribe	curated	mt-edited	
+открыть в браузере	H	neutral	view in browser	curated	mt-edited	
+открыть письмо в браузере	H	neutral	view this email in your browser	curated	mt-edited	
+отписаться	H	neutral	unsubscribe	curated	mt-edited	
+предложение ограничено	H	neutral	limited time offer	curated	mt-edited	
+промо-код*	H	neutral	promo code	curated	mt-edited	
+промокод*	H	neutral	promo code	curated	mt-edited	
+распродажа заканчивается	H	neutral	sale ends	curated	mt-edited	
+управлять подпиской	H	neutral	manage your preferences	curated	mt-edited	
+успейте	M	neutral	act now	curated	mt-edited	
+успейте до	H	neutral	sale ends	curated	mt-edited	
+бесплатная доставка	M	neutral	free shipping	curated	mt-edited	
+жмите сюда	M	neutral	click here	curated	mt-edited	
+заказать сейчас	M	neutral	buy now	curated	mt-edited	
+код скидки	M	neutral	discount code	curated	mt-edited	
+купите сейчас	M	neutral	buy now	curated	mt-edited	
+купить сейчас	M	neutral	buy now	curated	mt-edited	
+нажмите здесь	M	neutral	click here	curated	mt-edited	
+не пропустите	M	neutral	don't miss out	curated	mt-edited	
+не упустите	M	neutral	don't miss out	curated	mt-edited	
+отписка	M	neutral	unsubscribe	curated	mt-edited	
+перейдите по ссылке	M	neutral	click here	curated	mt-edited	
+процентная скидка	M	neutral	percent off	curated	mt-edited	
+процентов скидки	M	neutral	percent off	curated	mt-edited	
+реклама	L	neutral	advertisement	curated	mt-edited	
+рекламное сообщение	M	neutral	advertisement	curated	mt-edited	
+скидочный код	M	neutral	discount code	curated	mt-edited	
+специальное предложение	M	neutral	special offer	curated	mt-edited	
+спецпредложение	M	neutral	special offer	curated	mt-edited	
+эксклюзивное предложение	M	neutral	exclusive deal	curated	mt-edited	
+вебинар*	L	neutral	webinar	curated	mt-edited	
+на правах рекламы	L	neutral	sponsored	curated	mt-edited	
+новостная рассылка	L	neutral	newsletter	curated	mt-edited	
+подписаться	L	neutral	subscribe	curated	mt-edited	
+подпишитесь	L	neutral	subscribe	curated	mt-edited	
+рассылка	L	neutral	newsletter	curated	mt-edited	
+рассылки	L	neutral	newsletter	curated	mt-edited	
+спонсорский	L	neutral	sponsored	curated	mt-edited	

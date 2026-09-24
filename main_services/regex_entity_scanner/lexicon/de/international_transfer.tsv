@@ -1,0 +1,33 @@
+term	tier	speaker	concept	source	review	note
+Auslandszahlung*	H	neutral	cross-border payment	curated	mt-edited	
+Deckungszahlung*	H	neutral	cover payment	mt103-pacs008	mt-edited	
+Endbegünstigter*	H	neutral	ultimate beneficiary	curated	mt-edited	
+Entgeltregelung*	H	neutral	details of charges	curated	mt-edited	
+grenzüberschreitende Zahlung*	H	neutral	cross-border payment	curated	mt-edited	
+Hawala*	H	neutral	hawala	curated	mt-edited	
+Intermediärbank*	H	neutral	intermediary bank	curated	mt-edited	
+Korrespondenzbank des Auftraggebers	H	neutral	sender's correspondent	mt103-pacs008	mt-edited	
+Korrespondenzbank*	H	neutral	correspondent bank	curated	mt-edited	
+letztendlicher Begünstigter	H	neutral	ultimate beneficiary	curated	mt-edited	
+Spesenregelung*	H	neutral	details of charges	curated	mt-edited	
+Zahlungszweck*	H	neutral	purpose of payment	curated	mt-edited	
+Zwischenbank*	H	neutral	intermediary bank	curated	mt-edited	
+zwischengeschaltete Bank	H	neutral	intermediary bank	curated	mt-edited	
+zwischengeschaltetes Institut	H	neutral	intermediary institution	mt103-pacs008	mt-edited	
+Auftraggeberbank*	M	neutral	sending bank	curated	mt-edited	
+BIC-Code*	M	neutral	swift code	curated	mt-edited	
+Devisenkurs*	M	neutral	fx rate	curated	mt-edited	
+empfangende Bank	M	neutral	receiving bank	curated	mt-edited	
+Gebühren zu Lasten des Auftraggebers	M	neutral	our charges	curated	mt-edited	
+grenzüberschreitend*	M	neutral	cross-border	curated	mt-edited	
+sendende Bank	M	neutral	sending bank	curated	mt-edited	
+SEPA-Überweisung*	M	neutral	sepa	curated	mt-edited	
+Spesen zu unseren Lasten	M	neutral	our charges	curated	mt-edited	
+SWIFT-Code*	M	neutral	swift code	curated	mt-edited	
+Zahlungszweckschlüssel*	M	neutral	purpose code	curated	mt-edited	
+Zweckcode*	M	neutral	purpose code	curated	mt-edited	
+Bankleitzahl*	L	neutral	sort code	curated	mt-edited	
+BLZ	L	neutral	sort code	curated	mt-edited	
+Rücküberweisung*	L	neutral	remittance	curated	mt-edited	
+Wechselkurs*	L	neutral	fx rate	curated	mt-edited	
+wirtschaftlich Berechtigter	L	neutral	ultimate beneficiary	curated	mt-edited	

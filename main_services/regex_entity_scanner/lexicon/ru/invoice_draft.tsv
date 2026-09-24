@@ -1,0 +1,42 @@
+term	tier	speaker	concept	source	review	note
+взамен счета	H	neutral	replaces invoice	curated	mt-edited	
+заменяет счет	H	neutral	replaces invoice	curated	mt-edited	
+не является налоговой накладной	H	neutral	not a tax invoice	curated	mt-edited	
+не является счетом-фактурой	H	neutral	not a tax invoice	curated	mt-edited	
+проект не для	H	neutral	draft not for	curated	mt-edited	
+проект счета	H	neutral	draft invoice	curated	mt-edited	
+промежуточный счет	H	neutral	partial invoice	uncl1001	mt-edited	
+проформ*	H	neutral	pro forma	curated	mt-edited	
+проформа-инвойс	H	neutral	proforma invoice	curated	mt-edited	
+счет на аванс	H	neutral	prepayment invoice	uncl1001	mt-edited	
+счет на авансовый платеж	H	neutral	prepayment invoice	uncl1001	mt-edited	
+счет на предоплату	H	neutral	prepayment invoice	uncl1001	mt-edited	
+счет-проформа	H	neutral	proforma invoice	curated	mt-edited	
+частичный счет	H	neutral	partial invoice	uncl1001	mt-edited	
+черновик не для	H	neutral	draft not for	curated	mt-edited	
+черновик счета	H	neutral	draft invoice	curated	mt-edited	
+измененный счет	M	neutral	revised invoice	curated	mt-edited	
+исправленный счет	M	neutral	corrected invoice	curated	mt-edited	
+коммерческое предложение	M	neutral	quotation	curated	mt-edited	
+корректировочный счет	M	neutral	corrected invoice	curated	mt-edited	
+на согласование	M	neutral	for approval	curated	mt-edited	
+на утверждение	M	neutral	for approval	curated	mt-edited	
+отменяет и заменяет	M	neutral	supersedes	curated	mt-edited	
+пересмотренный счет	M	neutral	revised invoice	curated	mt-edited	
+ценовое предложение	M	neutral	quotation	curated	mt-edited	
+аннулирован*	L	neutral	void	curated	mt-edited	
+заменяет	L	neutral	supersedes	curated	mt-edited	
+измененн*	L	neutral	amended	fatf-egmont-tbml	mt-edited	
+котировк*	L	neutral	quotation	curated	mt-edited	
+на проверку	L	neutral	for review	curated	mt-edited	
+на рассмотрение	L	neutral	for review	curated	mt-edited	
+недействителен	L	neutral	void	curated	mt-edited	
+оценк*	L	neutral	estimate	curated	mt-edited	
+пересмотренн*	L	neutral	revised	curated	mt-edited	
+предварительн*	L	neutral	provisional	curated	mt-edited	
+проект	L	neutral	draft	curated	mt-edited	
+редакци*	L	neutral	revised	curated	mt-edited	
+смета	L	neutral	estimate	curated	mt-edited	
+смету	L	neutral	estimate	curated	mt-edited	
+сметы	L	neutral	estimate	curated	mt-edited	
+черновик*	L	neutral	draft	curated	mt-edited	

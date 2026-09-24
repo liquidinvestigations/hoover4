@@ -1,0 +1,82 @@
+term	tier	speaker	concept	source	review	note
+в обход бухгалтерии	H	actor	off the books	investigator-list	mt-edited	
+вне учета	H	actor	off the books	investigator-list	mt-edited	
+вытянуть квартал	H	actor	make the quarter	curated	mt-edited	
+вытянуть план	H	actor	make the number	investigator-list	mt-edited	
+датировали задним числом	H	actor	backdate	investigator-list	mt-edited	
+датировать задним числом	H	actor	backdate	investigator-list	mt-edited	
+досрочно признать	H	actor	recognise it early	curated	mt-edited	
+досрочно признать выручку	H	actor	pull earnings forward	investigator-list	mt-edited	
+затоваривание дилеров	H	actor	channel stuffing	curated	mt-edited	
+затоваривание дистрибьюторов	H	actor	channel stuffing	curated	mt-edited	
+круговые сделки	H	actor	round tripping	curated	mt-edited	
+липовые счета	H	actor	fake invoice	curated	mt-edited	
+липовый счет	H	actor	fake invoice	curated	mt-edited	
+мертвые души	H	actor	ghost employee	curated	mt-edited	
+нарисовать отчетность	H	actor	cook the books	curated	mt-edited	
+нарисовать цифры	H	actor	massage the numbers	curated	mt-edited	
+негласное соглашение	H	actor	side agreement	curated	mt-edited	
+неучтенку	H	actor	off the books	investigator-list	mt-edited	
+неучтенные деньги	H	actor	off the books	investigator-list	mt-edited	
+перенести выручку	H	actor	pull earnings forward	investigator-list	mt-edited	
+перенести расходы	H	actor	push out the expenses	curated	mt-edited	
+побочное письмо	H	actor	side letter	curated	mt-edited	
+подгонять цифры	H	actor	massage the numbers	curated	mt-edited	
+подделать отчетность	H	actor	cook the books	curated	mt-edited	
+подделывать отчетность	H	actor	cook the books	curated	mt-edited	
+поддельные счета	H	actor	fake invoice	curated	mt-edited	
+поддельный счет	H	actor	fake invoice	curated	mt-edited	
+подкрутить цифры	H	actor	massage the numbers	curated	mt-edited	
+подогнать под цифру	H	actor	plug the number	curated	mt-edited	
+подогнать цифру	H	actor	plug the number	curated	mt-edited	
+подогнать цифры	H	actor	massage the numbers	curated	mt-edited	
+подставной поставщик	H	actor	phantom vendor	curated	mt-edited	
+подтянуть выручку	H	actor	pull earnings forward	investigator-list	mt-edited	
+признать досрочно	H	actor	recognise it early	curated	mt-edited	
+рисовать отчетность	H	actor	cook the books	curated	mt-edited	
+сайд-леттер	H	actor	side letter	curated	mt-edited	
+сделать план	H	actor	make the number	investigator-list	mt-edited	
+сделки по кругу	H	actor	round tripping	curated	mt-edited	
+скрытый резерв	H	actor	cookie jar reserve	curated	mt-edited	
+спасти квартал	H	actor	make the quarter	curated	mt-edited	
+тайное соглашение	H	actor	side agreement	curated	mt-edited	
+фиктивного поставщика	H	actor	phantom vendor	curated	mt-edited	
+фиктивной счет-фактуры	H	actor	dummy invoice	curated	mt-edited	
+фиктивные сотрудники	H	actor	ghost employee	curated	mt-edited	
+фиктивный поставщик	H	actor	phantom vendor	curated	mt-edited	
+фиктивный сотрудник	H	actor	ghost employee	curated	mt-edited	
+фиктивный счет	H	actor	dummy invoice	curated	mt-edited	
+черная бухгалтерия	H	actor	off the books	investigator-list	mt-edited	
+внебалансов*	M	actor	off balance sheet	investigator-list	mt-edited	
+выставить счет без отгрузки	M	actor	bill and hold	curated	mt-edited	
+задним числом	M	actor	backdate	investigator-list	mt-edited	
+исправим потом	M	actor	fix it later	investigator-list	mt-edited	
+капитализировать расходы	M	actor	capitalise the expense	curated	mt-edited	
+незадекларированн*	M	actor	unreported	investigator-list	mt-edited	
+неучтенн*	M	actor	unreported	investigator-list	mt-edited	
+отложить расходы	M	actor	push out the expenses	curated	mt-edited	
+пересмотр отчетности	M	accuser	restatement	curated	mt-edited	
+пересчет отчетности	M	accuser	restatement	curated	mt-edited	
+поправим потом	M	actor	fix it later	investigator-list	mt-edited	
+потом исправим	M	actor	fix it later	investigator-list	mt-edited	
+приукрашивание отчетности	M	actor	window dressing	curated	mt-edited	
+ручная проводка	M	actor	manual journal entry	curated	mt-edited	
+ручной проводкой	M	actor	manual journal entry	curated	mt-edited	
+ручные проводки	M	actor	manual journal entry	curated	mt-edited	
+сгладить прибыль	M	actor	smooth earnings	curated	mt-edited	
+сглаживание прибыли	M	actor	smooth earnings	curated	mt-edited	
+скрытые резервы	M	actor	cookie jar reserve	curated	mt-edited	
+списали	L	actor	write off	investigator-list	mt-edited	
+списать	L	actor	write off	investigator-list	mt-edited	
+счет без отгрузки	M	actor	bill and hold	curated	mt-edited	
+украшение баланса	M	actor	window dressing	curated	mt-edited	
+черный нал	M	actor	off the books	investigator-list	mt-edited	
+бесплатные товары	L	actor	free goods	doj-sec-fcpa-guide	mt-edited	
+бесплатный товар	L	actor	free goods	doj-sec-fcpa-guide	mt-edited	
+внутригрупповые расчеты	L	actor	intercompany accounts	doj-sec-fcpa-guide	mt-edited	
+внутригрупповые счета	L	actor	intercompany accounts	doj-sec-fcpa-guide	mt-edited	
+закрыть разрыв	L	actor	close the gap	curated	mt-edited	
+нарушения в учете	L	actor	irregular	investigator-list	mt-edited	
+подотчетные наличные	L	actor	petty cash withdrawal	doj-sec-fcpa-guide	mt-edited	
+прочие расходы	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	mt-edited	
+снятие из кассы	L	actor	petty cash withdrawal	doj-sec-fcpa-guide	mt-edited	

@@ -1,0 +1,106 @@
+term	tier	speaker	concept	source	review	note
+все так делают	H	insider	everybody does it	curated	mt-edited	
+выполнял приказ	H	insider	just following orders	curated	mt-edited	
+давление сверху	H	insider	pressure from above	curated	mt-edited	
+меня уволят	H	insider	my job is on the line	curated	mt-edited	
+мне мало платят	H	insider	they don't pay me enough	ey-fbi-2013	mt-edited	
+мне недоплачивают	H	insider	they don't pay me enough	ey-fbi-2013	mt-edited	
+мне это не нравится	H	insider	this doesn't feel right	curated	mt-edited	
+мне это положено	H	insider	they owe it to me	investigator-list	mt-edited	
+моя премия зависит от этого	H	insider	my bonus depends on this	ey-fbi-2013	mt-edited	
+моя работа на кону	H	insider	my job is on the line	curated	mt-edited	
+мы вернем	H	insider	we'll pay it back	curated	mt-edited	
+на меня давят	H	insider	bosses are pushing me	ey-fbi-2013	mt-edited	
+написать в ЦБ	H	accuser	go to the regulator	curated	mt-edited	
+начальство давит	H	insider	bosses are pushing me	ey-fbi-2013	mt-edited	
+не заметят пропажи	H	insider	won't miss it	investigator-list	mt-edited	
+никому не вредит	H	insider	not hurting anyone	investigator-list	mt-edited	
+никому от этого не хуже	H	insider	not hurting anyone	investigator-list	mt-edited	
+никто не пострадает	H	insider	nobody gets hurt	curated	mt-edited	
+обратиться в прокуратуру	H	accuser	go to the regulator	curated	mt-edited	
+они не заметят	H	insider	they'll never notice	curated	mt-edited	
+они не хватятся	H	insider	won't miss it	investigator-list	mt-edited	
+от этого зависит моя премия	H	insider	my bonus depends on this	ey-fbi-2013	mt-edited	
+пойти к регулятору	H	accuser	go to the regulator	curated	mt-edited	
+потом вернем	H	insider	we'll pay it back	curated	mt-edited	
+просто взял в долг	H	insider	just borrowing	curated	mt-edited	
+так все делают	H	insider	everybody does it	curated	mt-edited	
+технически законно	H	insider	technically legal	curated	mt-edited	
+указание сверху	H	insider	pressure from above	curated	mt-edited	
+формально законно	H	insider	technically legal	curated	mt-edited	
+что-то здесь не так	H	insider	this doesn't feel right	curated	mt-edited	
+я в этом не участвую	H	insider	want no part of this	investigator-list	mt-edited	
+я на такое не подписывался	H	insider	i didn't sign up for this	curated	mt-edited	
+я на это не подписывался	H	insider	i didn't sign up for this	curated	mt-edited	
+я не хочу в этом участвовать	H	insider	want no part of this	investigator-list	mt-edited	
+я просто выполнял указания	H	insider	just following orders	curated	mt-edited	
+я просто одолжил	H	insider	just borrowing	curated	mt-edited	
+без пострадавших	M	insider	victimless	curated	mt-edited	
+в порядке исключения	M	insider	just this once	curated	mt-edited	
+велел мне	M	insider	told me to	investigator-list	mt-edited	
+выполнить план	M	insider	reach the numbers	ey-fbi-2013	mt-edited	
+горячая линия	M	accuser	whistleblower hotline	ey-fbi-2013	mt-edited	
+информатор	M	accuser	whistleblower	curated	mt-edited	
+кассовый разрыв	M	insider	cash crunch	curated	mt-edited	
+красный флаг	M	accuser	red flag	investigator-list	mt-edited	
+линия доверия	M	accuser	whistleblower hotline	ey-fbi-2013	mt-edited	
+мне было поручено	M	insider	i was instructed to	curated	mt-edited	
+мне велели	M	insider	i was instructed to	curated	mt-edited	
+мне должны	M	insider	they owe me	ey-fbi-2013	mt-edited	
+мне не по себе	M	insider	i'm uneasy	curated	mt-edited	
+мне некомфортно	M	insider	not comfortable	investigator-list	mt-edited	
+мне неспокойно	M	insider	i'm uneasy	curated	mt-edited	
+мне поручили	M	insider	i was instructed to	curated	mt-edited	
+не имеем права	M	insider	don't have the right	investigator-list	mt-edited	
+не имею права	M	insider	don't have the right	investigator-list	mt-edited	
+не по себе	M	insider	not comfortable	investigator-list	mt-edited	
+не этично	M	accuser	not ethical	investigator-list	mt-edited	
+непрерывность деятельности	M	accuser	going concern	curated	mt-edited	
+нереальный план	M	insider	the goal is very high	ey-fbi-2013	mt-edited	
+неудачная инвестиция	M	insider	failed investment	investigator-list	mt-edited	
+неудачные инвестиции	M	insider	failed investment	investigator-list	mt-edited	
+нехватка денег	M	insider	cash crunch	curated	mt-edited	
+неэтично	M	accuser	not ethical	investigator-list	mt-edited	
+они мне должны	M	insider	they owe it to me	investigator-list	mt-edited	
+осведомитель	M	accuser	whistleblower	curated	mt-edited	
+перейти черту	M	insider	crossing the line	curated	mt-edited	
+переходить черту	M	insider	crossing the line	curated	mt-edited	
+перешли черту	M	insider	crossing the line	curated	mt-edited	
+план очень высокий	M	insider	the goal is very high	ey-fbi-2013	mt-edited	
+подстраховаться	M	insider	cover myself	curated	mt-edited	
+прикрыть себя	M	insider	cover myself	curated	mt-edited	
+провальная инвестиция	M	insider	failed investment	investigator-list	mt-edited	
+прошу зафиксировать	M	insider	i want it noted	curated	mt-edited	
+разоблачитель	M	accuser	whistleblower	curated	mt-edited	
+сделать цифры	M	insider	reach the numbers	ey-fbi-2013	mt-edited	
+серая зона	M	insider	grey area	investigator-list	mt-edited	
+серой зоне	M	insider	grey area	investigator-list	mt-edited	
+сказал мне	M	insider	told me to	investigator-list	mt-edited	
+так нельзя	M	insider	this isn't right	curated	mt-edited	
+только в этот раз	M	insider	just this once	curated	mt-edited	
+тревожный сигнал	M	accuser	red flag	investigator-list	mt-edited	
+у меня нет выбора	M	insider	i have no choice	curated	mt-edited	
+угроза банкротства	M	accuser	going concern	curated	mt-edited	
+хочу чтобы это было зафиксировано	M	insider	i want it noted	curated	mt-edited	
+это неправильно	M	insider	this isn't right	curated	mt-edited	
+я возражаю	M	accuser	i object	curated	mt-edited	
+я не согласен с таким подходом	M	accuser	i disagree with this approach	cftc-barclays-libor	mt-edited	
+я отказываюсь	M	accuser	i refuse to	curated	mt-edited	
+я против	M	accuser	i object	curated	mt-edited	
+я против такого подхода	M	accuser	i disagree with this approach	cftc-barclays-libor	mt-edited	
+банкрот*	L	insider	bankrupt	investigator-list	mt-edited	
+для галочки	L	insider	for the record	curated	mt-edited	
+для протокола	L	insider	for the record	curated	mt-edited	
+закрытие	L	insider	shutdown	investigator-list	mt-edited	
+лазейк*	L	insider	loophole	curated	mt-edited	
+не жалею	L	insider	no regrets	investigator-list	mt-edited	
+неловк*	L	insider	embarrassing	investigator-list	mt-edited	
+неохотно	L	insider	reluctantly	cftc-barclays-libor	mt-edited	
+никаких сожалений	L	insider	no regrets	investigator-list	mt-edited	
+остановка производства	L	insider	shutdown	investigator-list	mt-edited	
+подозрительн*	L	accuser	suspicious	investigator-list	mt-edited	
+позорн*	L	insider	embarrassing	investigator-list	mt-edited	
+разорен*	L	insider	bankrupt	investigator-list	mt-edited	
+серьезные опасения	L	accuser	serious concerns	cftc-barclays-libor	mt-edited	
+серьезные сомнения	L	accuser	serious concerns	cftc-barclays-libor	mt-edited	
+скрепя сердце	L	insider	reluctantly	cftc-barclays-libor	mt-edited	

@@ -1,0 +1,91 @@
+term	tier	speaker	concept	source	review	note
+an der Buchhaltung vorbei	H	actor	off the books	investigator-list	mt-edited	
+Aufwand verschieben	H	actor	push out the expenses	curated	mt-edited	
+Bilanz frisieren	H	actor	cook the books	curated	mt-edited	
+Bilanzen frisieren	H	actor	cook the books	curated	mt-edited	
+Bücher fälschen	H	actor	cook the books	curated	mt-edited	
+Bücher frisieren	H	actor	cook the books	curated	mt-edited	
+das Quartal retten	H	actor	make the quarter	curated	mt-edited	
+das Quartal schaffen	H	actor	make the quarter	curated	mt-edited	
+die Zahl hinbiegen	H	actor	plug the number	curated	mt-edited	
+die Zahl schaffen	H	actor	make the number	investigator-list	mt-edited	
+die Zahlen bringen	H	actor	make the number	investigator-list	mt-edited	
+die Zahlen schaffen	H	actor	make the number	investigator-list	mt-edited	
+Erlöse vorziehen	H	actor	pull earnings forward	investigator-list	mt-edited	
+fiktiven Lieferant*	H	actor	phantom vendor	curated	mt-edited	
+fiktiver Lieferant	H	actor	phantom vendor	curated	mt-edited	
+frisierte Bilanz	H	actor	cook the books	curated	mt-edited	
+früher verbuchen	H	actor	recognise it early	curated	mt-edited	
+gefälschte Rechnung	H	actor	fake invoice	curated	mt-edited	
+gefälschten Rechnung*	H	actor	fake invoice	curated	mt-edited	
+geheime Nebenvereinbarung*	H	actor	side agreement	curated	mt-edited	
+Geistermitarbeiter*	H	actor	ghost employee	curated	mt-edited	
+Gewinne vorziehen	H	actor	pull earnings forward	investigator-list	mt-edited	
+Kosten ins nächste Jahr schieben	H	actor	push out the expenses	curated	mt-edited	
+Kosten verschieben	H	actor	push out the expenses	curated	mt-edited	
+Kreisgeschäft*	H	actor	round tripping	curated	mt-edited	
+Luftrechnung*	H	actor	fake invoice	curated	mt-edited	
+Nebenabrede*	H	actor	side agreement	curated	mt-edited	
+Nebenbrief*	H	actor	side letter	curated	mt-edited	
+nicht verbucht	H	actor	off the books	investigator-list	mt-edited	
+ohne Beleg	H	actor	off the books	investigator-list	mt-edited	
+Polster für schlechte Zeiten	H	actor	cookie jar reserve	curated	mt-edited	
+Rechnungsfälschung*	H	actor	fake invoice	curated	mt-edited	
+rückdatier*	H	actor	backdate	investigator-list	mt-edited	
+Scheinangestellte*	H	actor	ghost employee	curated	mt-edited	
+Scheinbeschäftigt*	H	actor	ghost employee	curated	mt-edited	
+Scheinfirma als Lieferant	H	actor	phantom vendor	curated	mt-edited	
+Scheinlieferant*	H	actor	phantom vendor	curated	mt-edited	
+schwarze Kasse	H	actor	off the books	investigator-list	mt-edited	
+schwarzen Kasse*	H	actor	off the books	investigator-list	mt-edited	
+Top-Side-Anpassung*	H	actor	topside adjustment	curated	mt-edited	
+Top-Side-Buchung*	H	actor	top-side entry	curated	mt-edited	
+Topside-Anpassung*	H	actor	topside adjustment	curated	mt-edited	
+Topside-Buchung*	H	actor	top-side entry	curated	mt-edited	
+Umsatz vorziehen	H	actor	pull earnings forward	investigator-list	mt-edited	
+Umsätze vorziehen	H	actor	pull earnings forward	investigator-list	mt-edited	
+vorzeitig realisieren	H	actor	recognise it early	curated	mt-edited	
+vorzeitig verbuchen	H	actor	recognise it early	curated	mt-edited	
+Zahlen frisieren	H	actor	massage the numbers	curated	mt-edited	
+Zahlen hinbiegen	H	actor	massage the numbers	curated	mt-edited	
+Zahlen schönen	H	actor	massage the numbers	curated	mt-edited	
+Zahlen schönrechnen	H	actor	massage the numbers	curated	mt-edited	
+zurückdatier*	H	actor	backdate	investigator-list	mt-edited	
+abgeschrieben	M	actor	write off	investigator-list	mt-edited	
+abschreiben	M	actor	write off	investigator-list	mt-edited	
+Abschreibung*	M	actor	writeoff	curated	mt-edited	
+Aufwand aktivieren	M	actor	capitalise the expense	curated	mt-edited	
+ausbuchen	M	actor	write off	investigator-list	mt-edited	
+außerbilanziell*	M	actor	off balance sheet	investigator-list	mt-edited	
+Bilanzkorrektur*	M	accuser	restatement	curated	mt-edited	
+Bilanzkosmetik	M	actor	window dressing	curated	mt-edited	
+das biegen wir später gerade	M	actor	fix it later	investigator-list	mt-edited	
+das korrigieren wir später	M	actor	fix it later	investigator-list	mt-edited	
+die Differenz ausbuchen	M	actor	plug the number	curated	mt-edited	
+Ergebnisglättung	M	actor	smooth earnings	curated	mt-edited	
+Gewinne glätten	M	actor	smooth earnings	curated	mt-edited	
+Gewinnglättung	M	actor	smooth earnings	curated	mt-edited	
+Karussellgeschäft*	M	actor	round tripping	curated	mt-edited	
+korrigieren wir später	M	actor	fix it later	investigator-list	mt-edited	
+Kosten aktivieren	M	actor	capitalise the expense	curated	mt-edited	
+manuelle Buchung	M	actor	manual journal entry	curated	mt-edited	
+manuelle Buchungen	M	actor	manual journal entry	curated	mt-edited	
+Neudarstellung der Abschlüsse	M	accuser	restatement	curated	mt-edited	
+nicht deklariert	M	actor	unreported	investigator-list	mt-edited	
+nicht gemeldet	M	actor	unreported	investigator-list	mt-edited	
+nicht versteuert	M	actor	unreported	investigator-list	mt-edited	
+ohne Rechnung	M	actor	off the books	investigator-list	mt-edited	
+die Lücke schließen	L	actor	close the gap	curated	mt-edited	
+diverse Ausgaben	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	mt-edited	
+Entnahme aus der Portokasse	L	actor	petty cash withdrawal	doj-sec-fcpa-guide	mt-edited	
+Gratisware*	L	actor	free goods	doj-sec-fcpa-guide	mt-edited	
+konzerninterne Konten	L	actor	intercompany accounts	doj-sec-fcpa-guide	mt-edited	
+kostenlose Ware	L	actor	free goods	doj-sec-fcpa-guide	mt-edited	
+Naturalrabatt*	L	actor	free goods	doj-sec-fcpa-guide	mt-edited	
+Portokasse	L	actor	petty cash withdrawal	doj-sec-fcpa-guide	mt-edited	
+sonstige Aufwendungen	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	mt-edited	
+sonstige Ausgaben	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	mt-edited	
+stille Reserven	L	actor	cookie jar reserve	curated	mt-edited	
+unregelmäßig	L	actor	irregular	investigator-list	mt-edited	
+Unregelmäßigkeit*	L	actor	irregular	investigator-list	mt-edited	
+Verrechnungskonto*	L	actor	intercompany accounts	doj-sec-fcpa-guide	mt-edited	
