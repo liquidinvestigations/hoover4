@@ -276,8 +276,8 @@ class RefreshDocumentLocations:
             retry_policy=RetryPolicy(maximum_attempts=2),
             task_queue=INDEXING_TASK_QUEUE,
         )
-        refreshed = len(result.refreshed_hashes)
-        affected = len(result.affected_hashes)
+        refreshed = result.refreshed_count
+        affected = result.affected_count
         log.info(
             "[P6] location refresh %s: %d affected, %d rewritten, %d indexed, %s",
             params.collection_dataset, affected, refreshed,

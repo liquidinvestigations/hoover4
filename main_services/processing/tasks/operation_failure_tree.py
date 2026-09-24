@@ -345,7 +345,6 @@ _STAGE_BY_WORKFLOW = {
     "IngestDiskDataset": "P0",
     "IngestAndProcessDataset": "P0",
     "HandleFolders": "P0",
-    "HandleFiles": "P0",
     "ComputePlans": "P1",
     "ExecutePlans": "P2",
     "ExecuteSinglePlan": "P2",

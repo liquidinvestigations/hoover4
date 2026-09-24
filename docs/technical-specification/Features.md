@@ -23,7 +23,7 @@ languages.
 
 | id | capability | owned by |
 |---|---|---|
-| `F-ingest-01` | Ingest a directory tree on disk as a dataset of a collection | `main_services/processing/tasks/P0_scan_disk/` |
+| `F-ingest-01` | Ingest a disk directory tree as a collection dataset with bounded name ranges | `main_services/processing/tasks/P0_scan_disk/` |
 | `F-ingest-02` | Deduplicate by content hash, so the same content at two paths is stored once | `P0_scan_disk/`, the blob tables |
 | `F-ingest-03` | Descend into archives and email attachments, indexing members as documents in their own right | `P3_parse_files/` |
 | `F-ingest-04` | Extract text from documents, per format, recording which extractor produced each page | `P3_parse_files/` |
@@ -163,7 +163,7 @@ languages.
 | `F-admin-08` | See the accelerated tier's status and what it has loaded | `website/backend/src/api/admin/ai_status.rs` |
 | `F-admin-09` | See usage and API metrics, and the agent turns running right now, with a kill control | `website/backend/src/api/admin/metrics.rs`, `F-chat-13` |
 | `F-admin-10` | Change server settings that take effect without a redeploy | `website/backend/src/api/admin/settings.rs` |
-| `F-admin-11` | Record every long operation permanently (what was asked for, by whom, its progress, and how it ended), its Error events and the plans it ran, outliving both the process that asked and the workflow history. Rank terminal operation rows above late progress rows. Use distinct ids for immediate dispatches. | the `operations`, `operation_error_events` and `operation_plans` tables, `main_services/processing/database/operations.py` |
+| `F-admin-11` | Record every long operation permanently (what was asked for, by whom, its progress, and how it ended), its Error events and the plans it ran, outliving both the process that asked and the workflow history. The collector refreshes progress and marks a live row `errored` when its workflow is absent, closed, or has a stuck descendant, then cancels the operation. Rank terminal operation rows above late progress rows. Use distinct ids for immediate dispatches. | the `operations`, `operation_error_events` and `operation_plans` tables, `main_services/processing/database/operations.py` |
 | `F-admin-12` | Run long operations in a container of their own, with its own memory and CPU budget and the datastore volumes mounted read-only, so they cannot take capacity from ingestion | `hoover4-ops`, `tasks/run_worker.py:run_operations_worker` |
 | `F-admin-13` | Refuse a dataset dispatch while a live operation holds its dataset or collection, and refuse a collection dispatch while a live operation affects its collection, naming each blocker | `database/operations.py:assert_lock_free` |
 | `F-admin-14` | Submit a long operation from the command line and follow it, where interrupting the command detaches from the work. Collection backfills process finished plans in pages of at most 100 and continue after 500 plans. An unattributed-entity purge clears orphan rows once and skips dispatch when none exist. | `main.py add-disk-dataset`, `main.py reindex-collection`, `main.py refresh-document-locations --apply`, `main.py purge-dataset --apply`, `main.py retry-failed-files --apply`, `main.py purge-unattributed-entities --apply`, `main.py backfill-vectors`, `tasks/P_ops/cli.py` |

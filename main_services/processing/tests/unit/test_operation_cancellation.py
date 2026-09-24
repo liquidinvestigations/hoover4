@@ -40,7 +40,7 @@ def test_terminal_row_refuses_progress_insert(monkeypatch):
     assert update_operation("op", progress_done=8) is row
 
 
-def test_cancel_finalizer_samples_before_terminal_row(monkeypatch):
+def test_cancel_finalizer_writes_terminal_row(monkeypatch):
     from tasks.P_ops import workflows
 
     calls = []
@@ -53,17 +53,37 @@ def test_cancel_finalizer_samples_before_terminal_row(monkeypatch):
                 "collection_dataset": "d", "history_missing": False,
                 "target_status": "CANCELED",
             }
-        if name.__name__ == "sample_dataset_progress":
-            assert params.terminal_state == "cancelled"
-            return [0, 2]
         return "cancelled"
 
     monkeypatch.setattr(workflows.workflow, "execute_activity", activity_call)
     result = asyncio.run(workflows.CancelOperation().run("op"))
     assert result == "cancelled"
-    assert calls == [
-        "cancel_target_operation", "sample_dataset_progress", "record_operation_state",
+    assert calls == ["cancel_target_operation", "record_operation_state"]
+
+
+def test_cancel_finalizer_records_absent_history_as_cancelled(monkeypatch):
+    from tasks.P_ops import workflows
+
+    calls = []
+
+    async def activity_call(name, params, **_kwargs):
+        calls.append((name.__name__, params))
+        if name.__name__ == "cancel_target_operation":
+            return {
+                "state": "running", "collectionname": "c",
+                "collection_dataset": "d", "history_missing": True,
+            }
+        return "cancelled"
+
+    monkeypatch.setattr(workflows.workflow, "execute_activity", activity_call)
+    assert asyncio.run(workflows.CancelOperation().run("op")) == "cancelled"
+    assert [name for name, _params in calls] == [
+        "cancel_target_operation", "record_operation_state",
     ]
+    assert calls[1][1].state == "cancelled"
+    assert calls[1][1].error == (
+        "The workflow of this operation did not exist in Temporal, so nothing ran to cancel."
+    )
 
 
 def test_final_sample_writes_counts_with_terminal_state(monkeypatch):
@@ -229,15 +249,11 @@ def test_dedicated_retry_reaches_fourth_attempt(monkeypatch, failed_activity):
     async def child_call(*_args, **_kwargs):
         return "completed"
 
-    async def sample_plans(_self, _child, _params):
-        return None
-
     async def sample_counts(_self, _params, _counts):
         return None
 
     monkeypatch.setattr(workflows.workflow, "execute_activity", activity_call)
     monkeypatch.setattr(workflows.workflow, "execute_child_workflow", child_call)
-    monkeypatch.setattr(workflows.Operation, "_sample_plans_until_done", sample_plans)
     monkeypatch.setattr(workflows.Operation, "_sample_selector_counts", sample_counts)
     params = OperationParams(
         op_id="op", kind="retry_failed_files", collectionname="c",

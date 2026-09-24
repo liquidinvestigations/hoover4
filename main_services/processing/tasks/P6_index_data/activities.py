@@ -490,8 +490,8 @@ def refresh_stale_document_locations(
         collectionname=params.collectionname,
         collection_dataset=params.collection_dataset,
         indexed_documents=indexed_count,
-        affected_hashes=selected,
-        refreshed_hashes=refreshed,
+        affected_count=len(selected),
+        refreshed_count=len(refreshed),
         mechanism=mechanism,
     )
 

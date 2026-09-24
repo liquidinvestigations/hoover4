@@ -432,7 +432,7 @@ configured model with no local sample. The
 
 | harness | organizer | `executor-light` | `executor-heavy` | reviewer |
 |---|---:|---:|---:|---:|
-| Claude Code | $0.120 | $0.061 | $0.120 | $0.120 |
+| Claude Code | $0.120 | $0.120 | $0.120 | $0.120 |
 | Codex | $0.120 | $0.232 | $0.120 | $0.120 |
 | Cursor | no price | no price | no price | no price |
 

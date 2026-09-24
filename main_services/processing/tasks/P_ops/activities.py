@@ -13,6 +13,7 @@ import logging
 import json
 import time
 import asyncio
+from datetime import datetime
 
 from temporalio import activity
 from temporalio.client import Client, WorkflowExecutionStatus, WorkflowFailureError
@@ -66,6 +67,134 @@ def record_operation_state(params: OperationStateParams) -> str:
 def cancel_target_operation(op_id: str) -> dict:
     """Cancel the target, wait for closure, and return its recorded context."""
     return asyncio.run(_cancel_target_operation(op_id))
+
+
+PENDING_START_GRACE_SECONDS = 600
+RUNNING_WORKFLOW_GRACE_SECONDS = 120
+STUCK_WORKFLOW_ATTEMPTS = 5
+WORKFLOW_ABSENT_ERROR = (
+    "The workflow of this operation does not exist in Temporal. It did not start, "
+    "or Temporal deleted its history after the retention period."
+)
+
+
+@activity.defn
+@with_heartbeat
+async def supervise_operations() -> None:
+    """Sweep live rows, then refresh their progress from the configured source."""
+    from database.operations import _now, live_operations
+
+    client = await Client.connect("temporal:7233")
+    await supervise(client, _now(), live_operations(limit=500))
+
+
+async def supervise(client, now: datetime, rows: list[dict],
+                    *, stuck_workflow_attempts: int = STUCK_WORKFLOW_ATTEMPTS) -> None:
+    """Apply one supervisor pass with a supplied Temporal client and operation rows."""
+    from database.operations import LIVE_STATES, PROGRESS_SOURCES, update_operation
+
+    for row in rows:
+        if row["state"] not in LIVE_STATES:
+            continue
+        try:
+            await _supervise_row(client, now, row, stuck_workflow_attempts)
+        except Exception:
+            log.exception("operation supervision failed for %s", row["op_id"])
+
+    for row in rows:
+        source = PROGRESS_SOURCES[row["kind"]]
+        if row["state"] != "running" or source is None:
+            continue
+        try:
+            params = DatasetProgressParams(
+                op_id=row["op_id"],
+                collectionname=row["collectionname"],
+                collection_dataset=row["collection_dataset"],
+            )
+            if source == "plans":
+                sample_dataset_progress(params)
+            else:
+                remaining = count_dataset_rows_activity(params)
+                total = int(row["progress_total"])
+                update_operation(
+                    row["op_id"], base_row=row,
+                    progress_done=max(0, total - remaining), progress_total=total,
+                )
+        except Exception:
+            log.exception("operation progress refresh failed for %s", row["op_id"])
+
+
+async def _supervise_row(client, now: datetime, row: dict,
+                         stuck_workflow_attempts: int) -> None:
+    """Reconcile one live row with Temporal and stop each stuck descendant."""
+    from database.operations import finish_operation
+
+    age_seconds = (now - row["started_at"]).total_seconds()
+    grace = (PENDING_START_GRACE_SECONDS if row["state"] == "pending"
+             else RUNNING_WORKFLOW_GRACE_SECONDS)
+    if age_seconds <= grace:
+        return
+    handle = client.get_workflow_handle(row["op_id"])
+    try:
+        description = await handle.describe()
+    except RPCError as exc:
+        if exc.status == RPCStatusCode.NOT_FOUND:
+            finish_operation(row["op_id"], "errored", WORKFLOW_ABSENT_ERROR)
+            return
+        raise
+    if description.status == WorkflowExecutionStatus.COMPLETED:
+        finish_operation(row["op_id"], "finished")
+        return
+    if description.status != WorkflowExecutionStatus.RUNNING:
+        error = ("The workflow of this operation ended with status "
+                 f"{description.status.name} and did not record its result.")
+        try:
+            await handle.result()
+        except WorkflowFailureError as exc:
+            detail = str(exc.cause or exc)
+            if detail:
+                error = f"{error} {detail}"
+        finish_operation(row["op_id"], "errored", error)
+        return
+    if not row["collection_dataset"]:
+        return
+
+    query_dataset = row["collection_dataset"].replace("\\", "\\\\").replace("'", "\\'")
+    query = (
+        f"CollectionDataset = '{query_dataset}' AND ExecutionStatus = 'Running'"
+    )
+    stuck = []
+    async for execution in client.list_workflows(query, limit=500):
+        descendant = client.get_workflow_handle(execution.id, run_id=execution.run_id)
+        description = await descendant.describe()
+        attempt = description.raw_description.pending_workflow_task.attempt
+        if attempt >= stuck_workflow_attempts:
+            stuck.append((execution, attempt))
+    if not stuck:
+        return
+    for execution, attempt in stuck:
+        descendant = client.get_workflow_handle(execution.id, run_id=execution.run_id)
+        try:
+            await descendant.terminate(
+                reason=(f"Operation {row['op_id']} stopped workflow task after it "
+                        f"failed {attempt} times."),
+            )
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.NOT_FOUND:
+                raise
+    first, first_attempt = stuck[0]
+    others = len(stuck) - 1
+    error = (
+        f"Workflow {first.workflow_type} {first.id} failed its workflow task "
+        f"{first_attempt} times"
+    )
+    if others:
+        error += f", and {others} other workflows of this dataset were stuck."
+    else:
+        error += "."
+    error += " The worker log names the cause."
+    finish_operation(row["op_id"], "errored", error)
+    await handle.cancel()
 
 
 async def _cancel_target_operation(op_id: str) -> dict:

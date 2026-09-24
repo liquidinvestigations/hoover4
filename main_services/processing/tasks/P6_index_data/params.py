@@ -90,8 +90,8 @@ class RefreshDocumentLocationsResult:
     collectionname: str
     collection_dataset: str
     indexed_documents: int
-    affected_hashes: list[str]
-    refreshed_hashes: list[str]
+    affected_count: int
+    refreshed_count: int
     mechanism: str
 
 

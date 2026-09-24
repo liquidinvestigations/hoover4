@@ -6,10 +6,10 @@ without a lookup table. That identity is the whole reason a caller can be killed
 without consequence: the work is not in the caller, and the caller's only unique
 knowledge is a string it already printed.
 
-The workflow owns the row's lifecycle. It writes `running` when it starts, samples
-progress while the real work runs beneath it, and writes `finished` or `errored`
-with `finished_at` set. The cancellation finalizer writes `cancelled`. That write
-releases the operations lock, which is why it is on the way out of every path.
+The workflow owns the row's lifecycle. It writes `running` when it starts, waits for
+its child, and writes `finished` or `errored` with `finished_at` set. The collector
+updates progress. The cancellation finalizer writes `cancelled`. That write releases
+the operations lock, which is why it is on the way out of every path.
 """
 
 import asyncio
@@ -43,11 +43,7 @@ with workflow.unsafe.imports_passed_through():
     from ..heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from ..visibility import dataset_search_attributes
 
-#: How often a running operation refreshes its progress counters.
-#:
-#: A compromise, and both ends are real: the admin list is unreadable if it only moves
-#: at the end, and every sample is two `FINAL` counts against the collection database,
-#: which is the same server the ingest is writing to.
+#: How long the purge settle loop waits between row counts.
 PROGRESS_INTERVAL_SECONDS = 15
 
 #: How many more times a finished purge re-counts before it reports what is left.
@@ -87,22 +83,25 @@ class CancelOperation:
         if context["state"] in ("finished", "errored", "cancelled"):
             return context["state"]
         target_status = context.get("target_status", "")
-        state = ("finished" if target_status == "COMPLETED" else
-                 "errored" if target_status in ("FAILED", "TIMED_OUT", "TERMINATED") else
-                 "cancelled")
-        error = ("Cancelled by request." if state == "cancelled" else
-                 "Target workflow ended with an error." if state == "errored" else "")
-        if context["collection_dataset"]:
-            await workflow.execute_activity(
-                sample_dataset_progress,
-                DatasetProgressParams(op_id, context["collectionname"],
-                                      context["collection_dataset"],
-                                      terminal_state=state, terminal_error=error),
+        if context["history_missing"]:
+            return await workflow.execute_activity(
+                record_operation_state,
+                OperationStateParams(
+                    op_id=op_id,
+                    state="cancelled",
+                    error=("The workflow of this operation did not exist in Temporal, "
+                           "so nothing ran to cancel."),
+                ),
                 task_queue="operations-queue",
                 start_to_close_timeout=timedelta(minutes=2),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=ROW_RETRY,
             )
+        state = ("finished" if target_status == "COMPLETED" else
+                 "errored" if target_status in ("FAILED", "TIMED_OUT", "TERMINATED") else
+                 "cancelled")
+        error = ("Cancelled by request." if state == "cancelled" else
+                 "Target workflow ended with an error." if state == "errored" else "")
         result = await workflow.execute_activity(
             record_operation_state,
             OperationStateParams(op_id=op_id, state=state,
@@ -112,10 +111,6 @@ class CancelOperation:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=ROW_RETRY,
         )
-        if context["history_missing"]:
-            raise ApplicationError(
-                f"target workflow history is absent: {op_id}", non_retryable=True
-            )
         return result
 
 
@@ -219,7 +214,7 @@ class Operation:
         raise ApplicationErrorKind(params.kind)
 
     async def _ingest_dataset(self, params: OperationParams) -> str:
-        """Drive the three ingest stages, sampling progress while they run.
+        """Drive the three ingest stages and wait for their result.
 
         The child carries this operation's id, so a second dispatch cannot collide with
         this run's children, and the ingest is visible in Temporal under a name that
@@ -245,7 +240,6 @@ class Operation:
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
-        await self._sample_plans_until_done(child, params)
         child_result = await child
         await self._sample_selector_counts(params, child_result["selector_counts"])
         return f"ingested and processed {params.collection_dataset}"
@@ -262,36 +256,6 @@ class Operation:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=ROW_RETRY,
         )
-
-    async def _sample_plans_until_done(self, child, params: OperationParams) -> None:
-        """Refresh the row's plan counters until the child workflow finishes.
-
-        Plans are the only unit whose total is known before the work is done, so every
-        kind that drives the pipeline over a dataset counts the same thing here.
-        """
-        progress = DatasetProgressParams(
-            op_id=params.op_id,
-            collectionname=params.collectionname,
-            collection_dataset=params.collection_dataset,
-        )
-        while not child.done():
-            # A race, not a sleep-then-check: waiting the full interval after the child
-            # finishes would add that interval to every operation's wall clock, and the
-            # tail of a short ingest is mostly interval. `wait_condition` is the
-            # workflow-safe timer; a plain `asyncio.sleep` here would be the same
-            # length but would not wake when the child does.
-            try:
-                await workflow.wait_condition(
-                    child.done, timeout=timedelta(seconds=PROGRESS_INTERVAL_SECONDS))
-            except asyncio.TimeoutError:
-                pass
-            await workflow.execute_activity(
-                sample_dataset_progress, progress,
-                task_queue="operations-queue",
-                start_to_close_timeout=timedelta(minutes=2),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=ROW_RETRY,
-            )
 
     async def _compute_plans(self, params: OperationParams) -> str:
         """Turn the blobs a scan recorded into the dataset's processing plans.
@@ -349,7 +313,6 @@ class Operation:
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
-        await self._sample_plans_until_done(child, params)
         result = await child
         reconciliation = await workflow.execute_activity(
             "reconcile_selected_errors",
@@ -418,14 +381,6 @@ class Operation:
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
-        while not child.done():
-            try:
-                await workflow.wait_condition(
-                    child.done, timeout=timedelta(seconds=PROGRESS_INTERVAL_SECONDS))
-            except asyncio.TimeoutError:
-                pass
-            remaining = await self._count_rows(params)
-            await self._record(params.op_id, max(0, total - remaining), total)
         await child
         # ClickHouse lightweight deletes are asynchronous, so the last count is polled
         # rather than read once: a purge that has done everything asked of it still
@@ -471,9 +426,8 @@ class Operation:
         records, so the log says what was asked for and a re-run of that row asks for
         the same thing rather than for whatever the dataset is set to now.
 
-        Progress is the dataset's plans, sampled while the child runs: the expensive
-        part of a language change is the re-processing, and that is exactly what the
-        plan counters measure.
+        Progress is the dataset's plans. The collector refreshes the plan counters while
+        the child re-processes the dataset.
         """
         tesseract = str(params.detail.get("tesseract_languages", ""))
         easyocr = str(params.detail.get("easyocr_languages", ""))
@@ -493,7 +447,6 @@ class Operation:
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
-        await self._sample_plans_until_done(child, params)
         return await child
 
     async def _collection_database(self, params: OperationParams) -> str:
@@ -644,7 +597,6 @@ class Operation:
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
-        await self._sample_plans_until_done(child, params)
         result = await child
         reconciliation = await workflow.execute_activity(
             "reconcile_selected_errors",

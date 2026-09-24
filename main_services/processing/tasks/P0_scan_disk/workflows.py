@@ -3,8 +3,8 @@
 from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from typing import List, Dict, Any
-from dataclasses import dataclass, field
+from typing import Any, Callable, List, Sequence
+from dataclasses import dataclass, replace
 import asyncio
 import hashlib
 import json
@@ -14,10 +14,11 @@ log = logging.getLogger(__name__)
 # Import our activities, passing them through the sandbox
 with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
+    from tasks.workflow_window import run_with_window
     from tasks.P0_scan_disk.activities import (
-        list_disk_folder, insert_vfs_directories, ingest_files_batch,
+        plan_folder_ranges, scan_folder_range,
         reconcile_deleted_files,
-        ListDiskFolderParams, InsertVfsDirectoriesParams, IngestFilesBatchParams,
+        ListDiskFolderParams, ScanFolderRangeParams,
         ReconcileDeletedFilesParams,
     )
     from tasks.P_admin.rerun_params import ReconcileErrorsParams, SelectErrorsParams
@@ -26,36 +27,6 @@ with workflow.unsafe.imports_passed_through():
         select_historical_errors,
     )
     from tasks.visibility import dataset_search_attributes
-
-
-def _batch_seq(items: List[Any], batch_size: int) -> List[List[Any]]:
-    return [items[i:i + batch_size] for i in range(0, len(items), batch_size)]
-
-
-def _batch_files_by_size(files: List[Dict[str, Any]], max_count: int, max_bytes: int) -> List[List[Dict[str, Any]]]:
-    batches: List[List[Dict[str, Any]]] = []
-    current: List[Dict[str, Any]] = []
-    current_bytes = 0
-    for f in files:
-        size = int(f.get("size", 0))
-        if size > max_bytes:
-            if current:
-                batches.append(current)
-                current = []
-                current_bytes = 0
-            batches.append([f])
-            continue
-        if len(current) >= max_count or (current_bytes + size) > max_bytes:
-            if current:
-                batches.append(current)
-            current = [f]
-            current_bytes = size
-        else:
-            current.append(f)
-            current_bytes += size
-    if current:
-        batches.append(current)
-    return batches
 
 
 def _child_workflow_id(prefix: str, params: Any) -> str:
@@ -76,53 +47,56 @@ def _child_workflow_id(prefix: str, params: Any) -> str:
     return f"{prefix}-{digest}"
 
 
-@dataclass
-class HandleFilesParams:
-    collectionname: str
-    collection_dataset: str
-    dataset_path: str
-    file_paths: List[str]
-    container_hash: str = ""
-    root_path_prefix: str = ""
-    #: Positionally aligned with ``file_paths``: epoch seconds from the scan's own
-    #: ``stat``. `list_disk_folder` has always collected these and this workflow used to
-    #: drop them on the floor; an archive member's mtime is the archive's own metadata
-    #: and is the only historical date many extracted files have.
-    file_mtimes: List[int] = field(default_factory=list)
-    #: Positionally aligned with ``file_paths``: bytes from the scan's own ``stat``.
-    #: Size and mtime together are what make a rescan able to tell an unchanged file from
-    #: an edited one; a rescan that compares paths alone skips an edited file for ever.
-    file_sizes: List[int] = field(default_factory=list)
+RANGE_WINDOW = 8
+SUBFOLDER_WINDOW = 16
+HISTORY_EVENTS_PER_RUN = 10_000
 
 
-@workflow.defn
-class HandleFiles:
-    """Workflow that ingests a batch of files and inserts VFS rows."""
-    @workflow.run
-    async def run(self, params: HandleFilesParams) -> str:
-        file_paths: List[str] = params.file_paths
+def _history_budget_reached() -> bool:
+    info = workflow.info()
+    return (
+        info.get_current_history_length() > HISTORY_EVENTS_PER_RUN
+        or info.is_continue_as_new_suggested()
+    )
 
-        log.info("Handling %s files for %s", len(file_paths), params.collection_dataset)
 
-        # Single batch activity call for performance (dedup and batch inserts inside)
-        result = await workflow.execute_activity(
-            ingest_files_batch,
-            IngestFilesBatchParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                dataset_path=params.dataset_path,
-                file_paths=file_paths,
-                container_hash=(params.container_hash or ""),
-                root_path_prefix=(params.root_path_prefix or ""),
-                file_mtimes=list(params.file_mtimes or []),
-                file_sizes=list(params.file_sizes or []),
-            ),
-            start_to_close_timeout=timedelta(hours=4),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
-        log.info("Handled %s files for %s", len(file_paths), params.collection_dataset)
-        return result
+async def run_ranges_until_budget(
+    ranges: Sequence[tuple[str, str]],
+    run_range: Callable[[str, str], Any],
+    limit: int,
+) -> int:
+    """Run a range window and stop after the first observed history budget."""
+    started = 0
+    pending: List[Any] = []
+    index_of = {}
+    results: List[Any] = [None] * len(ranges)
+    stop_starting = False
+    limit = max(1, limit)
+    while started < len(ranges) or pending:
+        while not stop_starting and started < len(ranges) and len(pending) < limit:
+            if started and _history_budget_reached():
+                stop_starting = True
+                break
+            future = asyncio.ensure_future(run_range(*ranges[started]))
+            pending.append(future)
+            index_of[future] = started
+            started += 1
+        if not pending:
+            break
+        done, remaining = await workflow.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+        pending = list(remaining)
+        for future in sorted(done, key=lambda item: index_of[item]):
+            index = index_of.pop(future)
+            try:
+                results[index] = future.result()
+            except Exception as exc:  # noqa: BLE001 -- preserve range order below.
+                results[index] = exc
+                stop_starting = True
+        if stop_starting and not pending:
+            for result in results[:started]:
+                if isinstance(result, Exception):
+                    raise result
+    return started
 
 
 @dataclass
@@ -130,134 +104,72 @@ class HandleFoldersParams:
     collectionname: str
     collection_dataset: str
     dataset_path: str
-    folder_paths: List[str]
+    folder_path: str
+    after_name: str = ""
     container_hash: str = ""
     root_path_prefix: str = ""
 
 
 @workflow.defn
 class HandleFolders:
-    """Workflow that lists folders, inserts dirs, and spawns child scans."""
+    """Workflow that scans one folder through bounded name ranges."""
     @workflow.run
     async def run(self, params: HandleFoldersParams) -> str:
-        folder_paths: List[str] = params.folder_paths  # max 10
-        log.info("Handling %s folders for %s", len(folder_paths), params.collection_dataset)
+        plan = await workflow.execute_activity(
+            plan_folder_ranges,
+            ListDiskFolderParams(
+                params.collectionname, params.collection_dataset, params.dataset_path,
+                params.folder_path, params.after_name, params.container_hash,
+                params.root_path_prefix,
+            ),
+            start_to_close_timeout=timedelta(minutes=50),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+        )
+        edges = [params.after_name] + plan.boundaries
+        if not plan.more_after:
+            edges.append("")
+        ranges = list(zip(edges[:-1], edges[1:]))
+        children = asyncio.Semaphore(SUBFOLDER_WINDOW)
 
-        async def list_folder_pages(folder_rel: str) -> Dict[str, List[Dict[str, Any]]]:
-            dirs: List[Dict[str, Any]] = []
-            files: List[Dict[str, Any]] = []
-            after_name = ""
-            while True:
-                result = await workflow.execute_activity(
-                    list_disk_folder,
-                    ListDiskFolderParams(
-                        collectionname=params.collectionname,
-                        collection_dataset=params.collection_dataset,
-                        dataset_path=params.dataset_path,
-                        folder_path=folder_rel,
-                        after_name=after_name,
-                    ),
-                    start_to_close_timeout=timedelta(minutes=50),
-                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                )
-                dirs.extend(result.get("dirs", []))
-                files.extend(result.get("files", []))
-                next_after_name = result.get("next_after_name", "")
-                if not next_after_name:
-                    return {"dirs": dirs, "files": files}
-                if next_after_name <= after_name:
-                    from temporalio.exceptions import ApplicationError
-                    raise ApplicationError(
-                        f"list_disk_folder returned a non-advancing cursor for {folder_rel}",
-                        non_retryable=True,
-                    )
-                after_name = next_after_name
-
-        # List each folder in parallel while each listing walks its pages in sequence.
-        list_futs = []
-        for folder_rel in folder_paths:
-            list_futs.append(list_folder_pages(folder_rel))
-
-        listings = await asyncio.gather(*list_futs)
-
-        # Aggregate dirs and files
-        all_dirs: List[str] = []
-        all_files_meta: List[Dict[str, Any]] = []
-        for res in listings:
-            for d in res.get("dirs", []):
-                p = d["path"]
-                all_dirs.append(p)
-            for f in res.get("files", []):
-                all_files_meta.append(f)
-
-        # Insert directories at this level
-        if all_dirs:
-            await workflow.execute_activity(
-                insert_vfs_directories,
-                InsertVfsDirectoriesParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    dir_paths=all_dirs,
-                    container_hash=(params.container_hash or ""),
-                ),
-                start_to_close_timeout=timedelta(minutes=40),
+        async def one_range(after_name: str, until_name: str) -> None:
+            result = await workflow.execute_activity(
+                scan_folder_range,
+                ScanFolderRangeParams(ListDiskFolderParams(
+                    params.collectionname, params.collection_dataset, params.dataset_path,
+                    params.folder_path, after_name, params.container_hash,
+                    params.root_path_prefix,
+                ), until_name),
+                start_to_close_timeout=timedelta(hours=6),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
 
-        # Batch child folders and files
-        child_folder_batches = _batch_seq(all_dirs, 10)
-        child_file_batches = _batch_files_by_size(all_files_meta, max_count=100, max_bytes=50 * 1024 * 1024)
+            def child_factory(folder_path: str):
+                async def start_child():
+                    async with children:
+                        child_params = replace(params, folder_path=folder_path, after_name="")
+                        return await workflow.execute_child_workflow(
+                            HandleFolders.run,
+                            child_params,
+                            id=_child_workflow_id("HandleFolders", child_params),
+                            task_queue="processing-common-queue",
+                            search_attributes=dataset_search_attributes(params.collection_dataset),
+                        )
+                return start_child
 
-        # Start children in parallel
-        child_futs = []
-        for folder_batch in child_folder_batches:
-            params_obj = HandleFoldersParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                dataset_path=params.dataset_path,
-                folder_paths=folder_batch,
-                container_hash=(params.container_hash or ""),
-                root_path_prefix=(params.root_path_prefix or ""),
-            )
-            child_futs.append(
-                workflow.execute_child_workflow(
-                    HandleFolders.run,
-                    params_obj,
-                    id=_child_workflow_id("HandleFolders", params_obj),
-                    task_queue="processing-common-queue",
-                    search_attributes=dataset_search_attributes(params_obj.collection_dataset),
-                )
-            )
+            child_results = await run_with_window(
+                [child_factory(folder) for folder in result.subfolders], SUBFOLDER_WINDOW)
+            for child_result in child_results:
+                if isinstance(child_result, Exception):
+                    raise child_result
 
-        for file_batch in child_file_batches:
-            file_paths = [f["path"] for f in file_batch]
-            params_obj = HandleFilesParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                dataset_path=params.dataset_path,
-                file_paths=file_paths,
-                container_hash=(params.container_hash or ""),
-                root_path_prefix=(params.root_path_prefix or ""),
-                file_mtimes=[int(f.get("mtime") or 0) for f in file_batch],
-                file_sizes=[int(f.get("size") or 0) for f in file_batch],
-            )
-            child_futs.append(
-                workflow.execute_child_workflow(
-                    HandleFiles.run,
-                    params_obj,
-                    id=_child_workflow_id("HandleFiles", params_obj),
-                    task_queue="processing-common-queue",
-                    search_attributes=dataset_search_attributes(params_obj.collection_dataset),
-                )
-            )
-
-        if child_futs:
-            await asyncio.gather(*child_futs)
-
-        log.info("Handled %s folders for %s", len(folder_paths), params.collection_dataset)
-        return f"handled {len(folder_paths)} folders"
+        started = await run_ranges_until_budget(ranges, one_range, RANGE_WINDOW)
+        if started < len(ranges):
+            workflow.continue_as_new(replace(params, after_name=ranges[started - 1][1]))
+        if plan.more_after:
+            workflow.continue_as_new(replace(params, after_name=plan.more_after))
+        return f"handled {params.folder_path}"
 
 
 @dataclass
@@ -282,12 +194,12 @@ class IngestDiskDataset:
         scan_started_at = int(workflow.now().timestamp())
 
         # Seed with root folder
-        args = {
-            "collectionname": params.collectionname,
-            "collection_dataset": params.collection_dataset,
-            "dataset_path": params.dataset_path,
-            "folder_paths": ["/"],
-        }
+        args = HandleFoldersParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            dataset_path=params.dataset_path,
+            folder_path="/",
+        )
         await workflow.execute_child_workflow(
             HandleFolders.run,
             args,
@@ -335,6 +247,7 @@ class IngestAndProcessDataset:
     @workflow.run
     async def run(self, params: IngestDiskDatasetParams) -> str:
         with workflow.unsafe.imports_passed_through():
+            from tasks.P1_compute_plans.activities import ComputePlansParams
             from tasks.P1_compute_plans.workflows import ComputePlans
             from tasks.P2_execute_plan.workflows import ExecutePlans, ExecutePlansParams
 
@@ -357,10 +270,10 @@ class IngestAndProcessDataset:
         )
         await workflow.execute_child_workflow(
             ComputePlans.run,
-            {
-                "collectionname": params.collectionname,
-                "collection_dataset": params.collection_dataset,
-            },
+            ComputePlansParams(
+                collectionname=params.collectionname,
+                collection_dataset=params.collection_dataset,
+            ),
             id=f"compute-plans-{params.collection_dataset}-{run}",
             task_queue="processing-common-queue",
             search_attributes=attributes,

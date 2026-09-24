@@ -548,7 +548,7 @@ class PdfProcessingAndScan:
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 dataset_path=out_dir,
-                folder_paths=["/"],
+                folder_path="/",
                 container_hash=params.pdf_hash,
                 root_path_prefix="",
             )

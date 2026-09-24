@@ -12,17 +12,18 @@ This stage discovers datasets on disk, enumerates directories and files, and pop
 ## Entry Points
 
 - Workflow: `IngestDiskDataset` in `workflows.py`
-- Activities: `list_disk_folder`, `insert_vfs_directories`, `ingest_files_batch`,
-  `reconcile_deleted_files` in `activities.py`
+- Activities: `plan_folder_ranges`, `scan_folder_range`, `reconcile_deleted_files` in
+  `activities.py`
 - CLI helper: `submit_job.py` (used by `main.py add-disk-dataset`)
 
 ## Technical Details
 
-The workflow starts at the dataset root and recursively enumerates folders in batches of 10. Files are batched by count and total size to limit ingestion payloads. Hashing uses a single streaming pass to compute `sha3_256` (primary) plus `md5`, `sha1`, and `sha256`. Blob storage is split between ClickHouse (`blob_values`) for small files and the collection's own Garage bucket (`blobs.s3_path`, a full `s3://<bucket>/<key>`) for larger content.
-
-Folder listing uses sorted name pages under a byte budget. The cursor is the final name on a
-page, so a re-scan does not depend on filesystem directory order. The workflow lists ten
-folders in parallel and walks each folder's pages in sequence.
+The workflow starts at the dataset root. Each `HandleFolders` run scans one folder through
+sorted name ranges. The planning activity returns range boundaries. The scan activity ingests
+file batches and returns only child folder names. A shared limit keeps at most 16 child
+workflows in flight. A run continues from its last range boundary when its history reaches its
+limit. Hashing uses one streaming pass for `sha3_256`, `md5`, `sha1`, and `sha256`. Blob storage
+uses ClickHouse (`blob_values`) for small files and the collection Garage bucket for larger files.
 
 ## A rescan detects change, and it detects deletion
 

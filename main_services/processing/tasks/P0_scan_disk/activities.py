@@ -21,6 +21,8 @@ from tasks.operation_failure_capture import TEMPORAL_BLOB_LIMIT_BYTES
 SMALL_BLOB_THRESHOLD_BYTES = 600 * 1024
 FILE_BATCH_MAX_COUNT = 100
 FILE_BATCH_MAX_BYTES = 50 * 1024 * 1024
+RANGE_ENTRIES = 500
+MAX_BOUNDARIES = 1000
 
 # One quarter leaves headroom for the Temporal envelope, JSON punctuation, and paths
 # longer than the paths in the corpus.
@@ -93,12 +95,12 @@ class ListDiskFolderParams:
     dataset_path: str
     folder_path: str
     after_name: str = ""
+    container_hash: str = ""
+    root_path_prefix: str = ""
 
 
-@activity.defn
-@with_heartbeat
 def list_disk_folder(params: ListDiskFolderParams) -> Dict[str, Any]:
-    """Activity that lists a folder and returns dir and file metadata."""
+    """List one byte-bounded page of a folder for direct callers and unit tests."""
     abs_dir = _rel_to_abs(params.dataset_path, params.folder_path)
     if not os.path.isdir(abs_dir):
         return {"dirs": [], "files": [], "next_after_name": ""}
@@ -164,6 +166,165 @@ def list_disk_folder(params: ListDiskFolderParams) -> Dict[str, Any]:
         "files": files,
         "next_after_name": last_name if has_more else "",
     }
+
+
+@dataclass
+class FolderRanges:
+    boundaries: List[str]
+    more_after: str
+
+
+@dataclass
+class RangeResult:
+    subfolders: List[str]
+    files_ingested: int
+    folders_seen: int
+
+
+@dataclass
+class ScanFolderRangeParams:
+    folder: ListDiskFolderParams
+    until_name: str
+
+
+def _range_entries(params: ListDiskFolderParams, until_name: str = "") -> List[Tuple[str, Any]]:
+    """Return entries in `(after_name, until_name]` using the scan order."""
+    abs_dir = _rel_to_abs(params.dataset_path, params.folder_path)
+    if not os.path.isdir(abs_dir):
+        return []
+    with os.scandir(abs_dir) as it:
+        entries = sorted(((entry.name, entry) for entry in it), key=lambda item: item[0])
+    result = []
+    for name, entry in entries:
+        if name <= params.after_name:
+            continue
+        if until_name and name > until_name:
+            break
+        if re.search(r"[\uD800-\uDFFF]", entry.path):
+            log.warning("Found path with non-utf8 character: '%s' -- skipping path from processing!", entry.path)
+            continue
+        result.append((name, entry))
+    return result
+
+
+def _batch_files_by_size(
+    files: List[Dict[str, Any]], max_count: int, max_bytes: int,
+) -> List[List[Dict[str, Any]]]:
+    batches: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+    current_bytes = 0
+    for file in files:
+        size = int(file.get("size", 0))
+        if size > max_bytes:
+            if current:
+                batches.append(current)
+                current = []
+                current_bytes = 0
+            batches.append([file])
+        elif len(current) >= max_count or current_bytes + size > max_bytes:
+            if current:
+                batches.append(current)
+            current = [file]
+            current_bytes = size
+        else:
+            current.append(file)
+            current_bytes += size
+    if current:
+        batches.append(current)
+    return batches
+
+
+@activity.defn
+@with_heartbeat
+def plan_folder_ranges(params: ListDiskFolderParams) -> FolderRanges:
+    """Plan bounded name ranges for one folder without returning entry metadata."""
+    boundaries: List[str] = []
+    count = 0
+    for name, entry in _range_entries(params):
+        try:
+            entry.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        count += 1
+        if count % RANGE_ENTRIES == 0:
+            boundaries.append(name)
+            if len(boundaries) == MAX_BOUNDARIES:
+                later = ListDiskFolderParams(
+                    params.collectionname, params.collection_dataset, params.dataset_path,
+                    params.folder_path, name,
+                )
+                for _later_name, later_entry in _range_entries(later):
+                    try:
+                        later_entry.stat(follow_symlinks=False)
+                    except FileNotFoundError:
+                        continue
+                    return FolderRanges(boundaries, name)
+                return FolderRanges(boundaries, "")
+    return FolderRanges(boundaries, "")
+
+
+def _resume_after_name(after_name: str, until_name: str) -> str:
+    """Get a valid file cursor from an activity heartbeat."""
+    try:
+        details = activity.info().heartbeat_details
+    except RuntimeError:
+        return after_name
+    if not details or not isinstance(details[0], dict):
+        return after_name
+    saved_name = details[0].get("last_file_name")
+    if not isinstance(saved_name, str) or saved_name <= after_name:
+        return after_name
+    if until_name and saved_name > until_name:
+        return after_name
+    return saved_name
+
+
+@activity.defn
+@with_heartbeat
+def scan_folder_range(params: ScanFolderRangeParams) -> RangeResult:
+    """Ingest one name range and return only names for child folder workflows."""
+    folder = params.folder
+    file_after_name = _resume_after_name(folder.after_name, params.until_name)
+    listed = _range_entries(
+        ListDiskFolderParams(
+            folder.collectionname, folder.collection_dataset, folder.dataset_path,
+            folder.folder_path, folder.after_name,
+        ),
+        params.until_name,
+    )
+    dirs: List[str] = []
+    files: List[Dict[str, Any]] = []
+    for _name, entry in listed:
+        try:
+            stat = entry.stat(follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        rel_child = os.path.relpath(entry.path, folder.dataset_path).replace(os.sep, "/")
+        path = "/" + rel_child if not rel_child.startswith("/") else rel_child
+        if entry.is_dir(follow_symlinks=False):
+            dirs.append(path)
+        elif entry.is_file(follow_symlinks=False) and _name > file_after_name:
+            files.append({"path": path, "size": int(stat.st_size), "mtime": int(stat.st_mtime)})
+    if dirs:
+        insert_vfs_directories(InsertVfsDirectoriesParams(
+            folder.collectionname, folder.collection_dataset, dirs, folder.container_hash,
+        ))
+    files_ingested = 0
+    for batch in _batch_files_by_size(files, FILE_BATCH_MAX_COUNT, FILE_BATCH_MAX_BYTES):
+        ingest_files_batch(IngestFilesBatchParams(
+            collectionname=folder.collectionname,
+            collection_dataset=folder.collection_dataset,
+            dataset_path=folder.dataset_path,
+            file_paths=[file["path"] for file in batch],
+            container_hash=folder.container_hash,
+            root_path_prefix=folder.root_path_prefix,
+            file_mtimes=[file["mtime"] for file in batch],
+            file_sizes=[file["size"] for file in batch],
+        ))
+        files_ingested += len(batch)
+        if activity.in_activity():
+            activity.heartbeat({"last_file_name": batch[-1]["path"].rsplit("/", 1)[-1]})
+    return RangeResult(dirs, files_ingested, len(dirs))
 
 
 @dataclass

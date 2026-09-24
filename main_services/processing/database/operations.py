@@ -61,6 +61,28 @@ KINDS: dict[str, dict] = {
     "backfill_vectors": {"target_kind": "collection", "destructive": False},
 }
 
+#: The source that updates each live operation's progress. The collector owns these
+#: updates so an `Operation` workflow can wait for its child without extending its
+#: history with periodic timers and activities.
+PROGRESS_SOURCES = {
+    "add_dataset": "plans",
+    "rescan_dataset": "plans",
+    "compute_plans": "plans",
+    "execute_plans": "plans",
+    "purge_dataset": "rows",
+    "delete_dataset": "rows",
+    "change_ocr_languages": "plans",
+    "reindex_collection": None,
+    "refresh_document_locations": None,
+    "retry_failed_files": "plans",
+    "ensure_collection": None,
+    "drop_collection_database": None,
+    "export_collection": None,
+    "import_collection": None,
+    "purge_unattributed_entities": None,
+    "backfill_vectors": None,
+}
+
 DRIVEN_KINDS = (
     "add_dataset",
     "rescan_dataset",
@@ -321,6 +343,11 @@ def list_operations(state: str = "", collectionname: str = "", kind: str = "",
         clauses.append("kind = {kind:String}")
         parameters["kind"] = kind
     return _select(" AND ".join(clauses), parameters, limit=limit)
+
+
+def live_operations(limit: int = 500) -> list[dict]:
+    """Live operation rows for the collector supervisor."""
+    return _select("state IN ('pending', 'running')", {}, limit=limit)
 
 
 def update_operation(op_id: str, *, base_row: dict | None = None, **changes) -> dict | None:

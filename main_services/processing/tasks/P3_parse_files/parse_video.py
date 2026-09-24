@@ -252,7 +252,7 @@ class VideoProcessingAndScan:
                 collectionname=params.collectionname,
                 collection_dataset=collection_dataset,
                 dataset_path=out_dir,
-                folder_paths=["/"],
+                folder_path="/",
                 container_hash=video_hash,
                 root_path_prefix="",
             )

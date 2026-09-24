@@ -267,7 +267,7 @@ not as support to rely on.
 | Kimi Code | built-in coder, explore and plan sub-agents; no project definitions | `[secondary_model]` pool in user `config.toml` |
 | Google Antigravity | `AGENTS.md` | unverified |
 
-Claude Code maps `executor-light` to Sonnet 5 and the other roles to Opus 5.
+Claude Code maps every role to Opus 5.5.
 Codex maps `executor-light` to GPT-5.6 Terra and the other roles to GPT-5.6 Sol.
 Cursor maps `executor-light` to Composer 2.5 and the other roles to Grok 4.6.
 The [model mappings](../../.agents/harnesses/model-mappings.md) list effort values for each role.

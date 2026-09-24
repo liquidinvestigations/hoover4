@@ -7,7 +7,7 @@ changes. The gates in `docs/development/Choosing_A_Model.md` define how a model 
 
 | harness | organizer | `executor-light` | `executor-heavy` | reviewer |
 |---|---|---|---|---|
-| Claude Code | `claude-opus-5-5`, high | `claude-sonnet-5`, high | `claude-opus-5-5`, medium | `claude-opus-5-5`, high |
+| Claude Code | `claude-opus-5-5`, high | `claude-opus-5-5`, medium | `claude-opus-5-5`, medium | `claude-opus-5-5`, high |
 | Codex | `gpt-6-sol`, high | `gpt-5.6-terra`, high | `gpt-6-sol`, medium | `gpt-6-sol`, high |
 | Cursor | `grok-4.7[effort=high]` | `composer-2.5[fast=false]` | `grok-4.7[effort=medium]` | `grok-4.7[effort=high]` |
 

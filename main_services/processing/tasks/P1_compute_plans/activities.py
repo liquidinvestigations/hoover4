@@ -99,13 +99,14 @@ def compute_plans(params: ComputePlansParams) -> int:
 
     # One big SQL session: stream all new blobs ordered by size for better packing
     sql = """
-        SELECT b.blob_hash, b.blob_size_bytes
+        SELECT b.blob_hash, max(b.blob_size_bytes) AS plan_blob_size_bytes
         FROM blobs b
         LEFT JOIN processing_plan_hits h
           ON h.collection_dataset = b.collection_dataset AND h.item_hash = b.blob_hash
         WHERE b.collection_dataset = {collection_dataset:String}
           AND h.item_hash = ''  AND h.plan_hash = ''
-        ORDER BY b.blob_size_bytes ASC
+        GROUP BY b.blob_hash
+        ORDER BY plan_blob_size_bytes ASC
     """
     with get_collection_client(params.collectionname) as client:
         with client.query_arrow_stream(sql, parameters={"collection_dataset": collection_dataset}) as stream:
@@ -113,7 +114,7 @@ def compute_plans(params: ComputePlansParams) -> int:
                 if not batch or batch.num_rows == 0:
                     continue
                 hh = batch.column("blob_hash")
-                ss = batch.column("blob_size_bytes")
+                ss = batch.column("plan_blob_size_bytes")
                 for i in range(batch.num_rows):
                     h = hh[i].as_py()
                     s = int(ss[i].as_py() or 0)
@@ -136,5 +137,4 @@ def compute_plans(params: ComputePlansParams) -> int:
         planned_items += len(cur_hashes)
 
     return planned_items
-
 

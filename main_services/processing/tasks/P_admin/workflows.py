@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ActivityError, CancelledError
 
 with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
@@ -21,6 +22,7 @@ with workflow.unsafe.imports_passed_through():
         sweep_chat_artifacts,
         sweep_orphan_table_cells,
     )
+    from tasks.P_ops.activities import supervise_operations
     from tasks.P_admin.ocr_languages import (
         ApplyOcrLanguagesParams,
         OcrStageParams,
@@ -264,20 +266,38 @@ class CollectEtaSamples:
             now = workflow.now().timestamp()
             skip = [c for c, recheck_at in state.finished.items() if recheck_at > now]
 
-            result = await workflow.execute_activity(
-                collect_eta_samples,
-                CollectEtaSamplesParams(skip_collections=skip),
-                start_to_close_timeout=timedelta(minutes=30),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=2),
-            )
+            try:
+                result = await workflow.execute_activity(
+                    collect_eta_samples,
+                    CollectEtaSamplesParams(skip_collections=skip),
+                    start_to_close_timeout=timedelta(minutes=30),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=2),
+                )
+            except ActivityError as exc:
+                if _is_cancellation(exc):
+                    raise
+                workflow.logger.warning("ETA sampling failed: %s", exc)
+            else:
+                state.recent_durations_ms.append(result.duration_ms)
+                state.recent_durations_ms = state.recent_durations_ms[-THROTTLE_HISTORY:]
+                for c in result.completed_collections:
+                    state.finished[c] = now + FINISHED_RECHECK_SECONDS
+                for c in result.active_collections:
+                    state.finished.pop(c, None)
 
-            state.recent_durations_ms.append(result.duration_ms)
-            state.recent_durations_ms = state.recent_durations_ms[-THROTTLE_HISTORY:]
-            for c in result.completed_collections:
-                state.finished[c] = now + FINISHED_RECHECK_SECONDS
-            for c in result.active_collections:
-                state.finished.pop(c, None)
+            try:
+                await workflow.execute_activity(
+                    supervise_operations,
+                    task_queue="operations-queue",
+                    start_to_close_timeout=timedelta(minutes=30),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=2),
+                )
+            except ActivityError as exc:
+                if _is_cancellation(exc):
+                    raise
+                workflow.logger.warning("Operation supervision failed: %s", exc)
             state.passes += 1
 
             if state.passes >= CONTINUE_AS_NEW_PASSES:
@@ -288,6 +308,17 @@ class CollectEtaSamples:
                 workflow.continue_as_new(state)
 
             await asyncio.sleep(next_interval_seconds(state.recent_durations_ms))
+
+
+def _is_cancellation(exc: BaseException) -> bool:
+    """Return whether an activity failure contains a cancellation."""
+    current: BaseException | None = exc
+    while current is not None:
+        if isinstance(current, (CancelledError, asyncio.CancelledError)):
+            return True
+        cause = getattr(current, "cause", None)
+        current = cause if isinstance(cause, BaseException) else None
+    return False
 
 
 @workflow.defn

@@ -185,10 +185,10 @@ async def _probe_embeddings_at_startup(worker_name: str) -> None:
 async def run_common_worker():
     # Localized imports for common worker only
     from .P0_scan_disk.activities import (
-        ingest_files_batch, insert_vfs_directories, list_disk_folder,
+        plan_folder_ranges, scan_folder_range,
         reconcile_deleted_files,
     )
-    from .P0_scan_disk.workflows import IngestAndProcessDataset, IngestDiskDataset, HandleFolders, HandleFiles
+    from .P0_scan_disk.workflows import IngestAndProcessDataset, IngestDiskDataset, HandleFolders
     from .P1_compute_plans.activities import count_new_blobs, compute_plans
     from .P1_compute_plans.workflows import ComputePlans
     from .P2_execute_plan.activities import (
@@ -305,7 +305,6 @@ async def run_common_worker():
             IngestDiskDataset,
             IngestAndProcessDataset,
             HandleFolders,
-            HandleFiles,
             ComputePlans,
             ExecutePlans,
             ExecuteSinglePlan,
@@ -328,9 +327,8 @@ async def run_common_worker():
             SweepChatArtifacts,
           ],
           activities=[
-            list_disk_folder,
-            insert_vfs_directories,
-            ingest_files_batch,
+            plan_folder_ranges,
+            scan_folder_range,
             reconcile_deleted_files,
             count_new_blobs,
             compute_plans,
@@ -698,7 +696,7 @@ async def run_operations_worker():
   """
   from .P_ops.activities import (
       cancel_target_operation, count_dataset_rows_activity, record_operation_state, reindex_collection_activity,
-      sample_dataset_progress, tombstone_dataset_row,
+      sample_dataset_progress, supervise_operations, tombstone_dataset_row,
   )
   from .P_ops.backup import (
       begin_export, export_clickhouse, export_manticore, export_object_store,
@@ -726,7 +724,7 @@ async def run_operations_worker():
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflows=[Operation, CancelOperation],
       activities=[cancel_target_operation, record_operation_state, sample_dataset_progress,
-                  reindex_collection_activity, count_dataset_rows_activity,
+                  supervise_operations, reindex_collection_activity, count_dataset_rows_activity,
                   tombstone_dataset_row, begin_export, finish_export,
                   begin_import, finish_import, capture_operation_failure],
       activity_executor=executor,

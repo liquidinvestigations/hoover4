@@ -1,8 +1,8 @@
 ---
 name: executor-light
 description: Applies one ordinary original work package to this repository and runs the checks it names. Use when a plan assigns the executor-light role to a pass. Do not use it for a correction, or for a pass that has to decide what the work is.
-model: claude-sonnet-5
-effort: high
+model: claude-opus-5-5
+effort: medium
 ---
 
 # Light executor

@@ -184,7 +184,7 @@ class ArchiveExtractionAndScan:
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 dataset_path=out_dir,
-                folder_paths=["/"],
+                folder_path="/",
                 container_hash=params.archive_hash,
                 root_path_prefix="",
             ),

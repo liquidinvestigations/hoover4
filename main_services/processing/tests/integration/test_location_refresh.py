@@ -224,12 +224,15 @@ def test_local_stale_index_recovery_rewrites_only_affected_hashes(
 ):
     root = tmp_path / "root"
     shutil.copytree(tiny_dataset, root)
+    (root / "untouched.txt").write_text("untouched")
     collectionname = temp_collection
     collection_dataset = ingest_dataset(collectionname, "tiny", str(root))
     wait_for_plans_finished(collectionname)
 
     hello_hash = _content_hash(root / HELLO)
+    untouched_hash = _content_hash(root / "untouched.txt")
     before = _counts(collectionname, collection_dataset, hello_hash)
+    untouched_before_ids = _indexed_path_ids(collectionname, collection_dataset, untouched_hash)
     (root / "copy").mkdir()
     shutil.copy(root / HELLO, root / "copy" / HELLO)
 
@@ -257,7 +260,9 @@ def test_local_stale_index_recovery_rewrites_only_affected_hashes(
     assert after["nlp"] == before["nlp"]
     assert after["vectors"] == before["vectors"]
     assert after["plans"] == before["plans"]
-    assert hello_hash in result.refreshed_hashes
+    assert result.affected_count == len(selected)
+    assert result.refreshed_count == 1
     after_ids = _indexed_path_ids(collectionname, collection_dataset, hello_hash)
     expected = _expected_path_ids(collectionname, collection_dataset, hello_hash)
     assert after_ids == expected
+    assert _indexed_path_ids(collectionname, collection_dataset, untouched_hash) == untouched_before_ids
