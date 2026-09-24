@@ -14,7 +14,8 @@ from collection_search_server.backend_client import (
     AgentError, AgentSort, CollectionsListRequest, SearchDateHistogramRequest,
     SearchEntityExplainerRequest, SearchFacetValuesRequest, SearchResultsRequest,
 )
-from collection_search_server.paging import PagedTool, error_text, page_result
+from collection_search_server import paging
+from collection_search_server.paging import PagedTool, error_text
 from collection_search_server import server
 from collection_search_server.server import mcp
 
@@ -24,34 +25,31 @@ class LocalPagedTool:
     """A paged tool whose result this server computes, with the `model` and `render`
     interface of `PagedTool`, so `read_more` dispatches to it like to a route tool.
 
-    `produce` returns the complete result as a JSON object. The broker pages the list
-    under `item_key` as rows, and the other keys go into the page fields. The `source` is
-    a digest of the complete result, so a continuation whose result changed is refused.
+    `produce` returns the complete result as a JSON object. The complete result is one
+    window of the route paging policy: the list under `item_key` is its rows, and the
+    other keys are its fields. A result that does not fit one page is stored once, and
+    its later pages read the stored window, as a route window's do. The `source` is a
+    digest of the complete result, so a continuation whose result changed is refused.
     """
 
     model: type[BaseModel]
     tool_name: str
     item_key: str
     produce: Callable[[Any], dict[str, Any]]
+    shape: str = "rows"
 
-    def render(self, request: BaseModel, position: dict[str, int], source: str) -> str:
-        offset = int(position.get("offset", 0))
-        if offset < 0 or int(position.get("page", 0)) != 0:
-            return canonical_json({"success": False, "error": "invalid_argument", "message": "continuation position is invalid"})
+    def render(self, request: BaseModel, position: dict[str, Any], source: str) -> str:
+        if position.get("artifact"):
+            return paging._stored_page(self, request, position, paging._artifact_reader(position["artifact"]))
         result = self.produce(request)
         if result.get("success") is False:
             return canonical_json(result)
         digest = hashlib.sha256(canonical_json(result).encode("utf-8")).hexdigest()[:32]
         if source and source != digest:
             return canonical_json({"success": False, "error": "source_changed", "message": "the source changed after the prior page"})
-        result = {**result, "source": digest}
         items = list(result.get(self.item_key) or [])
-        fields = {key: value for key, value in result.items() if key != self.item_key}
-        return page_result(
-            self.tool_name, request, result, "rows", items[offset:], fields=fields,
-            position={"page": 0, "offset": offset}, total_units=len(items),
-            position_after=lambda count: None if offset + count >= len(items) else {"page": 0, "offset": offset + count},
-        )
+        fields = {**{key: value for key, value in result.items() if key != self.item_key}, "source": digest}
+        return paging._live_page(self, request, None, paging.Window(items, fields, None, None, len(items)))
 
 
 class SearchPassagesRequest(BaseModel):

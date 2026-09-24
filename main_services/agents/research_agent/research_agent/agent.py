@@ -3,16 +3,22 @@ import logging
 import os
 from collections import OrderedDict
 from contextvars import ContextVar
-from typing import List, Any, AsyncIterable, Sequence, TypedDict, Annotated, Dict, Optional
+from typing import List, Any, AsyncIterable, Sequence, TypedDict, Annotated, Dict, Optional, Tuple
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, AIMessageChunk, RemoveMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
+from langchain_core.callbacks.manager import adispatch_custom_event
+from langchain_core.messages import SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from agent_common import tool_packs
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent import compaction, llm_events, prompts, subagents
+from research_agent.execution import (
+    MODEL_TURN, TOOL_RESULT, TOOL_START, make_execution_node, model_turn_event, page_share_client,
+)
+from research_agent.run_messages import history_to_langchain
+from research_agent.tool_catalogue import DELEGATION_TOOL, build_snapshot
 from research_agent.thinking import describe as describe_thinking, thinking_kwargs, tool_turn_kwargs
 from research_agent.tool_args import decode_string_arguments
 from pydantic import TypeAdapter
@@ -124,21 +130,32 @@ _PENDING_COMPACTIONS: ContextVar[Optional[List[compaction.CompactionReport]]] = 
 )
 
 
-#: How many compiled graphs to keep. Each holds one MCP client with a live connection
-#: per configured server (six, for the full research agent), so this cache is not free
-#: and cannot be unbounded. It is keyed partly by chat session id, which an agent
+#: How many compiled graphs to keep. A cached graph holds no open MCP connection: the
+#: adapter opens one session for each server to list the tools when the graph is created,
+#: and one session for each tool call, and closes each on exit. A graph costs one
+#: `tools/list` call for each configured server when it is created, and the memory of its
+#: tool objects. The cache is keyed partly by chat session id and run id, which an agent
 #: serving many conversations would otherwise grow without limit. Evicts
-#: least-recently-used.
+#: least-recently-used. A `/run/stream` request releases its graph when it ends.
 MAX_CACHED_GRAPHS = int(os.getenv("AGENT_MAX_CACHED_GRAPHS", "24"))
 
 
 class AgentState(TypedDict, total=False):
     messages: Annotated[Sequence[BaseMessage], add_messages]
-    #: This run's tool-turn budget, when the caller sets one. In the state rather than
-    #: baked into the graph because graphs are cached and reused across requests, while
-    #: the budget is per run: the chat workflow raises it by a fixed increment each time
-    #: it nags, so a nagged turn has room to act. Absent means MAX_TOOL_TURNS.
+    #: This run's tool-turn budget. In the state rather than baked into the graph because
+    #: graphs are cached and reused across requests, while the budget is per run. Absent
+    #: means MAX_TOOL_TURNS. Zero means the next tool call goes to the forced answer.
     max_tool_turns: int
+    #: The deferred tool names bound for the next model call. The model node and the
+    #: execution node read this one value, and only the bind step of the execution node
+    #: changes it. Each request starts with none.
+    bound_names: Tuple[str, ...]
+    #: How many chat history messages come before the run's thread. An event `index` is
+    #: a position in the thread, so it is the message position less this offset.
+    thread_offset: int
+    #: How many messages the request started with. The tool-turn count reads only the
+    #: messages after it, which are the turns this request made.
+    request_start: int
 
 
 #: Headers the ACL-aware MCP servers read to scope a call to one user. The agent never
@@ -152,6 +169,11 @@ ACL_USER_HEADER = "X-Hoover4-User"
 #: headers above this carries no authority. It is an isolation key, not an ACL.
 CHAT_SESSION_HEADER = "X-Hoover4-Chat-Session"
 
+#: The agent run id, sent on every MCP connection that a `/run/stream` request opens. The
+#: browser server keys a browser by it, so each run gets its own browser. It carries no
+#: authority either.
+AGENT_RUN_HEADER = "X-Hoover4-Agent-Run"
+
 
 def llm_streaming_enabled() -> bool:
     """Whether the LLM is configured to stream tokens. See `_create_graph` for why the
@@ -163,6 +185,7 @@ def acl_headers(
     username: Optional[str],
     allowed_collections: Optional[List[str]],
     session_id: Optional[str] = None,
+    run_id: Optional[str] = None,
 ) -> Dict[str, str]:
     """Build the per-request MCP headers carrying the caller's identity and ACL.
 
@@ -175,6 +198,8 @@ def acl_headers(
         headers[ACL_USER_HEADER] = username
     if session_id:
         headers[CHAT_SESSION_HEADER] = session_id
+    if run_id:
+        headers[AGENT_RUN_HEADER] = run_id
     secret = _read_secret("MCP_SHARED_SECRET")
     if secret:
         headers["Authorization"] = f"Bearer {secret}"
@@ -208,17 +233,16 @@ class MCPGatewayAgent:
         """Initialize the MCP Gateway Agent with MCP servers."""
         self.name = name
         self.mcp_servers = mcp_servers
-        # An override, not the prompt itself. The prompt is rendered per graph in
-        # `_create_graph`, because it is a function of what that graph binds: the tool
+        # An override, not the prompt itself. The prompt is rendered for each model call
+        # in `_create_graph`, because it is a function of what that call binds: the tool
         # section comes from the bound tool names and the budget from `MAX_TOOL_TURNS`,
         # neither of which is known here. A non-empty value here, `SYSTEM_PROMPT` in
         # compose, or a literal handed in by a test, wins outright.
         self.system_prompt_override = (system_prompt or "").strip()
         self.llm_model = llm_model
-        # The profile decides more than the wording: it decides whether the delegation
-        # tool is bound at all. Carried as an attribute rather than read from the
-        # environment inside `_create_graph` so a test can build a delegating agent
-        # without setting a process-wide variable.
+        # The profile decides the wording of the system prompt. The tool packs of the
+        # run kind decide which tools are bound (`agent_common.tool_packs`). Carried as an
+        # attribute so a test can set it without setting a process-wide variable.
         self.profile = (profile or prompts.active_profile()).strip().lower()
         self.tools_type_adapter = TypeAdapter(Dict[str, Any])
         self.graph = None
@@ -266,8 +290,14 @@ class MCPGatewayAgent:
         allowed_collections: Optional[List[str]],
         session_id: Optional[str] = None,
         llm_model: Optional[str] = None,
+        run_id: Optional[str] = None,
+        kind: str = "chat",
+        can_delegate: bool = True,
     ) -> str:
         # Sorted so that ["a","b"] and ["b","a"] share one cached graph.
+        #
+        # `run_id` is part of the key because the MCP headers carry it, and `kind` and
+        # `can_delegate` because they decide which tools the graph binds.
         #
         # `session_id` is part of the key because the MCP connection headers carry it,
         # and those headers are baked into the graph at construction time. Two chats by
@@ -279,7 +309,10 @@ class MCPGatewayAgent:
         # choices would silently answer every later turn with the first model that was
         # cached.
         acl = f"{username or ''}|{','.join(sorted(allowed_collections or []))}"
-        return f"{acl}|{session_id or ''}|{llm_model or ''}"
+        return (
+            f"{acl}|{session_id or ''}|{llm_model or ''}|{run_id or ''}|{kind}"
+            f"|{'d' if can_delegate else 'n'}"
+        )
 
     def _resolve_model(self, llm_model: Optional[str] = None) -> str:
         return (
@@ -294,20 +327,38 @@ class MCPGatewayAgent:
         allowed_collections: Optional[List[str]],
         session_id: Optional[str] = None,
         llm_model: Optional[str] = None,
+        run_id: Optional[str] = None,
+        kind: str = "chat",
+        can_delegate: bool = True,
     ):
         model = self._resolve_model(llm_model)
-        key = self._acl_key(username, allowed_collections, session_id, model)
+        key = self._acl_key(
+            username, allowed_collections, session_id, model, run_id, kind, can_delegate
+        )
         if key in self._graphs:
             self._graphs.move_to_end(key)
             return self._graphs[key]
 
         self._graphs[key] = await self._create_graph(
-            username, allowed_collections, session_id, model
+            username, allowed_collections, session_id, model, run_id, kind, can_delegate
         )
         while len(self._graphs) > MAX_CACHED_GRAPHS:
             evicted, _ = self._graphs.popitem(last=False)
             log.info("evicting cached graph %s (cap %d)", evicted, MAX_CACHED_GRAPHS)
         return self._graphs[key]
+
+    def release_graph(self, run_id: str) -> int:
+        """Remove every cached graph of one run, and return how many were removed.
+
+        A graph holds no open connection, so dropping the reference is the whole release.
+        A request that still runs on the graph keeps its own reference.
+        """
+        if not run_id:
+            return 0
+        keys = [k for k in self._graphs if k.split("|")[4] == run_id]
+        for key in keys:
+            del self._graphs[key]
+        return len(keys)
 
     async def _create_graph(
         self,
@@ -315,17 +366,26 @@ class MCPGatewayAgent:
         allowed_collections: Optional[List[str]] = None,
         session_id: Optional[str] = None,
         llm_model: Optional[str] = None,
+        run_id: Optional[str] = None,
+        kind: str = "chat",
+        can_delegate: bool = True,
     ):
-        """Create the agent graph with MCP tools, scoped to one caller's ACL."""
+        """Create the agent graph with MCP tools, scoped to one caller's ACL.
+
+        `kind` selects the tool packs (`agent_common.tool_packs`). `can_delegate` false
+        removes `run_subagent` from the packs.
+        """
         # Set up MCP servers. The ACL travels as connection headers so the MCP server
         # enforces it on every tool call. The model cannot widen its own permissions,
         # because it never sees or supplies them.
-        headers = acl_headers(username, allowed_collections, session_id)
+        headers = acl_headers(username, allowed_collections, session_id, run_id)
         servers = {
             f"mcp_server_{i}": {
                 "url": url,
                 "transport": "streamable_http",
                 "headers": headers,
+                # Adds the page share that the execution node gives each call.
+                "httpx_client_factory": page_share_client,
             }
             for i, url in enumerate(self.mcp_servers)
         }
@@ -388,30 +448,39 @@ class MCPGatewayAgent:
         log.info("LLM thinking configuration: %s", describe_thinking())
         log.info("%s", compaction.describe())
 
-        # Delegation, and the one line that is the whole depth limit.
+        # The tool packs of this run kind decide what the graph binds, runs and lists in
+        # its catalogue. `run_subagent` is a pack tool like the others, so the packs
+        # decide whether this graph delegates. A run that may not delegate loses it here.
+        configured = tool_packs.configured_packs(kind)
+        allowed = tool_packs.allowed_tools(kind, configured)
+        if not can_delegate:
+            allowed = allowed - {DELEGATION_TOOL}
+
+        # The in-process worker of `run_subagent`.
         #
-        # The worker's tool list is built from the MCP tools BEFORE `run_subagent` is
-        # appended, so the delegation tool is not in it and no prompt can put it back.
-        # See research_agent/subagents.py. Workers reuse these tool objects, which means
-        # they reuse this graph's MCP connections and therefore the lead's chat session:
-        # that is what makes a worker's citation handles resolve in the lead's session,
-        # and what keeps a delegating turn to one browser context rather than four.
-        if subagents.delegates(self.profile):
-            worker_pool = subagents.worker_tools(tools)
-            worker_graph = subagents.build_worker_graph(
-                ThinkingChatOpenAI(
-                    **llm_kwargs, extra_body=tool_turn_kwargs()
-                ).bind_tools(worker_pool),
-                ThinkingChatOpenAI(**llm_kwargs, extra_body=thinking_kwargs()),
-                # Rendered from the worker's own pool, not the lead's: a worker's prompt
-                # describes the ten tools it has, and `run_subagent` is not among them,
-                # so the prompt cannot suggest a recursion the binding forbids.
-                prompts.render(
+        # Its snapshot is built from the MCP tools before `run_subagent` is added, so a
+        # worker cannot delegate. Workers reuse these tool objects, which means they reuse
+        # this graph's MCP headers and therefore the lead's chat session: that is what
+        # makes a worker's citation handles resolve in the lead's session.
+        if DELEGATION_TOOL in allowed:
+            worker_snapshot = build_snapshot(
+                tools, subagents.worker_allowed_tools(), "subagent"
+            )
+
+            def worker_prompt(names: Sequence[str]) -> str:
+                # Rendered from the worker's own tools, not the lead's, so the prompt
+                # cannot suggest a recursion the binding forbids.
+                return prompts.render(
                     "research_subagent",
-                    tools=worker_pool,
+                    tools=list(names),
                     collections_hint=bool(allowed_collections),
-                ),
-                worker_pool,
+                )
+
+            worker_graph = subagents.build_worker_graph(
+                ThinkingChatOpenAI(**llm_kwargs, extra_body=tool_turn_kwargs()),
+                ThinkingChatOpenAI(**llm_kwargs, extra_body=thinking_kwargs()),
+                worker_prompt,
+                worker_snapshot,
                 AgentState,
             )
 
@@ -424,39 +493,46 @@ class MCPGatewayAgent:
 
             tools = list(tools) + [subagents.make_delegation_tool(run_worker)]
             log.info(
-                "delegation bound for profile %s: %d worker tools, at most %d tasks a "
+                "delegation bound for kind %s: %d worker tools, at most %d tasks a "
                 "call, %d at once, %d tool turns each, %d workers a turn",
-                self.profile,
-                len(worker_pool),
+                kind,
+                len(worker_snapshot.tools_by_name),
                 subagents.MAX_TASKS_PER_CALL,
                 subagents.MAX_CONCURRENCY,
                 subagents.WORKER_TOOL_TURNS,
                 subagents.MAX_WORKERS_PER_TURN,
             )
 
-        llm = ThinkingChatOpenAI(
-            **llm_kwargs, extra_body=tool_turn_kwargs()
-        ).bind_tools(tools)
+        # One snapshot for this graph. The model node and the execution node both read
+        # it, with the run's `bound_names`, so the model never receives a tool that the
+        # execution node refuses.
+        snapshot = build_snapshot(tools, allowed, kind)
+        log.info(
+            "catalogue %s for kind %s: %d core tools, %d deferred",
+            snapshot.version[:12],
+            kind,
+            len(snapshot.core_names),
+            len(snapshot.deferred_names),
+        )
+        tool_llm = ThinkingChatOpenAI(**llm_kwargs, extra_body=tool_turn_kwargs())
 
-        # The prompt is rendered here and nowhere else, because here is the first point
-        # at which the tool list is real. Everything it says about the tool surface comes
-        # from `tools` (which now includes the delegation tool if this profile binds it)
-        # so a prompt cannot claim a tool the model does not have, and a tool the model
-        # does have cannot go unmentioned. `collections_hint` is the caller's ACL: an
-        # empty one means every collection search will come back empty, which the model
-        # should be told rather than left to discover three searches later.
-        system_text = self.system_prompt_override or prompts.system_prompt(
-            self.profile,
-            tools=tools,
-            max_tool_turns=MAX_TOOL_TURNS,
-            collections_hint=bool(allowed_collections),
-        )
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", system_text),
-                MessagesPlaceholder(variable_name="messages"),
-            ]
-        )
+        # The prompt is rendered from the tools one model call binds, so a prompt cannot
+        # claim a tool the model does not have, and a bound tool cannot go unmentioned.
+        # It is rendered once for each distinct tool list. `collections_hint` is the
+        # caller's ACL: an empty one means every collection search will come back empty,
+        # which the model should be told rather than left to discover.
+        profile = "research_subagent" if kind == "subagent" else self.profile
+        system_texts: Dict[Tuple[str, ...], str] = {}
+
+        def system_text_for(names: Tuple[str, ...]) -> str:
+            if names not in system_texts:
+                system_texts[names] = self.system_prompt_override or prompts.system_prompt(
+                    profile,
+                    tools=list(names),
+                    max_tool_turns=MAX_TOOL_TURNS,
+                    collections_hint=bool(allowed_collections),
+                )
+            return system_texts[names]
 
         def compact_state(state: AgentState) -> Dict[str, Any]:
             """Shorten old tool results on the way to the model, when the trigger fires.
@@ -484,8 +560,27 @@ class MCPGatewayAgent:
                     pending.append(report)
             return {**state, "messages": compacted}
 
-        compact_step = RunnableLambda(compact_state, name="compact_context")
-        agent_runnable = compact_step | prompt | { "messages": llm }
+        async def model_call(state: AgentState, config: RunnableConfig, llm: Any) -> Dict[str, Any]:
+            """Call the model on the compacted messages, and send a `model_turn` event."""
+            names = snapshot.callable_names(state.get("bound_names") or ())
+            compacted = compact_state(state)["messages"]
+            reply = await llm.ainvoke(
+                [SystemMessage(content=system_text_for(names))] + list(compacted), config
+            )
+            index = len(state["messages"]) - int(state.get("thread_offset") or 0)
+            try:
+                await adispatch_custom_event(
+                    MODEL_TURN, model_turn_event(index, reply), config=config
+                )
+            except RuntimeError:
+                pass
+            return {"messages": [reply]}
+
+        async def agent_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
+            """The model node. It binds the core tools and the run's bound names for this
+            call only, from the same `bound_names` the execution node reads."""
+            bound = snapshot.tools_for(state.get("bound_names") or ())
+            return await model_call(state, config, tool_llm.bind_tools(bound))
 
         # The same model with no tools bound. Used by the `finalize` node below: a model
         # that cannot call a tool has to answer.
@@ -494,15 +589,24 @@ class MCPGatewayAgent:
         # whole run -- every tool result the turn collected, plus the instruction to stop
         # and answer -- so exempting it would exempt the one call most likely to be over.
         plain_llm = ThinkingChatOpenAI(**llm_kwargs, extra_body=thinking_kwargs())
-        finalize_runnable = compact_step | prompt | { "messages": plain_llm }
+
+        async def finalize_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
+            return await model_call(state, config, plain_llm)
 
         builder = StateGraph(AgentState)
-        builder.add_node("agent", agent_runnable)
-        tool_node = ToolNode(tools)
-        builder.add_node("tools", tool_node)
+        builder.add_node("agent", agent_node)
+        # The execution node in place of langgraph's `ToolNode`. See
+        # research_agent/execution.py. The node keeps the name `tools`, which the
+        # `/chat/stream` event loop reads.
+        builder.add_node("tools", make_execution_node(snapshot))
 
         def _tool_turns(state: AgentState) -> int:
-            return sum(1 for m in state["messages"] if getattr(m, "tool_calls", None))
+            """The tool turns this request made. A continued thread's earlier turns are
+            counted by the caller in `tool_turns_used`."""
+            start = int(state.get("request_start") or 0)
+            return sum(
+                1 for m in state["messages"][start:] if getattr(m, "tool_calls", None)
+            )
 
         def _repeated_call(state: AgentState) -> bool:
             """Whether the model just re-issued a call it has already made.
@@ -532,7 +636,8 @@ class MCPGatewayAgent:
             if _repeated_call(state):
                 log.warning("agent repeated a tool call; forcing a final answer")
                 return "finalize_entry"
-            budget = int(state.get("max_tool_turns") or MAX_TOOL_TURNS)
+            budget = state.get("max_tool_turns")
+            budget = MAX_TOOL_TURNS if budget is None else int(budget)
             if _tool_turns(state) >= budget:
                 log.warning("agent hit the %d-turn tool budget; forcing a final answer", budget)
                 return "finalize_entry"
@@ -562,7 +667,7 @@ class MCPGatewayAgent:
             }
 
         builder.add_node("finalize_entry", finalize_entry)
-        builder.add_node("finalize", finalize_runnable)
+        builder.add_node("finalize", finalize_node)
 
         builder.set_entry_point("agent")
         builder.add_conditional_edges("agent", should_continue)
@@ -582,33 +687,75 @@ class MCPGatewayAgent:
         allowed_collections: List[str] = None,
         llm_model: str = None,
         extra_tool_turns: int = 0,
+        run_id: Optional[str] = None,
+        kind: str = "chat",
+        can_delegate: bool = True,
+        thread: Optional[Sequence[BaseMessage]] = None,
+        tool_turns_used: int = 0,
     ) -> AsyncIterable[dict[str, Any]]:
+        """Run the graph and yield its events.
+
+        `/chat/stream` passes `query` and yields the `start_tool` and `end_tool` events.
+        `/run/stream` passes `run_id` and `thread`, the rebuilt run messages, in place of
+        `query`. It yields the `model_turn`, `tool_start` and `tool_result` events in
+        place of `start_tool` and `end_tool`, and releases the run's graph at the end.
+        """
         # Build (or reuse) the graph whose MCP connections carry this caller's ACL and
         # chat session, keyed also by the model that will answer.
         model_id = self._resolve_model(llm_model)
         provider = llm_events.provider_from_base_url()
+        run_events = bool(run_id)
         graph = await self._graph_for(
-            username or user_id, allowed_collections, session_id, model_id
+            username or user_id, allowed_collections, session_id, model_id,
+            run_id, kind, can_delegate,
         )
+        try:
+            async for event in self._stream_graph(
+                graph, query, chat_history, session_id, user_id, username, model_id,
+                provider, extra_tool_turns, run_events, thread, tool_turns_used,
+            ):
+                yield event
+        finally:
+            if run_id:
+                self.release_graph(run_id)
 
-        # Build messages from chat history and current query
-        messages = []
-        if chat_history:
-            for msg in chat_history:
-                if msg["type"] == "human":
-                    messages.append(HumanMessage(content=msg["content"]))
-                elif msg["type"] == "ai":
-                    messages.append(AIMessage(content=msg["content"]))
-        
-        # Add current query
-        messages.append(HumanMessage(content=query))
-        
+    async def _stream_graph(
+        self,
+        graph: Any,
+        query: Optional[str],
+        chat_history: Optional[List[Dict[str, str]]],
+        session_id: Optional[str],
+        user_id: Optional[str],
+        username: Optional[str],
+        model_id: str,
+        provider: str,
+        extra_tool_turns: int,
+        run_events: bool,
+        thread: Optional[Sequence[BaseMessage]],
+        tool_turns_used: int,
+    ) -> AsyncIterable[dict[str, Any]]:
+        messages: List[BaseMessage] = list(history_to_langchain(chat_history or []))
+        thread_offset = len(messages)
+        if thread is not None:
+            messages.extend(thread)
+        else:
+            messages.append(HumanMessage(content=query or ""))
+
         # The budget travels with the run, not with the cached graph. `extra_tool_turns`
         # is what the chat workflow adds per nag: the base budget stays, so the total a
-        # nagged turn may spend is bounded rather than multiplied.
+        # nagged turn may spend is bounded rather than multiplied. `tool_turns_used` is
+        # what a continued run already spent in the current round.
         inputs = {
             "messages": messages,
-            "max_tool_turns": MAX_TOOL_TURNS + max(0, int(extra_tool_turns or 0)),
+            "max_tool_turns": max(
+                0,
+                MAX_TOOL_TURNS
+                + max(0, int(extra_tool_turns or 0))
+                - max(0, int(tool_turns_used or 0)),
+            ),
+            "bound_names": (),
+            "thread_offset": thread_offset,
+            "request_start": len(messages),
         }
 
         # Prepare config with Langfuse callback if available
@@ -680,6 +827,18 @@ class MCPGatewayAgent:
         async for event in graph.astream_events(inputs, version="v2", config=config):
             kind = event["event"]
             node = event["metadata"].get("langgraph_node")
+
+            # The run events of research_agent/execution.py and the model node. Only a
+            # `/run/stream` request forwards them. The `/chat/stream` consumers read
+            # `start_tool` and `end_tool` below.
+            if kind == "on_custom_event":
+                if run_events and event.get("name") in (MODEL_TURN, TOOL_START, TOOL_RESULT):
+                    yield {
+                        "is_task_complete": False,
+                        "type": event["name"],
+                        "content": event.get("data"),
+                    }
+                continue
 
             # `finalize` is an answer-producing node exactly like `agent`. It is the
             # same model with no tools bound (see `_create_graph`). Leaving it out here
@@ -825,6 +984,8 @@ class MCPGatewayAgent:
 
             if node == "tools":
                 llm_started = False
+                if run_events:
+                    continue
                 if kind == "on_tool_start":
                     # `event["data"]` on a start is only `{"input": {...}}`. The tool's
                     # name lives on the event, not in its data, and until the matching

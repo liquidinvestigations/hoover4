@@ -9,6 +9,7 @@ import pytest
 from agent_common.result_pages import decode_continuation
 from collection_search_server import server, tools_document, tools_search
 from collection_search_server.paging import _read_more_response
+from test_paging import Store
 
 
 @pytest.fixture
@@ -92,7 +93,7 @@ def test_search_passages_pages_its_hits_through_the_broker(monkeypatch):
         return _hits(120)
 
     monkeypatch.setattr(server, "search_passages", fake_search)
-    monkeypatch.setattr("collection_search_server.paging._artifact", lambda tool_name, complete: "artifact")
+    store = Store(monkeypatch)
     page = json.loads(tools_search.search_passages.fn(queries='["q", "r"]', collectionname="c", max_results=120))
     assert asked[0] == (["q", "r"], ["c"], 120)
     assert page["tool_name"] == "search_passages" and page["shape"] == "rows"
@@ -104,6 +105,8 @@ def test_search_passages_pages_its_hits_through_the_broker(monkeypatch):
         page = json.loads(_read_more_response(token))
         seen += [item["file_hash"] for item in page["items"]]
     assert seen == [f"{n:064x}" for n in range(120)]
+    # The complete result is one window, stored once, and every later page reads it.
+    assert len(store.bodies) == 1
 
 
 def test_a_changed_local_result_refuses_the_continuation(monkeypatch):

@@ -1,13 +1,18 @@
-"""Session router: one :class:`ChatBrowser` per chat, created lazily, reaped on idle.
+"""Session router: one :class:`ChatBrowser` per key, created lazily, reaped on idle.
+
+The key is the agent run id when the caller sends one (`X-Hoover4-Agent-Run`), so each
+agent run gets its own browser. With no run id the key is the chat session id, and with
+neither it is the shared anonymous key.
 
 The lifetime rules, and why each number is what it is:
 
-* ``BROWSER_MAX_CONTEXTS`` (16), a whole Chromium per chat costs about 500 MB, so this
+* ``BROWSER_MAX_CONTEXTS`` (16), a whole Chromium per key costs about 500 MB, so this
   is a memory ceiling, not a politeness limit. Past it the least recently used **idle**
-  chat is evicted: both processes die and the profile directory goes. A chat with a call
-  in flight is never evicted, so the cap is exceeded instead when every chat is busy. The
-  evicted chat's next call transparently starts a fresh browser. Its cookies and tabs are
-  gone, which is accepted.
+  browser is evicted: both processes die and the profile directory goes. A browser with a
+  call in flight is never evicted. When every browser has a call in flight, a request for a
+  new key gets :class:`BrowserBusy` and no browser starts, so the cap holds. The evicted
+  key's next call transparently starts a fresh browser. Its cookies and tabs are gone,
+  which is accepted.
 * ``BROWSER_IDLE_SECONDS`` (900), a conversation the user has walked away from should not
   hold a browser. Fifteen minutes is long enough to survive reading an answer.
 * ``BROWSER_MAX_TABS_PER_CHAT`` (6), a model that opens a tab per search result would
@@ -46,6 +51,10 @@ ANONYMOUS = "_anonymous"
 #: The session the template browser is filed under. Never handed to a caller: its whole
 #: job is to answer `list_tools` without spawning anything.
 TEMPLATE_SESSION = "_template"
+
+
+class BrowserBusy(Exception):
+    """Every browser under the cap has a call in flight, so no browser can start now."""
 
 
 class Router:
@@ -92,7 +101,9 @@ class Router:
                 return template
             # `None` means we waited on someone else's spawn; re-read `_template`, which
             # their `_install_template` has now set.
-            spawned = await self._spawn_once(TEMPLATE_SESSION, self._install_template)
+            spawned = await self._spawn_once(
+                TEMPLATE_SESSION, self._install_template, capped=False
+            )
             if spawned is not None:
                 return spawned
 
@@ -143,25 +154,26 @@ class Router:
         async with self._lock:
             self._chats[chat.session_id] = chat
 
-    async def _spawn_once(self, key: str, install) -> ChatBrowser | None:
+    async def _spawn_once(self, key: str, install, capped: bool = True) -> ChatBrowser | None:
         """Start the browser for `key`, or wait for whoever already is.
 
         Returns the browser, or `None` when this caller waited on someone else's spawn and
         should re-check the map. `install` runs after a successful start and is what
-        publishes the browser; it takes the map lock itself.
+        publishes the browser; it takes the map lock itself. A capped spawn raises
+        :class:`BrowserBusy` before it starts anything when no idle browser can make room.
         """
         async with self._lock:
             pending = self._spawning.get(key)
             if pending is not None:
                 owner = False
             else:
+                doomed = self._take_over_limit_locked(making_room_for=1) if capped else []
                 pending = asyncio.get_running_loop().create_future()
                 # An exception nobody awaits is an "exception was never retrieved"
                 # warning at GC time; retrieving it in a callback keeps the log accurate.
                 pending.add_done_callback(lambda f: f.cancelled() or f.exception())
                 self._spawning[key] = pending
                 owner = True
-                doomed = self._take_over_limit_locked(making_room_for=1)
 
         if not owner:
             # `shield`: awaiting a future propagates the waiter's cancellation *into* it,
@@ -214,7 +226,7 @@ class Router:
     # ------------------------------------------------------------------- reaping
 
     def _take_over_limit_locked(self, making_room_for: int = 0) -> list[ChatBrowser]:
-        """Remove the least recently used **idle** chats from the map and hand them back
+        """Remove the least recently used **idle** browsers from the map and hand them back
         to be stopped. Caller holds the lock; stopping happens **outside** it, the same
         split :meth:`sweep` has always used. Killing two processes and deleting a profile
         directory is not a map operation.
@@ -223,32 +235,31 @@ class Router:
         the least recently used entry that made it an eviction target before, not a sign
         the chat is idle, and the map order does not know a call is running. Evicting it
         would kill a live tool call out from under the request waiting on it, so a chat
-        that is still working is skipped in favour of the next-oldest idle one. When
-        every chat is busy the cap is exceeded until one finishes or the idle reaper
-        collects it, rather than stopping a live one.
+        that is still working is skipped in favour of the next-oldest idle one. When too
+        few browsers are idle, this removes nothing and raises :class:`BrowserBusy`, so
+        the cap holds. A browser that is still starting counts toward the cap.
         """
-        doomed: list[ChatBrowser] = []
-        over = len(self._chats) + making_room_for - MAX_CONTEXTS
+        starting = sum(1 for key in self._spawning if key != TEMPLATE_SESSION)
+        over = len(self._chats) + starting + making_room_for - MAX_CONTEXTS
         if over <= 0:
-            return doomed
-        for key in list(self._chats.keys()):
-            if len(doomed) >= over:
-                break
-            chat = self._chats[key]
-            if chat.lock.locked():
-                continue
-            del self._chats[key]
+            return []
+        idle = [key for key, chat in self._chats.items() if not chat.lock.locked()]
+        if len(idle) < over:
+            log.warning(
+                "browser cap %d reached and every browser has a call in flight; "
+                "refusing a new browser", MAX_CONTEXTS,
+            )
+            raise BrowserBusy(
+                f"all {MAX_CONTEXTS} browsers have a call in flight. Try again later."
+            )
+        doomed: list[ChatBrowser] = []
+        for key in idle[:over]:
+            chat = self._chats.pop(key)
             log.info(
-                "browser cap %d reached; evicting least recently used idle chat %s (idle %.0fs)",
-                MAX_CONTEXTS, key, chat.idle_seconds(),
+                "browser cap %d reached; evicting least recently used idle browser %s "
+                "(idle %.0fs)", MAX_CONTEXTS, key, chat.idle_seconds(),
             )
             doomed.append(chat)
-        if len(doomed) < over:
-            log.warning(
-                "browser cap %d exceeded by %d: every existing chat has a call in "
-                "flight, none is a safe eviction candidate",
-                MAX_CONTEXTS, over - len(doomed),
-            )
         return doomed
 
     async def _reap_forever(self) -> None:

@@ -18,6 +18,9 @@ full-research agent's workers run in-process. See "Delegation" below.
 Each process holds its own graph cache and MCP connections. Citation `[Dn]` handles
 are allocated in the collections MCP server, so the worker processes do not split them.
 
+The profile selects the prompt template. The tool packs of the run kind select the tools.
+See "Tool packs and deferred binding" below.
+
 **The internal-search agent has no web tools on purpose.** A chat about the user's own
 documents must not quietly become a web search. The user cannot tell from the answer
 which sentence came from their archive and which came from a search engine.
@@ -74,14 +77,16 @@ every agent reads it at tool-discovery time and there is only one copy to mainta
 
 ## Delegation
 
-The full-research agent binds `run_subagent`, which splits a question into two to five
-briefings and runs them at once, each in a fresh context, with no peer coordination. See
+A lead binds `run_subagent` when the `delegation` pack is in its run kind's packs, which
+is the default for both agents. The tool splits a question into two to five briefings and
+runs them at once in-process, each in a fresh context, with no peer coordination. See
 `research_agent/subagents.py`.
 
-**One level, enforced by what is bound.** A worker's tool list is built before the
-delegation tool is appended to the lead's, and `run_subagent` is in `WORKER_DENIED_TOOLS`
-as well, two independent reasons a worker cannot delegate, and neither is a sentence in a
-prompt. A prompt asking a model not to recurse eventually meets a model that does. Every
+**One level, enforced by what is bound.** A worker's snapshot is built from the MCP tools
+before the delegation tool is added to the lead's, and `run_subagent` is in
+`IN_PROCESS_WORKER_EXCLUDED` as well. These are two independent reasons a worker cannot
+delegate, and neither is a sentence in a prompt. A `/run/stream` request with
+`can_delegate` false does not bind `run_subagent`. A prompt asking a model not to recurse eventually meets a model that does. Every
 other cap is an environment-overridable number; the depth is not, because it is not a
 number.
 
@@ -98,8 +103,9 @@ same user message and can delegate again. A budget reset per run would multiply 
 by the nag count. The signal for "this is a nag round" is the non-zero `extra_tool_turns`
 the chat workflow sends, and the budget is keyed by chat session.
 
-**Workers get `read_page` and not the interactive browser tools, and `read_todo` and not
-the writers.** Reading a page is the overwhelmingly common browser action and needs no
+**Workers get the `subagent` packs less the interactive browser tools and the todo
+writers.** So a worker gets `read_page` and `read_todo`, and not the tools that drive a page
+or write the plan. Reading a page is the overwhelmingly common browser action and needs no
 persistent context; driving one does, and the browser server holds eight contexts in total.
 A worker has one objective and a few tool turns, so it has nothing to plan, and it is
 never nagged, for the same reason.
@@ -125,12 +131,95 @@ separately in `subagent_prompt_tokens`, `subagent_completion_tokens`,
 deliberately untouched: both describe one model call's context, and a worker's context is
 not the lead's.
 
-## Per-chat browser sessions
+## Tool packs and deferred binding
+
+A tool pack is a named set of tools (`agent_common/tool_packs.py`): `catalogue`,
+`collections`, `conversation`, `plan`, `delegation`, `web` and `browser`. Each kind of run
+(`chat`, `subagent`, `planner`, `organizer`) gets the packs that `AGENT_PACKS_CHAT`,
+`AGENT_PACKS_SUBAGENT`, `AGENT_PACKS_PLANNER` and `AGENT_PACKS_ORGANIZER` name, as a comma
+list or `all`. `deploy.py` renders them from `hoover4.ini`. The service refuses to start on an
+unknown pack name. A tool that an MCP server lists and no pack names is refused for every
+run. A `/chat/stream` lead is kind `chat`, and its in-process worker is kind `subagent`.
+
+Each graph builds one `CatalogueSnapshot` (`tool_catalogue.py`) from the tools of its packs.
+The snapshot splits them into core tools, which every model call binds, and deferred tools.
+The core tools are `list_collections`, `search_collections`, `search_passages`,
+`read_documents`, `list_document_entities`, `cite_documents`, `read_more`,
+`search_agent_tools`, `run_subagent`, and every tool of a server other than the collection
+server and the plan tools. The plan tools are core for the `planner` and `organizer` kinds.
+
+The model finds a deferred tool with `search_agent_tools`. It ranks an exact name, then the
+request as words of a tool's summary, then a name prefix, then the count of shared words. It
+returns at most `AGENT_CATALOGUE_MATCH_COUNT` matches (6 to 12, default 6), and
+`No available tool matches this request.` when nothing matches.
+
+The model node and the execution node (`execution.py`) read the run's `bound_names` from one
+state value. The model node binds the core tools and `bound_names` for that call only. The
+execution node refuses any other name with a `tool_unavailable` error, decodes and validates
+the arguments, and runs the calls. Plan mutations run one after the other in call order, and
+the other calls run in parallel. After the batch, the bind step puts the newest matches of
+`search_agent_tools` first, then the earlier names, and keeps `AGENT_CATALOGUE_MATCH_COUNT`.
+Each request starts with no bound names.
+
+### The batch result budget and the call measure
+
+The result pages of all calls of one model turn share one budget. The execution node
+reserves the empty page of each call first, divides the rest equally, and sends each call its
+share in the `X-Hoover4-Page-Share` header. The connections' HTTP client factory
+(`page_share_client`) adds the header, because the MCP adapter opens one session for each
+call. The collection server's page broker sizes each page within that share, a later page
+of a stored window included.
+
+- **Safe mode** is the default. One turn's results share 24,000 UTF-8 bytes, or less when
+  the request bytes plus the completion reserve leave less of the context window.
+- **Token mode** needs `AGENT_MAX_PAGE_TOKENS` and `AGENT_COMPLETION_RESERVE_TOKENS`, and a
+  known context window. The node counts the request and the empty pages with the served
+  tokenizer and applies `result_pages.allocate`. It sends the token share as a byte share,
+  because a token covers at least one byte. A failed count keeps safe mode. When the empty
+  pages and the reserve do not fit, no call runs, and each call gets its empty
+  `budget_exhausted` page.
+
+A page that the broker stored as a window is read on later pages with the share it was
+stored with, when not one unit fits the current share.
+
+The broker returns the `build_page` measure of the page beside the page text, as an embedded
+resource. The adapter puts that block in the tool message artifact. The node takes it out,
+adds `page_share`, `budget_mode` and `batch_total`, and gives it as the `measure` of the
+`tool_result` event and as `response_metadata["call_measure"]` of the tool message. A tool
+that is not a broker tool has no measure. `scripts/test-agent-batch-budget.sh` runs three
+parallel `search_collections` calls through the node and checks the total and each digest.
+
+## The run request: `POST /run/stream`
+
+A `/run/stream` request carries one agent run: `run_id`, `kind`, `depth`, the caller's
+identity and collections, the chat `history` (depth 0 only), and the run's thread as
+`messages`. `messages[0]` is the opening human message. `run_messages.py` rebuilds the
+stored messages into langchain messages, with the tool calls and the stored usage, so
+compaction can measure the thread before the first new model call. The run has
+`max(0, AGENT_MAX_TOOL_TURNS + extra_tool_turns - tool_turns_used)` tool turns left.
+
+The stream uses the frame shape of `/chat/stream`, and sends these events in place of
+`start_tool` and `end_tool`:
+
+| type | content |
+|---|---|
+| `model_turn` | `index`, `text`, `reasoning`, `tool_calls` with `id`, `name` and `args`, `usage` |
+| `tool_start` | `index`, `tool_call_id`, `name`, `args` |
+| `tool_result` | `index`, `tool_call_id`, `name`, `content`, `measure` (the call measure, or `null`), `status` (`ok` or `error`) |
+
+`index` is the message position in the run's thread. A call that raised sends a
+`tool_result` with `status` `error`, and `content` is the error text the model receives. The
+graph cache key holds the run id, and the run's graph is released when its stream ends. A
+`run_subagent` call runs the in-process worker path.
+
+## Per-chat and per-run browser sessions
 
 `X-Hoover4-Chat-Session` carries the chat session id alongside the ACL headers. It grants
 no authority. It is an **isolation key**. `hoover4-mcp-browser` uses it to give each
 conversation its own Chromium browser context, so cookies and storage from one chat do not
-follow the next one. Sessions are dropped when the chat ends, or after
+follow the next one. A `/run/stream` request also sends `X-Hoover4-Agent-Run` with the run
+id, and the browser server then keys the browser by the run. The chat session stays the
+key for citations, artifacts and the todo list. Sessions are dropped when the chat ends, or after
 `BROWSER_SESSION_IDLE_SECONDS` (1 h) idle. See
 [`../browser_use_server/README.md`](../browser_use_server/README.md).
 
@@ -310,8 +399,9 @@ strings, and `"filename_only": "True"` for a boolean. The MCP servers validate a
 with pydantic in lax mode. That mode converts `"True"` and `"5"`, and refuses a string for a
 list or an object, so such a call fails and the model gets no result.
 
-`_create_graph` wraps every MCP tool with `with_decoded_arguments` (`agent.py`). The workers
-use the same wrapped tools. Before each call, `decode_string_arguments` (`tool_args.py`)
+`_create_graph` wraps every MCP tool with `with_decoded_arguments` (`agent.py`), and the
+execution node (`execution.py`) decodes the arguments of every call it runs. The workers
+use the same wrapped tools and the same execution node. Before each call, `decode_string_arguments` (`tool_args.py`)
 reads the parameter's JSON schema, following `anyOf`, `oneOf`, `$ref` and `type` lists. It
 changes a string argument only when the schema does not allow a string:
 
@@ -394,6 +484,9 @@ The application is configured entirely via environment variables (rendered from
 
 ### Health Check
 - **GET** `/health` - Check agent status and readiness
+
+### Run Streaming
+- **POST** `/run/stream` - Stream one agent run. See "The run request" above.
 
 ### Chat Streaming
 - **POST** `/chat/stream` - Stream chat responses from the agent
@@ -521,8 +614,8 @@ poetry run mypy research_agent/
 
 ## Docker Support
 
-The included Dockerfile is what `compose/agents.yaml` builds (context: this
-directory). Secrets arrive as read-only bind mounts under `/run/secrets/`; the code
+The included Dockerfile is what `compose/research-agents.yaml` builds (context:
+`main_services/agents`, because the image copies `agent_common` for the tool pack table). Secrets arrive as read-only bind mounts under `/run/secrets/`; the code
 falls back to `LLM_API_KEY_FILE` / `MCP_SHARED_SECRET_FILE` when the plain env vars
 are unset.
 

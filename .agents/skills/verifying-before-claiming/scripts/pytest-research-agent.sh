@@ -22,6 +22,9 @@ set -uo pipefail
 target="${1:-tests}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 agent_dir="${repo_root}/main_services/agents/research_agent"
+# The agent imports `agent_common.tool_packs`. The image holds a copy of the package from
+# its last build, so the source tree's copy is mounted and put first on the path.
+common_dir="${repo_root}/main_services/agents/agent_common/agent_common"
 
 if ! docker image inspect hoover4-research-agent:local >/dev/null 2>&1; then
     echo "FAIL: hoover4-research-agent:local is not built"
@@ -30,7 +33,8 @@ fi
 
 # `sh -c`, never `sh -lc`: the interpreter is a virtualenv that PATH is the only thing
 # pointing at, and a login shell rebuilds PATH from /etc/profile.
-docker run --rm -v "${agent_dir}":/src:ro -w /src hoover4-research-agent:local sh -c "
+docker run --rm -v "${agent_dir}":/src:ro -v "${common_dir}":/common/agent_common:ro \
+    -e PYTHONPATH=/common -w /src hoover4-research-agent:local sh -c "
     pip install --quiet pytest pytest-asyncio 2>&1 | tail -1
     python -m pytest ${target} -q --asyncio-mode=auto -p no:cacheprovider \
         --deselect tests/test_agent.py::test_agent_interactive_chat 2>&1 | tail -20

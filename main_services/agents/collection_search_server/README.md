@@ -34,13 +34,26 @@ the units are the list the route names, and the next request carries the route's
 `next_position` as its `position`. A backend window that fits one page is returned whole. A
 window that does not fit is stored once, as one required raw artifact, on its first page.
 Its later pages read byte ranges of that artifact with `artifacts.read_range`, which checks
-that the caller owns the artifact in this chat and cuts the range to the page share, and
-call no route. A unit larger than a page is stored with string fields moved out, largest
-first, until the rest fits a page. Its page is cut inside the first moved field and carries
+that the caller owns the artifact in this chat and cuts the range to its size, and
+call no route. The page share is the `X-Hoover4-Page-Share` header of the call, which the
+agent sets from its batch result budget, or 24,000 bytes when the header is absent. Every
+page, a later page of a stored window included, is at most the share of its own call. A
+page keeps the window fields when one unit fits with them, and leaves them out otherwise.
+`search_passages` and `list_document_entities` compute their whole
+result in this server, and page it as one window in the same way. Every paged tool result
+also carries the `build_page` measure of its page as an embedded resource with the URI
+`hoover4://call-measure`, after the page text. The page text is the only text block. The
+store target of a unit is the share less the measured envelope of its window: a zero-unit
+page with the window fields, the columns and a continuation that holds the largest
+position values. A unit larger than that target is stored with string fields moved out,
+largest first, until the rest fits. Its page is cut inside the first moved field and carries
 `{"cut": {"field", "returned_bytes", "total_bytes", "next_fields"}}`. `next_fields` lists the
 other moved fields. The continuations read the rest of each moved field in that order, and
-then the next unit. A stored unit that has no string field left to move and is still larger
-than a page is refused with `invalid_argument`, which names its byte offset. Only text is a
+then the next unit. When not one unit fits the share of a later call, the page returns the
+next unit as its canonical JSON text, cut by bytes, with `{"cut": {"field": "",
+"start_bytes", "total_bytes"}}` in its fields. So every stored unit stays readable at a
+smaller share. Only a share smaller than the page envelope plus one byte gets
+`invalid_argument`, and the same continuation then works in a step with fewer calls. Only text is a
 blob page: a diff and a table cell. A `ValueKey` position accepts every character in its
 `value`, because the route issued that cell text and binds it as a parameter. The client does not retry
 a `504` whose body is the route's own `timed_out` answer.

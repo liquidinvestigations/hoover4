@@ -64,7 +64,7 @@ FULL_RESEARCH_TOOLS = INTERNAL_SEARCH_TOOLS | {
 #: subtraction is the code that enforces the depth limit. Writing the ten names out here
 #: would let this test agree with itself while disagreeing with the graph.
 RESEARCH_SUBAGENT_TOOLS = frozenset(
-    name for name in FULL_RESEARCH_TOOLS if name not in subagents.WORKER_DENIED_TOOLS
+    name for name in FULL_RESEARCH_TOOLS if name not in subagents.IN_PROCESS_WORKER_EXCLUDED
 )
 
 PROFILE_TOOLS = {

@@ -206,6 +206,20 @@ browser_max_contexts = 16
 mcp_browser_mem_limit = 24G
 ; Subagent workers the full-research agent may start at once from one call.
 agent_subagent_concurrency = 5
+; Tool packs for each kind of agent run: a comma list of pack names, or all.
+; The packs are catalogue, collections, conversation, plan, delegation, web and
+; browser. The agent service refuses to start on an unknown pack name.
+agent_packs_chat = all
+agent_packs_subagent = all
+agent_packs_planner = all
+agent_packs_organizer = all
+; Result page limits and the catalogue match count. The probe selects these values.
+; Empty agent_max_page_tokens or agent_completion_reserve_tokens keeps byte-safe
+; mode: one model step's results share 24,000 bytes. Token mode needs both keys.
+; agent_catalogue_match_count is from 6 to 12, and empty means 6.
+agent_max_page_tokens =
+agent_completion_reserve_tokens =
+agent_catalogue_match_count =
 ; Uvicorn worker processes on hoover4-full-research-agent. Each worker holds
 ; its own graph cache and MCP connections. The citation handle table lives in
 ; the collections MCP server, so these workers do not split it.

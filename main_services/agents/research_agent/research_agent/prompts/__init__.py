@@ -23,9 +23,8 @@ whether delegation is available, whether the caller can read any collection at a
 whether the open web is reachable from this agent.
 
 `SYSTEM_PROMPT` still overrides the rendered text outright, which is what an experiment
-wants. It deliberately does not change the profile: the profile name decides tool binding
-(`subagents.delegates`), and an experiment on the wording must not silently turn
-delegation off. See `active_profile`.
+wants. It does not change the tool binding, which the tool packs of the run kind decide
+(`agent_common.tool_packs`). See `active_profile`.
 
 **The Manticore MATCH syntax is deliberately not rendered here.** It reaches the model
 through the collection-search server's own `instructions`, which is read at
@@ -296,10 +295,9 @@ def render(
 def active_profile() -> str:
     """The profile this container runs, normalised.
 
-    Read separately from `system_prompt` because the profile decides more than the words:
-    it decides whether the delegation tool is bound (`subagents.delegates`). An unknown
-    name is returned as it stands so the tool-binding decision sees the same string a
-    reader of the compose file does, and falls through to the narrow behaviour.
+    Read separately from `system_prompt`, so a `SYSTEM_PROMPT` override keeps the profile
+    name. An unknown name is returned as it stands, and `system_prompt` renders the
+    internal-search template for it.
     """
     return (os.getenv("AGENT_PROFILE") or DEFAULT_PROFILE).strip().lower()
 

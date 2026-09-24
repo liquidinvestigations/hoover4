@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from agent_common import artifacts
 from agent_common.artifacts import ArtifactWriteFailed
-from agent_common.result_pages import ByteLimit, decode_continuation
+from agent_common.result_pages import ByteLimit, canonical_json, decode_continuation, replace_at_pointer
 from collection_search_server import tools_document, tools_folder, tools_search, tools_table
 from collection_search_server import paging
 from collection_search_server.paging import RESPONSE_MODELS, _read_more_response
@@ -125,7 +125,7 @@ class Store:
             body = self.bodies[artifact_id]
             if start >= len(body):
                 raise artifacts.ArtifactRangeRefused("start is past the end")
-            length = min(length, paging.page_share(), len(body) - start)
+            length = min(length, paging.MAX_HEADER_BYTES, len(body) - start)
             self.reads.append((start, length))
             return body[start:start + length], len(body)
         return read
@@ -396,7 +396,7 @@ def test_a_row_still_too_large_after_one_cut_is_read_field_by_field(monkeypatch,
     assert [row["row_number"] for page in rest for row in page["items"]] == [2]
 
 
-def test_a_stored_line_longer_than_a_page_is_refused_by_name(monkeypatch):
+def test_a_stored_line_with_no_string_longer_than_a_page_is_read_as_unit_text(monkeypatch):
     tool = TOOLS["table_page"]
     store = Store(monkeypatch)
     rows = [{"row_number": n, "row_id": n, "cells": {"a": "x" * 900}} for n in range(50)]
@@ -406,7 +406,253 @@ def test_a_stored_line_longer_than_a_page_is_refused_by_name(monkeypatch):
     artifact_id = token["position"]["artifact"]
     start = token["position"]["start"]
     body = store.bodies[artifact_id]
+    wide = {"row_number": 9, "pad": [1] * 30_001}
     store.bodies[artifact_id] = body[:start] + b'{"row_number": 9, "pad": [' + b"1," * 30_000 + b'1]}\n' + body[start:]
+    pages = walk(json.loads(_read_more_response(token)), limit=500)
+    assert all(page.get("success") and page["returned_units"] > 0 for page in pages)
+    rebuilt = rebuild(pages)
+    assert rebuilt[0] == wide
+    assert rebuilt[1:] == rows[page["returned_units"]:]
+
+
+def share_header(monkeypatch, share):
+    """Sends `share` as the page share of the calls that follow, as the agent does."""
+    headers = {} if share is None else {paging.PAGE_SHARE_HEADER: str(share)}
+    monkeypatch.setattr(paging, "get_http_headers", lambda: headers)
+
+
+def large_table(monkeypatch):
+    rows = [{"row_number": n, "row_id": n, "cells": {"a": "x" * 900}} for n in range(50)]
+    body = {**SAMPLES["table_page"], "rows": rows, "total_rows": 50, "total": 50, "source": "stable"}
+    monkeypatch.setattr(
+        "collection_search_server.paging.BackendClient.post",
+        lambda self, route, request, response_model, expected_source=None: response_model.model_validate(body),
+    )
+    return TOOLS["table_page"], {"collectionname": "c", "file_hash": "h", "sheet": 0}
+
+
+def test_the_page_share_header_sizes_the_page(monkeypatch):
+    Store(monkeypatch)
+    tool, values = large_table(monkeypatch)
+    share_header(monkeypatch, 5_000)
+    assert paging.page_share() == 5_000
+    page = tool.render(tool.model.model_validate(values), {}, "")
+    assert len(page.encode("utf-8")) <= 5_000
+    assert json.loads(page)["returned_units"] >= 1
+    share_header(monkeypatch, "not a number")
+    assert paging.page_share() == paging.PAGE_LIMIT.max_bytes
+    share_header(monkeypatch, 10**9)
+    assert paging.page_share() == paging.MAX_PAGE_SHARE
+
+
+def test_a_later_page_with_a_smaller_share_keeps_the_fields_and_the_source(monkeypatch):
+    store = Store(monkeypatch)
+    tool, values = large_table(monkeypatch)
+    share_header(monkeypatch, None)
+    first = json.loads(tool.render(tool.model.model_validate(values), {}, ""))
+    assert json.loads(next(iter(store.bodies.values())).split(b"\n", 1)[0])["share"] == paging.PAGE_LIMIT.max_bytes
+    share_header(monkeypatch, 2_500)
+    pages = walk(first)
+    assert [row["row_number"] for page in pages for row in page["items"]] == list(range(50))
+    for page in pages[1:]:
+        assert len(canonical_json(page).encode("utf-8")) <= 2_500
+        assert page["fields"]["source"] == "stable"
+        assert page["columns"] == SAMPLES["table_page"]["columns"]
+        assert decode_continuation(page["continuation"])["source"] == "stable" if page["continuation"] else True
+
+
+def test_the_call_measure_is_the_build_page_measure_of_the_returned_page(monkeypatch):
+    import asyncio
+    import hashlib
+
+    from fastmcp import Client
+
+    from collection_search_server import server
+
+    store = Store(monkeypatch)
+    hits = [{"collectionname": "c", "collection_dataset": "c_d", "file_hash": f"{n:064x}", "page_id": 1, "score": 1.0, "snippet": "s" * 300} for n in range(120)]
+    monkeypatch.setattr(server, "search_passages", lambda **kwargs: server.SearchResponse(success=True, query="q", queries=["q"], collections_searched=["c"], results=hits))
+
+    async def call():
+        async with Client(server.mcp) as client:
+            return await client.call_tool("search_passages", {"queries": ["q"]})
+
+    result = asyncio.run(call())
+    page, resource = result.content
+    assert page.type == "text" and resource.type == "resource"
+    assert str(resource.resource.uri) == paging.CALL_MEASURE_URI
+    measure = json.loads(resource.resource.text)
+    assert measure["page_sha256"] == hashlib.sha256(page.text.encode("utf-8")).hexdigest()
+    assert measure["page_bytes"] == len(page.text.encode("utf-8"))
+    assert measure["page_share"] == paging.PAGE_LIMIT.max_bytes
+    assert measure["returned_units"] == json.loads(page.text)["returned_units"]
+    assert "page_sha256" not in page.text
+    assert len(store.bodies) == 1
+
+
+def pointer_value(unit, pointer):
+    """The value at the JSON `pointer` inside `unit`."""
+    for token in pointer[1:].split("/"):
+        key = token.replace("~1", "/").replace("~0", "~")
+        unit = unit[int(key)] if isinstance(unit, list) else unit[key]
+    return unit
+
+
+def rebuild(pages):
+    """The units of a walk, rebuilt from its pages in order. It checks that each piece
+    starts where the one before it ended, so a byte returned twice or skipped fails."""
+    units, text, open_unit = [], b"", [None]
+
+    def close():
+        if open_unit[0] is not None:
+            finished = dict(open_unit[0])
+            finished.pop("cut")
+            units.append(finished)
+            open_unit[0] = None
+
+    def take(item):
+        close()
+        if isinstance(item, dict) and isinstance(item.get("cut"), dict) and "returned_bytes" in item["cut"]:
+            open_unit[0] = item
+        else:
+            units.append(item)
+
+    for page in pages:
+        marker = (page.get("fields") or {}).get("cut")
+        if marker is not None and marker["field"] == "":
+            assert marker["start_bytes"] == len(text)
+            text += page["items"][0].encode("utf-8")
+            if len(text) == marker["total_bytes"]:
+                take(json.loads(text))
+                text = b""
+        elif marker is not None:
+            current = pointer_value(open_unit[0], marker["field"])
+            assert marker["start_bytes"] == len(current.encode("utf-8"))
+            open_unit[0] = replace_at_pointer(open_unit[0], marker["field"], current + page["items"][0])
+        else:
+            for item in page["items"]:
+                take(item)
+    assert text == b""
+    close()
+    return units
+
+
+def search_window(monkeypatch, field_bytes, unit_bytes, count):
+    """A `search_collections` window whose page fields are `field_bytes` bytes and whose
+    `count` units each hold a `unit_bytes`-byte snippet. Returns the tool, its input and
+    the units as the route returns them."""
+    documents = [
+        {**SAMPLES["search_collections"]["documents"][0], "file_hash": str(n), "snippet": chr(ord("a") + n) * unit_bytes}
+        for n in range(count)
+    ]
+    body = {**SAMPLES["search_collections"], "next_position": None, "total": count, "source": "stable"}
+    body["facet_counts"] = {"file_types": [{"value": "", "id": 7, "count": 2}]}
+    fields = {key: value for key, value in body.items() if key != "documents"}
+    body["facet_counts"]["file_types"][0]["value"] = "v" * (field_bytes - len(canonical_json(fields).encode("utf-8")))
+    body["documents"] = documents
+    response = RESPONSE_MODELS["search/results"].model_validate(body)
+    monkeypatch.setattr(
+        "collection_search_server.paging.BackendClient.post",
+        lambda self, route, request, response_model, expected_source=None: response,
+    )
+    return TOOLS["search_collections"], {}, response.model_dump(mode="json", by_alias=True)["documents"]
+
+
+def walk_at(monkeypatch, tool, values, store_share, read_share, limit=2_000):
+    """The page texts of a walk: the first page at `store_share`, and every continuation
+    at `read_share`."""
+    share = [store_share]
+    monkeypatch.setattr(paging, "page_share", lambda: share[0])
+    texts = [tool.render(tool.model.model_validate(values), {}, "")]
+    share[0] = read_share
+    for _ in range(limit):
+        page = json.loads(texts[-1])
+        if not page.get("continuation"):
+            return texts
+        texts.append(_read_more_response(decode_continuation(page["continuation"])))
+    raise AssertionError("the walk did not end")
+
+
+def assert_walk_invariants(texts, units, store_share, read_share):
+    """Every page is within its share, every page has content, and the rebuilt units equal
+    the units of the window."""
+    pages = [json.loads(text) for text in texts]
+    for index, (text, page) in enumerate(zip(texts, pages)):
+        assert len(text.encode("utf-8")) <= (store_share if index == 0 else read_share), index
+        assert page.get("success") is True and page["returned_units"] > 0, (index, page)
+    assert pages[-1]["continuation"] is None
+    assert rebuild(pages) == units
+
+
+# The smallest share of these cases is the share of one call in a batch of about twenty
+# calls in safe mode. The field sizes include the measured `search/results` fields.
+SHARES = [1_000, 1_500, 2_000, 3_000, 4_000, 5_000, 6_000, 7_800, 8_000, 12_000, 16_000, 23_700, 24_000]
+FIELD_BYTES = [300, 1_200, 4_500, 5_244]
+
+
+@pytest.mark.parametrize("share", SHARES)
+@pytest.mark.parametrize("field_bytes", FIELD_BYTES)
+def test_every_stored_unit_is_readable_at_every_share(monkeypatch, share, field_bytes):
+    Store(monkeypatch)
+    tool, values, units = search_window(monkeypatch, field_bytes, 3_000, 4)
+    texts = walk_at(monkeypatch, tool, values, share, share)
+    assert_walk_invariants(texts, units, share, share)
+
+
+@pytest.mark.parametrize("store_share, read_share, field_bytes, unit_bytes, count", [
+    (8_000, 8_000, 4_500, 3_000, 4),
+    (23_700, 7_800, 300, 12_000, 3),
+    (24_000, 1_000, 5_244, 12_000, 3),
+    (24_000, 2_000, 1_200, 12_000, 3),
+    (8_000, 1_000, 5_244, 12_000, 3),
+    (8_000, 2_000, 5_244, 12_000, 3),
+    (8_000, 4_000, 5_244, 3_000, 4),
+    (2_000, 2_000, 300, 3_000, 4),
+    (2_000, 2_000, 1_200, 3_000, 4),
+    (3_000, 3_000, 300, 3_000, 4),
+    (3_000, 3_000, 1_200, 3_000, 4),
+    (2_000, 24_000, 1_200, 12_000, 3),
+    (1_000, 8_000, 300, 500, 20),
+])
+def test_a_window_read_at_another_share_keeps_every_page_within_its_share(
+    monkeypatch, store_share, read_share, field_bytes, unit_bytes, count,
+):
+    Store(monkeypatch)
+    tool, values, units = search_window(monkeypatch, field_bytes, unit_bytes, count)
+    texts = walk_at(monkeypatch, tool, values, store_share, read_share)
+    assert_walk_invariants(texts, units, store_share, read_share)
+
+
+def test_a_share_smaller_than_the_page_envelope_keeps_the_continuation(monkeypatch):
+    Store(monkeypatch)
+    tool, values, units = search_window(monkeypatch, 300, 12_000, 3)
+    share = [24_000]
+    monkeypatch.setattr(paging, "page_share", lambda: share[0])
+    first = json.loads(tool.render(tool.model.model_validate(values), {}, ""))
+    token = decode_continuation(first["continuation"])
+    share[0] = 200
     answer = json.loads(_read_more_response(token))
     assert answer["error"] == "invalid_argument"
-    assert f"byte {start}" in answer["message"]
+    assert "fewer tool calls" in answer["message"]
+    share[0] = 24_000
+    pages = [first, *walk(json.loads(_read_more_response(token)), limit=500)]
+    assert rebuild(pages) == units
+
+
+def test_a_unit_stored_with_a_moved_field_is_read_as_unit_text_at_a_smaller_share(monkeypatch):
+    Store(monkeypatch)
+    cells = {**{f"c{n}": chr(ord("a") + n % 26) * 60 for n in range(60)}, "big": "é" * 10_000}
+    body = {**SAMPLES["table_page"], "rows": [{"row_number": 1, "row_id": 1, "cells": {"c0": "row one"}},
+                                              {"row_number": 2, "row_id": 2, "cells": cells}],
+            "total_rows": 2, "total": 2, "source": "stable"}
+    response = RESPONSE_MODELS["tables/page"].model_validate(body)
+    monkeypatch.setattr(
+        "collection_search_server.paging.BackendClient.post",
+        lambda self, route, request, response_model, expected_source=None: response,
+    )
+    tool, values = TOOLS["table_page"], {"collectionname": "c", "file_hash": "h", "sheet": 0}
+    texts = walk_at(monkeypatch, tool, values, 24_000, 2_000)
+    pages = [json.loads(text) for text in texts]
+    assert any((page.get("fields") or {}).get("cut", {}).get("field") == "" for page in pages)
+    assert any((page.get("fields") or {}).get("cut", {}).get("field") == "/cells/big" for page in pages)
+    assert_walk_invariants(texts, response.model_dump(mode="json", by_alias=True)["rows"], 24_000, 2_000)

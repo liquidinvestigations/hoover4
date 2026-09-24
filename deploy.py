@@ -198,6 +198,16 @@ DEFAULTS = {
         "rate_chat_poll_per_minute": "1800",
         "browser_max_contexts": "16",
         "agent_subagent_concurrency": "5",
+        # Tool packs for each kind of agent run: a comma list of pack names, or `all`.
+        "agent_packs_chat": "all",
+        "agent_packs_subagent": "all",
+        "agent_packs_planner": "all",
+        "agent_packs_organizer": "all",
+        # The result page limits and the catalogue match count that the probe selects.
+        # Empty keeps byte-safe mode and six matches.
+        "agent_max_page_tokens": "",
+        "agent_completion_reserve_tokens": "",
+        "agent_catalogue_match_count": "",
         "mcp_browser_mem_limit": "24G",
         "full_research_agent_workers": "4",
         # Three internet-facing MCP servers: browser, metasearch, whois. Off means
@@ -646,6 +656,38 @@ def backup_object_volume_bytes(cfg):
              "of %d bytes (1 MiB). Leave it empty for the code's own default." %
              (raw, OBJECT_VOLUME_BYTES_MIN))
     return str(value)
+
+
+#: The probe keys, their environment names, and the smallest and largest value each takes.
+#: `None` is no upper limit. The agent service refuses the same out-of-range values at import.
+AGENT_PROBE_KEYS = (
+    ("agent_max_page_tokens", "AGENT_MAX_PAGE_TOKENS", 1, None),
+    ("agent_completion_reserve_tokens", "AGENT_COMPLETION_RESERVE_TOKENS", 1, None),
+    ("agent_catalogue_match_count", "AGENT_CATALOGUE_MATCH_COUNT", 6, 12),
+)
+
+
+def agent_probe_env(cfg):
+    """The three probe keys for both agent services, validated. An empty key renders as
+    empty, which keeps byte-safe result pages and six catalogue matches. Result pages use
+    token mode only when both token keys are set."""
+    env = {}
+    for key, name, low, high in AGENT_PROBE_KEYS:
+        raw = cfg.get("main_services", key)
+        if not raw:
+            env[name] = ""
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            fail("[main_services] %s is not a whole number: %r. Leave it empty for the "
+                 "default." % (key, raw))
+        if value < low or (high is not None and value > high):
+            limit = "from %d to %d" % (low, high) if high is not None else "at least %d" % low
+            fail("[main_services] %s is %r, and it must be %s. Leave it empty for the "
+                 "default." % (key, raw, limit))
+        env[name] = str(value)
+    return env
 
 
 _SIZE_UNITS = {"": 1, "K": 1024, "M": 1024 ** 2, "G": 1024 ** 3, "T": 1024 ** 4}
@@ -1217,6 +1259,9 @@ def render_main_env(cfg):
     env["HOOVER4_RATE_CHAT_POLL_PER_MINUTE"] = cfg.get(m, "rate_chat_poll_per_minute")
     env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")
     env["AGENT_SUBAGENT_CONCURRENCY"] = cfg.get(m, "agent_subagent_concurrency")
+    for kind in ("chat", "subagent", "planner", "organizer"):
+        env[f"AGENT_PACKS_{kind.upper()}"] = cfg.get(m, f"agent_packs_{kind}") or "all"
+    env.update(agent_probe_env(cfg))
     env["HOOVER4_MCP_BROWSER_MEM_LIMIT"] = cfg.get(m, "mcp_browser_mem_limit")
     env["FULL_RESEARCH_AGENT_WORKERS"] = cfg.get(m, "full_research_agent_workers")
     env["FULL_RESEARCH_MCP_SERVERS"] = (

@@ -1,3 +1,10 @@
+# BUILD CONTEXT IS `main_services/agents`, NOT THIS DIRECTORY. The agent imports the tool
+# pack table from `agent_common`, and a Docker build cannot reach outside its context. If
+# you move this file, move `context:` in ops/docker/compose/research-agents.yaml with it.
+#
+# Only the `agent_common` package folder is copied, onto the path beside the agent's own
+# package. The agent reads `agent_common.tool_packs` alone, which imports nothing outside
+# the standard library, so the shared package's own dependencies are not installed here.
 FROM python:3.13.3-slim AS builder
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -16,10 +23,10 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 
 WORKDIR $PYSETUP_PATH
 RUN python -m venv $VENV_PATH
-COPY pyproject.toml ./
-COPY poetry.lock ./
-COPY README.md ./
-COPY research_agent/ ./research_agent/
+COPY research_agent/pyproject.toml ./
+COPY research_agent/poetry.lock ./
+COPY research_agent/README.md ./
+COPY research_agent/research_agent/ ./research_agent/
 # Install the package and its dependencies
 RUN $VENV_PATH/bin/pip install --upgrade pip && \
     $VENV_PATH/bin/pip install poetry && \
@@ -33,10 +40,11 @@ ENV PATH="$VENV_PATH/bin:$PATH"
 
 WORKDIR /app
 COPY --from=builder $VENV_PATH $VENV_PATH
-COPY pyproject.toml ./
-COPY research_agent/ ./research_agent/
-COPY main.py ./
-COPY README.md ./
+COPY research_agent/pyproject.toml ./
+COPY research_agent/research_agent/ ./research_agent/
+COPY agent_common/agent_common/ ./agent_common/
+COPY research_agent/main.py ./
+COPY research_agent/README.md ./
 
 # Install requests for health check
 RUN pip install requests

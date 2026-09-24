@@ -6,6 +6,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from research_agent import prompts, subagents
+from research_agent.tool_catalogue import build_snapshot
 
 
 class FakeTool:
@@ -42,21 +43,29 @@ def tool_names(tools):
 # --------------------------------------------------------------- the depth limit
 
 
+def worker_pool(tools):
+    """The tool names an in-process worker binds, built the way `agent.py` builds them."""
+    snapshot = build_snapshot(tools, subagents.worker_allowed_tools(), "subagent")
+    return list(snapshot.tools_by_name.values())
+
+
 def test_a_worker_cannot_delegate_because_the_tool_is_not_in_its_list():
     """The whole depth limit, tested where it is enforced.
 
-    The delegation tool is appended to the lead's list after `worker_tools` has run, so
-    even a list that already contains one comes back without it.
+    The delegation tool is appended to the lead's list after the worker's snapshot is
+    built, so even a list that already contains one comes back without it.
     """
-    pool = subagents.worker_tools(ALL_TOOLS + [FakeTool(subagents.DELEGATION_TOOL)])
+    pool = worker_pool(ALL_TOOLS + [FakeTool(subagents.DELEGATION_TOOL)])
     assert subagents.DELEGATION_TOOL not in tool_names(pool)
 
 
-def test_only_the_full_research_profile_delegates():
-    assert subagents.delegates("full_research")
-    assert not subagents.delegates("research_subagent")
-    assert not subagents.delegates("internal_search")
-    assert not subagents.delegates("")
+def test_the_worker_tools_follow_the_subagent_packs(monkeypatch):
+    """A narrowed `subagent` pack setting narrows the in-process worker too."""
+    monkeypatch.setenv("AGENT_PACKS_SUBAGENT", "collections")
+    pool = tool_names(worker_pool(ALL_TOOLS))
+    assert "search_collections" in pool
+    assert "web_search" not in pool
+    assert "read_todo" not in pool
 
 
 def test_the_worker_profile_exists_and_never_asks_for_a_plan():
@@ -68,7 +77,7 @@ def test_the_worker_profile_exists_and_never_asks_for_a_plan():
     the rest of that mechanism is checked.
     """
     assert "research_subagent" in prompts.PROFILES
-    pool = subagents.worker_tools(ALL_TOOLS)
+    pool = worker_pool(ALL_TOOLS)
     text = prompts.render("research_subagent", tools=pool, strict=True)
     assert "write_todo" not in text
     assert "restate what you understand the task to be" not in text
@@ -78,7 +87,7 @@ def test_the_worker_profile_exists_and_never_asks_for_a_plan():
 
 
 def test_a_worker_reads_pages_but_cannot_drive_one():
-    pool = tool_names(subagents.worker_tools(ALL_TOOLS))
+    pool = tool_names(worker_pool(ALL_TOOLS))
     assert "read_page" in pool
     for interactive in (
         "browser_navigate",
@@ -92,13 +101,13 @@ def test_a_worker_reads_pages_but_cannot_drive_one():
 
 
 def test_a_worker_reads_the_todo_but_cannot_write_it():
-    pool = tool_names(subagents.worker_tools(ALL_TOOLS))
+    pool = tool_names(worker_pool(ALL_TOOLS))
     assert "read_todo" in pool
     assert not {"write_todo", "edit_todo", "mark_todo"} & pool
 
 
 def test_a_worker_keeps_the_search_and_citation_tools():
-    pool = tool_names(subagents.worker_tools(ALL_TOOLS))
+    pool = tool_names(worker_pool(ALL_TOOLS))
     assert {"search_collections", "read_documents", "web_search", "cite_documents"} <= pool
 
 

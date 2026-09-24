@@ -22,8 +22,10 @@ services:
   hoover4-internal-search-agent:
     logging: *logging
     build:
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents/research_agent
-      dockerfile: Dockerfile
+      # The context is main_services/agents, because the image vendors
+      # agent_common's tool pack table. See the Dockerfile.
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents
+      dockerfile: research_agent/Dockerfile
     image: hoover4-research-agent:local
     container_name: hoover4-internal-search-agent
     ports:
@@ -46,6 +48,16 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
       - AGENT_PROFILE=internal_search
+      # The tool packs of each kind of agent run, rendered by deploy.py from
+      # hoover4.ini. See agent_common/tool_packs.py.
+      - AGENT_PACKS_CHAT=${AGENT_PACKS_CHAT:-all}
+      - AGENT_PACKS_SUBAGENT=${AGENT_PACKS_SUBAGENT:-all}
+      - AGENT_PACKS_PLANNER=${AGENT_PACKS_PLANNER:-all}
+      - AGENT_PACKS_ORGANIZER=${AGENT_PACKS_ORGANIZER:-all}
+      # The probe keys. Empty keeps byte-safe result pages and six catalogue matches.
+      - AGENT_MAX_PAGE_TOKENS=${AGENT_MAX_PAGE_TOKENS:-}
+      - AGENT_COMPLETION_RESERVE_TOKENS=${AGENT_COMPLETION_RESERVE_TOKENS:-}
+      - AGENT_CATALOGUE_MATCH_COUNT=${AGENT_CATALOGUE_MATCH_COUNT:-}
       # Left EMPTY on purpose, and emptier than it looks: the prompt is not a constant
       # this could hold. It is rendered per graph from the tools that graph actually
       # binds, in main_services/agents/research_agent/research_agent/prompts/, so the tool
@@ -107,8 +119,10 @@ services:
   hoover4-full-research-agent:
     logging: *logging
     build:
-      context: ${HOOVER4_REPO_ROOT}/main_services/agents/research_agent
-      dockerfile: Dockerfile
+      # The context is main_services/agents, because the image vendors
+      # agent_common's tool pack table. See the Dockerfile.
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents
+      dockerfile: research_agent/Dockerfile
     image: hoover4-research-agent:local
     container_name: hoover4-full-research-agent
     ports:
@@ -128,11 +142,23 @@ services:
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
-      # Also the one profile that binds `run_subagent`: this agent may delegate parts of
-      # a question to several workers at once, each running the `research_subagent`
-      # profile in-process on these same MCP connections. The workers' own profile does
-      # not bind the delegation tool, which is the whole of the one-level depth limit.
+      # The tool packs below decide which agents bind `run_subagent`, and by default
+      # this agent and the internal search agent both do. A delegated worker runs the
+      # `research_subagent` profile in-process on these same MCP connections. Two things
+      # keep delegation to one level. The worker snapshot is built before `run_subagent`
+      # is added, and `IN_PROCESS_WORKER_EXCLUDED` in subagents.py removes that tool from
+      # the worker's tools.
       - AGENT_PROFILE=full_research
+      # The tool packs of each kind of agent run, rendered by deploy.py from
+      # hoover4.ini. See agent_common/tool_packs.py.
+      - AGENT_PACKS_CHAT=${AGENT_PACKS_CHAT:-all}
+      - AGENT_PACKS_SUBAGENT=${AGENT_PACKS_SUBAGENT:-all}
+      - AGENT_PACKS_PLANNER=${AGENT_PACKS_PLANNER:-all}
+      - AGENT_PACKS_ORGANIZER=${AGENT_PACKS_ORGANIZER:-all}
+      # The probe keys. Empty keeps byte-safe result pages and six catalogue matches.
+      - AGENT_MAX_PAGE_TOKENS=${AGENT_MAX_PAGE_TOKENS:-}
+      - AGENT_COMPLETION_RESERVE_TOKENS=${AGENT_COMPLETION_RESERVE_TOKENS:-}
+      - AGENT_CATALOGUE_MATCH_COUNT=${AGENT_CATALOGUE_MATCH_COUNT:-}
       # As above: empty means "render this profile's templates against the bound tools".
       # The collection MCP server contributes the MATCH syntax through its own
       # instructions, so it does not need repeating here.

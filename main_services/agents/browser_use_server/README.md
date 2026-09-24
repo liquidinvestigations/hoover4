@@ -80,8 +80,8 @@ discovers the batched form, which is what the rename exists to prevent.
 
 ```
 research agent ──MCP/streamable-http──▶ hoover4-mcp-browser (router)
-   header: x-hoover4-chat-session: <id>        │
-                                               │ per chat, on first tool call
+   header: x-hoover4-agent-run: <run id>       │
+       or: x-hoover4-chat-session: <id>        │ per key, on first tool call
                                                ▼
                         ┌────────────────────────────────────┐
                         │ Chromium (nodriver-configured)     │
@@ -97,8 +97,12 @@ research agent ──MCP/streamable-http──▶ hoover4-mcp-browser (router)
                         └────────────────────┘
 ```
 
-A call flows: **urlcheck → route to this chat's browser → forward to its sidecar →
+A call flows: **urlcheck → route to this key's browser → forward to its sidecar →
 capture**.
+
+The key is the agent run id from `x-hoover4-agent-run` when the request carries one, so each
+agent run gets its own browser. With no run id the key is the chat session id, and with
+neither it is the shared anonymous key.
 
 ## Why a whole browser per chat, not a browser context
 
@@ -158,7 +162,7 @@ the agent sees, mid-conversation, with nothing in the transcript saying so.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `BROWSER_MAX_CONTEXTS` | `16` | live chats before the least recently used is evicted |
+| `BROWSER_MAX_CONTEXTS` | `16` | live browsers before the least recently used idle one is evicted |
 | `BROWSER_IDLE_SECONDS` | `900` | a chat idle this long has its browser reaped |
 | `BROWSER_REAP_INTERVAL` | `60` | how often the reaper sweeps |
 | `BROWSER_MAX_TABS_PER_CHAT` | `6` | a model opening a tab per result must not exhaust the container |
@@ -166,10 +170,14 @@ the agent sees, mid-conversation, with nothing in the transcript saying so.
 Eviction tears down both processes and deletes the profile directory. The evicted chat's
 next call transparently starts a fresh browser. Its cookies and tabs are gone, which the
 design accepts. Coming back always costs somebody else their browser: the cap is a memory
-ceiling.
+ceiling. A browser with a call in flight is never evicted. When every browser under the cap
+has a call in flight, a call for a new key gets the typed error `browser_busy`, and no
+browser starts. A browser that is still starting counts toward the cap.
 
 `POST /sessions/{id}/close` drops one chat immediately (called when a conversation ends).
 Idempotent: closing an unknown session is a 200 with `closed: false`.
+`POST /runs/{run_id}/release` drops one agent run's browser in the same way, and answers
+`released: false` for an unknown run. The idle reaper is the second release path.
 
 **There is no global lock any more.** It existed because one Chromium cannot serve
 concurrent CDP sessions safely; with one browser per chat, serialisation belongs per chat,

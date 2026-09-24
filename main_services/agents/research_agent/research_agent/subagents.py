@@ -5,11 +5,10 @@ agent splits it into briefings, runs them at once with fresh context each, and w
 answer from what comes back. Workers do not talk to each other and do not plan; they have
 one objective and a small budget.
 
-**Depth is enforced by what is bound, not by what the prompt asks.** `run_subagent` is
-added to the lead's tool list here and is never in the list `worker_tools` filters, so a
-worker cannot delegate however it is prompted. A prompt asking a model not to recurse
-eventually meets a model that does; a tool that is absent cannot be called by any of them.
-That is why there is no environment variable for the depth, unlike every other cap below.
+**Depth is enforced by what is bound, not by what the prompt asks.** A worker's snapshot
+is built from the MCP tools before `run_subagent` is added, and `run_subagent` is in
+`IN_PROCESS_WORKER_EXCLUDED`, so a worker cannot delegate however it is prompted. Which
+leads bind `run_subagent` is decided by the tool packs (`agent_common.tool_packs`).
 
 **Every cap is a number.** The measured cost of an orchestrator-plus-workers run is
 roughly an order of magnitude over a plain turn, so "please use few workers" in a prompt
@@ -36,26 +35,21 @@ import os
 from collections import OrderedDict
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Sequence
 
-from langchain_core.messages import BaseMessage, HumanMessage, RemoveMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import BaseMessage, HumanMessage, RemoveMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 from langgraph.graph import END, StateGraph
-from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel, Field
 
+from agent_common.tool_packs import PACKS, allowed_tools, configured_packs
 from research_agent import compaction
+from research_agent.execution import make_execution_node
 
 log = logging.getLogger(__name__)
 
 #: The name the lead agent calls to delegate.
 DELEGATION_TOOL = "run_subagent"
-
-#: Profiles whose agent binds the delegation tool. One entry, and it is the whole depth
-#: limit: the worker profile is not in it, so a worker's tool list is built without
-#: `run_subagent` and no prompt can put it back.
-DELEGATING_PROFILES = frozenset({"full_research"})
 
 def _cap(name: str, default: int) -> int:
     """A cap from the environment, falling back to its default.
@@ -94,48 +88,21 @@ WORKER_TOOL_TURNS = _cap("AGENT_SUBAGENT_TOOL_TURNS", 6)
 #: variable and needs no rebuild.
 MAX_WORKERS_PER_TURN = _cap("AGENT_SUBAGENT_MAX_PER_TURN", 6)
 
-#: Tools a worker does not get, by name.
-#:
-#: The interactive browser six, because each needs a persistent context and the server
-#: holds sixteen in total; `read_page` is the overwhelmingly common browser action, needs no
-#: persistent context, and is deliberately still there. The three todo *writers*, because
-#: the plan belongs to the conversation and a worker with one objective has nothing to
-#: plan: `read_todo` stays so a worker can see the plan its briefing came out of.
-#:
-#: `run_subagent` is here as well as being absent from what a worker is built from. That
-#: is redundant on purpose: the primary guarantee is that the delegation tool is appended
-#: after `worker_tools` has run, and this second one covers the day an MCP server starts
-#: advertising a tool of that name. A depth limit that holds one way holds until someone
-#: changes that way.
-WORKER_DENIED_TOOLS = frozenset(
-    {
-        DELEGATION_TOOL,
-        "browser_navigate",
-        "browser_snapshot",
-        "browser_click",
-        "browser_type",
-        "browser_select_option",
-        "browser_press_key",
-        "write_todo",
-        "edit_todo",
-        "mark_todo",
-    }
+#: The tools an in-process worker does not get, although the `subagent` packs name them.
+#: The six interactive browser tools and the three todo writers, because an in-process
+#: worker is not an agent run: it has no browser and no todo list of its own. `read_todo`
+#: stays, so a worker can read the plan its briefing came out of, and `read_page` stays.
+#: `run_subagent` is here too, because a worker does not delegate.
+IN_PROCESS_WORKER_EXCLUDED = PACKS["browser"] | frozenset(
+    {"write_todo", "edit_todo", "mark_todo", DELEGATION_TOOL}
 )
 
 
-def worker_tools(tools: Sequence[Any]) -> List[Any]:
-    """The lead's MCP tools, minus the ones a worker must not have.
-
-    The delegation tool is normally not in the list this is given at all. It is appended
-    to the lead's list *after* this has run, so the filter below is the second of two
-    independent reasons a worker cannot delegate. See `WORKER_DENIED_TOOLS`.
-    """
-    return [tool for tool in tools if getattr(tool, "name", "") not in WORKER_DENIED_TOOLS]
-
-
-def delegates(profile: str) -> bool:
-    """Whether an agent running this profile binds the delegation tool."""
-    return (profile or "").strip().lower() in DELEGATING_PROFILES
+def worker_allowed_tools() -> FrozenSet[str]:
+    """The tool names of an in-process worker: the configured `subagent` packs less
+    `IN_PROCESS_WORKER_EXCLUDED`."""
+    kind = "subagent"
+    return allowed_tools(kind, configured_packs(kind)) - IN_PROCESS_WORKER_EXCLUDED
 
 
 #: Workers already spent by the user turn currently running.
@@ -313,8 +280,8 @@ def _as_briefings(value: Any) -> Optional[List[Briefing]]:
 def build_worker_graph(
     llm: Any,
     plain_llm: Any,
-    system_prompt: str,
-    tools: Sequence[Any],
+    system_prompt_for: Callable[[Sequence[str]], str],
+    snapshot: Any,
     state_schema: Any,
 ):
     """A worker's own agent loop: call tools, then answer, under a fixed budget.
@@ -323,13 +290,31 @@ def build_worker_graph(
     no repeat-call guard beyond the budget, because a worker has one objective and
     `WORKER_TOOL_TURNS` turns to meet it: the cheapest correct behaviour when it runs out
     is to write up what it has, which is what the forced-answer node does.
+
+    It uses the same carrier as the lead: `snapshot` is a `CatalogueSnapshot`, the model
+    node binds its core tools and the worker's `bound_names`, and the execution node of
+    research_agent/execution.py runs the calls. `system_prompt_for` renders the prompt
+    from the names one call binds. The worker sends no run events.
     """
-    prompt = ChatPromptTemplate.from_messages(
-        [("system", system_prompt), MessagesPlaceholder(variable_name="messages")]
-    )
+    prompts_by_names: Dict[tuple, str] = {}
+
+    def messages_for(state) -> List[BaseMessage]:
+        names = tuple(snapshot.callable_names(state.get("bound_names") or ()))
+        if names not in prompts_by_names:
+            prompts_by_names[names] = system_prompt_for(names)
+        return [SystemMessage(content=prompts_by_names[names])] + list(state["messages"])
+
+    async def agent(state, config):
+        bound = snapshot.tools_for(state.get("bound_names") or ())
+        reply = await llm.bind_tools(bound).ainvoke(messages_for(state), config)
+        return {"messages": [reply]}
+
+    async def report(state, config):
+        return {"messages": [await plain_llm.ainvoke(messages_for(state), config)]}
+
     builder = StateGraph(state_schema)
-    builder.add_node("agent", prompt | {"messages": llm})
-    builder.add_node("tools", ToolNode(list(tools)))
+    builder.add_node("agent", agent)
+    builder.add_node("tools", make_execution_node(snapshot, emit_events=False))
 
     def should_continue(state):
         last = state["messages"][-1]
@@ -360,7 +345,7 @@ def build_worker_graph(
         }
 
     builder.add_node("report_entry", report_entry)
-    builder.add_node("report", prompt | {"messages": plain_llm})
+    builder.add_node("report", report)
     builder.set_entry_point("agent")
     builder.add_conditional_edges("agent", should_continue)
     builder.add_edge("tools", "agent")

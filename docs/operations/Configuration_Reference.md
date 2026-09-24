@@ -149,6 +149,18 @@ common-worker process keeps in memory. The SDK default is 1000.
 `browser_max_contexts` is live Chromium processes on `hoover4-mcp-browser`, one per chat.
 `mcp_browser_mem_limit` is that container's memory ceiling. `agent_subagent_concurrency`
 is how many subagent workers one `run_subagent` call may start at once.
+`agent_packs_chat`, `agent_packs_subagent`, `agent_packs_planner` and
+`agent_packs_organizer` give the tool packs of each kind of agent run, as a comma list of
+pack names or `all`. The default is `all`. The packs are `catalogue`, `collections`,
+`conversation`, `plan`, `delegation`, `web` and `browser`. A run binds and calls only the
+tools of its packs, and the agent service refuses to start on an unknown pack name.
+`agent_max_page_tokens` and `agent_completion_reserve_tokens` switch the agents' result
+pages to token mode: each page takes at most `agent_max_page_tokens` tokens of content, and
+the allocation keeps `agent_completion_reserve_tokens` free for the answer. Token mode needs
+both keys. Empty keeps byte-safe mode, in which the results of one model step share 24,000
+bytes. `agent_catalogue_match_count` is how many tools one `search_agent_tools` call returns
+and one run keeps bound, from 6 to 12. Empty means 6. `./deploy` refuses a value that is not a
+whole number in range. The tool limit probe selects these three values.
 `full_research_agent_workers` is uvicorn worker processes on `hoover4-full-research-agent`.
 
 `internet_tools_enabled` starts `hoover4-mcp-browser`, `hoover4-mcp-metasearch` and
@@ -294,6 +306,8 @@ is the map back to the group above that explains it.
 - `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`
 - `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
 - `agent_subagent_concurrency`, `mcp_browser_mem_limit`, `full_research_agent_workers`
+- `agent_packs_chat`, `agent_packs_subagent`, `agent_packs_planner`, `agent_packs_organizer`
+- `agent_max_page_tokens`, `agent_completion_reserve_tokens`, `agent_catalogue_match_count`
 - `internet_tools_enabled`
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
 - `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`

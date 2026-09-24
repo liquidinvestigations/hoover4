@@ -2,13 +2,15 @@ import os
 import asyncio
 import json
 from contextlib import asynccontextmanager, contextmanager
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Literal, Optional, Dict, Any, Union
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from enum import Enum
+from agent_common import tool_packs
 from research_agent.agent import build_agent
 from research_agent.prompts import active_profile, system_prompt_override
+from research_agent.run_messages import RunMessage, to_langchain
 
 
 class MessageType(str, Enum):
@@ -53,6 +55,41 @@ class ChatRequest(BaseModel):
             "nagged turn has room to act without the budget being reset."
         ),
     )
+
+
+class RunRequest(BaseModel):
+    """One agent run's request. The caller stores the thread and sends all of it."""
+
+    run_id: str = Field(description="The agent run id. It keys the graph and the browser.")
+    kind: Literal["chat", "subagent", "planner", "organizer"] = Field(
+        description="The kind of run, which selects its tool packs"
+    )
+    depth: int = Field(description="0 for a lead, 1 or 2 for a sub-agent")
+    username: str
+    session_id: str
+    allowed_collections: List[str] = Field(default_factory=list)
+    llm_model: Optional[str] = None
+    history: List[ChatMessage] = Field(
+        default_factory=list, description="Chat history, for depth 0 only"
+    )
+    messages: List[RunMessage] = Field(
+        description="The run's thread. messages[0] is the opening human message"
+    )
+    tool_turns_used: int = Field(
+        default=0, description="Tool turns of the current round before this request"
+    )
+    extra_tool_turns: int = Field(
+        default=0, description="The nag allowance of the current round, else 0"
+    )
+    can_delegate: bool = Field(default=True, description="False at the deepest level")
+
+    @model_validator(mode="after")
+    def _opening(self):
+        if not self.messages or self.messages[0].role != "human":
+            raise ValueError("messages[0] must be the opening human message")
+        if self.depth > 0 and self.history:
+            raise ValueError("a sub-agent gets no chat history")
+        return self
 
 
 class ChatResult(BaseModel):
@@ -132,13 +169,16 @@ async def lifespan(app: FastAPI):
         # the MCP connections are open. See research_agent/prompts/ for why a prompt is
         # a function of the deployment rather than a constant.
         "system_prompt": system_prompt_override(),
-        # The profile by name, separately from its prompt: it also decides whether this
-        # container binds the delegation tool. A `SYSTEM_PROMPT` override changes the
-        # words and deliberately not that.
+        # The profile by name, separately from its prompt. It selects the prompt
+        # template. The tool packs decide which tools are bound.
         "profile": active_profile(),
         "llm_model": os.getenv("LLM_MODEL")
     }
     app.state.agent = None
+
+    # An unknown pack name stops the service here, before it answers a request.
+    packs = tool_packs.check_environment()
+    print("🧰 Tool packs: " + "; ".join(f"{k}={','.join(sorted(v))}" for k, v in packs.items()))
 
     # Validate configuration
     if not app.state.config.get("mcp_servers") or not any(app.state.config.get("mcp_servers")):
@@ -264,6 +304,60 @@ async def chat_stream(request: ChatRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/run/stream")
+async def run_stream(request: RunRequest):
+    """Stream one agent run.
+
+    The request carries the whole thread, so a retry or a continuation starts from the
+    stored messages. The stream sends `model_turn`, `tool_start` and `tool_result` events,
+    and one `end` event, in the frame shape of `/chat/stream`. The run's graph is
+    released when the stream ends.
+    """
+    if not hasattr(app.state, "agent") or app.state.agent is None:
+        raise HTTPException(status_code=500, detail="Agent not initialized")
+    agent = app.state.agent
+    try:
+        thread = to_langchain(request.messages)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    async def generate():
+        try:
+            async for chunk in agent.stream(
+                query=None,
+                chat_history=[msg.model_dump() for msg in request.history],
+                session_id=request.session_id,
+                user_id=request.username,
+                username=request.username,
+                allowed_collections=request.allowed_collections,
+                llm_model=request.llm_model,
+                extra_tool_turns=request.extra_tool_turns,
+                run_id=request.run_id,
+                kind=request.kind,
+                can_delegate=request.can_delegate,
+                thread=thread,
+                tool_turns_used=request.tool_turns_used,
+            ):
+                yield f"data: {json.dumps(chunk, default=str)}\n\n"
+        except Exception as e:  # noqa: BLE001 - the caller reads the error frame
+            error_chunk = {
+                "is_task_complete": True,
+                "type": "error",
+                "content": f"Error during streaming: {str(e)}",
+            }
+            yield f"data: {json.dumps(error_chunk)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/plain; charset=utf-8",
+        },
+    )
 
 
 @app.post("/chat", response_model=ChatResult)
@@ -404,6 +498,7 @@ async def root():
         "endpoints": {
             "health": "/health",
             "chat_stream": "/chat/stream",
+            "run_stream": "/run/stream",
             "feedback_message": "/feedback/message",
             "feedback_session": "/feedback/session",
             "feedback_delete": "/feedback/{score_id}"

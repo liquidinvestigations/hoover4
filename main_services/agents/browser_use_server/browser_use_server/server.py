@@ -63,6 +63,15 @@ log = logging.getLogger(__name__)
 #: anonymous session. See `router.ANONYMOUS`.
 SESSION_HEADER = "x-hoover4-chat-session"
 USER_HEADER = "x-hoover4-user"
+#: Header carrying the agent run id. When it is present, the browser is keyed by the run,
+#: so two runs of one chat never share a browser. The chat session stays the key for a
+#: caller that sends no run id.
+RUN_HEADER = "x-hoover4-agent-run"
+
+
+def browser_key() -> str:
+    """The router key of this request: the run id, else the chat session id."""
+    return _header(RUN_HEADER) or _header(SESSION_HEADER)
 
 #: One retry on a dead sidecar. A node process that died between calls should cost the
 #: user a restart, not a failed answer; a *second* failure is real and is surfaced.
@@ -78,9 +87,9 @@ mcp = FastMCP(
         "when a page must be *operated* (a form filled, a control clicked, results paged "
         "through) use `browser_navigate` then `browser_snapshot` to see the page as an "
         "accessibility tree with a `ref` for every element, then `browser_click`, "
-        "`browser_type`, `browser_select_option` and `browser_press_key`. Each "
-        "conversation has its own browser: cookies and logged-in state persist between "
-        "your calls within one chat and are invisible to every other chat. Only public "
+        "`browser_type`, `browser_select_option` and `browser_press_key`. Your browser is "
+        "your own: cookies and logged-in state persist between your calls and are "
+        "invisible to every other chat and agent run. Only public "
         "http/https URLs are reachable.",
     ),
 )
@@ -96,6 +105,15 @@ def _header(name: str) -> str:
         if key.lower() == name:
             return (value or "").strip()
     return ""
+
+
+def _busy(exc: Exception) -> ToolResult:
+    """The typed `browser_busy` error: every browser under the cap has a call in flight."""
+    payload = {"success": False, "error": "browser_busy", "message": str(exc)}
+    return ToolResult(
+        content=[{"type": "text", "text": json.dumps(payload)}],
+        structured_content=payload,
+    )
 
 
 def _refusal(message: str) -> ToolResult:
@@ -131,11 +149,14 @@ class RoutedTool(Tool):
             return _refusal(str(exc))
 
         await router.ensure_reaper()
-        session_id = _header(SESSION_HEADER)
+        session_id = browser_key()
         username = _header(USER_HEADER)
 
         try:
             chat = await router.get(session_id)
+        except router_mod.BrowserBusy as exc:
+            log.warning("no browser for %r: %s", session_id, exc)
+            return _busy(exc)
         except chat_browser.BrowserSpawnFailed as exc:
             log.error("could not start a browser for chat %r: %s", session_id, exc)
             return _refusal(f"no browser could be started: {exc}")
@@ -418,11 +439,14 @@ class ReadPageTool(Tool):
 
         started = time.monotonic()
         await router.ensure_reaper()
-        session_id = _header(SESSION_HEADER)
+        session_id = browser_key()
         username = _header(USER_HEADER)
 
         try:
             chat = await router.get(session_id)
+        except router_mod.BrowserBusy as exc:
+            log.warning("no browser for %r: %s", session_id, exc)
+            return _busy(exc)
         except chat_browser.BrowserSpawnFailed as exc:
             log.error("could not start a browser for chat %r: %s", session_id, exc)
             return _refusal(f"no browser could be started: {exc}")
@@ -563,6 +587,21 @@ async def list_browser_sessions(_request: Any):
     from starlette.responses import JSONResponse
 
     return JSONResponse({"sessions": router.describe(), **router.health()})
+
+
+@mcp.custom_route("/runs/{run_id}/release", methods=["POST", "DELETE"])
+async def release_run_browser(request: Any):
+    """Drop one agent run's browser.
+
+    The agent run workflow calls it once when a run ends. The idle reaper is the second
+    release path. Idempotent: an unknown or already released run is a 200 with
+    `released: false`.
+    """
+    from starlette.responses import JSONResponse
+
+    run_id = request.path_params["run_id"]
+    released = await router.close(run_id)
+    return JSONResponse({"run_id": run_id, "released": released})
 
 
 @mcp.custom_route("/sessions/{session_id}/close", methods=["POST", "DELETE"])

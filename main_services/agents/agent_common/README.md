@@ -1,16 +1,19 @@
 # `agent_common`: shared code for the MCP servers
 
-Three things live here because more than one server needs them and a second copy would
-drift.
+The modules below live here because more than one image needs them and a second copy
+would drift.
 
 | Module | What it is |
 |---|---|
 | `artifacts.py` | the chat-artifact writer: bytes to S3, one index row in ClickHouse |
 | `s3_store.py` | the S3 client and the `derived/chat-artifacts/` key scheme |
 | `rerank.py` | the GPU tier's `/v1/rerank`, with a 2 s connect timeout and a circuit breaker |
+| `tool_packs.py` | the tool pack table: which tools each kind of agent run may bind and call |
 
 Consumers: `metasearch_server` (writes `search_detail`, reranks) and
-`browser_use_server` (writes `page_capture`).
+`browser_use_server` (writes `page_capture`). The research agent image copies the package
+folder for `tool_packs.py` alone, and each MCP server image runs `tests/test_tool_packs.py`
+against the tools that server lists.
 
 ## It is vendored, not published
 
@@ -62,7 +65,7 @@ id. `body_sha256` and `idempotency_key` are empty on every row `write()` produce
 broker. It checks the owner the way the website's artifact route does: the caller must be the
 non-empty owner of the row, and the chat session must match. Another caller's id raises
 `ArtifactForbidden`, and an unknown id raises `ArtifactNotFound`. The caller cuts the length to
-its page share, `read_range()` cuts the range to the body size, and a start at or past the end
+the share the window was stored with, `read_range()` cuts the range to the body size, and a start at or past the end
 raises `ArtifactRangeRefused`.
 
 Path components are sanitised in `s3_store._safe`: the session id arrives in an HTTP

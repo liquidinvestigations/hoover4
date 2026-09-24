@@ -1,5 +1,6 @@
-# Build-context root for the metasearch, browser and collection-search images (their
-# Dockerfiles vendor agent_common/, so the context is this directory, not theirs).
+# Build-context root for the metasearch, browser, collection-search and research agent
+# images (their Dockerfiles vendor agent_common/, so the context is this directory, not
+# theirs).
 # Keep the context to what those Dockerfiles actually copy.
 .git
 .github

@@ -115,6 +115,43 @@ class TestEviction:
         assert "chat-0" in router._chats
         chat0.lock.release()
 
+    def test_at_the_cap_with_every_browser_busy_a_new_key_gets_browser_busy(
+        self, fake_browsers, monkeypatch
+    ):
+        """The cap holds: no browser starts, and the busy browsers keep running."""
+        router, started, stopped = fake_browsers
+        monkeypatch.setattr(router_mod, "MAX_CONTEXTS", 2)
+
+        async def run():
+            for key in ("run-a", "run-b"):
+                chat = await router.get(key)
+                await chat.lock.acquire()
+            with pytest.raises(router_mod.BrowserBusy):
+                await router.get("run-c")
+            # One call ends, so its browser is idle and the next new key evicts it.
+            router._chats["run-a"].lock.release()
+            await router.get("run-c")
+
+        asyncio.run(run())
+        assert started == ["run-a", "run-b", "run-c"]
+        assert stopped == ["run-a"]
+        assert set(router._chats) == {"run-b", "run-c"}
+
+    def test_two_runs_get_two_browsers_and_release_drops_one(self, fake_browsers):
+        router, started, stopped = fake_browsers
+
+        async def run():
+            a = await router.get("run-1")
+            b = await router.get("run-2")
+            released = await router.close("run-1")
+            return a, b, released
+
+        a, b, released = asyncio.run(run())
+        assert a is not b
+        assert released is True
+        assert stopped == ["run-1"]
+        assert set(router._chats) == {"run-2"}
+
     def test_eviction_tears_the_browser_down(self, fake_browsers, monkeypatch):
         router, _, stopped = fake_browsers
         monkeypatch.setattr(router_mod, "MAX_CONTEXTS", 1)
@@ -380,3 +417,14 @@ class TestTabCap:
         chat = self._chat(tabs)
         # One refuses, the cap is still applied to what it can.
         assert asyncio.run(chat_browser.enforce_tab_cap(chat, 1)) == 1
+
+
+class TestBrowserKey:
+    def test_the_run_header_keys_the_browser_before_the_chat_session(self, monkeypatch):
+        from browser_use_server import server
+
+        headers = {server.RUN_HEADER: "run-1", server.SESSION_HEADER: "chat-1"}
+        monkeypatch.setattr(server, "_header", lambda name: headers.get(name, ""))
+        assert server.browser_key() == "run-1"
+        del headers[server.RUN_HEADER]
+        assert server.browser_key() == "chat-1"

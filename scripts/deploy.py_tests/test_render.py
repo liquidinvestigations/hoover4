@@ -197,6 +197,30 @@ def test_settings_defaults():
     assert env["HOOVER4_COMMON_MAX_CACHED_WORKFLOWS"] == "100"
 
 
+PACK_KEYS = ("AGENT_PACKS_CHAT", "AGENT_PACKS_SUBAGENT", "AGENT_PACKS_PLANNER",
+             "AGENT_PACKS_ORGANIZER")
+
+
+def test_agent_packs_default_to_all():
+    env = _env("settings-defaults.ini")
+    assert [env[key] for key in PACK_KEYS] == ["all"] * 4
+
+
+def test_a_narrowed_agent_pack_value_is_rendered_and_an_empty_one_is_all():
+    env = _env("agent-packs.ini")
+    assert env["AGENT_PACKS_CHAT"] == "collections,catalogue,conversation"
+    assert env["AGENT_PACKS_SUBAGENT"] == "all"
+    assert env["AGENT_PACKS_PLANNER"] == "all"
+
+
+def test_both_research_agents_receive_the_pack_keys():
+    agents = dict(_compose_documents())["research-agents.yaml"]["services"]
+    for name in ("hoover4-internal-search-agent", "hoover4-full-research-agent"):
+        environment = agents[name]["environment"]
+        for key in PACK_KEYS:
+            assert f"{key}=${{{key}:-all}}" in environment, (name, key)
+
+
 def test_cassandra_heap_new_follows_the_cpus():
     assert _env("cassandra-heap-new.ini")["CASSANDRA_HEAP_NEW"] == "600M"
 
@@ -407,6 +431,7 @@ def test_templates_render_the_new_settings(template_name):
     assert env["CASSANDRA_HEAP_NEW"] == "800M"
     assert env["DEFAULT_NAMESPACE_RETENTION"] == "168h"
     assert env["TESSERACT_CPU_MEM_LIMIT"] == "6144M"
+    assert [env[key] for key in PACK_KEYS] == ["all"] * 4
     assert deploy.temporal_retention_command(cfg)[-3:] == [
         "168h", "--address", "temporal:7233"]
 
@@ -738,3 +763,39 @@ def test_start_refuses_the_path():
     with pytest.raises(deploy.DeployError) as refused:
         _run_main([], _storage(""), cpus=64)
     assert "[storage] volumes_path" in str(refused.value)
+
+
+PROBE_KEYS = ("AGENT_MAX_PAGE_TOKENS", "AGENT_COMPLETION_RESERVE_TOKENS",
+              "AGENT_CATALOGUE_MATCH_COUNT")
+
+
+def test_absent_probe_keys_render_empty():
+    env = _env("settings-defaults.ini")
+    assert [env[key] for key in PROBE_KEYS] == ["", "", ""]
+
+
+def test_the_probe_keys_are_rendered():
+    env = _env("agent-probe-keys.ini")
+    assert [env[key] for key in PROBE_KEYS] == ["12000", "8192", "8"]
+
+
+@pytest.mark.parametrize("key, value", [
+    ("agent_catalogue_match_count", "5"),
+    ("agent_catalogue_match_count", "13"),
+    ("agent_max_page_tokens", "0"),
+    ("agent_completion_reserve_tokens", "many"),
+])
+def test_an_out_of_range_probe_key_is_refused(key, value):
+    cfg = deploy.Config(FIXTURES / "agent-probe-keys.ini")
+    cfg.values["main_services"][key] = value
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.agent_probe_env(cfg)
+    assert key in str(refused.value)
+
+
+def test_both_research_agents_receive_the_probe_keys():
+    agents = dict(_compose_documents())["research-agents.yaml"]["services"]
+    for name in ("hoover4-internal-search-agent", "hoover4-full-research-agent"):
+        environment = agents[name]["environment"]
+        for key in PROBE_KEYS:
+            assert f"{key}=${{{key}:-}}" in environment, (name, key)
