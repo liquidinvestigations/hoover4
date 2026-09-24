@@ -1057,7 +1057,12 @@ async fn start_agent_workflow(start: AgentWorkflowStart<'_>) -> anyhow::Result<S
         }],
     });
 
-    let response = reqwest::Client::new().post(&url).json(&body).send().await?;
+    crate::temporal_ready::wait_for_temporal().await?;
+    let response = crate::temporal_ready::start_client()
+        .post(&url)
+        .json(&body)
+        .send()
+        .await?;
     if !response.status().is_success() {
         let text = response.text().await.unwrap_or_default();
         anyhow::bail!("could not start {}: {text}", start.workflow_type);

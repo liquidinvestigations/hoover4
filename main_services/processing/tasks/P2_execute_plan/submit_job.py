@@ -7,14 +7,14 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 import temporalio.common
-from temporalio.client import Client as TemporalClient
 
 from tasks.P2_execute_plan.workflows import ExecutePlans
+from tasks.temporal_readiness import START_RPC_TIMEOUT, connect_when_ready
 from tasks.visibility import dataset_search_attributes, start_with_attribute_retry
 
 
 async def submit_execute_plans(collectionname: str, collection_dataset: str):
-    client = await TemporalClient.connect("temporal:7233")
+    client = await connect_when_ready()
     log.info("Starting execute plans for %s", collection_dataset)
     temp = os.path.join( tempfile.gettempdir(), "hoover4")
     await start_with_attribute_retry(lambda: client.execute_workflow(
@@ -25,6 +25,9 @@ async def submit_execute_plans(collectionname: str, collection_dataset: str):
         id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
         id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
         search_attributes=dataset_search_attributes(collection_dataset),
+        # The limit of the start request only. `execute_workflow` does not pass it to
+        # the wait for the result.
+        rpc_timeout=START_RPC_TIMEOUT,
     ))
     log.info("Finished execute plans for %s", collection_dataset)
 

@@ -23,6 +23,7 @@ got there first.
 
 import asyncio
 import logging
+from datetime import timedelta
 
 from temporalio.client import Client
 from temporalio.common import SearchAttributeKey, SearchAttributePair, TypedSearchAttributes
@@ -32,6 +33,10 @@ log = logging.getLogger(__name__)
 COLLECTION_DATASET_ATTRIBUTE = "CollectionDataset"
 
 COLLECTION_DATASET_KEY = SearchAttributeKey.for_keyword(COLLECTION_DATASET_ATTRIBUTE)
+
+#: The limit on each register and list request. Without it one request can outlast the
+#: whole wait of `ensure_search_attributes_ready`.
+ATTRIBUTE_RPC_TIMEOUT = timedelta(seconds=5)
 
 
 def dataset_search_attributes(collection_dataset: str) -> TypedSearchAttributes:
@@ -59,7 +64,8 @@ async def ensure_search_attributes(client: Client) -> None:
                 search_attributes={
                     COLLECTION_DATASET_ATTRIBUTE: IndexedValueType.INDEXED_VALUE_TYPE_KEYWORD
                 },
-            )
+            ),
+            timeout=ATTRIBUTE_RPC_TIMEOUT,
         )
         log.info("Temporal search attribute %s registered", COLLECTION_DATASET_ATTRIBUTE)
     except Exception as e:  # noqa: BLE001 - bootstrap must not kill the worker
@@ -70,7 +76,7 @@ async def _attribute_is_listed(client: Client) -> bool:
     from temporalio.api.operatorservice.v1 import ListSearchAttributesRequest
 
     resp = await client.operator_service.list_search_attributes(
-        ListSearchAttributesRequest(namespace="default")
+        ListSearchAttributesRequest(namespace="default"), timeout=ATTRIBUTE_RPC_TIMEOUT,
     )
     return COLLECTION_DATASET_ATTRIBUTE in resp.custom_attributes
 

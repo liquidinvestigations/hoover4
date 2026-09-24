@@ -93,7 +93,6 @@ def submit_operation(kind: str, collectionname: str = "", collection_dataset: st
     fails, the row is landed in `errored` here rather than left holding the lock.
     """
     import temporalio.common
-    from temporalio.client import Client as TemporalClient
 
     from database.operations import DRIVEN_KINDS, create_operation, finish_operation
 
@@ -107,10 +106,11 @@ def submit_operation(kind: str, collectionname: str = "", collection_dataset: st
     op_id = row["op_id"]
 
     async def _start():
+        from ..temporal_readiness import START_RPC_TIMEOUT, connect_when_ready
         from ..visibility import ensure_search_attributes_ready, start_with_attribute_retry
         from .workflows import Operation
 
-        client = await TemporalClient.connect("temporal:7233")
+        client = await connect_when_ready()
         await ensure_search_attributes_ready(client)
         await start_with_attribute_retry(lambda: client.start_workflow(
             Operation.run,
@@ -124,6 +124,7 @@ def submit_operation(kind: str, collectionname: str = "", collection_dataset: st
             id=op_id,
             task_queue="operations-queue",
             id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.FAIL,
+            rpc_timeout=START_RPC_TIMEOUT,
         ))
 
     try:
@@ -145,10 +146,10 @@ def request_cancel(op_id: str) -> str:
         raise click.ClickException(f"No operation with id {op_id}.")
 
     async def _cancel():
-        from temporalio.client import Client as TemporalClient
+        from ..temporal_readiness import START_RPC_TIMEOUT, connect_when_ready
         from .workflows import CancelOperation
 
-        client = await TemporalClient.connect("temporal:7233")
+        client = await connect_when_ready()
         finalizer_id = f"cancel-{op_id}"
         try:
             handle = await client.start_workflow(
@@ -156,6 +157,7 @@ def request_cancel(op_id: str) -> str:
                 task_queue="operations-queue",
                 id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
                 id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.REJECT_DUPLICATE,
+                rpc_timeout=START_RPC_TIMEOUT,
             )
         except WorkflowAlreadyStartedError:
             handle = client.get_workflow_handle(finalizer_id)

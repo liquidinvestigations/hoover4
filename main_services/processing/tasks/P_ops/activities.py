@@ -69,6 +69,15 @@ def cancel_target_operation(op_id: str) -> dict:
     return asyncio.run(_cancel_target_operation(op_id))
 
 
+#: Longer than the CLI start path (`submit_operation` in `tasks/P_ops/cli.py`) can take
+#: after it writes the `pending` row. Its limits are the connect (30 s,
+#: `CONNECT_TIMEOUT_SECONDS`), the readiness gate (60 s, `READY_DEADLINE_SECONDS`, in
+#: `tasks/temporal_readiness.py`), the search-attribute wait (120 s) and the start retry
+#: (180 s, both in `tasks/visibility.py`), which is 390 s. Each limit is checked after a
+#: step, so each can run over by one step: a probe of 4 x 5 s = 20 s, a wait step of
+#: 2 s + 5 s + 5 s = 12 s and a start attempt of 3 s + 30 s = 33 s. That is 455 s. One collector
+#: interval at its 60 s floor (`MIN_INTERVAL_SECONDS` in `tasks/P_admin/eta_collector.py`)
+#: before the sweep sees the row gives 515 s, which is below 600 s.
 PENDING_START_GRACE_SECONDS = 600
 RUNNING_WORKFLOW_GRACE_SECONDS = 120
 STUCK_WORKFLOW_ATTEMPTS = 5

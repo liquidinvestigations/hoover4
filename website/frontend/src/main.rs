@@ -29,6 +29,9 @@ fn main() {
                 dioxus::logger::tracing::error!("FATAL: {e}");
                 std::process::exit(1);
             }
+            // The readiness monitor that each workflow start waits on. It runs on this
+            // runtime for the life of the process.
+            backend::temporal_ready::start_monitor();
             let _pdf_search_server = tokio::spawn(async move {
                 let res =
                     backend::server_extra::run_pdf_search_server::run_pdf_search_server().await;

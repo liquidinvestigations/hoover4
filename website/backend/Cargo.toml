@@ -32,6 +32,10 @@ aws-smithy-types = { version = "1", features = ["byte-stream-poll-next"] }
 serde_bytes="0.11"
 base64 = "0.22"
 
+[dev-dependencies]
+# `test-util` gives the paused clock the readiness gate tests drive by hand.
+tokio = { version = "1.39.0", features = ["full", "test-util"] }
+
 
 
 [lints]

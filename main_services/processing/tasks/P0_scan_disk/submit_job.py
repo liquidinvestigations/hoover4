@@ -126,8 +126,8 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
     The scan only. Plan computation and execution are separate workflows and must not
     start until the scan has finished, so a caller of this drives them itself.
     """
-    from temporalio.client import Client as TemporalClient
     import temporalio.common
+    from tasks.temporal_readiness import START_RPC_TIMEOUT, connect_when_ready
     from tasks.visibility import dataset_search_attributes
 
     collection_dataset = compose_collection_dataset(collectionname, dataset_name)
@@ -135,7 +135,7 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
 
     async def _start_workflow():
         log.info("Starting temporal workflow...")
-        client = await TemporalClient.connect("temporal:7233")
+        client = await connect_when_ready()
         # Do not assume the worker registered this first. On a fresh
         # --reset the CLI regularly wins that race, and an unregistered
         # search attribute makes the start below fail outright.
@@ -163,6 +163,9 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
             task_queue="processing-common-queue",
             id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
             search_attributes=dataset_search_attributes(collection_dataset),
+            # The limit of the start request only. `execute_workflow` does not pass it
+            # to the wait for the result.
+            rpc_timeout=START_RPC_TIMEOUT,
         )
         if wait:
             await start_with_attribute_retry(

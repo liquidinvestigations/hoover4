@@ -840,7 +840,9 @@ async fn start_operation_workflow(
         } ],
     });
     let url = format!("{base_url}/api/v1/namespaces/default/workflows/{op_id}");
-    let response = reqwest::Client::new()
+    // A refusal here returns an error, and the caller writes the row as `errored`.
+    crate::temporal_ready::wait_for_temporal().await?;
+    let response = crate::temporal_ready::start_client()
         .post(&url)
         .header("Content-Type", "application/json")
         .json(&body)
@@ -869,6 +871,9 @@ pub async fn admin_cancel_operation(user: &CurrentUser, op_id: String) -> anyhow
 
     let base_url = std::env::var("TEMPORAL_HTTP_URL")
         .unwrap_or_else(|_| "http://localhost:21908".to_string());
+    // The gate runs here, before the finalizer's lookup and start, so the finalizer
+    // itself stays testable against a stand-in server that answers only its own route.
+    crate::temporal_ready::wait_for_temporal().await?;
     request_cancel_finalizer(&base_url, &op_id).await?;
     let mut rows = client
         .query(&sql)

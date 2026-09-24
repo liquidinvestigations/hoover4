@@ -142,6 +142,19 @@ def test_progress_sample_stops_on_terminal_row(monkeypatch):
     assert sample_dataset_progress(DatasetProgressParams("op", "c", "d")) == [1, 2]
 
 
+def _pass_the_readiness_gate(monkeypatch) -> list:
+    """Replace the readiness gate with one that passes at once and records each call."""
+    import tasks.temporal_readiness as readiness
+
+    calls = []
+
+    async def wait_for_temporal(client):
+        calls.append(client)
+
+    monkeypatch.setattr(readiness, "wait_for_temporal", wait_for_temporal)
+    return calls
+
+
 def test_cli_starts_one_finalizer_and_waits(monkeypatch):
     import temporalio.client
     import database.operations as operations
@@ -162,9 +175,12 @@ def test_cli_starts_one_finalizer_and_waits(monkeypatch):
         return Client()
 
     monkeypatch.setattr(temporalio.client.Client, "connect", staticmethod(connect))
+    gated = _pass_the_readiness_gate(monkeypatch)
     monkeypatch.setattr(operations, "get_operation", lambda _op_id: {"state": "running"})
     assert request_cancel("op") == "cancelled"
     assert starts[0][1]["id"] == "cancel-op"
+    assert starts[0][1]["rpc_timeout"].total_seconds() == 30
+    assert len(gated) == 1
 
 
 def test_cli_reuses_finished_finalizer(monkeypatch):
@@ -189,8 +205,10 @@ def test_cli_reuses_finished_finalizer(monkeypatch):
         return Client()
 
     monkeypatch.setattr(temporalio.client.Client, "connect", staticmethod(connect))
+    gated = _pass_the_readiness_gate(monkeypatch)
     monkeypatch.setattr(operations, "get_operation", lambda _op_id: {"state": "finished"})
     assert request_cancel("op") == "finished"
+    assert len(gated) == 1
 
 
 def test_cancel_target_waits_for_closed_history(monkeypatch):
