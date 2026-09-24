@@ -13,9 +13,30 @@ from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner, SandboxR
 from .operation_failure_capture import (
     OperationFailureInterceptor, capture_operation_failure,
 )
+from .payload_guard import PayloadGuardInterceptor
 from .task_timing import TaskTimingInterceptor, attach_temporal_client
+from .worker_memory import ActivityMemoryInterceptor, watch_memory
 
 log = logging.getLogger(__name__)
+
+#: Every worker fails a workflow on its first attempt when workflow code raises.
+#:
+#: Without this, a Python exception in workflow code fails only the workflow task, and
+#: Temporal 1.23 retries a failed workflow task at once and without a limit. A superclass
+#: of `NondeterminismError` is in this list, so a non-determinism error fails the workflow
+#: too. A deploy that changes a workflow's code therefore fails the runs of that workflow
+#: that are in flight.
+WORKFLOW_FAILURE_EXCEPTION_TYPES = [Exception]
+
+
+def guard_interceptors() -> list:
+    """The interceptors that every worker carries after its own ones.
+
+    `PayloadGuardInterceptor` comes after `OperationFailureInterceptor`, so a refused
+    workflow result reaches the failure capture as a workflow failure.
+    """
+    return [PayloadGuardInterceptor(), ActivityMemoryInterceptor()]
+
 
 #: Graceful shutdown period when `HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS` says nothing.
 #:
@@ -86,7 +107,12 @@ async def run_until_signalled(*workers: Worker) -> None:
             # without it). The worker still runs; it just dies abruptly.
             log.warning("%s: cannot install a %s handler", name, signum)
 
-    await asyncio.gather(*(worker.run() for worker in workers))
+    # The memory log runs beside the workers and stops when they have shut down.
+    memory = loop.create_task(watch_memory(name))
+    try:
+        await asyncio.gather(*(worker.run() for worker in workers))
+    finally:
+        memory.cancel()
     log.info("%s: shut down", name)
 
 
@@ -313,10 +339,11 @@ async def run_common_worker():
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
-          interceptors=[TaskTimingInterceptor(), OperationFailureInterceptor()],
+          interceptors=[TaskTimingInterceptor(), OperationFailureInterceptor(), *guard_interceptors()],
           workflow_runner=sandboxed_runner(),
           task_queue="processing-common-queue",
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
+          workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
           max_cached_workflows=common_max_cached_workflows(),
           workflows=[
             IngestDiskDataset,
@@ -426,10 +453,11 @@ async def run_tika_worker():
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
-          interceptors=[TaskTimingInterceptor()],
+          interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
           workflow_runner=sandboxed_runner(),
           task_queue="processing-tika-queue",
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
+          workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
           workflows=[],
           activities=[run_tika_and_store],
           activity_executor=activity_executor,
@@ -462,10 +490,11 @@ async def run_ocr_worker():
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
-          interceptors=[TaskTimingInterceptor()],
+          interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
           workflow_runner=sandboxed_runner(),
           task_queue="processing-ocr-queue",
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
+          workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
           workflows=[],
           activities=[run_ocr_and_store, run_ocr_pdf_and_store],
           activity_executor=activity_executor,
@@ -495,10 +524,11 @@ async def run_nlp_worker():
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
-      interceptors=[TaskTimingInterceptor()],
+      interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
       workflow_runner=sandboxed_runner(),
       task_queue="processing-nlp-queue",
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
+      workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
       workflows=[],
       activities=[extract_entities_for_hashes],
       activity_executor=activity_executor,
@@ -524,10 +554,11 @@ async def run_embed_worker():
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
-      interceptors=[TaskTimingInterceptor()],
+      interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
       workflow_runner=sandboxed_runner(),
       task_queue="processing-embed-queue",
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
+      workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
       workflows=[],
       activities=[chunk_embed_for_hashes],
       activity_executor=activity_executor,
@@ -553,10 +584,11 @@ async def run_indexing_worker():
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
-      interceptors=[TaskTimingInterceptor()],
+      interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
       workflow_runner=sandboxed_runner(),
       task_queue="processing-indexing-queue",
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
+      workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
       workflows=[],
       activities=[index_text_pages, index_vectors, build_vfs_nodes,
                   index_vfs_structure, build_email_graph, optimize_shard_tables,
@@ -582,10 +614,11 @@ async def run_index_planner_worker():
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(
       client,
-      interceptors=[TaskTimingInterceptor()],
+      interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
       workflow_runner=sandboxed_runner(),
       task_queue="processing-index-planner-queue",
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
+      workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
       workflows=[],
       activities=[plan_shards, finalize_index_batch, record_indexed],
       activity_executor=activity_executor,
@@ -658,10 +691,11 @@ async def run_chat_worker():
     workers = [
       Worker(
         client,
-        interceptors=[TaskTimingInterceptor()],
+        interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
         workflow_runner=sandboxed_runner(),
         task_queue=CHAT_TASK_QUEUE,
         graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[ChatTurn],
         activities=[read_chat_todo, summarize_session, write_chat_message],
         activity_executor=activity_executor,
@@ -669,10 +703,11 @@ async def run_chat_worker():
       ),
       Worker(
         client,
-        interceptors=[TaskTimingInterceptor()],
+        interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
         workflow_runner=sandboxed_runner(),
         task_queue=CHAT_MODEL_TASK_QUEUE,
         graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[],
         activities=[run_research_agent],
         activity_executor=activity_executor,
@@ -680,10 +715,11 @@ async def run_chat_worker():
       ),
       Worker(
         client,
-        interceptors=[TaskTimingInterceptor()],
+        interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
         workflow_runner=sandboxed_runner(),
         task_queue=RESEARCH_TASK_QUEUE,
         graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[ResearchTask],
         activities=[run_research_agent],
         activity_executor=activity_executor,
@@ -735,10 +771,11 @@ async def run_operations_worker():
   with concurrent.futures.ThreadPoolExecutor(max_workers=orchestration) as executor:
     workers = [Worker(
       client,
-      interceptors=[TaskTimingInterceptor(), OperationFailureInterceptor()],
+      interceptors=[TaskTimingInterceptor(), OperationFailureInterceptor(), *guard_interceptors()],
       workflow_runner=sandboxed_runner(),
       task_queue="operations-queue",
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
+      workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
       workflows=[Operation, CancelOperation],
       activities=[cancel_target_operation, record_operation_state, sample_dataset_progress,
                   supervise_operations, reindex_collection_activity, count_dataset_rows_activity,
@@ -757,10 +794,11 @@ async def run_operations_worker():
         continue
       workers.append(Worker(
         client,
-        interceptors=[TaskTimingInterceptor()],
+        interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
         workflow_runner=sandboxed_runner(),
         task_queue=queue,
         graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[],
         activities=[record_operation_state, *store_activities[queue]],
         activity_executor=executor,

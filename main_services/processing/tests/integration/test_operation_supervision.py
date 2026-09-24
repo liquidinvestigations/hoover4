@@ -30,7 +30,7 @@ class _P17StuckGrandchild:
 class _P17StuckChild:
     @workflow.run
     async def run(self, dataset: str, task_queue: str) -> None:
-        await run_with_window([
+        results = await run_with_window([
             lambda: workflow.execute_child_workflow(
                 _P17StuckGrandchild.run, id=f"p17-grandchild-a-{dataset}",
                 task_queue=task_queue,
@@ -42,6 +42,11 @@ class _P17StuckChild:
                 search_attributes=dataset_search_attributes(dataset),
             ),
         ], limit=2)
+        # `run_with_window` returns a child failure in place. `HandleFolders` raises the
+        # first one, so the stand-in does the same and the root fails after the sweep.
+        for result in results:
+            if isinstance(result, Exception):
+                raise result
 
 
 @workflow.defn
@@ -116,6 +121,8 @@ def test_supervision_terminates_stuck_operation_tree(monkeypatch):
             "progress_total": 0,
         }
         try:
+            # This worker has no `workflow_failure_exception_types`. With them, the
+            # grandchildren's RuntimeError fails them at once and nothing stays stuck.
             async with Worker(
                 client, task_queue=task_queue,
                 workflows=[_P17OperationShape, _P17StuckChild, _P17StuckGrandchild],
