@@ -200,8 +200,8 @@ The stored value then wins over the ini, and an ini change alone does not move i
 
 ## Resetting a host that has run an older stack
 
-`./deploy --reset` takes the compose project down and removes its `hoover4_*` data
-volumes. Two things it does not do, both of which matter on a host that has been running
+`./deploy --reset` takes the compose project down and empties its data folders under
+`[storage] volumes_path`. Two things it does not do, both of which matter on a host that has been running
 a while:
 
 **It does not remove orphans, and one orphan aborts the reset.** `compose down` without
@@ -229,11 +229,12 @@ docker builder prune -af
 **Never `docker system prune -a --volumes` on a shared daemon.** It takes every other
 project's images and unnamed volumes with it.
 
-What a reset destroys is exactly the derived data: ClickHouse, Manticore, Garage blobs,
-Temporal's Cassandra and Elasticsearch, the monitoring volume and the website's build
-target. The corpus itself is a **bind mount** (`testdata_dir`), not a volume, and no step
-here touches it. That is the whole recovery story: everything except the bind mount is
-re-creatable from it.
+What a reset destroys is the derived data. It empties the folders under
+`[storage] volumes_path` that hold ClickHouse, Manticore, Garage blobs, Temporal's
+Cassandra and Elasticsearch, the monitoring data and the website's build target. It keeps
+the folders themselves. The corpus is a separate bind mount (`testdata_dir`) outside
+`volumes_path`, and no step here touches it. Everything except the corpus is re-creatable
+from the corpus.
 
 ## Build and first boot
 

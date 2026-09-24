@@ -51,8 +51,8 @@ The public deployment.
 - **The test corpus is a bind mount**, so no reset touches it. Its fixtures sit one level
   deeper than `main_services/verify-stack.sh` expects by default, which makes the ingest-root
   environment overrides mandatory on this host.
-- **Release mode is on.** A reset drops the website's build-target volume, so the next deploy
-  pays a cold release build. Budget for it before resetting anything people are looking at.
+- **Release mode is on.** A reset empties the website's build-target folder under
+  `[storage] volumes_path`, so the next deploy pays a cold release build. Budget for it before resetting anything people are looking at.
 - **The worker fleet is sized narrower than the defaults**, because the cores are shared.
   Oversubscription is expensive here in a specific way: a heartbeat deadline is also a slot
   lease, so a machine pushed past its capacity holds slots for activities nobody is waiting on

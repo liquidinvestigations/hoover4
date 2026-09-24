@@ -53,8 +53,8 @@ Then, in order:
 - **The test corpus is a bind mount**, so no reset touches it, but its fixtures sit one
   level deeper than the end-to-end verification's defaults expect, which makes the
   ingest-root overrides mandatory there.
-- **Release mode is on**, so a reset that drops the build-target volume costs a cold release
-  build on the next deploy. Budget for that before resetting anything people are looking at.
+- **Release mode is on**, so a reset that empties the build-target folder under
+  `[storage] volumes_path` costs a cold release build on the next deploy. Budget for that before resetting anything people are looking at.
 - **The worker fleet is sized narrower than the defaults** because the cores are shared.
   Oversubscription is expensive here in a specific way: a heartbeat deadline is also a slot
   lease, so a machine pushed past its capacity holds slots for activities nobody is waiting
