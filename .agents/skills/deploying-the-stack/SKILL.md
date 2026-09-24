@@ -1,6 +1,6 @@
 ---
 name: deploying-the-stack
-description: Brings the stack up, rebuilds it, resets it, and waits on the long jobs that result. Use when asked to "deploy", "redeploy", "rebuild", "bring it up", "restart the stack", "reset", "wipe the data", "apply the config change", or when a change to a Dockerfile, a compose file or the configuration has to take effect. Covers `./deploy` and every flag, the configuration flow from the one ini file into the generated environment files, why bringing containers up is not a deployment, the flag combination that silently does not rebuild, restarting a single container under a rootless runtime, and how to run a long build without losing its output or killing something already in flight.
+description: Brings the stack up, rebuilds it, resets it, and waits on the long jobs that result. Use when asked to "deploy", "redeploy", "rebuild", "bring it up", "restart the stack", "reset", "wipe the data", "apply the config change", or when a change to a Dockerfile, a compose file or the configuration has to take effect. Covers `./deploy` and every flag, the configuration flow from the one ini file into the generated environment files, why bringing containers up is not a deployment, the flag combination that silently does not rebuild, restarting a single container under Podman, and how to run a long build without losing its output or killing something already in flight.
 allowed-tools: Bash, Read, Grep, Glob
 ---
 
@@ -57,9 +57,13 @@ a build, run `--build` and *read the output*.
 **`--reset --build` does not rebuild.** The reset path returns before the build path is
 reached. It is two commands: `./deploy --reset`, then `./deploy --build`.
 
-**Restarting one container fails under a rootless runtime when a sibling has legitimately
-exited.** `docker restart <name>` refuses because an init container is `Exited (0)`, which is
-its correct final state. `docker stop <name>` followed by `docker start <name>` works.
+**Restarting one container fails under Podman when a sibling has legitimately exited.** The
+compose condition `service_completed_successfully` becomes a Podman container dependency.
+`docker restart <name>` then refuses because the init container is `Exited (0)`, which is its
+correct final state. The error reads `some dependencies of container <id> are not started:
+<id>: container state improper`, and the second id is the init container. Podman refuses before
+it stops anything, so the container keeps its old code. `docker stop <name>` followed by
+`docker start <name>` works, and the start runs the init container again.
 
 **Bringing one service up recreates its whole dependency chain**, and has taken the fleet down
 doing it. `--no-deps` is required whenever a single service is the target.

@@ -3,9 +3,9 @@
 #
 # `docker restart hoover4-worker` is wrong here twice over, and both failures are quiet:
 #
-#   1. Under a rootless runtime `restart` refuses outright, because an initialisation
-#      container is `Exited (0)`, which is its correct final state. The error names that container
-#      and reads as a broken stack. Stop and then start works.
+#   1. Under Podman `restart` refuses outright, because an initialisation container is a
+#      dependency and is `Exited (0)`, which is its correct final state. The error names that
+#      container and reads as a broken stack. Stop and then start works.
 #   2. The container is created with a ten-second stop timeout whatever the compose file
 #      says: podman applies `stop_grace_period` only when it is the one stopping the
 #      container, and the value cannot be written afterwards. So a direct stop SIGKILLs
