@@ -16,6 +16,7 @@ name = "regex-entity-scanner"
 path = "src/main.rs"
 
 [dependencies]
+aho-corasick = "1.1"
 anyhow = "1"
 axum = "0.8"
 bech32 = "0.11"
@@ -29,6 +30,7 @@ sha3 = "0.10"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unicode-normalization = "0.1"
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json"] }

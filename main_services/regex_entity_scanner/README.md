@@ -86,6 +86,8 @@ Details in [docs/Architecture.md](docs/Architecture.md).
 | `POST /scan` | `{"text": "…", "offset": 0}` → `{"entities": [...], "rule_set_version": N}`. Every span, for a caller that highlights them. |
 | `POST /scan_batch` | `{"texts": ["…", …]}` → one entry per text, in order, holding deduplicated values per type with an occurrence count. For a caller that stores values rather than spans. A text whose scan fails carries an `error` string and no values. The rest of the batch still answers. |
 | `POST /explain` | An entity, posted back exactly as `/scan` returned it → an explainer card. |
+| `GET /signals` | The investigative lexicon: its version, languages, and every category with what it catches and what a match does not prove. |
+| `POST /signal_batch` | `{"texts": ["…", …]}` → per text, per category: a score, the distinct terms that counted, and each term with its count and flags. `/scan` with `"signals": true` returns the same matches as spans. |
 
 `offset` is the byte offset of the fragment's first byte in the source document; it is added to
 every span, so a caller windowing a large document gets offsets usable against the original bytes.
@@ -129,6 +131,7 @@ gave up on it.
 |---|---|---|
 | `RES_BIND` | `0.0.0.0:19705` | Listen address. |
 | `RES_VENDORED_DIR` | - | Root of the vendored tables. |
+| `RES_LEXICON_DIR` | `lexicon` | Root of the investigative lexicon. |
 | `RES_MAX_BODY_BYTES` | `10485760` | Applied to both the request body and each `text`; an oversized request is a `413`. |
 | `RES_WORKER_THREADS` | `4` | Async workers. They parse JSON and move bytes; the work is elsewhere. |
 | `RES_SCAN_THREADS` | `10` | Concurrent scans. About 0.85 MB/s each. |
@@ -179,6 +182,25 @@ somewhere to land in the schema an investigative consumer already has:
 [docs/FollowTheMoney_Mapping.md](docs/FollowTheMoney_Mapping.md).
 
 Details in [docs/Explainer_Cards.md](docs/Explainer_Cards.md).
+
+## Investigative lexicon
+
+Beside the entities, the service matches term lists that point a reader at passages worth reading
+first. They cover concealment, bribery, accounting manipulation, pressure and dissent, hostility,
+legal exposure, crime, financial crime, violence, sexual misconduct, coded language and scams, and
+the vocabulary of contracts, legal letters, memoranda, invoices, payment proofs, international
+transfers and governing-law clauses. There are twenty-three categories on one level, in English,
+German, French and Russian. A match is a *signal*: whole words, matched without regard to case,
+punctuation or accents, carrying a tier, who usually writes it, and flags when it is negated,
+quoted or inside a disclaimer. A signal proves nothing on its own, and every category says what it
+does not prove.
+
+Signals never enter overlap resolution with entities, and they answer under their own
+`signal_set_version`, so editing a list invalidates no entity. The matcher is one Aho-Corasick pass
+over a normalised copy of the text and costs a few percent of the entity scan.
+
+Details in [docs/Signals.md](docs/Signals.md), the lists and their format in
+[lexicon/Readme.md](lexicon/Readme.md).
 
 ## Entity types
 

@@ -9,6 +9,7 @@ The scanner and the service around it.
 | `rules/` | One candidate pattern and one validator per entity type. |
 | `scan/` | The pipeline: prefilter, then validate and normalise inside the rules, then resolve. |
 | `explain/` | Explainer cards: the static per-rule catalogue and the shapers that turn one match into a card. |
+| `lexicon/` | The investigative lexicon matcher: the fold, the loader for `lexicon/`, the automaton and the signal flags. |
 | `service.rs` | The HTTP surface. |
 | `main.rs` | The service shell: load, compile, serve. |
 

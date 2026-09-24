@@ -16,14 +16,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 COPY --from=builder /src/target/release/regex-entity-scanner /usr/local/bin/regex-entity-scanner
 
-# `vendored/data` is what the scanner loads; `vendored/reference` is upstream material we generate
-# and port from at development time and is deliberately absent here. The notices ship because the
-# upstream licenses require them to travel with the data.
+# `vendored/data` and `lexicon` are what the scanner loads; `vendored/reference` is upstream material
+# we generate and port from at development time and is deliberately absent here. The notices ship
+# because the upstream licenses require them to travel with the data.
 COPY vendored/data /opt/regex-entity-scanner/vendored/data
 COPY vendored/licenses /opt/regex-entity-scanner/vendored/licenses
+COPY lexicon /opt/regex-entity-scanner/lexicon
 COPY LICENSE /opt/regex-entity-scanner/LICENSE
 
 ENV RES_VENDORED_DIR=/opt/regex-entity-scanner/vendored \
+    RES_LEXICON_DIR=/opt/regex-entity-scanner/lexicon \
     RES_BIND=0.0.0.0:19705
 
 EXPOSE 19705

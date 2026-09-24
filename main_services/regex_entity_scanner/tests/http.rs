@@ -5,14 +5,28 @@
 
 mod support;
 
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, OnceLock};
 
+use regex_entity_scanner::lexicon::Lexicon;
 use regex_entity_scanner::service::{self, Admission, AppState};
+
+/// The lexicon next to the manifest, loaded once per test binary like the scanner.
+fn lexicon() -> Arc<Lexicon> {
+    static LEXICON: OnceLock<Arc<Lexicon>> = OnceLock::new();
+    LEXICON
+        .get_or_init(|| {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lexicon");
+            Arc::new(Lexicon::load(&root).expect("loading the lexicon"))
+        })
+        .clone()
+}
 
 /// Serves the router on an ephemeral port and answers with its base URL.
 async fn serve(max_body_bytes: usize) -> String {
     let state = Arc::new(AppState {
         scanner: support::scanner(),
+        lexicon: lexicon(),
         max_body_bytes,
         admission: Admission::new(2, 4),
     });
@@ -189,6 +203,7 @@ async fn health_refuses_to_be_ok_without_the_vendored_data() {
     let scanner = Arc::new(Scanner::new(VendoredData::default()).expect("compiling the rule set"));
     let state = Arc::new(AppState {
         scanner,
+        lexicon: lexicon(),
         max_body_bytes: 1 << 20,
         admission: Admission::new(2, 4),
     });
@@ -272,4 +287,109 @@ async fn health_reports_the_scan_bound() {
     assert_eq!(health["scan_threads"], 2, "{health}");
     assert_eq!(health["queue_depth"], 4, "{health}");
     assert_eq!(health["in_flight"], 0, "{health}");
+}
+
+/// The lexicon routes end to end: the categories and their documentation, spans on `/scan` only
+/// when asked for, and per-category summaries from `/signal_batch`, with offsets usable against the
+/// source and the version that produced them.
+#[tokio::test]
+async fn signals_on_scan_and_in_batch() {
+    let base = serve(1 << 20).await;
+    let client = reqwest::Client::new();
+
+    let catalogue: serde_json::Value = client
+        .get(format!("{base}/signals"))
+        .send()
+        .await
+        .expect("signals request")
+        .json()
+        .await
+        .expect("signals json");
+    let version = catalogue["signal_set_version"]
+        .as_str()
+        .expect("a version")
+        .to_string();
+    let bribery = catalogue["categories"]
+        .as_array()
+        .expect("a category list")
+        .iter()
+        .find(|category| category["id"] == "bribery")
+        .expect("bribery listed");
+    assert!(bribery["does_not_prove"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty()));
+    assert!(
+        bribery["terms"]["en"].as_u64().is_some_and(|n| n > 0),
+        "{bribery}"
+    );
+
+    let text = "Keep it off the books, nobody will find out.";
+    let plain: serde_json::Value = client
+        .post(format!("{base}/scan"))
+        .json(&serde_json::json!({ "text": text }))
+        .send()
+        .await
+        .expect("scan request")
+        .json()
+        .await
+        .expect("scan json");
+    assert!(
+        plain.get("signals").is_none(),
+        "signals only when asked: {plain}"
+    );
+
+    let with_signals: serde_json::Value = client
+        .post(format!("{base}/scan"))
+        .json(&serde_json::json!({ "text": text, "offset": 100, "signals": true }))
+        .send()
+        .await
+        .expect("scan request")
+        .json()
+        .await
+        .expect("scan json");
+    assert_eq!(with_signals["signal_set_version"], version.as_str());
+    let signals = with_signals["signals"].as_array().expect("a signal list");
+    let books = signals
+        .iter()
+        .find(|signal| signal["concept"] == "off the books")
+        .expect("off the books found");
+    let start = books["start"].as_u64().expect("a start") as usize - 100;
+    let end = books["end"].as_u64().expect("an end") as usize - 100;
+    assert_eq!(&text[start..end], "off the books");
+    assert_eq!(books["text"], "off the books");
+
+    let batch: serde_json::Value = client
+        .post(format!("{base}/signal_batch"))
+        .json(&serde_json::json!({ "texts": [
+            text,
+            "Die Provision lief über eine schwarze Kasse, das merkt keiner.",
+            "The quarterly report is attached."
+        ]}))
+        .send()
+        .await
+        .expect("batch request")
+        .json()
+        .await
+        .expect("batch json");
+    assert_eq!(batch["signal_set_version"], version.as_str());
+    let results = batch["results"].as_array().expect("a result list");
+    assert_eq!(results.len(), 3);
+    assert!(results[0]["categories"]["concealment"]["score"]
+        .as_f64()
+        .is_some_and(|s| s > 0.5));
+    assert!(
+        results[1]["categories"]["accounting"].is_object(),
+        "{batch}"
+    );
+    assert!(
+        results[1]["categories"]["concealment"].is_object(),
+        "{batch}"
+    );
+    assert!(
+        results[2]["categories"]
+            .as_object()
+            .expect("a map")
+            .is_empty(),
+        "an ordinary sentence carries no signal: {batch}"
+    );
 }

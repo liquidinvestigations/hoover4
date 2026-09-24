@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 
 use crate::explain::{self, catalog, ExplainRequest, Explanation};
+use crate::lexicon::{CategoryInfo, CategorySummary, Lexicon, Signal};
 use crate::model::Entity;
 use crate::rules::RULE_SET_VERSION;
 use crate::scan::Scanner;
@@ -26,6 +27,9 @@ use crate::scan::Scanner;
 /// operational parameter of this process, and a test builds a router with a small one.
 pub struct AppState {
     pub scanner: Arc<Scanner>,
+    /// The investigative lexicon. Separate from the scanner because it changes on a different
+    /// cadence and answers under its own version.
+    pub lexicon: Arc<Lexicon>,
     /// The largest fragment this process will scan. Applied twice, deliberately: as the router's
     /// body limit, which is what protects memory because it rejects before buffering, and against
     /// the `text` field, which is what turns an oversized fragment into a precise error instead of
@@ -133,6 +137,10 @@ pub struct ScanRequest {
     /// Byte offset of the fragment's first byte within the source document.
     #[serde(default)]
     pub offset: usize,
+    /// Also report lexicon signals, as spans for highlighting. Off unless asked for, so a caller
+    /// that stores only entities pays nothing for them.
+    #[serde(default)]
+    pub signals: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -141,6 +149,11 @@ pub struct ScanResponse {
     /// Which rule set produced these entities, so a consumer can compute what a reindex has to
     /// cover instead of reprocessing everything.
     pub rule_set_version: u32,
+    /// Present only when the request asked for signals.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signals: Option<Vec<Signal>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_set_version: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -157,6 +170,12 @@ pub struct HealthResponse {
     /// an empty table matches nothing rather than failing, so a green health check over one would
     /// report a service that is quietly missing a whole entity type.
     pub incomplete_data: Vec<&'static str>,
+    pub lexicon_terms: usize,
+    pub signal_set_version: String,
+    /// `<lang>/<category>` pairs with no term. Reported rather than degrading the service: a
+    /// language can have nothing to add to a category whose terms are all language-neutral, and
+    /// the English rows match those in any language.
+    pub empty_lexicon_categories: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -191,6 +210,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/rules/{rule_id}", get(rule))
         .route("/scan", post(scan))
         .route("/scan_batch", post(scan_batch))
+        .route("/signals", get(signals))
+        .route("/signal_batch", post(signal_batch))
         .route("/explain", post(explain_entity))
         .layer(DefaultBodyLimit::max(max_body_bytes))
         .with_state(state)
@@ -214,6 +235,9 @@ async fn health(State(state): State<Arc<AppState>>) -> (StatusCode, Json<HealthR
             queue_depth: state.admission.queue_depth,
             in_flight: state.admission.in_flight(),
             incomplete_data,
+            lexicon_terms: state.lexicon.term_count(),
+            signal_set_version: state.lexicon.version().to_string(),
+            empty_lexicon_categories: state.lexicon.empty_categories(),
         }),
     )
 }
@@ -294,12 +318,17 @@ async fn scan(
         return overloaded();
     };
     let scanner = Arc::clone(&state.scanner);
-    let entities = match tokio::task::spawn_blocking(move || {
-        scanner.scan(&request.text, request.offset)
+    let lexicon = Arc::clone(&state.lexicon);
+    let (entities, signals) = match tokio::task::spawn_blocking(move || {
+        let entities = scanner.scan(&request.text, request.offset);
+        let signals = request
+            .signals
+            .then(|| lexicon.scan(&request.text, request.offset));
+        (entities, signals)
     })
     .await
     {
-        Ok(entities) => entities,
+        Ok(found) => found,
         Err(err) => {
             return json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -307,9 +336,122 @@ async fn scan(
             )
         }
     };
+    let signal_set_version = signals
+        .as_ref()
+        .map(|_| state.lexicon.version().to_string());
     Json(ScanResponse {
         entities,
         rule_set_version: RULE_SET_VERSION,
+        signals,
+        signal_set_version,
+    })
+    .into_response()
+}
+
+#[derive(Debug, Serialize)]
+pub struct SignalsResponse<'a> {
+    pub signal_set_version: &'a str,
+    pub languages: &'a [String],
+    pub terms: usize,
+    /// Every category with what it catches, what a match does not prove, and its term count per
+    /// language.
+    pub categories: Vec<CategoryInfo<'a>>,
+}
+
+/// The lexicon's categories and their documentation: what a client shows beside a signal, and the
+/// version a stored signal was produced under.
+async fn signals(State(state): State<Arc<AppState>>) -> Response {
+    Json(SignalsResponse {
+        signal_set_version: state.lexicon.version(),
+        languages: state.lexicon.languages(),
+        terms: state.lexicon.term_count(),
+        categories: state.lexicon.categories(),
+    })
+    .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SignalBatchRequest {
+    pub texts: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SignalBatchResponse {
+    /// One entry per input text, in order.
+    pub results: Vec<SignalBatchResult>,
+    /// A content hash of the lexicon. A stored summary is stale when this changes; the entity
+    /// index, under `rule_set_version`, is not.
+    pub signal_set_version: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SignalBatchResult {
+    /// Per category with at least one signal. A category with none is absent.
+    pub categories: BTreeMap<String, CategorySummary>,
+    /// Set only for a text whose scan panicked, like `/scan_batch`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Lexicon signals for several texts, summarised per category: the shape a storage consumer keeps.
+/// Separate from `/scan_batch` so a lexicon edit can be re-applied to a collection at lexicon speed
+/// without re-running the entity scan.
+async fn signal_batch(
+    State(state): State<Arc<AppState>>,
+    request: Result<Json<SignalBatchRequest>, JsonRejection>,
+) -> Response {
+    let request = match request {
+        Ok(Json(request)) => request,
+        Err(rejection) => return json_error(rejection.status(), rejection.body_text()),
+    };
+    if let Some(oversize) = request
+        .texts
+        .iter()
+        .map(String::len)
+        .find(|len| *len > state.max_body_bytes)
+    {
+        return oversized(oversize, state.max_body_bytes);
+    }
+    let Some(_slot) = state.admission.admit().await else {
+        return overloaded();
+    };
+    let lexicon = Arc::clone(&state.lexicon);
+    let results = match tokio::task::spawn_blocking(move || {
+        request
+            .texts
+            .iter()
+            .map(|text| {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    lexicon.summarise(&lexicon.scan(text, 0))
+                })) {
+                    Ok(categories) => SignalBatchResult {
+                        categories,
+                        error: None,
+                    },
+                    Err(_) => {
+                        tracing::error!("a document panicked during signal scan");
+                        SignalBatchResult {
+                            categories: BTreeMap::new(),
+                            error: Some("this document could not be scanned".to_string()),
+                        }
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+    })
+    .await
+    {
+        Ok(results) => results,
+        Err(err) => {
+            return json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("scan failed: {err}"),
+            )
+        }
+    };
+    Json(SignalBatchResponse {
+        results,
+        signal_set_version: state.lexicon.version().to_string(),
     })
     .into_response()
 }

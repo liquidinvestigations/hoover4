@@ -42,6 +42,15 @@ offsets were needed for.
 **Every rule change adds a case**: the input that motivated it, and the near-miss that must stay
 rejected. A rule change with no new fixture is a change nobody can defend later.
 
+## The signal corpus
+
+`tests/golden/signals.jsonl` does for the investigative lexicon what the golden corpus does for
+entities. A positive case names the `[category, text]` pairs that must be reported. A `silent` case
+must raise no unflagged `H` or `M` signal: disclaimers, compliance training, IT prose, quoted replies
+and ordinary mail in every language the lexicon holds. A known false positive is listed as `noise`
+on its case, which lets the test pass and still counts it against the precision the test prints. A
+list edit that changes what matches adds a case, the same way a rule change does.
+
 ## The upstream conformance run
 
 The golden corpus measures us against cases we wrote. `./test-long.sh` measures us against cases the

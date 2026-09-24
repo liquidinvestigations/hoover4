@@ -47,9 +47,10 @@ container starts, so the entrypoint creates them before handing over.
 ## The release image
 
 `Dockerfile.release` builds in one stage and ships in another. What lands in the final image is the
-optimised binary, `vendored/data` (the reference data the scanner loads at startup), and the
-upstream licence notices, which the licences require to travel with the data. No toolchain, no
-sources, no bind mount, and no `vendored/reference`, which is development material.
+optimised binary, `vendored/data` (the reference data the scanner loads at startup), `lexicon`
+(the investigative lexicon), and the upstream licence notices, which the licences require to
+travel with the data. No toolchain, no sources, no bind mount, and no `vendored/reference`, which
+is development material.
 
 It runs as an unprivileged user, listens on `0.0.0.0:19705` inside the container, and is configured
 by two environment variables: `RES_BIND` for the listen address and `RES_VENDORED_DIR` for the data

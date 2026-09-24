@@ -12,12 +12,14 @@
 
 pub mod data;
 pub mod explain;
+pub mod lexicon;
 pub mod model;
 pub mod rules;
 pub mod scan;
 pub mod service;
 
 pub use explain::Explanation;
+pub use lexicon::{Lexicon, Signal};
 pub use model::{Entity, EntityType, Flag, Value};
 pub use rules::RULE_SET_VERSION;
 pub use scan::Scanner;

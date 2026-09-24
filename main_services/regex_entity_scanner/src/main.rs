@@ -1,9 +1,10 @@
-//! The service shell: load the vendored data, compile the rules, serve.
+//! The service shell: load the vendored data and the lexicon, compile both, serve.
 
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use regex_entity_scanner::data::VendoredData;
+use regex_entity_scanner::lexicon::Lexicon;
 use regex_entity_scanner::scan::Scanner;
 use regex_entity_scanner::service::{self, Admission, AppState};
 
@@ -59,9 +60,18 @@ async fn serve(scan_threads: usize, queue_depth: usize) -> Result<()> {
         "rules compiled"
     );
 
+    let lexicon = Arc::new(Lexicon::load_from_env()?);
+    tracing::info!(
+        terms = lexicon.term_count(),
+        languages = lexicon.languages().join(","),
+        version = lexicon.version(),
+        "lexicon compiled"
+    );
+
     let max_body_bytes = max_body_bytes()?;
     let state = Arc::new(AppState {
         scanner,
+        lexicon,
         max_body_bytes,
         admission: Admission::new(scan_threads, queue_depth),
     });
