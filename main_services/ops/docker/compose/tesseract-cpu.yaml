@@ -55,7 +55,9 @@ services:
         limits:
           # 0 is no CPU limit, which is what an empty tesseract_cpu_cpus asks for.
           cpus: '${TESSERACT_CPU_CPUS:-0}'
-          memory: ${TESSERACT_CPU_MEM_LIMIT:-4000M}
+          # deploy.py always renders this value, from tesseract_cpu_mem_limit or from
+          # 4096M plus 1024M for each unit of tesseract_cpu_concurrency.
+          memory: ${TESSERACT_CPU_MEM_LIMIT}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
       interval: 30s

@@ -80,8 +80,8 @@ store**: the server refuses to open a keyspace initialised with a different one.
 `deploy.py` preflights the running cluster against the ini and names both numbers rather
 than letting the server die with a Cassandra error, and `./deploy --reset-temporal` drops
 Temporal's Cassandra keyspace and Elasticsearch index so a new count can take. That reset
-loses workflow history, which retention already caps at 24 h with archival off, and
-touches no other volume.
+loses workflow history, which the `temporal_retention` key caps (default `168h`) with
+archival off, and touches no other volume.
 
 `temporal-dynamicconfig/` is bind-mounted over `/etc/temporal/config/dynamicconfig/`,
 whose `docker.yaml` the image ships as a zero-byte file. The DIRECTORY is mounted, not

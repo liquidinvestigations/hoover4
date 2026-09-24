@@ -21,6 +21,7 @@ The procedural half (the same ground as a checklist an agent loads mid-task) is
 - [Migrations](#migrations)
 - [A change that did not take effect](#a-change-that-did-not-take-effect)
 - [The host itself is unresponsive](#the-host-itself-is-unresponsive)
+- [Collect a debug report](#collect-a-debug-report)
 - [Cause or workaround. Say which](#cause-or-workaround--say-which)
 
 ## Two rules that come before any symptom
@@ -258,6 +259,49 @@ that are commonly got wrong:
   responsiveness without discarding that.
 - **Load average lags the fix**, because it counts runnable tasks. Judge by the top
   processes' CPU share and by whether the machine responds, not by the number.
+
+## Collect a debug report
+
+`scripts/collect-debug-report.py` collects the state of one deployment into one zip file.
+It uses the Python standard library only, and runs on Python 3.9 and later. It only reads.
+It starts, stops and changes nothing. Run it on the host of the deployment, from the root of
+the checkout:
+
+```
+python3 scripts/collect-debug-report.py
+```
+
+If `docker ps` needs root on the host, run the command with `sudo`. A run takes 1 to 4
+minutes. The script writes `tmp/hoover4-debug-<host>-<UTC time>.zip` in the checkout.
+Git ignores `tmp/`. `--out-dir` writes the zip to another folder. `--help` lists the other
+flags, for example the log window `--since` (default `72h`).
+
+The copies replace the value of each environment variable and ini key whose name contains
+`KEY`, `SECRET`, `PASSWORD`, `TOKEN` or `CREDENTIAL` with `<redacted>`. The zip still holds
+host names, addresses, collection names and log lines. Read it before you send it outside the
+team.
+
+The zip holds one folder, with these files and folders:
+
+| path | what it holds |
+|---|---|
+| `README.txt` | the run time, each hoover4 container with its health, restarts and OOM flag, and the non-zero log signatures |
+| `manifest.json` | each command the script ran, with its exit code, its run time and its error |
+| `summary/log-patterns.txt`, `summary/log-signatures.json` | the most frequent line patterns and the count of each known failure signature, for each captured log |
+| `host/` | CPU, memory, disks, kernel settings, process lists, `dmesg`, and the kernel and OOM journal |
+| `repo/` | the ini files, the generated `.env` files, the Git state, and the rendered compose configuration |
+| `engine/` | the container engine version, the containers, their events of the last 7 days, and three `stats` samples |
+| `containers/<name>/` | `inspect.json`, a summary, and the processes and cgroup counters of each running container |
+| `logs/<name>.log` | the log of each container over the `--since` window |
+| `lifetime-logs/` | the error lines and operation lines of the whole log of the key containers, and a count per hour of each signature |
+| `timeseries/` | CPU, throttling, memory and network of each container, sampled from the host for 180 s, and `summary.json` with the peak memory |
+| `temporal/` | cluster health samples, workflow counts, the running workflows, stuck workflow tasks, pending activities, task queues, and the histories of the workflows that the worker log names as failing |
+| `cassandra/` | `nodetool` output, memory, NUMA, configuration and the Cassandra logs |
+| `elasticsearch/` | cluster health, indices and thread pools of the Temporal visibility store |
+| `clickhouse/` | tables, errors, the query log, operations, operation failures, task runs, and one folder of error and plan counts for each collection |
+| `manticore/`, `garage/`, `redis/` | the status of each store |
+| `worker/<name>/` | the processes, environment, Python packages and memory of `hoover4-worker` and `hoover4-ops` |
+| `datasets/shape.json` | the file count and the largest folders of each disk dataset |
 
 ## Cause or workaround: say which
 

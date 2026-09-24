@@ -394,7 +394,8 @@ garage_capacity        = 300G
 
 # ---- Temporal and its Cassandra -------------------------------------------------
 # deploy.py refuses a cassandra_mem_limit below cassandra_heap plus
-# cassandra_direct_memory plus 3G of native memory.
+# cassandra_direct_memory plus 3G of native memory. It refuses a cassandra_cpus,
+# temporal_cpus or tesseract_cpu_cpus above the CPU count of the host.
 cassandra_mem_limit      = 16000M
 cassandra_cpus           = 8
 cassandra_heap           = 8G     ; MAX_HEAP_SIZE
@@ -418,7 +419,7 @@ temporal_matching_persistence_qps =
 tesseract_cpu_concurrency  = 2
 tesseract_threads_per_page =      ; OMP_THREAD_LIMIT; empty leaves it unset
 tesseract_cpu_cpus         =      ; CPU limit; empty is no limit
-tesseract_cpu_mem_limit    = 4000M
+tesseract_cpu_mem_limit    =      ; empty is 4096M plus 1024M for each tesseract_cpu_concurrency
 
 # ---- container logs -------------------------------------------------------------
 ; Rotation of every hoover4 container log, in the json-file driver's units.

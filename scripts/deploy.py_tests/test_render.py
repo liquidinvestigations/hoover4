@@ -189,7 +189,7 @@ def test_settings_defaults():
     assert env["DEFAULT_NAMESPACE_RETENTION"] == "168h"
     assert env["TESSERACT_CPU_CONCURRENCY"] == "2"
     assert env["TESSERACT_CPU_QUEUE_DEPTH"] == "8"
-    assert env["TESSERACT_CPU_MEM_LIMIT"] == "4000M"
+    assert env["TESSERACT_CPU_MEM_LIMIT"] == "6144M"
     assert "TESSERACT_THREADS_PER_PAGE" not in env
     assert "TESSERACT_CPU_CPUS" not in env
     assert env["CONTAINER_LOG_MAX_SIZE"] == "100m"
@@ -282,6 +282,48 @@ def test_tesseract_concurrency_sets_the_queue_depth():
     assert warning is not None and "ocr_concurrency = 4" in warning
 
 
+def _settings(**main_values):
+    cfg = _config("settings-defaults.ini")
+    cfg.values["main_services"].update(main_values)
+    return cfg
+
+
+def test_empty_tesseract_memory_limit_follows_the_concurrency():
+    cfg = _settings(tesseract_cpu_mem_limit="", tesseract_cpu_concurrency="3")
+
+    assert deploy.render_tesseract_env(cfg)["TESSERACT_CPU_MEM_LIMIT"] == "7168M"
+
+
+def test_set_tesseract_memory_limit_wins_over_the_formula():
+    cfg = _settings(tesseract_cpu_mem_limit="5000M", tesseract_cpu_concurrency="3")
+
+    assert deploy.render_tesseract_env(cfg)["TESSERACT_CPU_MEM_LIMIT"] == "5000M"
+
+
+@pytest.mark.parametrize("key", ["cassandra_cpus", "temporal_cpus", "tesseract_cpu_cpus"])
+def test_cpu_key_above_the_host_is_refused(key):
+    cfg = _settings(**{key: "9"})
+
+    with mock.patch.object(deploy.os, "cpu_count", return_value=8), \
+            mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        with pytest.raises(deploy.DeployError) as refused:
+            deploy.render_main_env(cfg)
+
+    message = str(refused.value)
+    assert "%s = 9" % key in message
+    assert "8 CPUs" in message
+
+
+def test_cpu_key_at_the_host_count_is_accepted():
+    cfg = _settings(cassandra_cpus="8", temporal_cpus="8", tesseract_cpu_cpus="8")
+
+    with mock.patch.object(deploy.os, "cpu_count", return_value=8), \
+            mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        env = deploy.render_main_env(cfg)
+
+    assert env["TESSERACT_CPU_CPUS"] == "8"
+
+
 def test_tesseract_overlay_maps_the_rendered_variables():
     text = (REPO_ROOT / "main_services/ops/docker/compose/tesseract-cpu.yaml").read_text()
 
@@ -303,6 +345,14 @@ def _compose_documents():
     return [(path.name, yaml.load(path.read_text(), Loader=Loader)) for path in paths]
 
 
+def _ai_compose_documents():
+    import yaml
+
+    ai_dir = REPO_ROOT / "ai_services"
+    paths = [ai_dir / "docker-compose.yaml"] + sorted((ai_dir / "compose").glob("*.yaml"))
+    return [("ai_services/" + path.name, yaml.safe_load(path.read_text())) for path in paths]
+
+
 def test_every_service_rotates_its_logs():
     expected = {
         "driver": "json-file",
@@ -319,6 +369,20 @@ def test_every_service_rotates_its_logs():
             assert definition.get("logging") == expected, "%s: %s" % (name, service)
             checked += 1
     assert checked >= 16
+
+    ai_checked = 0
+    for name, document in _ai_compose_documents():
+        for service, definition in (document.get("services") or {}).items():
+            assert definition.get("logging") == expected, "%s: %s" % (name, service)
+            ai_checked += 1
+    assert ai_checked == 3
+
+
+def test_gpu_tier_env_carries_the_log_rotation():
+    env = deploy.render_ai_env(_config("settings-defaults.ini"))
+
+    assert env["CONTAINER_LOG_MAX_SIZE"] == "100m"
+    assert env["CONTAINER_LOG_MAX_FILES"] == "5"
 
 
 def test_cassandra_service_settings():
@@ -340,5 +404,6 @@ def test_templates_render_the_new_settings(template_name):
     assert env["NUM_HISTORY_SHARDS"] == "128"
     assert env["CASSANDRA_HEAP_NEW"] == "800M"
     assert env["DEFAULT_NAMESPACE_RETENTION"] == "168h"
+    assert env["TESSERACT_CPU_MEM_LIMIT"] == "6144M"
     assert deploy.temporal_retention_command(cfg)[-3:] == [
         "168h", "--address", "temporal:7233"]

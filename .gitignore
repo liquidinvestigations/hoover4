@@ -26,6 +26,9 @@ hoover4.ini
 # never tracked: docs/ and the skills are public.
 INFRASTRUCTURE_INVENTORY.md
 /website/TEST_LOGIN.env
+# scripts/collect-debug-report.py writes its zip here. The zip holds logs and configuration
+# of one deployment.
+/tmp/
 # Clones of the Liquid upstream repositories, worked on locally. They carry their own git
 # history and their own remotes, so nothing under here is ever tracked by this repository.
 external/

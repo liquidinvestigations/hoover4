@@ -3,6 +3,16 @@
 # This is the model the research agents talk to. It is OpenAI-compatible, so the
 # provider selection in hoover4.ini is the only thing that decides whether the stack
 # uses it or a cloud endpoint.
+
+# Log rotation for every service in this file, from container_log_max_size and
+# container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
+# compose file carries this field, and deploy.py's tests check that no service lacks it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
 services:
   # ---------------------------------------------------------------- GPU: local LLM
   # vllm_gpu_fraction is a fraction of the WHOLE device, shared with hoover4-ai-server
@@ -27,6 +37,7 @@ services:
   # SECURITY: bind_ip comes from hoover4.ini and MUST be a private-network address in
   # any real deployment. An exposed vLLM is a free GPU for the internet.
   hoover4-vllm:
+    logging: *logging
     image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.17.1}
     container_name: hoover4-vllm
     ports:

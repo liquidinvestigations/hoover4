@@ -279,11 +279,12 @@ DEFAULTS = {
         # These keys size hoover4-tesseract-cpu. Its request queue holds 4 times the
         # concurrency.
         # Empty threads_per_page and cpus leave OMP_THREAD_LIMIT and the CPU limit
-        # unset.
+        # unset. An empty mem_limit gives 4096M plus 1024M for each unit of
+        # tesseract_cpu_concurrency, so the default concurrency of 2 gives 6144M.
         "tesseract_cpu_concurrency": "2",
         "tesseract_threads_per_page": "",
         "tesseract_cpu_cpus": "",
-        "tesseract_cpu_mem_limit": "4000M",
+        "tesseract_cpu_mem_limit": "",
         # Log rotation of every hoover4 container, in the json-file driver's units.
         "container_log_max_size": "100m",
         "container_log_max_files": "5",
@@ -619,6 +620,12 @@ def cpu_count_value(cfg, key):
         fail("[main_services] %s is not a number of CPUs: %r" % (key, raw))
     if value <= 0:
         fail("[main_services] %s must be above 0, got %r" % (key, raw))
+    # Docker refuses a CPU limit above the CPU count of the host, and the container then
+    # does not start. The refusal here names the key before any container stops.
+    host_cpus = os.cpu_count()
+    if host_cpus and value > host_cpus:
+        fail("[main_services] %s = %s is above the %d CPUs of this host. Set it to %d or "
+             "less." % (key, raw, host_cpus, host_cpus))
     return value
 
 
@@ -703,8 +710,18 @@ def render_temporal_dynamic_config(cfg, tracked_text=None):
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
+#: The memory limit of hoover4-tesseract-cpu when tesseract_cpu_mem_limit is empty: a base
+#: for the server, and more for each concurrent Tesseract run.
+TESSERACT_BASE_MEM_MB = 4096
+TESSERACT_MEM_PER_THREAD_MB = 1024
+
+
 def render_tesseract_env(cfg):
-    """The hoover4-tesseract-cpu variables. An empty key renders no variable."""
+    """The hoover4-tesseract-cpu variables.
+
+    An empty tesseract_cpu_mem_limit gives 4096M plus 1024M for each unit of
+    tesseract_cpu_concurrency. Every other empty key renders no variable.
+    """
     m = "main_services"
     concurrency = whole_number(cfg, "tesseract_cpu_concurrency")
     env = {
@@ -719,6 +736,9 @@ def render_tesseract_env(cfg):
     if cfg.get(m, "tesseract_cpu_mem_limit").strip():
         size_bytes(cfg, "tesseract_cpu_mem_limit")
         env["TESSERACT_CPU_MEM_LIMIT"] = cfg.get(m, "tesseract_cpu_mem_limit").strip()
+    else:
+        env["TESSERACT_CPU_MEM_LIMIT"] = "%dM" % (
+            TESSERACT_BASE_MEM_MB + TESSERACT_MEM_PER_THREAD_MB * concurrency)
     return env
 
 
@@ -1033,6 +1053,11 @@ def render_ai_env(cfg):
     env["EMBEDDINGS_DIM"] = cfg.get(a, "embeddings_dim")
     env["RERANKER_MODEL"] = cfg.get(a, "reranker_model")
     env["EASYOCR_LANGUAGES"] = cfg.get(a, "easyocr_languages")
+
+    # Log rotation, read by the x-logging field of each file in ai_services/compose/. The
+    # GPU tier uses the same two [main_services] keys as the main stack.
+    env["CONTAINER_LOG_MAX_SIZE"] = cfg.get("main_services", "container_log_max_size")
+    env["CONTAINER_LOG_MAX_FILES"] = str(whole_number(cfg, "container_log_max_files"))
     return env
 
 

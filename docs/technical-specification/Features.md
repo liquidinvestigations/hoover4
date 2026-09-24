@@ -184,6 +184,7 @@ languages.
 | `F-admin-28` | View one operation with its run counts, the plans it ran and its Error events, each list paged by 100, with links to its Failure tree and to Temporal | `/admin/operations/:op_id`, `website/backend/src/api/admin/operations.rs` |
 | `F-admin-29` | Wait for Temporal and its database to be ready for 5 s before a CLI command or a website route starts a workflow, and refuse the start after 60 s with the last probe error | `main_services/processing/tasks/temporal_readiness.py`, `website/backend/src/temporal_ready.rs` |
 | `F-admin-30` | Fail a workflow on its first attempt when one of its commands is too large or its code raises, with an error that names the call and its sizes | `main_services/processing/tasks/payload_guard.py`, `tasks/run_worker.py:WORKFLOW_FAILURE_EXCEPTION_TYPES` |
+| `F-admin-31` | Collect a debug report of one deployment (host, containers, logs, configuration, Temporal, Cassandra and the datastores) into one zip file, read only, with credential values redacted | `scripts/collect-debug-report.py`, `docs/operations/Troubleshooting.md` |
 
 ## Identity and access
 

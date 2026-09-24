@@ -92,7 +92,10 @@ bound the pattern scanner's runtime and its admission control.
 `hoover4-tesseract-cpu` runs at once, and its request queue holds 4 times that number.
 `tesseract_threads_per_page` sets `OMP_THREAD_LIMIT`, the threads of one page. Empty leaves
 the variable unset. `tesseract_cpu_cpus` is the container's CPU limit, and empty is no
-limit. `tesseract_cpu_mem_limit` (default `4000M`) is its memory limit. `deploy.py` prints a
+limit. `tesseract_cpu_mem_limit` (default empty) is its memory limit. Empty is 4096M plus
+1024M for each unit of `tesseract_cpu_concurrency`, so the default concurrency of 2 gives
+6144M. A set value replaces the formula. `deploy.py` refuses a `tesseract_cpu_cpus` above the
+CPU count of the host. `deploy.py` prints a
 warning when `ocr_concurrency` is lower than `tesseract_cpu_concurrency`, because the
 worker then leaves Tesseract slots idle.
 
@@ -195,7 +198,9 @@ is `128`.
 | `temporal_matching_persistence_qps` | empty | `matching.persistenceMaxQPS` |
 
 `deploy.py` refuses a `cassandra_mem_limit` smaller than `cassandra_heap` plus
-`cassandra_direct_memory` plus 3G, and names the three values. The container reservation is
+`cassandra_direct_memory` plus 3G, and names the three values. It refuses a `cassandra_cpus`
+or a `temporal_cpus` above the CPU count of the host, because Docker then refuses to start
+the container. The message names the key, its value and the CPU count. The container reservation is
 5000M, or the limit when the limit is smaller.
 
 The server sets `temporal_retention` only when it creates the namespace. After each
@@ -209,8 +214,9 @@ that is set. An empty rate limit keeps Temporal's own default.
 ### Container logs
 
 `container_log_max_size` (default `100m`) and `container_log_max_files` (default `5`) set
-the `json-file` log rotation of every hoover4 container. Podman records only the size, and
-ignores `container_log_max_files`.
+the `json-file` log rotation of every hoover4 container, on the main stack and on the GPU
+tier. `deploy.py` writes both values into the `.env` file of each side. Podman records only
+the size, and ignores `container_log_max_files`.
 
 The pinned versions (of the workflow service and its UI, the history and visibility stores,
 and the object store, which is pinned by digest as well as tag) are here so that a rebuild
