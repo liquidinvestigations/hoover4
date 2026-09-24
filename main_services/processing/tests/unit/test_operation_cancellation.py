@@ -40,13 +40,16 @@ def test_terminal_row_refuses_progress_insert(monkeypatch):
     assert update_operation("op", progress_done=8) is row
 
 
-def test_cancel_finalizer_writes_terminal_row(monkeypatch):
+def test_cancel_finalizer_samples_before_terminal_row(monkeypatch):
     from tasks.P_ops import workflows
 
     calls = []
+    samples = []
 
     async def activity_call(name, params, **_kwargs):
         calls.append(name.__name__)
+        if name.__name__ == "sample_dataset_progress":
+            samples.append(params)
         if name.__name__ == "cancel_target_operation":
             return {
                 "state": "running", "collectionname": "c",
@@ -58,7 +61,10 @@ def test_cancel_finalizer_writes_terminal_row(monkeypatch):
     monkeypatch.setattr(workflows.workflow, "execute_activity", activity_call)
     result = asyncio.run(workflows.CancelOperation().run("op"))
     assert result == "cancelled"
-    assert calls == ["cancel_target_operation", "record_operation_state"]
+    assert calls == [
+        "cancel_target_operation", "sample_dataset_progress", "record_operation_state",
+    ]
+    assert samples[0].terminal_state == "cancelled"
 
 
 def test_cancel_finalizer_records_absent_history_as_cancelled(monkeypatch):

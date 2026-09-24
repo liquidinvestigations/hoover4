@@ -80,8 +80,13 @@ WORKFLOW_ABSENT_ERROR = (
 
 @activity.defn
 @with_heartbeat
-async def supervise_operations() -> None:
+def supervise_operations() -> None:
     """Sweep live rows, then refresh their progress from the configured source."""
+    asyncio.run(_supervise_operations())
+
+
+async def _supervise_operations() -> None:
+    """Use the Temporal client after the activity enters its worker thread."""
     from database.operations import _now, live_operations
 
     client = await Client.connect("temporal:7233")

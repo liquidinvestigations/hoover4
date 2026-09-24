@@ -102,6 +102,17 @@ class CancelOperation:
                  "cancelled")
         error = ("Cancelled by request." if state == "cancelled" else
                  "Target workflow ended with an error." if state == "errored" else "")
+        if context["collection_dataset"]:
+            await workflow.execute_activity(
+                sample_dataset_progress,
+                DatasetProgressParams(op_id, context["collectionname"],
+                                      context["collection_dataset"],
+                                      terminal_state=state, terminal_error=error),
+                task_queue="operations-queue",
+                start_to_close_timeout=timedelta(minutes=2),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=ROW_RETRY,
+            )
         result = await workflow.execute_activity(
             record_operation_state,
             OperationStateParams(op_id=op_id, state=state,
