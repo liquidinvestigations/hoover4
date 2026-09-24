@@ -14,6 +14,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent import compaction, llm_events, prompts, subagents
 from research_agent.thinking import describe as describe_thinking, thinking_kwargs, tool_turn_kwargs
+from research_agent.tool_args import decode_string_arguments
 from pydantic import TypeAdapter
 import json
 from json import JSONDecodeError
@@ -40,6 +41,26 @@ def recurse_json_decode(d):
             return d
     except (JSONDecodeError, TypeError):
         return d
+
+
+def with_decoded_arguments(tool: Any) -> Any:
+    """Return a copy of an MCP tool that decodes JSON-string arguments before the call.
+
+    The adapter builds each MCP tool with its JSON schema as `args_schema`, and langchain
+    does not validate a dict schema, so the arguments reach the MCP server as the model
+    wrote them. The copy runs `decode_string_arguments` on them first. A tool with no
+    coroutine or no dict schema is returned unchanged.
+    """
+    original = getattr(tool, "coroutine", None)
+    schema = getattr(tool, "args_schema", None)
+    if original is None or not isinstance(schema, dict):
+        return tool
+
+    async def call_with_decoded_arguments(**arguments: Any) -> Any:
+        return await original(**decode_string_arguments(arguments, schema))
+
+    return tool.model_copy(update={"coroutine": call_with_decoded_arguments})
+
 
 log = logging.getLogger(__name__)
 
@@ -311,7 +332,9 @@ class MCPGatewayAgent:
 
         # Create MCP client and get tools
         client = MultiServerMCPClient(servers)
-        tools = await client.get_tools()
+        # Every MCP tool decodes JSON-string arguments before the call. The worker pool
+        # below is built from this list, so the in-process workers get the same wrapper.
+        tools = [with_decoded_arguments(tool) for tool in await client.get_tools()]
 
         # Get LLM configuration from environment variables
         llm_api_key = _read_secret("LLM_API_KEY")

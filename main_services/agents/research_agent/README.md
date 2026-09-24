@@ -302,6 +302,29 @@ the trigger and its denominator, and the token counts before and after. The "aft
 prompt of the first call made on the shortened list, so it arrives one call later and
 supersedes the first insert under the same compaction id.
 
+## Tool arguments sent as JSON strings
+
+The served model often writes a non-string tool argument as a string. It sends
+`"collectionname": "testdata"` or `"collectionname": "[\"testdata\"]"` for a list of
+strings, and `"filename_only": "True"` for a boolean. The MCP servers validate arguments
+with pydantic in lax mode. That mode converts `"True"` and `"5"`, and refuses a string for a
+list or an object, so such a call fails and the model gets no result.
+
+`_create_graph` wraps every MCP tool with `with_decoded_arguments` (`agent.py`). The workers
+use the same wrapped tools. Before each call, `decode_string_arguments` (`tool_args.py`)
+reads the parameter's JSON schema, following `anyOf`, `oneOf`, `$ref` and `type` lists. It
+changes a string argument only when the schema does not allow a string:
+
+- A string that parses as JSON becomes the parsed value, if that value has an allowed type.
+  `null` is never a target.
+- For a boolean, `true` and `false` in any case become the boolean.
+- For a list of strings, a string becomes a one-item list when it does not parse, or when it
+  parses to a value of a type the schema does not allow. `"2024"` becomes `["2024"]`.
+
+Every other value stays as the model wrote it, so the server's own validation error reaches
+the model. The decoding runs in the agent because the MCP schemas are correct. `recurse_json_decode`
+decodes strings only for the event stream, and does not change what a tool receives.
+
 ## `LLM_STREAMING` and `disable_streaming`
 
 **Streaming is back on** (`LLM_STREAMING=true`), and the workaround is retained.
