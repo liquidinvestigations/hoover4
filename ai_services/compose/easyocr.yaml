@@ -45,7 +45,9 @@ services:
       # formats, and sharing one folder overlays EasyOCR's flat *.pth files on top of a
       # HuggingFace `hub/` tree. It happens to work because the names do not collide,
       # and it breaks the moment either side writes an index. Preserved across resets
-      # like every model cache (reset class `cache` in deploy.py VOLUMES).
+      # like every model cache (reset class `cache` in deploy.py VOLUMES). This bind
+      # mount hides the weights the image has at this path. The server copies them in
+      # from EASYOCR_BAKED_DIR at start, so an empty folder gets them before any request.
       - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/easyocr_models_cache:/root/.EasyOCR
     devices:
       - nvidia.com/gpu=all

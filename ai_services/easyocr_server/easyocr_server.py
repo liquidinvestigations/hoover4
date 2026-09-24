@@ -71,9 +71,58 @@ OCR_READER_CACHE_SIZE = int(os.getenv("OCR_READER_CACHE_SIZE", "3"))
 #: configures: an unlisted language works, but pays a download on the first page.
 EASYOCR_LANGUAGES = os.getenv("EASYOCR_LANGUAGES", "en")
 
-#: Where the model weights live. The compose overlay mounts the shared model-cache
-#: volume here, so a reset that preserves caches also preserves these.
+#: Where the model weights live. The compose overlay bind-mounts a host folder here, so
+#: a reset that preserves caches also preserves these. The mount hides the weights that
+#: the image has at this path, so the server copies them in from EASYOCR_BAKED_DIR.
 EASYOCR_MODEL_DIR = os.getenv("EASYOCR_MODEL_DIR", "/root/.EasyOCR")
+
+#: A copy of the baked weights outside the mount path. Empty or absent means no copy.
+EASYOCR_BAKED_DIR = os.getenv("EASYOCR_BAKED_DIR", "")
+
+
+def copy_baked_weights(baked_dir: str, model_dir: str) -> int:
+    """Copy each file under ``baked_dir`` into ``model_dir`` when it is absent there.
+
+    Returns the count of files copied. A file that exists in ``model_dir`` is never
+    overwritten, so a second start copies 0 files. Each file is written under a
+    temporary name and then renamed. A start that stops during a copy thus leaves no
+    partial file with the final name. A copy error raises ``RuntimeError`` with the
+    path, and the server does not start.
+    """
+    import shutil
+
+    if not baked_dir or not os.path.isdir(baked_dir):
+        return 0
+    copied = 0
+    for root, _dirs, files in os.walk(baked_dir):
+        relative = os.path.relpath(root, baked_dir)
+        target_root = os.path.normpath(os.path.join(model_dir, relative))
+        for name in files:
+            source = os.path.join(root, name)
+            target = os.path.join(target_root, name)
+            if os.path.lexists(target):
+                continue
+            partial = target + ".partial"
+            try:
+                os.makedirs(target_root, exist_ok=True)
+                shutil.copyfile(source, partial)
+                os.replace(partial, target)
+            except OSError as error:
+                raise RuntimeError(
+                    "cannot copy baked EasyOCR weight %s to %s: %s" % (source, target, error)
+                ) from error
+            copied += 1
+    return copied
+
+
+# This runs when uvicorn imports the module, before the app serves. A copy error stops
+# the import, so the container exits and its health check never passes.
+log.info(
+    "copied %d baked EasyOCR weight files from %r to %r",
+    copy_baked_weights(EASYOCR_BAKED_DIR, EASYOCR_MODEL_DIR),
+    EASYOCR_BAKED_DIR,
+    EASYOCR_MODEL_DIR,
+)
 
 CONFIG_FINGERPRINT = os.getenv("HOOVER4_CONFIG_FINGERPRINT", "")
 

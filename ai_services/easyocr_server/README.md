@@ -48,8 +48,12 @@ with noise.
 Weights for the languages named in the `EASYOCR_LANGUAGES` build arg are baked into the
 image, the way the Tesseract twin bakes its traineddata: a service that must reach the
 internet before answering its first request fails in a way the health check cannot
-report. The compose overlay mounts `easyocr_models_cache` over `/root/.EasyOCR`, and an
-empty named volume is seeded from the image, so the baked weights carry into it.
+report. The compose overlay bind-mounts the host folder `easyocr_models_cache` over
+`/root/.EasyOCR`, and that mount hides what the image has there. The image therefore
+keeps a second copy of the weights at `EASYOCR_BAKED_DIR`. At start, before it serves,
+the server copies each file from there into `EASYOCR_MODEL_DIR` when that file is absent,
+and it logs the count. It never overwrites a file, so a second start copies 0 files. A
+copy error stops the start, and the health check does not pass.
 
 A language that is *not* baked in still works. It is downloaded on first use, and pays
 for that on the first page. `/health` advertises only the baked set.
@@ -79,7 +83,8 @@ place that shows it before a dataset takes a day.
 | Variable | Default | Meaning |
 |---|---|---|
 | `EASYOCR_LANGUAGES` | `en` | `+`-joined codes advertised by `/health`; also the build arg that decides what is baked in |
-| `EASYOCR_MODEL_DIR` | `/root/.EasyOCR` | Where weights live; the cache volume mounts here |
+| `EASYOCR_MODEL_DIR` | `/root/.EasyOCR` | Where weights live. The cache folder is bind-mounted here |
+| `EASYOCR_BAKED_DIR` | `/opt/easyocr-baked` in the image | The baked weights, copied into `EASYOCR_MODEL_DIR` at start. Empty or absent means no copy |
 | `OCR_CONCURRENCY` | `1` | See above, a correctness bound |
 | `OCR_QUEUE_DEPTH` | `8` | Requests that may wait before the service sheds load |
 | `OCR_READER_CACHE_SIZE` | `3` | Warm `Reader`s kept; each holds GPU memory, and the key is caller-supplied |
