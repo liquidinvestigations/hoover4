@@ -1,6 +1,16 @@
+# Log rotation for every service in this file, from container_log_max_size and
+# container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
+# compose file carries this field, and deploy.py's tests check that no service lacks it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
 services:
 
   zookeeper:
+    logging: *logging
     image: zookeeper:3.9
     container_name: zookeeper
     hostname: zookeeper
@@ -11,6 +21,7 @@ services:
     restart: unless-stopped
 
   manticore:
+    logging: *logging
     image: manticoresearch/manticore:14.1.0
     container_name: manticore
     ports:
@@ -46,6 +57,7 @@ services:
       start_period: 4s
 
   clickhouse:
+    logging: *logging
     container_name: clickhouse
     image: clickhouse/clickhouse-server:25.8
     cap_add:
@@ -89,6 +101,7 @@ services:
       - hoover4
 
   clickhouse-monitoring:
+    logging: *logging
     image: ghcr.io/duyet/clickhouse-monitoring:2cc8058
     environment:
       - "CLICKHOUSE_HOST=http://clickhouse:8123"
@@ -108,6 +121,7 @@ services:
       - hoover4
 
   ch-ui:
+    logging: *logging
     image: ghcr.io/caioricciuti/ch-ui:sha-6227281d8c096e4259a1b96c92aa3f8d784a3c2b
     ports:
       - '${INFRA_BIND_IP:-0.0.0.0}:${CH_UI_PORT}:5521'
@@ -136,12 +150,28 @@ services:
       - hoover4
     ports:
       - 127.0.0.1:${CASSANDRA_PORT}:9042
+    # Every value below comes from the cassandra_* keys of hoover4.ini. deploy.py
+    # refuses a memory limit below the heap plus the direct memory plus 3G.
     environment:
-      - MAX_HEAP_SIZE=4G
-      - HEAP_NEWSIZE=512M
+      - MAX_HEAP_SIZE=${CASSANDRA_HEAP:-8G}
+      - HEAP_NEWSIZE=${CASSANDRA_HEAP_NEW:-800M}
+      - JVM_EXTRA_OPTS=${CASSANDRA_JVM_EXTRA_OPTS:--XX:MaxDirectMemorySize=2G}
+      # cassandra-env.sh sets 4 when this is empty.
+      - MALLOC_ARENA_MAX=${CASSANDRA_MALLOC_ARENAS:-}
+      # The entrypoint below writes this value into cassandra.yaml.
+      - CASSANDRA_CHUNK_CACHE_MB=${CASSANDRA_CHUNK_CACHE_MB:-512}
       #- disk_access_mode="mmap_index_only" -- is default
+    # Sets file_cache_size_in_mb, which Cassandra 3.11 reads only from cassandra.yaml,
+    # then runs the image's own entrypoint.
+    entrypoint: ["sh", "/usr/local/bin/hoover4-cassandra-entrypoint.sh"]
+    # jvm.options sets -XX:+UseNUMA. Without SYS_NICE its mbind calls fail and the
+    # JVM logs one warning for each call.
+    cap_add:
+      - SYS_NICE
+    logging: *logging
     volumes:
       - temporal_cassandra:/var/lib/cassandra
+      - ${HOOVER4_REPO_ROOT}/main_services/ops/docker/cassandra-entrypoint.sh:/usr/local/bin/hoover4-cassandra-entrypoint.sh:ro
     healthcheck:
       test: cqlsh -u cassandra -p cassandra -e 'describe cluster'
       interval: 15s
@@ -151,14 +181,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 6000M
+          cpus: '${CASSANDRA_CPUS:-8}'
+          memory: ${CASSANDRA_MEM_LIMIT:-16000M}
         reservations:
           cpus: '1'
-          memory: 5000M
+          memory: ${CASSANDRA_MEM_RESERVATION:-5000M}
     restart: unless-stopped
 
   temporal-elasticsearch:
+    logging: *logging
     container_name: temporal-elasticsearch
     environment:
       - cluster.routing.allocation.disk.threshold_enabled=true
@@ -192,6 +223,7 @@ services:
     restart: unless-stopped
 
   temporal:
+    logging: *logging
     container_name: temporal
     depends_on:
       temporal-elasticsearch:
@@ -206,6 +238,12 @@ services:
       # Fixed for the life of the Cassandra keyspace; changing it needs
       # `./deploy --reset-temporal`, which deploy.py's preflight insists on.
       - NUM_HISTORY_SHARDS=${NUM_HISTORY_SHARDS}
+      # Used only when auto-setup creates the default namespace. deploy.py sets the
+      # retention of an existing namespace after each `compose up`.
+      - DEFAULT_NAMESPACE_RETENTION=${DEFAULT_NAMESPACE_RETENTION:-168h}
+      # Temporal reads one dynamic config file. deploy.py renders generated.yaml from
+      # the tracked docker.yaml and the temporal_*_persistence_qps keys of hoover4.ini.
+      - DYNAMIC_CONFIG_FILE_PATH=/etc/temporal/config/dynamicconfig/generated.yaml
     image: temporalio/auto-setup:${TEMPORAL_VERSION}
     networks:
       - hoover4
@@ -214,7 +252,8 @@ services:
       - 127.0.0.1:${TEMPORAL_HTTP_PORT}:7243
     volumes:
       # The image ships `dynamicconfig/docker.yaml` as an empty file, which leaves
-      # every matching and persistence tunable at its demo default. The DIRECTORY is
+      # every matching and persistence tunable at its demo default. The mount replaces
+      # it with the tracked docker.yaml and the generated.yaml beside it. The DIRECTORY is
       # mounted rather than the file: a single-file bind mount follows the inode it was
       # created with, so any editor that writes-and-renames silently leaves the
       # container reading the old contents.
@@ -230,14 +269,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 6000M
+          cpus: '${TEMPORAL_CPUS:-8}'
+          memory: ${TEMPORAL_MEM_LIMIT:-8000M}
         reservations:
           cpus: '1'
           memory: 500M
     restart: unless-stopped
 
   temporal-ui:
+    logging: *logging
     container_name: temporal-ui
     depends_on:
       temporal:
@@ -272,6 +312,7 @@ services:
   # ========================
 
   garage:
+    logging: *logging
     container_name: garage
     image: dxflrs/garage:${GARAGE_VERSION}@${GARAGE_IMAGE_DIGEST}
     networks:
@@ -311,6 +352,7 @@ services:
   # Turns a blank node into a usable cluster: layout, key, bucket, grant. Idempotent,
   # so it runs on every deploy rather than only the first.
   garage-init:
+    logging: *logging
     container_name: garage-init
     build:
       context: ./garage
@@ -335,6 +377,7 @@ services:
     restart: "no"
 
   redis:
+    logging: *logging
     image: redis:6.0.9
     hostname: redis
     container_name: redis
@@ -359,6 +402,7 @@ services:
 
 
   hoover4-worker:
+    logging: *logging
     # image: hoover4-worker
     container_name: hoover4-worker
     build:
@@ -399,6 +443,10 @@ services:
       # source, and the container reads the file. No key value ever enters a .env, a
       # compose file, a log line or a command line. /dev/null when no provider is set.
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
+      # The Rust copy of the Temporal readiness gate, read by the unit test that
+      # compares its constants with tasks/temporal_readiness.py. A directory, because
+      # a single-file bind mount keeps the inode of a file an editor has replaced.
+      - ../../../website/backend/src:/mirror/website-backend-src:ro
     depends_on:
       temporal:
         condition: service_healthy
@@ -463,6 +511,7 @@ services:
       # The three chat keys are set from the ini: a slot is one turn in flight.
       - "HOOVER4_COMMON_WORKERS=${HOOVER4_COMMON_WORKERS:-}"
       - "HOOVER4_COMMON_CONCURRENCY=${HOOVER4_COMMON_CONCURRENCY:-}"
+      - "HOOVER4_COMMON_MAX_CACHED_WORKFLOWS=${HOOVER4_COMMON_MAX_CACHED_WORKFLOWS:-}"
       - "HOOVER4_TIKA_CONCURRENCY=${HOOVER4_TIKA_CONCURRENCY:-}"
       - "HOOVER4_OCR_CONCURRENCY=${HOOVER4_OCR_CONCURRENCY:-}"
       - "HOOVER4_NLP_CONCURRENCY=${HOOVER4_NLP_CONCURRENCY:-}"
@@ -486,6 +535,8 @@ services:
       - "LLM_BASE_URL=${LLM_BASE_URL:-}"
       - "LLM_MODEL=${LLM_MODEL:-}"
       - "LLM_API_KEY_FILE=/run/secrets/llm_api_key"
+      # Read by tests/unit/test_temporal_readiness.py. See the mount above.
+      - "HOOVER4_TEMPORAL_READY_RS=/mirror/website-backend-src/temporal_ready.rs"
 
   # Long operations a person can start: ingests, re-indexes, and the backup and restore
   # paths that need file access to the stores. Split out of hoover4-worker so that its
@@ -493,6 +544,7 @@ services:
   # saturated the pipeline fleet would stall ingestion with nothing in the pipeline to
   # blame. It runs the SAME image as the worker; only the command and the budget differ.
   hoover4-ops:
+    logging: *logging
     container_name: hoover4-ops
     build:
       context: ../../processing
@@ -555,6 +607,7 @@ services:
       - "HOOVER4_BACKUP_OBJECT_VOLUME_BYTES=${HOOVER4_BACKUP_OBJECT_VOLUME_BYTES:-}"
 
   hoover4-website:
+    logging: *logging
     # image: hoover4-website
     container_name: hoover4-website
     build:
@@ -583,12 +636,18 @@ services:
       # ingest arbitrary host paths.
       - ${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata:ro
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
+      # The Python copy of the Temporal readiness gate, read by the unit test in
+      # backend/src/temporal_ready.rs that compares the two copies. A directory, because
+      # a single-file bind mount keeps the inode of a file an editor has replaced.
+      - ../../processing/tasks:/mirror/processing-tasks:ro
     # Publishes 12345 itself by default. The development-auth-backdoor overlay
     # (development_auth_backdoor_enabled) overrides this to no port at all, because
     # hoover4-development-auth-backdoor takes 12345 instead when it is on.
     ports:
       - "${WEBSITE_BIND_IP:-0.0.0.0}:12345:8080"
     environment:
+      # Read by the unit test in backend/src/temporal_ready.rs. See the mount above.
+      - HOOVER4_TEMPORAL_READINESS_PY=/mirror/processing-tasks/temporal_readiness.py
       - CLICKHOUSE_URL=http://clickhouse:8123
       - MANTICORE_URL=http://manticore:9308
       - PDF_TO_HTML_ENDPOINT=http://hoover4-processing-pdf-to-html:19027/
@@ -695,6 +754,7 @@ services:
         condition: service_healthy
 
   hoover4-processing-pdf-to-html:
+    logging: *logging
     container_name: hoover4-processing-pdf-to-html
     build:
       context: ./pdf-to-html

@@ -120,6 +120,9 @@ DEFAULTS = {
         # which the ini sets because a slot is one turn in flight.
         "common_workers": "",
         "common_concurrency": "",
+        # Cached workflow runs in each common-worker process. Each cached run keeps
+        # its workflow state in memory. The SDK default is 1000.
+        "common_max_cached_workflows": "100",
         # Hard memory ceiling for the worker container. Explicit because the fleet's
         # cost is memory: every worker process carries its own interpreter and its own
         # Magika model, so the count and this number have to be chosen together.
@@ -249,7 +252,41 @@ DEFAULTS = {
         # auto-setup's development default of 4 holds the pipeline to about a dozen
         # activity dispatches a second while the workers sit idle. This is FIXED for the
         # life of the persistence store -- see --reset-temporal.
-        "temporal_history_shards": "512",
+        "temporal_history_shards": "128",
+        # These keys size Temporal's Cassandra. The container limit must hold the heap, the direct
+        # memory and about 3 GB of native memory more. render_main_env refuses a limit
+        # below that sum. An empty heap_new means 100M for each CPU of cassandra_cpus.
+        # An empty malloc_arenas leaves MALLOC_ARENA_MAX unset, and the image then
+        # uses 4.
+        "cassandra_mem_limit": "16000M",
+        "cassandra_cpus": "8",
+        "cassandra_heap": "8G",
+        "cassandra_heap_new": "",
+        "cassandra_direct_memory": "2G",
+        "cassandra_malloc_arenas": "",
+        "cassandra_chunk_cache_mb": "512",
+        # The Temporal server container, and how long a closed workflow stays in its
+        # history. deploy.py applies the retention to the default namespace after
+        # every `compose up`.
+        "temporal_mem_limit": "8000M",
+        "temporal_cpus": "8",
+        "temporal_retention": "168h",
+        # Persistence rate limits in queries a second. Empty keeps Temporal's own
+        # default. A set value goes into the generated dynamic config file.
+        "temporal_history_persistence_qps": "",
+        "temporal_frontend_persistence_qps": "",
+        "temporal_matching_persistence_qps": "",
+        # These keys size hoover4-tesseract-cpu. Its request queue holds 4 times the
+        # concurrency.
+        # Empty threads_per_page and cpus leave OMP_THREAD_LIMIT and the CPU limit
+        # unset.
+        "tesseract_cpu_concurrency": "2",
+        "tesseract_threads_per_page": "",
+        "tesseract_cpu_cpus": "",
+        "tesseract_cpu_mem_limit": "4000M",
+        # Log rotation of every hoover4 container, in the json-file driver's units.
+        "container_log_max_size": "100m",
+        "container_log_max_files": "5",
         # Pinned by tag AND manifest-list digest. The LIST digest, not a platform one:
         # pinning the amd64 digest makes the image unresolvable on the aarch64 host.
         "garage_version": "v2.3.0",
@@ -287,9 +324,22 @@ AI_OVERLAYS = [
     ("ai_server_enabled", "compose/ai-server.yaml", "hoover4-ai-server"),
     ("easyocr_enabled", "compose/easyocr.yaml", "hoover4-easyocr-gpu"),
 ]
+def research_agents_enabled(cfg):
+    """The two research agents need a language model, so they start only with one."""
+    return cfg.active_llm_provider() is not None
+
+
+def research_agents_internet_enabled(cfg):
+    return research_agents_enabled(cfg) and cfg.internet_tools_enabled()
+
+
+# The flag slot holds an ini key of the side's section, or a function of the Config.
 MAIN_OVERLAYS = [
-    (None, "compose/agents.yaml", None),          # collections, todo, both agents
+    (None, "compose/agents.yaml", None),          # collections and todo
     ("internet_tools_enabled", "compose/internet-tools.yaml", None),
+    (research_agents_enabled, "compose/research-agents.yaml", None),
+    # Adds the internet MCP servers to hoover4-full-research-agent's depends_on.
+    (research_agents_internet_enabled, "compose/research-agents-internet.yaml", None),
     (None, "compose/regex-entity-scanner.yaml", None),  # always on
     ("tesseract_cpu_enabled", "compose/tesseract-cpu.yaml", "hoover4-tesseract-cpu"),
     ("ocr_pdf_enabled", "compose/ocr-pdf.yaml", "hoover4-ocr-pdf"),
@@ -364,6 +414,13 @@ INTERNET_TOOL_SERVICES = (
     "hoover4-mcp-browser",
     "hoover4-mcp-metasearch",
     "hoover4-mcp-whois",
+)
+
+# The two services of compose/research-agents.yaml. They start only when
+# research_agents_enabled is true.
+RESEARCH_AGENT_SERVICES = (
+    "hoover4-internal-search-agent",
+    "hoover4-full-research-agent",
 )
 
 FULL_RESEARCH_MCP_SERVERS_ON = (
@@ -531,6 +588,153 @@ def backup_object_volume_bytes(cfg):
     return str(value)
 
 
+_SIZE_UNITS = {"": 1, "K": 1024, "M": 1024 ** 2, "G": 1024 ** 3, "T": 1024 ** 4}
+
+
+def size_bytes(cfg, key):
+    """A `[main_services]` size such as `16000M` or `8G`, in bytes. Units are binary."""
+    raw = cfg.get("main_services", key).strip()
+    match = re.fullmatch(r"(\d+)\s*([KMGT]?)B?", raw, re.IGNORECASE)
+    if not match:
+        fail("[main_services] %s is not a size such as 8G or 16000M: %r" % (key, raw))
+    return int(match.group(1)) * _SIZE_UNITS[match.group(2).upper()]
+
+
+def whole_number(cfg, key, minimum=1):
+    raw = cfg.get("main_services", key).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        fail("[main_services] %s is not a whole number: %r" % (key, raw))
+    if value < minimum:
+        fail("[main_services] %s must be at least %d, got %d" % (key, minimum, value))
+    return value
+
+
+def cpu_count_value(cfg, key):
+    raw = cfg.get("main_services", key).strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        fail("[main_services] %s is not a number of CPUs: %r" % (key, raw))
+    if value <= 0:
+        fail("[main_services] %s must be above 0, got %r" % (key, raw))
+    return value
+
+
+#: Native memory the Cassandra JVM uses beyond its heap and its direct memory, which is
+#: metaspace, thread stacks, the chunk cache bookkeeping and malloc arenas.
+CASSANDRA_NATIVE_HEADROOM_BYTES = 3 * 1024 ** 3
+
+#: The compose reservation of temporal-cassandra, lowered to the limit when the limit is
+#: smaller.
+CASSANDRA_RESERVATION_BYTES = 5000 * 1024 ** 2
+
+
+def render_cassandra_env(cfg):
+    """The temporal-cassandra variables, after the memory check.
+
+    The container is killed when the heap, the direct memory and the native memory
+    together pass the limit, so a limit below their sum is refused here.
+    """
+    m = "main_services"
+    limit = size_bytes(cfg, "cassandra_mem_limit")
+    heap = size_bytes(cfg, "cassandra_heap")
+    direct = size_bytes(cfg, "cassandra_direct_memory")
+    if limit < heap + direct + CASSANDRA_NATIVE_HEADROOM_BYTES:
+        fail("[main_services] cassandra_mem_limit = %s is smaller than cassandra_heap = %s "
+             "plus cassandra_direct_memory = %s plus 3G of native memory. Raise the "
+             "limit, or lower the heap or the direct memory."
+             % (cfg.get(m, "cassandra_mem_limit"), cfg.get(m, "cassandra_heap"),
+                cfg.get(m, "cassandra_direct_memory")))
+    cpus = cpu_count_value(cfg, "cassandra_cpus")
+    heap_new = cfg.get(m, "cassandra_heap_new").strip()
+    if not heap_new:
+        heap_new = "%dM" % int(100 * cpus)
+    env = {
+        "CASSANDRA_MEM_LIMIT": cfg.get(m, "cassandra_mem_limit"),
+        "CASSANDRA_MEM_RESERVATION": "%dM" % (
+            min(limit, CASSANDRA_RESERVATION_BYTES) // 1024 ** 2),
+        "CASSANDRA_CPUS": cfg.get(m, "cassandra_cpus"),
+        "CASSANDRA_HEAP": cfg.get(m, "cassandra_heap"),
+        "CASSANDRA_HEAP_NEW": heap_new,
+        "CASSANDRA_JVM_EXTRA_OPTS": "-XX:MaxDirectMemorySize=%s"
+                                    % cfg.get(m, "cassandra_direct_memory"),
+        "CASSANDRA_CHUNK_CACHE_MB": str(whole_number(cfg, "cassandra_chunk_cache_mb", 0)),
+    }
+    if cfg.get(m, "cassandra_malloc_arenas").strip():
+        env["CASSANDRA_MALLOC_ARENAS"] = str(whole_number(cfg, "cassandra_malloc_arenas"))
+    return env
+
+
+#: The tracked dynamic config and the file deploy.py renders beside it. The temporal
+#: service reads the generated file, which holds every key of the tracked file.
+TEMPORAL_DYNAMIC_CONFIG_DIR = MAIN_COMPOSE_DIR / "temporal-dynamicconfig"
+TEMPORAL_DYNAMIC_CONFIG_TRACKED = TEMPORAL_DYNAMIC_CONFIG_DIR / "docker.yaml"
+TEMPORAL_DYNAMIC_CONFIG_GENERATED = TEMPORAL_DYNAMIC_CONFIG_DIR / "generated.yaml"
+
+#: (ini key, dynamic config key) of each persistence rate limit.
+TEMPORAL_PERSISTENCE_QPS_KEYS = (
+    ("temporal_history_persistence_qps", "history.persistenceMaxQPS"),
+    ("temporal_frontend_persistence_qps", "frontend.persistenceMaxQPS"),
+    ("temporal_matching_persistence_qps", "matching.persistenceMaxQPS"),
+)
+
+
+def render_temporal_dynamic_config(cfg, tracked_text=None):
+    """The text of generated.yaml: the tracked docker.yaml, then each rate limit set.
+
+    Temporal reads one dynamic config file, so the generated file carries the tracked
+    keys too. The tracked file must not set a key that the ini also sets, because a
+    YAML mapping with a repeated key is refused.
+    """
+    if tracked_text is None:
+        tracked_text = TEMPORAL_DYNAMIC_CONFIG_TRACKED.read_text(encoding="utf-8")
+    lines = [ENV_HEADER.rstrip("\n"), tracked_text.rstrip("\n"), ""]
+    for ini_key, dc_key in TEMPORAL_PERSISTENCE_QPS_KEYS:
+        if not cfg.get("main_services", ini_key).strip():
+            continue
+        value = whole_number(cfg, ini_key)
+        if re.search(r"^%s:" % re.escape(dc_key), tracked_text, re.MULTILINE):
+            fail("[main_services] %s sets %s, which %s already sets"
+                 % (ini_key, dc_key, TEMPORAL_DYNAMIC_CONFIG_TRACKED.name))
+        lines += ["# From [main_services] %s." % ini_key,
+                  "%s:" % dc_key, "  - value: %d" % value, ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def render_tesseract_env(cfg):
+    """The hoover4-tesseract-cpu variables. An empty key renders no variable."""
+    m = "main_services"
+    concurrency = whole_number(cfg, "tesseract_cpu_concurrency")
+    env = {
+        "TESSERACT_CPU_CONCURRENCY": str(concurrency),
+        "TESSERACT_CPU_QUEUE_DEPTH": str(4 * concurrency),
+    }
+    if cfg.get(m, "tesseract_threads_per_page").strip():
+        env["TESSERACT_THREADS_PER_PAGE"] = str(whole_number(cfg, "tesseract_threads_per_page"))
+    if cfg.get(m, "tesseract_cpu_cpus").strip():
+        env["TESSERACT_CPU_CPUS"] = cfg.get(m, "tesseract_cpu_cpus").strip()
+        cpu_count_value(cfg, "tesseract_cpu_cpus")
+    if cfg.get(m, "tesseract_cpu_mem_limit").strip():
+        size_bytes(cfg, "tesseract_cpu_mem_limit")
+        env["TESSERACT_CPU_MEM_LIMIT"] = cfg.get(m, "tesseract_cpu_mem_limit").strip()
+    return env
+
+
+def ocr_concurrency_warning(cfg):
+    """A warning when the worker sends fewer OCR requests than Tesseract can serve."""
+    ocr = cfg.get("main_services", "ocr_concurrency").strip()
+    if not ocr or not cfg.get_bool("main_services", "tesseract_cpu_enabled"):
+        return None
+    tesseract = cfg.get("main_services", "tesseract_cpu_concurrency").strip()
+    if ocr.isdigit() and tesseract.isdigit() and int(ocr) < int(tesseract):
+        return ("warning: [main_services] ocr_concurrency = %s is lower than "
+                "tesseract_cpu_concurrency = %s, so Tesseract slots stay idle"
+                % (ocr, tesseract))
+    return None
+
+
 def render_main_env(cfg):
     """Env vars for main_services/ops/docker/.env. Ports come from the ini, and no port
     literal appears here except 12345 (which is not rendered at all. It stays in the
@@ -554,6 +758,20 @@ def render_main_env(cfg):
 
     # Read by auto-setup's config template as `persistence.numHistoryShards`.
     env["NUM_HISTORY_SHARDS"] = cfg.get(m, "temporal_history_shards")
+
+    # These size Temporal and its Cassandra. auto-setup reads DEFAULT_NAMESPACE_RETENTION only
+    # when it creates the namespace. apply_temporal_retention sets it after each up.
+    env.update(render_cassandra_env(cfg))
+    size_bytes(cfg, "temporal_mem_limit")
+    cpu_count_value(cfg, "temporal_cpus")
+    env["TEMPORAL_MEM_LIMIT"] = cfg.get(m, "temporal_mem_limit")
+    env["TEMPORAL_CPUS"] = cfg.get(m, "temporal_cpus")
+    env["DEFAULT_NAMESPACE_RETENTION"] = cfg.get(m, "temporal_retention")
+    env.update(render_tesseract_env(cfg))
+
+    # Log rotation, read by the x-logging field of every compose file.
+    env["CONTAINER_LOG_MAX_SIZE"] = cfg.get(m, "container_log_max_size")
+    env["CONTAINER_LOG_MAX_FILES"] = str(whole_number(cfg, "container_log_max_files"))
 
     # Endpoints derived from the provider choices.
     ai_host = container_reachable_host(cfg.get("ai_services", "host"))
@@ -721,6 +939,9 @@ def render_main_env(cfg):
         env["HOOVER4_WORKER_MEM_LIMIT"] = cfg.get(m, "worker_mem_limit")
     if cfg.get(m, "common_workers"):
         env["HOOVER4_COMMON_WORKERS"] = cfg.get(m, "common_workers")
+    if cfg.get(m, "common_max_cached_workflows"):
+        env["HOOVER4_COMMON_MAX_CACHED_WORKFLOWS"] = str(
+            whole_number(cfg, "common_max_cached_workflows"))
     for tier in ("common", "tika", "ocr", "nlp", "embed", "indexing",
                  "chat_model", "chat_low_latency", "research"):
         value = cfg.get(m, "%s_concurrency" % tier)
@@ -927,6 +1148,10 @@ def selected_overlays(cfg, side):
     for flag, rel, _svc in base:
         if flag is None:
             overlays.append(rel)
+            continue
+        if callable(flag):
+            if flag(cfg):
+                overlays.append(rel)
             continue
         if flag == "internet_tools_enabled":
             if cfg.internet_tools_enabled():
@@ -1181,6 +1406,8 @@ def expected_ports(cfg, side):
             svc = ("hoover4-development-auth-backdoor" if backdoor_on
                    else "hoover4-website")
         if svc in INTERNET_TOOL_SERVICES and not cfg.internet_tools_enabled():
+            continue
+        if svc in RESEARCH_AGENT_SERVICES and not research_agents_enabled(cfg):
             continue
         checks.append((svc, port))
     if cfg.get_bool("main_services", "serena_enabled"):
@@ -1514,9 +1741,11 @@ def compose_up(cfg, side, rt, build):
     run_or_fail(compose_command(cfg, side, rt, up_args))
     if side == "main":
         stop_disabled_internet_tools(cfg, rt)
+        stop_disabled_research_agents(cfg, rt)
     if rt.name == "podman" and build:
         podman_stale_image_fix(cfg, side, rt, files)
     if side == "main":
+        apply_temporal_retention(cfg, rt)
         report_worker_stop_timeout(cfg, rt)
 
 
@@ -1530,6 +1759,49 @@ def stop_disabled_internet_tools(cfg, rt):
         return
     for name in INTERNET_TOOL_SERVICES:
         rt.run(["rm", "-f", name], capture_output=True)
+
+
+def stop_disabled_research_agents(cfg, rt):
+    """With no LLM provider, remove research-agent containers an earlier deploy started."""
+    if research_agents_enabled(cfg):
+        return
+    for name in RESEARCH_AGENT_SERVICES:
+        rt.run(["rm", "-f", name], capture_output=True)
+
+
+#: Seconds deploy.py waits for the Temporal frontend before it sets the retention.
+TEMPORAL_RETENTION_WAIT_SECONDS = 120
+
+
+def temporal_retention_command(cfg):
+    return ["exec", "temporal", "temporal", "operator", "namespace", "update",
+            "-n", "default", "--retention", cfg.get("main_services", "temporal_retention"),
+            "--address", "temporal:7233"]
+
+
+def apply_temporal_retention(cfg, rt, wait_seconds=TEMPORAL_RETENTION_WAIT_SECONDS):
+    """Set the retention of the default namespace from the ini.
+
+    auto-setup reads DEFAULT_NAMESPACE_RETENTION only when it creates the namespace, so
+    a changed value reaches an existing namespace only through this update.
+    """
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        ready = rt.run(["exec", "temporal", "temporal", "operator", "namespace",
+                        "describe", "-n", "default", "--address", "temporal:7233"],
+                       capture_output=True, text=True)
+        if ready.returncode == 0:
+            break
+        if time.monotonic() >= deadline:
+            fail("Temporal did not answer within %d s, so the retention was not set:\n%s"
+                 % (wait_seconds, (ready.stdout + ready.stderr).strip()))
+        time.sleep(5)
+    update = rt.run(temporal_retention_command(cfg), capture_output=True, text=True)
+    if update.returncode != 0:
+        fail("could not set the retention of the default namespace:\n%s"
+             % (update.stdout + update.stderr).strip())
+    print("temporal: retention of the default namespace is %s"
+          % cfg.get("main_services", "temporal_retention"))
 
 
 def report_worker_stop_timeout(cfg, rt):
@@ -1727,7 +1999,7 @@ TEMPORAL_VOLUME_SUFFIXES = ("temporal_cassandra", "temporal_elasticsearch")
 def compose_reset_temporal(cfg, side, rt):
     """Drop Temporal's history and visibility stores, keeping every other volume.
 
-    What is lost is workflow history, which retention already caps at 24 h with
+    What is lost is workflow history, which temporal_retention already caps with
     archival off. What is kept is everything the corpus lives in -- ClickHouse, Garage,
     Manticore, Redis. Running ingests do not survive: their workflows are gone, and
     P0 re-scans a dataset from disk on the next run.
@@ -1860,6 +2132,13 @@ def main(argv=None):
         nginx_conf_path = MAIN_COMPOSE_DIR / "nginx-proxy.conf"
         nginx_changed = _write_if_changed(nginx_conf_path, render_nginx_proxy_conf(cfg))
         print("rendered %s%s" % (nginx_conf_path, " (changed)" if nginx_changed else " (unchanged)"))
+        dc_changed = _write_if_changed(TEMPORAL_DYNAMIC_CONFIG_GENERATED,
+                                       render_temporal_dynamic_config(cfg))
+        print("rendered %s%s" % (TEMPORAL_DYNAMIC_CONFIG_GENERATED,
+                                 " (changed)" if dc_changed else " (unchanged)"))
+        warning = ocr_concurrency_warning(cfg)
+        if warning:
+            print(warning)
 
     if args.down:
         compose_down(cfg, side, rt)

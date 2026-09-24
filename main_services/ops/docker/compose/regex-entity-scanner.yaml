@@ -5,9 +5,19 @@
 # in the way an OCR engine or a NER provider is. A stage whose dependency can be absent
 # has to carry a branch at every call site; this one does not.
 
+# Log rotation for every service in this file, from container_log_max_size and
+# container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
+# compose file carries this field, and deploy.py's tests check that no service lacks it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
 services:
   # ------------------------------------------------------- regex entity scanning
   hoover4-regex-entity-scanner:
+    logging: *logging
     container_name: hoover4-regex-entity-scanner
     build:
       # Narrow context on purpose, like the other overlays. `.dockerignore` in that

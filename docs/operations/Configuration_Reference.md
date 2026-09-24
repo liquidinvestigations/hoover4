@@ -88,6 +88,14 @@ endpoint stays out of rotation.
 language added here needs a rebuild. `regex_scanner_threads` and `regex_scanner_queue_depth`
 bound the pattern scanner's runtime and its admission control.
 
+`tesseract_cpu_concurrency` (default `2`) is the number of OCR requests
+`hoover4-tesseract-cpu` runs at once, and its request queue holds 4 times that number.
+`tesseract_threads_per_page` sets `OMP_THREAD_LIMIT`, the threads of one page. Empty leaves
+the variable unset. `tesseract_cpu_cpus` is the container's CPU limit, and empty is no
+limit. `tesseract_cpu_mem_limit` (default `4000M`) is its memory limit. `deploy.py` prints a
+warning when `ocr_concurrency` is lower than `tesseract_cpu_concurrency`, because the
+worker then leaves Tesseract slots idle.
+
 ### The website
 
 `website_release_mode` picks between the development server and a release build.
@@ -118,6 +126,9 @@ user an administrator.
 `chat_low_latency_concurrency`, `research_concurrency`). Empty means the default, except
 the three chat keys, which are set: a slot is one turn in flight, not one model call.
 
+`common_max_cached_workflows` (default `100`) is the number of workflow runs that each
+common-worker process keeps in memory. The SDK default is 1000.
+
 `browser_max_contexts` is live Chromium processes on `hoover4-mcp-browser`, one per chat.
 `mcp_browser_mem_limit` is that container's memory ceiling. `agent_subagent_concurrency`
 is how many subagent workers one `run_subagent` call may start at once.
@@ -128,6 +139,10 @@ is how many subagent workers one `run_subagent` call may start at once.
 off on a workstation also removes the developer harness tools those containers publish.
 `hoover4-full-research-agent` then binds only collections and todo. Capture wrappers
 refuse when the key is off.
+
+`hoover4-internal-search-agent` and `hoover4-full-research-agent` start only when an LLM
+provider is enabled (see [`[llm_provider.*]`](#llm_provider)). With no provider, `deploy.py`
+selects no research-agent overlay and removes the agent containers of an earlier deploy.
 
 **More workers is rarely the answer to a slow pipeline.** The workflow engine serialises
 decisions within one execution, so a fan-out driven from a single parent is a latency ceiling
@@ -158,7 +173,44 @@ defaults and what each answers.
 `temporal_history_shards` is the one key that **cannot be changed in place**: the persistence
 store refuses to open a keyspace initialised with a different count, so changing it requires
 `./deploy --reset-temporal`. The deploy preflights the running cluster against the file and
-names both numbers rather than letting the server die with a store error.
+names both numbers rather than letting the server die with a store error. The default
+is `128`.
+
+### Temporal and its Cassandra
+
+| key | default | what it sets |
+|---|---|---|
+| `cassandra_mem_limit` | `16000M` | the memory limit of `temporal-cassandra` |
+| `cassandra_cpus` | `8` | its CPU limit |
+| `cassandra_heap` | `8G` | `MAX_HEAP_SIZE` |
+| `cassandra_heap_new` | empty | `HEAP_NEWSIZE`. Empty is 100M for each CPU of `cassandra_cpus` |
+| `cassandra_direct_memory` | `2G` | `-XX:MaxDirectMemorySize`, through `JVM_EXTRA_OPTS` |
+| `cassandra_malloc_arenas` | empty | `MALLOC_ARENA_MAX`. Empty keeps the image default of 4 |
+| `cassandra_chunk_cache_mb` | `512` | `file_cache_size_in_mb` in `cassandra.yaml`, written by `cassandra-entrypoint.sh` at each start |
+| `temporal_mem_limit` | `8000M` | the memory limit of `temporal` |
+| `temporal_cpus` | `8` | its CPU limit |
+| `temporal_retention` | `168h` | how long the default namespace keeps a closed workflow |
+| `temporal_history_persistence_qps` | empty | `history.persistenceMaxQPS` |
+| `temporal_frontend_persistence_qps` | empty | `frontend.persistenceMaxQPS` |
+| `temporal_matching_persistence_qps` | empty | `matching.persistenceMaxQPS` |
+
+`deploy.py` refuses a `cassandra_mem_limit` smaller than `cassandra_heap` plus
+`cassandra_direct_memory` plus 3G, and names the three values. The container reservation is
+5000M, or the limit when the limit is smaller.
+
+The server sets `temporal_retention` only when it creates the namespace. After each
+`compose up`, `deploy.py` therefore waits up to 120 s for Temporal and runs
+`temporal operator namespace update --retention`. A failure stops the deploy.
+
+Temporal reads one dynamic config file. `deploy.py` renders
+`temporal-dynamicconfig/generated.yaml` from the tracked `docker.yaml` and each rate limit
+that is set. An empty rate limit keeps Temporal's own default.
+
+### Container logs
+
+`container_log_max_size` (default `100m`) and `container_log_max_files` (default `5`) set
+the `json-file` log rotation of every hoover4 container. Podman records only the size, and
+ignores `container_log_max_files`.
 
 The pinned versions (of the workflow service and its UI, the history and visibility stores,
 and the object store, which is pinned by digest as well as tag) are here so that a rebuild
@@ -211,8 +263,9 @@ is the map back to the group above that explains it.
 
 - `ner_provider`, `ner_spacy_enabled`, `embeddings_provider`, `pdf_ocr_provider`
 - `tesseract_cpu_enabled`, `tesseract_languages`, `ocr_pdf_enabled`, `regex_scanner_threads`
+- `tesseract_cpu_concurrency`, `tesseract_threads_per_page`, `tesseract_cpu_cpus`, `tesseract_cpu_mem_limit`
 - `regex_scanner_queue_depth`, `website_release_mode`, `search_max_parallelism`, `search_timeout_seconds`
-- `common_workers`, `common_concurrency`, `worker_mem_limit`, `tika_concurrency`
+- `common_workers`, `common_concurrency`, `common_max_cached_workflows`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`
 - `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`
 - `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
@@ -232,6 +285,11 @@ is the map back to the group above that explains it.
 - `full_research_agent_port`, `cassandra_version`, `elasticsearch_version`, `temporal_version`
 - `temporal_ui_version`, `temporal_history_shards`, `garage_version`, `garage_image_digest`
 - `garage_capacity`, `ops_backup_object_volume_bytes`
+- `cassandra_mem_limit`, `cassandra_cpus`, `cassandra_heap`, `cassandra_heap_new`
+- `cassandra_direct_memory`, `cassandra_malloc_arenas`, `cassandra_chunk_cache_mb`
+- `temporal_mem_limit`, `temporal_cpus`, `temporal_retention`
+- `temporal_history_persistence_qps`, `temporal_frontend_persistence_qps`, `temporal_matching_persistence_qps`
+- `container_log_max_size`, `container_log_max_files`
 
 ### `[llm_provider.selfhosted]`
 

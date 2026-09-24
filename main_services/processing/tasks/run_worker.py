@@ -160,6 +160,22 @@ def common_worker_processes() -> int:
     return DEFAULT_COMMON_WORKERS
 
 
+def common_max_cached_workflows() -> int:
+    """Cached workflow runs for each common worker: `HOOVER4_COMMON_MAX_CACHED_WORKFLOWS`.
+
+    deploy.py renders it from `common_max_cached_workflows`, default 100. Unset means the
+    same 100. The SDK's own default of 1000 applies only when a Worker is given no value.
+    """
+    import os
+    raw = os.environ.get("HOOVER4_COMMON_MAX_CACHED_WORKFLOWS", "").strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            log.warning("HOOVER4_COMMON_MAX_CACHED_WORKFLOWS is not a number: %r", raw)
+    return 100
+
+
 async def _probe_embeddings_at_startup(worker_name: str) -> None:
     """Record what the embeddings endpoint actually serves, before taking any work.
 
@@ -301,6 +317,7 @@ async def run_common_worker():
           workflow_runner=sandboxed_runner(),
           task_queue="processing-common-queue",
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
+          max_cached_workflows=common_max_cached_workflows(),
           workflows=[
             IngestDiskDataset,
             IngestAndProcessDataset,

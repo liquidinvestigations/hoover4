@@ -1,0 +1,188 @@
+# Overlay: the two research agents (selected when an LLM provider is enabled).
+#
+# deploy.py selects this file only when Config.active_llm_provider finds an enabled
+# LLM provider in hoover4.ini. With no provider the
+# agents cannot answer, the website's chat page says that no language model is
+# configured, and these containers do not start.
+
+# Log rotation for every service in this file, from container_log_max_size and
+# container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
+# compose file carries this field, and deploy.py's tests check that no service lacks it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
+services:
+  # ------------------------------------------------------------------- Agents
+  # Internal search agent: collection RAG only. This is what the website's AI Chat page
+  # talks to, and the reason its tool set is narrow. A chat about the user's documents
+  # should not quietly turn into a web search.
+  hoover4-internal-search-agent:
+    logging: *logging
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents/research_agent
+      dockerfile: Dockerfile
+    image: hoover4-research-agent:local
+    container_name: hoover4-internal-search-agent
+    ports:
+      - "127.0.0.1:${INTERNAL_SEARCH_AGENT_PORT}:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      # The LLM API key and the MCP shared secret are bind-mounted files, never env
+      # values (deploy.py; hoover4.ini stores host paths). agent.py falls back to the
+      # _FILE vars when the plain ones are unset.
+      - LLM_API_KEY_FILE=/run/secrets/llm_api_key
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
+      # Token streaming. It must stay off on vLLM 0.11, where streamed tool-call deltas
+      # arrive without `arguments` and never accumulate, so the agent silently makes zero
+      # tool calls. Verified safe on vLLM 0.17.1 + Qwen3.5. Flip to false if that ever
+      # regresses. The symptom is an agent that answers from nothing with no tool calls.
+      - LLM_STREAMING=${LLM_STREAMING:-true}
+      # Rendered by deploy.py from the active LLM provider in hoover4.ini.
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
+      - AGENT_PROFILE=internal_search
+      # Left EMPTY on purpose, and emptier than it looks: the prompt is not a constant
+      # this could hold. It is rendered per graph from the tools that graph actually
+      # binds, in main_services/agents/research_agent/research_agent/prompts/, so the tool
+      # list in the prose and the tool list on the model are the same list. The Manticore
+      # MATCH syntax reaches the model separately, as the collection server's own
+      # `instructions` at tool-discovery time. Set this only to override for an
+      # experiment; it replaces the words and deliberately not the profile, which is what
+      # decides tool binding.
+      - SYSTEM_PROMPT=${INTERNAL_SEARCH_AGENT_SYSTEM_PROMPT:-}
+      # Collections, plus the todo server: a plan is not a research tool and both
+      # profiles keep one.
+      - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-todo:8088/mcp
+      - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
+      # Context compaction: at this fraction of the model's stated context window the
+      # older tool results stop being sent to the model, while the calls that made them
+      # stay. Unset means the agent's own default, which is the shipped trigger. It does
+      # not fire on the traffic this stack produces today. See research_agent/compaction.py.
+      #
+      # When eviction is not enough, layer two replaces the older messages with one
+      # handoff document written by LLM_MODEL_COMPACTION, or by the answering model when
+      # that is unset. KEEP_RECENT_MESSAGES is how many trailing messages it leaves alone
+      # on top of the ones it may never touch.
+      - AGENT_COMPACTION_FRACTION=${AGENT_COMPACTION_FRACTION:-}
+      - AGENT_COMPACTION_KEEP_RECENT=${AGENT_COMPACTION_KEEP_RECENT:-}
+      - AGENT_COMPACTION_KEEP_RECENT_MESSAGES=${AGENT_COMPACTION_KEEP_RECENT_MESSAGES:-}
+      - LLM_MODEL_COMPACTION=${LLM_MODEL_COMPACTION:-}
+      - RELOAD=false
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      # llm_call_events / ai_service_telemetry writers. Best-effort;
+      # chat still works if ClickHouse is unreachable.
+      - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-Hoover4_Processing}
+    volumes:
+      - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
+      - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
+    depends_on:
+      - hoover4-mcp-collections
+      - hoover4-mcp-todo
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - hoover4
+
+  # Full research agent: collections plus the open-web tools. Two callers: the chat
+  # page when "Internet tools" is ticked (HOOVER4_FULL_AGENT_URL on the website
+  # service), and the Temporal long-running research task (RESEARCH_AGENT_URL on the
+  # worker). Both address it by container name over the shared `hoover4` network, the
+  # published loopback port below is for host-side debugging only.
+  hoover4-full-research-agent:
+    logging: *logging
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/agents/research_agent
+      dockerfile: Dockerfile
+    image: hoover4-research-agent:local
+    container_name: hoover4-full-research-agent
+    ports:
+      - "127.0.0.1:${FULL_RESEARCH_AGENT_PORT}:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      # See the internal search agent: keys are bind-mounted files, never env values.
+      - LLM_API_KEY_FILE=/run/secrets/llm_api_key
+      - LLM_MODEL=${LLM_MODEL:-}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
+      # Token streaming. It must stay off on vLLM 0.11, where streamed tool-call deltas
+      # arrive without `arguments` and never accumulate, so the agent silently makes zero
+      # tool calls. Verified safe on vLLM 0.17.1 + Qwen3.5. Flip to false if that ever
+      # regresses. The symptom is an agent that answers from nothing with no tool calls.
+      - LLM_STREAMING=${LLM_STREAMING:-true}
+      # Rendered by deploy.py from the active LLM provider in hoover4.ini.
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
+      # Also the one profile that binds `run_subagent`: this agent may delegate parts of
+      # a question to several workers at once, each running the `research_subagent`
+      # profile in-process on these same MCP connections. The workers' own profile does
+      # not bind the delegation tool, which is the whole of the one-level depth limit.
+      - AGENT_PROFILE=full_research
+      # As above: empty means "render this profile's templates against the bound tools".
+      # The collection MCP server contributes the MATCH syntax through its own
+      # instructions, so it does not need repeating here.
+      - SYSTEM_PROMPT=${FULL_RESEARCH_AGENT_SYSTEM_PROMPT:-}
+      # Rendered by deploy.py from internet_tools_enabled. Off is collections and
+      # todo. On adds metasearch, browser and whois. Do not add a second web-search
+      # server here; every source belongs inside metasearch.
+      - MCP_SERVERS=${FULL_RESEARCH_MCP_SERVERS:-http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-todo:8088/mcp}
+      - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
+      # See the internal search agent: the compaction trigger, as a fraction of the
+      # model's stated context window, and the summarisation that follows when eviction
+      # is not enough. Unset means the agent's shipped default.
+      - AGENT_COMPACTION_FRACTION=${AGENT_COMPACTION_FRACTION:-}
+      - AGENT_COMPACTION_KEEP_RECENT=${AGENT_COMPACTION_KEEP_RECENT:-}
+      - AGENT_COMPACTION_KEEP_RECENT_MESSAGES=${AGENT_COMPACTION_KEEP_RECENT_MESSAGES:-}
+      - LLM_MODEL_COMPACTION=${LLM_MODEL_COMPACTION:-}
+      # Delegation caps. Every one of them is enforced in code, not asked for in the
+      # prompt. See research_agent/subagents.py, which also explains why the per-turn
+      # total is a separate cap from the per-call one. Unset means the shipped default.
+      # There is no setting for the depth: a worker does not have the tool.
+      - AGENT_SUBAGENT_MAX_TASKS=${AGENT_SUBAGENT_MAX_TASKS:-}
+      - AGENT_SUBAGENT_CONCURRENCY=${AGENT_SUBAGENT_CONCURRENCY:-}
+      - AGENT_SUBAGENT_TOOL_TURNS=${AGENT_SUBAGENT_TOOL_TURNS:-}
+      - AGENT_SUBAGENT_MAX_PER_TURN=${AGENT_SUBAGENT_MAX_PER_TURN:-}
+      # Uvicorn worker processes. Each holds its own graph cache and MCP connections.
+      # The citation HandleTable lives in hoover4-mcp-collections, so these workers
+      # do not split a session's [Dn] handles.
+      - UVICORN_WORKERS=${FULL_RESEARCH_AGENT_WORKERS:-4}
+      - RELOAD=false
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE:-Hoover4_Processing}
+    volumes:
+      - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
+      - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
+      - ${HOOVER4_REPO_ROOT}/main_services/agents/research_agent/main.py:/app/main.py:ro
+    depends_on:
+      - hoover4-mcp-collections
+      - hoover4-mcp-todo
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - hoover4

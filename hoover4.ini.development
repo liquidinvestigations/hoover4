@@ -170,6 +170,8 @@ search_timeout_seconds =
 ; memory, and a core-derived number busts worker_mem_limit on a large host.
 common_workers        =            ; common-worker processes (default 10)
 common_concurrency    =            ; activity slots per common worker (default 3)
+; Cached workflow runs in each common worker. Each one keeps its state in memory.
+common_max_cached_workflows = 100
 worker_mem_limit      =            ; hard ceiling for the worker container (default 29000M)
 tika_concurrency      =            ; default 8; one extractous helper per slot
 ocr_concurrency       =            ; default 4
@@ -380,7 +382,8 @@ temporal_ui_version    = 2.26.2
 # the pipeline to about a dozen activity dispatches a second no matter how many
 # workers run. FIXED once the store is initialised -- changing it needs
 # `./deploy --reset-temporal`, which drops workflow history and nothing else.
-temporal_history_shards = 512
+temporal_history_shards = 128
+
 # Garage, the S3 blob store. Pinned by tag AND manifest-LIST digest -- a
 # platform digest makes the image unresolvable on an aarch64 host.
 garage_version         = v2.3.0
@@ -388,6 +391,39 @@ garage_image_digest    = sha256:866bd13ed2038ba7e7190e840482bc27234c4afaf77be8cf
 # Declared, not measured: Garage sizes its partitions from this and reports the
 # store full past it. Getting it wrong surfaces as ingest errors hours in.
 garage_capacity        = 300G
+
+# ---- Temporal and its Cassandra -------------------------------------------------
+# deploy.py refuses a cassandra_mem_limit below cassandra_heap plus
+# cassandra_direct_memory plus 3G of native memory.
+cassandra_mem_limit      = 16000M
+cassandra_cpus           = 8
+cassandra_heap           = 8G     ; MAX_HEAP_SIZE
+cassandra_heap_new       =        ; HEAP_NEWSIZE; empty is 100M for each of cassandra_cpus
+cassandra_direct_memory  = 2G     ; -XX:MaxDirectMemorySize
+cassandra_malloc_arenas  =        ; MALLOC_ARENA_MAX; empty keeps the image default of 4
+cassandra_chunk_cache_mb = 512    ; file_cache_size_in_mb in cassandra.yaml
+temporal_mem_limit       = 8000M
+temporal_cpus            = 8
+; How long Temporal keeps a closed workflow. deploy.py sets it on the default
+; namespace after each start.
+temporal_retention       = 168h
+; Persistence rate limits in queries a second. Empty keeps Temporal's own default.
+temporal_history_persistence_qps  =
+temporal_frontend_persistence_qps =
+temporal_matching_persistence_qps =
+
+# ---- Tesseract CPU OCR ----------------------------------------------------------
+; Parallel OCR requests. The request queue holds 4 times this value. deploy.py warns
+; when ocr_concurrency is lower.
+tesseract_cpu_concurrency  = 2
+tesseract_threads_per_page =      ; OMP_THREAD_LIMIT; empty leaves it unset
+tesseract_cpu_cpus         =      ; CPU limit; empty is no limit
+tesseract_cpu_mem_limit    = 4000M
+
+# ---- container logs -------------------------------------------------------------
+; Rotation of every hoover4 container log, in the json-file driver's units.
+container_log_max_size  = 100m
+container_log_max_files = 5
 
 # ---- LLM providers --------------------------------------------------------------
 # Repeatable by name, several active at once. main_services talks to the selfhosted

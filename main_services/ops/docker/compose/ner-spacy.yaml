@@ -12,9 +12,19 @@
 # container that does not exist: tasks/remote.py would spend a connect timeout on it
 # before failing, on every batch.
 
+# Log rotation for every service in this file, from container_log_max_size and
+# container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
+# compose file carries this field, and deploy.py's tests check that no service lacks it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
 services:
   # ------------------------------------------------------------------ NER: CPU twin
   hoover4-ner-spacy:
+    logging: *logging
     container_name: hoover4-ner-spacy
     build:
       # Narrow context on purpose, like the other overlays.

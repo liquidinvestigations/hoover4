@@ -6,12 +6,22 @@
 # with collections and todo. Turning the switch off on a workstation also removes
 # the developer harness tools that these containers publish.
 #
-# This overlay also adds those three to hoover4-full-research-agent's depends_on
-# list. Compose replaces a sequence, so the list here is the full set, including
-# collections and todo which already sit in agents.yaml.
+# research-agents-internet.yaml adds these three to hoover4-full-research-agent's
+# depends_on list when that agent runs.
+
+# Log rotation for every service in this file, from container_log_max_size and
+# container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
+# compose file carries this field, and deploy.py's tests check that no service lacks it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
 services:
   # --------------------------------------------------------------- MCP: whois
   hoover4-mcp-whois:
+    logging: *logging
     build:
       # Context is the agents directory, not this server's: agent_common/ is vendored in
       # (the batching mechanics `whois_lookup` shares with every other batched tool).
@@ -48,6 +58,7 @@ services:
   # EMBEDDINGS_URL). Empty means no reranking: search still works, the results come back
   # in RRF order, and `rerank_applied: false` says so on the card.
   hoover4-mcp-metasearch:
+    logging: *logging
     build:
       # Context is the agents directory, not this server's: agent_common/ is vendored in.
       context: ${HOOVER4_REPO_ROOT}/main_services/agents
@@ -136,6 +147,7 @@ services:
   # addresses. The sidecar's own --blocked-origins is the second line, not the first.
   # Do not weaken either.
   hoover4-mcp-browser:
+    logging: *logging
     build:
       # Context is the agents directory, not this server's: agent_common/ is vendored in.
       context: ${HOOVER4_REPO_ROOT}/main_services/agents
@@ -196,14 +208,6 @@ services:
       start_period: 90s
     networks:
       - hoover4
-
-  hoover4-full-research-agent:
-    depends_on:
-      - hoover4-mcp-collections
-      - hoover4-mcp-metasearch
-      - hoover4-mcp-browser
-      - hoover4-mcp-whois
-      - hoover4-mcp-todo
 
 networks:
   hoover4:

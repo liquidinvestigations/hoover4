@@ -1,3 +1,4 @@
 /data
 .env
 nginx-proxy.conf
+temporal-dynamicconfig/generated.yaml

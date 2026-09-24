@@ -4,8 +4,19 @@
 # This lives on the MAIN side, not with the GPU tier, and that placement is the whole
 # point: it is the half that has to keep working when the GPU host is unreachable. A CPU
 # twin that shares a host with the thing it is a twin of is not a twin.
+
+# Log rotation for every service in this file, from container_log_max_size and
+# container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
+# compose file carries this field, and deploy.py's tests check that no service lacks it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
 services:
   hoover4-tesseract-cpu:
+    logging: *logging
     build:
       # Narrow context on purpose, never widen to main_services/ or the repo root,
       # which hold large untracked scratch directories that would bloat every build.
@@ -15,18 +26,36 @@ services:
     container_name: hoover4-tesseract-cpu
     ports:
       - "127.0.0.1:${TESSERACT_CPU_PORT}:8000"
+    # The image's own command, with OMP_THREAD_LIMIT set only when
+    # tesseract_threads_per_page is set. libgomp prints a warning on each run when the
+    # variable is present and empty.
+    command:
+      - sh
+      - -c
+      - >-
+        if [ -n "$${TESSERACT_THREADS_PER_PAGE}" ]; then
+        export OMP_THREAD_LIMIT="$${TESSERACT_THREADS_PER_PAGE}"; fi;
+        exec uvicorn ocr_tesseract:app --host "$${HOST}" --port "$${PORT}" --workers 1
     environment:
       - HOST=0.0.0.0
       - PORT=8000
       # Tesseract is CPU-bound and already multithreaded per page. Concurrency above
       # this trades throughput for latency across every in-flight request at once.
-      - OCR_CONCURRENCY=${OCR_CONCURRENCY:-2}
-      - OCR_QUEUE_DEPTH=${OCR_QUEUE_DEPTH:-8}
+      # deploy.py renders both from tesseract_cpu_concurrency, the queue at 4 times it.
+      - OCR_CONCURRENCY=${TESSERACT_CPU_CONCURRENCY:-2}
+      - OCR_QUEUE_DEPTH=${TESSERACT_CPU_QUEUE_DEPTH:-8}
+      - TESSERACT_THREADS_PER_PAGE=${TESSERACT_THREADS_PER_PAGE:-}
       # A wedged child is the one failure an HTTP boundary does not fix by itself.
       - OCR_SUBPROCESS_TIMEOUT_S=${OCR_SUBPROCESS_TIMEOUT_S:-300}
       - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # 0 is no CPU limit, which is what an empty tesseract_cpu_cpus asks for.
+          cpus: '${TESSERACT_CPU_CPUS:-0}'
+          memory: ${TESSERACT_CPU_MEM_LIMIT:-4000M}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
       interval: 30s

@@ -3,8 +3,19 @@
 # NOT part of the deployed stack. It can read and write the whole repository, so it
 # is published on 127.0.0.1 only, never reachable off the box. Enabled via
 # [main_services] serena_enabled = true in hoover4.ini.
+
+# Log rotation for every service in this file, from container_log_max_size and
+# container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
+# compose file carries this field, and deploy.py's tests check that no service lacks it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
 services:
   serena:
+    logging: *logging
     build:
       context: ${HOOVER4_REPO_ROOT}/main_services/ops/docker/serena
       dockerfile: Dockerfile

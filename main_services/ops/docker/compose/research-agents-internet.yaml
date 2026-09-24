@@ -1,0 +1,14 @@
+# Overlay: the internet MCP servers as dependencies of hoover4-full-research-agent.
+#
+# deploy.py selects this file when research-agents.yaml and internet-tools.yaml are
+# both selected, because it names services of both. Compose replaces a sequence, so
+# the list here is the full set, including collections and todo, which sit in
+# agents.yaml.
+services:
+  hoover4-full-research-agent:
+    depends_on:
+      - hoover4-mcp-collections
+      - hoover4-mcp-metasearch
+      - hoover4-mcp-browser
+      - hoover4-mcp-whois
+      - hoover4-mcp-todo

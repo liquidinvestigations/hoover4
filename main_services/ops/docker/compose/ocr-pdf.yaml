@@ -3,8 +3,19 @@
 # CPU only and on the MAIN side, like its Tesseract twin: it calls the OCR tier rather
 # than owning an engine, so it inherits whatever that tier can reach and stays useful when
 # the GPU host is not there.
+
+# Log rotation for every service in this file, from container_log_max_size and
+# container_log_max_files in hoover4.ini. A YAML anchor does not cross files, so each
+# compose file carries this field, and deploy.py's tests check that no service lacks it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
 services:
   hoover4-ocr-pdf:
+    logging: *logging
     build:
       # Narrow context on purpose, never widen to main_services/ or the repo root,
       # which hold large untracked scratch directories that would bloat every build.
