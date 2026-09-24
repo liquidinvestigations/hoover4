@@ -58,6 +58,13 @@ key and the same row. It stores the object, inserts the row with the body's SHA-
 `body_sha256`, then reads the row back `FINAL` and confirms the digest before returning the
 id. `body_sha256` and `idempotency_key` are empty on every row `write()` produces.
 
+`read_range()` reads a byte range of one stored body for the collection server's page
+broker. It checks the owner the way the website's artifact route does: the caller must be the
+non-empty owner of the row, and the chat session must match. Another caller's id raises
+`ArtifactForbidden`, and an unknown id raises `ArtifactNotFound`. The caller cuts the length to
+its page share, `read_range()` cuts the range to the body size, and a start at or past the end
+raises `ArtifactRangeRefused`.
+
 Path components are sanitised in `s3_store._safe`: the session id arrives in an HTTP
 header, and a header carrying `../../blobs` would otherwise write outside the prefix that
 this module exists to enforce.

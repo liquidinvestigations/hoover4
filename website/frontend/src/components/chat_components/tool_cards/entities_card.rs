@@ -45,12 +45,14 @@ struct DocumentEntities {
     error: String,
 }
 
-/// Both shapes the tool has answered in: a batch of documents, and (in a conversation
-/// recorded before the tool was batched) one document at the top level. A card that read
-/// only the newer shape would render nothing for a transcript that is still perfectly
-/// readable.
+/// Every shape the tool has answered in: a result page whose `items` are the documents,
+/// a batch of documents, and (in a conversation recorded before the tool was batched) one
+/// document at the top level. A card that read only the newest shape would render
+/// nothing for a transcript that is still readable.
 fn parse_documents(content: &serde_json::Value) -> Vec<DocumentEntities> {
-    match content.get("documents").and_then(|d| d.as_array()) {
+    let documents = common::chat_types::result_page_items(content)
+        .or_else(|| content.get("documents").and_then(|d| d.as_array()));
+    match documents {
         Some(items) => items.iter().map(parse_document).collect(),
         None => vec![parse_document(content)],
     }
@@ -109,7 +111,14 @@ pub fn EntitiesCard(
     let content = tool_content(&tool_output);
     let documents = content.as_ref().map(parse_documents).unwrap_or_default();
     let failure = content.as_ref().and_then(tool_failure);
-    let note = content.as_ref().map(|c| json_str(c, "note")).unwrap_or_default();
+    // A result page carries the note in its `fields`.
+    let note = content
+        .as_ref()
+        .map(|c| {
+            let note = json_str(c, "note");
+            if note.is_empty() { c.get("fields").map(|f| json_str(f, "note")).unwrap_or_default() } else { note }
+        })
+        .unwrap_or_default();
 
     let asked_for = serde_json::from_str::<serde_json::Value>(&tool_input)
         .ok()
@@ -281,8 +290,12 @@ mod tests {
         assert_eq!(parsed[0].structured, vec![("AD12".to_string(), "bank.iban".to_string())]);
         assert_eq!(parsed[0].model_found, vec!["Ana".to_string()]);
 
-        let batched = serde_json::json!({ "documents": [single.clone(), single] });
+        let batched = serde_json::json!({ "documents": [single.clone(), single.clone()] });
         assert_eq!(parse_documents(&batched).len(), 2);
+
+        let page = serde_json::json!({"kind": "result_page", "items": [single], "fields": {"note": "n"}});
+        assert_eq!(parse_documents(&page).len(), 1);
+        assert_eq!(parse_documents(&page)[0].file_hash, "abc");
     }
 
     /// A value with no rule behind it has no card, so it must not reach the linking

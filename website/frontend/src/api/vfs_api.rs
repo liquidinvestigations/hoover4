@@ -80,7 +80,7 @@ pub async fn vfs_search_in_folder(
     limit: u64,
 ) -> Result<VfsTreeChildren, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::vfs::vfs_search_in_folder(&user, collection_dataset, node_key, pattern, limit)
+    backend::api::vfs::vfs_search_in_folder(&user, collection_dataset, node_key, pattern, limit, 0)
         .await
         .map_err(to_server_fn_error)
 }

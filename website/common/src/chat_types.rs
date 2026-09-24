@@ -716,8 +716,9 @@ fn shrink_to_fit(value: &mut serde_json::Value, target: usize, marked: &mut Vec<
 /// - end:   `{"output": {"content": …, "type": "tool", "name": "…", "tool_call_id": "…"}, …}`
 ///
 /// `search_collections` content is `{"results":[{collection_dataset,file_hash,path,…}]}`.
-/// `read_documents` and `list_document_entities` content is `{"documents":[…]}`. The same
-/// document objects in a list. `get_document_text` / `show_document` content is a single
+/// `read_documents` and `list_document_entities` content is a result page whose `items`
+/// are the document objects, or `{"documents":[…]}` in a transcript written before the
+/// page broker. `get_document_text` / `show_document` content is a single
 /// document object. Unknown tools are scanned for document-shaped objects generically.
 ///
 /// **The single-document arms stay even though those call shapes are retired.** No live
@@ -733,6 +734,9 @@ pub fn extract_doc_refs(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocR
         .and_then(|o| o.get("content"))
         .or_else(|| root.get("content"))
         .unwrap_or(&root);
+    // A broker result page reaches the transcript as its canonical JSON text.
+    let parsed = content.as_str().and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
+    let content = parsed.as_ref().unwrap_or(content);
 
     match tool_name {
         "search_collections" => extract_from_search_results(content),
@@ -833,10 +837,20 @@ pub fn handle_number(handle: &str) -> Option<u32> {
 /// `list_document_entities` answered with one document object before it was batched, and
 /// every such row in a stored transcript would otherwise render as nothing at all.
 fn extract_from_document_list(content: &serde_json::Value) -> Vec<ChatDocRef> {
-    let Some(documents) = content.get("documents").and_then(|v| v.as_array()) else {
+    let documents = result_page_items(content).or_else(|| content.get("documents").and_then(|v| v.as_array()));
+    let Some(documents) = documents else {
         return doc_ref_from_value(content).into_iter().collect();
     };
     collapse_by_document(documents.iter().filter_map(doc_ref_from_value).collect())
+}
+
+/// The units of a broker result page, `{"kind": "result_page", "items": [...]}`, or `None`
+/// for content that is not a result page.
+pub fn result_page_items(content: &serde_json::Value) -> Option<&Vec<serde_json::Value>> {
+    if content.get("kind").and_then(|kind| kind.as_str()) != Some("result_page") {
+        return None;
+    }
+    content.get("items").and_then(|items| items.as_array())
 }
 
 fn extract_from_search_results(content: &serde_json::Value) -> Vec<ChatDocRef> {
@@ -1531,5 +1545,23 @@ mod tests {
         let refs = extract_doc_refs("search_collections", output);
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].file_hash, "aaa");
+    }
+
+    /// A broker result page reaches the transcript as its canonical JSON text, and its
+    /// documents are the page's `items`.
+    #[test]
+    fn a_result_page_of_documents_gives_one_ref_each() {
+        let page = serde_json::json!({
+            "kind": "result_page", "success": true, "shape": "rows",
+            "items": [
+                {"collectionname": "testdata", "collection_dataset": "testdata_testfiles", "file_hash": "a1", "path": "/a"},
+                {"collectionname": "testdata", "collection_dataset": "testdata_testfiles", "file_hash": "b2", "path": "/b"},
+            ],
+        });
+        let output = serde_json::json!({"content": page.to_string()}).to_string();
+        for tool in ["read_documents", "list_document_entities"] {
+            let refs = extract_doc_refs(tool, &output);
+            assert_eq!(refs.iter().map(|r| r.file_hash.as_str()).collect::<Vec<_>>(), vec!["a1", "b2"], "{tool}");
+        }
     }
 }

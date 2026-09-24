@@ -106,14 +106,12 @@ def encode_continuation(
     """Base64url of the canonical JSON `{"v":1,"tool":...,"input":...,"position":...,
     "source":...}`.
 
-    `raw_artifact_id` is accepted for symmetry with `PageInput`, whose value a caller
-    already has in hand when it builds a continuation, but it never enters the encoded
-    bytes. A continuation carries no artifact id: that field belongs to the envelope,
-    where the broker writes it for the page it built and `read_more` derives it the same
-    way for the page it returns. A continuation that could name another user's artifact
-    would turn a lookup key into a capability, which the id must never be.
+    `raw_artifact_id` is accepted for symmetry with `PageInput`, but it never enters the
+    encoded bytes as its own field. A position inside a stored window names its artifact
+    in `position`, and `artifacts.read_range` checks the caller's ownership on each read,
+    so an edited continuation cannot read another user's artifact.
     """
-    del raw_artifact_id  # documented above: never embedded, see the docstring.
+    del raw_artifact_id  # documented above: the position carries it.
     payload = {
         "v": CONTINUATION_VERSION,
         "tool": tool,
@@ -467,8 +465,6 @@ def _build_blob(p: PageInput, limit: PageLimit, max_allowed: int) -> tuple[str, 
             lo = mid + 1
         else:
             hi = mid - 1
-        if mid == 0 and best_len == 0:
-            break
     return best_text, best_len
 
 
@@ -498,3 +494,65 @@ def build_page(p: PageInput, limit: PageLimit) -> tuple[str, PageMeasure]:
         p.raw_artifact_id, continuation, p.fields,
     )
     return _finish(envelope, limit, returned_units, p.total_units, STATUS_OK)
+
+
+# --------------------------------------------------------------------------------------
+# Unit cut
+# --------------------------------------------------------------------------------------
+
+#: The key of the marker on a unit that the broker cut inside one string field.
+CUT_KEY = "cut"
+
+
+def _pointer_token(key: object) -> str:
+    return str(key).replace("~", "~0").replace("/", "~1")
+
+
+def largest_string_field(unit: object, pointer: str = "") -> tuple[str, str] | None:
+    """The JSON pointer and the value of the longest string inside `unit`, by UTF-8 bytes.
+
+    The marker of an earlier cut is not a candidate. `None` means that the unit holds no
+    string.
+    """
+    best: tuple[str, str] | None = None
+    if isinstance(unit, str):
+        return pointer, unit
+    if isinstance(unit, dict):
+        children = [(key, value) for key, value in unit.items() if not (pointer == "" and key == CUT_KEY)]
+    elif isinstance(unit, list):
+        children = list(enumerate(unit))
+    else:
+        return None
+    for key, value in children:
+        found = largest_string_field(value, f"{pointer}/{_pointer_token(key)}")
+        if found is not None and (best is None or len(found[1].encode("utf-8")) > len(best[1].encode("utf-8"))):
+            best = found
+    return best
+
+
+def replace_at_pointer(unit: object, pointer: str, value: object) -> object:
+    """A copy of `unit` with the value at the JSON `pointer` replaced."""
+    if pointer == "":
+        return value
+    head, _, rest = pointer[1:].partition("/")
+    key = head.replace("~1", "/").replace("~0", "~")
+    rest_pointer = "/" + rest if rest else ""
+    if isinstance(unit, list):
+        index = int(key)
+        return [replace_at_pointer(item, rest_pointer, value) if i == index else item for i, item in enumerate(unit)]
+    if isinstance(unit, dict):
+        return {k: (replace_at_pointer(v, rest_pointer, value) if k == key else v) for k, v in unit.items()}
+    raise ValueError(f"pointer {pointer} does not name a field")
+
+
+def cut_unit(unit: dict, pointer: str, kept: bytes, total_bytes: int) -> dict:
+    """The unit with the field at `pointer` cut to `kept`, which ends on a UTF-8 boundary,
+    and the marker `{"cut": {"field", "returned_bytes", "total_bytes"}}` beside it."""
+    cut = replace_at_pointer(unit, pointer, kept.decode("utf-8"))
+    return {**cut, CUT_KEY: {"field": pointer, "returned_bytes": len(kept), "total_bytes": total_bytes}}
+
+
+def utf8_prefix(data: bytes, limit: int) -> bytes:
+    """The longest prefix of `data` of at most `limit` bytes that ends on a character
+    boundary. `data` may itself end inside a character, as a byte range read does."""
+    return data[:limit].decode("utf-8", errors="ignore").encode("utf-8")

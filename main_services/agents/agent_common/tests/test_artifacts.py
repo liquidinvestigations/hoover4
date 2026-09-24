@@ -97,3 +97,58 @@ class TestWriteRequiredFailures:
         monkeypatch.setattr(artifacts, "enabled", lambda: False)
         with pytest.raises(artifacts.ArtifactWriteFailed):
             artifacts.write_required(_request(), "artifact-1", "idem-1", b"x", "application/json")
+
+
+# --------------------------------------------------------------------------------------
+# read_range: the owner check and the clamp
+# --------------------------------------------------------------------------------------
+
+
+def _range_row(monkeypatch, body: bytes, username="alice", session_id="s1"):
+    from agent_common import artifacts as artifacts_module, s3_store as store_module
+
+    reads = []
+    monkeypatch.setattr(artifacts_module, "_artifact_row", lambda artifact_id: {
+        "username": username, "session_id": session_id, "body_key": "k", "body_bytes": len(body),
+    } if artifact_id == "a1" else None)
+
+    def get_range(key, start, length, client=None):
+        reads.append((start, length))
+        return body[start:start + length]
+
+    monkeypatch.setattr(store_module, "get_range", get_range)
+    return reads
+
+
+def test_read_range_returns_the_owner_a_clamped_range(monkeypatch):
+    from agent_common.artifacts import read_range
+
+    reads = _range_row(monkeypatch, b"0123456789")
+    assert read_range("alice", "s1", "a1", 4, 3) == (b"456", 10)
+    assert read_range("alice", "s1", "a1", 8, 100) == (b"89", 10)
+    assert reads == [(4, 3), (8, 2)]
+
+
+def test_read_range_refuses_another_caller_and_another_chat(monkeypatch):
+    import pytest
+    from agent_common.artifacts import ArtifactForbidden, ArtifactNotFound, read_range
+
+    reads = _range_row(monkeypatch, b"0123456789")
+    for username, session_id in (("mallory", "s1"), ("alice", "s2"), ("", "s1")):
+        with pytest.raises(ArtifactForbidden):
+            read_range(username, session_id, "a1", 0, 1)
+    with pytest.raises(ArtifactNotFound):
+        read_range("alice", "s1", "unknown", 0, 1)
+    assert reads == []
+
+
+def test_read_range_refuses_a_start_past_the_end(monkeypatch):
+    import pytest
+    from agent_common.artifacts import ArtifactRangeRefused, read_range
+
+    _range_row(monkeypatch, b"0123456789")
+    for start in (10, 11):
+        with pytest.raises(ArtifactRangeRefused):
+            read_range("alice", "s1", "a1", start, 1)
+    with pytest.raises(ArtifactRangeRefused):
+        read_range("alice", "s1", "a1", -1, 1)

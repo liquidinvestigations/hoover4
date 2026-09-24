@@ -37,16 +37,29 @@ pub fn pdf_search_endpoint() -> String {
 /// highlight overlay is unavailable, which is the right thing to lose.
 const MAX_PDF_SEARCH_BYTES: u64 = 128 * 1024 * 1024;
 
-/// Longest a single in-PDF search may take. The sidecar parses and scans the whole
-/// document per keyword; without a bound, one pathological PDF holds a server-function
-/// slot open indefinitely.
-const PDF_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+/// Longest a single in-PDF search of the website may take. The sidecar parses and scans
+/// the whole document per keyword; without a bound, one pathological PDF holds a
+/// server-function slot open indefinitely. An agent route passes the time that remains of
+/// its own deadline in its place.
+pub const PDF_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 pub async fn search_document_pdf(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     query: String,
     source: Option<DocumentPdfSourceItem>,
+) -> anyhow::Result<PdfSearchResults> {
+    search_document_pdf_with_timeout(user, document_identifier, query, source, PDF_SEARCH_TIMEOUT).await
+}
+
+/// [`search_document_pdf`] with the sidecar request bounded by `timeout`. A sidecar that
+/// does not answer in time fails with a `reqwest` timeout error.
+pub async fn search_document_pdf_with_timeout(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+    query: String,
+    source: Option<DocumentPdfSourceItem>,
+    timeout: std::time::Duration,
 ) -> anyhow::Result<PdfSearchResults> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
@@ -92,7 +105,7 @@ pub async fn search_document_pdf(
 
     let keywords_param = json!(keywords).to_string();
     let pdf_results = reqwest::ClientBuilder::new()
-        .timeout(PDF_SEARCH_TIMEOUT)
+        .timeout(timeout)
         .build()?
         .post(pdf_search_endpoint())
         .query(&[("keywords", keywords_param.as_str())])

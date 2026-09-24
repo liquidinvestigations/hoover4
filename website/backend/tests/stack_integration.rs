@@ -994,6 +994,7 @@ async fn in_folder_search_is_scoped() {
         wide.clone(),
         "many-a-child-dir-767".to_string(),
         500,
+        0,
     )
     .await
     .unwrap();
@@ -1011,6 +1012,7 @@ async fn in_folder_search_is_scoped() {
         deep,
         "many-a-child-dir-767".to_string(),
         500,
+        0,
     )
     .await
     .unwrap();
@@ -1102,6 +1104,7 @@ async fn vfs_endpoints_respect_permissions() {
         dataset_root_key(TESTFILES),
         "easychair".to_string(),
         50,
+        0,
     )
     .await;
 

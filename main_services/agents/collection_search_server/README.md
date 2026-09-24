@@ -13,33 +13,54 @@ because nothing ever populated it.
 |---|---|
 | `list_collections` | collection names and dataset counts this user may read |
 | `search_collections` | documents and a total count from selected permitted collections |
-| `read_documents` | extracted text and hit positions for selected documents |
+| `read_documents` | one text page of each selected document, with its page range and the pages with hits |
+| `search_passages` | passages from keyword and vector ranking together, for several queries in one call |
 | `list_document_entities` | what the pipeline found in several documents, in two tiers, sharing one budget |
 | `cite_documents` | put documents forward as evidence, with a verified quote and a `[Dn]` handle |
 
 The agent API supplies the extended `list_collections`, `search_collections`, and
-`read_documents` tools. It also supplies search, document, PDF, table, and folder read tools.
+`read_documents` tools.
+`search_passages` and `list_document_entities` compute their result in this server, and
+`LocalPagedTool` pages the complete result with `page_result`, so `read_more` continues
+them as it continues a route tool. It also supplies search, document, PDF, table, and folder read tools.
 Each returns one canonical result page. A page can contain a continuation token for
 `read_more`. The server forwards only the caller identity and collection headers to the API.
 The API checks every requested collection.
 Row and tree pages keep other response fields in `fields`. Folder items carry their
-`children` or `files` field name. A large response uses a UTF-8 blob of its response JSON.
-A cut page stores its complete backend response as a required raw artifact.
+`children` or `files` field name.
+
+The route decides paging. `paging.py` applies one route paging policy to every route tool:
+the units are the list the route names, and the next request carries the route's
+`next_position` as its `position`. A backend window that fits one page is returned whole. A
+window that does not fit is stored once, as one required raw artifact, on its first page.
+Its later pages read byte ranges of that artifact with `artifacts.read_range`, which checks
+that the caller owns the artifact in this chat and cuts the range to the page share, and
+call no route. A unit larger than a page is stored with string fields moved out, largest
+first, until the rest fits a page. Its page is cut inside the first moved field and carries
+`{"cut": {"field", "returned_bytes", "total_bytes", "next_fields"}}`. `next_fields` lists the
+other moved fields. The continuations read the rest of each moved field in that order, and
+then the next unit. A stored unit that has no string field left to move and is still larger
+than a page is refused with `invalid_argument`, which names its byte offset. Only text is a
+blob page: a diff and a table cell. A `ValueKey` position accepts every character in its
+`value`, because the route issued that cell text and binds it as a parameter. The client does not retry
+a `504` whose body is the route's own `timed_out` answer.
 
 | Tool | Purpose |
 |---|---|
 | `read_more` | read the next page from a result page continuation |
 | `search_facet_values` | find values for a search facet |
-| `search_date_histogram` | return document or mentioned-date buckets |
+| `search_histogram` | return document date, mentioned date or file size buckets |
 | `search_entity_explainer` | explain one extracted entity value |
-| `doc_sources` | list extracted text sources for a document |
+| `doc_sources` | list every source of a document, with hit counts for a query |
+| `doc_search_text` | list the hits of a query in one text source, in page order |
 | `doc_metadata` | return document metadata, dates, locations, and links |
 | `doc_email` | return email fields, attachments, and graph links |
 | `doc_diff_sources` | compare two extracted document sources |
-| `pdf_search` | find text positions in a PDF source |
+| `pdf_search` | find text positions in a PDF source, in a range of PDF pages |
 | `table_overview` | list table sheets and columns |
-| `table_page` | return a sorted and filtered table page |
-| `table_column_values` | list values for one table column |
+| `table_page` | return 50 rows of at most 60 chosen columns, from `row_start`, sorted and filtered |
+| `table_cell` | read one long table cell, 2,000 characters a page |
+| `table_column_values` | list values for one table column, with a `search` needle |
 | `table_search_cells` | find matching cells in a table sheet |
 | `folder_overview` | return storage counts for a collection or dataset |
 | `folder_list` | return a folder breadcrumb, children, and files |
@@ -59,6 +80,9 @@ and shares one character budget across the batch. **The rule-scanner tier is fil
 and the NER tier takes what is left**: when only one of the two fits, it is the
 checksum-validated evidence that survives and the model's guess at a span of prose that
 goes. A document that was cut says so in `truncated`, and the batch's `note` names them.
+Each tier reads one dataset of the collection that holds the hash, the first by name, at
+the website's limits: 500 NER values and 1,000 rule values, most frequent first. The NER
+values carry the stored count and skip the website's full-text recount of each value.
 
 The `structured` query is the same one the website's document viewer runs against the same
 table, and for the same reason: two different answers to "what identifiers are in this
@@ -78,7 +102,8 @@ prose; the reader sees the handle as a chip and the document beneath the answer.
 
 **The quote is checked** against the document's extracted pages before a handle is issued,
 after folding whitespace, case and typographic punctuation. Verification reads every
-extracted page in bounded batches and is independent of `MAX_DOCUMENT_CHARS`, which only
+extracted page in bounded batches, each continuing after the `(extracted_by, page_id)` key of
+the last page read, and is independent of `MAX_DOCUMENT_CHARS`, which only
 bounds the excerpt `read_documents` shows the model. A model quoting a sentence it read
 reproduces the words, not the extractor's line breaks, and an exact-substring test
 rejects nearly every accurate quote. A quote that does not check out is returned **flagged,
@@ -158,7 +183,7 @@ leaves the old index in place, so `SHOW TABLE ... SETTINGS` will report the new 
 while queries keep returning the old answers. See
 [`../../../main_services/processing/database/Readme.md`](../../../main_services/processing/database/Readme.md).
 
-## How big a search result may be
+## How big a `search_passages` result may be
 
 **The size of the serialised response is the bound. The count is only a ceiling.**
 
@@ -182,7 +207,7 @@ The budget matches the website's cap on a stored `tool_output`
 (`common/src/chat_types.rs`), and that is the point: a result that fits is stored whole,
 so `chat_messages.tool_output` is an accurate copy of what the model saw rather than a
 truncated one that cannot answer the question. Every call also logs
-`search_collections payload: N chars, K of M hit(s) returned`, which is the only place
+`search_passages payload: N chars, K of M hit(s) returned`, which is the only place
 the size the model actually received is observable.
 
 `max_results` is clamped to `SEARCH_MAX_ALLOWED_RESULTS` (200) and defaults to

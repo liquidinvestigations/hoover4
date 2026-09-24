@@ -320,6 +320,70 @@ def _read_back_body_sha256(username: str, artifact_id: str) -> str | None:
     return json.loads(lines[0]).get("body_sha256")
 
 
+class ArtifactRangeRefused(ValueError):
+    """A range read that names an artifact the caller does not own, or a range outside it."""
+
+
+class ArtifactNotFound(LookupError):
+    """No readable artifact row has this id."""
+
+
+class ArtifactForbidden(PermissionError):
+    """The artifact belongs to another caller or another chat."""
+
+
+def _artifact_row(artifact_id: str) -> dict[str, Any] | None:
+    """The owner, session, body key and size of the newest non-deleted row for the id."""
+    import requests
+
+    url = os.getenv("CLICKHOUSE_URL", "http://clickhouse:8123").rstrip("/")
+    response = requests.post(
+        url,
+        params={
+            "database": GLOBAL_DB,
+            "user": os.getenv("CLICKHOUSE_USER", "hoover4"),
+            "password": os.getenv("CLICKHOUSE_PASSWORD", "hoover4"),
+            "default_format": "JSONEachRow",
+            "param_artifact_id": artifact_id,
+        },
+        data=(
+            b"SELECT username, session_id, body_key, body_bytes FROM chat_artifacts FINAL "
+            b"WHERE artifact_id = {artifact_id:String} AND is_deleted = 0 AND status = 'ok' LIMIT 1"
+        ),
+        timeout=CLICKHOUSE_TIMEOUT,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"ClickHouse select failed {response.status_code}: {response.text[:400]}")
+    lines = [line for line in response.text.splitlines() if line.strip()]
+    return json.loads(lines[0]) if lines else None
+
+
+def read_range(
+    username: str, session_id: str, artifact_id: str, start: int, length: int,
+) -> tuple[bytes, int]:
+    """Read a byte range of one stored artifact body, and return it with the body size.
+
+    The owner check is the one of the website's artifact route: the caller must be the
+    non-empty owner of the row, else `ArtifactForbidden`. The session must also match,
+    because a continuation belongs to one chat. An unknown id is `ArtifactNotFound`. The
+    caller passes `length` already cut to its page share. This
+    function cuts `start + length` to the body size, and refuses a `start` at or past the
+    end with `ArtifactRangeRefused`.
+    """
+    if start < 0 or length < 0:
+        raise ArtifactRangeRefused("the artifact range is negative")
+    row = _artifact_row(artifact_id)
+    if row is None:
+        raise ArtifactNotFound(f"artifact {artifact_id} does not exist")
+    if not username or row.get("username") != username or row.get("session_id") != session_id:
+        raise ArtifactForbidden(f"artifact {artifact_id} belongs to another caller")
+    size = int(row.get("body_bytes") or 0)
+    if start >= size:
+        raise ArtifactRangeRefused(f"start {start} is past the end of artifact {artifact_id} ({size} bytes)")
+    length = min(length, size - start)
+    return s3_store.get_range(row["body_key"], start, length), size
+
+
 def write_json_detail(
     session_id: str,
     username: str,

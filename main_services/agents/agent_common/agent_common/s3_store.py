@@ -111,3 +111,17 @@ def put_bytes(key: str, data: bytes, content_type: str, client=None) -> int:
         content_type=content_type,
     )
     return len(data)
+
+
+def get_range(key: str, start: int, length: int, client=None) -> bytes:
+    """Read `length` bytes of the object at `key`, from byte `start`.
+
+    The caller clamps the range to the object size first: this function does no check.
+    """
+    client = client or get_s3_client()
+    response = client.get_object(BUCKET_NAME, key, offset=start, length=length)
+    try:
+        return response.read()
+    finally:
+        response.close()
+        response.release_conn()

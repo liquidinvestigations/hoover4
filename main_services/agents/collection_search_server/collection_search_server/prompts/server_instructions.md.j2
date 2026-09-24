@@ -15,10 +15,11 @@ returns a short handle for each, which you write into your prose where the claim
 {% endif %}
 
 Use {{ tool('read_more') }} when a page contains a continuation. You can also use
-{{ tool('search_facet_values') }}, {{ tool('search_date_histogram') }},
-{{ tool('search_entity_explainer') }}, {{ tool('doc_sources') }}, {{ tool('doc_metadata') }},
+{{ tool('search_facet_values') }}, {{ tool('search_histogram') }},
+{{ tool('search_entity_explainer') }}, {{ tool('search_passages') }}, {{ tool('doc_sources') }},
+{{ tool('doc_search_text') }}, {{ tool('doc_metadata') }},
 {{ tool('doc_email') }}, {{ tool('doc_diff_sources') }}, {{ tool('pdf_search') }},
-{{ tool('table_overview') }}, {{ tool('table_page') }}, {{ tool('table_column_values') }},
+{{ tool('table_overview') }}, {{ tool('table_page') }}, {{ tool('table_cell') }}, {{ tool('table_column_values') }},
 {{ tool('table_search_cells') }}, {{ tool('folder_overview') }}, {{ tool('folder_list') }},
 and {{ tool('folder_search') }} for their named collection reads.
 

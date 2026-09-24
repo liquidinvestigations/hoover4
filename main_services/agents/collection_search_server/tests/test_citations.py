@@ -108,10 +108,15 @@ class TestCiteOne:
         def fake_query(sql, database, params=None):
             params = params or {}
             if "text_content" in sql:
-                offset = int(params.get("offset") or 0)
+                # Pages are keyed ("raw_text", 1), ("raw_text", 2), ... and each batch
+                # continues after the key of the last page read, with no OFFSET.
+                assert "OFFSET" not in sql
+                assert params["dataset"] == dataset
+                after = (params["after_source"], int(params["after_page"]))
                 limit = int(params.get("limit") or VERIFY_PAGE_BATCH)
-                chunk = pages[offset:offset + limit]
-                return [{"text": text} for text in chunk]
+                keyed = [("raw_text", index + 1, text) for index, text in enumerate(pages)]
+                chunk = [row for row in keyed if (row[0], row[1]) > after][:limit]
+                return [{"extracted_by": source, "page_id": page, "text": text} for source, page, text in chunk]
             if "vfs_files" in sql:
                 return [{"path": path, "collection_dataset": dataset}]
             raise AssertionError(sql)

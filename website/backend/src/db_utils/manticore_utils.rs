@@ -64,6 +64,27 @@ pub fn is_search_timeout(err: &anyhow::Error) -> bool {
     err.chain().any(|cause| cause.is::<SearchTimedOut>())
 }
 
+/// Manticore answered and refused the statement, with an `error` in a JSON body.
+///
+/// A distinct type from a transport failure: a refused statement fails the same way on
+/// every retry, while a daemon that did not answer can answer on the next attempt. The
+/// message keeps the `Error: <status>: <body>` text that every caller logs today.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManticoreRefused(pub String);
+
+impl std::fmt::Display for ManticoreRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ManticoreRefused {}
+
+/// Whether an error is (or was caused by) a statement Manticore refused.
+pub fn is_manticore_refusal(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| cause.is::<ManticoreRefused>())
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RawSarchResult<T> {
     pub hits: RawSearchResultHits<T>,
@@ -182,6 +203,12 @@ async fn manticore_post(sql: String) -> anyhow::Result<String> {
     let status = response.status();
     let response_txt = response.text().await?;
     if status.is_client_error() || status.is_server_error() {
+        let refused = serde_json::from_str::<serde_json::Value>(&response_txt)
+            .ok()
+            .is_some_and(|body| body.get("error").is_some_and(serde_json::Value::is_string));
+        if refused {
+            anyhow::bail!(ManticoreRefused(format!("Error: {}: {}", status, response_txt)));
+        }
         anyhow::bail!("Error: {}: {}", status, response_txt);
     }
     Ok(response_txt)

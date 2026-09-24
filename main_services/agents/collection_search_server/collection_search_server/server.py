@@ -2,9 +2,10 @@
 
 Tools:
     ``list_collections``      what the calling user may read
-    ``search_collections``    search through the website agent API
+    ``search_passages``       hybrid keyword and vector passage search, paged by the broker
     ``read_documents``        the extracted text of several documents
-    ``list_document_entities`` named entities found in one document
+    ``list_document_entities`` named entities found in documents, paged by the broker
+    ``cite_documents``        verified citations with session handles
 
 Every tool resolves the caller's ACL from request headers (see :mod:`.acl`) before it
 touches a database, and every collection name reaching SQL has been validated against
@@ -453,7 +454,7 @@ def _apply_payload_budget(response: SearchResponse) -> tuple[int, int]:
     return size, dropped
 
 
-def search_collections(
+def search_passages(
     queries: list[str] | str | None = None,
     collections: list[str] | str | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
@@ -549,7 +550,7 @@ def search_collections(
     # cannot answer it. That column is truncated and the model's copy is not, so the
     # size the model actually received is only observable if it is recorded here.
     log.info(
-        "search_collections payload: %d chars, %d quer(ies), %d of %d hit(s), %d dropped",
+        "search_passages payload: %d chars, %d quer(ies), %d of %d hit(s), %d dropped",
         size, len(wanted), len(response.results), found, dropped,
     )
     return response
@@ -1034,9 +1035,8 @@ def _read_document_text(collectionname: str, file_hash: str) -> DocumentText:
     )
 
 
-@mcp.tool(
-    name="list_document_entities",
-    description=(
+#: The tool description that `tools_document` registers `list_document_entities` with.
+LIST_DOCUMENT_ENTITIES_DESCRIPTION = (
         "List what the pipeline extracted from several documents at once, in two tiers. "
         "Each entry names its collection and the file_hash a search returned. Pass them "
         "as `[{\"collectionname\": \"...\", \"file_hash\": \"...\"}, ...]`, or as two "
@@ -1047,8 +1047,9 @@ def _read_document_text(collectionname: str, file_hash: str) -> DocumentText:
         "judgement, an IBAN either has a valid check digit or it does not. Ask about "
         "every promising document in one call: this is how you find the names and "
         "identifiers to search for next."
-    ),
-)
+    )
+
+
 def list_document_entities(
     documents: list[dict] | str | None = None,
     collectionname: list[str] | str | None = None,
@@ -1135,22 +1136,34 @@ def _document_entities(
         )
 
     try:
-        # `entity_values` is itself an Array(String) per row, so the per-type list is a
-        # flatten of the group before it is deduplicated.
+        dataset = _document_dataset(collectionname, file_hash)
+        if dataset is None:
+            return DocumentEntities(
+                success=False, error="no dataset of this collection holds the document"
+            )
+        # The website's NER read: each value with its stored hit count, most frequent
+        # first. The website then recounts each value in the full-text index, and this
+        # read does not.
         rows = clickhouse_query(
-            "SELECT entity_type, arrayDistinct(arrayFlatten(groupArray(entity_values))) AS values "
-            "FROM entity_hit FINAL WHERE file_hash = {hash:String} GROUP BY entity_type",
+            "SELECT entity_type, entity_value AS value, count() AS hit_count "
+            "FROM entity_hit ARRAY JOIN entity_values AS entity_value "
+            "WHERE collection_dataset = {dataset:String} AND file_hash = {hash:String} "
+            "GROUP BY entity_type, entity_value "
+            "ORDER BY hit_count DESC, entity_type, value LIMIT {limit:UInt32}",
             database=collection_db(collectionname),
-            params={"hash": file_hash},
+            params={"dataset": dataset, "hash": file_hash, "limit": NER_ENTITY_LIMIT},
         )
     except Exception as exc:  # noqa: BLE001
         return DocumentEntities(success=False, error=f"lookup failed: {exc}")
+    values_by_type: dict[str, list[str]] = {}
+    for row in rows:
+        values_by_type.setdefault(row["entity_type"], []).append(str(row["value"]))
 
     # Every value costs its own length plus a separator, which is what it weighs in the
     # serialised response the budget is really about.
     spent, dropped_any = 0, False
     structured = []
-    for entity in _structured_entities(collectionname, file_hash):
+    for entity in _structured_entities(collectionname, file_hash, dataset):
         cost = len(entity.value) + len(entity.surface_text) + 2
         if spent + cost > budget_chars:
             dropped_any = True
@@ -1159,17 +1172,17 @@ def _document_entities(
         spent += cost
 
     entities: dict[str, list[str]] = {}
-    for row in rows:
+    for entity_type, values in values_by_type.items():
         kept = []
-        for value in row["values"]:
-            cost = len(str(value)) + 2
+        for value in values:
+            cost = len(value) + 2
             if spent + cost > budget_chars:
                 dropped_any = True
                 continue
-            kept.append(str(value))
+            kept.append(value)
             spent += cost
         if kept:
-            entities[row["entity_type"]] = kept
+            entities[entity_type] = kept
 
     return DocumentEntities(
         success=True,
@@ -1181,15 +1194,27 @@ def _document_entities(
     )
 
 
-#: How many rule-found values one document contributes to a tool response.
-#:
-#: Ordered by occurrence count, so the cap keeps what the document is about. A mail
-#: archive routinely names hundreds of addresses and the tail of that list is not what
-#: anyone asked.
-STRUCTURED_ENTITY_LIMIT = 200
+#: How many rule-found values and NER values one document contributes, the website's
+#: limits for its entities panel. Both are ordered by occurrence count, so a limit keeps
+#: what the document is about.
+STRUCTURED_ENTITY_LIMIT = 1000
+NER_ENTITY_LIMIT = 500
 
 
-def _structured_entities(collectionname: str, file_hash: str) -> list[StructuredEntity]:
+def _document_dataset(collectionname: str, file_hash: str) -> str | None:
+    """The first dataset of the collection that holds `file_hash`, by name."""
+    rows = clickhouse_query(
+        "SELECT DISTINCT collection_dataset FROM blobs WHERE blob_hash = {hash:String} "
+        "ORDER BY collection_dataset LIMIT 1",
+        database=collection_db(collectionname),
+        params={"hash": file_hash},
+    )
+    return (rows[0].get("collection_dataset") or None) if rows else None
+
+
+def _structured_entities(
+    collectionname: str, file_hash: str, dataset: str
+) -> list[StructuredEntity]:
     """The rule scanner's values for one document, newest rule set only.
 
     **The same question the website's document viewer asks, and the same shape of answer**,
@@ -1222,10 +1247,10 @@ def _structured_entities(collectionname: str, file_hash: str) -> list[Structured
                     SELECT entity_type, extracted_by, entity_values, entity_rule_ids,
                            entity_counts, entity_texts
                     FROM regex_entity_hit FINAL
-                    WHERE file_hash = {hash:String}
+                    WHERE collection_dataset = {dataset:String} AND file_hash = {hash:String}
                       AND rule_set_version = (
                           SELECT max(rule_set_version) FROM regex_entity_hit
-                          WHERE file_hash = {hash:String}
+                          WHERE collection_dataset = {dataset:String} AND file_hash = {hash:String}
                       )
                 )
                 ARRAY JOIN
@@ -1240,7 +1265,7 @@ def _structured_entities(collectionname: str, file_hash: str) -> list[Structured
             LIMIT {limit:UInt32}
             """,
             database=collection_db(collectionname),
-            params={"hash": file_hash, "limit": STRUCTURED_ENTITY_LIMIT},
+            params={"dataset": dataset, "hash": file_hash, "limit": STRUCTURED_ENTITY_LIMIT},
         )
     except Exception as exc:  # noqa: BLE001
         log.warning("structured entities unavailable for %s: %s", file_hash, exc)
@@ -1432,19 +1457,29 @@ def _as_citation_list(value: Any) -> list[Citation] | None:
     return out
 
 
-def _extracted_pages(collectionname: str, file_hash: str):
-    """Yield extracted page texts in `extracted_by, page_id` order, one query batch at a time."""
-    offset = 0
+def _extracted_pages(collectionname: str, file_hash: str, collection_dataset: str):
+    """Yield extracted page texts in `extracted_by, page_id` order, one query batch at a time.
+
+    Each batch continues after the `(extracted_by, page_id)` key of the last page read, so
+    a batch costs the same at the end of a long document as at its start. An empty
+    `collection_dataset` reads every dataset of the collection.
+    """
+    after = ("", 0)
     while True:
         rows = clickhouse_query(
-            "SELECT text FROM text_content FINAL WHERE file_hash = {hash:String} "
+            "SELECT extracted_by, page_id, text FROM text_content FINAL "
+            "WHERE ({dataset:String} = '' OR collection_dataset = {dataset:String}) "
+            "AND file_hash = {hash:String} "
+            "AND (extracted_by, page_id) > ({after_source:String}, {after_page:UInt32}) "
             "ORDER BY extracted_by, page_id "
-            "LIMIT {limit:UInt32} OFFSET {offset:UInt64}",
+            "LIMIT {limit:UInt32}",
             database=collection_db(collectionname),
             params={
+                "dataset": collection_dataset,
                 "hash": file_hash,
+                "after_source": after[0],
+                "after_page": after[1],
                 "limit": VERIFY_PAGE_BATCH,
-                "offset": offset,
             },
         )
         if not rows:
@@ -1453,7 +1488,7 @@ def _extracted_pages(collectionname: str, file_hash: str):
             yield row.get("text") or ""
         if len(rows) < VERIFY_PAGE_BATCH:
             break
-        offset += len(rows)
+        after = (rows[-1].get("extracted_by") or "", int(rows[-1].get("page_id") or 0))
 
 
 def _first_and_rest(pages):
@@ -1498,8 +1533,9 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
             database=collection_db(citation.collectionname),
             params={"hash": citation.file_hash},
         )
+        dataset = (path_rows[0].get("collection_dataset") or "") if path_rows else ""
         has_text, pages = _first_and_rest(
-            _extracted_pages(citation.collectionname, citation.file_hash)
+            _extracted_pages(citation.collectionname, citation.file_hash, dataset)
         )
     except Exception as exc:  # noqa: BLE001
         result.error = f"lookup failed: {exc}"

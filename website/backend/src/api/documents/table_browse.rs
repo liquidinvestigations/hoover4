@@ -72,7 +72,7 @@ use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 /// case and sub-second for anything in a normal corpus. A pathological document must fail
 /// visibly rather than hold a connection open, for the same reason the search fan-out
 /// carries a deadline.
-const TABLE_QUERY_TIMEOUT_SECONDS: &str = "30";
+pub(crate) const TABLE_QUERY_TIMEOUT_SECONDS: &str = "30";
 
 /// Row shapes for the four reads below.
 ///
@@ -92,6 +92,8 @@ struct ManifestRow {
     truncated_maximums: Vec<u64>,
     truncated_sheets: Vec<String>,
     truncated_reason: String,
+    reader_version: u16,
+    updated_at: u32,
 }
 
 #[derive(Debug, clickhouse::Row, serde::Deserialize)]
@@ -145,6 +147,10 @@ pub struct TableManifest {
     pub stored_bytes: u64,
     pub truncations: Vec<TableTruncation>,
     pub truncated_reason: String,
+    /// The reader version and the write time of the manifest row. The agent table
+    /// routes build their source fingerprint from these two values and read no cell.
+    pub reader_version: u16,
+    pub updated_at: u32,
 }
 
 /// The `(collection_dataset, hash)` lookup, with the read permission checked first.
@@ -166,7 +172,7 @@ pub async fn load_table_manifest(
             // spreadsheet where the answer is "this is not ready" or "this did not read".
             "SELECT reader, table_format, sheet_count, row_count, column_count, cell_count, \
                     stored_bytes, truncated_limits, truncated_maximums, truncated_sheets, \
-                    truncated_reason \
+                    truncated_reason, reader_version, toUnixTimestamp(updated_at) AS updated_at \
              FROM table_documents FINAL \
              WHERE collection_dataset = ? AND hash = ? AND status = 'ok' \
              LIMIT 1",
@@ -208,6 +214,8 @@ pub async fn load_table_manifest(
         stored_bytes: row.stored_bytes,
         truncations,
         truncated_reason: row.truncated_reason,
+        reader_version: row.reader_version,
+        updated_at: row.updated_at,
     }))
 }
 

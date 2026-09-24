@@ -124,20 +124,23 @@ class TestBatchedEntityListing:
         monkeypatch.setattr(
             srv,
             "_structured_entities",
-            lambda c, h: [
+            lambda c, h, d: [
                 srv.StructuredEntity(
                     entity_type="iban", value=f"{i}".rjust(structured_width, "X")
                 )
                 for i in range(structured_count)
             ],
         )
-        monkeypatch.setattr(
-            srv,
-            "clickhouse_query",
-            lambda *a, **k: [
-                {"entity_type": "person", "values": [f"p{i}" for i in range(ner_count)]}
-            ],
-        )
+        def fake_query(sql, database=None, params=None):
+            if "FROM blobs" in sql:
+                return [{"collection_dataset": "testdata_ds"}]
+            assert "collection_dataset = {dataset:String}" in sql and params["dataset"] == "testdata_ds"
+            return [
+                {"entity_type": "person", "value": f"p{i}", "hit_count": ner_count - i}
+                for i in range(ner_count)
+            ]
+
+        monkeypatch.setattr(srv, "clickhouse_query", fake_query)
         return srv
 
     def test_the_budget_divides_across_the_batch(self, monkeypatch):
@@ -145,7 +148,7 @@ class TestBatchedEntityListing:
         rather than returning a full-looking list that is not one."""
         srv = self._stub(monkeypatch, structured_count=0, ner_count=2000)
         monkeypatch.setattr(srv, "LIST_ENTITIES_TOTAL_CHARS", 2000)
-        out = srv.list_document_entities.fn(
+        out = srv.list_document_entities(
             documents=[
                 {"collectionname": "testdata", "file_hash": HASH_A},
                 {"collectionname": "testdata", "file_hash": HASH_B},
@@ -165,7 +168,7 @@ class TestBatchedEntityListing:
             monkeypatch, structured_count=10, ner_count=2000, structured_width=48
         )
         monkeypatch.setattr(srv, "LIST_ENTITIES_TOTAL_CHARS", 500)
-        out = srv.list_document_entities.fn(
+        out = srv.list_document_entities(
             documents=[{"collectionname": "testdata", "file_hash": HASH_A}]
         )
         one = out.documents[0]
@@ -175,7 +178,7 @@ class TestBatchedEntityListing:
 
     def test_a_repeat_is_read_once_and_said_so(self, monkeypatch):
         srv = self._stub(monkeypatch, structured_count=1, ner_count=1)
-        out = srv.list_document_entities.fn(
+        out = srv.list_document_entities(
             documents=[
                 {"collectionname": "testdata", "file_hash": HASH_A},
                 {"collectionname": "testdata", "file_hash": HASH_A},
@@ -188,12 +191,12 @@ class TestBatchedEntityListing:
         """The shape this tool took before it was batched. It must not be a special
         case: `_document_pairs` reads it as a batch of one."""
         srv = self._stub(monkeypatch, structured_count=1, ner_count=1)
-        out = srv.list_document_entities.fn(collectionname="testdata", file_hash=HASH_A)
+        out = srv.list_document_entities(collectionname="testdata", file_hash=HASH_A)
         assert [d.file_hash for d in out.documents] == [HASH_A]
 
     def test_no_document_at_all_names_the_parameters(self, monkeypatch):
         srv = self._stub(monkeypatch, structured_count=0, ner_count=0)
-        out = srv.list_document_entities.fn(documents=[])
+        out = srv.list_document_entities(documents=[])
         assert out.success is False and "file_hash" in (out.error or "")
 
 

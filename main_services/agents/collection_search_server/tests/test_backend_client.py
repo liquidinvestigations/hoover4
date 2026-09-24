@@ -121,3 +121,14 @@ def test_invalid_table_filter_is_refused():
             "collectionname": "c", "file_hash": "h", "sheet": 0,
             "filters": [{"column": 0, "contains": "x", "equals": "x"}],
         })
+
+
+def test_node_key_fields_accept_only_the_separator_control_character():
+    from collection_search_server.backend_client import FoldersListRequest
+
+    key = "testdata_shapes\x1f\x1f/the-directory"
+    assert FoldersListRequest(collectionname="testdata", dataset="shapes", node_id=key).node_id == key
+    with pytest.raises(ValueError):
+        FoldersListRequest(collectionname="testdata", dataset="shapes", node_id="a\x00b")
+    with pytest.raises(ValueError):
+        FoldersListRequest(collectionname="test\x1fdata", dataset="shapes")

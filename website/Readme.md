@@ -38,7 +38,8 @@ The explanations live in `docs/`, because they outlive any one change here:
 Every path under `/api/agent/v1/` is a stable read route for a tool-calling agent, mounted
 beside the ordinary Dioxus server functions and covered by the same session middleware. Each
 route is `POST` with a JSON body and a JSON response, defined in `common::agent_api` and
-implemented in `backend::api::agent`.
+implemented in `backend::api::agent`, one module for each route group (search, documents,
+tables, folders).
 
 An agent route refuses `X-Forwarded-User` and session cookies with `403`.
 A request identifies itself with `X-Hoover4-User`,
@@ -52,8 +53,67 @@ own permitted collections; an empty header means the whole permitted set. A name
 outside that set is refused with `403`, not `404`: the caller asked for something that exists
 and was refused, which is a different fact from asking for something absent.
 
+A statement that Manticore or ClickHouse refuses is answered with `400` `invalid_argument` and
+the datastore's message, because it fails the same way on a retry. A datastore time limit is
+`504` `timed_out`, and an unreachable datastore is `503` `backend_unavailable`. A body that does
+not parse into the route's request type is `400`.
+
+Every search, folder, document and table route runs under one 30 s deadline for the whole request, and
+answer `504` `timed_out` when it fires. Their paged responses carry `AgentPageInfo` beside their
+own fields: `source`, `next_position`, `total` and `partial`. A request continues with that
+`position`, whose `kind` names its type, and with `expected_source`. A changed source is
+refused with `409` `source_changed`, and a position of a kind the route does not issue with
+`400`. Search pages stop at the website's 1,000-result limit, so page 50 is refused with `400`.
+A folder route accepts the short dataset name that `collections/list` returns or the full
+`<collection>_<dataset>` name, and answers with the short name. A search facet filter takes
+the term ids that `facet_counts` and `search/facet_values` return, except
+`collection_dataset`, which takes dataset names.
+
+A document route reads one window of a document: one stored text page, one page of hits,
+or one page of a kept PDF search result. Two reads grow with the document and run under the
+30 s deadline. `documents/pdf_search` searches the whole PDF when no kept result matches, and
+`documents/sources` with a `query` counts the hits of every source over the whole document.
+`documents/read` reads one stored text page of each of at most 20 documents. With a
+`query` and no page, it opens the page with the most hits, as the viewer does, and lists the
+first 50 page ids with hits. Page ids can have gaps, and a page id with no stored page is `404`.
+It continues with `TextPage` positions. `documents/search_text` lists the hits of one source in
+page order, 50 a page, with `HitKey` positions, and reads only the pages that hold them. A hit
+count stops at the viewer's 1,000-page limit and then sets `partial`. `documents/sources` lists
+every source kind with the viewer's hit counts. A PDF count that does not finish before the
+deadline answers `count_state` `timed_out` for that source only. A count that fails answers
+`failed`, and a text or Email count whose read stopped at the 1,000-row limit answers
+`partial`. Each of these sets `partial` on the response. A query that the index refuses is
+`400`, as in `documents/search_text`. `documents/metadata` cuts a
+value over 2,000 characters and marks it with `cut`. `documents/email` takes `node`, the graph
+centre, and pages the attachments 50 at a time with `Offset` positions.
+`documents/diff_sources` compares one page of each source. `documents/pdf_search` keeps the
+sidecar result of the last 16 searches for 10 minutes, filters it by `page_from` and
+`page_to`, and pages it 100 hits at a time with `HitKey` positions. The website's own PDF
+search keeps its 120 s sidecar timeout, and the agent route gives the sidecar the time that
+remains of its deadline.
+
+A table route reads a window of a sheet, and its `source` comes from the table manifest,
+the reader version and the latest manifest write time, so no read scans the cells for it.
+Three reads grow with the sheet and run under the 30 s deadline. `tables/search_cells` scans
+every cell of the sheet, `tables/column_values` groups the whole column, and a sorted,
+filtered or searched `tables/page` reads every matching row of the sheet.
+`tables/overview` lists 20 sheets a page with `Offset` positions, each with its column ids.
+`tables/page` reads 50 rows of at most 60 columns: `columns` names the column ids, and the
+website's clamp keeps the first 60 and returns what it kept as `clamps`. With no sort, filter
+or search it starts at `row_start` and continues with `Rows` positions, computed from the row
+id with no query. A sorted, filtered or searched page continues with `Offset` positions, as the
+table viewer reads it. A cell over 2,000 characters is cut and marked with `cut`, and
+`tables/cell` reads one cell by its `row_id` and column id, 2,000 characters a page, with
+`Offset` positions. `tables/column_values` takes the filter popover's `search` and continues
+past 200 values with `ValueKey` positions. `tables/search_cells` pages 200 hits with `Offset`
+positions.
+
 `scripts/test-agent-api-contract.sh` calls every route against the running site, plus the four
-identity refusals and one forbidden-collection case, and exits nonzero on the first failure.
+identity refusals, one forbidden-collection case, and the search, folder, document and table
+paging cases, and exits nonzero on the first failure. The table cases read the `testdata_tables`
+dataset: one workbook with one sheet of more than 1,000,000 rows and more than 60 columns, and
+one cell longer than 2,000 characters. The testdata checkout has no such spreadsheet, so the
+fixture is generated and ingested with `add-disk-dataset testdata tables <root>`.
 
 ## Testing
 

@@ -124,7 +124,12 @@ pub async fn search_document_text_for_hits(
     Ok(result)
 }
 
-/// Every matching `(extracted_by, page_id)` of one document, in one query.
+/// The most rows that one read of a document's hits returns. A read that returns this
+/// many rows stopped at it.
+pub const DOCUMENT_HIT_ROW_LIMIT: usize = 1_000;
+
+/// Every matching `(extracted_by, page_id)` of one document, in one query, up to
+/// [`DOCUMENT_HIT_ROW_LIMIT`] rows.
 ///
 /// The per-page variant above exists for the viewer, which asks about the one page it is
 /// showing. Anything that wants the whole document must come through here: `page_id` is
@@ -143,7 +148,7 @@ pub async fn search_document_text_all_hits(
     let Some(match_argument) = find_query_match_argument(&find_query) else {
         return Ok(vec![]);
     };
-    let options_clause = sql_options_clause(1000);
+    let options_clause = sql_options_clause(DOCUMENT_HIT_ROW_LIMIT as u64);
     let sql = format!(
         r#"
         SELECT
@@ -162,7 +167,7 @@ pub async fn search_document_text_all_hits(
         WHERE file_hash = {} AND collection_dataset = {}
         AND extracted_by != 'filename_index'
         AND MATCH({match_argument})
-        LIMIT 1000
+        LIMIT {DOCUMENT_HIT_ROW_LIMIT}
         {options_clause}
     "#,
         format_sql_query::QuotedData(&document_identifier.file_hash),
@@ -187,7 +192,19 @@ pub async fn search_document_text_for_hit_count(
     document_identifier: DocumentIdentifier,
     find_query: String,
 ) -> anyhow::Result<Vec<DocumentTextSourceHitCount>> {
+    Ok(search_document_text_hit_count_rows(user, document_identifier, find_query).await?.0)
+}
+
+/// The hit count of each `(extracted_by, page_id)`, and the number of rows the index
+/// returned before duplicates were removed. That number reaches the query's 1,000-row
+/// limit when the count stopped at it.
+pub async fn search_document_text_hit_count_rows(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+    find_query: String,
+) -> anyhow::Result<(Vec<DocumentTextSourceHitCount>, usize)> {
     let result = search_document_text_all_hits(user, document_identifier, find_query).await?;
+    let returned_rows = result.len();
 
     let result = result
         .into_iter()
@@ -214,7 +231,7 @@ pub async fn search_document_text_for_hit_count(
             dedup.push(r.clone());
         }
     }
-    Ok(dedup)
+    Ok((dedup, returned_rows))
 }
 
 

@@ -166,6 +166,70 @@ pub async fn vfs_tree_children(
     })
 }
 
+/// One page of a node's immediate children that sort after `after_key`, in the order of
+/// [`vfs_tree_children`], and the count of every child of the node.
+///
+/// A key position stays correct while rows are added before it, where an offset moves.
+/// `after_key` must be a child of `node_key`. Another key returns an error, because a
+/// page after a node of another folder does not exist. Plain files are included.
+pub async fn vfs_tree_children_after(
+    user: &CurrentUser,
+    collection_dataset: String,
+    node_key: String,
+    after_key: String,
+    limit: u64,
+) -> anyhow::Result<VfsTreeChildren> {
+    let table = structure_table(user, &collection_dataset).await?;
+    let limit = limit.clamp(1, MAX_CHILDREN_PER_PAGE);
+    let after_sql = format!(
+        "SELECT collection_dataset, node_key, parent_key, container_hash, path, name, kind, file_hash, file_size_bytes, depth FROM {table} WHERE collection_dataset = {} AND node_key = {} LIMIT 1 {} ;",
+        format_sql_query::QuotedData(&collection_dataset),
+        format_sql_query::QuotedData(&after_key),
+        sql_options_clause(1),
+    );
+    let Some(after) = manticore_search_sql_uncached::<NodeRow>(after_sql).await?.hits.hits.into_iter().next() else {
+        return Err(crate::auth::guard::InvalidInput(format!("no node {after_key:?} in this dataset")).into());
+    };
+    let after = after._source;
+    if after.parent_key != node_key {
+        return Err(crate::auth::guard::InvalidInput(format!("{after_key:?} is not a child of {node_key:?}")).into());
+    }
+    let started = std::time::Instant::now();
+    let total = manticore_search_sql_uncached::<NodeRow>(children_sql(
+        &table, &collection_dataset, &node_key, 1, 0, false, &sql_options_clause(1000),
+    ))
+    .await?
+    .hits
+    .total;
+    // The same order as `children_sql`, `kind` then `path`, continued past one row.
+    let sql = format!(
+        "
+        SELECT collection_dataset, node_key, parent_key, container_hash, path, name,
+               kind, file_hash, file_size_bytes, depth
+        FROM {table}
+        WHERE collection_dataset = {}
+          AND parent_key = {}
+          AND (kind > {kind} OR (kind = {kind} AND path > {}))
+        ORDER BY kind ASC, path ASC
+        LIMIT {limit}
+        {}
+        ;",
+        format_sql_query::QuotedData(&collection_dataset),
+        format_sql_query::QuotedData(&node_key),
+        format_sql_query::QuotedData(&after.path),
+        sql_options_clause(limit.max(1000)),
+        kind = after.kind,
+    );
+    let response = manticore_search_sql_uncached::<NodeRow>(sql).await?;
+    Ok(VfsTreeChildren {
+        parent_key: node_key,
+        total,
+        nodes: response.hits.hits.into_iter().map(|h| h._source.into()).collect(),
+        datastore_queries: 3,
+        took_ms: started.elapsed().as_millis() as u64,
+    })
+}
+
 /// The chain of nodes from the dataset root down to `node_key`, root first.
 ///
 /// Walks `parent_key` one hop at a time rather than reading `ancestor_keys`, because the
@@ -261,12 +325,16 @@ pub async fn vfs_tree_container_node(
 /// pattern is wrapped in stars for infix matching (`min_infix_len='3'` on the table) and
 /// quoted; Manticore's own query-syntax metacharacters are stripped rather than escaped,
 /// because a folder search box is not a place to expose query syntax.
+///
+/// `offset` skips that many matches in the same order. `offset + limit` stays at or
+/// under [`MAX_CHILDREN_PER_PAGE`], the deepest match this function returns.
 pub async fn vfs_search_in_folder(
     user: &CurrentUser,
     collection_dataset: String,
     node_key: String,
     pattern: String,
     limit: u64,
+    offset: u64,
 ) -> anyhow::Result<VfsTreeChildren> {
     let table = structure_table(user, &collection_dataset).await?;
     let cleaned = sanitize_folder_search(&pattern);
@@ -279,8 +347,9 @@ pub async fn vfs_search_in_folder(
             took_ms: 0,
         });
     }
-    let limit = limit.clamp(1, MAX_CHILDREN_PER_PAGE);
-    let options_clause = sql_options_clause(limit.max(1000));
+    let offset = offset.min(MAX_CHILDREN_PER_PAGE);
+    let limit = limit.clamp(1, MAX_CHILDREN_PER_PAGE).min((MAX_CHILDREN_PER_PAGE - offset).max(1));
+    let options_clause = sql_options_clause((offset + limit).max(1000));
     let Some(ancestor_id) = node_term_id(&collection_dataset, &node_key).await? else {
         // The node has never been an ancestor of anything, so nothing is under it.
         return Ok(VfsTreeChildren {
@@ -300,7 +369,7 @@ pub async fn vfs_search_in_folder(
           AND ancestor_keys = {ancestor_id}
           AND MATCH({})
         ORDER BY kind ASC, depth ASC, path ASC
-        LIMIT {limit}
+        LIMIT {limit} OFFSET {offset}
         {options_clause}
         ;",
         format_sql_query::QuotedData(&collection_dataset),
