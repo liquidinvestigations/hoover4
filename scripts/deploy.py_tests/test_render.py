@@ -306,12 +306,13 @@ def test_cpu_key_above_the_host_is_refused(key):
 
     with mock.patch.object(deploy.os, "cpu_count", return_value=8), \
             mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
-        with pytest.raises(deploy.DeployError) as refused:
-            deploy.render_main_env(cfg)
+        # The render does not refuse. Only a command that starts containers does.
+        deploy.render_main_env(cfg)
+        refusals = deploy.cpu_host_refusals(cfg)
 
-    message = str(refused.value)
-    assert "%s = 9" % key in message
-    assert "8 CPUs" in message
+    assert len(refusals) == 1
+    assert "%s = 9" % key in refusals[0]
+    assert "8 CPUs" in refusals[0]
 
 
 def test_cpu_key_at_the_host_count_is_accepted():
@@ -320,6 +321,7 @@ def test_cpu_key_at_the_host_count_is_accepted():
     with mock.patch.object(deploy.os, "cpu_count", return_value=8), \
             mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
         env = deploy.render_main_env(cfg)
+        assert deploy.cpu_host_refusals(cfg) == []
 
     assert env["TESSERACT_CPU_CPUS"] == "8"
 
@@ -407,3 +409,332 @@ def test_templates_render_the_new_settings(template_name):
     assert env["TESSERACT_CPU_MEM_LIMIT"] == "6144M"
     assert deploy.temporal_retention_command(cfg)[-3:] == [
         "168h", "--address", "temporal:7233"]
+
+
+# ---- volume folders ---------------------------------------------------------------
+
+def _storage(path):
+    cfg = _config("storage-volumes-path.ini")
+    cfg.values["storage"]["volumes_path"] = str(path)
+    return cfg
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param("", "is empty", id="empty"),
+        pytest.param("hoover4-volumes", "is not an absolute path", id="relative"),
+    ],
+)
+def test_unusable_volumes_path_is_refused(value, expected):
+    cfg = _storage(value)
+
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.volumes_path(cfg)
+    assert "[storage] volumes_path" in str(refused.value)
+    assert expected in str(refused.value)
+    with pytest.raises(deploy.DeployError):
+        deploy.create_volume_folders(cfg, "main")
+    assert any("[storage] volumes_path" in p for p in deploy.start_refusals(cfg, "ai"))
+
+
+def test_folder_that_cannot_be_created_halts(tmp_path):
+    blocker = tmp_path / "a-file"
+    blocker.write_text("")
+    cfg = _storage(blocker / "volumes")
+
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.create_volume_folders(cfg, "main")
+
+    assert str(blocker / "volumes") in str(refused.value)
+
+
+def test_folders_of_the_side_are_created(tmp_path):
+    root = tmp_path / "parent" / "volumes"
+    cfg = _storage(root)
+    cfg.values["main_services"]["serena_enabled"] = "false"
+
+    deploy.create_volume_folders(cfg, "main")
+
+    created = sorted(p.name for p in root.iterdir())
+    expected = sorted(row.name for row in deploy.VOLUMES if row.side == "main")
+    assert created == expected
+
+
+def test_volumes_path_is_rendered_on_both_sides():
+    cfg = _config("storage-volumes-path.ini")
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        main_env = deploy.render_main_env(cfg)
+    ai_env = deploy.render_ai_env(cfg)
+
+    assert main_env["HOOVER4_VOLUMES_PATH"] == "/srv/hoover4-volumes"
+    assert ai_env["HOOVER4_VOLUMES_PATH"] == "/srv/hoover4-volumes"
+    assert main_env["HOOVER4_OPS_BACKUP_DIR"] == "/srv/hoover4-volumes/ops_backups"
+
+
+def test_set_backup_dir_wins_over_the_volume_folder():
+    cfg = _config("storage-volumes-path.ini")
+    cfg.values["main_services"]["ops_backup_dir"] = "/srv/backups"
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        env = deploy.render_main_env(cfg)
+
+    assert env["HOOVER4_OPS_BACKUP_DIR"] == "/srv/backups"
+
+
+VOLUMES_SOURCE = "${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/"
+BACKUP_SOURCE = "${HOOVER4_OPS_BACKUP_DIR:?deploy.py renders it from [storage] volumes_path}"
+
+
+def _all_compose_documents():
+    """(side of the file, file name, document) for every compose file of both sides."""
+    out = []
+    for name, document in _compose_documents():
+        out.append(("serena" if name == "serena.yaml" else "main", name, document))
+    for name, document in _ai_compose_documents():
+        out.append(("ai", name, document))
+    return out
+
+
+def _mounts():
+    """(side, file, service, source, target) of every volume mount in every file."""
+    out = []
+    for side, name, document in _all_compose_documents():
+        for service, definition in (document.get("services") or {}).items():
+            for entry in definition.get("volumes") or []:
+                source, target = entry.split(":", 1) if ":" in entry else (entry, "")
+                if entry.startswith("${") and "}" in entry:
+                    # The variable can hold a colon, so the source ends after the `}`.
+                    closing = entry.index("}")
+                    source = entry[:closing + 1] + entry[closing + 1:].split(":", 1)[0]
+                    target = entry[len(source) + 1:]
+                out.append((side, name, service, source, target))
+    return out
+
+
+def test_no_compose_file_declares_a_top_level_volume():
+    for _side, name, document in _all_compose_documents():
+        assert "volumes" not in document, name
+
+
+def test_no_service_mounts_a_named_volume():
+    for side, name, service, source, _target in _mounts():
+        named = not source.startswith(("/", ".", "$", "~"))
+        assert not named, "%s: %s mounts the named volume %s" % (name, service, source)
+
+
+def test_every_volume_mount_has_a_row_and_every_row_a_mount():
+    mounted = set()
+    for side, name, service, source, _target in _mounts():
+        if source.startswith(VOLUMES_SOURCE):
+            mounted.add((source[len(VOLUMES_SOURCE):], side))
+        elif source == BACKUP_SOURCE:
+            mounted.add(("ops_backups", side))
+        else:
+            assert "HOOVER4_VOLUMES_PATH" not in source, (name, service, source)
+
+    rows = {(row.name, row.side) for row in deploy.VOLUMES}
+    assert mounted == rows
+    assert len(rows) == len(deploy.VOLUMES)
+
+
+def test_row_image_is_the_image_of_its_service():
+    images = {}
+    for side, _name, document in _all_compose_documents():
+        for service, definition in (document.get("services") or {}).items():
+            if "image" in definition:
+                images[(service, "main" if side == "serena" else side)] = definition["image"]
+
+    for row in deploy.VOLUMES:
+        side = "main" if row.side == "serena" else row.side
+        assert images[(row.image_service, side)] == row.image, row.name
+
+
+def test_elasticsearch_folder_is_where_the_process_writes():
+    targets = {(service, target) for _s, _n, service, source, target in _mounts()
+               if source == VOLUMES_SOURCE + "temporal_elasticsearch"}
+    assert targets == {("temporal-elasticsearch", "/usr/share/elasticsearch/data")}
+    row = [r for r in deploy.VOLUMES if r.name == "temporal_elasticsearch"][0]
+    assert (row.uid, row.gid) == (1000, 0)
+
+
+def _class_before_folders(name):
+    """The class each volume had under the volume-removing reset code."""
+    if name == "serena_state":
+        return "protected"
+    if name in ("ai_models_cache", "vllm_huggingface_cache", "easyocr_models_cache"):
+        return "cache"
+    if name in ("temporal_cassandra", "temporal_elasticsearch"):
+        return "temporal"
+    return "data"
+
+
+def test_reset_class_of_each_row_is_unchanged():
+    for row in deploy.VOLUMES:
+        assert row.reset_class == _class_before_folders(row.name), row.name
+
+
+ENV = {"CASSANDRA_VERSION": "3.11.9", "ELASTICSEARCH_VERSION": "7.17.27"}
+
+
+def test_image_variables_are_resolved():
+    assert deploy.resolve_image(deploy.CASSANDRA_IMAGE, ENV) == "cassandra:3.11.9"
+    assert deploy.resolve_image("${VLLM_IMAGE:-vllm/x:1}", {}) == "vllm/x:1"
+    with pytest.raises(deploy.DeployError):
+        deploy.resolve_image("${MISSING}", {})
+
+
+def test_owner_commands_with_a_stand_in_runtime(tmp_path):
+    cfg = _storage(tmp_path)
+    rt = mock.Mock()
+    rt.run.return_value = subprocess.CompletedProcess([], 0)
+
+    deploy.set_volume_owners(cfg, "main", rt, ENV)
+
+    commands = [c.args[0] for c in rt.run.call_args_list]
+    assert ["run", "--rm", "--user", "0", "--entrypoint", "chown",
+            "-v", "%s/temporal_cassandra:/d" % tmp_path, "cassandra:3.11.9",
+            "999:999", "/d"] in commands
+    assert ["run", "--rm", "--user", "0", "--entrypoint", "chown",
+            "-v", "%s/temporal_elasticsearch:/d" % tmp_path, "elasticsearch:7.17.27",
+            "1000:0", "/d"] in commands
+    changed = sorted(c[7].split(":")[0].rsplit("/", 1)[1] for c in commands)
+    assert changed == sorted(r.name for r in deploy.VOLUMES
+                             if r.side == "main" and r.uid != 0)
+
+
+def test_owner_command_failure_halts(tmp_path):
+    rt = mock.Mock()
+    rt.run.return_value = subprocess.CompletedProcess([], 1, "", "no such image")
+
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.set_volume_owners(_storage(tmp_path), "main", rt, ENV)
+    assert "no such image" in str(refused.value)
+
+
+def _filled(tmp_path, side="main"):
+    cfg = _storage(tmp_path)
+    for row in deploy.side_volumes(cfg, side):
+        folder = tmp_path / row.name
+        folder.mkdir(exist_ok=True)
+        (folder / "file").write_text("x")
+    (tmp_path / "not-a-volume").mkdir()
+    (tmp_path / "not-a-volume" / "file").write_text("x")
+    return cfg
+
+
+def _emptied(rt, tmp_path):
+    out = []
+    for call in rt.run.call_args_list:
+        command = call.args[0]
+        assert command[:6] == ["run", "--rm", "--user", "0", "--entrypoint", "sh"]
+        assert command[-2:] == ["-c", "find /d -mindepth 1 -delete"]
+        folder = command[7].rsplit(":", 1)[0]
+        assert folder.startswith(str(tmp_path) + "/")
+        out.append(folder.rsplit("/", 1)[1])
+    return sorted(out)
+
+
+@pytest.mark.parametrize(
+    ("classes", "expected"),
+    [
+        pytest.param(deploy.RESET_CLASSES, {"data", "temporal"}, id="reset"),
+        pytest.param(deploy.RESET_CACHES_CLASSES, {"data", "temporal", "cache"},
+                     id="reset-caches"),
+        pytest.param(deploy.RESET_TEMPORAL_CLASSES, {"temporal"}, id="reset-temporal"),
+    ],
+)
+def test_reset_empties_the_folders_of_its_classes(tmp_path, classes, expected):
+    cfg = _filled(tmp_path)
+    rt = mock.Mock()
+    rt.run.return_value = subprocess.CompletedProcess([], 0)
+
+    deploy.empty_volume_folders(cfg, "main", rt, ENV, classes, "reset")
+
+    assert _emptied(rt, tmp_path) == sorted(
+        r.name for r in deploy.side_volumes(cfg, "main") if r.reset_class in expected)
+    garage = [c.args[0] for c in rt.run.call_args_list if "garage_data:/d" in c.args[0][7]]
+    if "data" in expected:
+        assert garage[0][8] == "cassandra:3.11.9"
+
+
+def test_reset_skips_an_empty_folder(tmp_path):
+    cfg = _storage(tmp_path)
+    (tmp_path / "clickhouse_data").mkdir()
+    rt = mock.Mock()
+
+    deploy.empty_volume_folders(cfg, "main", rt, ENV, deploy.RESET_CLASSES, "reset")
+
+    rt.run.assert_not_called()
+
+
+# ---- which command refuses on which key ---------------------------------------------
+
+def _run_main(argv, cfg, cpus=1):
+    with mock.patch.object(deploy, "load_config", return_value=cfg), \
+            mock.patch.object(deploy.shutil, "which", return_value="docker"), \
+            mock.patch.object(deploy.os, "cpu_count", return_value=cpus), \
+            mock.patch.object(deploy, "container_reachable_host", side_effect=lambda h: h), \
+            mock.patch.object(deploy, "run_preflights"), \
+            mock.patch.object(deploy, "_write_if_changed", return_value=False), \
+            mock.patch.object(deploy, "compose_down") as down, \
+            mock.patch.object(deploy, "compose_reset") as reset, \
+            mock.patch.object(deploy, "compose_reset_temporal") as reset_temporal, \
+            mock.patch.object(deploy, "compose_up") as up:
+        code = deploy.main(argv)
+    return code, {"down": down, "reset": reset, "reset_temporal": reset_temporal, "up": up}
+
+
+def test_print_env_warns_and_prints(capsys):
+    cfg = _storage("")
+    code, _calls = _run_main(["--print-env"], cfg)
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "warning: [storage] volumes_path is empty" in captured.err
+    assert "warning: [main_services] cassandra_cpus = 8" in captured.err
+    assert "HOOVER4_VOLUMES_PATH=\n" in captured.out
+
+
+def test_down_runs_with_unusable_keys():
+    code, calls = _run_main(["--down"], _storage(""))
+
+    assert code == 0
+    calls["down"].assert_called_once()
+
+
+def test_down_environment_has_a_stand_in_path():
+    env = deploy.down_environment(_storage(""))
+    assert env["HOOVER4_VOLUMES_PATH"] == deploy.DOWN_VOLUMES_PATH_STANDIN
+    assert env["HOOVER4_OPS_BACKUP_DIR"].startswith(deploy.DOWN_VOLUMES_PATH_STANDIN)
+    assert deploy.down_environment(_storage("/srv/hoover4-volumes")) is None
+
+
+@pytest.mark.parametrize(
+    ("argv", "call"),
+    [
+        pytest.param(["--reset"], "reset", id="reset"),
+        pytest.param(["--reset", "--reset-caches"], "reset", id="reset-caches"),
+        pytest.param(["--reset-temporal"], "reset_temporal", id="reset-temporal"),
+    ],
+)
+def test_reset_refuses_the_path_and_not_the_cpu_keys(argv, call):
+    code, calls = _run_main(argv, _storage("/srv/hoover4-volumes"))
+    assert code == 0
+    calls[call].assert_called_once()
+
+    with pytest.raises(deploy.DeployError) as refused:
+        _run_main(argv, _storage(""), cpus=64)
+    assert "[storage] volumes_path" in str(refused.value)
+
+
+def test_start_refuses_the_cpu_keys(tmp_path):
+    with pytest.raises(deploy.DeployError) as refused:
+        _run_main([], _storage(tmp_path))
+    assert "cassandra_cpus = 8" in str(refused.value)
+    assert not any(tmp_path.iterdir())
+
+
+def test_start_refuses_the_path():
+    with pytest.raises(deploy.DeployError) as refused:
+        _run_main([], _storage(""), cpus=64)
+    assert "[storage] volumes_path" in str(refused.value)

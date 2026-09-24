@@ -21,7 +21,7 @@ the container network, and then drives the container runtime.
 ./deploy --build            # build images first, then up
 ./deploy --ai-services      # the standalone accelerated tier instead
 ./deploy --down             # stop the selected side
-./deploy --reset            # down, then remove this project's data volumes
+./deploy --reset            # down, then empty this side's volume folders
 ./deploy --reset-caches     # with --reset: also wipe the model caches
 ./deploy --reset-temporal   # drop the workflow history and visibility stores only
 ./deploy --print-env        # render the environment files and show them, start nothing
@@ -35,13 +35,15 @@ separate compose project on its own private network.
 The order inside a normal run is worth knowing, because two of the steps only exist because
 of a failure they prevent:
 
-1. Preflight the configuration and the runtime.
+1. Create `[storage] volumes_path` and one folder in it for each volume of the side, then
+   preflight the configuration and the runtime.
 2. Render the generated `.env` beside the compose files, and print whether it changed.
 3. **Create or repair the container network, with its upstream resolvers pinned**, before
    compose runs. Without that the network's DNS forwards to the host's local resolver stub
    and every external lookup from inside a container wedges, while container-name
    resolution keeps working, so the stack looks healthy and only internet-facing work hangs.
-4. Bring the selected side up.
+4. Give each volume folder the owner its service writes as, in a one-shot container, then
+   bring the selected side up.
 5. On the main side, bring the symbol-navigation server up last, **as its own compose
    project**, so nothing a `down` or a `--reset` selects can take out the connection an agent
    is working through.
@@ -146,17 +148,20 @@ one of them loses the bound and takes the machine down with it.
 
 ## Resetting
 
-A reset is **scoped to this compose project** by name. That is not politeness: on a host whose
-container runtime is shared with something else, an unscoped prune destroys the other stack.
+Every volume is a folder `<volumes_path>/<volume name>` that the compose files bind-mount.
+A reset stops this compose project and then **empties the folders** of its side, in a
+one-shot container, because the files belong to the uids of the services. It never removes
+a folder or `volumes_path`, and it touches no other path. The `VOLUMES` table in `deploy.py`
+gives each folder its reset class.
 
-Preserved across a reset: the symbol-navigation server and its state volume, because they are
-a separate project; and the model-cache volumes, unless the cache flag is also given.
+Preserved across a reset: the symbol-navigation server and its state folder, because they
+are a separate project, and the model-cache folders, unless the cache flag is also given.
 
 Lost across a reset, and worth capturing first: anything held only in the datastores that no
 export reproduces. Collection display names and visibility flags are the recurring example.
 A reset plus a re-ingest recreates collections with bare names.
 
-A reset also drops the website's build-target volume, so the next deploy pays a cold release
+A reset also empties the website's build-target folder, so the next deploy pays a cold release
 build wherever release mode is on.
 
 ## After a deploy

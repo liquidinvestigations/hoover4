@@ -9,6 +9,7 @@ decides and which code reads it.
 
 - [How configuration flows](#how-configuration-flows)
 - [The standing rule about keys](#the-standing-rule-about-keys)
+- [`[storage]`](#storage)
 - [`[ai_services]`](#ai_services)
 - [`[main_services]`](#main_services)
 - [`[llm_provider.*]`](#llm_provider)
@@ -42,6 +43,19 @@ this page does not name, and keys that nothing in the tree reads.
 
 **Ports are keys, not literals.** A connection refused against a hard-coded number is usually
 the port having moved. The website's port is the single exception, because a person types it.
+
+## `[storage]`
+
+One key, `volumes_path`, read by `deploy.py` on both sides. It is mandatory, and it must be an
+absolute host path, for example `/srv/hoover4-volumes`. Each host sets its own value.
+
+Every container keeps its data in a folder `<volumes_path>/<volume name>`, which the compose
+files bind-mount. `deploy.py` creates `volumes_path`, its parents and the folders of the
+selected side, and it halts with the path when it cannot. Before `compose up`, it gives each
+folder the owner that its service writes as, from the `VOLUMES` table in `deploy.py`. A
+command that starts containers and the reset flags refuse an empty or relative value.
+`--down` runs with any value, and `--print-env` prints the refusal as a warning. The reset
+flags empty folders. They never remove a folder.
 
 ## `[ai_services]`
 
@@ -253,6 +267,10 @@ them is recorded in `INFRASTRUCTURE_INVENTORY.md`, by location, never by value.
 The drift check joins on key names, so every key in `hoover4.ini.release` appears here
 literally. The templates carry each one's default and the reasoning behind it. This index
 is the map back to the group above that explains it.
+
+### `[storage]`: the volume folders
+
+- `volumes_path`
 
 ### `[ai_services]`: the accelerated tier
 

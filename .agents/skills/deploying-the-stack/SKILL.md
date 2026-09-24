@@ -14,7 +14,7 @@ drives the container runtime.
 ./deploy --build            # build images first, then up
 ./deploy --ai-services      # the standalone GPU tier instead
 ./deploy --down             # stop the selected side
-./deploy --reset            # down, then remove the project's data volumes
+./deploy --reset            # down, then empty the side's volume folders
 ./deploy --reset-caches     # with --reset: also wipe the model caches
 ./deploy --reset-temporal   # drop Temporal's history and visibility stores only
 ./deploy --print-env        # render the environment files and show them, start nothing

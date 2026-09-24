@@ -41,12 +41,12 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
-      # EasyOCR's own cache volume, not the ai-server's: the two hold different model
-      # formats, and sharing one volume overlays EasyOCR's flat *.pth files on top of a
+      # EasyOCR's own cache folder, not the ai-server's: the two hold different model
+      # formats, and sharing one folder overlays EasyOCR's flat *.pth files on top of a
       # HuggingFace `hub/` tree. It happens to work because the names do not collide,
       # and it breaks the moment either side writes an index. Preserved across resets
-      # like every model cache (deploy.py CACHE_VOLUME_SUFFIXES).
-      - easyocr_models_cache:/root/.EasyOCR
+      # like every model cache (reset class `cache` in deploy.py VOLUMES).
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/easyocr_models_cache:/root/.EasyOCR
     devices:
       - nvidia.com/gpu=all
     restart: unless-stopped
@@ -58,10 +58,6 @@ services:
       start_period: 600s
     networks:
       - ai_services
-
-volumes:
-  easyocr_models_cache:
-    driver: local
 
 networks:
   # Private to the ai_services tier (declared in the base docker-compose.yaml).

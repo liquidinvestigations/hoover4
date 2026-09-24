@@ -63,7 +63,7 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
-      - ai_models_cache:/root/.cache/huggingface
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/ai_models_cache:/root/.cache/huggingface
     devices:
       - nvidia.com/gpu=all
     restart: unless-stopped
@@ -76,10 +76,6 @@ services:
       start_period: 600s
     networks:
       - ai_services
-
-volumes:
-  ai_models_cache:
-    driver: local
 
 networks:
   # Private to the ai_services tier (declared in the base docker-compose.yaml).

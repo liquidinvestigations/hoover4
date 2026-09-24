@@ -9,8 +9,9 @@ its optional overlay. Serena gives the host-side coding agent symbolic code navi
 (python + rust) over this repository. It can read and write the whole checkout, so it is
 published on `127.0.0.1:21940` only. The repo is mounted at the identical absolute path
 as on the host (`HOOVER4_REPO_ROOT`, set by `deploy.py`), and all language-server state
-(venvs, cargo target/registry, Serena home) lives in the `serena_state` volume, never in
-the checkout. Resets never remove that volume or the container, and it is deployed as its
+(venvs, cargo target/registry, Serena home) lives in the `serena_state` folder under
+`[storage] volumes_path`, never in the checkout. Resets never empty that folder or remove the
+container, and it is deployed as its
 own compose project so that a `down` or a `--reset` on the main stack cannot select it. The
 MCP endpoint is `http://127.0.0.1:21940/mcp` over streamable HTTP (see `.mcp.json` at the
 repo root, and `docker/serena/entrypoint.sh` for why that transport and not SSE).
@@ -81,7 +82,7 @@ store**: the server refuses to open a keyspace initialised with a different one.
 than letting the server die with a Cassandra error, and `./deploy --reset-temporal` drops
 Temporal's Cassandra keyspace and Elasticsearch index so a new count can take. That reset
 loses workflow history, which the `temporal_retention` key caps (default `168h`) with
-archival off, and touches no other volume.
+archival off, and touches no other volume folder.
 
 `temporal-dynamicconfig/` is bind-mounted over `/etc/temporal/config/dynamicconfig/`,
 whose `docker.yaml` the image ships as a zero-byte file. The DIRECTORY is mounted, not

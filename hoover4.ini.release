@@ -21,9 +21,9 @@
 #   ./deploy --print-command    show the docker compose invocation, run nothing
 #   ./deploy --build            build images first
 #   ./deploy --down             compose down for the selected side
-#   ./deploy --reset            down + remove data volumes (model caches preserved)
+#   ./deploy --reset            down + empty the volume folders (model caches preserved)
 #   ./deploy --reset --reset-caches
-#                               also remove the model caches (tens of GB re-download)
+#                               also empty the model caches (tens of GB re-download)
 #   ./deploy --reset-temporal   drop Temporal's history/visibility stores only
 #
 # SECURITY (hard requirement): the two hosts must share a PRIVATE network or VPN.
@@ -38,6 +38,13 @@
 # repository checkout — deploy.py refuses otherwise (keys inside the checkout leak
 # into build contexts and commits).
 # =============================================================================
+
+[storage]
+# Mandatory. The absolute host folder that holds the data of every container. deploy.py
+# creates it and its parents, and one folder in it for each volume, named as the volume.
+# deploy.py then gives each folder the owner its service writes as. It refuses an empty
+# or relative value. Each host sets its own value, for example /srv/hoover4-volumes.
+volumes_path       =
 
 [ai_services]
 # The whole GPU tier is optional. False turns the whole tier off on both sides and clears
@@ -224,7 +231,8 @@ worker_graceful_shutdown_seconds = 60
 # by the queues being trusted to behave.
 ops_mem_limit  = 4000M
 ops_cpus       = 4
-; Host directory for backups, mounted read-write. Empty uses a managed volume.
+; Host directory for backups, mounted read-write. Empty uses the folder
+; <volumes_path>/ops_backups.
 ops_backup_dir =
 ; Read bytes per second a ClickHouse backup may spend. 0 leaves it unthrottled. The
 ; only throttle that does anything: `backup_threads` is an obsolete setting that is

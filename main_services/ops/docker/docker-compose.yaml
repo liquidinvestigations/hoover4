@@ -28,7 +28,7 @@ services:
       - '${INFRA_BIND_IP:-0.0.0.0}:${MANTICORE_SQL_PORT}:9306'
       - '${INFRA_BIND_IP:-0.0.0.0}:${MANTICORE_HTTP_PORT}:9308'
     volumes:
-      - manticore_data_v14:/var/lib/manticore
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/manticore_data_v14:/var/lib/manticore
     memswap_limit: 19000M
     mem_limit: 19000M
     ulimits:
@@ -77,15 +77,14 @@ services:
       - '${INFRA_BIND_IP:-0.0.0.0}:${CLICKHOUSE_HTTP_PORT}:8123'
       - '${INFRA_BIND_IP:-0.0.0.0}:${CLICKHOUSE_NATIVE_PORT}:9000'
     volumes:
-      - clickhouse_data:/var/lib/clickhouse
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/clickhouse_data:/var/lib/clickhouse
       # The backup root, the same one the operations container holds. `BACKUP ... TO
       # File(...)` resolves under `/var/lib/clickhouse/backups` and refuses an absolute
       # path outside it, so mounting the shared root there is what lets ClickHouse write
       # its archive straight into the backup directory. The alternative (writing inside
       # this volume and copying the archive out) costs the space twice and strands the
       # original, because the operations container holds this volume read-only.
-      - ${HOOVER4_OPS_BACKUP_DIR:-ops_backups}:/var/lib/clickhouse/backups
-      # - ./data:/var/lib/clickhouse/user_files
+      - ${HOOVER4_OPS_BACKUP_DIR:?deploy.py renders it from [storage] volumes_path}:/var/lib/clickhouse/backups
       - ./clickhouse-server-config-override.xml:/etc/clickhouse-server/config.d/clickhouse-server-config-override.xml
     healthcheck:
       test: wget --no-verbose --tries=1 http://127.0.0.1:8123/ping || exit 1
@@ -113,7 +112,7 @@ services:
     ports:
       - '${INFRA_BIND_IP:-0.0.0.0}:${CLICKHOUSE_MONITORING_PORT}:3000'
     volumes:
-      - clickhouse_monitoring:/var/lib/clickhouse-monitoring
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/clickhouse_monitoring:/var/lib/clickhouse-monitoring
     memswap_limit: 6000M
     mem_limit: 6000M
     restart: unless-stopped
@@ -170,7 +169,7 @@ services:
       - SYS_NICE
     logging: *logging
     volumes:
-      - temporal_cassandra:/var/lib/cassandra
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/temporal_cassandra:/var/lib/cassandra
       - ${HOOVER4_REPO_ROOT}/main_services/ops/docker/cassandra-entrypoint.sh:/usr/local/bin/hoover4-cassandra-entrypoint.sh:ro
     healthcheck:
       test: cqlsh -u cassandra -p cassandra -e 'describe cluster'
@@ -205,7 +204,9 @@ services:
     ports:
       - 127.0.0.1:${ELASTICSEARCH_PORT}:9200
     volumes:
-      - temporal_elasticsearch:/var/lib/elasticsearch/data
+      # The Elasticsearch process writes its index to /usr/share/elasticsearch/data as
+      # uid 1000, so the folder is mounted there and deploy.py gives it owner 1000:0.
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/temporal_elasticsearch:/usr/share/elasticsearch/data
     healthcheck:
       test: ["CMD-SHELL", "curl --silent --fail localhost:9200/_cluster/health || exit 1"]
       interval: 15s
@@ -325,8 +326,8 @@ services:
       - "127.0.0.1:${GARAGE_ADMIN_PORT}:3903"
     volumes:
       - ${HOOVER4_REPO_ROOT}/main_services/ops/docker/garage/garage.toml:/etc/garage.toml:ro
-      - garage_meta:/var/lib/garage/meta
-      - garage_data:/var/lib/garage/data
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/garage_meta:/var/lib/garage/meta
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/garage_data:/var/lib/garage/data
     environment:
       # Local-deployment constants, exactly like the ClickHouse and Manticore
       # credentials in this file. Garage enforces minimum lengths: an access key id
@@ -436,9 +437,9 @@ services:
       - ../../processing:/app
       # EasyOCR's model cache (~100 MB, downloaded from the internet on first
       # use). Persisted so a container recreate does not re-download it in N
-      # concurrent worker processes at once; named *_cache so --reset keeps it
-      # (deploy.py CACHE_VOLUME_SUFFIXES).
-      - easyocr_models_cache:/root/.EasyOCR
+      # concurrent worker processes at once. Its reset class in deploy.py VOLUMES is
+      # `cache`, so --reset keeps it.
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/easyocr_models_cache:/root/.EasyOCR
       # Secrets rule: the ini stores the host PATH, deploy.py renders it as a mount
       # source, and the container reads the file. No key value ever enters a .env, a
       # compose file, a log line or a command line. /dev/null when no provider is set.
@@ -564,23 +565,23 @@ services:
     volumes:
       - ../../processing:/app
       # The backup root, read-write. A host path if one is configured, otherwise the
-      # managed volume named here, so this container comes up on a box where no backup
-      # directory has been created. Podman refuses a missing bind-mount source.
-      - ${HOOVER4_OPS_BACKUP_DIR:-ops_backups}:/backups
+      # ops_backups folder under volumes_path, which deploy.py creates. Podman refuses a
+      # missing bind-mount source.
+      - ${HOOVER4_OPS_BACKUP_DIR:?deploy.py renders it from [storage] volumes_path}:/backups
       # The three stores' data directories, READ-ONLY. Read-only because nothing here
       # may write into a live store's files: the backup paths read, and the restore
       # paths go through each store's own protocol, which is the only writer that
       # knows how to keep a store consistent with itself.
-      - clickhouse_data:/stores/clickhouse:ro
-      - manticore_data_v14:/stores/manticore:ro
-      - garage_data:/stores/garage/data:ro
-      - garage_meta:/stores/garage/meta:ro
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/clickhouse_data:/stores/clickhouse:ro
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/manticore_data_v14:/stores/manticore:ro
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/garage_data:/stores/garage/data:ro
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/garage_meta:/stores/garage/meta:ro
       # The same Manticore volume once more, writable, for one thing: staging a table's
       # files where `IMPORT TABLE` can take them. The daemon MOVES them into its data
       # directory, and a move across filesystems is not a rename, so the staging area has
       # to be on this volume rather than beside the backups. The restore writes only its
       # own `.restore-<op_id>` directory here and removes it on the way out.
-      - manticore_data_v14:/stores/manticore-restore
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/manticore_data_v14:/stores/manticore-restore
     depends_on:
       temporal:
         condition: service_healthy
@@ -628,7 +629,7 @@ services:
       # nothing and the 3 GB build tree lived in the container's writable layer, which
       # is why recreating this container cost a multi-minute cold rebuild, during which
       # every page 500s.
-      - hoover4-website-target:/app/target
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/hoover4-website-target:/app/target
       # Read-only, and the same host directory the worker gets: the dataset-creation
       # form lists the subfolders under DATASETS_MOUNT_PATH and offers their names, so
       # the website has to be able to see them. Read-only because it never writes there,
@@ -771,39 +772,6 @@ services:
     entrypoint: ["/usr/bin/python", "/app/pdf2html_server.py"]
     working_dir: /app
 
-volumes:
-  clickhouse_data:
-    driver: local
-  manticore_data_v14:
-    driver: local
-  elasticsearch_data:
-    driver: local
-  garage_meta:
-    driver: local
-  garage_data:
-    driver: local
-  temporal_elasticsearch:
-    driver: local
-  temporal_cassandra:
-    driver: local
-  clickhouse_monitoring:
-    driver: local
-  hoover4-website-target:
-    driver: local
-  easyocr_models_cache:
-    driver: local
-  # The default backup root, used when no host directory is configured. Not named
-  # *_cache: a backup is the one thing a reset must not remove.
-  ops_backups:
-    driver: local
-  # vllm_huggingface_cache:
-  #   driver: local
-  # litellm_postgres_data:
-  #   driver: local
-  # ollama:
-  #   driver: local
-  # open-webui2:
-  #   driver: local
 networks:
   hoover4:
     name: hoover4

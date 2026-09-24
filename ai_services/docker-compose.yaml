@@ -2,8 +2,9 @@
 # nothing here calls into main_services, and it deploys on its own with
 # `./deploy --ai-services` from an identical copy of hoover4.ini.
 #
-# This base file declares only the private network and the model-cache volumes; every
-# service is an optional overlay under compose/ selected by hoover4.ini flags:
+# This base file declares only the private network. Each model cache is a folder under
+# [storage] volumes_path that deploy.py creates. Every service is an optional overlay
+# under compose/ selected by hoover4.ini flags:
 #
 #   compose/vllm.yaml       [ai_services] llm_selfhosted   (SUPPORTED BUT PARKED)
 #   compose/ai-server.yaml  [ai_services] ai_server_enabled (GPU NER + embeddings)
@@ -25,14 +26,6 @@
 #     that matter are declared in the overlays.
 #   * deploy.py creates the `ai_services` network with explicit DNS settings, fresh
 #     podman networks have no DNS until resolvers are attached.
-
-volumes:
-  # Model caches. Preserved across `./deploy --reset` unless --reset-caches is
-  # passed. They are tens of gigabytes of re-download.
-  ai_models_cache:
-    driver: local
-  vllm_huggingface_cache:
-    driver: local
 
 networks:
   # Private to this tier. Replaces the old `external: true` join of the main stack's

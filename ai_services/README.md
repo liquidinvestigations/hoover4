@@ -36,7 +36,7 @@ From the repo root, with `hoover4.ini` in place (`[ai_services] enabled = true`)
 ./deploy --ai-services                 # start the enabled overlays
 ./deploy --ai-services --build         # rebuild images (force-recreates)
 ./deploy --ai-services --down
-./deploy --ai-services --reset         # data volumes; model caches preserved
+./deploy --ai-services --reset         # empty the volume folders; model caches preserved
 ./deploy --ai-services --print-command # show what would run
 ```
 
@@ -58,16 +58,12 @@ mattering on plain docker.
 
 ### Model caches
 
-The named volumes `ai_services_ai_models_cache` (~6 GB),
-`ai_services_vllm_huggingface_cache` (~16 GB) and
-`ai_services_easyocr_models_cache` (~100 MB) are preserved across
-`./deploy --ai-services --reset`; pass `--reset-caches` to delete them too.
-EasyOCR keeps its own volume rather than sharing the ai-server's: the two hold
+The folders `ai_models_cache` (~6 GB), `vllm_huggingface_cache` (~16 GB) and
+`easyocr_models_cache` (~100 MB) under `[storage] volumes_path` are preserved across
+`./deploy --ai-services --reset`. Pass `--reset-caches` to empty them too.
+EasyOCR keeps its own folder rather than sharing the ai-server's: the two hold
 different model layouts, and overlaying EasyOCR's flat `*.pth` files on a HuggingFace
-`hub/` tree works only for as long as the two never pick the same name. The compose
-project name is pinned to `ai_services` (`COMPOSE_PROJECT_NAME` in the generated
-`.env`) so the caches stay attached. Changing it orphans them and re-downloads every
-weight.
+`hub/` tree works only for as long as the two never pick the same name.
 
 ### CUDA and GPU architecture
 

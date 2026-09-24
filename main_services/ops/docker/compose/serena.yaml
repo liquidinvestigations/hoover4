@@ -41,7 +41,7 @@ services:
       - HOME=/opt/serena/home
     volumes:
       - ${HOOVER4_REPO_ROOT}:${HOOVER4_REPO_ROOT}:rw
-      - serena_state:/opt/serena
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/serena_state:/opt/serena
     working_dir: ${HOOVER4_REPO_ROOT}
     restart: unless-stopped
     healthcheck:
@@ -58,12 +58,3 @@ services:
     # torn down while Serena held it, so every `--reset` ended on 'network "hoover4" has
     # associated containers with it', and a cold start could not bring Serena up before
     # the main stack had created the network. It gets the project's own default network.
-
-volumes:
-  serena_state:
-    # Explicit name, so moving this overlay into its own compose project does not
-    # orphan the existing volume behind a new hoover4-devtools_ prefix and re-index
-    # the Rust workspace from cold. deploy.py's PROTECTED_VOLUME_SUFFIXES matches on
-    # the "serena_state" suffix, so --reset still skips it despite the hoover4_ prefix.
-    name: hoover4_serena_state
-    driver: local
