@@ -56,8 +56,8 @@ fragment ─► prefilter ─► validate ─► normalise ─► resolve ─►
 ```
 
 **Prefilter.** One `RegexSet` pass over the whole rule set says which rules fire anywhere in the
-fragment; only those then scan for their own candidate spans. Most fragments contain none of what
-any given rule looks for, so that first pass usually eliminates almost every rule. It runs in a
+fragment; only those then scan for their own candidate spans. A rule whose literal the fragment
+lacks never scans it. It runs in a
 linear-time engine (no lookaround, no backreferences), because the text was written by whoever
 wrote the document, and a backtracking engine has no bounded worst case on input like that. It is
 expected to over-match.
@@ -134,7 +134,7 @@ gave up on it.
 | `RES_LEXICON_DIR` | `lexicon` | Root of the investigative lexicon. |
 | `RES_MAX_BODY_BYTES` | `10485760` | Applied to both the request body and each `text`; an oversized request is a `413`. |
 | `RES_WORKER_THREADS` | `4` | Async workers. They parse JSON and move bytes; the work is elsewhere. |
-| `RES_SCAN_THREADS` | `10` | Concurrent scans. About 0.85 MB/s each. |
+| `RES_SCAN_THREADS` | `10` | Concurrent scans. Each scans about 20 to 50 MB/s once warm, depending on the text, and may hold up to 64 MB of prefilter cache. |
 | `RES_QUEUE_DEPTH` | `32` | Waiters allowed in front of them before 503. |
 | `RES_LOG` | `info` | Tracing filter. |
 

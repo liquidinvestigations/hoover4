@@ -1,9 +1,8 @@
 //! Stage one: find candidates cheaply, and be wrong in the generous direction.
 //!
 //! Two passes, for a reason. The `RegexSet` pass answers "does any rule fire anywhere in this
-//! fragment" for the whole rule set at once, and most fragments in a real corpus contain none of
-//! what any given rule looks for. Only the rules that survive that answer then scan for their own
-//! spans. As the rule set grows into the hundreds this is the difference between one pass and
+//! fragment" for the whole rule set at once, and a rule whose literal a fragment lacks never
+//! scans it. Only the rules that survive that answer then scan for their own spans. As the rule set grows into the hundreds this is the difference between one pass and
 //! hundreds of them, and it is why the candidate patterns must stay expressible in a linear-time
 //! engine: they run over raw, attacker-influenceable document text, where a backtracking engine
 //! has no bounded worst case.
@@ -12,9 +11,17 @@
 //! intended. Deciding between them is [`super::resolve`]'s job, not this one's.
 
 use anyhow::{bail, Context, Result};
-use regex::{Regex, RegexSet};
+use regex::{Regex, RegexSet, RegexSetBuilder};
 
 use crate::rules::Rule;
+
+/// The lazy DFA cache behind the combined set, per thread that searches it. The set compiles every
+/// candidate pattern into one automaton, and the states it visits on mail text take about 22 MB.
+/// When they outgrow the cache the lazy DFA clears it again and again, gives up, and the search
+/// falls back to the NFA simulation, which scans at about 1.5 MB/s instead of over 30. The
+/// `regex` default is 2 MB. The limit is a ceiling, not an allocation: a thread holds only the
+/// states its text has reached.
+const SET_DFA_CACHE_BYTES: usize = 64 << 20;
 
 pub struct Prefilter {
     /// All candidate patterns in one automaton: which rules match anywhere, in a single pass.
@@ -31,8 +38,10 @@ impl Prefilter {
             reject_haystack_dependent(rule.id(), rule.candidate_pattern())?;
         }
 
-        let set =
-            RegexSet::new(&patterns).context("compiling the combined candidate pattern set")?;
+        let set = RegexSetBuilder::new(&patterns)
+            .dfa_size_limit(SET_DFA_CACHE_BYTES)
+            .build()
+            .context("compiling the combined candidate pattern set")?;
 
         let per_rule = rules
             .iter()

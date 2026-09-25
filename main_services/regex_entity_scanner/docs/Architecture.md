@@ -59,9 +59,9 @@ validator and the fast path stays linear.
 
 ## Why two passes in the prefilter
 
-`RegexSet::matches` answers "which of these N patterns match anywhere in this text" in one pass.
-Most fragments in a real corpus contain none of what any given rule is looking for, so that one pass
-usually eliminates almost every rule, and only the survivors scan for spans of their own. At a
+`RegexSet::matches` answers "which of these N patterns match anywhere in this text" in one pass,
+and only the survivors scan for spans of their own. A rule with a rare literal (CVE, DOI, a crypto
+address) rarely survives; a bare digit-run rule survives in almost every mail message. At a
 handful of rules the saving is small; at several hundred it is the difference between one pass over
 the text and several hundred.
 

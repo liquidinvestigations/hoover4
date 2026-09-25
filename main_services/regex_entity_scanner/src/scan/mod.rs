@@ -26,16 +26,25 @@ use prefilter::Prefilter;
 /// construction.
 const RETRY_PER_CANDIDATE: usize = 8;
 
-/// The same bound across the whole fragment, so a fragment full of near-miss candidates cannot buy
-/// unbounded work a few retries at a time.
-const RETRY_PER_FRAGMENT: usize = 256;
+/// The same bound across each [`BUDGET_WINDOW`] of the fragment, so a fragment full of near-miss
+/// candidates cannot buy unbounded work a few retries at a time.
+const RETRY_PER_WINDOW: usize = 256;
 
 /// The budget for resuming the search past a rejection, which only the rules whose marker can
-/// trail their number ask for. It is separate from [`RETRY_PER_FRAGMENT`] and much smaller,
-/// because a resume searches the rest of the fragment rather than the inside of one candidate:
-/// each one is a linear pass, so the budget is what keeps the worst case a small constant multiple
-/// of a scan instead of a quadratic in the fragment.
-const RETRY_RESUME_PER_FRAGMENT: usize = 32;
+/// trail their number ask for. It is separate from [`RETRY_PER_WINDOW`] and much smaller,
+/// because a resume searches the rest of the fragment rather than the inside of one candidate. A
+/// resume stops at the rule's next match, so it costs the distance to that match, but one that
+/// finds nothing reads to the end of the fragment, and the budget is what bounds how many can.
+const RETRY_RESUME_PER_WINDOW: usize = 32;
+
+/// The length of text each retry budget belongs to. Every 64 KB of the fragment has budgets of its
+/// own, charged by where the rejected candidate starts, so what a window finds does not depend on
+/// the rest of the fragment: a fragment finds what the same text sent as its 64 KB windows finds.
+/// One budget for the whole fragment would not do that even scaled by its length, because the work
+/// list runs from the end of the fragment, so the near misses there would spend the budget of the
+/// ones at the start. The work per byte stays bounded at any length, and the adversarial shapes in
+/// `tests/speed.rs`, runs of rejected money, addresses and digit groups, scan in linear time.
+const BUDGET_WINDOW: usize = 64 * 1024;
 
 /// Compiled rules plus the vendored data their validators consult. Built once, shared by every
 /// request; scanning takes `&self` and holds no mutable state.
@@ -73,17 +82,19 @@ impl Scanner {
     /// that would pass. An identifier-shaped run whose tail is a page number, an address whose
     /// first reading ends in a top-level domain that does not exist. Rejection therefore re-runs
     /// the rule's own pattern over the candidate's interior and queues whatever it finds, bounded
-    /// by [`RETRY_PER_CANDIDATE`] and [`RETRY_PER_FRAGMENT`].
+    /// by [`RETRY_PER_CANDIDATE`] and [`RETRY_PER_WINDOW`].
     ///
     /// The interior is the wrong place to look when the better reading ends past the rejected
     /// candidate, which is possible for a rule whose marker may trail its number. Those rules ask
     /// for the search to resume past the rejection instead, on their own budget
-    /// ([`RETRY_RESUME_PER_FRAGMENT`]).
+    /// ([`RETRY_RESUME_PER_WINDOW`]).
     pub fn scan(&self, fragment: &str, base_offset: usize) -> Vec<Entity> {
         let mut accepted = Vec::new();
         let mut visited: HashSet<(usize, usize, usize)> = HashSet::new();
-        let mut fragment_retries = 0usize;
-        let mut fragment_resumes = 0usize;
+        // What is left of each window's two budgets, charged by where the rejected candidate starts.
+        let windows = fragment.len().div_ceil(BUDGET_WINDOW).max(1);
+        let mut retries_left = vec![RETRY_PER_WINDOW; windows];
+        let mut resumes_left = vec![RETRY_RESUME_PER_WINDOW; windows];
 
         // `(rule index, span, how many times this candidate's lineage has already been shrunk)`.
         let mut queue: Vec<(usize, (usize, usize), usize)> = self
@@ -126,8 +137,9 @@ impl Scanner {
             // engine is leftmost-first, so `2 EUR` is proposed before `EUR 30` and rejecting it
             // leaves nothing behind. Resuming the rule's own search one character to the right of
             // the rejection is what proposes it.
-            if rule.resumes_past_rejection() && fragment_resumes < RETRY_RESUME_PER_FRAGMENT {
-                fragment_resumes += 1;
+            let window = start / BUDGET_WINDOW;
+            if rule.resumes_past_rejection() && resumes_left[window] > 0 {
+                resumes_left[window] -= 1;
                 if let Some(from) = next_boundary(fragment, start) {
                     if let Some(span) = self.prefilter.find_from(rule_index, fragment, from) {
                         queue.push((rule_index, span, retries));
@@ -135,13 +147,13 @@ impl Scanner {
                 }
             }
 
-            if retries >= RETRY_PER_CANDIDATE || fragment_retries >= RETRY_PER_FRAGMENT {
+            if retries >= RETRY_PER_CANDIDATE || retries_left[window] == 0 {
                 continue;
             }
             let Some(interior_end) = previous_boundary(fragment, start, end) else {
                 continue;
             };
-            fragment_retries += 1;
+            retries_left[window] -= 1;
 
             // Shrinking the window by one character from the right and re-running the rule's own
             // pattern over the interior yields both cases in one mechanism: the shorter match at

@@ -17,6 +17,8 @@
 //! exclusive claims about the same bytes. What has to change is the rule that proposed a reading it
 //! could not justify.
 
+use std::collections::BTreeMap;
+
 use crate::model::Entity;
 
 pub fn resolve(mut entities: Vec<Entity>) -> Vec<Entity> {
@@ -28,12 +30,19 @@ pub fn resolve(mut entities: Vec<Entity>) -> Vec<Entity> {
             .then_with(|| a.start.cmp(&b.start))
     });
 
+    // Kept spans never overlap one another, so the only one a new span can collide with is the
+    // kept span starting nearest before the new one's end: every kept span before that one ends
+    // before it starts. A scan with tens of thousands of entities stays linearithmic instead of
+    // comparing each one with every span already kept.
     let mut kept: Vec<Entity> = Vec::with_capacity(entities.len());
+    let mut ends_by_start: BTreeMap<usize, usize> = BTreeMap::new();
     for entity in entities {
-        let overlaps = kept
-            .iter()
-            .any(|k| entity.start < k.end && k.start < entity.end);
+        let overlaps = ends_by_start
+            .range(..entity.end)
+            .next_back()
+            .is_some_and(|(_, &end)| entity.start < end);
         if !overlaps {
+            ends_by_start.insert(entity.start, entity.end);
             kept.push(entity);
         }
     }

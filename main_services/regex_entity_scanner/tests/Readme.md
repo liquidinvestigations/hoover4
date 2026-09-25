@@ -6,6 +6,7 @@
 | `dates.rs`, `email.rs`, `identifiers_bank.rs`, `identifiers_company.rs`, `identifiers_security.rs`, `maritime.rs`, `devices_network.rs`, `extras.rs`, `national_ids.rs`, `phone.rs`, `money.rs` | One file per rule family: what each validator keeps, what it rejects, and what the value normalises to. |
 | `contract.rs` | Structural properties of the wire contract: an entity round-trips through JSON for every value kind, and no candidate pattern depends on its haystack boundaries. |
 | `golden.rs` | The labelled corpus, scored as precision and recall. |
+| `speed.rs` | That the candidate set keeps its lazy DFA, that runs of rejected candidates scan in linear time, and that a long fragment finds what its 64 KB windows find. Its ignored `throughput` test prints MB/s. |
 | `conformance.rs`, `conformance/` | Agreement with the upstream projects the rules were ported from, scored as recall, precision and coverage. |
 | `explain.rs` | Explainer cards, including that every compiled rule has a catalogue entry and that an entity round-trips from `/scan` into `/explain` unchanged. |
 | `http.rs` | The service surface over a real socket. |

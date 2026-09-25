@@ -14,7 +14,7 @@ normalised, because a word being present proves nothing about what the document 
 ```jsonc
 {
   "entities": [ … ],
-  "rule_set_version": 17,
+  "rule_set_version": 18,
   "signal_set_version": "3f9c0a1b2d4e",
   "signals": [
     {

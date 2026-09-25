@@ -83,7 +83,7 @@ The choices were measured:
 | Aho-Corasick contiguous NFA | 88 000 | 143 MB/s, 16 MB |
 | Aho-Corasick contiguous NFA | 240 000 | 107 MB/s, 47 MB |
 
-For scale, the entity scan runs at about 1.5 MB/s on one thread. The fold costs more than the match
+For scale, the entity scan runs at about 20 to 50 MB/s on one thread. The fold costs more than the match
 on non-Latin text: about 140 MB/s on English and 50 MB/s on mixed scripts.
 The lexicon as shipped, about 10 600 terms and 65 000
 patterns with the clitic variants, scans a mixed-script sample at about 45 MB/s in a release build.

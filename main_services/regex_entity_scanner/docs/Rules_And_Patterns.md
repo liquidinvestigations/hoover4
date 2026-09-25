@@ -52,7 +52,7 @@ It still receives the whole fragment and absolute offsets, so the adjacent-byte 
 real neighbours rather than the edges of a slice.
 
 **The recovery is bounded and therefore best-effort: eight retries per candidate, two hundred and
-fifty-six per fragment.** A valid match nested more deeply than that is still lost, and that is the
+fifty-six per 64 KB of fragment.** A valid match nested more deeply than that is still lost, and that is the
 right trade: unbounded retry is quadratic in the fragment on adversarial input, which is exactly the
 property the linear-time prefilter exists to protect.
 

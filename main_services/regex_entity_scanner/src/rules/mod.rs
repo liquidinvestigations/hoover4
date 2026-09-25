@@ -38,7 +38,7 @@ use crate::model::{EntityType, Flag, Value};
 /// What bumps it: any change to a candidate pattern, any change to a validator's accept or reject
 /// boundary or to the value it normalises to, and any rule added or removed. What does not: card
 /// text, a doc comment, a catalogue entry, because none of those change what a document yields.
-pub const RULE_SET_VERSION: u32 = 17;
+pub const RULE_SET_VERSION: u32 = 18;
 
 /// Whether the three fields name a day that exists. Several schemes here admit a number whose
 /// opening digits are a date of birth; an impossible date is what rules those out, and it is the

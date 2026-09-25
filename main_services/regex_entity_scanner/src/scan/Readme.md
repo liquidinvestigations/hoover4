@@ -13,10 +13,20 @@ run together.
 ## `prefilter.rs`
 
 Two passes, on purpose. The `RegexSet` pass answers "does any rule fire anywhere in this fragment"
-for the whole rule set in one go, and most fragments in a real corpus contain none of what any given
-rule is looking for. Only the rules that survive that answer then scan for their own spans. At a
-handful of rules this is a small win; at several hundred it is the difference between one pass over
-the text and several hundred.
+for the whole rule set in one go. Only the rules that survive that answer then scan for their own
+spans. On mail the rules with a rare literal (CVE, DOI, coordinates, crypto addresses, most national
+ids) rarely survive, while the bare digit-run rules survive in almost every message, because headers
+carry long digit runs. At several hundred rules the pass is the difference between one pass over the
+text and several hundred.
+
+The set is one lazy DFA over every candidate pattern, and its cache is sized at 64 MB per thread
+that searches it, against a `regex` default of 2 MB. Mail text drives it through about 22 MB of
+states. Past the cache, the lazy DFA clears it over and over, gives up, and the search falls back to
+the NFA simulation: the output is the same and the scan is twenty times slower, at about 1.5 MB/s
+instead of over 30. Patterns that stack overlapping counted runs of one class after many literal
+prefixes multiply the states, and Unicode `\d`, dozens of byte ranges, makes each state larger; the
+EU VAT pattern is written with `[0-9]` for that reason. `tests/speed.rs` fails when the set falls
+back.
 
 Candidates are collected per rule, so two rules may propose spans that overlap or nest. That is
 intended, and it is `resolve.rs`'s job to decide between them.
@@ -59,14 +69,19 @@ the rule's next match at or after one character past the rejection, searched ove
 fragment** rather than a slice of it, so the boundaries the pattern sees stay the real ones. The two
 money rules are the only patterns in the set with a trailing-marker alternation, and they are the
 only ones that pay for the extra pass. Its budget is separate and much smaller than the interior
-retry's, thirty-two per fragment, because a resume is a linear pass rather than a look inside one
-candidate: the budget is what keeps the worst case a small constant multiple of a scan instead of a
-quadratic in the fragment.
+retry's, thirty-two per 64 KB, because a resume searches the rest of the fragment rather than the
+inside of one candidate: it stops at the next match, but one that finds none reads to the end.
 
-The retry is capped at eight per candidate and two hundred and fifty-six per fragment, which makes
-it best-effort by construction. That is deliberate: unbounded retry is quadratic in the fragment on
+The retry is capped at eight per candidate and two hundred and fifty-six per 64 KB, which makes it
+best-effort by construction. That is deliberate: unbounded retry is quadratic in the fragment on
 adversarial input, which is the property the linear-time prefilter exists to protect. A match nested
 more deeply than the caps allow is lost, and losing it is cheaper than the alternative.
+
+Both budgets belong to a 64 KB window of the fragment and are charged by where the rejected candidate
+starts, so a fragment finds what the same text sent as its 64 KB windows finds. One budget for the
+whole fragment would make the result depend on how the caller cut the document, and scaling it by
+length would not fix that: the work list runs from the end of the fragment, so the near misses there
+would spend the budget of those at the start.
 
 ## `resolve.rs`
 
@@ -87,3 +102,8 @@ is longer, so the address never reaches the output and the fragment loses the on
 actually contained. The answer is not a different ladder (on a genuine `Message-ID:` line the
 message-id reading is the right one and the address reading has to lose), but a rule that does not
 propose the reading in the first place.
+
+Overlap is checked against an ordered map of the kept spans, which never overlap one another, so
+only the kept span that starts nearest before a new span's end can collide with it. A fragment with
+tens of thousands of entities, such as a spreadsheet export, costs a lookup per entity rather than a
+comparison with every entity already kept.

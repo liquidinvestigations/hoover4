@@ -17,10 +17,10 @@ const DEFAULT_MAX_BODY_BYTES: usize = 10_485_760;
 /// nothing with, and competes with the scanning that is the actual load.
 const DEFAULT_WORKER_THREADS: usize = 4;
 
-/// Concurrent scans, and the queue in front of them. Scanning measures at about 0.85 MB/s per core,
-/// so ten is roughly 8.5 MB/s of throughput; the queue absorbs a burst without either refusing a
-/// caller that would have been served in a second or accepting a backlog nobody is still waiting
-/// on.
+/// Concurrent scans, and the queue in front of them. Scanning measures at about 20 to 50 MB/s per
+/// core once warm, depending on the text, so ten is well over 100 MB/s of throughput; the queue
+/// absorbs a burst without either refusing a caller that would have been served in a second or
+/// accepting a backlog nobody is still waiting on.
 const DEFAULT_SCAN_THREADS: usize = 10;
 const DEFAULT_QUEUE_DEPTH: usize = 32;
 
