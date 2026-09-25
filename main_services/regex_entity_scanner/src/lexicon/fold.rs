@@ -7,16 +7,21 @@
 //!
 //! Per source character, in order:
 //!
-//! 1. Apostrophes are deleted, so `don't`, `don’t` and `dont` are one word.
+//! 1. Apostrophes are deleted, so `don't`, `don’t` and `dont` are one word. The Hebrew geresh
+//!    counts as one, because an ASCII apostrophe replaces it in most typing (`ג׳` and `ג'`).
 //! 2. Invisible characters are deleted (joiners, soft hyphen, byte-order mark, bidirectional
-//!    controls, variation selectors), because one inside a word is a known way to dodge a list.
+//!    controls, variation selectors, the Arabic tatweel that stretches a word), because one inside a
+//!    word is a known way to dodge a list.
 //! 3. The character is decomposed under NFKD, which flattens fullwidth forms, ligatures and styled
 //!    letters to their plain equivalents.
 //! 4. Letters and digits are lowercased (`ß` becomes `ss`, final `ς` becomes `σ`). Katakana become
-//!    hiragana, because Japanese writes one word in either.
-//! 5. A combining mark is dropped after a Latin, Greek or Cyrillic base, so `illégal` matches
-//!    `illegal` and `ё` matches `е`. It is kept after any other base, because in Indic, Arabic and
-//!    Hebrew scripts the marks are the vowels.
+//!    hiragana, because Japanese writes one word in either. Arabic `ى` becomes `ي` and `ة` becomes
+//!    `ه`, the Persian forms `ی` and `ک` become `ي` and `ك`, and Arabic-Indic digits become ASCII,
+//!    because everyday Arabic typing writes each pair either way.
+//! 5. A combining mark is dropped after a Latin, Greek, Cyrillic, Hebrew or Arabic base, so
+//!    `illégal` matches `illegal`, `ё` matches `е`, pointed Hebrew matches unpointed Hebrew, and
+//!    `أ`, `إ` and `آ` match a bare `ا` once their hamza and madda are gone. It is kept after any
+//!    other base, because in Indic scripts the marks are vowels that no spelling leaves out.
 //! 6. Every run of anything else (whitespace, punctuation, symbols) becomes one space.
 //!
 //! The folded text starts and ends with a space. Every word boundary is then exactly one space,
@@ -104,7 +109,7 @@ impl Folder {
             return;
         }
         if ch.is_alphanumeric() {
-            self.strips_marks = (ch as u32) < 0x0530;
+            self.strips_marks = strips_marks_after(ch);
             if ch.is_ascii() {
                 self.push_str_from(ch.to_ascii_lowercase().encode_utf8(&mut [0; 1]), at);
                 return;
@@ -113,6 +118,13 @@ impl Folder {
                 match lower {
                     'ß' => self.push_str_from("ss", at),
                     'ς' => self.push_str_from("σ", at),
+                    'ى' | 'ی' => self.push_str_from("ي", at),
+                    'ة' => self.push_str_from("ه", at),
+                    'ک' => self.push_str_from("ك", at),
+                    '\u{0660}'..='\u{0669}' | '\u{06F0}'..='\u{06F9}' => {
+                        let digit = (lower as u32 & 0xF) as u8 + b'0';
+                        self.push_str_from((digit as char).encode_utf8(&mut [0; 1]), at);
+                    }
                     '\u{30A1}'..='\u{30F6}' => {
                         let hiragana = char::from_u32(lower as u32 - 0x60).unwrap_or(lower);
                         self.push_str_from(hiragana.encode_utf8(&mut [0; 4]), at);
@@ -140,10 +152,20 @@ impl Folder {
     }
 }
 
+/// Whether a combining mark after `base` is dropped: after Latin, Greek and Cyrillic, where marks
+/// are accents, and after Hebrew and Arabic, where they are vowel points and hamza signs that
+/// ordinary writing mostly leaves out.
+fn strips_marks_after(base: char) -> bool {
+    matches!(
+        base as u32,
+        0x0000..=0x052F | 0x0590..=0x05FF | 0x0600..=0x06FF | 0x0750..=0x077F | 0x08A0..=0x08FF
+    )
+}
+
 fn is_apostrophe(ch: char) -> bool {
     matches!(
         ch,
-        '\'' | '\u{2018}' | '\u{2019}' | '\u{02BC}' | '`' | '\u{00B4}'
+        '\'' | '\u{2018}' | '\u{2019}' | '\u{02BC}' | '`' | '\u{00B4}' | '\u{05F3}'
     )
 }
 
@@ -157,6 +179,7 @@ fn is_invisible(ch: char) -> bool {
             | '\u{2066}'..='\u{2069}'
             | '\u{FE00}'..='\u{FE0F}'
             | '\u{FEFF}'
+            | '\u{0640}'
     )
 }
 
@@ -183,6 +206,22 @@ mod tests {
     }
 
     #[test]
+    fn hebrew_points_and_arabic_spelling_variants_fold_together() {
+        assert_eq!(fold_term("שֹׁחַד"), "שחד");
+        assert_eq!(fold_term("שׁוֹחַד"), "שוחד");
+        assert_eq!(fold_term("ג׳וב"), fold_term("ג'וב"));
+        assert_eq!(fold_term("رِشْوَة"), "رشوه");
+        assert_eq!(fold_term("رشـــوة"), "رشوه");
+        assert_eq!(fold_term("إبادة"), fold_term("ابادة"));
+        assert_eq!(fold_term("أموال"), "اموال");
+        assert_eq!(fold_term("آمن"), "امن");
+        assert_eq!(fold_term("على"), "علي");
+        assert_eq!(fold_term("ﻻ"), "لا");
+        assert_eq!(fold_term("٢٠٢٤ ۱۲"), "2024 12");
+        assert_eq!(fold_term("ی ک"), "ي ك");
+    }
+
+    #[test]
     fn invisible_characters_and_compatibility_forms_do_not_split_a_word() {
         assert_eq!(fold_term("Schmier\u{00AD}geld"), "schmiergeld");
         assert_eq!(fold_term("brib\u{200D}e"), "bribe");
@@ -195,6 +234,7 @@ mod tests {
         for sample in [
             "Off-the-books, «pot-de-vin» — взятка!",
             "Schmiergeld\u{00AD}zahlung ß ｆｕｃｋ",
+            "والرِّشـوة، إبادة ٣؛ שׁוֹחַד, עו״ד",
             "  ",
             "",
         ] {

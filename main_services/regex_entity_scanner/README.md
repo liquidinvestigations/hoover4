@@ -190,7 +190,7 @@ first. They cover concealment, bribery, accounting manipulation, pressure and di
 legal exposure, crime, financial crime, violence, sexual misconduct, genocide, crimes against
 humanity, war crimes, coded language and scams, and the vocabulary of contracts, legal letters,
 memoranda, invoices, payment proofs, international transfers and governing-law clauses. There are
-twenty-six categories on one level, in English, German, French and Russian. A match is a *signal*:
+twenty-six categories on one level, in English, German, French, Russian, Spanish, Hebrew and Arabic, with Arabic also in Arabizi. A match is a *signal*:
 whole words, matched without regard to case, punctuation or accents, carrying a tier, who usually
 writes it, and flags when it is negated, quoted or inside a disclaimer. A signal proves nothing on its own, and every category says what it
 does not prove.

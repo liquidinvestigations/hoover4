@@ -1,0 +1,33 @@
+term	tier	speaker	concept	source	review	note
+اختصاص حصري	H	neutral	exclusive jurisdiction	curated	mt-edited	
+اختصاص غير حصري	H	neutral	non-exclusive jurisdiction	curated	mt-edited	
+الأونسيترال	H	neutral	uncitral	curated	mt-edited	
+الاختصاص الحصري	H	neutral	exclusive jurisdiction	curated	mt-edited	
+الاختصاص الحصري لمحاكم	H	neutral	exclusive jurisdiction of the courts of	curated	mt-edited	
+الخضوع لاختصاص	H	neutral	submit to the jurisdiction	curated	mt-edited	
+القانون المطبق	H	neutral	governing law	curated	mt-edited	
+القانون الواجب التطبيق	H	neutral	governing law	curated	mt-edited	
+تحكيم غرفة التجارة الدولية	H	neutral	icc arbitration	curated	mt-edited	
+قانون الممارسات الأجنبية الفاسدة	H	neutral	foreign corrupt practices act	doj-sec-fcpa-guide	mt-edited	
+قوانين إنجلترا وويلز	H	neutral	laws of england and wales	curated	mt-edited	
+مقر التحكيم	H	neutral	seat of arbitration	curated	mt-edited	
+مكان التحكيم	H	neutral	seat of arbitration	curated	mt-edited	
+يخضع لقوانين	H	neutral	governed by the laws of	curated	mt-edited	
+يخضع هذا العقد لأحكام قوانين	H	neutral	governed by the laws of	curated	mt-edited	
+القانون الإنجليزي	M	neutral	english law	curated	mt-edited	
+القانون السويسري	M	neutral	swiss law	curated	mt-edited	
+المحكمة الابتدائية	M	neutral	district court	curated	mt-edited	
+المحكمة الاتحادية العليا	M	neutral	supreme court	curated	mt-edited	UAE
+المحكمة العليا	M	neutral	supreme court	curated	mt-edited	
+المركز الدولي لتسوية منازعات الاستثمار	M	neutral	icsid	curated	mt-edited	
+جزر العذراء البريطانية	M	neutral	british virgin islands	curated	mt-edited	
+جزر فيرجن البريطانية	M	neutral	british virgin islands	curated	mt-edited	
+جزر كايمان	M	neutral	cayman islands	curated	mt-edited	
+سوق أبوظبي العالمي	M	neutral	adgm	curated	mt-edited	
+قانون ولاية نيويورك	M	neutral	new york law	curated	mt-edited	
+محكمة الاستئناف	M	neutral	court of appeal	curated	mt-edited	
+محكمة النقض	M	neutral	supreme court	curated	mt-edited	Egypt and other civil-law systems
+مركز دبي المالي العالمي	M	neutral	difc	curated	mt-edited	
+ولاية ديلاوير	M	neutral	state of delaware	curated	mt-edited	
+محاكم	L	neutral	courts of	curated	mt-edited	
+مكان الانعقاد	L	neutral	venue	curated	mt-edited	

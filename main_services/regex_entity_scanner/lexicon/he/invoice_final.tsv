@@ -1,0 +1,12 @@
+term	tier	speaker	concept	source	review	note
+דרישת תשלום סופית	H	neutral	final payment request	uncl1001	mt-edited	UNTDID 1001
+חשבון סופי	H	neutral	final construction invoice	uncl1001	mt-edited	the closing account of a construction contract
+חשבונית סופית	H	neutral	final invoice	curated	mt-edited	
+שולם במלואו	H	neutral	paid in full	curated	mt-edited	
+שולמה במלואה	H	neutral	paid in full	curated	mt-edited	
+התשלום התקבל	M	neutral	payment received	curated	mt-edited	
+חשבונית הופקה	M	neutral	invoice issued	curated	mt-edited	
+חשבונית מס קבלה	M	neutral	receipted	curated	mt-edited	
+חשבונית מקור	M	neutral	original invoice	curated	mt-edited	
+קבלה מס׳	M	neutral	fiscal receipt	curated	mt-edited	
+שולם	L	neutral	paid	curated	mt-edited	

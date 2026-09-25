@@ -1,0 +1,56 @@
+term	tier	speaker	concept	source	review	note
+alijo de armas	H	actor	weapons cache	curated	mt-edited	
+asesinato por encargo	H	actor	contract killing	curated	mt-edited	
+ataque terrorista	H	actor	terror attack	curated	mt-edited	
+atentado terrorista	H	actor	terror attack	curated	mt-edited	
+atropello masivo	H	actor	vehicle ramming	curated	mt-edited	
+bomba casera	H	actor	pipe bomb	curated	mt-edited	
+chaleco explosivo	H	actor	suicide vest	curated	mt-edited	
+chaleco suicida	H	actor	suicide vest	curated	mt-edited	
+cuídate la espalda	H	actor	watch your back	curated	mt-edited	
+cuídate las espaldas	H	actor	watch your back	curated	mt-edited	
+decapit*	H	actor	behead*	curated	mt-edited	
+ejecútala	H	actor	execute her	curated	mt-edited	
+ejecútalo	H	actor	execute him	curated	mt-edited	
+lista de objetivos	H	actor	hit list	curated	mt-edited	
+magnicidio	H	actor	assassinat*	curated	mt-edited	
+operación de martirio	H	actor	martyrdom operation	curated	mt-edited	
+sabemos dónde vives	H	actor	we know where you live	curated	mt-edited	
+sicariato	H	actor	contract killing	curated	mt-edited	
+sicario	H	actor	hit man	curated	mt-edited	
+sicarios	H	actor	hit man	curated	mt-edited	
+sé dónde vives	H	actor	we know where you live	curated	mt-edited	
+te vas a morir	H	actor	you will die	curated	mt-edited	
+te voy a matar	H	actor	i will kill you	curated	mt-edited	
+te voy a romper las piernas	H	actor	break your legs	curated	mt-edited	
+vas a morir	H	actor	you will die	curated	mt-edited	
+arma de fuego	M	actor	firearm	curated	mt-edited	
+armas de fuego	M	actor	firearm	curated	mt-edited	
+asesinato	M	accuser	murder	curated	mt-edited	
+bomba	M	actor	bomb	curated	mt-edited	
+casa de seguridad	M	actor	safe house	curated	mt-edited	
+dar un escarmiento	M	actor	make an example of	curated	mt-edited	
+deton*	M	actor	detonat*	curated	mt-edited	
+explosiv*	M	actor	explosive*	curated	mt-edited	
+extremista	M	accuser	extremist	curated	mt-edited	
+grupo armado	M	actor	armed group	curated	mt-edited	
+hacer explotar	M	actor	blow up	curated	mt-edited	
+homicidio	M	accuser	murder	curated	mt-edited	
+lobo solitario	M	actor	lone wolf	curated	mt-edited	
+masacre	M	accuser	massacre	curated	mt-edited	
+matanza	M	accuser	massacre	curated	mt-edited	
+municiones	M	actor	ammunition	curated	mt-edited	
+munición	M	actor	ammunition	curated	mt-edited	
+piso franco	M	actor	safe house	curated	mt-edited	Spain
+rehenes	M	actor	hostage	curated	mt-edited	
+rehén	M	actor	hostage	curated	mt-edited	
+terrorista	M	accuser	terrorist	curated	mt-edited	
+ataque	L	actor	attack	curated	mt-edited	
+disparar	L	actor	shoot	curated	mt-edited	
+fusil	L	actor	rifle	curated	mt-edited	
+granada	L	actor	grenade	curated	mt-edited	also the fruit and the city
+matar	L	actor	kill	curated	mt-edited	
+milicia	L	actor	militia	curated	mt-edited	
+pistola	L	actor	gun	curated	mt-edited	
+quitarla de en medio	L	actor	take her out	curated	mt-edited	also ordinary slang
+quitarlo de en medio	L	actor	take him out	curated	mt-edited	also ordinary slang

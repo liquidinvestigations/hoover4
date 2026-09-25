@@ -1,0 +1,64 @@
+term	tier	speaker	concept	source	review	note
+דרכון מזויף	H	actor	fake passport	curated	mt-edited	
+חטיפה	H	accuser	kidnap*	curated	mt-edited	
+להיפטר מהראיות	H	actor	get rid of the evidence	curated	mt-edited	
+להשמיד את הראיות	H	actor	destroy the evidence	curated	mt-edited	
+לסחוט	H	accuser	extort*	curated	mt-edited	
+מסמכים מזויפים	H	actor	fake documents	curated	mt-edited	
+נשק בלתי חוקי	H	accuser	illegal weapons	curated	mt-edited	
+נשק לא חוקי	H	accuser	illegal weapons	curated	mt-edited	
+סחטנות	H	accuser	blackmail	curated	mt-edited	
+סחיטה	H	accuser	extort*	curated	mt-edited	
+סחיטה באיומים	H	accuser	blackmail	curated	mt-edited	the Israeli offence
+תעלים את הראיות	H	actor	get rid of the evidence	curated	mt-edited	
+תשמיד את הראיות	H	actor	destroy the evidence	curated	mt-edited	
+אליבי	M	accuser	alibi	curated	mt-edited	
+גניבת זהות	M	accuser	identity theft	curated	mt-edited	
+הברחה	M	accuser	smuggling	curated	mt-edited	
+הואשם	M	accuser	charged with	curated	mt-edited	
+הואשמה	M	accuser	charged with	curated	mt-edited	
+הצתה	M	accuser	arson	curated	mt-edited	
+הרואין	M	accuser	heroin	curated	mt-edited	
+השוד	M	accuser	robbery	curated	mt-edited	
+זיוף	M	accuser	forgery	curated	mt-edited	
+זיופים	M	accuser	forgery	curated	mt-edited	
+להבריח	M	accuser	smuggle	investigator-list	mt-edited	
+מבריחים	M	accuser	smuggle	investigator-list	mt-edited	
+מזויף	M	accuser	forged	curated	mt-edited	
+מתאמפטמין	M	accuser	methamphetamine	curated	mt-edited	
+סוחר סמים	M	accuser	drug dealer	curated	mt-edited	
+סוחרי סמים	M	accuser	drug dealer	curated	mt-edited	
+סחורה מוברחת	M	accuser	contraband	curated	mt-edited	
+סחר בנשק	M	accuser	trafficking	curated	mt-edited	
+סחר בסמים	M	accuser	trafficking	curated	mt-edited	
+עוון	M	accuser	misdemeanor	curated	mt-edited	
+פנטניל	M	accuser	fentanyl	curated	mt-edited	
+פריצה	M	accuser	burglary	curated	mt-edited	also a computer break-in
+פשע חמור	M	accuser	felony	curated	mt-edited	
+קוקאין	M	accuser	cocaine	curated	mt-edited	
+שוד	M	accuser	robbery	curated	mt-edited	
+שותף לעבירה	M	accuser	accomplice	curated	mt-edited	
+שותף לפשע	M	accuser	accomplice	curated	mt-edited	
+תוכנת כופר	M	accuser	ransomware	curated	mt-edited	
+בלתי חוקי	L	accuser	illegal	investigator-list	mt-edited	
+גנוב	L	accuser	stolen	curated	mt-edited	
+גניבה	L	accuser	theft	curated	mt-edited	
+הונאה	L	accuser	fraud	curated	mt-edited	
+הפרה	L	accuser	violation	investigator-list	mt-edited	
+הפשע	L	accuser	crime	curated	mt-edited	
+טאבו	L	accuser	taboo	investigator-list	mt-edited	
+כופר	L	accuser	ransom	curated	mt-edited	also a heretic
+לא חוקי	L	accuser	illegal	investigator-list	mt-edited	
+לא לגיטימי	L	accuser	illegitimate	investigator-list	mt-edited	
+לא מורשה	L	accuser	unauthorized	investigator-list	mt-edited	
+ללא רישיון	L	accuser	unlicensed	investigator-list	mt-edited	
+מרמה	L	accuser	fraud	curated	mt-edited	
+נאסר	L	accuser	banned	investigator-list	mt-edited	
+נעצר	L	accuser	arrested	curated	mt-edited	
+נעצרה	L	accuser	arrested	curated	mt-edited	
+סמים	L	accuser	narcotics	curated	mt-edited	also any drugs
+עבירה	L	accuser	offence	curated	mt-edited	
+פורע חוק	L	accuser	outlaw	investigator-list	mt-edited	
+פושע	L	accuser	criminal	investigator-list	mt-edited	
+פשע	L	accuser	crime	curated	mt-edited	
+שלא כדין	L	accuser	unlawful	investigator-list	mt-edited	

@@ -1,0 +1,29 @@
+term	tier	speaker	concept	source	review	note
+banco corresponsal	H	neutral	correspondent bank	curated	mt-edited	
+banco intermediario	H	neutral	intermediary bank	curated	mt-edited	
+beneficiario último	H	neutral	ultimate beneficiary	curated	mt-edited	
+concepto del pago	H	neutral	purpose of payment	curated	mt-edited	
+corresponsal del ordenante	H	neutral	sender's correspondent	mt103-pacs008	mt-edited	
+detalle de comisiones	H	neutral	details of charges	curated	mt-edited	MT103 field 71A
+detalle de gastos	H	neutral	details of charges	curated	mt-edited	MT103 field 71A
+giro internacional	H	neutral	international wire	curated	mt-edited	
+institución intermediaria	H	neutral	intermediary institution	mt103-pacs008	mt-edited	MT103 :56A:
+motivo del pago	H	neutral	purpose of payment	curated	mt-edited	
+pago de cobertura	H	neutral	cover payment	mt103-pacs008	mt-edited	
+pago transfronterizo	H	neutral	cross-border payment	curated	mt-edited	
+pagos transfronterizos	H	neutral	cross-border payment	curated	mt-edited	
+propósito del pago	H	neutral	purpose of payment	curated	mt-edited	
+transferencia internacional	H	neutral	international wire	curated	mt-edited	
+banco emisor	M	neutral	sending bank	curated	mt-edited	
+banco receptor	M	neutral	receiving bank	curated	mt-edited	
+banco remitente	M	neutral	sending bank	curated	mt-edited	
+casa de cambio	M	neutral	remittance	curated	mt-edited	
+código de propósito	M	neutral	purpose code	curated	mt-edited	
+código swift	M	neutral	swift code	curated	mt-edited	
+gastos our	M	neutral	our charges	curated	mt-edited	
+nuestros gastos	M	neutral	our charges	curated	mt-edited	
+transfronterizo	M	neutral	cross-border	curated	mt-edited	
+clabe	L	neutral	iban	curated	mt-edited	Mexico
+remesa	L	neutral	remittance	curated	mt-edited	
+remesas	L	neutral	remittance	curated	mt-edited	
+tipo de cambio	L	neutral	exchange rate	curated	mt-edited	

@@ -15,7 +15,7 @@ and `/explain` repeats it on every card.
 
 ```text
 categories.tsv          one row per category: id, title, catches, does_not_prove
-<lang>/<category>.tsv   the terms, one file per category and language (en, de, fr, ru)
+<lang>/<category>.tsv   the terms, one file per category and language (en, de, fr, ru, es, he, ar)
 licenses/               licence texts of upstream sources that require one to travel with the data
 ```
 
@@ -49,7 +49,7 @@ Tab-separated, with a header row:
 | `term` | The word or phrase as people write it. A trailing `*` makes it a prefix: `bestech*` matches `Bestechung` and `bestechen`. A `*` anywhere else is refused at load time. |
 | `tier` | `H`, `M` or `L`. `H` is rarely innocent and worth a look alone. `M` has a routine reading in some context. `L` is a common word that counts only beside other signals. |
 | `speaker` | Who usually writes it: `actor` (a participant), `insider` (an uneasy participant or a future witness), `accuser` (whistleblower, lawyer, auditor, journalist, policy), `neutral` (document furniture). |
-| `concept` | The English term this row expresses. In `en/` it is the term itself. It groups one idea across languages. |
+| `concept` | The English term this row expresses, spelt exactly as its `en/` row, with the `*` of a stem. In `en/` it is the term itself. It groups one idea across languages. |
 | `source` | Where the term comes from; see [Sources](#sources). |
 | `review` | `original` for the English lists. `mt-edited` for a row drafted by machine translation and then rewritten by hand into an idiomatic equivalent, but not yet read by a native speaker. |
 | `note` | Free text: why the term is there, or what it is often confused with. |
@@ -64,6 +64,39 @@ start. So `leak` does not match inside `bleak`, and `откат` does not match 
 written `откат*`. That is why several Russian and German rows list inflected forms explicitly
 instead of using a stem. A stem such as `секрет*` would also match `секретарь` (secretary), and
 `Leck*` would match `lecker` (tasty).
+
+### Arabic and Hebrew
+
+Both scripts join the conjunction, the article and the one-letter prepositions to the next word:
+`والرشوة` is "and the bribe", `בשוחד` "with a bribe". The lists write the bare word, and the
+matcher adds the common proclitic chains in front of a term's first word by itself, so `رشوة`
+also matches `بالرشوة` and `שוחד` also matches `והשוחד`. A single word of fewer than four letters
+gets no such variants, because a prefix on a short word too often spells another word (`מ` +
+`ספר` is `מספר`, number), and the lists spell out the joined forms of those they need (`רצח`,
+`הרצח`, `ברצח`). A phrase gets the variants whatever the length of its first word.
+
+Only the first word is prefixed. An Arabic adjective agrees with its noun in definiteness
+(`مقبرة جماعية`, `المقابر الجماعية`), and a Hebrew construct takes the article on its second noun
+(`קבר אחים`, `קבר האחים`), so the definite forms that matter are rows of their own, noted
+`definite form` or `definite construct`.
+
+The normalisation already joins the spellings everyday typing mixes: pointed and unpointed Hebrew,
+`أ` `إ` `آ` and a bare `ا`, `ة` and `ه`, `ى` and `ي`, a word stretched with tatweel, and
+Arabic-Indic digits. Hebrew terms are written in full spelling (`שוחד`, not `שחד`), which is how
+unpointed text writes them.
+
+### Romanised rows
+
+Much Arabic chat is written in Arabizi, Latin letters with digits standing for the sounds Latin
+lacks (`3` for `ع`, `7` for `ح`, `2` for `ء`, `5` for `خ`). In one Egyptian SMS and chat corpus
+most conversations were entirely Arabizi, so an Arabic-script list alone misses the register that
+matters most. The `ar/` lists hold Arabizi rows for the chat-register categories (concealment,
+bribery, threats, pressure, scams), noted `Arabizi` with the dialect. The fold keeps digits inside
+a word, so `ma7adsh` is one word. Arabizi has no standard spelling, so a phrase has one row per
+common spelling (`ma7adsh hay3raf`, `mahadesh hay3raf`).
+
+Hebrew chat keeps Hebrew script, so `he/` romanises only the few Hebrew words that English text
+writes in Latin letters (`protektzia`, `kombina`), noted `romanised Hebrew`.
 
 A translation that folds to the same string as its English term is not repeated, because the
 English row already matches it in text of any language. The same holds for language-neutral terms:
@@ -101,6 +134,8 @@ investigators' list, which itself follows the fraud phrases Ernst & Young and th
 | `rome-statute` | The elements of genocide, crimes against humanity and war crimes and the rules on incitement, command responsibility and superior orders, Articles 6–8, 25, 28 and 33 of the Rome Statute of the International Criminal Court, from its authentic Arabic, English, French, Russian and Spanish texts | treaty text |
 | `genocide-convention` | The punishable acts of Article III, Convention on the Prevention and Punishment of the Crime of Genocide | treaty text |
 | `un-atrocity-framework` | Incitement and dehumanisation indicators, **paraphrased**, UN *Framework of Analysis for Atrocity Crimes* | paraphrase only |
+| `il-nazi-law-1950` | The definitions of crimes against humanity and war crimes, Nazis and Nazi Collaborators (Punishment) Law, 5710-1950 | Israeli statute |
+| `il-genocide-law-1950` | The Hebrew legal name of genocide and its punishable acts, Crime of Genocide (Prevention and Punishment) Law, 5710-1950 | Israeli statute |
 | `vstgb` | German Code of Crimes against International Law (Völkerstrafgesetzbuch), §§ 3–12 | German statute, in the public domain under § 5 UrhG |
 
 Lists that would fit here but cannot be used: HurtLex (non-commercial licence), Hatebase and its

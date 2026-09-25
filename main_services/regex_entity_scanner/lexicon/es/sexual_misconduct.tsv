@@ -1,0 +1,53 @@
+term	tier	speaker	concept	source	review	note
+abuso deshonesto	H	accuser	molest*	curated	mt-edited	
+abuso infantil	H	accuser	child abuse	curated	mt-edited	
+abuso sexual	H	accuser	sexual abuse	curated	mt-edited	
+abuso sexual infantil	H	accuser	child sexual abuse	curated	mt-edited	
+acoso sexual	H	accuser	sexual harassment	curated	mt-edited	
+agresión sexual	H	accuser	sexual assault	curated	mt-edited	
+ambiente laboral hostil	H	accuser	hostile work environment	curated	mt-edited	
+conducta sexual inapropiada	H	accuser	sexual misconduct	curated	mt-edited	
+entorno de trabajo hostil	H	accuser	hostile work environment	curated	mt-edited	
+explotación sexual comercial	H	accuser	commercial sexual exploitation	curated	mt-edited	
+imágenes sexuales de menores	H	accuser	indecent images	curated	mt-edited	
+insinuaciones no deseadas	H	accuser	unwanted advances	curated	mt-edited	
+maltrato infantil	H	accuser	child abuse	curated	mt-edited	
+material de abuso sexual infantil	H	accuser	csam	curated	mt-edited	
+no consentida	H	accuser	non-consensual	curated	mt-edited	
+no consentido	H	accuser	non-consensual	curated	mt-edited	
+no le digas a tu mamá	H	actor	don't tell your parents	curated	mt-edited	grooming indicator
+no les digas a tus padres	H	actor	don't tell your parents	curated	mt-edited	grooming indicator
+no les digas a tus papás	H	actor	don't tell your parents	curated	mt-edited	grooming indicator
+nuestro pequeño secreto	H	actor	our little secret	curated	mt-edited	grooming indicator
+nuestro secretito	H	actor	our little secret	curated	mt-edited	grooming indicator
+porno de venganza	H	accuser	revenge porn	curated	mt-edited	
+pornografía infantil	H	accuser	child pornography	curated	mt-edited	
+pornovenganza	H	accuser	revenge porn	curated	mt-edited	
+prostitución forzada	H	accuser	forced prostitution	curated	mt-edited	
+sexo comercial	H	accuser	commercial sex	fincen-human-trafficking	mt-edited	FinCEN HT
+sextorsión	H	accuser	sextortion	curated	mt-edited	
+tocamientos inapropiados	H	accuser	inappropriate touching	curated	mt-edited	
+tocamientos indebidos	H	accuser	inappropriate touching	curated	mt-edited	
+trata con fines de explotación sexual	H	accuser	sex trafficking	curated	mt-edited	
+trata de blancas	H	accuser	human trafficking	curated	mt-edited	
+trata de personas	H	accuser	human trafficking	curated	mt-edited	
+tráfico sexual	H	accuser	sex trafficking	curated	mt-edited	
+agencia de acompañantes	M	accuser	escort agency	fincen-human-trafficking	mt-edited	FinCEN HT
+agencia de escorts	M	accuser	escort agency	fincen-human-trafficking	mt-edited	FinCEN HT
+burdel	M	accuser	brothel	curated	mt-edited	
+imágenes íntimas	M	accuser	intimate images	curated	mt-edited	
+manoseo	M	accuser	molest*	curated	mt-edited	
+menor de edad	M	accuser	underage	curated	mt-edited	
+mercado de la darknet	M	accuser	darknet market	fincen-human-trafficking	mt-edited	FinCEN HT
+padrote	M	accuser	pimp	curated	mt-edited	Mexico
+prostíbulo	M	accuser	brothel	curated	mt-edited	
+proxeneta	M	accuser	pimp	curated	mt-edited	
+servicio de acompañantes	M	accuser	escort service	curated	mt-edited	
+sin consentimiento	M	accuser	without consent	curated	mt-edited	
+violación	M	accuser	rape	curated	mt-edited	also a breach of a rule
+violador	M	accuser	rape	curated	mt-edited	
+anuncios clasificados	L	accuser	online classified	fincen-human-trafficking	mt-edited	FinCEN HT
+explotación	L	accuser	exploitation	curated	mt-edited	
+habla en nombre de	L	accuser	speaks on behalf of	fincen-human-trafficking	mt-edited	FinCEN HT behavioural
+salón de masajes	L	accuser	massage business	fincen-human-trafficking	mt-edited	FinCEN HT
+tarjeta de prepago	L	accuser	prepaid access card	fincen-human-trafficking	mt-edited	FinCEN HT

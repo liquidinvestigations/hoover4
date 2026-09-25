@@ -1,0 +1,78 @@
+term	tier	speaker	concept	source	review	note
+acudir al regulador	H	accuser	go to the regulator	curated	mt-edited	
+esto no me huele bien	H	insider	this doesn't feel right	curated	mt-edited	
+esto no me parece bien	H	insider	this doesn't feel right	curated	mt-edited	
+ir al regulador	H	accuser	go to the regulator	curated	mt-edited	
+lo devolveremos	H	insider	we'll pay it back	curated	mt-edited	
+lo vamos a devolver	H	insider	we'll pay it back	curated	mt-edited	
+los jefes me presionan	H	insider	bosses are pushing me	ey-fbi-2013	mt-edited	pressure
+me juego el puesto	H	insider	my job is on the line	curated	mt-edited	
+me lo deben	H	insider	they owe it to me	investigator-list	mt-edited	rationalisation (entitlement)
+mi bono depende de esto	H	insider	my bonus depends on this	ey-fbi-2013	mt-edited	pressure
+mi jefe me está presionando	H	insider	bosses are pushing me	ey-fbi-2013	mt-edited	pressure
+mi trabajo está en juego	H	insider	my job is on the line	curated	mt-edited	
+nadie sale lastimado	H	insider	nobody gets hurt	curated	mt-edited	
+nadie sale perjudicado	H	insider	nobody gets hurt	curated	mt-edited	
+ni lo van a notar	H	insider	won't miss it	investigator-list	mt-edited	rationalisation (victimless)
+ni se van a enterar	H	insider	they'll never notice	curated	mt-edited	
+no le hace daño a nadie	H	insider	not hurting anyone	investigator-list	mt-edited	rationalisation (victimless)
+no lo van a extrañar	H	insider	won't miss it	investigator-list	mt-edited	rationalisation (victimless)
+no me apunté para esto	H	insider	i didn't sign up for this	curated	mt-edited	
+no me pagan lo suficiente	H	insider	they don't pay me enough	ey-fbi-2013	mt-edited	rationalisation
+no quiero ser parte de esto	H	insider	want no part of this	investigator-list	mt-edited	dissent
+no quiero tener nada que ver con esto	H	insider	want no part of this	investigator-list	mt-edited	dissent
+nunca se van a dar cuenta	H	insider	they'll never notice	curated	mt-edited	
+presiones de arriba	H	insider	pressure from above	curated	mt-edited	
+presión desde arriba	H	insider	pressure from above	curated	mt-edited	
+solo cumplía órdenes	H	insider	just following orders	curated	mt-edited	
+solo es un préstamo	H	insider	just borrowing	curated	mt-edited	
+solo lo estoy tomando prestado	H	insider	just borrowing	curated	mt-edited	
+solo seguía órdenes	H	insider	just following orders	curated	mt-edited	
+todo el mundo lo hace	H	insider	everybody does it	curated	mt-edited	
+todos lo hacen	H	insider	everyone does it	curated	mt-edited	
+técnicamente legal	H	insider	technically legal	curated	mt-edited	
+alcanzar las cifras	M	insider	reach the numbers	ey-fbi-2013	mt-edited	pressure
+bandera roja	M	accuser	red flag	investigator-list	mt-edited	also compliance vocabulary
+canal de denuncias	M	accuser	whistleblower hotline	ey-fbi-2013	mt-edited	
+cruzar la línea	M	insider	crossing the line	curated	mt-edited	
+cubrirme las espaldas	M	insider	cover myself	curated	mt-edited	
+denunciante	M	accuser	whistleblower	curated	mt-edited	
+el objetivo es muy alto	M	insider	the goal is very high	ey-fbi-2013	mt-edited	pressure
+empresa en marcha	M	accuser	going concern	curated	mt-edited	
+esto no está bien	M	insider	this isn't right	curated	mt-edited	
+estoy incómoda	M	insider	i'm uneasy	curated	mt-edited	
+estoy incómodo	M	insider	i'm uneasy	curated	mt-edited	
+falta de liquidez	M	insider	cash crunch	curated	mt-edited	
+inversión fallida	M	insider	failed investment	investigator-list	mt-edited	
+la meta es muy alta	M	insider	the goal is very high	ey-fbi-2013	mt-edited	pressure
+línea ética	M	accuser	whistleblower hotline	ey-fbi-2013	mt-edited	
+me dieron instrucciones de	M	insider	i was instructed to	curated	mt-edited	
+me dijo que lo hiciera	M	insider	told me to	investigator-list	mt-edited	pressure, or the defence of following orders
+me niego a	M	accuser	i refuse to	curated	mt-edited	
+me opongo	M	accuser	i object	curated	mt-edited	
+me ordenaron	M	insider	i was instructed to	curated	mt-edited	
+no es ético	M	accuser	not ethical	investigator-list	mt-edited	dissent
+no estoy cómoda	M	insider	not comfortable	investigator-list	mt-edited	dissent
+no estoy cómodo	M	insider	not comfortable	investigator-list	mt-edited	dissent
+no estoy de acuerdo con este enfoque	M	accuser	i disagree with this approach	cftc-barclays-libor	mt-edited	dissent
+no me queda otra	M	insider	i have no choice	curated	mt-edited	
+no me siento cómoda	M	insider	not comfortable	investigator-list	mt-edited	dissent
+no me siento cómodo	M	insider	not comfortable	investigator-list	mt-edited	dissent
+no tenemos derecho	M	insider	don't have the right	investigator-list	mt-edited	
+no tengo opción	M	insider	i have no choice	curated	mt-edited	
+poco ético	M	accuser	not ethical	investigator-list	mt-edited	dissent
+que conste en acta	M	insider	i want it noted	curated	mt-edited	
+quiero que conste	M	insider	i want it noted	curated	mt-edited	
+señal de alarma	M	accuser	red flag	investigator-list	mt-edited	also compliance vocabulary
+sin víctimas	M	insider	victimless	curated	mt-edited	
+solo por esta vez	M	insider	just this once	curated	mt-edited	
+zona gris	M	insider	grey area	investigator-list	mt-edited	rationalisation
+a regañadientes	L	insider	reluctantly	cftc-barclays-libor	mt-edited	LIBOR
+en quiebra	L	insider	bankrupt	investigator-list	mt-edited	also pressure
+graves preocupaciones	L	accuser	serious concerns	cftc-barclays-libor	mt-edited	dissent
+no me arrepiento	L	insider	no regrets	investigator-list	mt-edited	
+para que conste	L	insider	for the record	curated	mt-edited	
+serias preocupaciones	L	accuser	serious concerns	cftc-barclays-libor	mt-edited	dissent
+sospechoso	L	accuser	suspicious	investigator-list	mt-edited	
+vacío legal	L	insider	loophole	curated	mt-edited	
+vergonzoso	L	insider	embarrassing	investigator-list	mt-edited	

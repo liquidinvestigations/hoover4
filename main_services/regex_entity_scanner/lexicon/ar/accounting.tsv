@@ -1,0 +1,49 @@
+term	tier	speaker	concept	source	review	note
+إغراق قنوات التوزيع	H	actor	channel stuffing	curated	mt-edited	
+اتفاق جانبي	H	actor	side agreement	curated	mt-edited	
+التلاعب بالدفاتر	H	actor	cook the books	curated	mt-edited	
+الفواتير المزورة	H	actor	fake invoice	curated	mt-edited	definite form
+الفواتير الوهمية	H	actor	dummy invoice	curated	mt-edited	definite form
+الموظفين الوهميين	H	actor	ghost employee	curated	mt-edited	definite form
+تأجيل المصروفات	H	actor	push out the expenses	curated	mt-edited	
+تأريخ بأثر رجعي	H	actor	backdate	investigator-list	mt-edited	
+تجميل الأرقام	H	actor	massage the numbers	curated	mt-edited	
+تزبيط الأرقام	H	actor	massage the numbers	curated	mt-edited	Levantine
+تزوير التاريخ	H	actor	backdate	investigator-list	mt-edited	
+تزوير الحسابات	H	actor	cook the books	curated	mt-edited	
+تسريع الاعتراف بالإيراد	H	actor	recognize it early	curated	mt-edited	
+تظبيط الأرقام	H	actor	massage the numbers	curated	mt-edited	Egyptian
+تقديم الإيرادات	H	actor	pull earnings forward	investigator-list	mt-edited	
+خارج الحسابات	H	actor	off the books	investigator-list	mt-edited	
+خارج الدفاتر	H	actor	off the books	investigator-list	mt-edited	
+خطاب جانبي	H	actor	side letter	curated	mt-edited	
+طبخ الميزانية	H	actor	cook the books	curated	mt-edited	Egyptian
+فاتورة مزورة	H	actor	fake invoice	curated	mt-edited	
+فاتورة وهمية	H	actor	dummy invoice	curated	mt-edited	
+فواتير مزورة	H	actor	fake invoice	curated	mt-edited	
+فواتير وهمية	H	actor	dummy invoice	curated	mt-edited	
+معاملات دائرية	H	actor	round tripping	curated	mt-edited	
+مورد صوري	H	actor	phantom vendor	curated	mt-edited	
+مورد وهمي	H	actor	phantom vendor	curated	mt-edited	
+موظف وهمي	H	actor	ghost employee	curated	mt-edited	
+موظفين وهميين	H	actor	ghost employee	curated	mt-edited	
+إعادة إصدار القوائم المالية	M	accuser	restatement	curated	mt-edited	
+إعدام دين	M	actor	write off	investigator-list	mt-edited	routine accounting
+بدون فاتورة	M	actor	off the books	investigator-list	mt-edited	
+تجميل الميزانية	M	actor	window dressing	curated	mt-edited	
+تمهيد الأرباح	M	actor	smooth earnings	curated	mt-edited	
+خارج الميزانية	M	actor	off balance sheet	investigator-list	mt-edited	also lawful off-balance-sheet financing
+رسملة المصروف	M	actor	capitalize the expense	curated	mt-edited	
+شطب الدين	M	actor	write off	investigator-list	mt-edited	routine accounting
+غير مسجل	M	actor	unreported	investigator-list	mt-edited	
+غير مقيد	M	actor	unreported	investigator-list	mt-edited	
+قيد يدوي	M	actor	manual journal entry	curated	mt-edited	
+نصلحها بعدين	M	actor	fix it later	investigator-list	mt-edited	
+نظبطها بعدين	M	actor	fix it later	investigator-list	mt-edited	Egyptian
+بضائع مجانية	L	actor	free goods	doj-sec-fcpa-guide	mt-edited	FCPA
+حسابات بين الشركات	L	actor	intercompany accounts	doj-sec-fcpa-guide	mt-edited	FCPA
+سحب من العهدة	L	actor	petty cash withdrawal	doj-sec-fcpa-guide	mt-edited	FCPA
+سد الفجوة	L	actor	close the gap	curated	mt-edited	
+غير منتظم	L	actor	irregular	investigator-list	mt-edited	
+مصاريف نثرية	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	mt-edited	FCPA
+مصروفات متنوعة	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	mt-edited	FCPA

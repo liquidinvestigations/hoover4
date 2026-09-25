@@ -1,0 +1,48 @@
+term	tier	speaker	concept	source	review	note
+אף אחד מהם לא יישאר בחיים	H	actor	none of them should survive	curated	mt-edited	
+גרימת נזק חמור	H	accuser	serious bodily or mental harm	il-nazi-law-1950	mt-edited	
+הסתה ישירה ופומבית	H	accuser	direct and public incitement	rome-statute	mt-edited	
+הסתה להשמדת עם	H	accuser	incitement to genocide	curated	mt-edited	
+הסתה לרצח עם	H	accuser	incitement to genocide	curated	mt-edited	
+העברת ילדים בדרך כפייה	H	accuser	forcibly transferring children	il-nazi-law-1950	mt-edited	
+העברת ילדים בכפייה	H	accuser	forcible transfer of children	curated	mt-edited	
+הריגת בני הקבוצה	H	accuser	killing members of the group	rome-statute	mt-edited	
+כוונה להשמיד	H	accuser	intent to destroy	il-nazi-law-1950	mt-edited	
+להרוג את כולם	H	actor	kill them all	un-atrocity-framework	mt-edited	call to destroy a group
+להשמיד אותם	H	actor	exterminate them	un-atrocity-framework	mt-edited	call to destroy a group
+להשמיד את כולם	H	actor	exterminate them	un-atrocity-framework	mt-edited	call to destroy a group
+למחוק אותם מהמפה	H	actor	wipe them off the map	un-atrocity-framework	mt-edited	call to destroy a group
+למחוק אותם מעל פני האדמה	H	actor	wipe them off the face of the earth	un-atrocity-framework	mt-edited	call to destroy a group
+למנוע את הילודה	H	accuser	prevent births within the group	il-nazi-law-1950	mt-edited	
+למנוע ילודה	H	accuser	prevent births within the group	il-nazi-law-1950	mt-edited	
+מחנה ההשמדה	H	accuser	extermination camp*	curated	mt-edited	definite construct
+מחנה השמדה	H	accuser	extermination camp*	curated	mt-edited	
+מחנות ההשמדה	H	accuser	extermination camp*	curated	mt-edited	definite construct
+מחנות השמדה	H	accuser	extermination camp*	curated	mt-edited	
+נזק חמור בגוף או בנפש	H	accuser	serious bodily or mental harm	il-nazi-law-1950	mt-edited	
+פשע השמדת עם	H	accuser	crime of genocide	il-genocide-law-1950	mt-edited	
+קבוצה לאומית, אתנית, גזעית או דתית	H	accuser	national, ethnical, racial or religious group	curated	mt-edited	
+קיבוץ לאומי, אתני, גזעי או דתי	H	accuser	national, ethnical, racial or religious group	il-genocide-law-1950	mt-edited	
+קשירת קשר לביצוע השמדת עם	H	accuser	conspiracy to commit genocide	il-genocide-law-1950	mt-edited	
+שותפות להשמדת עם	H	accuser	complicity in genocide	il-genocide-law-1950	mt-edited	
+שותפות לרצח עם	H	accuser	complicity in genocide	curated	mt-edited	
+תנאי חיים שיש בהם כדי להביא	H	accuser	conditions of life calculated to bring about	il-nazi-law-1950	mt-edited	
+בגלל מוצאם האתני	M	accuser	because of their ethnicity	curated	mt-edited	
+ג׳נוסייד	M	accuser	genocid*	curated	mt-edited	
+הכחשת רצח עם	M	accuser	genocide denial	curated	mt-edited	
+הכחשת שואה	M	accuser	genocide denial	curated	mt-edited	
+המרת דת בכפייה	M	accuser	forced conversion*	curated	mt-edited	
+הפתרון הסופי	M	accuser	final solution	curated	mt-edited	Holocaust
+השמדת העם	M	accuser	genocid*	il-genocide-law-1950	mt-edited	definite construct
+השמדת עם	M	accuser	genocid*	il-genocide-law-1950	mt-edited	the legal term
+טוהר הגזע	M	actor	racial purity	curated	mt-edited	
+מחנה מוות	M	accuser	death camp*	curated	mt-edited	also history teaching
+מחנות מוות	M	accuser	death camp*	curated	mt-edited	also history teaching
+רצח העם	M	accuser	genocid*	curated	mt-edited	definite construct
+רצח עם	M	accuser	genocid*	curated	mt-edited	also political and historical argument
+תת אדם	M	actor	subhuman	un-atrocity-framework	mt-edited	dehumanising language
+תתי אדם	M	actor	subhumans	un-atrocity-framework	mt-edited	dehumanising language
+ג׳וקים	L	actor	cockroaches	un-atrocity-framework	mt-edited	dehumanising language only beside other signals
+טפילים	L	actor	vermin	un-atrocity-framework	mt-edited	dehumanising language only beside other signals
+מקקים	L	actor	cockroaches	un-atrocity-framework	mt-edited	dehumanising language only beside other signals
+שואה	L	accuser	holocaust	curated	mt-edited	also history teaching and any disaster

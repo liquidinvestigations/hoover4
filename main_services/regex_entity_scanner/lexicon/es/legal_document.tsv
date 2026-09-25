@@ -1,0 +1,49 @@
+term	tier	speaker	concept	source	review	note
+antedicho	H	neutral	aforesaid	curated	mt-edited	
+beneficiario tercero	H	neutral	third party beneficiary	cuad	mt-edited	CUAD
+declaración bajo juramento	H	neutral	sworn statement	curated	mt-edited	
+declaración jurada	H	neutral	affidavit	curated	mt-edited	
+derecho de preferencia	H	neutral	right of first refusal	cuad	mt-edited	CUAD
+derecho de primera oferta	H	neutral	right of first offer	cuad	mt-edited	CUAD
+derecho de tanteo	H	neutral	right of first refusal	cuad	mt-edited	CUAD
+en fe de lo cual	H	neutral	in witness whereof	curated	mt-edited	
+en lo sucesivo	H	neutral	hereinafter	curated	mt-edited	
+en testimonio de lo cual	H	neutral	in witness whereof	curated	mt-edited	
+estipulación a favor de tercero	H	neutral	third party beneficiary	cuad	mt-edited	CUAD
+intención de obligarse jurídicamente	H	neutral	intention to be legally bound	mou-definition	mt-edited	
+notario público	H	neutral	notary public	curated	mt-edited	
+pacto de no demandar	H	neutral	covenant not to sue	cuad	mt-edited	CUAD
+poder notarial	H	neutral	power of attorney	curated	mt-edited	
+privilegio abogado-cliente	H	neutral	attorney-client privilege	curated	mt-edited	
+secreto profesional	H	neutral	attorney-client privilege	curated	mt-edited	also medical confidentiality
+susodicho	H	neutral	aforesaid	curated	mt-edited	
+ante notario	M	neutral	notarized	curated	mt-edited	
+anteriormente mencionado	M	neutral	aforementioned	curated	mt-edited	
+asesor jurídico	M	neutral	legal counsel	curated	mt-edited	
+asesor legal	M	neutral	legal counsel	curated	mt-edited	
+cambio de control	M	neutral	change of control	cuad	mt-edited	CUAD
+carta poder	M	neutral	power of attorney	curated	mt-edited	
+de conformidad con	M	neutral	pursuant to	curated	mt-edited	
+demandado	M	neutral	defendant	curated	mt-edited	
+demandante	M	neutral	claimant	curated	mt-edited	
+el suscrito	M	neutral	the undersigned	curated	mt-edited	
+expediente judicial	M	neutral	docket	curated	mt-edited	
+la suscrita	M	neutral	the undersigned	curated	mt-edited	
+los suscritos	M	neutral	the undersigned	curated	mt-edited	
+mencionado anteriormente	M	neutral	aforementioned	curated	mt-edited	
+notariada	M	neutral	notarized	curated	mt-edited	
+notariado	M	neutral	notarized	curated	mt-edited	
+número de expediente	M	neutral	case no	curated	mt-edited	case number header
+oferta y aceptación	M	neutral	offer and acceptance	mou-definition	mt-edited	
+orden judicial	M	neutral	court order	curated	mt-edited	
+parte actora	M	neutral	plaintiff	investigator-list	mt-edited	
+parte demandada	M	neutral	defendant	curated	mt-edited	
+por la presente	M	neutral	hereby	curated	mt-edited	
+por medio del presente	M	neutral	hereby	curated	mt-edited	
+considerando	L	neutral	whereas	curated	mt-edited	also the ordinary gerund
+estatuto	L	neutral	statute	curated	mt-edited	
+fallo	L	neutral	ruling	curated	mt-edited	also a fault
+no obstante	L	neutral	notwithstanding	curated	mt-edited	also an ordinary connective
+recurrido	L	neutral	respondent	curated	mt-edited	
+sentencia	L	neutral	judgment	curated	mt-edited	
+sin perjuicio	L	neutral	without prejudice	curated	mt-edited	an ordinary connective in Spanish, unlike the English privilege marker

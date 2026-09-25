@@ -1,0 +1,92 @@
+term	tier	speaker	concept	source	review	note
+fata7 mo5o	H	actor	grease his palm	curated	mt-edited	Arabizi, Egyptian
+fata7 mokho	H	actor	grease his palm	curated	mt-edited	Arabizi, Egyptian
+ta7t el tarabeza	H	actor	under the table	curated	mt-edited	Arabizi, Egyptian
+ta7t el trabeza	H	actor	under the table	curated	mt-edited	Arabizi, Egyptian
+افتح مخه	H	actor	grease his palm	curated	mt-edited	Egyptian
+بدون تفتيش	H	actor	no inspection	investigator-list	mt-edited	
+تثبيت الأسعار	H	actor	price fixing	curated	mt-edited	
+تحت الترابيزة	H	actor	under the table	curated	mt-edited	Egyptian
+تحت الطاولة	H	actor	under the table	curated	mt-edited	
+تلاعب بالمناقصات	H	actor	bid rigging	curated	mt-edited	
+تواطؤ في المناقصات	H	actor	bid rigging	curated	mt-edited	
+خدمات موصوفة بشكل مبهم	H	actor	vaguely described services	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+خصم كبير بشكل غير معقول	H	actor	unreasonably large discount	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+دفعات ودية	H	actor	friendly payments	investigator-list	mt-edited	
+دفعة تسهيل	H	actor	facilitation payment	curated	mt-edited	
+دفعة ودية	H	actor	friendly payment	investigator-list	mt-edited	
+رجلنا في الوزارة	H	actor	our friend in the ministry	curated	mt-edited	
+رسوم تسريع	H	actor	expedite fee	curated	mt-edited	
+رسوم خاصة	H	actor	special fees	investigator-list	mt-edited	
+صاحبنا في الوزارة	H	actor	our friend in the ministry	curated	mt-edited	
+ظرف فيه فلوس	H	actor	brown envelope	curated	mt-edited	
+ظرف مليان فلوس	H	actor	brown envelope	curated	mt-edited	
+عرض صوري	H	actor	cover bid	curated	mt-edited	
+عمولات مبالغ فيها	H	actor	excessive commission	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+عمولة مبالغ فيها	H	actor	excessive commission	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+عمولة من تحت الطاولة	H	accuser	kickback	curated	mt-edited	
+غض الطرف	H	actor	turn a blind eye	curated	mt-edited	
+فتح مخه	H	actor	grease his palm	curated	mt-edited	Egyptian
+فلوس في ظرف	H	actor	cash in an envelope	curated	mt-edited	
+كاش في ظرف	H	actor	cash in an envelope	curated	mt-edited	
+مدفوعات تسهيل	H	actor	facilitation payment	curated	mt-edited	
+مغلف نقدي	H	actor	brown envelope	curated	mt-edited	
+مفصلة على المقاس	H	actor	rigged tender	curated	mt-edited	a tender cut to one bidder
+مناقصة مزورة	H	actor	rigged tender	curated	mt-edited	
+هدية للوزير	H	actor	gift for the minister	curated	mt-edited	
+هنراضيه	H	actor	make it worth his while	curated	mt-edited	Egyptian
+هنراضيها	H	actor	make it worth her while	curated	mt-edited	Egyptian
+هنراضيهم	H	actor	make it worth their while	curated	mt-edited	Egyptian
+يغمض عينه	H	actor	look the other way	curated	mt-edited	
+2ekramiya	M	actor	tea money	curated	mt-edited	Arabizi
+ekramiya	M	actor	tea money	curated	mt-edited	Arabizi
+rashawi	M	accuser	bribe	investigator-list	mt-edited	Arabizi
+rashwa	M	accuser	bribe	investigator-list	mt-edited	Arabizi
+rashwe	M	accuser	bribe	investigator-list	mt-edited	Arabizi, Levantine
+wasata	M	actor	wasta	curated	mt-edited	Arabizi
+أتعاب الوسيط	M	actor	finder's fee	curated	mt-edited	
+إكراميات	M	actor	tea money	curated	mt-edited	
+إكرامية	M	actor	tea money	curated	mt-edited	also a lawful tip
+ارتشاء	M	accuser	bribe	investigator-list	mt-edited	
+اهتم بيه	M	actor	take care of him	curated	mt-edited	Egyptian
+تقاسم الأسواق	M	actor	market allocation	curated	mt-edited	
+حساب بنكي في الخارج	M	actor	offshore bank account	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+حصته	M	actor	his cut	curated	mt-edited	
+حوافز علمية	M	actor	scientific incentives	doj-sec-fcpa-guide	mt-edited	FCPA
+خدمة مقابل خدمة	M	actor	quid pro quo	curated	mt-edited	
+رسوم خدمة ما بعد البيع	M	actor	after sales service fees	doj-sec-fcpa-guide	mt-edited	FCPA
+رشاوى	M	accuser	bribe	investigator-list	mt-edited	
+رشوة	M	accuser	bribe	investigator-list	mt-edited	also compliance training
+شيلني وأشيلك	M	actor	quid pro quo	curated	mt-edited	Egyptian
+طنش	M	actor	look the other way	curated	mt-edited	Egyptian
+ظبطه	M	actor	take care of him	curated	mt-edited	Egyptian
+ظبطها	M	actor	take care of her	curated	mt-edited	Egyptian
+ظبطهم	M	actor	take care of them	curated	mt-edited	Egyptian
+عمولة نجاح	M	actor	success fee	curated	mt-edited	
+عمولة وساطة	M	actor	finder's fee	curated	mt-edited	
+فساد	M	accuser	corruption	investigator-list	mt-edited	also compliance training and news
+محسوبية	M	actor	wasta	curated	mt-edited	
+مرتشي	M	accuser	bribe	investigator-list	mt-edited	
+مسؤول أجنبي	M	actor	foreign official	doj-sec-fcpa-guide	mt-edited	FCPA
+موظف عمومي أجنبي	M	actor	foreign official	doj-sec-fcpa-guide	mt-edited	FCPA
+نصيبه	M	actor	his cut	curated	mt-edited	
+واسطة	M	actor	wasta	curated	mt-edited	
+وسطة	M	actor	wasta	curated	mt-edited	colloquial
+يرتشي	M	accuser	bribe	investigator-list	mt-edited	
+7elawa	L	actor	sweetener	curated	mt-edited	Arabizi, Egyptian
+أتعاب استشارية	L	actor	consulting fees	doj-sec-fcpa-guide	mt-edited	FCPA mischaracterisation
+السفر والترفيه	L	actor	travel and entertainment	doj-sec-fcpa-guide	mt-edited	FCPA
+بقشيش	L	actor	tea money	curated	mt-edited	
+جميلك على راسي	L	actor	i owe you big time	fsa-cftc-libor-chats	mt-edited	Egyptian
+حلاوة	L	actor	sweetener	curated	mt-edited	Egyptian; also sweets
+خصومات أو حسومات	L	actor	rebates or discounts	doj-sec-fcpa-guide	mt-edited	FCPA
+زجاجة شمبانيا	L	actor	bottle of bollinger	fsa-cftc-libor-chats	mt-edited	LIBOR reciprocity
+عمولات أو إتاوات	L	actor	commissions or royalties	doj-sec-fcpa-guide	mt-edited	FCPA
+عمولة	L	actor	kickback	curated	mt-edited	also a lawful commission
+غير رسمي	L	actor	unofficial	investigator-list	mt-edited	
+فاسد	L	accuser	corrupt	investigator-list	mt-edited	
+قذر	L	actor	dirty	investigator-list	mt-edited	
+مشبوه	L	accuser	shady	investigator-list	mt-edited	
+مصروفات البيع والتسويق	L	actor	sales and marketing expenses	doj-sec-fcpa-guide	mt-edited	FCPA
+ملتوي	L	accuser	crooked	investigator-list	mt-edited	
+وسخ	L	actor	dirty	investigator-list	mt-edited	

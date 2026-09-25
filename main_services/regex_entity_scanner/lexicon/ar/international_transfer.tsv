@@ -1,0 +1,28 @@
+term	tier	speaker	concept	source	review	note
+الحوالة غير الرسمية	H	neutral	hawala	curated	mt-edited	
+الغرض من التحويل	H	neutral	purpose of payment	curated	mt-edited	
+المستفيد النهائي	H	neutral	ultimate beneficiary	curated	mt-edited	
+بنك مراسل	H	neutral	correspondent bank	curated	mt-edited	
+بنك وسيط	H	neutral	intermediary bank	curated	mt-edited	
+تحويل دولي	H	neutral	international wire	curated	mt-edited	
+تفاصيل الرسوم	H	neutral	details of charges	curated	mt-edited	MT103 field 71A
+حوالة خارجية	H	neutral	international wire	curated	mt-edited	
+حوالة دولية	H	neutral	international wire	curated	mt-edited	
+حوالجي	H	neutral	hawala	curated	mt-edited	a hawala broker
+دفعة تغطية	H	neutral	cover payment	mt103-pacs008	mt-edited	
+غرض الحوالة	H	neutral	purpose of payment	curated	mt-edited	
+مؤسسة وسيطة	H	neutral	intermediary institution	mt103-pacs008	mt-edited	MT103 :56A:
+مدفوعات عابرة للحدود	H	neutral	cross-border payment	curated	mt-edited	
+نظام الحوالة	H	neutral	hawala	curated	mt-edited	
+البنك المرسل	M	neutral	sending bank	curated	mt-edited	
+البنك المستقبل	M	neutral	receiving bank	curated	mt-edited	
+رمز السويفت	M	neutral	swift code	curated	mt-edited	
+رمز الغرض	M	neutral	purpose code	curated	mt-edited	
+شركة صرافة	M	neutral	remittance	curated	mt-edited	
+عابر للحدود	M	neutral	cross-border	curated	mt-edited	
+كود السويفت	M	neutral	swift code	curated	mt-edited	
+موني جرام	M	neutral	moneygram	curated	mt-edited	
+ويسترن يونيون	M	neutral	western union	curated	mt-edited	
+آيبان	L	neutral	iban	curated	mt-edited	
+تحويلات	L	neutral	remittance	curated	mt-edited	
+سعر الصرف	L	neutral	exchange rate	curated	mt-edited	

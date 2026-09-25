@@ -1,0 +1,35 @@
+term	tier	speaker	concept	source	review	note
+אישור העברה	H	neutral	transfer confirmation	curated	mt-edited	
+אישור העברה בנקאית	H	neutral	wire confirmation	curated	mt-edited	
+אישור הפקדה	H	neutral	deposit slip	curated	mt-edited	
+אישור תשלום	H	neutral	payment confirmation	curated	mt-edited	
+אסמכתא לתשלום	H	neutral	proof of payment	curated	mt-edited	
+אסמכתת תשלום	H	neutral	proof of payment	curated	mt-edited	
+בנק המוטב	H	neutral	beneficiary bank	curated	mt-edited	
+הבנק המעביר	H	neutral	ordering institution	mt103-pacs008	mt-edited	
+הודעה על חיוב חשבון	H	neutral	debit advice	curated	mt-edited	
+הודעת העברה	H	neutral	remittance advice	curated	mt-edited	
+הודעת תשלום	H	neutral	payment advice	curated	mt-edited	
+הלקוח המזמין	H	neutral	ordering customer	curated	mt-edited	
+העברה בוצעה בהצלחה	H	neutral	transfer successful	curated	mt-edited	
+עותק סוויפט	H	neutral	swift copy	curated	mt-edited	
+עמלות על חשבון המוטב	H	neutral	receiver's charges	mt103-pacs008	mt-edited	
+עמלות על חשבון המעביר	H	neutral	sender's charges	mt103-pacs008	mt-edited	
+שובר הפקדה	H	neutral	deposit slip	curated	mt-edited	
+תאריך ערך	H	neutral	value date	curated	mt-edited	
+אישור קבלה	M	neutral	acknowledgement of receipt	curated	mt-edited	
+אסמכתא	M	neutral	transaction reference	curated	mt-edited	
+החשבון זוכה	M	neutral	has been credited	curated	mt-edited	
+החשבון חויב	M	neutral	has been debited	curated	mt-edited	
+הכספים הועברו	M	neutral	funds transferred	curated	mt-edited	
+העברה בנקאית	M	neutral	wire transfer	curated	mt-edited	
+חשבון לחיוב	M	neutral	debit account	curated	mt-edited	
+חשבונך זוכה	M	neutral	has been credited	curated	mt-edited	
+חשבונך חויב	M	neutral	has been debited	curated	mt-edited	
+מוטב	M	neutral	beneficiary	curated	mt-edited	
+מזהה עסקה	M	neutral	transaction id	curated	mt-edited	
+מספר אסמכתא	M	neutral	transaction id	curated	mt-edited	
+מספר קבלה	M	neutral	receipt no	curated	mt-edited	
+תשלום בוצע בהצלחה	M	neutral	payment successful	curated	mt-edited	
+העברה	L	neutral	bank transfer	curated	mt-edited	
+מעביר	L	neutral	originator	curated	mt-edited	

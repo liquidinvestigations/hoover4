@@ -51,3 +51,25 @@
 {"note": "fr: atrocity vocabulary", "text": "Le rapport documente des crimes contre l'humanité, des disparitions forcées et des exécutions sommaires.", "expect": [["crimes_against_humanity", "crimes contre l'humanité"], ["crimes_against_humanity", "disparitions forcées"], ["war_crimes", "exécutions sommaires"]]}
 {"note": "ru: atrocity vocabulary", "text": "Эксперты нашли массовые захоронения и назвали это геноцидом; зафиксированы удары по больницам.", "expect": [["crimes_against_humanity", "массовые захоронения"], ["genocide", "геноцидом"], ["war_crimes", "удары по больницам"]]}
 {"note": "pest control and a video game carry only L terms", "text": "The exterminator will treat the kitchen for cockroaches on Monday. The siege of the castle is the best level in the game.", "silent": true}
+{"note": "es: bribe and slush fund, Mexico and Spain", "text": "Le dieron una mordida al inspector y el dinero salió de la caja B.", "expect": [["bribery", "mordida"], ["accounting", "caja B"]]}
+{"note": "es: concealment", "text": "Nadie se va a enterar, borra este correo.", "expect": [["concealment", "Nadie se va a enterar"], ["concealment", "borra este correo"]]}
+{"note": "es: formal demand", "text": "Por medio de la presente le requerimos formalmente el pago; de lo contrario, iniciaremos acciones legales.", "expect": [["legal_letter", "le requerimos formalmente"], ["legal_letter", "de lo contrario"], ["legal_letter", "iniciaremos acciones legales"]]}
+{"note": "es: crimes against humanity", "text": "La comisión documentó desapariciones forzadas y fosas comunes.", "expect": [["crimes_against_humanity", "desapariciones forzadas"], ["crimes_against_humanity", "fosas comunes"]]}
+{"note": "he: bribe with a joined preposition, cash in an envelope", "text": "הוא קיבל שוחד, והכסף הגיע במעטפה עם מזומן.", "expect": [["bribery", "שוחד"], ["bribery", "במעטפה עם מזומן"]]}
+{"note": "he: concealment", "text": "אף אחד לא ידע, תמחק את המייל הזה.", "expect": [["concealment", "אף אחד לא ידע"], ["concealment", "תמחק את המייל הזה"]]}
+{"note": "he: fictitious invoices, the definite form", "text": "רואה החשבון הוציא את החשבוניות הפיקטיביות מהספרים.", "expect": [["accounting", "החשבוניות הפיקטיביות"]]}
+{"note": "he: war crimes with a short first word under a preposition, and pointed text", "text": "הדוח מתאר הַפְגָּזַת בית חולים ושימוש במגן אנושי.", "expect": [["war_crimes", "הַפְגָּזַת בית חולים"], ["war_crimes", "במגן אנושי"]]}
+{"note": "ar: bribe spelt with ha for ta marbuta, and an Egyptian secret", "text": "دفعوا رشوه للموظف، وخلي الموضوع سر.", "expect": [["bribery", "رشوه"], ["concealment", "وخلي الموضوع سر"]]}
+{"note": "ar: the article and a conjunction joined to terms", "text": "طلب المسؤول الرشوة والتلاعب بالمناقصات كان واضحا.", "expect": [["bribery", "الرشوة"], ["bribery", "والتلاعب بالمناقصات"]]}
+{"note": "ar: hamza, tatweel and diacritics fold away", "text": "وثّق التقرير التهجـير القسري والمقابر الجماعية وجرائم حرب.", "expect": [["crimes_against_humanity", "التهجـير القسري"], ["crimes_against_humanity", "والمقابر الجماعية"], ["war_crimes", "وجرائم حرب"]]}
+{"note": "ar: Arabizi chat", "text": "ma7adsh hay3raf, el floos ta7t el tarabeza", "expect": [["concealment", "ma7adsh hay3raf"], ["bribery", "ta7t el tarabeza"]]}
+{"note": "ar: formal legal letter", "text": "نيابة عن موكلنا، نطالبكم بموجب هذا بالسداد خلال 14 يوما، وإلا سنلجأ إلى القضاء.", "expect": [["legal_letter", "نيابة عن موكلنا"], ["legal_letter", "نطالبكم بموجب هذا"], ["legal_letter", "خلال 14 يوما"], ["legal_letter", "سنلجأ إلى القضاء"]]}
+{"note": "es: compliance training, the bribe is negated", "text": "Nunca aceptes sobornos ni regalos de proveedores.", "silent": true}
+{"note": "he: compliance training, the bribe is negated", "text": "אסור לקבל שוחד מספקים.", "silent": true}
+{"note": "ar: compliance training, the bribe is negated", "text": "لا تقبل الرشوة أبدا.", "silent": true}
+{"note": "ordinary es", "text": "Hola, te envío la presentación para la reunión de mañana. Un saludo.", "silent": true}
+{"note": "es disclaimer", "text": "Gracias.\n\nEste mensaje y sus anexos son confidenciales. Si usted no es el destinatario, por favor bórrelo.", "silent": true}
+{"note": "ordinary he", "text": "שלום, מצרף את המצגת לפגישה של מחר. הפגישה נדחתה ליום ראשון בגלל החג.", "silent": true}
+{"note": "ordinary ar", "text": "مرحبا، أرسل لك العرض التقديمي لاجتماع الغد. تم تأجيل الاجتماع إلى يوم الأحد.", "silent": true}
+{"note": "ordinary Egyptian chat, in Arabic script and in Arabizi", "text": "ازيك يا باشا، هنتقابل بكرة الساعة خمسة؟ ezayak ya basha, hanet2abel bokra el sa3a 5amsa?", "silent": true}
+{"note": "a quoted Spanish reply repeats earlier mail", "text": "De acuerdo.\n\nEl lunes, Ana escribió:\n> nadie se va a enterar", "silent": true}

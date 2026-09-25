@@ -1,0 +1,73 @@
+term	tier	speaker	concept	source	review	note
+acuerdo completo	H	neutral	entire agreement	curated	mt-edited	
+acuerdo de confidencialidad	H	neutral	confidentiality agreement	curated	mt-edited	
+acuerdo de no divulgación	H	neutral	non-disclosure agreement	curated	mt-edited	
+acuerdo íntegro	H	neutral	entire agreement	curated	mt-edited	
+celebrado entre	H	neutral	by and between	curated	mt-edited	
+celebran el presente contrato	H	neutral	agreement is made	curated	mt-edited	
+cláusula penal	H	neutral	liquidated damages	curated	mt-edited	
+contrato de compraventa de acciones	H	neutral	share purchase agreement	curated	mt-edited	
+contrato marco de servicios	H	neutral	master services agreement	curated	mt-edited	
+convenio de confidencialidad	H	neutral	confidentiality agreement	curated	mt-edited	
+dar por terminado el presente contrato	H	neutral	terminate this agreement	curated	mt-edited	
+debidamente autorizada	H	neutral	duly authorized	curated	mt-edited	
+debidamente autorizado	H	neutral	duly authorized	curated	mt-edited	
+debidamente firmado	H	neutral	duly executed	curated	mt-edited	
+debidamente otorgado	H	neutral	duly executed	curated	mt-edited	
+declaraciones y garantías	H	neutral	representations and warranties	curated	mt-edited	
+depósito del código fuente	H	neutral	source code escrow	cuad	mt-edited	CUAD
+divisibilidad	H	neutral	severability	curated	mt-edited	
+el presente contrato se celebra	H	neutral	agreement is made	curated	mt-edited	
+fuerza mayor	H	neutral	force majeure	curated	mt-edited	
+incumplimiento sustancial	H	neutral	material breach	curated	mt-edited	
+las partes acuerdan	H	neutral	the parties agree	curated	mt-edited	
+las partes convienen	H	neutral	the parties agree	curated	mt-edited	
+las partes del presente	H	neutral	the parties hereto	curated	mt-edited	
+limitación de responsabilidad	H	neutral	limitation of liability	curated	mt-edited	
+límite de responsabilidad	H	neutral	cap on liability	cuad	mt-edited	CUAD
+mantener indemne	H	neutral	hold harmless	curated	mt-edited	
+parte reveladora	H	neutral	disclosing party	contractnli	mt-edited	ContractNLI
+pena convencional	H	neutral	liquidated damages	curated	mt-edited	Mexico
+prohibición de cesión	H	neutral	anti-assignment	cuad	mt-edited	CUAD
+rescindir el presente contrato	H	neutral	terminate this agreement	curated	mt-edited	
+resolver el presente contrato	H	neutral	terminate this agreement	curated	mt-edited	
+responsabilidad ilimitada	H	neutral	uncapped liability	cuad	mt-edited	CUAD
+sacar en paz y a salvo	H	neutral	hold harmless	curated	mt-edited	Mexico
+salvo terminación anticipada	H	neutral	unless terminated earlier	cuad	mt-edited	
+servicios posteriores a la terminación	H	neutral	post-termination services	cuad	mt-edited	CUAD
+subsistirán a la terminación	H	neutral	survive termination	contractnli	mt-edited	ContractNLI
+terminación por conveniencia	H	neutral	termination for convenience	curated	mt-edited	
+tope de responsabilidad	H	neutral	cap on liability	cuad	mt-edited	CUAD
+vigencia del presente contrato	H	neutral	term of this agreement	curated	mt-edited	
+acuerdo de accionistas	M	neutral	shareholders agreement	curated	mt-edited	
+acuerdo de nivel de servicio	M	neutral	service level agreement	curated	mt-edited	
+cliente más favorecido	M	neutral	most favored nation	cuad	mt-edited	CUAD
+cláusula de no difamación	M	neutral	non-disparagement	cuad	mt-edited	CUAD
+compromiso mínimo	M	neutral	minimum commitment	cuad	mt-edited	CUAD
+concesión de licencia	M	neutral	license grant	cuad	mt-edited	CUAD
+declaración de trabajo	M	neutral	statement of work	curated	mt-edited	
+derecho de auditoría	M	neutral	audit rights	cuad	mt-edited	CUAD
+derechos de auditoría	M	neutral	audit rights	cuad	mt-edited	CUAD
+duración de la garantía	M	neutral	warranty duration	cuad	mt-edited	CUAD
+el presente contrato	M	neutral	this agreement	curated	mt-edited	
+en dos ejemplares	M	neutral	counterparts	curated	mt-edited	
+fecha de entrada en vigor	M	neutral	effective date	curated	mt-edited	
+incumplimiento contractual	M	neutral	breach of contract	curated	mt-edited	
+incumplimiento de contrato	M	neutral	breach of contract	curated	mt-edited	
+nación más favorecida	M	neutral	most favored nation	cuad	mt-edited	CUAD
+no competencia	M	neutral	non-compete	cuad	mt-edited	CUAD
+no solicitación	M	neutral	no-solicit	cuad	mt-edited	CUAD
+pacto de accionistas	M	neutral	shareholders agreement	curated	mt-edited	
+pacto de no competencia	M	neutral	non-compete	cuad	mt-edited	CUAD
+parte receptora	M	neutral	receiving party	contractnli	mt-edited	
+plazo inicial	M	neutral	initial term	cuad	mt-edited	
+renovación automática	M	neutral	automatically renewed	cuad	mt-edited	
+se renovará automáticamente	M	neutral	automatically renewed	cuad	mt-edited	
+suscrito entre	M	neutral	entered into	curated	mt-edited	
+cesión	L	neutral	assignment	curated	mt-edited	
+contraprestación	L	neutral	consideration	curated	mt-edited	
+exclusividad	L	neutral	exclusivity	cuad	mt-edited	CUAD
+indemnización	L	neutral	indemnification	curated	mt-edited	also compensation and severance pay
+indemnizar	L	neutral	indemnify	curated	mt-edited	
+información confidencial	L	neutral	confidential information	contractnli	mt-edited	
+términos y condiciones	L	neutral	terms and conditions	curated	mt-edited	

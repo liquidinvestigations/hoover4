@@ -1,0 +1,39 @@
+term	tier	speaker	concept	source	review	note
+inspección sorpresa	H	accuser	dawn raid	curated	mt-edited	
+acción colectiva	M	accuser	class action	curated	mt-edited	
+arbitraje	M	accuser	arbitration	investigator-list	mt-edited	contracts; also a document-type signal
+auto de procesamiento	M	accuser	indictment	curated	mt-edited	
+calumnia*	M	accuser	slander	curated	mt-edited	
+citación judicial	M	accuser	subpoena	curated	mt-edited	
+citatorio	M	accuser	subpoena	curated	mt-edited	Mexico
+conservar los documentos	M	accuser	preserve documents	curated	mt-edited	
+contrademanda	M	accuser	counterclaim	uk-cpr-pre-action	mt-edited	
+demanda colectiva	M	accuser	class action	curated	mt-edited	
+desacato	M	accuser	contempt of court	uk-cpr-pre-action	mt-edited	
+difamación	M	accuser	defamation	curated	mt-edited	
+enjuici*	M	accuser	prosecut*	investigator-list	mt-edited	enjuiciar, enjuiciamiento
+fiscalía	M	accuser	prosecut*	investigator-list	mt-edited	the prosecutor's office
+gran jurado	M	accuser	grand jury	curated	mt-edited	
+imputación	M	accuser	indictment	curated	mt-edited	
+injuria*	M	accuser	libel	curated	mt-edited	
+interdicto	M	accuser	injunction	curated	mt-edited	
+medida cautelar	M	accuser	injunction	curated	mt-edited	
+medidas cautelares	M	accuser	injunction	curated	mt-edited	
+nuestros abogados	M	accuser	our lawyers	curated	mt-edited	
+orden de allanamiento	M	accuser	search warrant	curated	mt-edited	
+orden de cateo	M	accuser	search warrant	curated	mt-edited	Mexico
+orden de registro	M	accuser	search warrant	curated	mt-edited	
+preservación de la evidencia	M	accuser	legal hold	curated	mt-edited	
+reconvención	M	accuser	counterclaim	uk-cpr-pre-action	mt-edited	
+represalia*	M	accuser	retaliat*	curated	mt-edited	
+retención legal	M	accuser	legal hold	curated	mt-edited	
+sanción económica	M	accuser	financial penalty	fca-hsbc-fx	mt-edited	FCA
+suspensión del procedimiento	M	accuser	stay of proceedings	uk-cpr-pre-action	mt-edited	
+testimonio de oídas	M	accuser	hearsay	investigator-list	mt-edited	
+acuerdo extrajudicial	L	accuser	settlement	curated	mt-edited	
+declaración testimonial	L	accuser	deposition	curated	mt-edited	
+demanda	L	accuser	lawsuit	curated	mt-edited	also demand in the economic sense
+investig*	L	accuser	investigat*	investigator-list	mt-edited	stem; routine in many domains
+plazo de prescripción	L	accuser	limitation period	uk-cpr-pre-action	mt-edited	
+reclamación	L	accuser	claim	investigator-list	mt-edited	insurance and ordinary speech
+reclamo	L	accuser	claim	investigator-list	mt-edited	insurance and ordinary speech

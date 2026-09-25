@@ -1,0 +1,24 @@
+term	tier	speaker	concept	source	review	note
+بروفورما	H	neutral	proforma	curated	mt-edited	
+تحل محل الفاتورة	H	neutral	replaces invoice	curated	mt-edited	
+فاتورة أولية	H	neutral	proforma invoice	curated	mt-edited	
+فاتورة جزئية	H	neutral	partial invoice	uncl1001	mt-edited	UNTDID 1001
+فاتورة دفعة مقدمة	H	neutral	prepayment invoice	uncl1001	mt-edited	UNTDID 1001
+فاتورة مبدئية	H	neutral	proforma invoice	curated	mt-edited	
+ليست فاتورة ضريبية	H	neutral	not a tax invoice	curated	mt-edited	
+مسودة فاتورة	H	neutral	draft invoice	curated	mt-edited	
+تلغي وتحل محل	M	neutral	supersedes	curated	mt-edited	
+عرض أسعار	M	neutral	quotation	curated	mt-edited	
+عرض سعر	M	neutral	quotation	curated	mt-edited	
+فاتورة مصححة	M	neutral	corrected invoice	curated	mt-edited	
+فاتورة معدلة	M	neutral	revised invoice	curated	mt-edited	
+للاعتماد	M	neutral	for approval	curated	mt-edited	
+للموافقة	M	neutral	for approval	curated	mt-edited	
+تقديري	L	neutral	estimate	curated	mt-edited	
+لاغية	L	neutral	void	curated	mt-edited	
+للمراجعة	L	neutral	for review	curated	mt-edited	
+مؤقت	L	neutral	provisional	curated	mt-edited	
+مبدئي	L	neutral	preliminary	curated	mt-edited	
+مسودة	L	neutral	draft	curated	mt-edited	
+معدل	L	neutral	amended	fatf-egmont-tbml	mt-edited	FATF red flag when frequent
+منقح	L	neutral	revised	curated	mt-edited	

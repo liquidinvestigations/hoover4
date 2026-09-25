@@ -1,0 +1,66 @@
+term	tier	speaker	concept	source	review	note
+דיווח על פעולה בלתי רגילה	H	accuser	suspicious activity report	fincen-human-trafficking	mt-edited	the Israeli report
+הונאה חשבונאית	H	accuser	accounting fraud	curated	mt-edited	
+הונאת העברה בנקאית	H	accuser	wire fraud	curated	mt-edited	
+הונאת מס	H	accuser	tax fraud	curated	mt-edited	
+הונאת מע״מ	H	accuser	vat fraud	curated	mt-edited	
+הונאת ניירות ערך	H	accuser	securities fraud	curated	mt-edited	
+הונאת קרוסלה	H	accuser	carousel fraud	curated	mt-edited	
+הלבנת הון מבוססת סחר	H	accuser	trade-based money laundering	curated	mt-edited	
+העלמת הכנסות	H	accuser	tax evasion	curated	mt-edited	
+העלמת מס	H	accuser	tax evasion	curated	mt-edited	
+הפקת חשבוניות פיקטיביות	H	accuser	false invoicing	curated	mt-edited	
+הרצת מניות	H	accuser	pump and dump	curated	mt-edited	
+השפעה בתרמית על שער ניירות ערך	H	accuser	market manipulation	curated	mt-edited	the Israeli securities offence
+התחמקות מסנקציות	H	accuser	sanctions evasion	curated	mt-edited	
+חברות קש	H	accuser	front company	curated	mt-edited	
+חברת הקש	H	accuser	front company	curated	mt-edited	definite construct
+חברת קש	H	accuser	front company	curated	mt-edited	
+חשבוניות מנופחות	H	actor	over invoic*	spamassassin-advance-fee	mt-edited	TBML
+חשבונית בחסר	H	actor	under invoic*	fatf-egmont-tbml	mt-edited	TBML
+לעקוף את הסנקציות	H	accuser	evade sanctions	curated	mt-edited	
+לפצל את התשלום	H	actor	split the payment	curated	mt-edited	
+מידע מהותי שאינו פומבי	H	accuser	material non-public information	curated	mt-edited	
+מידע פנים	H	accuser	insider information	curated	mt-edited	
+ממש מתחת לסף הדיווח	H	accuser	just below reporting thresholds	fatf-egmont-tbml	mt-edited	
+מניפולציה בשוק	H	accuser	market manipulation	curated	mt-edited	
+מתחת לסף הדיווח	H	actor	just below the threshold	fatf-egmont-tbml	mt-edited	structuring
+סוחר נעלם	H	accuser	missing trader	curated	mt-edited	
+עסקאות מתואמות	H	accuser	wash trade	curated	mt-edited	
+פונזי	H	accuser	ponzi	curated	mt-edited	
+פיצול התשלום	H	actor	split the payment	curated	mt-edited	
+פיצול תשלומים	H	actor	smurfing	curated	mt-edited	
+שימוש במידע פנים	H	accuser	insider trading	curated	mt-edited	
+תוכנית פירמידה	H	accuser	pyramid scheme	curated	mt-edited	
+תשלומים מעגליים	H	accuser	circular payments	fatf-egmont-tbml	mt-edited	
+אזור סחר חופשי	M	accuser	free trade zone	fatf-egmont-tbml	mt-edited	
+איש ציבור זר	M	accuser	politically exposed person	curated	mt-edited	
+איש קש	M	actor	nominee	curated	mt-edited	
+אנשי קש	M	actor	nominee	curated	mt-edited	
+בעל מניות נאמן	M	actor	nominee shareholder	curated	mt-edited	
+דו שימושי	M	accuser	dual use	fincen-bis-export-control	mt-edited	export control
+דירקטור קש	M	actor	nominee director	curated	mt-edited	
+הלבנת ההון	M	accuser	money laundering	investigator-list	mt-edited	definite construct
+הלבנת הון	M	accuser	money laundering	investigator-list	mt-edited	also compliance training and AML policies
+הלבנת כספים	M	accuser	money laundering	investigator-list	mt-edited	
+חברה פיקטיבית	M	actor	shell company	investigator-list	mt-edited	
+חברת מעטפת	M	actor	shell company	investigator-list	mt-edited	
+חשבון אופשור	M	actor	offshore account	curated	mt-edited	
+חשבון בחו״ל	M	actor	offshore account	curated	mt-edited	
+חשבון מעבר	M	actor	transit account	fatf-egmont-tbml	mt-edited	
+מעילה	M	accuser	embezzl*	curated	mt-edited	
+מעילה באמון	M	accuser	embezzl*	curated	mt-edited	
+מקלט מס	M	actor	offshore account	curated	mt-edited	
+נמען סופי	M	accuser	ultimate consignee	fincen-bis-export-control	mt-edited	sanctions
+עבירות מס	M	accuser	tax fraud	curated	mt-edited	
+שילוח עקיף	M	accuser	transshipment	fincen-bis-export-control	mt-edited	sanctions
+שימוש לרעה בכספים	M	accuser	misappropriat*	curated	mt-edited	
+שקרי בעליל	M	accuser	patently false	cftc-barclays-libor	mt-edited	
+איסור הלבנת הון	L	accuser	aml	curated	mt-edited	
+גבוה ככל האפשר	L	actor	as high as possible	cftc-barclays-libor	mt-edited	LIBOR fix request
+הכר את הלקוח	L	accuser	kyc	curated	mt-edited	
+משתמש קצה	L	accuser	end user	fincen-bis-export-control	mt-edited	sanctions
+נהנה סופי	L	accuser	beneficial owner	curated	mt-edited	
+סכומים עגולים	L	actor	round amounts	fatf-egmont-tbml	mt-edited	
+ריבוד	L	accuser	layering	curated	mt-edited	
+שימוש סופי	L	accuser	end use	fincen-bis-export-control	mt-edited	sanctions

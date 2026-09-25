@@ -1,0 +1,23 @@
+term	tier	speaker	concept	source	review	note
+בנק מתווך	H	neutral	intermediary bank	curated	mt-edited	
+בנק קורספונדנט	H	neutral	correspondent bank	curated	mt-edited	
+העברה בינלאומית	H	neutral	international wire	curated	mt-edited	
+העברה לחו״ל	H	neutral	international wire	curated	mt-edited	
+חוואלה	H	neutral	hawala	curated	mt-edited	
+מוטב סופי	H	neutral	ultimate beneficiary	curated	mt-edited	
+מטרת ההעברה	H	neutral	purpose of payment	curated	mt-edited	
+מטרת התשלום	H	neutral	purpose of payment	curated	mt-edited	
+פירוט עמלות	H	neutral	details of charges	curated	mt-edited	MT103 field 71A
+תשלום חוצה גבולות	H	neutral	cross-border payment	curated	mt-edited	
+בנק מקבל	M	neutral	receiving bank	curated	mt-edited	
+בנק שולח	M	neutral	sending bank	curated	mt-edited	
+ווסטרן יוניון	M	neutral	western union	curated	mt-edited	
+חוצה גבולות	M	neutral	cross-border	curated	mt-edited	
+מאני גרם	M	neutral	moneygram	curated	mt-edited	
+נותן שירותי מטבע	M	neutral	remittance	curated	mt-edited	the Israeli licensed money-service business
+קוד מטרה	M	neutral	purpose code	curated	mt-edited	
+קוד סוויפט	M	neutral	swift code	curated	mt-edited	
+שער המרה	M	neutral	fx rate	curated	mt-edited	
+איבאן	L	neutral	iban	curated	mt-edited	
+העברת כספים	L	neutral	remittance	curated	mt-edited	
+שער חליפין	L	neutral	exchange rate	curated	mt-edited	

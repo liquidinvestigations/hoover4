@@ -1,0 +1,78 @@
+term	tier	speaker	concept	source	review	note
+3arfeen betak	H	actor	we know where you live	curated	mt-edited	Arabizi, Egyptian
+ha2telak	H	actor	i will kill you	curated	mt-edited	Arabizi, Egyptian
+ha2tlak	H	actor	i will kill you	curated	mt-edited	Arabizi, Egyptian
+hatmoot	H	actor	you will die	curated	mt-edited	Arabizi, Egyptian
+hatmout	H	actor	you will die	curated	mt-edited	Arabizi, Egyptian
+ra7 2otlak	H	actor	i will kill you	curated	mt-edited	Arabizi, Levantine
+إحنا عارفين إنت ساكن فين	H	actor	we know where you live	curated	mt-edited	Egyptian
+اعدموه	H	actor	execute him	curated	mt-edited	
+اعدموها	H	actor	execute her	curated	mt-edited	
+اغتيال	H	actor	assassinat*	curated	mt-edited	
+الحزام الناسف	H	actor	suicide vest	curated	mt-edited	definite form
+العبوات الناسفة	H	actor	pipe bomb	curated	mt-edited	definite form
+العبوة الناسفة	H	actor	pipe bomb	curated	mt-edited	definite form
+بقتلك	H	actor	i will kill you	curated	mt-edited	Gulf and Levant
+حزام ناسف	H	actor	suicide vest	curated	mt-edited	
+راقب ظهرك	H	actor	watch your back	curated	mt-edited	
+رح اقتلك	H	actor	i will kill you	curated	mt-edited	Levantine
+رح تموت	H	actor	you will die	curated	mt-edited	Levantine
+رح كسرلك إجريك	H	actor	break your legs	curated	mt-edited	Levantine
+سأقتلك	H	actor	i will kill you	curated	mt-edited	
+سأكسر رجليك	H	actor	break your legs	curated	mt-edited	
+سترة ناسفة	H	actor	suicide vest	curated	mt-edited	
+ستموت	H	actor	you will die	curated	mt-edited	
+عارفين بيتك	H	actor	we know where you live	curated	mt-edited	Egyptian
+عبوة ناسفة	H	actor	pipe bomb	curated	mt-edited	
+عمل إرهابي	H	actor	terror attack	curated	mt-edited	
+عملية استشهادية	H	actor	martyrdom operation	curated	mt-edited	
+عملية دهس	H	actor	vehicle ramming	curated	mt-edited	
+قائمة اغتيالات	H	actor	hit list	curated	mt-edited	
+قائمة تصفية	H	actor	hit list	curated	mt-edited	
+قاتل مأجور	H	actor	hit man	curated	mt-edited	
+قتل مأجور	H	actor	contract killing	curated	mt-edited	
+قطع الرأس	H	actor	behead*	curated	mt-edited	
+مخبأ أسلحة	H	actor	weapons cache	curated	mt-edited	
+مخزن سلاح	H	actor	weapons cache	curated	mt-edited	
+نعرف أين تسكن	H	actor	we know where you live	curated	mt-edited	
+هتموت	H	actor	you will die	curated	mt-edited	Egyptian
+هجوم إرهابي	H	actor	terror attack	curated	mt-edited	
+هجوم دهس	H	actor	vehicle ramming	curated	mt-edited	
+هقتلك	H	actor	i will kill you	curated	mt-edited	Egyptian
+هكسر رجلك	H	actor	break your legs	curated	mt-edited	Egyptian
+أسلحة نارية	M	actor	firearm	curated	mt-edited	
+إرهابي	M	accuser	terrorist	curated	mt-edited	
+إرهابيين	M	accuser	terrorist	curated	mt-edited	
+الجماعات المسلحة	M	actor	armed group	curated	mt-edited	definite form
+الجماعة المسلحة	M	actor	armed group	curated	mt-edited	definite form
+بيت آمن	M	actor	safe house	curated	mt-edited	
+تطرف	M	accuser	radicalis*	curated	mt-edited	
+تفجير	M	actor	blow up	curated	mt-edited	
+جريمة قتل	M	accuser	murder	curated	mt-edited	
+جماعة مسلحة	M	actor	armed group	curated	mt-edited	
+ذئب منفرد	M	actor	lone wolf	curated	mt-edited	
+ذخيرة	M	actor	ammunition	curated	mt-edited	
+رهائن	M	actor	hostage	curated	mt-edited	
+رهينة	M	actor	hostage	curated	mt-edited	
+سلاح ناري	M	actor	firearm	curated	mt-edited	
+صاعق	M	actor	detonat*	curated	mt-edited	a detonator
+طلقات	M	actor	ammunition	curated	mt-edited	
+قتل عمد	M	accuser	murder	curated	mt-edited	
+قنبلة	M	actor	bomb	curated	mt-edited	
+قنبلة يدوية	M	actor	grenade	curated	mt-edited	
+متطرف	M	accuser	extremist	curated	mt-edited	
+متطرفين	M	accuser	extremist	curated	mt-edited	
+متفجرات	M	actor	explosive*	curated	mt-edited	
+مجزرة	M	accuser	massacre	curated	mt-edited	
+مذبحة	M	accuser	massacre	curated	mt-edited	
+نجعله عبرة	M	actor	make an example of	curated	mt-edited	
+نخليه عبرة	M	actor	make an example of	curated	mt-edited	Egyptian
+إطلاق النار	L	actor	shoot	curated	mt-edited	
+اقتل	L	actor	kill	curated	mt-edited	
+بندقية	L	actor	rifle	curated	mt-edited	
+كلاشنكوف	L	actor	rifle	curated	mt-edited	
+مسدس	L	actor	gun	curated	mt-edited	
+ميليشيا	L	actor	militia	curated	mt-edited	
+نخلص منه	L	actor	take him out	curated	mt-edited	also ordinary speech
+نخلص منها	L	actor	take her out	curated	mt-edited	also ordinary speech
+هجوم	L	actor	attack	curated	mt-edited	

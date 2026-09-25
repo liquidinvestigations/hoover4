@@ -1,0 +1,55 @@
+term	tier	speaker	concept	source	review	note
+אלמנתו של המנוח	H	actor	wife of the late	spamassassin-advance-fee	mt-edited	419
+אמת את החשבון שלך	H	actor	verify your account	curated	mt-edited	
+אמתו את החשבון	H	actor	verify your account	curated	mt-edited	
+בנו של המנוח	H	actor	son of the late	spamassassin-advance-fee	mt-edited	419
+דחוף וסודי	H	actor	urgent and confidential	spamassassin-advance-fee	mt-edited	419
+דמי טיפול מראש	H	actor	advance fee	curated	mt-edited	
+דמי שחרור	H	actor	clearance fee	curated	mt-edited	
+החשבון שלך הושעה	H	actor	your account has been suspended	curated	mt-edited	
+החשבון שלך נחסם	H	actor	your account has been suspended	curated	mt-edited	
+הכפל את ההשקעה שלך	H	actor	double your investment	curated	mt-edited	
+הנשיא המנוח	H	actor	the late president	spamassassin-advance-fee	mt-edited	419
+הצעה עסקית סודית	H	actor	confidential business proposal	curated	mt-edited	
+זכית בהגרלה	H	actor	you have won	curated	mt-edited	
+זכית בפרס	H	actor	you have won	curated	mt-edited	
+חטיפה וירטואלית	H	actor	virtual kidnapping	curated	mt-edited	
+חשבונך הוקפא	H	actor	your account has been suspended	curated	mt-edited	
+כספומט קריפטו	H	actor	virtual currency kiosk	fincen-pig-butchering	mt-edited	pig butchering
+כספים שלא נדרשו	H	actor	unclaimed funds	curated	mt-edited	
+כרטיס מתנה של אייטיונס	H	actor	itunes card	curated	mt-edited	
+לממש את הפרס	H	actor	claim your prize	curated	mt-edited	
+מוטב יקר	H	actor	dear beneficiary	curated	mt-edited	
+מיליון דולר אמריקאי	H	actor	million united states dollars	spamassassin-advance-fee	mt-edited	419
+קרן פיצויים	H	actor	compensation fund	curated	mt-edited	
+רווח מובטח	H	actor	guaranteed returns	curated	mt-edited	
+שליח דיפלומטי	H	actor	diplomatic courier	curated	mt-edited	
+תשואה מובטחת	H	actor	guaranteed returns	curated	mt-edited	
+אני אלמנה	M	actor	i am a widow	curated	mt-edited	
+בטוח במאה אחוז	M	actor	100% safe	spamassassin-advance-fee	mt-edited	419
+בסודיות מוחלטת	M	actor	strictly confidential	curated	mt-edited	
+דמי טיפול	M	actor	processing fee	curated	mt-edited	
+הזדמנות השקעה	M	actor	investment opportunity	fincen-pig-butchering	mt-edited	pig butchering
+חבר יקר	M	actor	dear friend	curated	mt-edited	
+חשבון זר	M	actor	foreign account	spamassassin-advance-fee	mt-edited	419
+כמוטב	M	actor	as the beneficiary	spamassassin-advance-fee	mt-edited	419
+כרטיס מתנה	M	actor	gift card	curated	mt-edited	
+ללא סיכון	M	actor	risk free	spamassassin-advance-fee	mt-edited	419
+משרת בחו״ל	M	actor	deployed overseas	curated	mt-edited	
+עזרה דחופה	M	actor	urgent assistance	spamassassin-advance-fee	mt-edited	419
+עמלות משיכה	M	actor	withdrawal fees	fincen-pig-butchering	mt-edited	pig butchering
+צו מעצר	M	actor	arrest warrant	curated	mt-edited	
+קרוב המשפחה הקרוב ביותר	M	actor	next of kin	curated	mt-edited	
+שלח את הקוד	M	actor	send the code	curated	mt-edited	
+תגובה דחופה	M	actor	urgent response	curated	mt-edited	
+תשואות משמעותיות	M	actor	significant returns	fincen-pig-butchering	mt-edited	pig butchering
+תשלח לי את הקוד	M	actor	send the code	curated	mt-edited	
+תשלחי לי את הקוד	M	actor	send the code	curated	mt-edited	
+אתר היכרויות	L	actor	dating site	fincen-pig-butchering	mt-edited	
+הבנק המרכזי של	L	actor	central bank of	spamassassin-advance-fee	mt-edited	419
+חבר ותיק	L	actor	old friend	fincen-pig-butchering	mt-edited	
+טעות במספר	L	actor	wrong number	fincen-pig-butchering	mt-edited	pig butchering opener
+ירושה	L	actor	inheritance	curated	mt-edited	
+כתובת ארנק	L	actor	wallet address	curated	mt-edited	
+מנהל השקעות	L	actor	money manager	fincen-pig-butchering	mt-edited	
+שותף עסקי	L	actor	business partner	spamassassin-advance-fee	mt-edited	419

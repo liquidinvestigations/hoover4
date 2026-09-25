@@ -1,0 +1,77 @@
+term	tier	speaker	concept	source	review	note
+aceitar la maquinaria	H	actor	grease the wheels	curated	mt-edited	Argentina
+colusión en licitaciones	H	actor	bid rigging	curated	mt-edited	
+comisiones excesivas	H	actor	excessive commission	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+comisiones ilegales	H	accuser	kickbacks	curated	mt-edited	
+comisión excesiva	H	actor	excessive commission	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+comisión ilegal	H	accuser	kickback	curated	mt-edited	
+concurso amañado	H	actor	rigged tender	curated	mt-edited	
+descuento excesivamente grande	H	actor	unreasonably large discount	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+dinero en un sobre	H	actor	cash in an envelope	curated	mt-edited	
+dinero para agilizar	H	actor	speed money	curated	mt-edited	
+efectivo en un sobre	H	actor	cash in an envelope	curated	mt-edited	
+hacer la vista gorda	H	actor	turn a blind eye	curated	mt-edited	
+hacerse de la vista gorda	H	actor	look the other way	curated	mt-edited	
+honorarios especiales	H	actor	special fees	investigator-list	mt-edited	
+intervención aduanera	H	actor	customs intervention	doj-sec-fcpa-guide	mt-edited	FCPA
+licitaciones amañadas	H	actor	rigged tender	curated	mt-edited	
+licitación amañada	H	actor	rigged tender	curated	mt-edited	
+mirar para otro lado	H	actor	look the other way	curated	mt-edited	
+nuestro amigo en el ministerio	H	actor	our friend in the ministry	curated	mt-edited	
+oferta de cobertura	H	actor	cover bid	curated	mt-edited	
+pactar precios	H	actor	price fixing	curated	mt-edited	
+pago amistoso	H	actor	friendly payment	investigator-list	mt-edited	
+pago de agilización	H	actor	expedite fee	curated	mt-edited	
+pago de facilitación	H	actor	facilitation payment	curated	mt-edited	
+pago para agilizar	H	actor	expedite fee	curated	mt-edited	
+pagos amistosos	H	actor	friendly payments	investigator-list	mt-edited	
+pagos de facilitación	H	actor	facilitation payment	curated	mt-edited	
+por debajo de la mesa	H	actor	under the table	curated	mt-edited	
+por debajo del agua	H	actor	under the table	curated	mt-edited	Latin America
+que le valga la pena	H	actor	make it worth his while	curated	mt-edited	
+regalo para el ministro	H	actor	gift for the minister	curated	mt-edited	
+servicios descritos vagamente	H	actor	vaguely described services	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+servicios poco definidos	H	actor	vaguely described services	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+sin inspección	H	actor	no inspection	investigator-list	mt-edited	
+sobre con dinero	H	actor	brown envelope	curated	mt-edited	
+sobre con efectivo	H	actor	brown envelope	curated	mt-edited	
+untar la mano	H	actor	grease payment	curated	mt-edited	
+untarle la mano	H	actor	grease his palm	curated	mt-edited	
+aceitar	M	actor	grease payment	curated	mt-edited	Argentina; also literal
+atiéndela bien	M	actor	take care of her	curated	mt-edited	
+atiéndelo bien	M	actor	take care of him	curated	mt-edited	
+cohecho	M	accuser	bribe	curated	mt-edited	the legal name of the offence
+coima*	M	actor	backhander	curated	mt-edited	Argentina, Peru, Chile
+comisión de intermediación	M	actor	finder's fee	curated	mt-edited	
+comisión de éxito	M	actor	success fee	curated	mt-edited	
+corrupción	M	accuser	corruption	investigator-list	mt-edited	also compliance training and news
+cuenta bancaria en el extranjero	M	actor	offshore bank account	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+endulzar el trato	M	actor	sweetener	curated	mt-edited	
+funcionario extranjero	M	actor	foreign official	doj-sec-fcpa-guide	mt-edited	FCPA
+honorarios de servicio posventa	M	actor	after sales service fees	doj-sec-fcpa-guide	mt-edited	FCPA
+incentivos científicos	M	actor	scientific incentives	doj-sec-fcpa-guide	mt-edited	FCPA
+moche	M	actor	kickback	curated	mt-edited	Mexico
+moches	M	actor	kickbacks	curated	mt-edited	Mexico
+mordida	M	actor	backhander	curated	mt-edited	Mexico; also a literal bite
+ocúpate de ella	M	actor	take care of her	curated	mt-edited	
+ocúpate de ellos	M	actor	take care of them	curated	mt-edited	
+ocúpate de él	M	actor	take care of him	curated	mt-edited	
+para el chesco	M	actor	tea money	curated	mt-edited	Mexico
+para el refresco	M	actor	tea money	curated	mt-edited	Mexico
+reparto de mercados	M	actor	market allocation	curated	mt-edited	
+soborn*	M	accuser	bribe	investigator-list	mt-edited	soborno, sobornar; also compliance training
+su tajada	M	actor	his cut	curated	mt-edited	
+toma y daca	M	actor	quid pro quo	curated	mt-edited	
+botella de champán	L	actor	bottle of bollinger	fsa-cftc-libor-chats	mt-edited	LIBOR reciprocity
+chueco	L	accuser	crooked	investigator-list	mt-edited	Mexico
+comisiones o regalías	L	actor	commissions or royalties	doj-sec-fcpa-guide	mt-edited	FCPA
+corrupto	L	accuser	corrupt	investigator-list	mt-edited	
+extraoficial	L	actor	unofficial	investigator-list	mt-edited	
+gastos de ventas y marketing	L	actor	sales and marketing expenses	doj-sec-fcpa-guide	mt-edited	FCPA
+honorarios de consultoría	L	actor	consulting fees	doj-sec-fcpa-guide	mt-edited	FCPA mischaracterisation
+para el café	L	actor	tea money	curated	mt-edited	
+reembolsos o descuentos	L	actor	rebates or discounts	doj-sec-fcpa-guide	mt-edited	FCPA
+sucio	L	actor	dirty	investigator-list	mt-edited	
+te debo una grande	L	actor	i owe you big time	fsa-cftc-libor-chats	mt-edited	LIBOR reciprocity
+turbio	L	accuser	shady	investigator-list	mt-edited	
+viajes y entretenimiento	L	actor	travel and entertainment	doj-sec-fcpa-guide	mt-edited	FCPA

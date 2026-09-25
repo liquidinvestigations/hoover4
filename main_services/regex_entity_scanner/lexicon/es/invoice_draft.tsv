@@ -1,0 +1,28 @@
+term	tier	speaker	concept	source	review	note
+borrador de factura	H	neutral	draft invoice	curated	mt-edited	
+factura borrador	H	neutral	draft invoice	curated	mt-edited	
+factura de anticipo	H	neutral	prepayment invoice	uncl1001	mt-edited	UNTDID 1001
+factura parcial	H	neutral	partial invoice	uncl1001	mt-edited	UNTDID 1001
+factura proforma	H	neutral	proforma invoice	curated	mt-edited	
+no es una factura fiscal	H	neutral	not a tax invoice	curated	mt-edited	
+no válido como factura	H	neutral	not a tax invoice	curated	mt-edited	
+reemplaza la factura	H	neutral	replaces invoice	curated	mt-edited	
+sin validez fiscal	H	neutral	not a tax invoice	curated	mt-edited	
+sustituye a la factura	H	neutral	replaces invoice	curated	mt-edited	
+cotización	M	neutral	quotation	curated	mt-edited	also a share price
+deja sin efecto	M	neutral	supersedes	curated	mt-edited	
+factura corregida	M	neutral	corrected invoice	curated	mt-edited	
+factura revisada	M	neutral	revised invoice	curated	mt-edited	
+para aprobación	M	neutral	for approval	curated	mt-edited	
+para su aprobación	M	neutral	for approval	curated	mt-edited	
+provisoria	M	neutral	provisional	curated	mt-edited	
+sustituye	M	neutral	supersedes	curated	mt-edited	
+anulada	L	neutral	void	curated	mt-edited	
+anulado	L	neutral	void	curated	mt-edited	
+borrador	L	neutral	draft	curated	mt-edited	
+estimación	L	neutral	estimate	curated	mt-edited	
+modificada	L	neutral	amended	fatf-egmont-tbml	mt-edited	FATF red flag when frequent
+para revisión	L	neutral	for review	curated	mt-edited	
+preliminar	L	neutral	preliminary	curated	mt-edited	
+presupuesto	L	neutral	estimate	curated	mt-edited	also a budget
+revisado	L	neutral	revised	curated	mt-edited	

@@ -9,7 +9,7 @@ cut the tall trees	H	actor	cut the tall trees	curated	original	Rwanda, radio cod
 destruction of the group	H	accuser	destruction of the group	rome-statute	original	
 direct and public incitement	H	accuser	direct and public incitement	rome-statute	original	Art. 25(3)(e)
 exterminate them	H	actor	exterminate them	un-atrocity-framework	original	call to destroy a group
-extermination camp*	H	accuser	extermination camp	curated	original	
+extermination camp*	H	accuser	extermination camp*	curated	original	
 forcible transfer of children	H	accuser	forcible transfer of children	genocide-convention	original	
 forcibly transferring children	H	accuser	forcibly transferring children	rome-statute	original	Art. 6(e)
 genocidal intent	H	accuser	genocidal intent	curated	original	
@@ -31,10 +31,10 @@ wipe them off the map	H	actor	wipe them off the map	un-atrocity-framework	origin
 wipe them out	H	actor	wipe them out	un-atrocity-framework	original	call to destroy a group; also games and sport
 because of their ethnicity	M	accuser	because of their ethnicity	curated	original	
 cleanse the land	M	actor	cleanse the land	curated	original	
-death camp*	M	accuser	death camp	curated	original	also history teaching
+death camp*	M	accuser	death camp*	curated	original	also history teaching
 final solution	M	accuser	final solution	curated	original	Holocaust; also an ordinary phrase
-forced conversion*	M	accuser	forced conversion	curated	original	
-genocid*	M	accuser	genocide	rome-statute	original	genocide, genocidal, genocidaire; also political and historical argument
+forced conversion*	M	accuser	forced conversion*	curated	original	
+genocid*	M	accuser	genocid*	rome-statute	original	genocide, genocidal, genocidaire; also political and historical argument
 genocide convention	M	accuser	genocide convention	genocide-convention	original	
 genocide denial	M	accuser	genocide denial	curated	original	
 holodomor	M	accuser	holodomor	curated	original	
@@ -46,7 +46,7 @@ shoah	M	accuser	shoah	curated	original
 subhuman	M	actor	subhuman	un-atrocity-framework	original	dehumanising language
 subhumans	M	actor	subhumans	un-atrocity-framework	original	dehumanising language
 targeted for their ethnicity	M	accuser	targeted for their ethnicity	curated	original	
-untermensch*	M	actor	untermensch	curated	original	dehumanising language
+untermensch*	M	actor	untermensch*	curated	original	dehumanising language
 cockroaches	L	actor	cockroaches	un-atrocity-framework	original	dehumanising language only beside other signals
 holocaust	L	accuser	holocaust	curated	original	also history teaching and nuclear holocaust
 vermin	L	actor	vermin	un-atrocity-framework	original	dehumanising language only beside other signals; also pest control

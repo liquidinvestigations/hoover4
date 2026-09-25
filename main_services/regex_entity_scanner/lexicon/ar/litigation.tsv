@@ -1,0 +1,37 @@
+term	tier	speaker	concept	source	review	note
+مداهمة فجرية	H	accuser	dawn raid	curated	mt-edited	
+أمر تفتيش	M	accuser	search warrant	curated	mt-edited	
+أمر حضور	M	accuser	subpoena	curated	mt-edited	
+أمر قضائي	M	accuser	injunction	curated	mt-edited	
+أمر وقف	M	accuser	injunction	curated	mt-edited	
+إجراءات انتقامية	M	accuser	retaliat*	curated	mt-edited	
+إذن تفتيش	M	accuser	search warrant	curated	mt-edited	Egyptian legal term
+إنذار نهائي	M	accuser	final notice	fca-hsbc-fx	mt-edited	
+إهانة المحكمة	M	accuser	contempt of court	uk-cpr-pre-action	mt-edited	
+ازدراء المحكمة	M	accuser	contempt of court	uk-cpr-pre-action	mt-edited	
+استدعاء للشهادة	M	accuser	subpoena	curated	mt-edited	
+المحامي بتاعنا	M	accuser	our lawyers	curated	mt-edited	Egyptian
+النيابة العامة	M	accuser	prosecut*	investigator-list	mt-edited	
+انتقام	M	accuser	retaliat*	curated	mt-edited	
+تحكيم	M	accuser	arbitration	investigator-list	mt-edited	contracts; also a document-type signal
+حفظ المستندات	M	accuser	preserve documents	curated	mt-edited	
+دعوى جماعية	M	accuser	class action	curated	mt-edited	
+دعوى قذف	M	accuser	libel	curated	mt-edited	
+دعوى مضادة	M	accuser	counterclaim	uk-cpr-pre-action	mt-edited	
+سب وقذف	M	accuser	slander	curated	mt-edited	
+شهادة سماعية	M	accuser	hearsay	investigator-list	mt-edited	
+غرامة مالية	M	accuser	financial penalty	fca-hsbc-fx	mt-edited	
+قذف وتشهير	M	accuser	defamation	curated	mt-edited	
+قرار الاتهام	M	accuser	indictment	curated	mt-edited	
+لائحة اتهام	M	accuser	indictment	curated	mt-edited	
+محامينا	M	accuser	our lawyers	curated	mt-edited	
+مداهمة	M	accuser	dawn raid	curated	mt-edited	also any police raid
+ملاحقة قضائية	M	accuser	prosecut*	investigator-list	mt-edited	
+وقف الإجراءات	M	accuser	stay of proceedings	uk-cpr-pre-action	mt-edited	
+وقف الدعوى	M	accuser	stay of proceedings	uk-cpr-pre-action	mt-edited	
+التقادم	L	accuser	limitation period	uk-cpr-pre-action	mt-edited	
+تحقيق	L	accuser	investigat*	investigator-list	mt-edited	routine in many domains
+تحقيقات	L	accuser	investigat*	investigator-list	mt-edited	
+تسوية	L	accuser	settlement	curated	mt-edited	
+دعوى قضائية	L	accuser	lawsuit	curated	mt-edited	
+مطالبة	L	accuser	claim	investigator-list	mt-edited	insurance and ordinary speech

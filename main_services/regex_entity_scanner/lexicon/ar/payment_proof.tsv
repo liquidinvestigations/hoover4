@@ -1,0 +1,44 @@
+term	tier	speaker	concept	source	review	note
+إثبات التحويل	H	neutral	proof of payment	curated	mt-edited	
+إثبات الدفع	H	neutral	proof of payment	curated	mt-edited	
+إشعار حوالة	H	neutral	remittance advice	curated	mt-edited	
+إشعار خصم	H	neutral	debit advice	curated	mt-edited	
+إشعار دفع	H	neutral	payment advice	curated	mt-edited	
+إيصال إيداع	H	neutral	deposit slip	curated	mt-edited	
+إيصال التحويل	H	neutral	wire confirmation	curated	mt-edited	
+البنك الآمر	H	neutral	ordering institution	mt103-pacs008	mt-edited	
+العميل الآمر	H	neutral	ordering customer	curated	mt-edited	
+العميل المستفيد	H	neutral	beneficiary customer	curated	mt-edited	
+بنك المستفيد	H	neutral	beneficiary bank	curated	mt-edited	
+تأكيد التحويل	H	neutral	transfer confirmation	curated	mt-edited	
+تأكيد الدفع	H	neutral	payment confirmation	curated	mt-edited	
+تأكيد السداد	H	neutral	payment confirmation	curated	mt-edited	
+تاريخ القيمة	H	neutral	value date	curated	mt-edited	
+تم التحويل بنجاح	H	neutral	transfer successful	curated	mt-edited	
+تمت الحوالة بنجاح	H	neutral	transfer successful	curated	mt-edited	
+رسوم على المحول	H	neutral	sender's charges	mt103-pacs008	mt-edited	
+رسوم على المستفيد	H	neutral	receiver's charges	mt103-pacs008	mt-edited	
+صورة السويفت	H	neutral	swift copy	curated	mt-edited	
+قسيمة إيداع	H	neutral	deposit slip	curated	mt-edited	
+مرجع المرسل	H	neutral	sender's reference	mt103-pacs008	mt-edited	MT103 :20:
+نسخة سويفت	H	neutral	swift copy	curated	mt-edited	
+إشعار استلام	M	neutral	acknowledgement of receipt	curated	mt-edited	
+إقرار بالاستلام	M	neutral	acknowledgement of receipt	curated	mt-edited	
+الحساب المخصوم منه	M	neutral	debit account	curated	mt-edited	
+الحساب المدين	M	neutral	debit account	curated	mt-edited	
+الرقم المرجعي	M	neutral	transaction reference	curated	mt-edited	
+تم إضافة المبلغ	M	neutral	has been credited	curated	mt-edited	
+تم الخصم من حسابك	M	neutral	has been debited	curated	mt-edited	
+تم الدفع بنجاح	M	neutral	payment successful	curated	mt-edited	
+تم تحويل الأموال	M	neutral	funds transferred	curated	mt-edited	
+تمت إضافة	M	neutral	has been credited	curated	mt-edited	
+حوالة بنكية	M	neutral	wire transfer	curated	mt-edited	
+حوالة مصرفية	M	neutral	wire transfer	curated	mt-edited	
+رقم الإيصال	M	neutral	receipt no	curated	mt-edited	
+رقم العملية	M	neutral	transaction id	curated	mt-edited	
+رقم المعاملة	M	neutral	transaction id	curated	mt-edited	
+مرجع العملية	M	neutral	transaction reference	curated	mt-edited	
+مستفيد	M	neutral	beneficiary	curated	mt-edited	
+معلومات الحوالة	M	neutral	remittance information	mt103-pacs008	mt-edited	
+الآمر بالدفع	L	neutral	originator	curated	mt-edited	
+تحويل بنكي	L	neutral	bank transfer	curated	mt-edited	

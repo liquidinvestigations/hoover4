@@ -55,6 +55,45 @@ const NEGATIONS: &[&str] = &[
     "без",
     "нельзя",
     "запрещено",
+    // es
+    "nunca",
+    "jamas",
+    "ningun",
+    "ninguna",
+    "ninguno",
+    "sin",
+    "prohibido",
+    "tampoco",
+    "ni",
+    // he, with the joined forms `and not`, `that not`
+    "לא",
+    "ולא",
+    "שלא",
+    "אין",
+    "ואין",
+    "שאין",
+    "בלי",
+    "ללא",
+    "אסור",
+    // ar, with the joined forms `and not`, `so not`
+    "لا",
+    "ولا",
+    "فلا",
+    "لم",
+    "ولم",
+    "لن",
+    "ولن",
+    "ليس",
+    "ليست",
+    "لست",
+    "وليس",
+    "بدون",
+    "دون",
+    "بلا",
+    "ابدا",
+    "مش",
+    "مو",
+    "ممنوع",
 ];
 
 /// Words after a negation that turn it into something else: `not only`, `no doubt`.
@@ -68,6 +107,15 @@ const PSEUDO_NEGATION_FOLLOWERS: &[&str] = &[
     "doute",
     "только",
     "сомнения",
+    "solo",
+    "solamente",
+    "duda",
+    "רק",
+    "ספק",
+    "فقط",
+    "شك",
+    // `لا بد` is "it is necessary"
+    "بد",
 ];
 
 /// How many words before a term a negation reaches. The clinical negation literature settled on
@@ -96,6 +144,25 @@ const DISCLAIMER_OPENERS: &[&str] = &[
     "данное сообщение содержит конфиденциальную",
     "если вы не являетесь адресатом",
     "если вы получили это сообщение по ошибке",
+    "este mensaje y sus anexos",
+    "este mensaje y sus archivos adjuntos",
+    "este correo electronico y sus anexos",
+    "este correo y sus anexos",
+    "este mensaje es confidencial",
+    "si usted no es el destinatario",
+    "si no es usted el destinatario",
+    "la informacion contenida en este mensaje",
+    "המידע הכלול בהודעה זו",
+    "הודעה זו והקבצים המצורפים",
+    "אם קיבלת הודעה זו בטעות",
+    "אם אינך הנמען",
+    "هذه الرساله ومرفقاتها",
+    "هذه الرساله الالكترونيه ومرفقاتها",
+    "هذه الرساله سريه",
+    "اذا لم تكن المرسل اليه",
+    "اذا تلقيت هذه الرساله بالخطا",
+    "اذا تلقيت هذه الرساله عن طريق الخطا",
+    "المعلومات الوارده في هذه الرساله",
 ];
 
 /// Lines that start a quoted or forwarded message, lowercased and trimmed. Everything below the
@@ -109,6 +176,13 @@ const REPLY_HEADERS: &[&str] = &[
     "-------- weitergeleitete nachricht",
     "-------- message transféré",
     "-------- пересылаемое сообщение",
+    "-----mensaje original-----",
+    "---------- mensaje reenviado",
+    "-----הודעה מקורית-----",
+    "---------- הודעה שהועברה",
+    "-----الرسالة الأصلية-----",
+    "---------- الرسالة المعاد توجيهها",
+    "---------- الرسالة المُعاد توجيهها",
 ];
 
 /// The endings of an attribution line: `On Monday, Anna wrote:`.
@@ -120,6 +194,12 @@ const ATTRIBUTION_ENDINGS: &[&str] = &[
     "написал:",
     "написала:",
     "написал(а):",
+    "escribió:",
+    "כתב:",
+    "כתבה:",
+    "כתב/ה:",
+    "كتب:",
+    "كتبت:",
 ];
 
 pub struct Hit {
@@ -276,7 +356,7 @@ impl<'a> Context<'a> {
     /// clause and says nothing about the second.
     fn negated(&self, folded_start: usize, source: &str, source_start: usize) -> bool {
         let clause_start = source[..source_start]
-            .rfind(['.', ',', ';', ':', '!', '?', '\n'])
+            .rfind(['.', ',', ';', ':', '!', '?', '\n', '،', '؛', '؟'])
             .map_or(0, |at| at + 1);
         let text = self.folded.text.as_str();
         let mut window: Vec<&str> = Vec::with_capacity(NEGATION_WINDOW);
@@ -313,8 +393,30 @@ fn starts_quoted_text(lower: &str, following: &[&str]) -> bool {
     {
         return true;
     }
-    const FROM: &[&str] = &["from:", "von:", "de :", "de:", "от:"];
-    const SENT: &[&str] = &["sent:", "gesendet:", "envoyé :", "envoyé:", "отправлено:"];
+    const FROM: &[&str] = &[
+        "from:",
+        "von:",
+        "de :",
+        "de:",
+        "от:",
+        "מאת:",
+        "من:",
+        "المرسل:",
+    ];
+    const SENT: &[&str] = &[
+        "sent:",
+        "gesendet:",
+        "envoyé :",
+        "envoyé:",
+        "отправлено:",
+        "enviado:",
+        "enviado el:",
+        "נשלח:",
+        "تاريخ الإرسال:",
+        "تاريخ الارسال:",
+        "تم الإرسال:",
+        "مرسل:",
+    ];
     FROM.iter().any(|label| lower.starts_with(label))
         && following.iter().take(3).any(|line| {
             let next = line.trim().to_lowercase();
@@ -376,6 +478,21 @@ mod tests {
         )
         .is_empty());
         assert!(flags_at("It was not only off the books.", "off the books").is_empty());
+    }
+
+    #[test]
+    fn negation_reads_spanish_hebrew_and_arabic() {
+        let negated = vec![SignalFlag::Negated];
+        assert_eq!(
+            flags_at("Nunca vamos a pagar sobornos.", "sobornos"),
+            negated
+        );
+        assert_eq!(flags_at("אסור לשלם שוחד", "שוחד"), negated);
+        assert_eq!(flags_at("لا تدفع الرشوة", "الرشوه"), negated);
+        assert_eq!(flags_at("ولن ندفع الرشوة", "الرشوه"), negated);
+        // `لا بد` is "it is necessary", and the Arabic comma closes a clause.
+        assert!(flags_at("لا بد من دفع الرشوة", "الرشوه").is_empty());
+        assert!(flags_at("لا أعرف، ادفع الرشوة", "الرشوه").is_empty());
     }
 
     #[test]

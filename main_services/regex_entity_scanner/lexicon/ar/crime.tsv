@@ -1,0 +1,67 @@
+term	tier	speaker	concept	source	review	note
+أسلحة غير مرخصة	H	accuser	illegal weapons	curated	mt-edited	
+أوراق مضروبة	H	actor	fake documents	curated	mt-edited	Egyptian
+إتاوة	H	accuser	extort*	curated	mt-edited	
+إتلاف الأدلة	H	actor	destroy the evidence	curated	mt-edited	
+ابتزاز	H	accuser	blackmail	curated	mt-edited	
+اتخلص من الدليل	H	actor	get rid of the evidence	curated	mt-edited	Egyptian
+اختطاف	H	accuser	kidnap*	curated	mt-edited	
+الخطف	H	accuser	kidnap*	curated	mt-edited	
+المستندات المزورة	H	actor	fake documents	curated	mt-edited	definite form
+الوثائق المزورة	H	actor	fake documents	curated	mt-edited	definite form
+باسبور مضروب	H	actor	fake passport	curated	mt-edited	Egyptian
+تخلص من الأدلة	H	actor	get rid of the evidence	curated	mt-edited	
+جواز سفر مزور	H	actor	fake passport	curated	mt-edited	
+خاوة	H	accuser	extort*	curated	mt-edited	Levantine protection money
+دمر الأدلة	H	actor	destroy the evidence	curated	mt-edited	
+سلاح بدون ترخيص	H	accuser	illegal weapons	curated	mt-edited	
+سلاح غير مرخص	H	accuser	illegal weapons	curated	mt-edited	
+مستندات مزورة	H	actor	fake documents	curated	mt-edited	
+وثائق مزورة	H	actor	fake documents	curated	mt-edited	
+اتجار	M	accuser	trafficking	curated	mt-edited	
+الاتجار بالمخدرات	M	accuser	trafficking	curated	mt-edited	
+السطو	M	accuser	burglary	curated	mt-edited	
+انتحال الهوية	M	accuser	identity theft	curated	mt-edited	
+برامج الفدية	M	accuser	ransomware	curated	mt-edited	
+بضائع مقلدة	M	accuser	counterfeit	curated	mt-edited	
+بضائع مهربة	M	accuser	contraband	curated	mt-edited	
+تاجر مخدرات	M	accuser	drug dealer	curated	mt-edited	
+تزوير	M	accuser	forgery	curated	mt-edited	
+تهريب	M	accuser	smuggling	curated	mt-edited	
+جناية	M	accuser	felony	curated	mt-edited	
+جنحة	M	accuser	misdemeanor	curated	mt-edited	
+حجة غياب	M	accuser	alibi	curated	mt-edited	
+حريق متعمد	M	accuser	arson	curated	mt-edited	
+سرقة الهوية	M	accuser	identity theft	curated	mt-edited	
+سطو مسلح	M	accuser	robbery	curated	mt-edited	
+شبو	M	accuser	methamphetamine	curated	mt-edited	Gulf slang
+شريك في الجريمة	M	accuser	accomplice	curated	mt-edited	
+عملة مزيفة	M	accuser	counterfeit	curated	mt-edited	
+فدية	M	accuser	ransom	curated	mt-edited	
+فنتانيل	M	accuser	fentanyl	curated	mt-edited	
+كبتاغون	M	accuser	narcotics	curated	mt-edited	
+كوكايين	M	accuser	cocaine	curated	mt-edited	
+مخدرات	M	accuser	narcotics	curated	mt-edited	
+مزور	M	accuser	forged	curated	mt-edited	
+مهربات	M	accuser	contraband	curated	mt-edited	
+ميثامفيتامين	M	accuser	methamphetamine	curated	mt-edited	
+هيروين	M	accuser	heroin	curated	mt-edited	
+وجهت إليه تهمة	M	accuser	charged with	curated	mt-edited	
+احتيال	L	accuser	fraud	curated	mt-edited	
+اعتقل	L	accuser	arrested	curated	mt-edited	
+النصب	L	accuser	fraud	curated	mt-edited	Egyptian
+انتهاك	L	accuser	violation	investigator-list	mt-edited	
+بدون ترخيص	L	accuser	unlicensed	investigator-list	mt-edited	
+تابو	L	accuser	taboo	investigator-list	mt-edited	
+جريمة	L	accuser	crime	curated	mt-edited	
+حشيش	L	accuser	narcotics	curated	mt-edited	
+خارج عن القانون	L	accuser	outlaw	investigator-list	mt-edited	
+سرقة	L	accuser	theft	curated	mt-edited	
+غير شرعي	L	accuser	illegitimate	investigator-list	mt-edited	
+غير قانوني	L	accuser	illegal	investigator-list	mt-edited	
+غير مشروع	L	accuser	unlawful	investigator-list	mt-edited	
+غير مصرح	L	accuser	unauthorized	investigator-list	mt-edited	
+مجرم	L	accuser	criminal	investigator-list	mt-edited	
+مخالفة	L	accuser	offence	curated	mt-edited	also traffic tickets
+مسروق	L	accuser	stolen	curated	mt-edited	
+ممنوع	L	accuser	banned	investigator-list	mt-edited	

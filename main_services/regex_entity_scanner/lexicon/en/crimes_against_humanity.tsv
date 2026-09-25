@@ -1,57 +1,57 @@
 term	tier	speaker	concept	source	review	note
 attack directed against any civilian population	H	accuser	attack directed against any civilian population	rome-statute	original	Art. 7(2)(a)
 crime of apartheid	H	accuser	crime of apartheid	rome-statute	original	Art. 7(1)(j)
-death squad*	H	accuser	death squad	curated	original	
+death squad*	H	accuser	death squad*	curated	original	
 deportation or forcible transfer	H	accuser	deportation or forcible transfer	rome-statute	original	Art. 7(1)(d)
-enforced disappearance*	H	accuser	enforced disappearance	rome-statute	original	Art. 7(1)(i)
+enforced disappearance*	H	accuser	enforced disappearance*	rome-statute	original	Art. 7(1)(i)
 enforced prostitution	H	accuser	enforced prostitution	rome-statute	original	Art. 7(1)(g)
-enforced sterilisation	H	accuser	enforced sterilization	rome-statute	original	UK spelling
+enforced sterilisation	H	accuser	enforced sterilisation	rome-statute	original	UK spelling
 enforced sterilization	H	accuser	enforced sterilization	rome-statute	original	Art. 7(1)(g)
 ethnic cleansing	H	accuser	ethnic cleansing	curated	original	no crime of its own in law; charged as deportation, persecution or genocide
-extrajudicial execution*	H	accuser	extrajudicial execution	curated	original	
-extrajudicial killing*	H	accuser	extrajudicial killing	curated	original	
+extrajudicial execution*	H	accuser	extrajudicial execution*	curated	original	
+extrajudicial killing*	H	accuser	extrajudicial killing*	curated	original	
 fate and whereabouts	H	accuser	fate and whereabouts	rome-statute	original	Art. 7(2)(i); UN reporting on the disappeared
-filtration camp*	H	accuser	filtration camp	curated	original	
-forced disappearance*	H	accuser	enforced disappearance	curated	original	
+filtration camp*	H	accuser	filtration camp*	curated	original	
+forced disappearance*	H	accuser	forced disappearance*	curated	original	
 forced pregnancy	H	accuser	forced pregnancy	rome-statute	original	Art. 7(1)(g)
-forced sterilisation	H	accuser	enforced sterilization	curated	original	UK spelling
-forced sterilization	H	accuser	enforced sterilization	curated	original	
+forced sterilisation	H	accuser	forced sterilisation	curated	original	UK spelling
+forced sterilization	H	accuser	forced sterilization	curated	original	
 forcible transfer of population	H	accuser	forcible transfer of population	rome-statute	original	Art. 7(1)(d)
-mass execution*	H	accuser	mass execution	curated	original	
-mass grave*	H	accuser	mass grave	curated	original	
+mass execution*	H	accuser	mass execution*	curated	original	
+mass grave*	H	accuser	mass grave*	curated	original	
 mass rape	H	accuser	mass rape	curated	original	
 other inhumane acts	H	accuser	other inhumane acts	rome-statute	original	Art. 7(1)(k)
-re-education camp*	H	accuser	re-education camp	curated	original	
-reeducation camp*	H	accuser	re-education camp	curated	original	
+re-education camp*	H	accuser	re-education camp*	curated	original	
+reeducation camp*	H	accuser	reeducation camp*	curated	original	
 severe deprivation of physical liberty	H	accuser	severe deprivation of physical liberty	rome-statute	original	Art. 7(1)(e)
 sexual slavery	H	accuser	sexual slavery	rome-statute	original	Art. 7(1)(g)
-state or organisational policy	H	accuser	state or organizational policy	rome-statute	original	UK spelling
+state or organisational policy	H	accuser	state or organisational policy	rome-statute	original	UK spelling
 state or organizational policy	H	accuser	state or organizational policy	rome-statute	original	Art. 7(2)(a)
 systematic rape	H	accuser	systematic rape	curated	original	
-widespread and systematic	H	accuser	widespread or systematic attack	curated	original	the usual wording of UN and NGO reports
+widespread and systematic	H	accuser	widespread and systematic	curated	original	the usual wording of UN and NGO reports
 widespread or systematic attack	H	accuser	widespread or systematic attack	rome-statute	original	Art. 7(1); the element that makes a crime a crime against humanity
 apartheid	M	accuser	apartheid	rome-statute	original	also historical and political argument
 arbitrary detention	M	accuser	arbitrary detention	curated	original	
-black site*	M	accuser	black site	curated	original	
-concentration camp*	M	accuser	concentration camp	curated	original	also history teaching
-crime against humanity	M	accuser	crimes against humanity	rome-statute	original	
+black site*	M	accuser	black site*	curated	original	
+concentration camp*	M	accuser	concentration camp*	curated	original	also history teaching
+crime against humanity	M	accuser	crime against humanity	rome-statute	original	
 crimes against humanity	M	accuser	crimes against humanity	rome-statute	original	also news and history
-disappeared persons	M	accuser	enforced disappearance	curated	original	
+disappeared persons	M	accuser	disappeared persons	curated	original	
 enslavement	M	accuser	enslavement	rome-statute	original	Art. 7(1)(c)
 extermination	M	accuser	extermination	rome-statute	original	Art. 7(1)(b); also pest control
-filtration point*	M	accuser	filtration camp	curated	original	
-forced displacement	M	accuser	forcible transfer of population	curated	original	
-forced labor	M	accuser	forced labour	curated	original	US spelling
+filtration point*	M	accuser	filtration point*	curated	original	
+forced displacement	M	accuser	forced displacement	curated	original	
+forced labor	M	accuser	forced labor	curated	original	US spelling
 forced labour	M	accuser	forced labour	curated	original	also human-trafficking and supply-chain compliance
-forcibly displaced	M	accuser	forcible transfer of population	curated	original	
+forcibly displaced	M	accuser	forcibly displaced	curated	original	
 incommunicado	M	accuser	incommunicado	curated	original	
-internment camp*	M	accuser	internment camp	curated	original	
-mass killing*	M	accuser	mass killing	curated	original	
+internment camp*	M	accuser	internment camp*	curated	original	
+mass killing*	M	accuser	mass killing*	curated	original	
 secret detention	M	accuser	secret detention	curated	original	
-slave labor	M	accuser	forced labour	curated	original	US spelling
-slave labour	M	accuser	forced labour	curated	original	
-tortur*	M	accuser	torture	rome-statute	original	Art. 7(1)(f); also hyperbole
-whereabouts remain unknown	M	accuser	fate and whereabouts	curated	original	
-exhumation*	L	accuser	exhumation	curated	original	also forensic and cemetery routine
+slave labor	M	accuser	slave labor	curated	original	US spelling
+slave labour	M	accuser	slave labour	curated	original	
+tortur*	M	accuser	tortur*	rome-statute	original	Art. 7(1)(f); also hyperbole
+whereabouts remain unknown	M	accuser	whereabouts remain unknown	curated	original	
+exhumation*	L	accuser	exhumation*	curated	original	also forensic and cemetery routine
 persecution	L	accuser	persecution	rome-statute	original	Art. 7(1)(h); also religious history and everyday speech
 political prisoners	L	accuser	political prisoners	curated	original	

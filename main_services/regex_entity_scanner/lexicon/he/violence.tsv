@@ -1,0 +1,65 @@
+term	tier	speaker	concept	source	review	note
+אנחנו יודעים איפה את גרה	H	actor	we know where you live	curated	mt-edited	
+אנחנו יודעים איפה אתה גר	H	actor	we know where you live	curated	mt-edited	
+אני אהרוג אותך	H	actor	i will kill you	curated	mt-edited	
+אני ארצח אותך	H	actor	i will kill you	curated	mt-edited	
+אני אשבור לך את הרגליים	H	actor	break your legs	curated	mt-edited	
+אני יודע איפה אתה גר	H	actor	we know where you live	curated	mt-edited	
+אפוד נפץ	H	actor	suicide vest	curated	mt-edited	
+את תמותי	H	actor	you will die	curated	mt-edited	
+אתה תמות	H	actor	you will die	curated	mt-edited	
+התנקשות	H	actor	assassinat*	curated	mt-edited	
+חגורת נפץ	H	actor	suicide vest	curated	mt-edited	
+חיסול בהזמנה	H	actor	contract killing	curated	mt-edited	
+להוציא אותה להורג	H	actor	execute her	curated	mt-edited	
+להוציא אותו להורג	H	actor	execute him	curated	mt-edited	
+לערוף ראש	H	actor	behead*	curated	mt-edited	
+מחסן נשק	H	actor	weapons cache	curated	mt-edited	
+מטען חבלה	H	actor	pipe bomb	curated	mt-edited	
+מטען צינור	H	actor	pipe bomb	curated	mt-edited	
+מתנקש שכיר	H	actor	hit man	curated	mt-edited	
+עריפת ראש	H	actor	behead*	curated	mt-edited	
+פיגוע דריסה	H	actor	vehicle ramming	curated	mt-edited	
+פיגוע התאבדות	H	actor	martyrdom operation	curated	mt-edited	
+פיגוע טרור	H	actor	terror attack	curated	mt-edited	
+רוצח שכיר	H	actor	hit man	curated	mt-edited	
+רשימת חיסול	H	actor	hit list	curated	mt-edited	
+תיזהר לך	H	actor	watch your back	curated	mt-edited	
+תשמור על הגב	H	actor	watch your back	curated	mt-edited	
+ארגון חמוש	M	actor	armed group	curated	mt-edited	
+בן ערובה	M	actor	hostage	curated	mt-edited	
+בני ערובה	M	actor	hostage	curated	mt-edited	
+ברצח	M	accuser	murder	curated	mt-edited	
+דירת מסתור	M	actor	safe house	curated	mt-edited	
+הטבח	M	accuser	massacre	curated	mt-edited	
+הקצנה	M	accuser	radicalis*	curated	mt-edited	
+הרצח	M	accuser	murder	curated	mt-edited	
+זאב בודד	M	actor	lone wolf	curated	mt-edited	
+חומר נפץ	M	actor	explosive*	curated	mt-edited	
+חומרי נפץ	M	actor	explosive*	curated	mt-edited	
+טבח	M	accuser	massacre	curated	mt-edited	
+טרוריסט	M	accuser	terrorist	curated	mt-edited	
+כלי נשק	M	actor	firearm	curated	mt-edited	
+לעשות ממנו דוגמה	M	actor	make an example of	curated	mt-edited	
+לפוצץ	M	actor	blow up	curated	mt-edited	
+מחבל	M	accuser	terrorist	curated	mt-edited	
+מחבלים	M	accuser	terrorist	curated	mt-edited	
+מטען נפץ	M	actor	explosive*	curated	mt-edited	
+סליק	M	actor	weapons cache	curated	mt-edited	a hidden weapons store
+פיגוע	M	actor	terror attack	curated	mt-edited	also news of any attack
+פצצה	M	actor	bomb	curated	mt-edited	
+קבוצה חמושה	M	actor	armed group	curated	mt-edited	
+קיצוני	M	accuser	extremist	curated	mt-edited	
+קיצונים	M	accuser	extremist	curated	mt-edited	
+רצח	M	accuser	murder	curated	mt-edited	
+תחמושת	M	actor	ammunition	curated	mt-edited	
+אקדח	L	actor	gun	curated	mt-edited	
+התקפה	L	actor	attack	curated	mt-edited	
+להרוג	L	actor	kill	curated	mt-edited	
+לחסל אותה	L	actor	take her out	curated	mt-edited	also ordinary slang
+לחסל אותו	L	actor	take him out	curated	mt-edited	also ordinary slang
+לירות	L	actor	shoot	curated	mt-edited	
+מיליציה	L	actor	militia	curated	mt-edited	
+מתקפה	L	actor	attack	curated	mt-edited	
+רובה	L	actor	rifle	curated	mt-edited	
+רימון	L	actor	grenade	curated	mt-edited	also a pomegranate

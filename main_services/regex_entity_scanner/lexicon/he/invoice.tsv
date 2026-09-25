@@ -1,0 +1,33 @@
+term	tier	speaker	concept	source	review	note
+חשבונית הובלה	H	neutral	freight invoice	uncl1001	mt-edited	UNTDID 1001
+חשבונית מס	H	neutral	tax invoice	curated	mt-edited	
+חשבונית מסחרית	H	neutral	commercial invoice	curated	mt-edited	
+חשבונית משלח	H	neutral	forwarder's invoice	uncl1001	mt-edited	UNTDID 1001
+חשבונית עצמית	H	neutral	self-billed invoice	uncl1001	mt-edited	UNTDID 1001
+חשבונית קונסולרית	H	neutral	consular invoice	uncl1001	mt-edited	UNTDID 1001
+יתרה לתשלום	H	neutral	balance due	curated	mt-edited	
+מספר חשבונית	H	neutral	invoice number	curated	mt-edited	
+מס׳ חשבונית	H	neutral	invoice no	curated	mt-edited	
+נא להעביר תשלום	H	neutral	please remit	curated	mt-edited	
+סה״כ לתשלום	H	neutral	total due	curated	mt-edited	
+סכום לתשלום	H	neutral	amount due	curated	mt-edited	
+שוטף + 30	H	neutral	net 30	curated	mt-edited	
+שוטף + 60	H	neutral	net 60	curated	mt-edited	
+שוטף + 90	H	neutral	net 60	curated	mt-edited	the usual Israeli term
+תאריך חשבונית	H	neutral	invoice date	curated	mt-edited	
+הודעת זיכוי	M	neutral	credit note	curated	mt-edited	
+הודעת חיוב	M	neutral	debit note	curated	mt-edited	
+הזמנת רכש	M	neutral	purchase order	curated	mt-edited	
+חשבונית	M	neutral	invoice	curated	mt-edited	
+חשבונית זיכוי	M	neutral	credit note	curated	mt-edited	
+כתובת למשלוח	M	neutral	ship to	curated	mt-edited	
+מחיר יחידה	M	neutral	unit price	curated	mt-edited	
+מספר הזמנה	M	neutral	po number	curated	mt-edited	
+מספר עוסק	M	neutral	tax id	curated	mt-edited	
+סה״כ ביניים	M	neutral	subtotal	curated	mt-edited	
+עוסק מורשה	M	neutral	vat number	curated	mt-edited	
+פרטי הלקוח	M	neutral	bill to	curated	mt-edited	
+תנאי תשלום	M	neutral	payment terms	curated	mt-edited	
+כמות	L	neutral	qty	curated	mt-edited	
+מועד תשלום	L	neutral	due date	curated	mt-edited	
+מע״מ	L	neutral	vat	curated	mt-edited	

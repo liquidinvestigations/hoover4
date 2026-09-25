@@ -1,0 +1,48 @@
+term	tier	speaker	concept	source	review	note
+autofactura	H	neutral	self-billed invoice	uncl1001	mt-edited	UNTDID 1001
+autofacturación	H	neutral	self-billed invoice	uncl1001	mt-edited	UNTDID 1001
+comprobante fiscal	H	neutral	tax invoice	curated	mt-edited	Latin America
+factura cedida	H	neutral	factored invoice	uncl1001	mt-edited	UNTDID 1001
+factura comercial	H	neutral	commercial invoice	curated	mt-edited	
+factura consular	H	neutral	consular invoice	uncl1001	mt-edited	UNTDID 1001
+factura de consignación	H	neutral	consignment invoice	uncl1001	mt-edited	UNTDID 1001
+factura de flete	H	neutral	freight invoice	uncl1001	mt-edited	UNTDID 1001
+factura del transitario	H	neutral	forwarder's invoice	uncl1001	mt-edited	UNTDID 1001
+factura fiscal	H	neutral	tax invoice	curated	mt-edited	
+factura no	H	neutral	invoice no	curated	mt-edited	also matches factura nº
+facturar a	H	neutral	bill to	curated	mt-edited	
+fecha de factura	H	neutral	invoice date	curated	mt-edited	
+fecha de la factura	H	neutral	invoice date	curated	mt-edited	
+importe a pagar	H	neutral	amount due	curated	mt-edited	
+importe adeudado	H	neutral	amount due	curated	mt-edited	
+monto adeudado	H	neutral	amount due	curated	mt-edited	
+neto 30	H	neutral	net 30	curated	mt-edited	
+neto 60	H	neutral	net 60	curated	mt-edited	
+no de factura	H	neutral	invoice no	curated	mt-edited	also matches nº de factura
+nota de comisión	H	neutral	commission note	uncl1001	mt-edited	UNTDID 1001
+número de factura	H	neutral	invoice number	curated	mt-edited	
+saldo adeudado	H	neutral	balance due	curated	mt-edited	
+saldo pendiente	H	neutral	balance due	curated	mt-edited	
+sírvase pagar	H	neutral	please remit	curated	mt-edited	
+total a pagar	H	neutral	total due	curated	mt-edited	
+condiciones de pago	M	neutral	payment terms	curated	mt-edited	
+cuit	M	neutral	tax id	curated	mt-edited	Argentina
+dirección de envío	M	neutral	ship to	curated	mt-edited	
+factura	M	neutral	invoice	curated	mt-edited	
+facturas	M	neutral	invoice	curated	mt-edited	
+forma de pago	M	neutral	payment terms	curated	mt-edited	
+nif	M	neutral	tax id	curated	mt-edited	Spain
+nota de abono	M	neutral	credit note	curated	mt-edited	Spain
+nota de cargo	M	neutral	debit note	curated	mt-edited	
+nota de crédito	M	neutral	credit note	curated	mt-edited	
+nota de débito	M	neutral	debit note	curated	mt-edited	
+número de iva	M	neutral	vat number	curated	mt-edited	
+número de orden de compra	M	neutral	po number	curated	mt-edited	
+orden de compra	M	neutral	purchase order	curated	mt-edited	
+precio unitario	M	neutral	unit price	curated	mt-edited	
+rfc	M	neutral	tax id	curated	mt-edited	Mexico
+solicitud de pago	M	neutral	request for payment	uncl1001	mt-edited	UNTDID 1001
+vendido a	M	neutral	sold to	curated	mt-edited	
+cant	L	neutral	qty	curated	mt-edited	
+fecha de vencimiento	L	neutral	due date	curated	mt-edited	
+iva	L	neutral	vat	curated	mt-edited	

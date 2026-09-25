@@ -1,0 +1,48 @@
+term	tier	speaker	concept	source	review	note
+החשבוניות הפיקטיביות	H	actor	fake invoice	curated	mt-edited	definite form
+החשבונית הפיקטיבית	H	actor	fake invoice	curated	mt-edited	definite form
+הסכם צד	H	actor	side agreement	curated	mt-edited	
+העמסת ערוצי הפצה	H	actor	channel stuffing	curated	mt-edited	
+הקדמת הכנסות	H	actor	pull earnings forward	investigator-list	mt-edited	
+חשבוניות כוזבות	H	actor	fake invoice	curated	mt-edited	
+חשבוניות פיקטיביות	H	actor	fake invoice	curated	mt-edited	the usual Israeli term in tax-fraud cases
+חשבונית כוזבת	H	actor	fake invoice	curated	mt-edited	
+חשבונית מזויפת	H	actor	dummy invoice	curated	mt-edited	
+חשבונית פיקטיבית	H	actor	fake invoice	curated	mt-edited	
+ייפוי הדוחות	H	actor	massage the numbers	curated	mt-edited	
+לדחות הוצאות	H	actor	push out the expenses	curated	mt-edited	
+להגיע למספר	H	actor	make the number	investigator-list	mt-edited	
+להכיר בהכנסה מוקדם	H	actor	recognize it early	curated	mt-edited	
+להקדים הכנסות	H	actor	pull earnings forward	investigator-list	mt-edited	
+לייפות את המספרים	H	actor	massage the numbers	curated	mt-edited	
+לסגור את הרבעון	H	actor	make the quarter	curated	mt-edited	also routine closing of accounts
+לתארך למפרע	H	actor	backdate	investigator-list	mt-edited	
+מחוץ לספרים	H	actor	off the books	investigator-list	mt-edited	
+מכתב צד	H	actor	side letter	curated	mt-edited	
+ספק פיקטיבי	H	actor	phantom vendor	curated	mt-edited	
+ספק רפאים	H	actor	phantom vendor	curated	mt-edited	
+עובד פיקטיבי	H	actor	ghost employee	curated	mt-edited	
+עובד רפאים	H	actor	ghost employee	curated	mt-edited	
+עובדי רפאים	H	actor	ghost employee	curated	mt-edited	
+עסקאות סיבוביות	H	actor	round tripping	curated	mt-edited	
+תיארוך למפרע	H	actor	backdate	investigator-list	mt-edited	
+בשחור	M	actor	off the books	investigator-list	mt-edited	cash payment kept out of the books
+החלקת רווחים	M	actor	smooth earnings	curated	mt-edited	
+הנהלת חשבונות יצירתית	M	actor	cook the books	curated	mt-edited	
+הצגה מחדש	M	accuser	restatement	curated	mt-edited	
+ייפוי מאזן	M	actor	window dressing	curated	mt-edited	
+לא דווח	M	actor	unreported	investigator-list	mt-edited	
+לא מדווח	M	actor	unreported	investigator-list	mt-edited	
+לבשל את הספרים	M	actor	cook the books	curated	mt-edited	
+להוון את ההוצאה	M	actor	capitalize the expense	curated	mt-edited	
+מחוץ למאזן	M	actor	off balance sheet	investigator-list	mt-edited	
+מחיקה חשבונאית	M	actor	write off	investigator-list	mt-edited	routine accounting
+נסדר את זה אחר כך	M	actor	fix it later	investigator-list	mt-edited	
+פקודת יומן ידנית	M	actor	manual journal entry	curated	mt-edited	
+תאריך רטרואקטיבי	M	actor	backdate	investigator-list	mt-edited	also a lawful retroactive date
+אי סדרים	L	actor	irregular	investigator-list	mt-edited	
+הוצאות שונות	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	mt-edited	FCPA
+חשבונות בין חברתיים	L	actor	intercompany accounts	doj-sec-fcpa-guide	mt-edited	FCPA
+לסגור את הפער	L	actor	close the gap	curated	mt-edited	
+סחורה בחינם	L	actor	free goods	doj-sec-fcpa-guide	mt-edited	FCPA
+קופה קטנה	L	actor	petty cash withdrawal	doj-sec-fcpa-guide	mt-edited	FCPA

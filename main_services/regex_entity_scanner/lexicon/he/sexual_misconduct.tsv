@@ -1,0 +1,51 @@
+term	tier	speaker	concept	source	review	note
+אל תספר לאמא	H	actor	don't tell your parents	curated	mt-edited	grooming indicator
+אל תספר להורים	H	actor	don't tell your parents	curated	mt-edited	grooming indicator
+אל תספרי להורים	H	actor	don't tell your parents	curated	mt-edited	grooming indicator
+ההטרדה המינית	H	accuser	sexual harassment	curated	mt-edited	definite form
+הטרדה מינית	H	accuser	sexual harassment	curated	mt-edited	
+הסוד הקטן שלנו	H	actor	our little secret	curated	mt-edited	grooming indicator
+הצעות בעלות אופי מיני	H	accuser	unwanted advances	curated	mt-edited	the wording of the Israeli harassment law
+התנהגות מינית פסולה	H	accuser	sexual misconduct	curated	mt-edited	
+התעללות בילדים	H	accuser	child abuse	curated	mt-edited	
+התעללות מינית בילדים	H	accuser	child sexual abuse	curated	mt-edited	
+התקיפה המינית	H	accuser	sexual assault	curated	mt-edited	definite form
+זנות כפויה	H	accuser	forced prostitution	curated	mt-edited	
+חיזורים לא רצויים	H	accuser	unwanted advances	curated	mt-edited	
+ללא הסכמה	H	accuser	non-consensual	curated	mt-edited	
+מגע לא הולם	H	accuser	inappropriate touching	curated	mt-edited	
+מין מסחרי	H	accuser	commercial sex	fincen-human-trafficking	mt-edited	FinCEN HT
+מעשה מגונה	H	accuser	molest*	curated	mt-edited	the Israeli offence
+מעשים מגונים	H	accuser	molest*	curated	mt-edited	
+נגיעה לא הולמת	H	accuser	inappropriate touching	curated	mt-edited	
+ניצול מיני מסחרי	H	accuser	commercial sexual exploitation	curated	mt-edited	
+סביבת עבודה עוינת	H	accuser	hostile work environment	curated	mt-edited	
+סחטנות מינית	H	accuser	sextortion	curated	mt-edited	
+סחר בבני אדם	H	accuser	human trafficking	curated	mt-edited	
+סחר בנשים	H	accuser	human trafficking	curated	mt-edited	
+סחר מיני	H	accuser	sex trafficking	curated	mt-edited	
+פגיעה מינית	H	accuser	sexual abuse	curated	mt-edited	
+פגיעה מינית בילדים	H	accuser	child sexual abuse	curated	mt-edited	
+פורנו נקמה	H	accuser	revenge porn	curated	mt-edited	
+פורנוגרפיה של ילדים	H	accuser	child pornography	curated	mt-edited	
+פרסום תועבה	H	accuser	indecent images	curated	mt-edited	
+תקיפה מינית	H	accuser	sexual assault	curated	mt-edited	
+אונס	M	accuser	rape	curated	mt-edited	
+בית בושת	M	accuser	brothel	curated	mt-edited	
+בלי הסכמה	M	accuser	without consent	curated	mt-edited	
+גרומינג	M	accuser	grooming	curated	mt-edited	
+דירה דיסקרטית	M	accuser	brothel	curated	mt-edited	the Israeli euphemism
+נאנסה	M	accuser	rape	curated	mt-edited	
+סוכנות ליווי	M	accuser	escort agency	fincen-human-trafficking	mt-edited	FinCEN HT
+סרטון אינטימי	M	accuser	intimate images	curated	mt-edited	
+סרסור	M	accuser	pimp	curated	mt-edited	
+סרסורים	M	accuser	pimp	curated	mt-edited	
+קטינה	M	accuser	underage	curated	mt-edited	
+קטינים	M	accuser	underage	curated	mt-edited	
+שירותי ליווי	M	accuser	escort service	curated	mt-edited	
+תמונות אינטימיות	M	accuser	intimate images	curated	mt-edited	
+כרטיס נטען	L	accuser	prepaid access card	fincen-human-trafficking	mt-edited	FinCEN HT
+מדבר בשמה	L	accuser	speaks on behalf of	fincen-human-trafficking	mt-edited	FinCEN HT behavioural
+מכון עיסוי	L	accuser	massage business	fincen-human-trafficking	mt-edited	FinCEN HT
+ניצול	L	accuser	exploitation	curated	mt-edited	
+קטין	L	accuser	minor	curated	mt-edited	

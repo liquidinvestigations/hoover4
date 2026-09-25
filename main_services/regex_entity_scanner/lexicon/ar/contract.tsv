@@ -1,0 +1,71 @@
+term	tier	speaker	concept	source	review	note
+أبرم هذا العقد	H	neutral	agreement is made	curated	mt-edited	
+إخلال جوهري	H	neutral	material breach	curated	mt-edited	
+إنهاء هذا العقد	H	neutral	terminate this agreement	curated	mt-edited	
+إيداع الشيفرة المصدرية	H	neutral	source code escrow	cuad	mt-edited	CUAD
+اتفاقية الخدمات الرئيسية	H	neutral	master services agreement	curated	mt-edited	
+اتفاقية سرية	H	neutral	confidentiality agreement	curated	mt-edited	
+اتفاقية شراء أسهم	H	neutral	share purchase agreement	curated	mt-edited	
+اتفاقية عدم إفصاح	H	neutral	non-disclosure agreement	curated	mt-edited	
+اتفق الطرفان	H	neutral	the parties agree	curated	mt-edited	
+استقلالية البنود	H	neutral	severability	curated	mt-edited	
+الإقرارات والضمانات	H	neutral	representations and warranties	curated	mt-edited	
+الإنهاء للملاءمة	H	neutral	termination for convenience	curated	mt-edited	
+الاتفاق الكامل	H	neutral	entire agreement	curated	mt-edited	
+الحد الأقصى للمسؤولية	H	neutral	cap on liability	cuad	mt-edited	CUAD
+الشرط الجزائي	H	neutral	liquidated damages	curated	mt-edited	
+الطرف المفصح	H	neutral	disclosing party	contractnli	mt-edited	ContractNLI
+القوة القاهرة	H	neutral	force majeure	curated	mt-edited	
+بين كل من	H	neutral	by and between	curated	mt-edited	
+تبقى سارية بعد انتهاء	H	neutral	survive termination	contractnli	mt-edited	ContractNLI
+تحديد المسؤولية	H	neutral	limitation of liability	curated	mt-edited	
+تم الاتفاق بين	H	neutral	agreement is made	curated	mt-edited	
+حرر هذا العقد	H	neutral	agreement is made	curated	mt-edited	
+حظر التنازل	H	neutral	anti-assignment	cuad	mt-edited	CUAD
+حماية من أي مطالبات	H	neutral	hold harmless	curated	mt-edited	
+طرفا هذا العقد	H	neutral	the parties hereto	curated	mt-edited	
+فسخ هذا العقد	H	neutral	terminate this agreement	curated	mt-edited	
+قابلية الفصل	H	neutral	severability	curated	mt-edited	
+قوة قاهرة	H	neutral	force majeure	curated	mt-edited	
+كامل الاتفاق	H	neutral	entire agreement	curated	mt-edited	
+لا يجوز التنازل	H	neutral	anti-assignment	cuad	mt-edited	CUAD
+ما لم يتم إنهاؤه مبكرا	H	neutral	unless terminated earlier	cuad	mt-edited	
+مدة هذا العقد	H	neutral	term of this agreement	curated	mt-edited	
+مدة هذه الاتفاقية	H	neutral	term of this agreement	curated	mt-edited	
+مسؤولية غير محدودة	H	neutral	uncapped liability	cuad	mt-edited	CUAD
+مفوض بالتوقيع	H	neutral	duly authorized	curated	mt-edited	
+موقع حسب الأصول	H	neutral	duly executed	curated	mt-edited	
+يتفق الطرفان	H	neutral	the parties agree	curated	mt-edited	
+إنه في يوم	M	neutral	agreement is made	curated	mt-edited	the opening of Egyptian contracts
+اتفاقية المساهمين	M	neutral	shareholders agreement	curated	mt-edited	
+اتفاقية مستوى الخدمة	M	neutral	service level agreement	curated	mt-edited	
+الإخلال بالعقد	M	neutral	breach of contract	curated	mt-edited	
+الحد الأدنى للالتزام	M	neutral	minimum commitment	cuad	mt-edited	CUAD
+الدولة الأولى بالرعاية	M	neutral	most favored nation	cuad	mt-edited	CUAD
+الطرف الأول	M	neutral	the parties hereto	curated	mt-edited	
+الطرف الثاني	M	neutral	the parties hereto	curated	mt-edited	
+الطرف المتلقي	M	neutral	receiving party	contractnli	mt-edited	
+المبرم بين	M	neutral	entered into	curated	mt-edited	
+المدة الأولية	M	neutral	initial term	cuad	mt-edited	
+بيان العمل	M	neutral	statement of work	curated	mt-edited	
+تاريخ السريان	M	neutral	effective date	curated	mt-edited	
+تاريخ النفاذ	M	neutral	effective date	curated	mt-edited	
+حرر من نسختين	M	neutral	counterparts	curated	mt-edited	
+حقوق التدقيق	M	neutral	audit rights	cuad	mt-edited	CUAD
+خرق العقد	M	neutral	breach of contract	curated	mt-edited	
+عدم الإساءة	M	neutral	non-disparagement	cuad	mt-edited	CUAD
+عدم الاستقطاب	M	neutral	no-solicit	cuad	mt-edited	CUAD
+عدم المنافسة	M	neutral	non-compete	cuad	mt-edited	CUAD
+غرامة تأخير	M	neutral	liquidated damages	curated	mt-edited	
+مدة الضمان	M	neutral	warranty duration	cuad	mt-edited	CUAD
+منح الترخيص	M	neutral	license grant	cuad	mt-edited	CUAD
+هذا العقد	M	neutral	this agreement	curated	mt-edited	
+هذه الاتفاقية	M	neutral	this agreement	curated	mt-edited	
+يتجدد تلقائيا	M	neutral	automatically renewed	cuad	mt-edited	
+يلتزم بتعويض	M	neutral	indemnify	curated	mt-edited	
+التعويض	L	neutral	indemnification	curated	mt-edited	also any compensation
+التنازل	L	neutral	assignment	curated	mt-edited	
+الشروط والأحكام	L	neutral	terms and conditions	curated	mt-edited	
+المقابل	L	neutral	consideration	curated	mt-edited	
+حصرية	L	neutral	exclusivity	cuad	mt-edited	CUAD
+معلومات سرية	L	neutral	confidential information	contractnli	mt-edited	

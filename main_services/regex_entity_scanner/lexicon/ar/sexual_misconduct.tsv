@@ -1,0 +1,53 @@
+term	tier	speaker	concept	source	review	note
+إساءة جنسية	H	accuser	sexual abuse	curated	mt-edited	
+إساءة للأطفال	H	accuser	child abuse	curated	mt-edited	
+إساءة معاملة الأطفال	H	accuser	child abuse	curated	mt-edited	
+استغلال جنسي للأطفال	H	accuser	child sexual abuse	curated	mt-edited	
+اعتداء جنسي	H	accuser	sexual assault	curated	mt-edited	
+الإساءة الجنسية	H	accuser	sexual abuse	curated	mt-edited	definite form
+الابتزاز الجنسي	H	accuser	sextortion	curated	mt-edited	
+الاتجار الجنسي	H	accuser	sex trafficking	curated	mt-edited	
+الاتجار بالأشخاص	H	accuser	human trafficking	curated	mt-edited	
+الاتجار بالبشر	H	accuser	human trafficking	curated	mt-edited	
+الاتجار بالنساء	H	accuser	sex trafficking	curated	mt-edited	
+الاستغلال الجنسي التجاري	H	accuser	commercial sexual exploitation	curated	mt-edited	
+الاعتداء الجنسي على الأطفال	H	accuser	child sexual abuse	curated	mt-edited	
+الانتقام الإباحي	H	accuser	revenge porn	curated	mt-edited	
+التحرش الجنسي	H	accuser	sexual harassment	curated	mt-edited	definite form
+بيئة عمل عدائية	H	accuser	hostile work environment	curated	mt-edited	
+تحرش جنسي	H	accuser	sexual harassment	curated	mt-edited	
+تقرب غير مرغوب	H	accuser	unwanted advances	curated	mt-edited	
+جنس تجاري	H	accuser	commercial sex	fincen-human-trafficking	mt-edited	FinCEN HT
+دعارة قسرية	H	accuser	forced prostitution	curated	mt-edited	
+ده سر بينا	H	actor	our little secret	curated	mt-edited	grooming indicator, Egyptian
+سرنا الصغير	H	actor	our little secret	curated	mt-edited	grooming indicator
+سوء سلوك جنسي	H	accuser	sexual misconduct	curated	mt-edited	
+صور غير لائقة	H	accuser	indecent images	curated	mt-edited	
+صور فاضحة	H	accuser	indecent images	curated	mt-edited	
+غير رضائي	H	accuser	non-consensual	curated	mt-edited	
+لا تقل لأهلك	H	actor	don't tell your parents	curated	mt-edited	grooming indicator
+لمس غير لائق	H	accuser	inappropriate touching	curated	mt-edited	
+لمسات غير لائقة	H	accuser	inappropriate touching	curated	mt-edited	
+ما تقول لأهلك	H	actor	don't tell your parents	curated	mt-edited	grooming indicator, Levantine
+ما تقولش لبابا وماما	H	actor	don't tell your parents	curated	mt-edited	grooming indicator, Egyptian
+مضايقات غير مرغوب فيها	H	accuser	unwanted advances	curated	mt-edited	
+مواد إباحية للأطفال	H	accuser	child pornography	curated	mt-edited	
+هتك عرض	H	accuser	molest*	curated	mt-edited	the Arab penal-code offence
+استدراج	M	accuser	grooming	curated	mt-edited	
+استدراج الأطفال	M	accuser	groomed	curated	mt-edited	
+اغتصاب	M	accuser	rape	curated	mt-edited	
+بدون موافقة	M	accuser	without consent	curated	mt-edited	
+بيت دعارة	M	accuser	brothel	curated	mt-edited	
+خدمة مرافقة	M	accuser	escort service	curated	mt-edited	
+سوق الإنترنت المظلم	M	accuser	darknet market	fincen-human-trafficking	mt-edited	FinCEN HT
+شقة دعارة	M	accuser	brothel	curated	mt-edited	
+صور حميمة	M	accuser	intimate images	curated	mt-edited	
+قاصر	M	accuser	underage	curated	mt-edited	
+قاصرات	M	accuser	underage	curated	mt-edited	
+قواد	M	accuser	pimp	curated	mt-edited	
+وكالة مرافقة	M	accuser	escort agency	fincen-human-trafficking	mt-edited	FinCEN HT
+إعلانات مبوبة	L	accuser	online classified	fincen-human-trafficking	mt-edited	FinCEN HT
+استغلال	L	accuser	exploitation	curated	mt-edited	
+بطاقة مسبقة الدفع	L	accuser	prepaid access card	fincen-human-trafficking	mt-edited	FinCEN HT
+مركز مساج	L	accuser	massage business	fincen-human-trafficking	mt-edited	FinCEN HT
+يتحدث نيابة عن	L	accuser	speaks on behalf of	fincen-human-trafficking	mt-edited	FinCEN HT behavioural

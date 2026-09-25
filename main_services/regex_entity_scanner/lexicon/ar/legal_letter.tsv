@@ -1,0 +1,39 @@
+term	tier	speaker	concept	source	review	note
+إنذار بالكف	H	accuser	cease and desist	curated	mt-edited	
+إنذار رسمي	H	neutral	letter before action	curated	mt-edited	
+إنذار على يد محضر	H	neutral	formal notice	curated	mt-edited	Egyptian bailiff-served notice
+إنذار قبل رفع الدعوى	H	neutral	letter before claim	curated	mt-edited	
+الحفاظ على جميع المستندات	H	neutral	preserve all documents	curated	mt-edited	
+الكف والامتناع	H	accuser	cease and desist	curated	mt-edited	
+بالنيابة عن موكلي	H	neutral	on behalf of our client	curated	mt-edited	
+بصفتنا وكلاء عن	H	neutral	we act for	curated	mt-edited	
+سنتخذ الإجراءات القانونية	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+سنلجأ إلى القضاء	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+مع حفظ كافة الحقوق	H	neutral	we reserve all rights	curated	mt-edited	
+مع حفظ كافة حقوق موكلنا	H	neutral	we reserve all rights	curated	mt-edited	
+من تاريخ استلام هذا الإنذار	H	neutral	of the date of this letter	curated	mt-edited	
+من تاريخ هذا الخطاب	H	neutral	of the date of this letter	curated	mt-edited	
+نحتفظ بكامل حقوقنا	H	neutral	reserve our rights	curated	mt-edited	
+نطالبكم بموجب هذا	H	neutral	we hereby demand	curated	mt-edited	
+نيابة عن موكلنا	H	neutral	on behalf of our client	curated	mt-edited	
+إجراءات قانونية	M	neutral	legal proceedings	curated	mt-edited	
+إخطار رسمي	M	neutral	formal notice	curated	mt-edited	
+اتخاذ الإجراءات القانونية	M	neutral	take legal action	curated	mt-edited	
+الإجراءات القضائية	M	neutral	legal proceedings	curated	mt-edited	
+الوسائل البديلة لتسوية المنازعات	M	neutral	alternative dispute resolution	uk-cpr-pre-action	mt-edited	
+خطاب مطالبة	M	neutral	demand letter	curated	mt-edited	
+خلال 14 يوما	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+خلال أسبوعين	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+دون إخطار آخر	M	neutral	without further notice	curated	mt-edited	
+مكتب محاماة	M	neutral	attorneys at law	curated	mt-edited	
+موكلتنا	M	neutral	our client	curated	mt-edited	
+موكلكم	M	neutral	your client	curated	mt-edited	
+موكلنا	M	neutral	our client	curated	mt-edited	
+موكلي	M	neutral	our client	curated	mt-edited	
+نطالبكم	M	neutral	we hereby demand	curated	mt-edited	
+وإلا	M	neutral	failing which	curated	mt-edited	also an ordinary connective
+السادة المحترمين	L	neutral	dear sir or madam	curated	mt-edited	
+السيد المحترم	L	neutral	dear sir or madam	curated	mt-edited	
+تحية طيبة وبعد	L	neutral	dear sir or madam	curated	mt-edited	
+مع خالص التحية	L	neutral	yours faithfully	curated	mt-edited	
+وتفضلوا بقبول فائق الاحترام	L	neutral	yours faithfully	curated	mt-edited	

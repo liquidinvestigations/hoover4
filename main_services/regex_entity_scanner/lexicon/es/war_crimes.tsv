@@ -1,0 +1,82 @@
+term	tier	speaker	concept	source	review	note
+armas envenenadas	H	accuser	poisoned weapons	rome-statute	mt-edited	
+ataque al hospital	H	accuser	attacks on hospitals	rome-statute	mt-edited	
+ataque contra civiles	H	accuser	attack on civilians	curated	mt-edited	
+ataque desproporcionado	H	accuser	disproportionate attack*	curated	mt-edited	
+ataque indiscriminado	H	accuser	indiscriminate attack*	curated	mt-edited	
+ataque químico	H	accuser	chemical attack*	curated	mt-edited	
+ataques contra civiles	H	accuser	attack on civilians	curated	mt-edited	
+ataques contra hospitales	H	accuser	attacks on hospitals	rome-statute	mt-edited	
+ataques contra la población civil	H	accuser	attack on civilians	rome-statute	mt-edited	art. 8 2 b) i)
+ataques contra trabajadores humanitarios	H	accuser	attacks on aid workers	rome-statute	mt-edited	
+ataques indiscriminados	H	accuser	indiscriminate attack*	curated	mt-edited	
+ataques químicos	H	accuser	chemical attack*	curated	mt-edited	
+atentados contra la dignidad personal	H	accuser	outrages upon personal dignity	rome-statute	mt-edited	art. 8 2 b) xxi)
+bomba de barril	H	accuser	barrel bomb*	curated	mt-edited	
+bombardeo del hospital	H	accuser	attacks on hospitals	curated	mt-edited	
+bombardeo indiscriminado	H	accuser	indiscriminate attack*	curated	mt-edited	
+bombas de barril	H	accuser	barrel bomb*	curated	mt-edited	
+declarar que no se dará cuartel	H	actor	no quarter will be given	rome-statute	mt-edited	art. 8 2 b) xii)
+ejecuciones sumarias	H	accuser	summary execution*	curated	mt-edited	
+ejecución sumaria	H	accuser	summary execution*	curated	mt-edited	
+ejecuten a los prisioneros	H	actor	kill the prisoners	curated	mt-edited	
+escudo humano	H	accuser	human shield*	rome-statute	mt-edited	
+escudos humanos	H	accuser	human shield*	rome-statute	mt-edited	
+experimentos biológicos	H	accuser	biological experiments	rome-statute	mt-edited	
+fusilen a los prisioneros	H	actor	kill the prisoners	curated	mt-edited	
+gases asfixiantes	H	accuser	asphyxiating	rome-statute	mt-edited	
+hacer padecer hambre a la población civil	H	accuser	starvation as a method of warfare	rome-statute	mt-edited	art. 8 2 b) xxv)
+infracciones graves de los convenios de ginebra	H	accuser	grave breach*	rome-statute	mt-edited	
+leyes y usos de la guerra	H	accuser	laws and customs of war	curated	mt-edited	
+manifiestamente excesivos en relación con	H	accuser	disproportionate attack*	rome-statute	mt-edited	art. 8 2 b) iv)
+método de hacer la guerra	H	accuser	starvation as a method of warfare	rome-statute	mt-edited	
+niño soldado	H	accuser	child soldier*	curated	mt-edited	
+niños soldados	H	accuser	child soldier*	curated	mt-edited	
+no dejen a nadie con vida	H	actor	leave no one alive	curated	mt-edited	
+obstaculizar los suministros de socorro	H	accuser	impeding relief supplies	rome-statute	mt-edited	
+perfidia	H	accuser	perfidy	rome-statute	mt-edited	
+se haya rendido a discreción	H	accuser	hors de combat	rome-statute	mt-edited	art. 8 2 b) vi)
+toma de rehenes	H	accuser	taking of hostages	rome-statute	mt-edited	art. 8 2 a) viii)
+tomar como blanco a civiles	H	accuser	attack on civilians	curated	mt-edited	
+tratos humillantes y degradantes	H	accuser	outrages upon personal dignity	rome-statute	mt-edited	
+violación como arma de guerra	H	accuser	rape as a weapon of war	curated	mt-edited	
+violencia sexual relacionada con los conflictos	H	accuser	conflict-related sexual violence	curated	mt-edited	
+a traición	M	accuser	perfidy	rome-statute	mt-edited	also ordinary speech
+agente nervioso	M	accuser	nerve agent*	curated	mt-edited	
+arma química	M	accuser	chemical weapon*	curated	mt-edited	also disarmament news
+armas químicas	M	accuser	chemical weapon*	curated	mt-edited	also disarmament news
+bombardeo de alfombra	M	accuser	carpet bombing	curated	mt-edited	
+bombas de racimo	M	accuser	cluster munition*	curated	mt-edited	
+castigo colectivo	M	accuser	collective punishment	curated	mt-edited	
+convenios de ginebra	M	accuser	geneva convention*	curated	mt-edited	
+corte penal internacional	M	accuser	international criminal court	curated	mt-edited	
+crimen de guerra	M	accuser	war crime*	rome-statute	mt-edited	also history and news of any conflict
+criminal de guerra	M	accuser	war criminal*	curated	mt-edited	
+criminales de guerra	M	accuser	war criminal*	curated	mt-edited	
+crímenes de guerra	M	accuser	war crime*	rome-statute	mt-edited	also history and news of any conflict
+derecho internacional humanitario	M	accuser	international humanitarian law	curated	mt-edited	
+estatuto de roma	M	accuser	rome statute	curated	mt-edited	
+fósforo blanco	M	accuser	white phosphorus	curated	mt-edited	also chemistry
+homicidio intencional	M	accuser	wilful killing	rome-statute	mt-edited	also ordinary criminal law
+minas antipersonal	M	accuser	anti-personnel mine*	curated	mt-edited	
+municiones en racimo	M	accuser	cluster munition*	curated	mt-edited	
+mutilaciones	M	accuser	mutilation	rome-statute	mt-edited	also genital mutilation
+necesidad militar	M	neutral	military necessity	rome-statute	mt-edited	
+no hacer prisioneros	M	actor	take no prisoners	curated	mt-edited	also an idiom
+obediencia debida	M	insider	superior orders	rome-statute	mt-edited	the defence of following orders
+potencia ocupante	M	accuser	occupying power	rome-statute	mt-edited	
+responsabilidad del superior	M	accuser	command responsibility	rome-statute	mt-edited	art. 28
+saqueo	M	accuser	pillage	rome-statute	mt-edited	also riots
+saqueos	M	accuser	pillage	rome-statute	mt-edited	also riots
+sin sobrevivientes	M	actor	no survivors	curated	mt-edited	also disaster reporting
+tierra arrasada	M	actor	scorched earth	curated	mt-edited	
+tierra quemada	M	actor	scorched earth	curated	mt-edited	
+órdenes ilegales	M	insider	unlawful orders	curated	mt-edited	
+bienes culturales	L	accuser	cultural property	curated	mt-edited	also museum and heritage law
+daños colaterales	L	actor	collateral damage	curated	mt-edited	also everyday idiom
+juicios de núremberg	L	accuser	nuremberg trials	curated	mt-edited	
+prisionero de guerra	L	accuser	prisoners of war	curated	mt-edited	also history
+prisioneros de guerra	L	accuser	prisoners of war	curated	mt-edited	also history
+sitiada	L	accuser	siege	curated	mt-edited	
+sitiado	L	accuser	siege	curated	mt-edited	
+víctimas civiles	L	accuser	civilian casualties	curated	mt-edited	also news of any conflict

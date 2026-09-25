@@ -1,0 +1,81 @@
+term	tier	speaker	concept	source	review	note
+أقل من حد الإبلاغ	H	accuser	just below reporting thresholds	fatf-egmont-tbml	mt-edited	
+احتيال إلكتروني	H	accuser	wire fraud	curated	mt-edited	
+احتيال ضريبة القيمة المضافة	H	accuser	vat fraud	curated	mt-edited	
+احتيال ضريبي	H	accuser	tax fraud	curated	mt-edited	
+احتيال في الأوراق المالية	H	accuser	securities fraud	curated	mt-edited	
+احتيال محاسبي	H	accuser	accounting fraud	curated	mt-edited	
+الإبلاغ عن معاملة مشبوهة	H	accuser	suspicious activity report	fincen-human-trafficking	mt-edited	
+الاحتيال الدوار	H	accuser	carousel fraud	curated	mt-edited	
+الالتفاف على العقوبات	H	accuser	evade sanctions	curated	mt-edited	
+التداول بناء على معلومات داخلية	H	accuser	insider trading	curated	mt-edited	
+التستر التجاري	H	accuser	nominee	curated	mt-edited	Saudi offence of trading under a citizen's name
+التلاعب بأسعار الأسهم	H	accuser	market manipulation	curated	mt-edited	
+التلاعب بالسوق	H	accuser	market manipulation	curated	mt-edited	
+التهرب الضريبي	H	accuser	tax evasion	curated	mt-edited	
+التهرب من العقوبات	H	accuser	sanctions evasion	curated	mt-edited	
+الفواتير الصورية	H	accuser	false invoicing	curated	mt-edited	definite form
+المعلومات الداخلية	H	accuser	insider information	curated	mt-edited	definite form
+بلاغ معاملة مشبوهة	H	accuser	suspicious activity report	fincen-human-trafficking	mt-edited	
+بونزي	H	accuser	ponzi	curated	mt-edited	
+تاجر مفقود	H	accuser	missing trader	curated	mt-edited	
+تجزئة الإيداعات	H	actor	smurfing	curated	mt-edited	
+تحت حد الإبلاغ	H	actor	just below the threshold	fatf-egmont-tbml	mt-edited	structuring
+تخفيض الفواتير	H	actor	under invoic*	fatf-egmont-tbml	mt-edited	TBML
+تداول المطلعين	H	accuser	insider trading	curated	mt-edited	
+تداول وهمي	H	accuser	wash trading	curated	mt-edited	
+تضخيم الفواتير	H	actor	over invoic*	spamassassin-advance-fee	mt-edited	TBML
+تقرير معاملة مشبوهة	H	accuser	suspicious activity report	fincen-human-trafficking	mt-edited	
+تقسيم الدفعة	H	actor	split the payment	curated	mt-edited	
+تهرب ضريبي	H	accuser	tax evasion	curated	mt-edited	
+حساب تمرير	H	actor	pay-through account	fatf-egmont-tbml	mt-edited	
+شركة توظيف أموال	H	accuser	ponzi	curated	mt-edited	Egyptian investment scheme
+شركة واجهة	H	accuser	front company	curated	mt-edited	
+صفقات وهمية	H	accuser	wash trade	curated	mt-edited	
+ضخ وتفريغ	H	accuser	pump and dump	curated	mt-edited	
+غسل الأموال القائم على التجارة	H	accuser	trade-based money laundering	curated	mt-edited	
+فواتير صورية	H	accuser	false invoicing	curated	mt-edited	
+فواتير مضخمة	H	actor	over invoic*	spamassassin-advance-fee	mt-edited	TBML
+قسم المبلغ	H	actor	split the payment	curated	mt-edited	
+مخطط بونزي	H	accuser	ponzi	curated	mt-edited	
+مخطط هرمي	H	accuser	pyramid scheme	curated	mt-edited	
+مدفوعات دائرية	H	accuser	circular payments	fatf-egmont-tbml	mt-edited	
+معلومات داخلية	H	accuser	insider information	curated	mt-edited	
+ghaseel amwal	M	accuser	money laundering	investigator-list	mt-edited	Arabizi
+ghasil amwal	M	accuser	money laundering	investigator-list	mt-edited	Arabizi
+إعادة الشحن	M	accuser	transshipment	fincen-bis-export-control	mt-edited	sanctions
+إهدار المال العام	M	accuser	misappropriat*	curated	mt-edited	Egyptian legal term
+اختلاس	M	accuser	embezzl*	curated	mt-edited	
+استيلاء على المال العام	M	accuser	misappropriat*	curated	mt-edited	
+الأشخاص المعرضين سياسيا	M	accuser	politically exposed person	curated	mt-edited	
+الاستخدام المزدوج	M	accuser	dual use	fincen-bis-export-control	mt-edited	export control
+الشركات الصورية	M	actor	shell company	investigator-list	mt-edited	definite form
+الشركات الوهمية	M	actor	shell company	investigator-list	mt-edited	definite form
+الشركة الوهمية	M	actor	shell company	investigator-list	mt-edited	definite form
+المرسل إليه النهائي	M	accuser	ultimate consignee	fincen-bis-export-control	mt-edited	sanctions
+تبييض الأموال	M	accuser	money laundering	investigator-list	mt-edited	Levant and Maghreb
+حساب في الخارج	M	actor	offshore account	curated	mt-edited	
+حساب وسيط	M	actor	transit account	fatf-egmont-tbml	mt-edited	
+شخص مكشوف سياسيا	M	accuser	politically exposed person	curated	mt-edited	
+شركة صورية	M	actor	shell company	investigator-list	mt-edited	
+شركة ورقية	M	actor	shell company	investigator-list	mt-edited	
+شركة وهمية	M	actor	shell company	investigator-list	mt-edited	
+غسل الأموال	M	accuser	money laundering	investigator-list	mt-edited	also compliance training and AML policies
+غسيل أموال	M	accuser	money laundering	investigator-list	mt-edited	
+غسيل الأموال	M	accuser	money laundering	investigator-list	mt-edited	
+كاذب بشكل واضح	M	accuser	patently false	cftc-barclays-libor	mt-edited	
+مدير صوري	M	actor	nominee director	curated	mt-edited	
+مساهم صوري	M	actor	nominee shareholder	curated	mt-edited	
+ملاذ ضريبي	M	actor	offshore account	curated	mt-edited	
+منطقة حرة	M	accuser	free trade zone	fatf-egmont-tbml	mt-edited	
+أعلى ما يمكن	L	actor	as high as possible	cftc-barclays-libor	mt-edited	LIBOR fix request
+اعرف عميلك	L	accuser	kyc	curated	mt-edited	
+الاستخدام النهائي	L	accuser	end use	fincen-bis-export-control	mt-edited	sanctions
+البند الجمركي	L	accuser	hs code	fincen-bis-export-control	mt-edited	
+التمويه	L	accuser	layering	curated	mt-edited	
+المالك المستفيد	L	accuser	beneficial owner	curated	mt-edited	
+المستخدم النهائي	L	accuser	end user	fincen-bis-export-control	mt-edited	sanctions
+المستفيد الحقيقي	L	accuser	beneficial owner	curated	mt-edited	
+تجزئة	L	actor	structuring	curated	mt-edited	
+مبالغ مدورة	L	actor	round amounts	fatf-egmont-tbml	mt-edited	
+مكافحة غسل الأموال	L	accuser	aml	curated	mt-edited	

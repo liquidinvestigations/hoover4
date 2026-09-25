@@ -1,0 +1,17 @@
+term	tier	speaker	concept	source	review	note
+certificación final de obra	H	neutral	final construction invoice	uncl1001	mt-edited	UNTDID 1001
+factura final	H	neutral	final invoice	curated	mt-edited	
+factura final de obra	H	neutral	final construction invoice	uncl1001	mt-edited	UNTDID 1001
+liquidado en su totalidad	H	neutral	paid in full	curated	mt-edited	
+pagada en su totalidad	H	neutral	paid in full	curated	mt-edited	
+pagado en su totalidad	H	neutral	paid in full	curated	mt-edited	
+solicitud de pago final	H	neutral	final payment request	uncl1001	mt-edited	UNTDID 1001
+totalmente pagado	H	neutral	paid in full	curated	mt-edited	
+factura emitida	M	neutral	invoice issued	curated	mt-edited	
+factura original	M	neutral	original invoice	curated	mt-edited	
+pago recibido	M	neutral	payment received	curated	mt-edited	
+recibido conforme	M	neutral	receipted	curated	mt-edited	
+recibo fiscal	M	neutral	fiscal receipt	curated	mt-edited	
+ticket fiscal	M	neutral	fiscal receipt	curated	mt-edited	
+pagada	L	neutral	paid	curated	mt-edited	
+pagado	L	neutral	paid	curated	mt-edited	

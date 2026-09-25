@@ -9,7 +9,8 @@
 //! fragment ─► fold ─► match ─► check ─► signals ─► summarise (per category, for storage)
 //! ```
 //!
-//! - **fold** normalises the fragment once (`fold.rs`).
+//! - **fold** normalises the fragment once (`fold.rs`). Arabic and Hebrew terms also compile with
+//!   the proclitics those scripts join to a word (`clitics.rs`).
 //! - **match** is one Aho-Corasick pass over the folded text with every term of every language.
 //!   A regex alternation of the same terms was measured at under 0.2 MB/s at ten thousand terms,
 //!   an order of magnitude slower than the whole entity scan; the automaton stays above 100 MB/s at
@@ -18,6 +19,7 @@
 //!   flags that say why a hit is weak (`check.rs`).
 
 mod check;
+mod clitics;
 pub mod fold;
 mod load;
 
@@ -188,19 +190,35 @@ impl Lexicon {
         let mut patterns: Vec<String> = Vec::new();
         let mut pattern_terms: Vec<Vec<u32>> = Vec::new();
         let mut index: HashMap<String, usize> = HashMap::new();
+        // The folded text has exactly one space at every word boundary and at both ends, so a
+        // whole word is a literal search for the term between two spaces.
+        let pattern_of = |folded: &str, boundary: Boundary| match boundary {
+            Boundary::Word => format!(" {folded} "),
+            Boundary::Prefix => format!(" {folded}"),
+        };
         for (term_index, term) in loaded.terms.iter().enumerate() {
-            // The folded text has exactly one space at every word boundary and at both ends, so a
-            // whole word is a literal search for the term between two spaces.
-            let pattern = match term.boundary {
-                Boundary::Word => format!(" {} ", term.folded),
-                Boundary::Prefix => format!(" {}", term.folded),
-            };
+            let pattern = pattern_of(&term.folded, term.boundary);
             let slot = *index.entry(pattern.clone()).or_insert_with(|| {
                 patterns.push(pattern);
                 pattern_terms.push(Vec::new());
                 patterns.len() - 1
             });
             pattern_terms[slot].push(term_index as u32);
+        }
+        // A proclitic variant that some row spells out is that row's, never a second reading.
+        let written = patterns.len();
+        for (term_index, term) in loaded.terms.iter().enumerate() {
+            for variant in clitics::variants(&term.folded) {
+                let pattern = pattern_of(&variant, term.boundary);
+                let slot = *index.entry(pattern.clone()).or_insert_with(|| {
+                    patterns.push(pattern);
+                    pattern_terms.push(Vec::new());
+                    patterns.len() - 1
+                });
+                if slot >= written && !pattern_terms[slot].contains(&(term_index as u32)) {
+                    pattern_terms[slot].push(term_index as u32);
+                }
+            }
         }
         // Contiguous NFA, pinned: a DFA is faster on a few thousand patterns but needed over a
         // gigabyte at ninety thousand and was slower there, because its tables fall out of cache.

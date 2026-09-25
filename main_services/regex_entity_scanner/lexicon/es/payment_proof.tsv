@@ -1,0 +1,55 @@
+term	tier	speaker	concept	source	review	note
+aviso de cargo	H	neutral	debit advice	curated	mt-edited	
+aviso de débito	H	neutral	debit advice	curated	mt-edited	
+aviso de pago	H	neutral	payment advice	curated	mt-edited	
+aviso de remesa	H	neutral	remittance advice	curated	mt-edited	
+aviso de transferencia	H	neutral	remittance advice	curated	mt-edited	
+banco beneficiario	H	neutral	beneficiary bank	curated	mt-edited	
+banco del beneficiario	H	neutral	beneficiary bank	curated	mt-edited	
+banco ordenante	H	neutral	ordering institution	mt103-pacs008	mt-edited	
+boleta de depósito	H	neutral	deposit slip	curated	mt-edited	
+cliente beneficiario	H	neutral	beneficiary customer	curated	mt-edited	
+cliente ordenante	H	neutral	ordering customer	curated	mt-edited	
+comprobante de depósito	H	neutral	deposit slip	curated	mt-edited	
+comprobante de pago	H	neutral	proof of payment	curated	mt-edited	
+comprobante de transferencia	H	neutral	wire confirmation	curated	mt-edited	
+confirmación de la transferencia	H	neutral	transfer confirmation	curated	mt-edited	
+confirmación de pago	H	neutral	payment confirmation	curated	mt-edited	
+confirmación de transferencia	H	neutral	transfer confirmation	curated	mt-edited	
+confirmación del pago	H	neutral	payment confirmation	curated	mt-edited	
+constancia de pago	H	neutral	proof of payment	curated	mt-edited	
+copia del mt103	H	neutral	mt103 copy	curated	mt-edited	
+copia del swift	H	neutral	swift copy	curated	mt-edited	
+copia swift	H	neutral	swift copy	curated	mt-edited	
+fecha valor	H	neutral	value date	curated	mt-edited	
+ficha de depósito	H	neutral	deposit slip	curated	mt-edited	
+gastos a cargo del beneficiario	H	neutral	receiver's charges	mt103-pacs008	mt-edited	
+gastos a cargo del ordenante	H	neutral	sender's charges	mt103-pacs008	mt-edited	
+importe instruido	H	neutral	instructed amount	mt103-pacs008	mt-edited	MT103 :33B:
+institución ordenante	H	neutral	ordering institution	mt103-pacs008	mt-edited	
+justificante de pago	H	neutral	proof of payment	curated	mt-edited	Spain
+referencia del ordenante	H	neutral	sender's reference	mt103-pacs008	mt-edited	MT103 :20:
+transferencia exitosa	H	neutral	transfer successful	curated	mt-edited	
+transferencia realizada con éxito	H	neutral	transfer successful	curated	mt-edited	
+acuse de recibo	M	neutral	acknowledgement of receipt	curated	mt-edited	
+beneficiario	M	neutral	beneficiary	curated	mt-edited	
+clave de rastreo	M	neutral	transaction reference	curated	mt-edited	Mexico, SPEI
+cuenta a debitar	M	neutral	debit account	curated	mt-edited	
+cuenta de cargo	M	neutral	debit account	curated	mt-edited	
+fondos transferidos	M	neutral	funds transferred	curated	mt-edited	
+fue acreditado	M	neutral	has been credited	curated	mt-edited	
+fue debitado	M	neutral	has been debited	curated	mt-edited	
+ha sido acreditado	M	neutral	has been credited	curated	mt-edited	
+ha sido debitado	M	neutral	has been debited	curated	mt-edited	
+id de transacción	M	neutral	transaction id	curated	mt-edited	
+número de operación	M	neutral	transaction id	curated	mt-edited	
+número de recibo	M	neutral	receipt no	curated	mt-edited	
+pago exitoso	M	neutral	payment successful	curated	mt-edited	
+pago realizado con éxito	M	neutral	payment successful	curated	mt-edited	
+referencia de la transacción	M	neutral	transaction reference	curated	mt-edited	
+se ha acreditado	M	neutral	has been credited	curated	mt-edited	
+se ha debitado	M	neutral	has been debited	curated	mt-edited	
+transferencia bancaria	M	neutral	wire transfer	curated	mt-edited	
+transferencia electrónica	M	neutral	wire transfer	curated	mt-edited	
+ordenante	L	neutral	originator	curated	mt-edited	
+transferencia	L	neutral	bank transfer	curated	mt-edited	

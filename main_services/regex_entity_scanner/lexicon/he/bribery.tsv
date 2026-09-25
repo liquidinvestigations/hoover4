@@ -1,0 +1,77 @@
+term	tier	speaker	concept	source	review	note
+בלי בדיקה	H	actor	no inspection	investigator-list	mt-edited	
+בלי ביקורת	H	actor	no inspection	investigator-list	mt-edited	
+דמי זירוז	H	actor	expedite fee	curated	mt-edited	
+דמי טיפול מיוחדים	H	actor	special fees	investigator-list	mt-edited	
+האיש שלנו במשרד	H	actor	our friend in the ministry	curated	mt-edited	
+החבר שלנו במשרד	H	actor	our friend in the ministry	curated	mt-edited	
+הנחה גבוהה באופן בלתי סביר	H	actor	unreasonably large discount	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+הצעת כיסוי	H	actor	cover bid	curated	mt-edited	
+התערבות במכס	H	actor	customs intervention	doj-sec-fcpa-guide	mt-edited	FCPA
+כסף במעטפה	H	actor	cash in an envelope	curated	mt-edited	
+להסתכל לצד השני	H	actor	look the other way	curated	mt-edited	
+להעלים עין	H	actor	turn a blind eye	curated	mt-edited	
+לעצום עין	H	actor	look the other way	curated	mt-edited	
+לשמן אותה	H	actor	grease her palm	curated	mt-edited	
+לשמן אותו	H	actor	grease his palm	curated	mt-edited	
+לשמן אותם	H	actor	grease their palm	curated	mt-edited	
+לשמן את הגלגלים	H	actor	grease the wheels	curated	mt-edited	
+מזומן במעטפה	H	actor	cash in an envelope	curated	mt-edited	
+מכרז מכור	H	actor	rigged tender	curated	mt-edited	
+מכרז תפור	H	actor	rigged tender	curated	mt-edited	a tender written to fit one bidder
+מעטפה עם כסף	H	actor	brown envelope	curated	mt-edited	
+מעטפה עם מזומן	H	actor	brown envelope	curated	mt-edited	
+מתחת לשולחן	H	actor	under the table	curated	mt-edited	
+מתנה לשר	H	actor	gift for the minister	curated	mt-edited	
+עמלה מופרזת	H	actor	excessive commission	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+עמלות מופרזות	H	actor	excessive commission	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+שיהיה לה שווה	H	actor	make it worth her while	curated	mt-edited	
+שיהיה להם שווה	H	actor	make it worth their while	curated	mt-edited	
+שיהיה לו שווה	H	actor	make it worth his while	curated	mt-edited	
+שירותים לא מוגדרים	H	actor	vaguely described services	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+תיאום מחירים	H	actor	price fixing	curated	mt-edited	
+תיאום מכרזים	H	actor	bid rigging	curated	mt-edited	
+תשלום הקלה	H	actor	facilitation payment	curated	mt-edited	
+תשלום זירוז	H	actor	facilitation payment	curated	mt-edited	
+תשלום ידידותי	H	actor	friendly payment	investigator-list	mt-edited	
+תשלומים ידידותיים	H	actor	friendly payments	investigator-list	mt-edited	
+kombina	M	actor	under the table	curated	mt-edited	romanised Hebrew
+protektzia	M	actor	wasta	curated	mt-edited	romanised Hebrew
+protekzia	M	actor	wasta	curated	mt-edited	romanised Hebrew
+shochad	M	accuser	bribe	investigator-list	mt-edited	romanised Hebrew
+דמי הצלחה	M	actor	success fee	curated	mt-edited	
+החלק שלו	M	actor	his cut	curated	mt-edited	
+הנתח שלו	M	actor	his cut	curated	mt-edited	
+הסדר כובל	M	accuser	price fixing	curated	mt-edited	the Israeli antitrust term
+חלוקת שווקים	M	actor	market allocation	curated	mt-edited	
+חשבון בנק בחו״ל	M	actor	offshore bank account	doj-sec-fcpa-guide	mt-edited	FCPA red flag
+טובה תחת טובה	M	actor	quid pro quo	curated	mt-edited	
+טובת הנאה	M	accuser	bribe	curated	mt-edited	the word of the Israeli bribery offence
+לשחד	M	accuser	bribe	investigator-list	mt-edited	
+עובד ציבור זר	M	actor	foreign official	doj-sec-fcpa-guide	mt-edited	FCPA
+עמלת שירות לאחר מכירה	M	actor	after sales service fees	doj-sec-fcpa-guide	mt-edited	FCPA
+עמלת תיווך	M	actor	finder's fee	curated	mt-edited	
+פרוטקציה	M	actor	wasta	curated	mt-edited	
+קומבינה	M	actor	under the table	curated	mt-edited	a shady arrangement
+קיקבק	M	accuser	kickback	curated	mt-edited	
+שוחד	M	accuser	bribe	investigator-list	mt-edited	also compliance training
+שחיתות	M	accuser	corruption	investigator-list	mt-edited	also compliance training and news
+שיחד	M	accuser	bribe	investigator-list	mt-edited	
+שיחדו	M	accuser	bribe	investigator-list	mt-edited	
+שמור לי ואשמור לך	M	actor	quid pro quo	curated	mt-edited	
+תדאג לה	M	actor	take care of her	curated	mt-edited	
+תדאג להם	M	actor	take care of them	curated	mt-edited	
+תדאג לו	M	actor	take care of him	curated	mt-edited	
+תמריצים מדעיים	M	actor	scientific incentives	doj-sec-fcpa-guide	mt-edited	FCPA
+אני חייב לך בגדול	L	actor	i owe you big time	fsa-cftc-libor-chats	mt-edited	LIBOR reciprocity
+בקבוק שמפניה	L	actor	bottle of bollinger	fsa-cftc-libor-chats	mt-edited	LIBOR reciprocity
+דמי ייעוץ	L	actor	consultancy fee	curated	mt-edited	
+הוצאות מכירה ושיווק	L	actor	sales and marketing expenses	doj-sec-fcpa-guide	mt-edited	FCPA
+הנחות או החזרים	L	actor	rebates or discounts	doj-sec-fcpa-guide	mt-edited	FCPA
+לא רשמי	L	actor	unofficial	investigator-list	mt-edited	
+מושחת	L	accuser	corrupt	investigator-list	mt-edited	
+מלוכלך	L	actor	dirty	investigator-list	mt-edited	
+מפוקפק	L	accuser	shady	investigator-list	mt-edited	
+נסיעות ואירוח	L	actor	travel and entertainment	doj-sec-fcpa-guide	mt-edited	FCPA
+עמלות או תמלוגים	L	actor	commissions or royalties	doj-sec-fcpa-guide	mt-edited	FCPA
+שכר ייעוץ	L	actor	consulting fees	doj-sec-fcpa-guide	mt-edited	FCPA mischaracterisation

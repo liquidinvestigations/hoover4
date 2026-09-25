@@ -1,0 +1,53 @@
+term	tier	speaker	concept	source	review	note
+ataque generalizado o sistemático	H	accuser	widespread or systematic attack	rome-statute	mt-edited	art. 7
+campo de filtración	H	accuser	filtration camp*	curated	mt-edited	
+campo de reeducación	H	accuser	re-education camp*	curated	mt-edited	
+campos de filtración	H	accuser	filtration camp*	curated	mt-edited	
+campos de reeducación	H	accuser	re-education camp*	curated	mt-edited	
+contra una población civil	H	accuser	attack directed against any civilian population	rome-statute	mt-edited	art. 7
+crimen de apartheid	H	accuser	crime of apartheid	rome-statute	mt-edited	
+deportación o traslado forzoso	H	accuser	deportation or forcible transfer	rome-statute	mt-edited	art. 7 1 d)
+desapariciones forzadas	H	accuser	enforced disappearance*	rome-statute	mt-edited	
+desaparición forzada	H	accuser	enforced disappearance*	rome-statute	mt-edited	art. 7 1 i)
+ejecuciones extrajudiciales	H	accuser	extrajudicial execution*	curated	mt-edited	
+ejecuciones masivas	H	accuser	mass execution*	curated	mt-edited	
+ejecución extrajudicial	H	accuser	extrajudicial execution*	curated	mt-edited	
+embarazo forzado	H	accuser	forced pregnancy	rome-statute	mt-edited	
+esclavitud sexual	H	accuser	sexual slavery	rome-statute	mt-edited	
+escuadrones de la muerte	H	accuser	death squad*	curated	mt-edited	
+escuadrón de la muerte	H	accuser	death squad*	curated	mt-edited	
+esterilizaciones forzadas	H	accuser	enforced sterilization	rome-statute	mt-edited	
+esterilización forzada	H	accuser	enforced sterilization	rome-statute	mt-edited	
+fosa común	H	accuser	mass grave*	curated	mt-edited	
+fosas comunes	H	accuser	mass grave*	curated	mt-edited	
+generalizado y sistemático	H	accuser	widespread or systematic attack	curated	mt-edited	
+limpieza étnica	H	accuser	ethnic cleansing	curated	mt-edited	
+otros actos inhumanos	H	accuser	other inhumane acts	rome-statute	mt-edited	art. 7 1 k)
+privación grave de la libertad física	H	accuser	severe deprivation of physical liberty	rome-statute	mt-edited	art. 7 1 e)
+prostitución forzosa	H	accuser	enforced prostitution	rome-statute	mt-edited	
+suerte o paradero	H	accuser	fate and whereabouts	rome-statute	mt-edited	art. 7 2 i)
+traslado forzoso de población	H	accuser	forcible transfer of population	rome-statute	mt-edited	art. 7 1 d)
+violaciones masivas	H	accuser	mass rape	curated	mt-edited	
+violaciones sistemáticas	H	accuser	systematic rape	curated	mt-edited	
+campo de concentración	M	accuser	concentration camp*	curated	mt-edited	also history teaching
+campos de concentración	M	accuser	concentration camp*	curated	mt-edited	also history teaching
+centro clandestino de detención	M	accuser	secret detention	curated	mt-edited	Argentina, the dictatorship's camps
+crimen de lesa humanidad	M	accuser	crimes against humanity	rome-statute	mt-edited	
+crímenes contra la humanidad	M	accuser	crimes against humanity	curated	mt-edited	
+crímenes de lesa humanidad	M	accuser	crimes against humanity	rome-statute	mt-edited	also news and history
+desaparecidos	M	accuser	disappeared persons	curated	mt-edited	also missing persons after disasters
+desplazamiento forzado	M	accuser	forcible transfer of population	curated	mt-edited	
+desplazamientos forzados	M	accuser	forcible transfer of population	curated	mt-edited	
+detención arbitraria	M	accuser	arbitrary detention	curated	mt-edited	
+esclavitud	M	accuser	enslavement	rome-statute	mt-edited	also history
+exterminio	M	accuser	extermination	rome-statute	mt-edited	art. 7 1 b)
+incomunicado	M	accuser	incommunicado	curated	mt-edited	
+matanzas masivas	M	accuser	mass killing*	curated	mt-edited	
+paradero desconocido	M	accuser	fate and whereabouts	curated	mt-edited	also missing-person notices
+tortura*	M	accuser	tortur*	rome-statute	mt-edited	tortura, torturado; also hyperbole
+torturad*	M	accuser	tortur*	curated	mt-edited	
+trabajo forzoso	M	accuser	forced labour	curated	mt-edited	also human-trafficking and supply-chain compliance
+trabajos forzados	M	accuser	forced labour	curated	mt-edited	
+exhumaci*	L	accuser	exhumation*	curated	mt-edited	also forensic and cemetery routine
+persecución	L	accuser	persecution	rome-statute	mt-edited	also a car chase and everyday speech
+presos políticos	L	accuser	political prisoners	curated	mt-edited	

@@ -1,63 +1,63 @@
 term	tier	speaker	concept	source	review	note
-achevez les prisonniers	H	actor	killing prisoners	curated	mt-edited	
+achevez les prisonniers	H	actor	kill the prisoners	curated	mt-edited	
 affamer délibérément des civils	H	accuser	starvation as a method of warfare	rome-statute	mt-edited	art. 8-2-b-xxv
 armes empoisonnées	H	accuser	poisoned weapons	rome-statute	mt-edited	
-attaque chimique	H	accuser	chemical attack	curated	mt-edited	
+attaque chimique	H	accuser	chemical attack*	curated	mt-edited	
 attaque contre des civils	H	accuser	attack on civilians	curated	mt-edited	
-attaque contre l'hôpital	H	accuser	attack on hospitals	rome-statute	mt-edited	
-attaque disproportionnée	H	accuser	disproportionate attack	curated	mt-edited	
-attaque indiscriminée	H	accuser	indiscriminate attack	curated	mt-edited	
-attaques chimiques	H	accuser	chemical attack	curated	mt-edited	
+attaque contre l'hôpital	H	accuser	attacks on hospitals	rome-statute	mt-edited	
+attaque disproportionnée	H	accuser	disproportionate attack*	curated	mt-edited	
+attaque indiscriminée	H	accuser	indiscriminate attack*	curated	mt-edited	
+attaques chimiques	H	accuser	chemical attack*	curated	mt-edited	
 attaques contre des civils	H	accuser	attack on civilians	curated	mt-edited	
-attaques contre des hôpitaux	H	accuser	attack on hospitals	rome-statute	mt-edited	
+attaques contre des hôpitaux	H	accuser	attacks on hospitals	rome-statute	mt-edited	
 attaques contre la population civile	H	accuser	attack on civilians	rome-statute	mt-edited	
-attaques contre les humanitaires	H	accuser	attack on humanitarian workers	rome-statute	mt-edited	
-attaques indiscriminées	H	accuser	indiscriminate attack	curated	mt-edited	
+attaques contre les humanitaires	H	accuser	attacks on aid workers	rome-statute	mt-edited	
+attaques indiscriminées	H	accuser	indiscriminate attack*	curated	mt-edited	
 atteintes à la dignité de la personne	H	accuser	outrages upon personal dignity	rome-statute	mt-edited	
-baril d'explosifs	H	accuser	barrel bomb	curated	mt-edited	
-barils d'explosifs	H	accuser	barrel bomb	curated	mt-edited	
-bombardement de l'hôpital	H	accuser	attack on hospitals	curated	mt-edited	
-bombardement de zones résidentielles	H	accuser	indiscriminate attack	curated	mt-edited	
-bombardements aveugles	H	accuser	indiscriminate attack	curated	mt-edited	
-bouclier humain	H	accuser	human shields	rome-statute	mt-edited	
-boucliers humains	H	accuser	human shields	rome-statute	mt-edited	
+baril d'explosifs	H	accuser	barrel bomb*	curated	mt-edited	
+barils d'explosifs	H	accuser	barrel bomb*	curated	mt-edited	
+bombardement de l'hôpital	H	accuser	attacks on hospitals	curated	mt-edited	
+bombardement de zones résidentielles	H	accuser	indiscriminate attack*	curated	mt-edited	
+bombardements aveugles	H	accuser	indiscriminate attack*	curated	mt-edited	
+bouclier humain	H	accuser	human shield*	rome-statute	mt-edited	
+boucliers humains	H	accuser	human shield*	rome-statute	mt-edited	
 comme méthode de guerre	H	accuser	starvation as a method of warfare	rome-statute	mt-edited	
 de manière illicite et arbitraire	H	accuser	wanton destruction	rome-statute	mt-edited	art. 8-2-a-iv
-enfant soldat	H	accuser	child soldiers	curated	mt-edited	
-enfants soldats	H	accuser	child soldiers	curated	mt-edited	
+enfant soldat	H	accuser	child soldier*	curated	mt-edited	
+enfants soldats	H	accuser	child soldier*	curated	mt-edited	
 entraver l'envoi des secours	H	accuser	starvation as a method of warfare	rome-statute	mt-edited	
 expériences biologiques	H	accuser	biological experiments	rome-statute	mt-edited	
-exécutez les prisonniers	H	actor	killing prisoners	curated	mt-edited	
-exécution sommaire	H	accuser	summary execution	curated	mt-edited	
-exécutions sommaires	H	accuser	summary execution	curated	mt-edited	
-frappes aveugles	H	accuser	indiscriminate attack	curated	mt-edited	
-gaz asphyxiants	H	accuser	asphyxiating gases	rome-statute	mt-edited	
+exécutez les prisonniers	H	actor	kill the prisoners	curated	mt-edited	
+exécution sommaire	H	accuser	summary execution*	curated	mt-edited	
+exécutions sommaires	H	accuser	summary execution*	curated	mt-edited	
+frappes aveugles	H	accuser	indiscriminate attack*	curated	mt-edited	
+gaz asphyxiants	H	accuser	asphyxiating	rome-statute	mt-edited	
 il ne sera pas fait de quartier	H	actor	no quarter	rome-statute	mt-edited	art. 8-2-b-xii
-infractions graves aux conventions de genève	H	accuser	grave breaches	rome-statute	mt-edited	
+infractions graves aux conventions de genève	H	accuser	grave breach*	rome-statute	mt-edited	
 lois et coutumes de la guerre	H	accuser	laws and customs of war	curated	mt-edited	
-manifestement excessifs par rapport	H	accuser	disproportionate attack	rome-statute	mt-edited	art. 8-2-b-iv
+manifestement excessifs par rapport	H	accuser	disproportionate attack*	rome-statute	mt-edited	art. 8-2-b-iv
 perfidie	H	accuser	perfidy	rome-statute	mt-edited	
 prendre pour cible des civils	H	accuser	attack on civilians	curated	mt-edited	
 rendu à discrétion	H	accuser	hors de combat	rome-statute	mt-edited	
 traitements humiliants et dégradants	H	accuser	outrages upon personal dignity	rome-statute	mt-edited	
 viol comme arme de guerre	H	accuser	rape as a weapon of war	curated	mt-edited	
 violences sexuelles liées aux conflits	H	accuser	conflict-related sexual violence	curated	mt-edited	
-agent neurotoxique	M	accuser	nerve agents	curated	mt-edited	
-arme chimique	M	accuser	chemical weapons	curated	mt-edited	also disarmament news
-armes chimiques	M	accuser	chemical weapons	curated	mt-edited	also disarmament news
-armes à sous-munitions	M	accuser	cluster munitions	curated	mt-edited	
-attaques contre les écoles	M	accuser	attack on schools	curated	mt-edited	
+agent neurotoxique	M	accuser	nerve agent*	curated	mt-edited	
+arme chimique	M	accuser	chemical weapon*	curated	mt-edited	also disarmament news
+armes chimiques	M	accuser	chemical weapon*	curated	mt-edited	also disarmament news
+armes à sous-munitions	M	accuser	cluster munition*	curated	mt-edited	
+attaques contre les écoles	M	accuser	attacks on schools	curated	mt-edited	
 aucun survivant	M	actor	no quarter	curated	mt-edited	also disaster reporting
-bombes à sous-munitions	M	accuser	cluster munitions	curated	mt-edited	
-conventions de genève	M	accuser	geneva conventions	curated	mt-edited	
+bombes à sous-munitions	M	accuser	cluster munition*	curated	mt-edited	
+conventions de genève	M	accuser	geneva convention*	curated	mt-edited	
 cour pénale internationale	M	accuser	international criminal court	curated	mt-edited	
-crime de guerre	M	accuser	war crimes	rome-statute	mt-edited	also history and news of any conflict
-crimes de guerre	M	accuser	war crimes	rome-statute	mt-edited	also history and news of any conflict
-criminel de guerre	M	accuser	war criminal	curated	mt-edited	
-criminels de guerre	M	accuser	war criminal	curated	mt-edited	
+crime de guerre	M	accuser	war crime*	rome-statute	mt-edited	also history and news of any conflict
+crimes de guerre	M	accuser	war crime*	rome-statute	mt-edited	also history and news of any conflict
+criminel de guerre	M	accuser	war criminal*	curated	mt-edited	
+criminels de guerre	M	accuser	war criminal*	curated	mt-edited	
 droit international humanitaire	M	accuser	international humanitarian law	curated	mt-edited	
 homicide intentionnel	M	accuser	wilful killing	rome-statute	mt-edited	also ordinary criminal law
-mines antipersonnel	M	accuser	anti-personnel mines	curated	mt-edited	
+mines antipersonnel	M	accuser	anti-personnel mine*	curated	mt-edited	
 mutilations	M	accuser	mutilation	rome-statute	mt-edited	also genital mutilation
 ne pas faire de prisonniers	M	actor	no quarter	curated	mt-edited	also an idiom
 nécessité militaire	M	neutral	military necessity	rome-statute	mt-edited	

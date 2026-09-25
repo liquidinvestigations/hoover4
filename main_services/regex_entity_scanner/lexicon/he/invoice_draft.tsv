@@ -1,0 +1,23 @@
+term	tier	speaker	concept	source	review	note
+אינו מהווה חשבונית מס	H	neutral	not a tax invoice	curated	mt-edited	
+זו אינה חשבונית מס	H	neutral	not a tax invoice	curated	mt-edited	
+חשבון עסקה	H	neutral	proforma invoice	curated	mt-edited	a demand for payment that is not a tax invoice
+חשבונית חלקית	H	neutral	partial invoice	uncl1001	mt-edited	UNTDID 1001
+חשבונית מקדמה	H	neutral	prepayment invoice	uncl1001	mt-edited	UNTDID 1001
+חשבונית פרופורמה	H	neutral	proforma invoice	curated	mt-edited	
+טיוטת חשבונית	H	neutral	draft invoice	curated	mt-edited	
+מחליפה את חשבונית	H	neutral	replaces invoice	curated	mt-edited	
+הצעת מחיר	M	neutral	quotation	curated	mt-edited	
+חשבונית מעודכנת	M	neutral	revised invoice	curated	mt-edited	
+חשבונית מתוקנת	M	neutral	corrected invoice	curated	mt-edited	
+לאישור	M	neutral	for approval	curated	mt-edited	
+לאישורך	M	neutral	for approval	curated	mt-edited	
+מבטל ומחליף	M	neutral	supersedes	curated	mt-edited	
+אומדן	L	neutral	estimate	curated	mt-edited	
+ארעי	L	neutral	provisional	curated	mt-edited	
+טיוטה	L	neutral	draft	curated	mt-edited	
+לעיונך	L	neutral	for review	curated	mt-edited	
+מבוטל	L	neutral	void	curated	mt-edited	
+מעודכן	L	neutral	revised	curated	mt-edited	
+מקדמי	L	neutral	preliminary	curated	mt-edited	
+מתוקן	L	neutral	amended	fatf-egmont-tbml	mt-edited	FATF red flag when frequent

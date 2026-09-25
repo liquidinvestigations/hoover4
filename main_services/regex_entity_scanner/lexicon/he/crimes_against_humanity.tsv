@@ -1,0 +1,64 @@
+term	tier	speaker	concept	source	review	note
+אונס המוני	H	accuser	mass rape	curated	mt-edited	
+אונס שיטתי	H	accuser	systematic rape	curated	mt-edited	
+גורלם ומקום הימצאם	H	accuser	fate and whereabouts	curated	mt-edited	
+הוצאה להורג ללא משפט	H	accuser	extrajudicial execution*	curated	mt-edited	
+הוצאות להורג המוניות	H	accuser	mass execution*	curated	mt-edited	
+הוצאות להורג ללא משפט	H	accuser	extrajudicial execution*	curated	mt-edited	
+הטיהור האתני	H	accuser	ethnic cleansing	curated	mt-edited	definite form
+היעלמות כפויה	H	accuser	enforced disappearance*	rome-statute	mt-edited	
+העברה בכפייה של אוכלוסייה	H	accuser	forcible transfer of population	rome-statute	mt-edited	
+העלמה כפויה	H	accuser	enforced disappearance*	rome-statute	mt-edited	
+העלמות כפויות	H	accuser	enforced disappearance*	rome-statute	mt-edited	
+הריון כפוי	H	accuser	forced pregnancy	rome-statute	mt-edited	
+חוליות מוות	H	accuser	death squad*	curated	mt-edited	
+חוליית מוות	H	accuser	death squad*	curated	mt-edited	
+חיסולים ללא משפט	H	accuser	extrajudicial killing*	curated	mt-edited	
+טיהור אתני	H	accuser	ethnic cleansing	curated	mt-edited	
+כפייה לזנות	H	accuser	enforced prostitution	rome-statute	mt-edited	
+מחנה חינוך מחדש	H	accuser	re-education camp*	curated	mt-edited	
+מחנה סינון	H	accuser	filtration camp*	curated	mt-edited	
+מחנות חינוך מחדש	H	accuser	re-education camp*	curated	mt-edited	
+מחנות סינון	H	accuser	filtration camp*	curated	mt-edited	
+מעשים בלתי אנושיים אחרים	H	accuser	other inhumane acts	rome-statute	mt-edited	
+מתקפה נרחבת או שיטתית	H	accuser	widespread or systematic attack	rome-statute	mt-edited	
+נגד אוכלוסיה אזרחית	H	accuser	attack directed against any civilian population	il-nazi-law-1950	mt-edited	
+נגד אוכלוסייה אזרחית	H	accuser	attack directed against any civilian population	il-nazi-law-1950	mt-edited	
+נרחבת ושיטתית	H	accuser	widespread or systematic attack	curated	mt-edited	
+עבדות מינית	H	accuser	sexual slavery	rome-statute	mt-edited	
+עיקור בכפייה	H	accuser	enforced sterilization	curated	mt-edited	
+עיקור כפוי	H	accuser	enforced sterilization	rome-statute	mt-edited	
+פשע האפרטהייד	H	accuser	crime of apartheid	rome-statute	mt-edited	
+קבר אחים	H	accuser	mass grave*	curated	mt-edited	
+קבר האחים	H	accuser	mass grave*	curated	mt-edited	definite construct
+קברי אחים	H	accuser	mass grave*	curated	mt-edited	
+קברי האחים	H	accuser	mass grave*	curated	mt-edited	definite construct
+שלילת חירות חמורה	H	accuser	severe deprivation of physical liberty	rome-statute	mt-edited	
+אפרטהייד	M	accuser	apartheid	rome-statute	mt-edited	also historical and political argument
+העברה כפויה	M	accuser	forcible transfer of population	curated	mt-edited	
+הרג המוני	M	accuser	mass killing*	curated	mt-edited	
+כלא סודי	M	accuser	secret detention	curated	mt-edited	
+ללא קשר עם העולם החיצון	M	accuser	incommunicado	curated	mt-edited	
+מחנה הריכוז	M	accuser	concentration camp*	curated	mt-edited	definite construct
+מחנה כליאה	M	accuser	internment camp*	curated	mt-edited	
+מחנה מעצר	M	accuser	internment camp*	curated	mt-edited	
+מחנה ריכוז	M	accuser	concentration camp*	curated	mt-edited	also history teaching
+מחנות הריכוז	M	accuser	concentration camp*	curated	mt-edited	definite construct
+מחנות ריכוז	M	accuser	concentration camp*	curated	mt-edited	also history teaching
+מעצר חשאי	M	accuser	secret detention	curated	mt-edited	
+מעצר שרירותי	M	accuser	arbitrary detention	curated	mt-edited	
+מקום הימצאם לא ידוע	M	accuser	fate and whereabouts	curated	mt-edited	
+נעלמים	M	accuser	disappeared persons	curated	mt-edited	
+עבודת כפייה	M	accuser	forced labour	il-nazi-law-1950	mt-edited	also human-trafficking and supply-chain compliance
+עינו אותו	M	accuser	tortur*	curated	mt-edited	
+עינוי	M	accuser	tortur*	rome-statute	mt-edited	
+עינויים	M	accuser	tortur*	rome-statute	mt-edited	also hyperbole
+עקירה בכפייה	M	accuser	forcible transfer of population	curated	mt-edited	
+פשע כלפי האנושות	M	accuser	crimes against humanity	il-nazi-law-1950	mt-edited	the legal term
+פשע נגד האנושות	M	accuser	crimes against humanity	curated	mt-edited	
+פשעים כלפי האנושות	M	accuser	crimes against humanity	il-nazi-law-1950	mt-edited	
+פשעים נגד האנושות	M	accuser	crimes against humanity	curated	mt-edited	also news and history
+אסירים פוליטיים	L	accuser	political prisoners	curated	mt-edited	
+גירוש	L	accuser	deportation or forcible transfer	il-nazi-law-1950	mt-edited	also immigration deportation
+רדיפה	L	accuser	persecution	il-nazi-law-1950	mt-edited	also a chase
+שעבוד	L	accuser	enslavement	il-nazi-law-1950	mt-edited	also a lien in property law

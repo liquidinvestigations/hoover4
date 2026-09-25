@@ -1,0 +1,41 @@
+term	tier	speaker	concept	source	review	note
+הנ״ל	H	neutral	aforesaid	curated	mt-edited	
+הצהרה בשבועה	H	neutral	sworn statement	curated	mt-edited	
+זכות הצעה ראשונה	H	neutral	right of first offer	cuad	mt-edited	CUAD
+זכות סירוב ראשונה	H	neutral	right of first refusal	cuad	mt-edited	CUAD
+זכות קדימה	H	neutral	right of first refusal	cuad	mt-edited	CUAD
+חיסיון עורך דין לקוח	H	neutral	attorney-client privilege	curated	mt-edited	
+חסיון עו״ד לקוח	H	neutral	attorney-client privilege	curated	mt-edited	
+ייפוי כוח	H	neutral	power of attorney	curated	mt-edited	
+יפוי כח	H	neutral	power of attorney	curated	mt-edited	
+כוונה ליצור יחסים משפטיים	H	neutral	intention to be legally bound	mou-definition	mt-edited	
+ללא פגיעה בזכויות	H	neutral	without prejudice	curated	mt-edited	
+לראיה באו הצדדים על החתום	H	neutral	in witness whereof	curated	mt-edited	
+מוטב צד שלישי	H	neutral	third party beneficiary	cuad	mt-edited	CUAD
+נוטריון	H	neutral	notary public	curated	mt-edited	
+תצהיר	H	neutral	affidavit	curated	mt-edited	
+אישור נוטריוני	M	neutral	notarized	curated	mt-edited	
+אני החתום מטה	M	neutral	the undersigned	curated	mt-edited	
+בהתאם לסעיף	M	neutral	pursuant to	curated	mt-edited	
+בזאת	M	neutral	hereby	curated	mt-edited	
+האמור לעיל	M	neutral	aforementioned	curated	mt-edited	
+הואיל	M	neutral	whereas	curated	mt-edited	the recital word of Israeli contracts
+הח״מ	M	neutral	the undersigned	curated	mt-edited	
+הצעה וקיבול	M	neutral	offer and acceptance	mou-definition	mt-edited	
+יועץ משפטי	M	neutral	legal counsel	curated	mt-edited	
+כאמור לעיל	M	neutral	aforementioned	curated	mt-edited	
+להלן	M	neutral	hereinafter	curated	mt-edited	also below in ordinary text
+למרות האמור	M	neutral	notwithstanding	curated	mt-edited	
+נתבע	M	neutral	defendant	curated	mt-edited	
+נתבעת	M	neutral	defendant	curated	mt-edited	
+על אף האמור	M	neutral	notwithstanding	curated	mt-edited	
+צו בית משפט	M	neutral	court order	curated	mt-edited	
+צו שיפוטי	M	neutral	court order	curated	mt-edited	
+שינוי שליטה	M	neutral	change of control	cuad	mt-edited	CUAD
+תובע	M	neutral	plaintiff	investigator-list	mt-edited	also a prosecutor
+תובעת	M	neutral	plaintiff	investigator-list	mt-edited	
+תיק מס׳	M	neutral	case no	curated	mt-edited	case number header
+דבר חקיקה	L	neutral	statute	curated	mt-edited	
+משיב	L	neutral	respondent	curated	mt-edited	
+פסיקה	L	neutral	ruling	curated	mt-edited	
+פסק דין	L	neutral	judgment	curated	mt-edited	

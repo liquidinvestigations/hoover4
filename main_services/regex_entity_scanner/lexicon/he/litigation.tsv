@@ -1,0 +1,29 @@
+term	tier	speaker	concept	source	review	note
+בוררות	M	accuser	arbitration	investigator-list	mt-edited	contracts; also a document-type signal
+ביזיון בית משפט	M	accuser	contempt of court	uk-cpr-pre-action	mt-edited	
+דיבה	M	accuser	slander	curated	mt-edited	
+הוצאת דיבה	M	accuser	libel	curated	mt-edited	
+הזמנה לעדות	M	accuser	subpoena	curated	mt-edited	
+העמדה לדין	M	accuser	prosecut*	investigator-list	mt-edited	
+התנכלות	M	accuser	retaliat*	curated	mt-edited	
+זימון לעדות	M	accuser	subpoena	curated	mt-edited	
+כתב אישום	M	accuser	indictment	curated	mt-edited	
+לשון הרע	M	accuser	defamation	curated	mt-edited	the Israeli defamation law
+עדות שמיעה	M	accuser	hearsay	investigator-list	mt-edited	
+עורך הדין שלנו	M	accuser	our lawyers	curated	mt-edited	
+עורכי הדין שלנו	M	accuser	our lawyers	curated	mt-edited	
+עיכוב הליכים	M	accuser	stay of proceedings	uk-cpr-pre-action	mt-edited	
+עיצום כספי	M	accuser	financial penalty	fca-hsbc-fx	mt-edited	the Israeli regulators' term
+פרקליטות	M	accuser	prosecut*	investigator-list	mt-edited	the prosecution service
+פשיטה	M	accuser	dawn raid	curated	mt-edited	also any police raid
+צו חיפוש	M	accuser	search warrant	curated	mt-edited	
+צו מניעה	M	accuser	injunction	curated	mt-edited	
+שימור מסמכים	M	accuser	preserve documents	curated	mt-edited	
+שימור ראיות	M	accuser	legal hold	curated	mt-edited	
+תביעה ייצוגית	M	accuser	class action	curated	mt-edited	
+תביעה שכנגד	M	accuser	counterclaim	uk-cpr-pre-action	mt-edited	
+תובענה ייצוגית	M	accuser	class action	curated	mt-edited	
+הסדר פשרה	L	accuser	settlement	curated	mt-edited	
+התיישנות	L	accuser	limitation period	uk-cpr-pre-action	mt-edited	
+חקיר*	L	accuser	investigat*	investigator-list	mt-edited	stem; routine in many domains
+תביעה	L	accuser	lawsuit	curated	mt-edited	also any claim

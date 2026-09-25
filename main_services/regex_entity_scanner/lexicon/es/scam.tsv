@@ -1,0 +1,93 @@
+term	tier	speaker	concept	source	review	note
+agente fiduciario	H	actor	fiduciary agent	spamassassin-advance-fee	mt-edited	419
+asegurar los fondos	H	actor	secure the funds	spamassassin-advance-fee	mt-edited	419
+caja de consignación	H	actor	consignment box	curated	mt-edited	
+cajero de criptomonedas	H	actor	virtual currency kiosk	fincen-pig-butchering	mt-edited	pig butchering
+comisión por adelantado	H	actor	advance fee	curated	mt-edited	
+cooperación honesta	H	actor	honest cooperation	spamassassin-advance-fee	mt-edited	419
+coordinador de lotería	H	actor	lottery coordinator	spamassassin-advance-fee	mt-edited	419
+correo diplomático	H	actor	diplomatic courier	curated	mt-edited	
+duplica tu inversión	H	actor	double your investment	curated	mt-edited	
+duplique su inversión	H	actor	double your investment	curated	mt-edited	
+el difunto presidente	H	actor	the late president	spamassassin-advance-fee	mt-edited	419
+esposa del difunto	H	actor	wife of the late	spamassassin-advance-fee	mt-edited	419
+estimado beneficiario	H	actor	dear beneficiary	curated	mt-edited	
+fondo de compensación	H	actor	compensation fund	curated	mt-edited	
+fondos no reclamados	H	actor	unclaimed funds	curated	mt-edited	
+fraude de pago por adelantado	H	actor	advance fee	curated	mt-edited	
+ganancias garantizadas	H	actor	guaranteed returns	curated	mt-edited	
+has ganado	H	actor	you have won	curated	mt-edited	
+hijo del difunto	H	actor	son of the late	spamassassin-advance-fee	mt-edited	419
+hijo del fallecido	H	actor	son of the late	spamassassin-advance-fee	mt-edited	419
+millones de dólares estadounidenses	H	actor	million united states dollars	spamassassin-advance-fee	mt-edited	419
+notificación de ganador	H	actor	winning notification	curated	mt-edited	
+notificación de premio	H	actor	award notification	spamassassin-advance-fee	mt-edited	419
+pariente lejano	H	actor	extended relative	spamassassin-advance-fee	mt-edited	419
+propuesta de negocio confidencial	H	actor	confidential business proposal	curated	mt-edited	
+querido beneficiario	H	actor	dear beneficiary	curated	mt-edited	
+reclama tu premio	H	actor	claim your prize	curated	mt-edited	
+reclamar el dinero	H	actor	claim the money	spamassassin-advance-fee	mt-edited	419
+reclame su premio	H	actor	claim your prize	curated	mt-edited	
+rendimientos garantizados	H	actor	guaranteed returns	curated	mt-edited	
+rentabilidad garantizada	H	actor	guaranteed returns	curated	mt-edited	
+secuestro virtual	H	actor	virtual kidnapping	curated	mt-edited	Mexico
+socio comercial extranjero	H	actor	foreign business partner	spamassassin-advance-fee	mt-edited	419
+sorteo por computadora	H	actor	computer ballot system	spamassassin-advance-fee	mt-edited	419
+su cuenta ha sido bloqueada	H	actor	your account has been suspended	curated	mt-edited	
+su cuenta ha sido suspendida	H	actor	your account has been suspended	curated	mt-edited	
+tarifa de liberación	H	actor	clearance fee	curated	mt-edited	
+tarjeta de itunes	H	actor	itunes card	curated	mt-edited	
+transacción diplomática	H	actor	diplomatic transaction	spamassassin-advance-fee	mt-edited	419
+tu cuenta ha sido suspendida	H	actor	your account has been suspended	curated	mt-edited	
+urgente y confidencial	H	actor	urgent and confidential	spamassassin-advance-fee	mt-edited	419
+usted ha ganado	H	actor	you have won	curated	mt-edited	
+verifica tu cuenta	H	actor	verify your account	curated	mt-edited	
+verifique su cuenta	H	actor	verify your account	curated	mt-edited	
+viuda del difunto	H	actor	wife of the late	spamassassin-advance-fee	mt-edited	419
+100% seguro	M	actor	100% safe	spamassassin-advance-fee	mt-edited	419
+abogado privado	M	actor	private lawyer	spamassassin-advance-fee	mt-edited	419
+asistencia urgente	M	actor	urgent assistance	spamassassin-advance-fee	mt-edited	419
+ayuda urgente	M	actor	urgent assistance	spamassassin-advance-fee	mt-edited	419
+cargo por procesamiento	M	actor	processing fee	curated	mt-edited	
+comisión de retiro	M	actor	withdrawal fees	fincen-pig-butchering	mt-edited	pig butchering
+como beneficiario	M	actor	as the beneficiary	spamassassin-advance-fee	mt-edited	419
+cuenta extranjera	M	actor	foreign account	spamassassin-advance-fee	mt-edited	419
+cuenta offshore	M	actor	off-shore account	spamassassin-advance-fee	mt-edited	419
+cuento del tío	M	actor	advance fee	curated	mt-edited	Argentina, any confidence trick
+desde el escritorio de	M	actor	the desk of	spamassassin-advance-fee	mt-edited	419
+documentos vitales	M	actor	vital documents	spamassassin-advance-fee	mt-edited	419
+en una misión en el extranjero	M	actor	deployed overseas	curated	mt-edited	
+envíame el código	M	actor	send the code	curated	mt-edited	
+estimado amigo	M	actor	dear friend	curated	mt-edited	
+estrictamente confidencial	M	actor	strictly confidential	curated	mt-edited	
+familiar más cercano	M	actor	next of kin	curated	mt-edited	
+la suma total	M	actor	the total sum	spamassassin-advance-fee	mt-edited	419
+libre de riesgo	M	actor	free of risk	spamassassin-advance-fee	mt-edited	419
+lotería	M	actor	lottery	curated	mt-edited	
+magnanimidad	M	actor	magnanimity	spamassassin-advance-fee	mt-edited	419
+me pongo en contacto con usted	M	actor	i am contacting you	spamassassin-advance-fee	mt-edited	419
+mándame el código	M	actor	send the code	curated	mt-edited	
+oportunidad de inversión	M	actor	investment opportunity	fincen-pig-butchering	mt-edited	pig butchering
+orden de aprehensión	M	actor	arrest warrant	curated	mt-edited	Mexico
+orden de arresto	M	actor	arrest warrant	curated	mt-edited	
+pariente más cercano	M	actor	next of kin	curated	mt-edited	
+pásame el código	M	actor	send the code	curated	mt-edited	
+querido amigo	M	actor	dear friend	curated	mt-edited	
+rendimientos significativos	M	actor	significant returns	fincen-pig-butchering	mt-edited	pig butchering
+respuesta urgente	M	actor	urgent response	curated	mt-edited	
+sin riesgo	M	actor	risk free	spamassassin-advance-fee	mt-edited	419
+socio silencioso	M	actor	silent partner	spamassassin-advance-fee	mt-edited	419
+soy viuda	M	actor	i am a widow	curated	mt-edited	
+tarifa de procesamiento	M	actor	processing fee	curated	mt-edited	
+tarjeta de cajero	M	actor	atm card	curated	mt-edited	
+tarjeta de regalo	M	actor	gift card	curated	mt-edited	
+banco central de	L	actor	central bank of	spamassassin-advance-fee	mt-edited	419
+desembolso	L	actor	disbursement	spamassassin-advance-fee	mt-edited	419
+dirección de billetera	L	actor	wallet address	curated	mt-edited	
+herencia	L	actor	inheritance	curated	mt-edited	
+le ruego amablemente	L	actor	kindly	curated	mt-edited	
+modalidades	L	actor	modalities	spamassassin-advance-fee	mt-edited	419
+número equivocado	L	actor	wrong number	fincen-pig-butchering	mt-edited	pig butchering opener
+sitio de citas	L	actor	dating site	fincen-pig-butchering	mt-edited	
+socio comercial	L	actor	business partner	spamassassin-advance-fee	mt-edited	419
+viejo amigo	L	actor	old friend	fincen-pig-butchering	mt-edited	

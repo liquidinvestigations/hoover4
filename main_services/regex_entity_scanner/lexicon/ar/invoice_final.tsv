@@ -1,0 +1,16 @@
+term	tier	speaker	concept	source	review	note
+المستخلص الختامي	H	neutral	final construction invoice	uncl1001	mt-edited	the closing certificate of a construction contract
+تم السداد بالكامل	H	neutral	paid in full	curated	mt-edited	
+طلب الدفعة النهائية	H	neutral	final payment request	uncl1001	mt-edited	UNTDID 1001
+فاتورة نهائية	H	neutral	final invoice	curated	mt-edited	
+مدفوعة بالكامل	H	neutral	paid in full	curated	mt-edited	
+مستخلص نهائي	H	neutral	final construction invoice	uncl1001	mt-edited	
+إيصال استلام	M	neutral	receipted	curated	mt-edited	
+إيصال سداد	M	neutral	receipted	curated	mt-edited	
+إيصال ضريبي	M	neutral	fiscal receipt	curated	mt-edited	
+الفاتورة الأصلية	M	neutral	original invoice	curated	mt-edited	
+تم إصدار الفاتورة	M	neutral	invoice issued	curated	mt-edited	
+تم استلام الدفعة	M	neutral	payment received	curated	mt-edited	
+تم استلام المبلغ	M	neutral	payment received	curated	mt-edited	
+تم الدفع	L	neutral	paid	curated	mt-edited	
+مدفوع	L	neutral	paid	curated	mt-edited	

@@ -1,0 +1,51 @@
+term	tier	speaker	concept	source	review	note
+actuamos en nombre de	H	neutral	we act on behalf of	curated	mt-edited	
+actuamos en representación de	H	neutral	we act on behalf of	curated	mt-edited	
+carta de requerimiento	H	neutral	letter before action	curated	mt-edited	
+cese y desista	H	accuser	cease and desist	curated	mt-edited	
+cese y desistimiento	H	accuser	cease and desist	curated	mt-edited	
+contados a partir de la recepción de la presente	H	neutral	of the date of this letter	curated	mt-edited	
+desde la fecha de la presente	H	neutral	of the date of this letter	curated	mt-edited	
+en nombre de nuestro cliente	H	neutral	on behalf of our client	curated	mt-edited	
+en nombre y representación de	H	neutral	on behalf of our client	curated	mt-edited	
+en representación de nuestro cliente	H	neutral	on behalf of our client	curated	mt-edited	
+evaluación neutral temprana	H	neutral	early neutral evaluation	uk-cpr-pre-action	mt-edited	
+iniciar acciones legales	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+iniciaremos acciones legales	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+le requerimos formalmente	H	neutral	we hereby demand	curated	mt-edited	
+nos reservamos todos los derechos	H	neutral	we reserve all rights	curated	mt-edited	
+por medio de la presente requerimos	H	neutral	we hereby demand	curated	mt-edited	
+preservar toda la documentación	H	neutral	preserve all documents	curated	mt-edited	
+procederemos judicialmente	H	neutral	commencing proceedings	uk-cpr-pre-action	mt-edited	
+requerimiento de cese	H	accuser	cease and desist	curated	mt-edited	
+requerimiento extrajudicial	H	neutral	letter before action	curated	mt-edited	
+requerimiento previo	H	neutral	letter before claim	curated	mt-edited	
+reservándonos todas las acciones	H	neutral	reserve our rights	curated	mt-edited	
+acciones judiciales	M	neutral	legal proceedings	curated	mt-edited	
+bufete	M	neutral	attorneys at law	curated	mt-edited	
+burofax	M	neutral	formal notice	curated	mt-edited	Spain
+carta de reclamación	M	neutral	demand letter	curated	mt-edited	
+carta documento	M	neutral	formal notice	curated	mt-edited	Argentina
+de lo contrario	M	neutral	failing which	curated	mt-edited	also an ordinary connective
+despacho de abogados	M	neutral	attorneys at law	curated	mt-edited	
+emprender acciones legales	M	neutral	take legal action	curated	mt-edited	
+en caso contrario	M	neutral	failing which	curated	mt-edited	
+en un plazo de 14 días	M	neutral	within 14 days	uk-cpr-pre-action	mt-edited	
+intimación	M	neutral	formal notice	curated	mt-edited	Argentina
+medios alternativos de solución de controversias	M	neutral	alternative dispute resolution	uk-cpr-pre-action	mt-edited	
+notificación formal	M	neutral	formal notice	curated	mt-edited	
+nuestra clienta	M	neutral	our client	curated	mt-edited	
+nuestra representada	M	neutral	our client	curated	mt-edited	
+nuestro cliente	M	neutral	our client	curated	mt-edited	
+nuestro representado	M	neutral	our client	curated	mt-edited	
+procedimiento judicial	M	neutral	legal proceedings	curated	mt-edited	
+requerimiento formal	M	neutral	formal notice	curated	mt-edited	
+resolución alternativa de conflictos	M	neutral	alternative dispute resolution	uk-cpr-pre-action	mt-edited	
+sin más aviso	M	neutral	without further notice	curated	mt-edited	
+su cliente	M	neutral	your client	curated	mt-edited	
+su representada	M	neutral	your client	curated	mt-edited	
+su representado	M	neutral	your client	curated	mt-edited	
+tomar acciones legales	M	neutral	take legal action	curated	mt-edited	
+a quien corresponda	L	neutral	dear sir or madam	curated	mt-edited	
+atentamente	L	neutral	yours faithfully	curated	mt-edited	
+muy señores míos	L	neutral	dear sir or madam	curated	mt-edited	

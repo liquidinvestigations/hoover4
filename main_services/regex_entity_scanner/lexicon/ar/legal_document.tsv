@@ -1,0 +1,45 @@
+term	tier	speaker	concept	source	review	note
+إفادة مشفوعة بالقسم	H	neutral	sworn statement	curated	mt-edited	
+إقرار قانوني	H	neutral	statutory declaration	curated	mt-edited	
+إقرار مشفوع باليمين	H	neutral	affidavit	curated	mt-edited	
+الاشتراط لمصلحة الغير	H	neutral	third party beneficiary	cuad	mt-edited	the civil-law term
+المذكور آنفا	H	neutral	aforesaid	curated	mt-edited	
+المشار إليه فيما بعد	H	neutral	hereinafter	curated	mt-edited	
+تعهد بعدم المقاضاة	H	neutral	covenant not to sue	cuad	mt-edited	CUAD
+توكيل رسمي	H	neutral	power of attorney	curated	mt-edited	
+حق الأولوية في الشراء	H	neutral	right of first refusal	cuad	mt-edited	CUAD
+حق الشفعة	H	neutral	right of first refusal	cuad	mt-edited	pre-emption in civil and Islamic law
+حق العرض الأول	H	neutral	right of first offer	cuad	mt-edited	CUAD
+دون المساس بالحقوق	H	neutral	without prejudice	curated	mt-edited	
+سالف الذكر	H	neutral	aforesaid	curated	mt-edited	
+سرية العلاقة بين المحامي وموكله	H	neutral	attorney-client privilege	curated	mt-edited	
+شهادة تحت القسم	H	neutral	sworn statement	curated	mt-edited	
+كاتب العدل	H	neutral	notary public	curated	mt-edited	
+كاتب عدل	H	neutral	notary public	curated	mt-edited	
+نية الالتزام القانوني	H	neutral	intention to be legally bound	mou-definition	mt-edited	
+وإثباتا لما تقدم	H	neutral	in witness whereof	curated	mt-edited	
+وإشهادا على ذلك	H	neutral	in witness whereof	curated	mt-edited	
+ويشار إليه فيما بعد	H	neutral	hereinafter	curated	mt-edited	
+ويشار إليها فيما بعد	H	neutral	hereinafter	curated	mt-edited	
+أمر المحكمة	M	neutral	court order	curated	mt-edited	
+الإيجاب والقبول	M	neutral	offer and acceptance	mou-definition	mt-edited	
+المدعى عليه	M	neutral	defendant	curated	mt-edited	
+المدعي	M	neutral	plaintiff	investigator-list	mt-edited	also part of the prosecutor's title
+المذكور أعلاه	M	neutral	aforementioned	curated	mt-edited	
+المستشار القانوني	M	neutral	legal counsel	curated	mt-edited	
+الموثق	M	neutral	notarized	curated	mt-edited	
+الموقع أدناه	M	neutral	the undersigned	curated	mt-edited	
+بالرغم من أي نص	M	neutral	notwithstanding	curated	mt-edited	
+بموجب هذا	M	neutral	hereby	curated	mt-edited	
+تغيير السيطرة	M	neutral	change of control	cuad	mt-edited	CUAD
+جدول القضايا	M	neutral	docket	curated	mt-edited	
+حيث أن	M	neutral	whereas	curated	mt-edited	the recital form of Arabic contracts
+على الرغم مما ورد	M	neutral	notwithstanding	curated	mt-edited	
+عملا بأحكام	M	neutral	pursuant to	curated	mt-edited	
+في الدعوى رقم	M	neutral	case no	curated	mt-edited	case number header
+مصدق من كاتب العدل	M	neutral	notarized	curated	mt-edited	
+الحكم	L	neutral	judgment	curated	mt-edited	
+المستأنف ضده	L	neutral	respondent	curated	mt-edited	
+المطعون ضده	L	neutral	respondent	curated	mt-edited	
+قرار المحكمة	L	neutral	ruling	curated	mt-edited	
+نص قانوني	L	neutral	statute	curated	mt-edited	

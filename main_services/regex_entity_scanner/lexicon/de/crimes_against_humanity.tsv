@@ -2,39 +2,39 @@ term	tier	speaker	concept	source	review	note
 andere unmenschliche Handlungen	H	accuser	other inhumane acts	rome-statute	mt-edited	
 ausgedehnten oder systematischen Angriffs	H	accuser	widespread or systematic attack	vstgb	mt-edited	§ 7 VStGB
 ausgedehnter oder systematischer Angriff	H	accuser	widespread or systematic attack	vstgb	mt-edited	
-außergerichtliche Hinrichtung*	H	accuser	extrajudicial execution	curated	mt-edited	
-außergerichtliche Tötung*	H	accuser	extrajudicial killing	curated	mt-edited	
+außergerichtliche Hinrichtung*	H	accuser	extrajudicial execution*	curated	mt-edited	
+außergerichtliche Tötung*	H	accuser	extrajudicial killing*	curated	mt-edited	
 erzwungene Schwangerschaft	H	accuser	forced pregnancy	rome-statute	mt-edited	
 ethnische Saeuberung*	H	accuser	ethnic cleansing	curated	mt-edited	ASCII spelling
 ethnische Säuberung*	H	accuser	ethnic cleansing	curated	mt-edited	
-Filtrationslager	H	accuser	filtration camp	curated	mt-edited	
-gewaltsames Verschwindenlassen	H	accuser	enforced disappearance	vstgb	mt-edited	
-Massenexekution*	H	accuser	mass execution	curated	mt-edited	
-Massengrab*	H	accuser	mass grave	curated	mt-edited	
-Massenhinrichtung*	H	accuser	mass execution	curated	mt-edited	
+Filtrationslager	H	accuser	filtration camp*	curated	mt-edited	
+gewaltsames Verschwindenlassen	H	accuser	enforced disappearance*	vstgb	mt-edited	
+Massenexekution*	H	accuser	mass execution*	curated	mt-edited	
+Massengrab*	H	accuser	mass grave*	curated	mt-edited	
+Massenhinrichtung*	H	accuser	mass execution*	curated	mt-edited	
 Massenvergewaltigung*	H	accuser	mass rape	curated	mt-edited	
 Schicksal und Verbleib	H	accuser	fate and whereabouts	curated	mt-edited	
 schwerwiegende Freiheitsberaubung	H	accuser	severe deprivation of physical liberty	vstgb	mt-edited	
 sexuelle Sklaverei	H	accuser	sexual slavery	rome-statute	mt-edited	
 systematische Vergewaltigung*	H	accuser	systematic rape	curated	mt-edited	
-Todesschwadron*	H	accuser	death squad	curated	mt-edited	
-Umerziehungslager	H	accuser	re-education camp	curated	mt-edited	
+Todesschwadron*	H	accuser	death squad*	curated	mt-edited	
+Umerziehungslager	H	accuser	re-education camp*	curated	mt-edited	
 Verbrechen der Apartheid	H	accuser	crime of apartheid	rome-statute	mt-edited	
-Verschwindenlassen	H	accuser	enforced disappearance	vstgb	mt-edited	§ 7 Abs. 1 Nr. 7 VStGB
+Verschwindenlassen	H	accuser	enforced disappearance*	vstgb	mt-edited	§ 7 Abs. 1 Nr. 7 VStGB
 weit verbreitet und systematisch	H	accuser	widespread or systematic attack	curated	mt-edited	
 Zwangssterilisation*	H	accuser	enforced sterilization	rome-statute	mt-edited	
 Zwangssterilisierung*	H	accuser	enforced sterilization	curated	mt-edited	
 zwangsweise Überführung	H	accuser	forcible transfer of population	vstgb	mt-edited	§ 7 Abs. 1 Nr. 4 VStGB
 Ausrottung	M	accuser	extermination	rome-statute	mt-edited	
-Filtrationspunkt*	M	accuser	filtration camp	curated	mt-edited	
-Folter*	M	accuser	torture	vstgb	mt-edited	also hyperbole
-gefoltert	M	accuser	torture	curated	mt-edited	
+Filtrationspunkt*	M	accuser	filtration camp*	curated	mt-edited	
+Folter*	M	accuser	tortur*	vstgb	mt-edited	also hyperbole
+gefoltert	M	accuser	tortur*	curated	mt-edited	
 gegen eine Zivilbevölkerung	M	accuser	attack directed against any civilian population	vstgb	mt-edited	
 Geheimgefängnis*	M	accuser	secret detention	curated	mt-edited	
-Internierungslager	M	accuser	internment camp	curated	mt-edited	
-Konzentrationslager	M	accuser	concentration camp	curated	mt-edited	also history teaching
-Massenmord*	M	accuser	mass killing	curated	mt-edited	
-Massentötung*	M	accuser	mass killing	curated	mt-edited	
+Internierungslager	M	accuser	internment camp*	curated	mt-edited	
+Konzentrationslager	M	accuser	concentration camp*	curated	mt-edited	also history teaching
+Massenmord*	M	accuser	mass killing*	curated	mt-edited	
+Massentötung*	M	accuser	mass killing*	curated	mt-edited	
 Sklavenarbeit	M	accuser	forced labour	curated	mt-edited	
 Verbleib unbekannt	M	accuser	fate and whereabouts	curated	mt-edited	also missing-person notices
 Verbrechen gegen die Menschlichkeit	M	accuser	crimes against humanity	vstgb	mt-edited	§ 7 VStGB; also news and history
@@ -44,7 +44,7 @@ willkürliche Inhaftierung*	M	accuser	arbitrary detention	curated	mt-edited
 Zwangsarbeit	M	accuser	forced labour	curated	mt-edited	also human-trafficking and supply-chain compliance
 Zwangsumsiedlung*	M	accuser	forcible transfer of population	curated	mt-edited	
 Zwangsvertreibung*	M	accuser	forcible transfer of population	curated	mt-edited	
-Exhumierung*	L	accuser	exhumation	curated	mt-edited	also forensic and cemetery routine
+Exhumierung*	L	accuser	exhumation*	curated	mt-edited	also forensic and cemetery routine
 politische Gefangene	L	accuser	political prisoners	curated	mt-edited	
 Vertreibung	L	accuser	deportation or forcible transfer	curated	mt-edited	also the post-war expulsions in history and everyday speech
 ethnischen Säuberung*	H	accuser	ethnic cleansing	curated	mt-edited	

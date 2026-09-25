@@ -1,0 +1,35 @@
+term	tier	speaker	concept	source	review	note
+الإجمالي المستحق	H	neutral	total due	curated	mt-edited	
+الرصيد المستحق	H	neutral	balance due	curated	mt-edited	
+المبلغ المستحق	H	neutral	amount due	curated	mt-edited	
+تاريخ الفاتورة	H	neutral	invoice date	curated	mt-edited	
+رقم الفاتورة	H	neutral	invoice number	curated	mt-edited	
+صافي 30	H	neutral	net 30	curated	mt-edited	
+صافي 60	H	neutral	net 60	curated	mt-edited	
+فاتورة إلى	H	neutral	bill to	curated	mt-edited	
+فاتورة تجارية	H	neutral	commercial invoice	curated	mt-edited	
+فاتورة ذاتية	H	neutral	self-billed invoice	uncl1001	mt-edited	UNTDID 1001
+فاتورة شحن	H	neutral	freight invoice	uncl1001	mt-edited	UNTDID 1001
+فاتورة ضريبية	H	neutral	tax invoice	curated	mt-edited	
+فاتورة عمولة	H	neutral	commission note	uncl1001	mt-edited	UNTDID 1001
+فاتورة قنصلية	H	neutral	consular invoice	uncl1001	mt-edited	UNTDID 1001
+يرجى التحويل إلى	H	neutral	please remit	curated	mt-edited	
+يرجى السداد	H	neutral	please remit	curated	mt-edited	
+أمر شراء	M	neutral	purchase order	curated	mt-edited	
+إشعار دائن	M	neutral	credit note	curated	mt-edited	
+إشعار مدين	M	neutral	debit note	curated	mt-edited	
+الرقم الضريبي	M	neutral	tax id	curated	mt-edited	
+الشحن إلى	M	neutral	ship to	curated	mt-edited	
+المجموع الفرعي	M	neutral	subtotal	curated	mt-edited	
+رقم أمر الشراء	M	neutral	po number	curated	mt-edited	
+رقم التسجيل الضريبي	M	neutral	tax id	curated	mt-edited	
+رقم ضريبة القيمة المضافة	M	neutral	vat number	curated	mt-edited	
+سعر الوحدة	M	neutral	unit price	curated	mt-edited	
+شروط الدفع	M	neutral	payment terms	curated	mt-edited	
+طلب دفع	M	neutral	request for payment	uncl1001	mt-edited	UNTDID 1001
+فاتورة	M	neutral	invoice	curated	mt-edited	
+فواتير	M	neutral	invoice	curated	mt-edited	
+مطالبة مالية	M	neutral	request for payment	uncl1001	mt-edited	
+الكمية	L	neutral	qty	curated	mt-edited	
+تاريخ الاستحقاق	L	neutral	due date	curated	mt-edited	
+ضريبة القيمة المضافة	L	neutral	vat	curated	mt-edited	

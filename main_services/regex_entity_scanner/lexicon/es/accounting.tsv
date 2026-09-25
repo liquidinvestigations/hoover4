@@ -1,0 +1,60 @@
+term	tier	speaker	concept	source	review	note
+acuerdo paralelo	H	actor	side agreement	curated	mt-edited	
+adelantar ingresos	H	actor	pull earnings forward	investigator-list	mt-edited	
+antedat*	H	actor	backdate	investigator-list	mt-edited	antedatar, antedatado
+anticipar ingresos	H	actor	pull earnings forward	investigator-list	mt-edited	
+asiento topside	H	actor	top-side entry	curated	mt-edited	
+caja b	H	actor	off the books	curated	mt-edited	Spain
+contabilidad b	H	actor	off the books	curated	mt-edited	Spain
+contabilidad paralela	H	actor	off the books	curated	mt-edited	
+cuadrar la cifra	H	actor	plug the number	curated	mt-edited	
+cumplir el trimestre	H	actor	make the quarter	curated	mt-edited	
+doble contabilidad	H	actor	off the books	curated	mt-edited	
+empleado fantasma	H	actor	ghost employee	curated	mt-edited	
+empleados fantasma	H	actor	ghost employee	curated	mt-edited	
+empujar los gastos al próximo trimestre	H	actor	push out the expenses	curated	mt-edited	
+factura falsa	H	actor	fake invoice	curated	mt-edited	
+factura ficticia	H	actor	dummy invoice	curated	mt-edited	
+factura simulada	H	actor	dummy invoice	curated	mt-edited	
+facturas apócrifas	H	actor	fake invoice	curated	mt-edited	Mexico
+facturas falsas	H	actor	fake invoice	curated	mt-edited	
+facturas ficticias	H	actor	dummy invoice	curated	mt-edited	
+forzar el cuadre	H	actor	plug the number	curated	mt-edited	
+fuera de libros	H	actor	off the books	investigator-list	mt-edited	
+llegar al número	H	actor	make the number	investigator-list	mt-edited	
+maquillaje contable	H	actor	cook the books	curated	mt-edited	
+maquillar las cifras	H	actor	massage the numbers	curated	mt-edited	
+maquillar las cuentas	H	actor	cook the books	curated	mt-edited	
+maquillar los números	H	actor	massage the numbers	curated	mt-edited	
+operaciones circulares	H	actor	round tripping	curated	mt-edited	
+proveedor fantasma	H	actor	phantom vendor	curated	mt-edited	
+proveedores fantasma	H	actor	phantom vendor	curated	mt-edited	
+reconocer el ingreso antes de tiempo	H	actor	recognize it early	curated	mt-edited	
+reservas ocultas	H	actor	cookie jar reserve	curated	mt-edited	
+saturación del canal	H	actor	channel stuffing	curated	mt-edited	
+ajuste manual	M	actor	manual journal entry	curated	mt-edited	
+alisamiento de beneficios	M	actor	smooth earnings	curated	mt-edited	
+asiento manual	M	actor	manual journal entry	curated	mt-edited	
+capitalizar el gasto	M	actor	capitalize the expense	curated	mt-edited	
+cocinar los libros	M	actor	cook the books	curated	mt-edited	
+con fecha retroactiva	M	actor	backdate	investigator-list	mt-edited	also a lawful retroactive effective date
+contabilidad creativa	M	actor	cook the books	curated	mt-edited	
+dar de baja	M	actor	write off	investigator-list	mt-edited	routine accounting and ordinary speech
+dinero en b	M	actor	off the books	curated	mt-edited	Spain
+en negro	M	actor	off the books	investigator-list	mt-edited	also the colour
+fuera de balance	M	actor	off balance sheet	investigator-list	mt-edited	also lawful off-balance-sheet financing
+lo arreglamos después	M	actor	fix it later	investigator-list	mt-edited	
+maquillaje de balance	M	actor	window dressing	curated	mt-edited	
+no declarado	M	actor	unreported	investigator-list	mt-edited	
+no declarados	M	actor	unreported	investigator-list	mt-edited	
+reexpresión	M	accuser	restatement	curated	mt-edited	
+reformulación de estados financieros	M	accuser	restatement	curated	mt-edited	
+sin factura	M	actor	off the books	curated	mt-edited	
+suavizar resultados	M	actor	smooth earnings	curated	mt-edited	
+ya lo arreglaremos	M	actor	fix it later	investigator-list	mt-edited	
+caja chica	L	actor	petty cash withdrawal	doj-sec-fcpa-guide	mt-edited	FCPA
+cerrar la brecha	L	actor	close the gap	curated	mt-edited	
+cuentas intercompañía	L	actor	intercompany accounts	doj-sec-fcpa-guide	mt-edited	FCPA
+gastos varios	L	actor	miscellaneous expenses	doj-sec-fcpa-guide	mt-edited	FCPA
+irregularidad*	L	actor	irregular	investigator-list	mt-edited	
+mercancía gratuita	L	actor	free goods	doj-sec-fcpa-guide	mt-edited	FCPA

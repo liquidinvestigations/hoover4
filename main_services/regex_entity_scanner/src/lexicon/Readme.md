@@ -17,10 +17,14 @@ that it overlaps.
 The normalisation that terms and text share. The module header lists the steps. The ones that
 decide what matches are these:
 
-- Apostrophes are deleted.
+- Apostrophes are deleted, and the Hebrew geresh with them.
 - Punctuation and whitespace runs become one space.
 - Letters are lowercased, with `ß` folded to `ss`.
-- Combining marks are dropped after Latin, Greek and Cyrillic letters and kept after other scripts.
+- Combining marks are dropped after Latin, Greek, Cyrillic, Hebrew and Arabic letters and kept
+  after other scripts. In Hebrew and Arabic the marks are vowel points and hamza signs that
+  everyday writing leaves out, so `أ`, `إ` and `آ` fold to `ا`.
+- Arabic `ة` folds to `ه` and `ى` to `ي`, the Persian `ی` and `ک` to their Arabic forms, and
+  Arabic-Indic digits to ASCII. The tatweel that stretches a word is deleted.
 
 Cyrillic `й` loses its breve like `ё` loses its diaeresis, so `й` and `и` fold together. The data
 was deduplicated under the same rule.
@@ -32,6 +36,17 @@ single property makes a whole-word match a literal search for ` term ` and a ste
 Each folded byte remembers the source offset of the character that produced it. A signal therefore
 carries byte offsets into the caller's document, exactly like an entity. `text[start..end]` is
 always the reported `text`, and the corpus test asserts it for every signal.
+
+## `clitics.rs`
+
+Arabic and Hebrew join the conjunction, the article and the one-letter prepositions to the next
+word, so a term whose first word is in either script also compiles with the common proclitic
+chains in front of that word: `رشوة` with `ال`, `و`, `بال`, `لل` and the rest, `שוחד` with `ה`,
+`ו`, `ב`, `וה` and the rest. A match on a variant reports its term, with the clitic inside the
+span. A single word shorter than four letters gets no variants, because a prefix on a short word
+too often spells another word; a phrase gets them at any length. A variant that some row spells
+out belongs to that row alone. The Arabic and Hebrew lists add about 55 000 variant patterns to
+their 2 600 terms.
 
 ## `load.rs`
 
@@ -70,6 +85,8 @@ The choices were measured:
 
 For scale, the entity scan runs at about 1.5 MB/s on one thread. The fold costs more than the match
 on non-Latin text: about 140 MB/s on English and 50 MB/s on mixed scripts.
+The lexicon as shipped, about 10 600 terms and 65 000
+patterns with the clitic variants, scans a mixed-script sample at about 45 MB/s in a release build.
 
 Two languages may spell a term identically, such as `attentat*` in German and French. The pattern
 compiles once and keeps a list of every term behind it.
@@ -94,14 +111,14 @@ hit over the text.
   `cover up the losses`. A second term compiling to the same span is dropped too. Across categories
   both stay. This is one pass after a sort, with a running maximum.
 - **`negated`.** A negation word within the five words before the term, and inside the same clause,
-  sets it. The words `never`, `nicht`, `jamais` and `не` are among them, and the list is in the
-  module. The window is the one the clinical negation literature settled on. It stops at `.`, `,`,
-  `;`, `:`, `!`, `?` and line ends, so "I'm not comfortable with this, I want no part of this" does
+  sets it. The words `never`, `nicht`, `jamais`, `не`, `nunca`, `לא` and `لا` are among them,
+  with the joined Hebrew and Arabic forms (`ולא`, `ولا`), and the list is in the module. The window is the one the clinical negation literature settled on. It stops at `.`, `,`,
+  `;`, `:`, `!`, `?`, their Arabic forms and line ends, so "I'm not comfortable with this, I want no part of this" does
   not negate the second clause. `not only` and `no doubt` are not negations. A term that contains
   its own negation (`do not volunteer information`) is unaffected, because only the words before it
   are read.
 - **`quoted`.** The hit is on a line starting `>`, or below a reply separator, an attribution line
-  (`… wrote:`, `… schrieb:`, `… a écrit :`, `… написал:`) or an Outlook-style `From:`/`Sent:`
+  (`… wrote:`, `… schrieb:`, `… a écrit :`, `… написал:`, `… escribió:`, `… כתב:`, `… كتب:`) or an Outlook-style `From:`/`Sent:`
   block. A separator counts only after the message has said something, because a header block at
   the top of a message is its own header.
 - **`boilerplate`.** The hit is in a paragraph that opens like an email disclaimer. At most 64

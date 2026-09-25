@@ -1,0 +1,60 @@
+term	tier	speaker	concept	source	review	note
+אחריות בלתי מוגבלת	H	neutral	uncapped liability	cuad	mt-edited	CUAD
+אין להמחות	H	neutral	anti-assignment	cuad	mt-edited	CUAD
+איסור המחאה	H	neutral	anti-assignment	cuad	mt-edited	CUAD
+אלא אם יבוטל קודם	H	neutral	unless terminated earlier	cuad	mt-edited	
+ביטול מטעמי נוחות	H	neutral	termination for convenience	curated	mt-edited	
+הגבלת אחריות	H	neutral	limitation of liability	curated	mt-edited	
+הסכם אי גילוי	H	neutral	non-disclosure agreement	curated	mt-edited	
+הסכם זה ממצה	H	neutral	entire agreement	curated	mt-edited	
+הסכם מסגרת לשירותים	H	neutral	master services agreement	curated	mt-edited	
+הסכם סודיות	H	neutral	confidentiality agreement	curated	mt-edited	
+הסכם רכישת מניות	H	neutral	share purchase agreement	curated	mt-edited	
+הפרה יסודית	H	neutral	material breach	curated	mt-edited	the Israeli contract-remedies term
+הצד המגלה	H	neutral	disclosing party	contractnli	mt-edited	ContractNLI
+הצדדים להסכם זה	H	neutral	the parties hereto	curated	mt-edited	
+הצדדים מסכימים	H	neutral	the parties agree	curated	mt-edited	
+התחייבות לסודיות	H	neutral	confidentiality agreement	curated	mt-edited	
+יעמדו בתוקף גם לאחר סיום	H	neutral	survive termination	contractnli	mt-edited	ContractNLI
+כוח עליון	H	neutral	force majeure	curated	mt-edited	
+כתב סודיות	H	neutral	confidentiality agreement	curated	mt-edited	
+לבטל את ההסכם	H	neutral	terminate this agreement	curated	mt-edited	
+לפיכך הוסכם	H	neutral	the parties agree	curated	mt-edited	
+לשפות ולפצות	H	neutral	hold harmless	curated	mt-edited	
+מורשה חתימה	H	neutral	duly authorized	curated	mt-edited	
+מורשי חתימה	H	neutral	duly authorized	curated	mt-edited	
+מצגים והתחייבויות	H	neutral	representations and warranties	curated	mt-edited	
+נאמנות קוד מקור	H	neutral	source code escrow	cuad	mt-edited	CUAD
+נערך ונחתם	H	neutral	agreement is made	curated	mt-edited	
+פיצויים מוסכמים	H	neutral	liquidated damages	curated	mt-edited	
+שיפוי	H	neutral	indemnification	curated	mt-edited	
+תקופת ההסכם	H	neutral	term of this agreement	curated	mt-edited	
+תקרת אחריות	H	neutral	cap on liability	cuad	mt-edited	CUAD
+אי השמצה	M	neutral	non-disparagement	cuad	mt-edited	CUAD
+אי תחרות	M	neutral	non-compete	cuad	mt-edited	CUAD
+איסור שידול	M	neutral	no-solicit	cuad	mt-edited	CUAD
+איסור תחרות	M	neutral	non-compete	cuad	mt-edited	CUAD
+בטלות חלקית	M	neutral	severability	curated	mt-edited	
+בשני עותקים	M	neutral	counterparts	curated	mt-edited	
+הסכם בעלי מניות	M	neutral	shareholders agreement	curated	mt-edited	
+הסכם זה	M	neutral	this agreement	curated	mt-edited	
+הסכם רמת שירות	M	neutral	service level agreement	curated	mt-edited	
+הענקת רישיון	M	neutral	license grant	cuad	mt-edited	CUAD
+הפרת הסכם	M	neutral	breach of contract	curated	mt-edited	
+הפרת חוזה	M	neutral	breach of contract	curated	mt-edited	
+הצד המקבל	M	neutral	receiving party	contractnli	mt-edited	
+התחייבות מינימום	M	neutral	minimum commitment	cuad	mt-edited	CUAD
+זכויות ביקורת	M	neutral	audit rights	cuad	mt-edited	CUAD
+חוזה זה	M	neutral	this agreement	curated	mt-edited	
+חידוש אוטומטי	M	neutral	automatically renewed	cuad	mt-edited	
+יתחדש אוטומטית	M	neutral	automatically renewed	cuad	mt-edited	
+מועד התחילה	M	neutral	effective date	curated	mt-edited	
+מפרט עבודה	M	neutral	statement of work	curated	mt-edited	
+תקופה ראשונית	M	neutral	initial term	cuad	mt-edited	
+תקופת האחריות	M	neutral	warranty duration	cuad	mt-edited	CUAD
+בלעדיות	L	neutral	exclusivity	cuad	mt-edited	CUAD
+המחאה	L	neutral	assignment	curated	mt-edited	also a cheque
+מידע סודי	L	neutral	confidential information	contractnli	mt-edited	
+תמורה	L	neutral	consideration	curated	mt-edited	
+תנאי שימוש	L	neutral	terms and conditions	curated	mt-edited	
+תנאים והגבלות	L	neutral	terms and conditions	curated	mt-edited	

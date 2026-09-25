@@ -1,0 +1,57 @@
+term	tier	speaker	concept	source	review	note
+armas ilegales	H	accuser	illegal weapons	curated	mt-edited	
+chantaj*	H	accuser	blackmail	curated	mt-edited	chantaje, chantajear
+deshacerse de las pruebas	H	actor	get rid of the evidence	curated	mt-edited	
+deshazte de las pruebas	H	actor	get rid of the evidence	curated	mt-edited	
+destruir las pruebas	H	actor	destroy the evidence	curated	mt-edited	
+destruye las pruebas	H	actor	destroy the evidence	curated	mt-edited	
+documentos falsos	H	actor	fake documents	curated	mt-edited	
+extorsi*	H	accuser	extort*	curated	mt-edited	extorsión, extorsionar
+papeles falsos	H	actor	fake documents	curated	mt-edited	
+pasaporte falso	H	actor	fake passport	curated	mt-edited	
+secuestr*	H	accuser	kidnap*	curated	mt-edited	also the judicial seizure of goods
+acusado de	M	accuser	charged with	curated	mt-edited	
+allanamiento de morada	M	accuser	burglary	curated	mt-edited	
+atraco	M	accuser	robbery	curated	mt-edited	
+coartada	M	accuser	alibi	curated	mt-edited	
+cocaína	M	accuser	cocaine	curated	mt-edited	
+contrabandear	M	accuser	smuggle	investigator-list	mt-edited	
+contrabando	M	accuser	contraband	curated	mt-edited	
+cómplice	M	accuser	accomplice	curated	mt-edited	
+delito grave	M	accuser	felony	curated	mt-edited	
+delito menor	M	accuser	misdemeanor	curated	mt-edited	
+estupefacientes	M	accuser	narcotics	curated	mt-edited	
+falsificación	M	accuser	forgery	curated	mt-edited	
+falsificad*	M	accuser	counterfeit	curated	mt-edited	falsificado, falsificada
+fentanilo	M	accuser	fentanyl	curated	mt-edited	
+heroína	M	accuser	heroin	curated	mt-edited	also heroine
+imputado por	M	accuser	charged with	curated	mt-edited	
+incendio provocado	M	accuser	arson	curated	mt-edited	
+metanfetamina	M	accuser	methamphetamine	curated	mt-edited	
+narcotraficante	M	accuser	drug dealer	curated	mt-edited	
+narcotráfico	M	accuser	trafficking	curated	mt-edited	
+narcóticos	M	accuser	narcotics	curated	mt-edited	
+robo a mano armada	M	accuser	robbery	curated	mt-edited	
+robo de identidad	M	accuser	identity theft	curated	mt-edited	
+suplantación de identidad	M	accuser	identity theft	curated	mt-edited	
+tráfico de armas	M	accuser	trafficking	curated	mt-edited	
+tráfico de drogas	M	accuser	trafficking	curated	mt-edited	
+arrestado	L	accuser	arrested	curated	mt-edited	
+crimen	L	accuser	crime	curated	mt-edited	
+delincuente	L	accuser	criminal	investigator-list	mt-edited	
+delito	L	accuser	offence	curated	mt-edited	
+detenido	L	accuser	arrested	curated	mt-edited	
+forajido	L	accuser	outlaw	investigator-list	mt-edited	
+fraude	L	accuser	fraud	curated	mt-edited	
+hurto	L	accuser	theft	curated	mt-edited	
+ilegal	L	accuser	illegal	investigator-list	mt-edited	
+ilegítimo	L	accuser	illegitimate	investigator-list	mt-edited	
+ilícito	L	accuser	unlawful	investigator-list	mt-edited	
+infracción	L	accuser	violation	investigator-list	mt-edited	also traffic and building codes
+no autorizado	L	accuser	unauthorized	investigator-list	mt-edited	also HTTP 401 and access logs
+pirata	L	accuser	bootleg	investigator-list	mt-edited	also piracy of copyrighted goods
+prohibido	L	accuser	prohibited	investigator-list	mt-edited	contracts use it constantly
+robado	L	accuser	stolen	curated	mt-edited	
+robo	L	accuser	theft	curated	mt-edited	
+sin licencia	L	accuser	unlicensed	investigator-list	mt-edited	
+tabú	L	accuser	taboo	investigator-list	mt-edited	

@@ -1,0 +1,95 @@
+term	tier	speaker	concept	source	review	note
+אל תגיד למחלקה המשפטית	H	actor	don't tell legal	curated	mt-edited	
+אל תגיד לקצין הציות	H	actor	don't tell compliance	curated	mt-edited	
+אל תכתבי את זה	H	actor	don't put it in writing	curated	mt-edited	
+אל תכתוב את זה	H	actor	don't put it in writing	curated	mt-edited	
+אל תמסור מידע מיוזמתך	H	actor	do not volunteer information	investigator-list	mt-edited	
+אל תעלה את זה על הכתב	H	actor	don't put this in writing	curated	mt-edited	
+אל תערב את היועץ המשפטי	H	actor	don't tell legal	curated	mt-edited	
+אל תשאיר עקבות	H	actor	don't leave a trail	investigator-list	mt-edited	
+אף אחד לא יבדוק	H	actor	no auditor will review it	ey-fbi-2013	mt-edited	opportunity
+אף אחד לא יגלה	H	actor	nobody will find out	investigator-list	mt-edited	
+אף אחד לא ידע	H	actor	nobody will find out	investigator-list	mt-edited	
+אף אחד לא ישים לב	H	actor	nobody will find out	investigator-list	mt-edited	
+אף אחד לא צריך לדעת	H	actor	nobody has to know	ey-fbi-2013	mt-edited	
+אף מבקר לא יבדוק	H	actor	no auditor will review it	ey-fbi-2013	mt-edited	opportunity
+בוא נשמור את זה בסוד	H	actor	let's keep this a secret	nice-actimize-lexicon	mt-edited	
+בלי להשאיר עקבות	H	actor	don't leave a trail	investigator-list	mt-edited	
+בלי תיעוד	H	actor	no paper trail	curated	mt-edited	
+הבוס לא שואל	H	actor	bosses don't ask	ey-fbi-2013	mt-edited	opportunity
+הבוסים לא שואלים	H	actor	bosses don't ask	ey-fbi-2013	mt-edited	opportunity
+זה נשאר בינינו	H	actor	keep this between us	curated	mt-edited	
+טיוח	H	accuser	cover up	investigator-list	mt-edited	also whitewash
+טלפון מבצעי	H	actor	burner phone	curated	mt-edited	criminal slang
+לגרוס את המסמכים	H	actor	shred the documents	curated	mt-edited	
+לגרוס את הקבצים	H	actor	shred the files	curated	mt-edited	
+לטאטא מתחת לשטיח	H	actor	sweep it under the rug	curated	mt-edited	
+למחוק אחרי קריאה	H	actor	delete after reading	curated	mt-edited	
+לנקות את הרשומות	H	actor	scrub the records	curated	mt-edited	
+לפרמט את הדיסק	H	actor	wipe the drive	curated	mt-edited	
+לשמור בסוד	H	actor	keep this a secret	nice-actimize-lexicon	mt-edited	
+לשרוף אחרי קריאה	H	actor	burn after reading	curated	mt-edited	
+מחק את המייל	H	actor	delete this email	curated	mt-edited	
+מכשיר מבצעי	H	actor	burner phone	curated	mt-edited	criminal slang
+שיישאר בינינו	H	actor	keep this between us	curated	mt-edited	
+שיישאר בשקט	H	actor	keep it quiet	curated	mt-edited	
+שלא יהיה תיעוד	H	actor	no paper trail	curated	mt-edited	
+שלח לי לג'ימייל	H	actor	send it to my gmail	curated	mt-edited	
+תגרוס את המסמכים	H	actor	shred the documents	curated	mt-edited	
+תמחק את ההודעה	H	actor	delete this email	curated	mt-edited	
+תמחק את המייל הזה	H	actor	delete this email	curated	mt-edited	
+תמחקי את ההודעה	H	actor	delete this email	curated	mt-edited	
+תמחקי את המייל	H	actor	delete this email	curated	mt-edited	
+תשאיר את הציות בחוץ	H	actor	keep compliance out of it	curated	mt-edited	
+תשלח לג'ימייל שלי	H	actor	send it to my gmail	curated	mt-edited	
+תשמור את זה בסוד	H	actor	keep this a secret	nice-actimize-lexicon	mt-edited	
+תשתמש בטלפון השני	H	actor	use the other phone	curated	mt-edited	
+תשתמש במייל הפרטי שלי	H	actor	use my personal email	curated	mt-edited	
+תשתמש במספר השני	H	actor	use the other number	curated	mt-edited	
+תתקשר לטלפון השני	H	actor	call me on the other phone	curated	mt-edited	
+תתקשרי לטלפון השני	H	actor	call me on the other phone	curated	mt-edited	
+אל תגיד לאף אחד	M	actor	don't tell anyone	nice-actimize-lexicon	mt-edited	
+אל תספר לאף אחד	M	actor	don't tell anyone	nice-actimize-lexicon	mt-edited	
+אל תספרי לאף אחד	M	actor	don't tell anyone	nice-actimize-lexicon	mt-edited	
+אל תשים בעותק	M	actor	don't cc	curated	mt-edited	
+אף אחד לא שואל כלום	M	actor	nobody asks anything	ey-fbi-2013	mt-edited	opportunity
+בינך לביני	M	actor	between you and me	curated	mt-edited	
+בקרת נזקים	M	actor	damage control	investigator-list	mt-edited	
+המדיניות לא אומרת	M	actor	the policy doesn't say	ey-fbi-2013	mt-edited	opportunity
+הנוהל לא אומר	M	actor	the policy does not say	ey-fbi-2013	mt-edited	opportunity
+לא בכתב	M	actor	not in writing	curated	mt-edited	
+לא במייל	M	actor	not on email	curated	mt-edited	
+לא לציטוט	M	actor	off the record	curated	mt-edited	
+לא צריך לדעת	M	actor	don't need to know	investigator-list	mt-edited	
+לגרום לזה להיעלם	M	actor	make it go away	curated	mt-edited	
+לטייח	M	accuser	cover up	investigator-list	mt-edited	
+לנקות את הקבצים	M	actor	clean up the files	curated	mt-edited	
+לפרמט את המחשב	M	actor	wipe the drive	curated	mt-edited	
+מזעור נזקים	M	actor	damage control	investigator-list	mt-edited	
+מייל חלופי	M	actor	alternate email	spamassassin-advance-fee	mt-edited	419
+מתחת לשטיח	M	actor	sweep it under the rug	curated	mt-edited	
+נדבר בארבע עיניים	M	actor	let's discuss in person	curated	mt-edited	
+נדבר על זה בעל פה	M	actor	let's discuss in person	curated	mt-edited	
+נדבר על זה פנים אל פנים	M	actor	let's discuss in person	curated	mt-edited	
+נמשיך את זה בפרטי	M	actor	take this offline	investigator-list	mt-edited	
+על בסיס צורך לדעת	M	actor	need to know basis	curated	mt-edited	
+תבוא למשרד שלי	M	actor	come by my office	investigator-list	mt-edited	
+תגרוס את זה	M	actor	shred it	curated	mt-edited	
+תוריד אותה מהשרשור	M	actor	take her off the thread	curated	mt-edited	
+תוריד אותו מהשרשור	M	actor	take him off the thread	curated	mt-edited	
+תוריד אותם מהשרשור	M	actor	take them off the thread	curated	mt-edited	
+תמחק את זה	M	actor	delete this	curated	mt-edited	
+תמחקי את זה	M	actor	delete this	curated	mt-edited	
+תעבור לסיגנל	M	actor	switch to signal	curated	mt-edited	
+תקפוץ אליי למשרד	M	actor	come by my office	investigator-list	mt-edited	
+תשתמש בסיגנל	M	actor	use signal	curated	mt-edited	
+תתקשר לנייד שלי	M	actor	call my mobile	investigator-list	mt-edited	
+הדלפה	L	actor	leak	investigator-list	mt-edited	
+וואטסאפ	L	actor	use whatsapp	curated	mt-edited	
+ווטסאפ	L	actor	use whatsapp	curated	mt-edited	
+חסוי	L	actor	confidential	investigator-list	mt-edited	appears in email disclaimers
+טלגרם	L	actor	telegram	curated	mt-edited	
+לא להעביר	L	actor	do not forward	curated	mt-edited	
+מייל פרטי	L	actor	private email	spamassassin-advance-fee	mt-edited	419
+סודי	L	actor	secret	investigator-list	mt-edited	
+תשלח לי בסיגנל	L	actor	signal me	curated	mt-edited	

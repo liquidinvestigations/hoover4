@@ -1,63 +1,63 @@
 term	tier	speaker	concept	source	review	note
-Angriff auf das Krankenhaus	H	accuser	attack on hospitals	rome-statute	mt-edited	
-Angriff auf den Hilfskonvoi	H	accuser	attack on humanitarian workers	rome-statute	mt-edited	
+Angriff auf das Krankenhaus	H	accuser	attacks on hospitals	rome-statute	mt-edited	
+Angriff auf den Hilfskonvoi	H	accuser	attacks on aid workers	rome-statute	mt-edited	
 Angriff auf die Zivilbevölkerung	H	accuser	attack on civilians	vstgb	mt-edited	
 Angriff auf Zivilisten	H	accuser	attack on civilians	curated	mt-edited	
-Angriffe auf Helfer	H	accuser	attack on humanitarian workers	rome-statute	mt-edited	
-Angriffe auf Krankenhäuser	H	accuser	attack on hospitals	rome-statute	mt-edited	
+Angriffe auf Helfer	H	accuser	attacks on aid workers	rome-statute	mt-edited	
+Angriffe auf Krankenhäuser	H	accuser	attacks on hospitals	rome-statute	mt-edited	
 Angriffe auf Zivilisten	H	accuser	attack on civilians	curated	mt-edited	
 Angriffe gegen die Zivilbevölkerung	H	accuser	attack on civilians	vstgb	mt-edited	§ 11 VStGB
 Aushungern als Methode der Kriegführung	H	accuser	starvation as a method of warfare	vstgb	mt-edited	§ 11 Abs. 1 Nr. 5 VStGB
 Aushungern der Zivilbevölkerung	H	accuser	starvation as a method of warfare	curated	mt-edited	
-außer Verhältnis zu dem	H	accuser	disproportionate attack	vstgb	mt-edited	§ 11 Abs. 1 Nr. 3 VStGB
+außer Verhältnis zu dem	H	accuser	disproportionate attack*	vstgb	mt-edited	§ 11 Abs. 1 Nr. 3 VStGB
 Behinderung von Hilfslieferungen	H	accuser	starvation as a method of warfare	rome-statute	mt-edited	
-Beschuss von Wohngebieten	H	accuser	indiscriminate attack	curated	mt-edited	
+Beschuss von Wohngebieten	H	accuser	indiscriminate attack*	curated	mt-edited	
 biologische Experimente	H	accuser	biological experiments	rome-statute	mt-edited	
-Bombardierung von Krankenhäusern	H	accuser	attack on hospitals	curated	mt-edited	
-Chemiewaffenangriff*	H	accuser	chemical attack	curated	mt-edited	
-Chlorgasangriff*	H	accuser	chemical attack	curated	mt-edited	
-die Gefangenen erschießen	H	actor	killing prisoners	curated	mt-edited	
-die Gefangenen töten	H	actor	killing prisoners	curated	mt-edited	
+Bombardierung von Krankenhäusern	H	accuser	attacks on hospitals	curated	mt-edited	
+Chemiewaffenangriff*	H	accuser	chemical attack*	curated	mt-edited	
+Chlorgasangriff*	H	accuser	chemical attack*	curated	mt-edited	
+die Gefangenen erschießen	H	actor	kill the prisoners	curated	mt-edited	
+die Gefangenen töten	H	actor	kill the prisoners	curated	mt-edited	
 entwürdigende oder erniedrigende Behandlung	H	accuser	outrages upon personal dignity	vstgb	mt-edited	§ 8 Abs. 1 Nr. 9 VStGB
-erschießt die Gefangenen	H	actor	killing prisoners	curated	mt-edited	
-Fassbombe*	H	accuser	barrel bomb	curated	mt-edited	
-Giftgasangriff*	H	accuser	chemical attack	curated	mt-edited	
-Hinrichtung ohne Gerichtsverfahren	H	accuser	summary execution	rome-statute	mt-edited	
-Kindersoldat*	H	accuser	child soldiers	curated	mt-edited	
+erschießt die Gefangenen	H	actor	kill the prisoners	curated	mt-edited	
+Fassbombe*	H	accuser	barrel bomb*	curated	mt-edited	
+Giftgasangriff*	H	accuser	chemical attack*	curated	mt-edited	
+Hinrichtung ohne Gerichtsverfahren	H	accuser	summary execution*	rome-statute	mt-edited	
+Kindersoldat*	H	accuser	child soldier*	curated	mt-edited	
 konfliktbezogene sexuelle Gewalt	H	accuser	conflict-related sexual violence	curated	mt-edited	
-menschliche Schutzschilde	H	accuser	human shields	vstgb	mt-edited	
-menschlicher Schutzschild	H	accuser	human shields	vstgb	mt-edited	
-menschliches Schutzschild	H	accuser	human shields	curated	mt-edited	
+menschliche Schutzschilde	H	accuser	human shield*	vstgb	mt-edited	
+menschlicher Schutzschild	H	accuser	human shield*	vstgb	mt-edited	
+menschliches Schutzschild	H	accuser	human shield*	curated	mt-edited	
 nicht durch militärische Notwendigkeit gerechtfertigt	H	accuser	wanton destruction	rome-statute	mt-edited	
 niemanden am Leben lassen	H	actor	no quarter	curated	mt-edited	
 Pardon wird nicht gegeben	H	actor	no quarter	vstgb	mt-edited	§ 11 Abs. 1 Nr. 4 VStGB
 Perfidie	H	accuser	perfidy	curated	mt-edited	
-schwere Verletzungen der Genfer Abkommen	H	accuser	grave breaches	rome-statute	mt-edited	
+schwere Verletzungen der Genfer Abkommen	H	accuser	grave breach*	rome-statute	mt-edited	
 sexualisierte Gewalt in Konflikten	H	accuser	conflict-related sexual violence	curated	mt-edited	
-standrechtlich erschossen	H	accuser	summary execution	curated	mt-edited	
-standrechtliche Erschießung*	H	accuser	summary execution	curated	mt-edited	
-unterschiedslose Angriffe	H	accuser	indiscriminate attack	curated	mt-edited	
-unverhältnismäßige Angriffe	H	accuser	disproportionate attack	curated	mt-edited	
-unverhältnismäßiger Angriff	H	accuser	disproportionate attack	curated	mt-edited	
+standrechtlich erschossen	H	accuser	summary execution*	curated	mt-edited	
+standrechtliche Erschießung*	H	accuser	summary execution*	curated	mt-edited	
+unterschiedslose Angriffe	H	accuser	indiscriminate attack*	curated	mt-edited	
+unverhältnismäßige Angriffe	H	accuser	disproportionate attack*	curated	mt-edited	
+unverhältnismäßiger Angriff	H	accuser	disproportionate attack*	curated	mt-edited	
 Vergewaltigung als Kriegswaffe	H	accuser	rape as a weapon of war	curated	mt-edited	
 vergiftete Waffen	H	accuser	poisoned weapons	vstgb	mt-edited	
-wahllose Angriffe	H	accuser	indiscriminate attack	curated	mt-edited	
-wahllose Bombardierung*	H	accuser	indiscriminate attack	curated	mt-edited	
-wahlloser Beschuss	H	accuser	indiscriminate attack	curated	mt-edited	
-Zwangsrekrutierung von Kindern	H	accuser	child soldiers	vstgb	mt-edited	
-Angriffe auf Schulen	M	accuser	attack on schools	curated	mt-edited	also school shootings
-Antipersonenmine*	M	accuser	anti-personnel mines	curated	mt-edited	
+wahllose Angriffe	H	accuser	indiscriminate attack*	curated	mt-edited	
+wahllose Bombardierung*	H	accuser	indiscriminate attack*	curated	mt-edited	
+wahlloser Beschuss	H	accuser	indiscriminate attack*	curated	mt-edited	
+Zwangsrekrutierung von Kindern	H	accuser	child soldier*	vstgb	mt-edited	
+Angriffe auf Schulen	M	accuser	attacks on schools	curated	mt-edited	also school shootings
+Antipersonenmine*	M	accuser	anti-personnel mine*	curated	mt-edited	
 aushungern	M	actor	starvation as a method of warfare	curated	mt-edited	
 außer Gefecht	M	accuser	hors de combat	vstgb	mt-edited	also sport and everyday speech
 Befehl ist Befehl	M	insider	superior orders	curated	mt-edited	
 Befehlsverantwortung	M	accuser	command responsibility	curated	mt-edited	
 Besatzungsmacht	M	accuser	occupying power	rome-statute	mt-edited	
-Chemiewaffe*	M	accuser	chemical weapons	curated	mt-edited	also disarmament news
-chemische Waffen	M	accuser	chemical weapons	curated	mt-edited	also disarmament news
+Chemiewaffe*	M	accuser	chemical weapon*	curated	mt-edited	also disarmament news
+chemische Waffen	M	accuser	chemical weapon*	curated	mt-edited	also disarmament news
 Flächenbombardement*	M	accuser	carpet bombing	curated	mt-edited	
-Genfer Abkommen	M	accuser	geneva conventions	curated	mt-edited	
-Genfer Konvention*	M	accuser	geneva conventions	curated	mt-edited	
-Giftgas*	M	accuser	chemical weapons	curated	mt-edited	
+Genfer Abkommen	M	accuser	geneva convention*	curated	mt-edited	
+Genfer Konvention*	M	accuser	geneva convention*	curated	mt-edited	
+Giftgas*	M	accuser	chemical weapon*	curated	mt-edited	
 Handeln auf Befehl	M	insider	superior orders	vstgb	mt-edited	§ 3 VStGB
 humanitäres Völkerrecht	M	accuser	international humanitarian law	curated	mt-edited	
 Internationalen Strafgerichtshof*	M	accuser	international criminal court	curated	mt-edited	
@@ -67,19 +67,19 @@ keine Gefangenen machen	M	actor	no quarter	curated	mt-edited	also an idiom
 keine Überlebenden	M	actor	no quarter	curated	mt-edited	also disaster reporting
 Kollektivstrafe*	M	accuser	collective punishment	curated	mt-edited	
 Kriegsgefangenenlager	M	accuser	prisoners of war	curated	mt-edited	
-Kriegsverbrech*	M	accuser	war crimes	vstgb	mt-edited	§§ 8–12 VStGB; also history and news of any conflict
+Kriegsverbrech*	M	accuser	war crime*	vstgb	mt-edited	§§ 8–12 VStGB; also history and news of any conflict
 Kriegsvölkerrecht	M	accuser	laws of war	curated	mt-edited	
 militärische Notwendigkeit	M	neutral	military necessity	rome-statute	mt-edited	
 mutwillige Zerstörung	M	accuser	wanton destruction	curated	mt-edited	also vandalism
-Nervenkampfstoff*	M	accuser	nerve agents	curated	mt-edited	
+Nervenkampfstoff*	M	accuser	nerve agent*	curated	mt-edited	
 Parlamentärflagge	M	accuser	perfidy	vstgb	mt-edited	
 Plünderung*	M	accuser	pillage	vstgb	mt-edited	also riots
 rechtswidrige Befehle	M	insider	unlawful orders	curated	mt-edited	
 rechtswidriger Befehl	M	insider	unlawful orders	curated	mt-edited	
 Römischen Statut*	M	accuser	rome statute	curated	mt-edited	
 Römisches Statut	M	accuser	rome statute	curated	mt-edited	
-Streubombe*	M	accuser	cluster munitions	curated	mt-edited	
-Streumunition	M	accuser	cluster munitions	curated	mt-edited	
+Streubombe*	M	accuser	cluster munition*	curated	mt-edited	
+Streumunition	M	accuser	cluster munition*	curated	mt-edited	
 Säuberungsaktion*	M	actor	zachistka	curated	mt-edited	also clean-up drives
 verbrannte Erde	M	actor	scorched earth	curated	mt-edited	also business jargon
 Verstümmelung*	M	accuser	mutilation	vstgb	mt-edited	also genital mutilation

@@ -1,0 +1,26 @@
+term	tier	speaker	concept	source	review	note
+التقاء الإرادتين	H	neutral	convergence of will	mou-definition	mt-edited	
+خط عمل مشترك	H	neutral	intended common line of action	mou-definition	mt-edited	
+خطاب النوايا	H	neutral	letter of intent	curated	mt-edited	
+خطاب تفاهم	H	neutral	letter of understanding	mou-definition	mt-edited	
+خطاب راحة	H	neutral	letter of comfort	mou-definition	mt-edited	
+خطاب طمأنة	H	neutral	letter of comfort	mou-definition	mt-edited	
+خطاب نوايا	H	neutral	letter of intent	curated	mt-edited	
+رهنا بإبرام عقد	H	neutral	subject to contract	curated	mt-edited	
+غير ملزم قانونا	H	neutral	not legally binding	curated	mt-edited	
+غير ملزمة قانونا	H	neutral	legally non-binding	mou-definition	mt-edited	
+لا تنشئ أي التزامات قانونية	H	neutral	shall not create any legally binding	curated	mt-edited	
+لا ينشئ التزامات ملزمة قانونا	H	neutral	does not create legally binding obligations	curated	mt-edited	
+مذكرة تفاهم	H	neutral	memorandum of understanding	curated	mt-edited	
+يعتزم الطرفان	H	neutral	the parties intend	curated	mt-edited	
+إبداء الرغبة	M	neutral	expression of interest	curated	mt-edited	
+إبداء اهتمام	M	neutral	expression of interest	curated	mt-edited	
+اتفاق جنتلمان	M	neutral	gentlemen's agreement	mou-definition	mt-edited	
+اتفاق شرف	M	neutral	gentlemen's agreement	mou-definition	mt-edited	
+اتفاقية إطارية	M	neutral	framework agreement	curated	mt-edited	
+اتفاقية تعاون	M	neutral	cooperation agreement	curated	mt-edited	
+بروتوكول تعاون	M	neutral	cooperation agreement	curated	mt-edited	
+غير ملزم	M	neutral	non-binding	curated	mt-edited	
+ورقة الشروط الرئيسية	M	neutral	term sheet	curated	mt-edited	
+سيبذل قصارى جهده	L	neutral	will endeavour	curated	mt-edited	
+من حيث المبدأ	L	neutral	in principle	curated	mt-edited	

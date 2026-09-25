@@ -16,22 +16,22 @@ schwere körperliche oder seelische Schäden	H	accuser	serious bodily or mental 
 Tötung von Mitgliedern der Gruppe	H	accuser	killing members of the group	vstgb	mt-edited	
 Verbrechen des Völkermordes	H	accuser	crime of genocide	genocide-convention	mt-edited	
 vernichtet sie alle	H	actor	exterminate them	un-atrocity-framework	mt-edited	call to destroy a group
-Vernichtungslager	H	accuser	extermination camp	curated	mt-edited	
+Vernichtungslager	H	accuser	extermination camp*	curated	mt-edited	
 von der Landkarte tilgen	H	actor	wipe them off the map	un-atrocity-framework	mt-edited	call to destroy a group
 Zerstörung der Gruppe	H	accuser	destruction of the group	vstgb	mt-edited	
 öffentliche Aufforderung zum Völkermord	H	accuser	direct and public incitement	curated	mt-edited	
 ausrotten	M	actor	exterminate them	un-atrocity-framework	mt-edited	also pests and weeds
 Endlösung	M	accuser	final solution	curated	mt-edited	Holocaust
-Genozid*	M	accuser	genocide	rome-statute	mt-edited	also political and historical argument
+Genozid*	M	accuser	genocid*	rome-statute	mt-edited	also political and historical argument
 Leugnung des Völkermords	M	accuser	genocide denial	curated	mt-edited	
 Rassenreinheit	M	actor	racial purity	curated	mt-edited	
 Schoah	M	accuser	shoah	curated	mt-edited	
-Todeslager	M	accuser	death camp	curated	mt-edited	also history teaching
-Voelkermord*	M	accuser	genocide	vstgb	mt-edited	ASCII spelling
-Völkermord*	M	accuser	genocide	vstgb	mt-edited	§ 6 VStGB; also political and historical argument
+Todeslager	M	accuser	death camp*	curated	mt-edited	also history teaching
+Voelkermord*	M	accuser	genocid*	vstgb	mt-edited	ASCII spelling
+Völkermord*	M	accuser	genocid*	vstgb	mt-edited	§ 6 VStGB; also political and historical argument
 wegen ihrer ethnischen Zugehörigkeit	M	accuser	because of their ethnicity	curated	mt-edited	
-Zwangsbekehrung*	M	accuser	forced conversion	curated	mt-edited	
-Zwangskonvertierung*	M	accuser	forced conversion	curated	mt-edited	
+Zwangsbekehrung*	M	accuser	forced conversion*	curated	mt-edited	
+Zwangskonvertierung*	M	accuser	forced conversion*	curated	mt-edited	
 Kakerlaken	L	actor	cockroaches	un-atrocity-framework	mt-edited	dehumanising language only beside other signals
 Schädlinge	L	actor	vermin	un-atrocity-framework	mt-edited	dehumanising language only beside other signals; also pest control
 Ungeziefer	L	actor	vermin	un-atrocity-framework	mt-edited	dehumanising language only beside other signals

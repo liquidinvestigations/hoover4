@@ -1,0 +1,109 @@
+term	tier	speaker	concept	source	review	note
+a mi correo personal	H	actor	use my personal email	curated	mt-edited	
+barrer debajo de la alfombra	H	actor	sweep it under the rug	curated	mt-edited	
+borra el disco duro	H	actor	wipe the drive	curated	mt-edited	
+borra este correo	H	actor	delete this email	curated	mt-edited	
+borra este mail	H	actor	delete this email	curated	mt-edited	
+borrar después de leer	H	actor	delete after reading	curated	mt-edited	
+borrar los registros	H	actor	scrub the records	curated	mt-edited	
+bórralo después de leerlo	H	actor	delete after reading	curated	mt-edited	
+celular desechable	H	actor	burner phone	curated	mt-edited	Latin America
+deja a cumplimiento fuera de esto	H	actor	keep compliance out of it	curated	mt-edited	
+destruye los documentos	H	actor	shred the documents	curated	mt-edited	
+el jefe no pregunta	H	actor	bosses don't ask	ey-fbi-2013	mt-edited	opportunity
+elimina este correo	H	actor	delete this email	curated	mt-edited	
+envíalo a mi gmail	H	actor	send it to my gmail	curated	mt-edited	
+escóndelo debajo de la alfombra	H	actor	sweep it under the rug	curated	mt-edited	
+esto queda entre nosotros	H	actor	keep this between us	curated	mt-edited	
+formatea el disco	H	actor	wipe the drive	curated	mt-edited	
+guárdalo en secreto	H	actor	keep this a secret	nice-actimize-lexicon	mt-edited	
+limpiar los registros	H	actor	scrub the records	curated	mt-edited	
+llámame al otro celular	H	actor	call me on the other phone	curated	mt-edited	Latin America
+llámame al otro móvil	H	actor	call me on the other phone	curated	mt-edited	Spain
+llámame al otro teléfono	H	actor	call me on the other phone	curated	mt-edited	
+los jefes no preguntan	H	actor	bosses don't ask	ey-fbi-2013	mt-edited	opportunity
+mantengámoslo en secreto	H	actor	let's keep this a secret	nice-actimize-lexicon	mt-edited	
+mantenlo en secreto	H	actor	keep this a secret	nice-actimize-lexicon	mt-edited	
+mándalo a mi gmail	H	actor	send it to my gmail	curated	mt-edited	
+móvil desechable	H	actor	burner phone	curated	mt-edited	Spain
+nada por escrito	H	actor	don't put it in writing	curated	mt-edited	
+nadie lo va a revisar	H	actor	no auditor will review it	ey-fbi-2013	mt-edited	opportunity
+nadie se enterará	H	actor	nobody will find out	investigator-list	mt-edited	
+nadie se va a enterar	H	actor	nobody will find out	investigator-list	mt-edited	
+nadie tiene por qué saberlo	H	actor	nobody has to know	ey-fbi-2013	mt-edited	
+nadie tiene que saberlo	H	actor	nobody has to know	ey-fbi-2013	mt-edited	
+ningún auditor lo va a revisar	H	actor	no auditor will review it	ey-fbi-2013	mt-edited	opportunity
+no dejes huella	H	actor	don't leave a trail	investigator-list	mt-edited	
+no dejes rastro	H	actor	don't leave a trail	investigator-list	mt-edited	
+no des información que no te pidan	H	actor	do not volunteer information	investigator-list	mt-edited	
+no le digas a compliance	H	actor	don't tell compliance	curated	mt-edited	
+no le digas a cumplimiento	H	actor	don't tell compliance	curated	mt-edited	
+no le digas a jurídico	H	actor	don't tell legal	curated	mt-edited	Latin America
+no le digas a legal	H	actor	don't tell legal	curated	mt-edited	
+no le digas nada a los abogados	H	actor	don't tell legal	curated	mt-edited	
+no lo pongas por escrito	H	actor	don't put it in writing	curated	mt-edited	
+no pongas esto por escrito	H	actor	don't put this in writing	curated	mt-edited	
+que no aparezca en ningún libro	H	actor	not be in any book	fsa-cftc-libor-chats	mt-edited	
+que no conste en ningún libro	H	actor	not be in any book	fsa-cftc-libor-chats	mt-edited	
+que no se entere cumplimiento	H	actor	keep compliance out of it	curated	mt-edited	
+que no se entere nadie	H	actor	keep it quiet	curated	mt-edited	
+que quede entre nosotros	H	actor	keep this between us	curated	mt-edited	
+quémalo después de leerlo	H	actor	burn after reading	curated	mt-edited	
+sin dejar rastro	H	actor	no paper trail	curated	mt-edited	
+sin rastro documental	H	actor	no paper trail	curated	mt-edited	
+teléfono desechable	H	actor	burner phone	curated	mt-edited	
+tritura los archivos	H	actor	shred the files	curated	mt-edited	
+tritura los documentos	H	actor	shred the documents	curated	mt-edited	
+triturar los documentos	H	actor	shred the documents	curated	mt-edited	
+usa el otro número	H	actor	use the other number	curated	mt-edited	
+usa el otro teléfono	H	actor	use the other phone	curated	mt-edited	
+usa mi correo personal	H	actor	use my personal email	curated	mt-edited	
+borra esto	M	actor	delete this	curated	mt-edited	
+bórralo	M	actor	delete this	curated	mt-edited	
+control de daños	M	actor	damage control	investigator-list	mt-edited	
+correo alternativo	M	actor	alternate email	spamassassin-advance-fee	mt-edited	419
+encubrimiento	M	accuser	cover up	investigator-list	mt-edited	also the offence of the same name in Spanish criminal codes
+encubrir	M	accuser	cover up	investigator-list	mt-edited	
+entre tú y yo	M	actor	between you and me	curated	mt-edited	
+extraoficialmente	M	actor	off the record	curated	mt-edited	
+hablemos en persona	M	actor	let's discuss in person	curated	mt-edited	
+hablémoslo por fuera	M	actor	take this offline	investigator-list	mt-edited	
+la política no dice	M	actor	the policy does not say	ey-fbi-2013	mt-edited	opportunity
+la política no lo dice	M	actor	the policy doesn't say	ey-fbi-2013	mt-edited	opportunity
+lavado de imagen	M	accuser	whitewash	investigator-list	mt-edited	
+limpia los archivos	M	actor	clean up the files	curated	mt-edited	
+llámame al celular	M	actor	call my mobile	investigator-list	mt-edited	Latin America
+llámame al móvil	M	actor	call my mobile	investigator-list	mt-edited	Spain
+lo hablamos en persona	M	actor	let's discuss in person	curated	mt-edited	
+miedo a dar información	M	actor	scared to give info	fca-hsbc-fx	mt-edited	
+nadie pregunta nada	M	actor	nobody asks anything	ey-fbi-2013	mt-edited	opportunity
+necesidad de saber	M	actor	need to know basis	curated	mt-edited	
+no hace falta que lo sepa	M	actor	don't need to know	investigator-list	mt-edited	
+no le digas a nadie	M	actor	don't tell anyone	nice-actimize-lexicon	mt-edited	
+no pongas en copia	M	actor	don't cc	curated	mt-edited	
+no por correo	M	actor	not on email	curated	mt-edited	
+no por escrito	M	actor	not in writing	curated	mt-edited	
+no se lo digas a nadie	M	actor	don't tell anyone	nice-actimize-lexicon	mt-edited	
+no tiene por qué saberlo	M	actor	don't need to know	investigator-list	mt-edited	
+pasa por mi oficina	M	actor	come by my office	investigator-list	mt-edited	
+pásate a signal	M	actor	switch to signal	curated	mt-edited	
+que desaparezca	M	actor	make it go away	curated	mt-edited	
+sácala del hilo	M	actor	take her off the thread	curated	mt-edited	
+sácalo del hilo	M	actor	take him off the thread	curated	mt-edited	
+sácalos del hilo	M	actor	take them off the thread	curated	mt-edited	
+tapadera	M	actor	coverup	curated	mt-edited	also a front company
+tritúralo	M	actor	shred it	curated	mt-edited	
+usa signal	M	actor	use signal	curated	mt-edited	
+ven a mi oficina	M	actor	come by my office	investigator-list	mt-edited	
+apagón	L	actor	blackout	investigator-list	mt-edited	also power outages
+confidencial	L	actor	confidential	investigator-list	mt-edited	appears in email disclaimers
+correo privado	L	actor	private email	spamassassin-advance-fee	mt-edited	419
+escríbeme por signal	L	actor	signal me	curated	mt-edited	
+escríbeme por whatsapp	L	actor	whatsapp me	curated	mt-edited	
+filtración	L	actor	leak	investigator-list	mt-edited	also plumbing
+mándame un whatsapp	L	actor	whatsapp me	curated	mt-edited	
+no reenviar	L	actor	do not forward	curated	mt-edited	
+por telegram	L	actor	telegram	curated	mt-edited	
+secreto	L	actor	secret	investigator-list	mt-edited	
+teléfono prepago	L	actor	prepaid phone	sec-insider-trading-2026	mt-edited	most phones in Latin America are prepaid
+usa whatsapp	L	actor	use whatsapp	curated	mt-edited	
