@@ -15,7 +15,11 @@ front of them:
     The conversation. The other half of the storage key, forwarded by the research
     agent exactly as it is for the browser server's per-chat isolation.
 
-Neither is a tool argument, and that is the point: a session id the model could write
+``X-Hoover4-Agent-Run``
+    The agent run that makes the call. The plan tools read its `agent_runs` row to find
+    the plan run it serves. The todo tools do not read it.
+
+None is a tool argument, and that is the point: a session id the model could write
 would let it read and rewrite another conversation's plan.
 """
 
@@ -30,6 +34,7 @@ log = logging.getLogger(__name__)
 
 USER_HEADER = "x-hoover4-user"
 SESSION_HEADER = "x-hoover4-chat-session"
+AGENT_RUN_HEADER = "x-hoover4-agent-run"
 
 
 class CallerUnknown(Exception):
@@ -90,3 +95,14 @@ def parse_caller(headers: dict[str, str]) -> Caller:
         username=(lowered.get(USER_HEADER) or "").strip() or "unknown",
         session_id=session_id,
     )
+
+
+def agent_run_id(headers: dict[str, str]) -> str:
+    """The agent run id from the request headers, or raise :class:`CallerUnknown`."""
+    lowered = {k.lower(): v for k, v in headers.items()}
+    run_id = (lowered.get(AGENT_RUN_HEADER) or "").strip()
+    if not run_id:
+        raise CallerUnknown(
+            f"missing {AGENT_RUN_HEADER} header. The plan tools serve an agent run of a plan"
+        )
+    return run_id

@@ -71,20 +71,17 @@ def test_the_agent_call_goes_to_the_queue_in_the_run_row():
     assert queues == ["row"], queues
 
 
-def test_research_model_calls_go_to_the_research_queue():
-    queues = [
-        _name(_kwarg(call, "task_queue"))
-        for call in _iter_execute_activity()
-        if _name(call.args[0]) == "run_research_agent"
-        and call.lineno >= _research_task_lineno()
-    ]
-    assert queues, "ResearchTask has no run_research_agent call"
-    assert all(q == "RESEARCH_TASK_QUEUE" for q in queues), queues
+def test_plan_runs_go_to_the_research_queue():
+    from database import agent_runs
+    from tasks.P_agent import workflows
+
+    assert agent_runs.LEAD_QUEUES["planner"] == workflows.RESEARCH_TASK_QUEUE
+    assert agent_runs.LEAD_QUEUES["organizer"] == workflows.RESEARCH_TASK_QUEUE
 
 
 def test_short_agent_activities_go_to_the_low_latency_queue():
     for activity in ("open_run", "append_nag", "write_ending", "read_chat_todo",
-                     "summarize_if_first_turn", "write_chat_message"):
+                     "summarize_if_first_turn"):
         queues = [
             _name(_kwarg(call, "task_queue"))
             for call in _iter_execute_activity()
@@ -92,11 +89,3 @@ def test_short_agent_activities_go_to_the_low_latency_queue():
         ]
         assert queues, f"{activity} is not scheduled"
         assert all(q == "CHAT_TASK_QUEUE" for q in queues), (activity, queues)
-
-
-def _research_task_lineno() -> int:
-    tree = ast.parse(WORKFLOWS_PATH.read_text(), filename=str(WORKFLOWS_PATH))
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef) and node.name == "ResearchTask":
-            return node.lineno
-    raise AssertionError("ResearchTask not found")

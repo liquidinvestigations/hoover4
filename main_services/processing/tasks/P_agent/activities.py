@@ -41,82 +41,6 @@ def agent_url_for(internet_tools: bool) -> str:
     """The agent service a turn with these options belongs to."""
     return AGENT_URL if internet_tools else INTERNAL_AGENT_URL
 
-#: One HTTP call to the agent. Generous, because an exhaustive research run is the point
-#: of this path, but still bounded so a wedged agent fails the activity and lets
-#: Temporal's retry policy take over instead of hanging a worker thread forever.
-AGENT_TIMEOUT_SECONDS = int(os.getenv("RESEARCH_AGENT_TIMEOUT_SECONDS", "1800"))
-
-
-@dataclass
-class ResearchTaskParams:
-    """Input for one durable agent turn -- an ordinary chat turn or a research run.
-
-    `username` and `session_id` identify where the answer is written back to, and
-    `allowed_collections` is the ACL the agent is bounded by. One dataclass serves both
-    workflows because the two turns differ in which agent they reach and how long they
-    are allowed to take, not in what they are told.
-    """
-
-    username: str
-    session_id: str
-    query: str
-    allowed_collections: list[str] = field(default_factory=list)
-    #: `seq` of the first row this task may write. The website reserves it when it
-    #: submits, so a concurrent synchronous message cannot land on the same position.
-    start_seq: int = 0
-    #: The conversation's own switch, forwarded from the website. Defaults to true so a
-    #: task submitted by an older caller behaves as it did.
-    internet_tools: bool = True
-    #: The resolved, allowlist-checked model id. The website resolves it -- a forged id
-    #: must be refused where the user is known, not here. Empty falls back to the server
-    #: setting, which is what a research task submitted by an older caller does.
-    llm_model: str = ""
-    #: The uuid every row of this turn carries, transcript and stream alike. Passed in
-    #: rather than derived: the website writes the user row with it before the workflow
-    #: exists, so the two processes must agree, and passing it is how they agree without
-    #: a format that both sides have to keep reimplementing. Empty derives the research
-    #: form from `(session_id, start_seq)`, which is what older callers rely on.
-    turn_uuid: str = ""
-    #: Whether this turn should name the conversation when it finishes. Set on the first
-    #: turn only: the title is drawn from the exchange that started the thread. Defaults
-    #: to false so an older caller keeps the title the website already wrote.
-    summarize_session: bool = False
-    #: Tool turns granted on top of the agent's own budget. The nag loop raises it by a
-    #: fixed increment per nag (`tasks.P_agent.nagging`) so a nagged turn has room to do
-    #: something without a nag resetting the budget outright.
-    extra_tool_turns: int = 0
-
-
-@activity.defn
-@with_heartbeat
-def run_research_agent(params: ResearchTaskParams) -> str:
-    """Call the full research agent and return its answer.
-
-    Raises on any failure so Temporal retries. Writing the answer into the chat is a
-    separate activity: a retried research run must not append a second transcript.
-
-    The agent is consumed through its streaming endpoint, and the events are mirrored
-    into `chat_message_stream` as they arrive: a research run shows the same
-    pending tool cards and growing answer as an inline chat turn instead of a static
-    "Research task started" placeholder for the whole run. The returned payload is the
-    same shape `/chat` produced, so the workflow's finalisation is unchanged.
-    """
-    activity.heartbeat("calling research agent")
-    from tasks.P_agent.stream_writer import ResearchStreamWriter
-
-    writer = ResearchStreamWriter(params)
-    try:
-        payload = writer.run()
-    finally:
-        writer.close()
-    log.info(
-        "[P_agent] research run finished for %s: %d chars, %d tool events",
-        params.username,
-        len(payload.get("answer", "")),
-        len(payload.get("tool_calls", [])),
-    )
-    return json.dumps(payload)
-
 
 @dataclass
 class ReadTodoParams:
@@ -196,12 +120,13 @@ class WriteResultParams:
     #: The model's context window as the catalog knew it at the time of the turn. 0 means
     #: the provider never stated one, and readers must show unknown rather than divide.
     context_window: int = 0
+    #: The plan the plan card shows, as JSON, on a planner's answer row. Empty otherwise.
+    plan_reference_json: str = ""
 
 
-@activity.defn
-@with_heartbeat
 def write_chat_message(params: WriteResultParams) -> int:
-    """Append one row to the global `chat_messages` table.
+    """Append one row to the global `chat_messages` table. The activities write every
+    transcript row through it.
 
     The chat tables are global (a conversation spans collections), so this writes to
     `Hoover4_Processing`. Idempotent on retry: `chat_messages` is a ReplacingMergeTree
@@ -229,6 +154,7 @@ def write_chat_message(params: WriteResultParams) -> int:
                 params.context_tokens,
                 params.peak_context_tokens,
                 params.context_window,
+                params.plan_reference_json,
             ]],
             column_names=[
                 "session_id",
@@ -246,6 +172,7 @@ def write_chat_message(params: WriteResultParams) -> int:
                 "context_tokens",
                 "peak_context_tokens",
                 "context_window",
+                "plan_reference_json",
             ],
         )
     if params.peak_context_tokens:
@@ -295,7 +222,7 @@ def _raise_session_peak(username: str, session_id: str, peak: int) -> None:
 
 
 @dataclass
-class SummarizeSessionParams:
+class TitleSessionParams:
     """One conversation to name, and the exchange to name it from."""
 
     username: str
@@ -304,21 +231,19 @@ class SummarizeSessionParams:
     answer: str
 
 
-@activity.defn
-@with_heartbeat
-def summarize_session(params: SummarizeSessionParams) -> str:
+def title_session(params: TitleSessionParams) -> str:
     """Name a conversation from its first exchange. Returns the title, or empty.
 
-    **This activity cannot fail.** It runs after the answer is written and read, so
-    everything that could go wrong here -- a dead endpoint, an unusable reply, an
-    unreachable database -- is worth exactly one mediocre title and nothing more. It
-    returns instead of raising, and the workflow shields the call as well, because the
-    caller must not have to trust this one to be careful.
+    `summarize_if_first_turn` calls it. **It cannot fail.** It runs after the answer is
+    written and read, so everything that could go wrong here -- a dead endpoint, an
+    unusable reply, an unreachable database -- is worth exactly one mediocre title and
+    nothing more. It returns instead of raising, and the workflow shields the call as well.
 
     The provisional title the website wrote from the first message stays in place
     whenever this produces nothing.
     """
-    activity.heartbeat("summarising the conversation")
+    if activity.in_activity():
+        activity.heartbeat("summarising the conversation")
     from tasks.P_agent.summarize import title_and_summary
 
     try:
@@ -375,7 +300,7 @@ def _set_session_title(username: str, session_id: str, title: str, summary: str)
         client.insert("chat_sessions", [row], column_names=columns)
 
 
-def _record_summarizer_call(params: SummarizeSessionParams, result) -> None:
+def _record_summarizer_call(params: TitleSessionParams, result) -> None:
     """Record the call in the two tables `/admin/ai_status` reads.
 
     Written for a discarded answer as well as a failed request, and with `ok = 0` for
@@ -479,6 +404,8 @@ class OpenedRun:
     kind: str = ""
     depth: int = 0
     is_chat_lead: bool = False
+    #: The run serves a plan run, so its agent activity takes the longer plan timeouts.
+    plan: bool = False
     nags_this_turn: int = 0
     nags_without_progress: int = 0
     #: For `closed` after a stop: a continuation that `fan_in` wrote, for the workflow to
@@ -584,7 +511,7 @@ def _opened(row) -> OpenedRun:
 
     return OpenedRun(
         state=row.state, queue=row.queue, kind=row.kind, depth=row.depth,
-        is_chat_lead=agent_runs.is_chat_lead(row),
+        is_chat_lead=agent_runs.is_chat_lead(row), plan=bool(row.plan_run_id),
         nags_this_turn=row.nags_this_turn, nags_without_progress=row.nags_without_progress,
     )
 
@@ -596,17 +523,23 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
 
     1. For a top-level run whose row does not exist, write the opening message at `idx` 0
        and then the row. Both keys come from the run id, so a retry writes the same rows.
+       For a planner or organizer, first write the plan run state (`plan_runs`).
     2. A terminal row returns `closed`.
     3. When the turn has a stop row, write the `cancelled` ending and run `fan_in` here, and
        return `closed`, so a workflow that starts after a stop never calls the agent.
+    4. An organizer at depth 0 writes the plan run's `sections_json` from the rows, so each
+       organizer step starts from the sections as they stand.
     """
     from database import agent_runs
+    from tasks.P_agent import plan_runs
 
     row = agent_runs.read_run(inp.username, inp.session_id, inp.run_id)
     if row is None:
-        if inp.kind != "chat":
+        if inp.kind not in ("chat", *plan_runs.PLAN_KINDS):
             raise RuntimeError(f"open_run cannot create a {inp.kind!r} run")
         text = _user_row_text(inp.username, inp.session_id, inp.turn_seq)
+        if inp.kind in plan_runs.PLAN_KINDS:
+            text = plan_runs.open_plan_run(inp, text)
         agent_runs.write_message(
             inp.username, inp.session_id, inp.run_id, inp.run_id,
             agent_runs.RunMessageRow(idx=0, role="human", content=text, run_id=inp.run_id),
@@ -616,6 +549,7 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
             turn_seq=inp.turn_seq, thread_id=inp.run_id, depth=0, kind=inp.kind,
             queue=agent_runs.LEAD_QUEUES[inp.kind], workflow_id=activity.info().workflow_id,
             state=agent_runs.RUNNING, start_seq=inp.start_seq, next_seq=inp.start_seq,
+            plan_run_id=inp.plan_run_id or None,
         ))
         row = agent_runs.read_run(inp.username, inp.session_id, inp.run_id)
         if row is None:
@@ -629,11 +563,20 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
         # `continue_run` then ends the parent as `cancelled`, up to depth 0.
         continuation = _fan_in(row.username, row.session_id, row.run_id)
         return OpenedRun(state="closed", continuation_run_id=continuation.run_id)
+    if row.kind == "organizer" and row.depth == 0 and row.plan_run_id:
+        plan_runs.refresh_sections(row.username, row.session_id, row.plan_run_id)
     return _opened(row)
 
 
+#: Seconds between two heartbeats of `run_agent`. A stop cancels the activity, and the worker
+#: learns of the cancel only from the reply to a heartbeat. The chat-model and research
+#: workers hold back a heartbeat for at most `RUN_AGENT_HEARTBEAT_THROTTLE`
+#: (`tasks/run_worker.py`), so a stop reaches the running agent within about two beats.
+RUN_AGENT_HEARTBEAT_SECONDS = 5.0
+
+
 @activity.defn
-@with_heartbeat
+@with_heartbeat(interval_seconds=RUN_AGENT_HEARTBEAT_SECONDS)
 def run_agent(params: RunAgentParams) -> RunSummary:
     """Run one round of the agent for a run, and write every event as it arrives.
 
@@ -706,10 +649,22 @@ def run_agent(params: RunAgentParams) -> RunSummary:
     if client.delegates:
         return _delegate(row, client, writer, chat_row, prompt, completion)
     seq = client.next_seq
+    answer = result["answer"]
+    plan_reference = ""
+    if row.plan_run_id and row.depth == 0:
+        from tasks.P_agent import plan_runs
+
+        # The organizer's final report names every failed section, whatever the model
+        # wrote. The planner's answer row carries the reference that the plan card reads.
+        if row.kind == "organizer":
+            answer = plan_runs.final_answer(row, answer)
+        elif row.kind == "planner":
+            plan_reference = plan_runs.plan_reference(row)
     if client.transcript:
         chat_row(
             seq, "assistant",
-            content=result["answer"] or "(the assistant returned an empty answer)",
+            content=answer or "(the assistant returned an empty answer)",
+            plan_reference_json=plan_reference,
             reasoning=result.get("reasoning") or "",
             model=result.get("model") or "",
             context_tokens=int(usage.get("context_tokens") or 0),
@@ -718,10 +673,10 @@ def run_agent(params: RunAgentParams) -> RunSummary:
         )
         client._finish_stream_rows()
         seq += 1
-    writer.write(result=result["answer"], next_seq=seq, prompt_tokens=prompt,
+    writer.write(result=answer, next_seq=seq, prompt_tokens=prompt,
                  completion_tokens=completion, tool_turns_used=client.tool_turns_used)
     log.info("[P_agent] run %s answered: %d chars, next seq %d",
-             row.run_id, len(result["answer"]), seq)
+             row.run_id, len(answer), seq)
     return RunSummary(outcome="answered", next_seq=seq, next_idx=client.next_idx,
                       prompt_tokens=prompt, completion_tokens=completion)
 
@@ -803,13 +758,39 @@ def _delegation_rows(username: str, session_id: str, seq: int):
     return str(rows[0][0]) if rows else ""
 
 
+#: The fields of a `sections_json` entry that the organizer reads in a continuation.
+ORGANIZER_SECTION_FIELDS = ("node_id", "title", "state", "review", "corrections",
+                            "defect_classes", "failed")
+
+
+def _organizer_sections(row) -> list[dict] | None:
+    """The section states of the organizer's plan run, or `None` for any other run.
+
+    The organizer chooses which section to review or correct next. The rule of a failed
+    section (no accepting review after the newest work) is in `sections_json`, so the
+    organizer reads the same state that the final report and the card read.
+    """
+    if not (row.kind == "organizer" and row.depth == 0 and row.plan_run_id):
+        return None
+    from database import agent_plans
+
+    plan_run = agent_plans.read_plan_run(row.username, row.session_id, row.plan_run_id)
+    try:
+        entries = json.loads(plan_run.sections_json or "[]") if plan_run else []
+    except ValueError:
+        entries = []
+    return [{k: e.get(k) for k in ORGANIZER_SECTION_FIELDS} for e in entries]
+
+
 def _add_continuation_results(row, messages, chat_row):
     """Design step 2: the result of each `run_subagent` call of the continued run.
 
     The thread ends with the continued run's `ai` message, whose `run_subagent` calls have
     no `tool` message. For each such call, write one `tool` message at the next index. Its
     content is the canonical JSON `{"reports": [...], "refused": [...]}` from the child rows
-    of that call and the continued run's `refused_json`. For a run that writes the
+    of that call and the continued run's `refused_json`. For the organizer of a plan it
+    also holds `sections`, the state of each section from `sections_json`, which `open_run`
+    wrote for this step. For a run that writes the
     transcript, rewrite the call's row at `delegate_seq + i` with this JSON as its output.
     Returns the thread with the new messages.
     """
@@ -831,6 +812,7 @@ def _add_continuation_results(row, messages, chat_row):
         refused = json.loads(continued.refused_json or "[]")
     except ValueError:
         refused = []
+    sections = _organizer_sections(row)
     next_idx = max(m.idx for m in messages) + 1
     out = list(messages)
     for i, call in enumerate(calls):
@@ -845,10 +827,13 @@ def _add_continuation_results(row, messages, chat_row):
                 task = ""
             reports.append({"task": task, "run_id": child.run_id, "state": child.state,
                             "report": child.result, "error": child.error})
-        content = canonical_json({
+        result = {
             "reports": reports,
             "refused": [r for r in refused if r.get("tool_call_id") == call_id],
-        })
+        }
+        if sections is not None:
+            result["sections"] = sections
+        content = canonical_json(result)
         seq = continued.delegate_seq + i
         message = agent_runs.RunMessageRow(
             idx=next_idx, role="tool", content=content, tool_call_id=call_id,
@@ -924,28 +909,46 @@ def _delegate(row, client, writer, chat_row, prompt: int, completion: int) -> "R
         used = run_budgets.count_used(row.username, row.session_id, turn_seq=row.turn_seq,
                                       plan_run_id=row.plan_run_id, own_batch_id=batch_id)
         limit = run_budgets.limit_for(row.plan_run_id)
+    sections, corrections = set(), {}
+    if row.kind == "organizer" and row.plan_run_id:
+        from tasks.P_agent import plan_runs
+
+        sections = plan_runs.approved_sections(row.username, row.session_id, row.plan_run_id)
+        corrections = run_budgets.count_corrections(
+            row.username, row.session_id, plan_run_id=row.plan_run_id, own_batch_id=batch_id)
     decision = run_budgets.decide(calls, depth=row.depth, used=used, limit=limit,
-                                  own_share=row.subagent_share)
+                                  own_share=row.subagent_share, kind=row.kind,
+                                  sections=sections, corrections=corrections)
 
     children = []
     for i, accepted in enumerate(decision.accepted):
         child_id = agent_runs.child_run_id(batch_id, i)
         children.append(child_id)
+        text = render_briefing(accepted.briefing)
         agent_runs.write_message(
             row.username, row.session_id, child_id, child_id,
-            agent_runs.RunMessageRow(idx=0, role="human", run_id=child_id,
-                                     content=render_briefing(accepted.briefing)),
+            agent_runs.RunMessageRow(idx=0, role="human", run_id=child_id, content=text),
+        )
+        # A child of a plan section copies the section and the purpose from its briefing.
+        # The plan rule in `run_budgets` accepted both, and removed them from any other
+        # briefing.
+        child = agent_runs.RunRow(
+            run_id=child_id, username=row.username, session_id=row.session_id,
+            turn_seq=row.turn_seq, thread_id=child_id, parent_run_id=row.run_id,
+            batch_id=batch_id, depth=row.depth + 1, kind="subagent",
+            plan_run_id=row.plan_run_id,
+            plan_node_id=accepted.briefing.get("plan_node_id") or None,
+            purpose=str(accepted.briefing.get("purpose") or ""), queue=row.queue,
+            workflow_id=f"run-{child_id}", state=agent_runs.RUNNING,
+            briefing=canonical_json(accepted.briefing), tool_call_id=accepted.tool_call_id,
+            subagent_share=accepted.share,
         )
         if agent_runs.read_run(row.username, row.session_id, child_id) is None:
-            agent_runs.create_run(agent_runs.RunRow(
-                run_id=child_id, username=row.username, session_id=row.session_id,
-                turn_seq=row.turn_seq, thread_id=child_id, parent_run_id=row.run_id,
-                batch_id=batch_id, depth=row.depth + 1, kind="subagent",
-                plan_run_id=row.plan_run_id, queue=row.queue,
-                workflow_id=f"run-{child_id}", state=agent_runs.RUNNING,
-                briefing=canonical_json(accepted.briefing), tool_call_id=accepted.tool_call_id,
-                subagent_share=accepted.share,
-            ))
+            if child.plan_node_id:
+                from tasks.P_agent import plan_runs
+
+                plan_runs.write_prompt_document(child, text)
+            agent_runs.create_run(child)
 
     writer.write(state=agent_runs.WAITING_FOR_CHILDREN, delegated_batch_id=batch_id,
                  delegate_seq=delegate_seq, next_seq=next_seq,
@@ -1108,6 +1111,14 @@ def _write_ending(params: WriteEndingParams) -> None:
         earlier = row.continues_run_id
     for row in chain:
         agent_runs.write_run(row, state=params.state, error=params.error, result=x.result)
+    if params.state == agent_runs.CANCELLED:
+        # A stop that lands while `_delegate` writes this run's children ends the run before
+        # its workflow starts them. Each open child of its own batch then has no workflow,
+        # and it ends here with the run.
+        for child in _batch_children(x, agent_runs.batch_id_for(x.run_id)):
+            if not agent_runs.is_terminal(child):
+                _write_ending(WriteEndingParams(child.run_id, child.username,
+                                                child.session_id, agent_runs.CANCELLED))
     if agent_runs.writes_transcript(x):
         if params.state == agent_runs.FAILED:
             _insert_chat_row(x.username, x.session_id, x.next_seq, "error",
@@ -1117,6 +1128,10 @@ def _write_ending(params: WriteEndingParams) -> None:
                              content=STOPPED_TEXT)
         if params.turn_uuid:
             _finish_stream_rows_from(x.username, x.session_id, params.turn_uuid, x.start_seq)
+    if x.plan_run_id:
+        from tasks.P_agent import plan_runs
+
+        plan_runs.write_plan_ending(x, params.state, chain)
     for row in [x, *chain]:
         release_browser(row.run_id)
     next_seq = x.next_seq + (1 if params.state != agent_runs.COMPLETED
@@ -1130,7 +1145,8 @@ def write_ending(params: WriteEndingParams) -> None:
     """Write the terminal state of a run, its ending row, and release its browsers.
 
     Returns at once for a terminal row. Otherwise it writes the state into each earlier run
-    of the chain, writes the ending row for a run that owns the transcript, marks the turn's
+    of the chain, ends each open child of the run's own batch for a `cancelled` ending (the
+    run's workflow never started them), writes the ending row for a run that owns the transcript, marks the turn's
     stream rows final, releases the browsers, and writes this run's own row last. The row
     is the completion marker, so a retry after a partial attempt runs every step again, and
     every step writes the same keys.
@@ -1144,7 +1160,7 @@ def summarize_if_first_turn(ref: RunRef) -> str:
     """Name the conversation when this run answered its first turn. Returns the title.
 
     Reads the user message and the answer from the database, so neither crosses a Temporal
-    payload. **Never raises**, like `summarize_session`.
+    payload. **Never raises**, like `title_session`.
     """
     from database import agent_runs
     from database.clickhouse import get_global_client
@@ -1166,7 +1182,7 @@ def summarize_if_first_turn(ref: RunRef) -> str:
         log.warning("[P_agent] could not read the first turn of %s", ref.session_id,
                     exc_info=True)
         return ""
-    return summarize_session(SummarizeSessionParams(
+    return title_session(TitleSessionParams(
         username=row.username, session_id=row.session_id, user_message=question,
         answer=row.result,
     ))

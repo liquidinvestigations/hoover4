@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 use crate::components::chat_components::{
     doc_ref_card::ChatDocRefCard,
     markdown_text::{MarkdownishText, source_anchor_id},
+    plan_card::PlanCard,
     tool_cards::ToolCard,
 };
 
@@ -23,6 +24,10 @@ pub fn ChatTranscript(
     /// False when `stream` is the leftovers of an interrupted turn rather than one that
     /// is still being produced. The content is the same; the promise it makes is not.
     stream_live: Option<bool>,
+    /// The plan run id of a deep-research request that has no planner answer row yet. The
+    /// transcript shows its card at the end while the planner writes the plan.
+    #[props(default)]
+    pending_plan: Option<String>,
 ) -> Element {
     let stream_live = stream_live.unwrap_or(true);
     let q = find_query.read().clone().to_lowercase();
@@ -53,6 +58,13 @@ pub fn ChatTranscript(
         .as_ref()
         .map(|t| t.subagent_runs.clone())
         .unwrap_or_default();
+    // The pending card goes once a planner answer row names the same plan run.
+    let pending_card = pending_plan.filter(|run_id| {
+        !messages
+            .iter()
+            .filter_map(|m| m.plan_reference())
+            .any(|r| &r.run_id == run_id)
+    });
 
     rsx! {
         div {
@@ -78,7 +90,15 @@ pub fn ChatTranscript(
                     };
                     // Only a delegation row reads the entries. The others get an empty
                     // list, so a poll that moves a sub-agent re-renders that row alone.
-                    let runs = if m.tool_name == "run_subagent" {
+                    // A planner answer that a later answer of the same plan run follows
+                    // shows its card as an earlier version, with no action.
+                    let plan_superseded = m.plan_reference().is_some_and(|r| {
+                        messages[i + 1..]
+                            .iter()
+                            .filter_map(|later| later.plan_reference())
+                            .any(|later| later.run_id == r.run_id)
+                    });
+                    let runs = if m.tool_name == "run_subagent" || !m.plan_reference_json.is_empty() {
                         subagent_runs.clone()
                     } else {
                         Vec::new()
@@ -91,8 +111,19 @@ pub fn ChatTranscript(
                             sources,
                             datasets: datasets.clone(),
                             subagent_runs: runs,
+                            plan_superseded,
                         }
                     }
+                }
+            }
+            if let Some(run_id) = pending_card {
+                PlanCard {
+                    key: "pending-plan-{run_id}",
+                    reference: common::plan_types::ChatPlanReference {
+                        plan_id: String::new(),
+                        run_id: run_id.clone(),
+                        reviewed_version: 0,
+                    },
                 }
             }
             if let Some(turn) = stream {
@@ -247,9 +278,13 @@ fn MessageEntry(
     /// See [`dataset_by_hash`]. Read by the entities card and by nothing else.
     #[props(default)]
     datasets: HashMap<String, String>,
-    /// The sub-agent entries of the open turn, for a `run_subagent` row only.
+    /// The sub-agent entries of the open turn, for a `run_subagent` row and a row with a
+    /// plan card only.
     #[props(default)]
     subagent_runs: Vec<common::chat_types::SubagentRunEntry>,
+    /// True when a later planner answer names the same plan run.
+    #[props(default)]
+    plan_superseded: bool,
 ) -> Element {
     let ring = if highlight {
         "outline: 2px solid #F59E0B; outline-offset: 2px;"
@@ -273,6 +308,7 @@ fn MessageEntry(
             // counts arrive with the finished row, and a footer that appears mid-answer
             // showing zeros would read as a measurement of nothing.
             let context_footer = message.context_footer();
+            let plan = message.plan_reference();
             rsx! {
                 div {
                     style: "align-self: stretch; max-width: 96%; padding: 4px 2px; {ring}",
@@ -285,6 +321,13 @@ fn MessageEntry(
                     }
                     if !sources.is_empty() {
                         SourcesStrip { sources: sources.clone() }
+                    }
+                    if let Some(reference) = plan {
+                        PlanCard {
+                            reference,
+                            subagent_runs: subagent_runs.clone(),
+                            superseded: plan_superseded,
+                        }
                     }
                     // A turn that only succeeded on retry is a healthy answer over an
                     // unhealthy agent tier. Worth saying, quietly, rather than hiding.

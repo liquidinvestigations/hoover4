@@ -96,9 +96,12 @@ through `processing_errors` and does not write `operation_failures`.
 
 ### P_agent - every AI agent turn
 
-**Both kinds of turn run here.** `AgentRun` owns an ordinary chat message on `chat-queue`.
-Its agent call, `run_agent`, runs on the queue in its run row, `chat-model-queue` for a chat
-turn. `ResearchTask` owns an exhaustive research run on `research-queue`.
+**Every agent run runs here.** `AgentRun` owns an ordinary chat message on `chat-queue`, and
+each planner and organizer run of a deep research plan. Its agent call, `run_agent`, runs on
+the queue in its run row: `chat-model-queue` for a chat turn, `research-queue` for a plan run.
+`plan_runs.py` writes the plan run state in `open_run` and `write_ending`, the section
+documents, and `sections_json`. A decision of the person starts the next run from the
+website, so no workflow waits for review.
 
 `AgentRun` keeps its state in `agent_runs` and `agent_run_messages`
 (`database/agent_runs.py`). Its input holds ids and settings only. `open_run` writes the
@@ -145,9 +148,6 @@ somebody waiting at a screen is the one failure a shared queue guarantees. **The
 deploys before the website**: a workflow addressed to a queue nothing polls waits for ever
 with no error anywhere. A `chat-model-queue` slot is one agent run in flight, not one model
 call, and a delegated turn takes one slot for each running sub-agent.
-
-`ResearchTask` uses two activities on purpose: the agent call is slow and retryable, the
-write is fast and keyed, so a retried agent call cannot leave half a transcript.
 
 `nagging.py` is why a chat turn is a loop rather than one call. An agent stops when the
 model stops calling tools, which is not the same as the work being done, so `AgentRun` reads
@@ -199,6 +199,14 @@ sites, and every activity body is wrapped in `@with_heartbeat` (`heartbeat.py`),
 beats every 15 s from a pump thread. The blanket wrap is deliberate: any activity whose
 real work legitimately exceeds the deadline (ffprobe on a large video, a Manticore batch
 write) would otherwise be killed and retried forever.
+
+`run_agent` is the exception. Its pump beats every 5 s, and the chat-model and research
+workers set `max_heartbeat_throttle_interval` to 5 s. A stop cancels the activity, and the
+worker learns of a cancel only from a heartbeat reply, so it learns of a stop within about
+two beats. The SDK default holds a heartbeat back for 0.8 of the heartbeat timeout, which is
+48 s for a chat run. The attempt then stops at the next event from the agent service. A
+stop during a long tool call, or during a model call that waits in the model server queue,
+ends the run when that call sends its next event.
 
 The 2x margin is deliberate too, and widening it is a trap. The deadline is also how
 long a wedged slot is held before the fleet can reuse it, so a wider one starves the
@@ -329,8 +337,8 @@ Workers are split into dedicated queues to control throughput and resource usage
 - `chat-model-queue`, `run_agent` for those chat turns
   (`chat_model_concurrency`). A slot is one agent run, not one model call. A delegated
   turn takes one slot for each running sub-agent.
-- `research-queue`, `ResearchTask` (`research_concurrency`). Four slots, outside the
-  chat-model slots.
+- `research-queue`, `run_agent` of a plan run (`research_concurrency`). Four slots,
+  outside the chat-model slots.
 
 ### How the numbers are chosen
 

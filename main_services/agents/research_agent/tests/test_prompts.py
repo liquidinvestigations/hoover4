@@ -28,6 +28,7 @@ import re
 import pytest
 
 from research_agent import prompts, subagents
+from agent_common.tool_packs import PACKS
 
 #: Everything the collection-search and todo servers advertise, the narrow profile.
 INTERNAL_SEARCH_TOOLS = frozenset(
@@ -60,11 +61,11 @@ FULL_RESEARCH_TOOLS = INTERNAL_SEARCH_TOOLS | {
     subagents.DELEGATION_TOOL,
 }
 
-#: Derived, never listed: a worker's pool is the lead's minus what it is denied, and that
-#: subtraction is the code that enforces the depth limit. Writing the ten names out here
-#: would let this test agree with itself while disagreeing with the graph.
+#: A depth 2 sub-agent with narrow packs: no browser, no todo writers and no delegation.
 RESEARCH_SUBAGENT_TOOLS = frozenset(
-    name for name in FULL_RESEARCH_TOOLS if name not in subagents.IN_PROCESS_WORKER_EXCLUDED
+    name for name in FULL_RESEARCH_TOOLS
+    if name not in PACKS["browser"] | {"write_todo", "edit_todo", "mark_todo",
+                                       subagents.DELEGATION_TOOL}
 )
 
 PROFILE_TOOLS = {
@@ -173,16 +174,14 @@ def test_the_budget_in_the_prose_is_the_budget_in_the_code():
     """The number the model is told is the number `should_continue` enforces.
 
     Read from the modules that enforce it rather than restated here: the lead's budget is
-    `agent.MAX_TOOL_TURNS`, a worker's is `subagents.WORKER_TOOL_TURNS`, and a prompt
-    asserting anything else is telling the model something the code contradicts.
+    `agent.MAX_TOOL_TURNS` for every run kind, and a prompt asserting anything else is
+    telling the model something the code contradicts.
     """
     from research_agent.agent import MAX_TOOL_TURNS
 
     assert prompts.default_tool_turns("full_research") == MAX_TOOL_TURNS
     assert prompts.default_tool_turns("internal_search") == MAX_TOOL_TURNS
-    assert (
-        prompts.default_tool_turns("research_subagent") == subagents.WORKER_TOOL_TURNS
-    )
+    assert prompts.default_tool_turns("research_subagent") == MAX_TOOL_TURNS
 
     for profile in PROFILE_TOOLS:
         budget = prompts.default_tool_turns(profile)
@@ -243,3 +242,12 @@ def test_the_environment_override_still_wins(monkeypatch):
         prompts.system_prompt("full_research", tools=sorted(FULL_RESEARCH_TOOLS))
         == "be brief"
     )
+
+
+@pytest.mark.parametrize("profile", ["planner", "organizer"])
+def test_the_plan_profiles_render_strictly_with_the_plan_tools(profile):
+    tools = sorted(FULL_RESEARCH_TOOLS | PACKS["plan"])
+    text = prompts.render(profile, tools=tools, strict=True)
+    assert "`read_plan`" in text
+    if profile == "organizer":
+        assert "`plan_node_id`" in text and "`correct`" in text

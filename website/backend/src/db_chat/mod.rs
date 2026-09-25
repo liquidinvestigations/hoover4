@@ -6,6 +6,7 @@
 //! session id alone is never sufficient to read a conversation.
 
 pub mod artifacts;
+pub mod plans;
 
 use common::chat_types::{ChatMessageItem, ChatOptions, ChatRole, ChatSessionItem};
 use time::format_description::well_known::Rfc3339;
@@ -107,6 +108,10 @@ pub struct ChatMessageRow {
     /// means the provider never stated one and the percentage must not be shown.
     #[serde(default)]
     pub context_window: u32,
+    /// The plan reference of a planner's answer row, as JSON. The worker writes it, and
+    /// the website writes it empty.
+    #[serde(default)]
+    pub plan_reference_json: String,
 }
 
 /// One version of an in-flight row in `chat_message_stream`.
@@ -138,7 +143,7 @@ const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, colle
 const MESSAGE_SELECT: &str = "SELECT session_id, username, seq, role, content, tool_name, \
      tool_input, tool_output, doc_refs, created_at, updated_at, created_ms, agent_duration_ms, \
      retry_errors, model, reasoning, message_uuid, context_tokens, peak_context_tokens, \
-     context_window FROM chat_messages FINAL";
+     context_window, plan_reference_json FROM chat_messages FINAL";
 
 fn fmt(dt: time::OffsetDateTime) -> String {
     dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
@@ -292,6 +297,7 @@ pub async fn list_messages(
             context_tokens: r.context_tokens,
             peak_context_tokens: r.peak_context_tokens,
             context_window: r.context_window,
+            plan_reference_json: r.plan_reference_json,
             streaming: false,
         })
         .collect())
@@ -333,6 +339,7 @@ pub async fn list_messages_after(
             context_tokens: r.context_tokens,
             peak_context_tokens: r.peak_context_tokens,
             context_window: r.context_window,
+            plan_reference_json: r.plan_reference_json,
             streaming: false,
         })
         .collect())
@@ -480,6 +487,7 @@ pub async fn append_message(
         context_tokens: extras.context_tokens,
         peak_context_tokens: extras.peak_context_tokens,
         context_window: extras.context_window,
+        plan_reference_json: String::new(),
     };
     insert_row("chat_messages", &row).await
 }
@@ -511,6 +519,39 @@ mod live_tests {
         let msgs = list_messages(username, &session_id).await.expect("list");
         assert!(msgs.iter().any(|m| m.content.contains("hello from live test")));
         assert!(msgs.iter().any(|m| !m.created_ms.is_empty()));
+    }
+
+    /// A deleted session leaves no row in the run and plan tables.
+    #[tokio::test]
+    #[ignore = "needs live clickhouse"]
+    async fn a_deleted_session_leaves_no_plan_rows() {
+        let username = "live-test-chat";
+        let session_id = create_session(username, "live plan delete", &[])
+            .await
+            .expect("create_session");
+        let client = get_global_client();
+        for table in SESSION_RUN_TABLES {
+            client
+                .query(&format!("INSERT INTO {table} (username, session_id) VALUES (?, ?)"))
+                .bind(username)
+                .bind(&session_id)
+                .execute()
+                .await
+                .unwrap_or_else(|e| panic!("insert into {table}: {e}"));
+        }
+        delete_session(username, &session_id).await.expect("delete_session");
+        for table in SESSION_RUN_TABLES {
+            let n = client
+                .query(&format!(
+                    "SELECT count() FROM {table} FINAL WHERE username = ? AND session_id = ?"
+                ))
+                .bind(username)
+                .bind(&session_id)
+                .fetch_one::<u64>()
+                .await
+                .unwrap_or_else(|e| panic!("count {table}: {e}"));
+            assert_eq!(n, 0, "{table} keeps {n} rows of a deleted session");
+        }
     }
 }
 
@@ -977,10 +1018,22 @@ pub async fn write_turn_stop(username: &str, session_id: &str, turn_seq: u32) ->
     insert_row("agent_turn_stops", &row).await
 }
 
-/// Delete the run rows, run messages and stop rows of one session. Each failure is
-/// logged and does not stop the others, because the session delete goes on regardless.
+/// The tables that hold the agent runs and the plans of a session. Each has `username` and
+/// `session_id` columns.
+pub(crate) const SESSION_RUN_TABLES: [&str; 7] = [
+    "agent_runs",
+    "agent_run_messages",
+    "agent_turn_stops",
+    "agent_plan_runs",
+    "agent_plan_snapshots",
+    "agent_plan_documents",
+    "agent_plan_decisions",
+];
+
+/// Delete the run rows, run messages, stop rows and plan rows of one session. Each failure
+/// is logged and does not stop the others, because the session delete goes on regardless.
 async fn delete_session_runs(username: &str, session_id: &str) {
-    for table in ["agent_runs", "agent_run_messages", "agent_turn_stops"] {
+    for table in SESSION_RUN_TABLES {
         let result = get_global_client()
             .query(&format!("DELETE FROM {table} WHERE username = ? AND session_id = ?"))
             .bind(username)

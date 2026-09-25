@@ -1,97 +1,27 @@
-"""Trajectory parsing for research-task transcripts.
-
-The shapes here are copied from a live run of `hoover4-full-research-agent`, not
-invented: the bug these guard against was code that assumed the tool name sits at the
-top level of the event when it actually only appears under `output.name` on the end
-event.
-"""
+"""The finished tool row of a `tool_result`: its output, its summary and its document
+references, and the result page byte rule."""
 
 import json
 
+from types import SimpleNamespace
+
+from tasks.P_agent.stream_writer import tool_row_fields
 from tasks.P_agent.trajectory import (
     TOOL_PAYLOAD_CHARS,
     TOOL_SUMMARY_CHARS,
     _canonical_json,
     extract_doc_refs,
     is_canonical_page,
-    pair_tool_calls,
     truncate,
 )
 
 
-def _start(**arguments):
-    return {"phase": "start", "content": {"input": dict(arguments)}}
-
-
-def _end(name, result, tool_call_id="call-1", **arguments):
-    return {
-        "phase": "end",
-        "content": {
-            "input": dict(arguments),
-            "output": {
-                "content": result,
-                "type": "tool",
-                "name": name,
-                "tool_call_id": tool_call_id,
-            },
-        },
-    }
-
-
-def test_a_completed_call_is_one_row_with_name_arguments_and_result():
-    paired = pair_tool_calls(
-        [
-            _start(query="danube level", max_results=5),
-            _end("web_search", {"success": True, "results": []}, query="danube level"),
-        ]
-    )
-    assert len(paired) == 1
-    call = paired[0]
-    # The regression: this used to come back as "tool" because the name was looked for
-    # at the top level of the event rather than under output.
-    assert call.tool_name == "web_search"
-    assert "danube level" in call.tool_input
-    assert "max_results" in call.tool_input
-    # The result is unwrapped out of the LangChain envelope.
-    assert call.tool_output == '{"success": true, "results": []}'
-
-
-def test_calls_are_paired_by_tool_call_id_not_only_by_order():
-    paired = pair_tool_calls(
-        [
-            {"phase": "start", "content": {"input": {"query": "first"}, "tool_call_id": "a"}},
-            {"phase": "start", "content": {"input": {"query": "second"}, "tool_call_id": "b"}},
-            _end("web_search", {"n": 2}, tool_call_id="b"),
-            _end("web_search", {"n": 1}, tool_call_id="a"),
-        ]
-    )
-    assert [c.tool_output for c in paired] == ['{"n": 2}', '{"n": 1}']
-    assert "second" in paired[0].tool_input
-    assert "first" in paired[1].tool_input
-
-
-def test_an_end_event_with_no_matching_id_still_pairs_by_order():
-    # vLLM's streamed deltas can mangle tool_call_id, so FIFO has to keep working.
-    paired = pair_tool_calls(
-        [
-            _start(query="x"),
-            {"phase": "end", "content": {"output": {"content": {"ok": 1}, "name": "web_search"}}},
-        ]
-    )
-    assert len(paired) == 1
-    assert paired[0].tool_name == "web_search"
-    assert "x" in paired[0].tool_input
-
-
-def test_a_start_without_an_end_is_dropped():
-    # The call never completed; a row claiming a result would be false.
-    assert pair_tool_calls([_start(query="orphan")]) == []
-
-
-def test_events_that_are_neither_start_nor_end_are_ignored():
-    assert pair_tool_calls([{"phase": "other", "content": {}}]) == []
-    assert pair_tool_calls([]) == []
-    assert pair_tool_calls(None) == []
+def _row(name, result, **arguments):
+    """One finished tool row from a `tool_result`, whose content is text."""
+    content = result if isinstance(result, str) else json.dumps(result)
+    fields = tool_row_fields(name, dict(arguments), content)
+    return SimpleNamespace(tool_output=fields["tool_output"], summary=fields["content"],
+                           doc_refs=fields["doc_refs"])
 
 
 def test_search_collections_results_become_doc_refs():
@@ -117,22 +47,13 @@ def test_search_collections_results_become_doc_refs():
 
 
 def test_doc_refs_are_attached_to_the_paired_row():
-    paired = pair_tool_calls(
-        [
-            _start(query="water"),
-            _end(
-                "search_collections",
-                {"results": [{"file_hash": "h1", "collection_dataset": "d1"}]},
-            ),
-        ]
-    )
-    assert '"file_hash": "h1"' in paired[0].doc_refs
+    row = _row("search_collections",
+               {"results": [{"file_hash": "h1", "collection_dataset": "d1"}]}, query="water")
+    assert '"file_hash": "h1"' in row.doc_refs
 
 
 def test_a_web_search_row_has_no_doc_refs():
-    paired = pair_tool_calls(
-        [_start(query="q"), _end("web_search", {"results": [{"url": "https://x"}]})]
-    )
+    paired = [_row("web_search", {"results": [{"url": "https://x"}]}, query="q")]
     assert paired[0].doc_refs == ""
 
 
@@ -205,7 +126,7 @@ def test_payloads_are_truncated_rather_than_stored_whole():
     # here is what made the doubling for the richer search payload look like a
     # regression.
     long_result = {"text": "z" * (TOOL_PAYLOAD_CHARS * 4)}
-    paired = pair_tool_calls([_start(q="x"), _end("get_document_text", long_result)])
+    paired = [_row("get_document_text", long_result, q="x")]
     assert len(paired[0].tool_output) <= TOOL_PAYLOAD_CHARS + 1
     # And it is still a JSON document. It used to end in a bare "…", i.e. a `{` with no
     # `}`, which every reader downstream reported as "the payload was not recorded".
@@ -217,9 +138,7 @@ def test_payloads_are_truncated_rather_than_stored_whole():
 def test_the_summary_is_the_arguments_not_the_whole_event():
     # The old behaviour dumped the entire end event into `content`, which is what made
     # transcripts render as a wall of JSON.
-    paired = pair_tool_calls(
-        [_start(query="water levels"), _end("web_search", {"results": [1, 2, 3]})]
-    )
+    paired = [_row("web_search", {"results": [1, 2, 3]}, query="water levels")]
     assert "water levels" in paired[0].summary
     assert "results" not in paired[0].summary
     assert len(paired[0].summary) <= TOOL_SUMMARY_CHARS + 1
@@ -263,28 +182,10 @@ def test_is_canonical_page_true_for_the_fixture_false_after_a_change():
 
 
 def test_a_string_result_that_is_a_canonical_page_is_stored_unchanged():
-    paired = pair_tool_calls([_start(query="x"), _end("search_collections", _PAGE_TEXT)])
+    paired = [_row("search_collections", _PAGE_TEXT, query="x")]
     assert paired[0].tool_output == _PAGE_TEXT
-
-
-def test_a_content_block_list_carrying_a_page_is_stored_unchanged():
-    # The LangChain content-block shape: [{"type": "text", "text": "..."}].
-    result = [{"type": "text", "text": _PAGE_TEXT}]
-    paired = pair_tool_calls([_start(query="x"), _end("search_collections", result)])
-    assert paired[0].tool_output == _PAGE_TEXT
-
-
-def test_a_non_canonical_page_shaped_result_keeps_the_legacy_path():
-    # Same kind, but not the canonical byte form (extra whitespace): the fixed-point
-    # test must fail it, and it falls back to the ordinary _dumps/truncate_json path.
-    almost_page = json.dumps(_PAGE_ENVELOPE, indent=2)
-    paired = pair_tool_calls([_start(query="x"), _end("search_collections", almost_page)])
-    # The legacy path treats a string result as a JSON *value* to encode, not as JSON
-    # text to pass through, so it comes back re-encoded as a string literal.
-    assert paired[0].tool_output != almost_page
-    assert json.loads(paired[0].tool_output) == almost_page
 
 
 def test_an_ordinary_result_is_unaffected_by_the_page_guard():
-    paired = pair_tool_calls([_start(query="x"), _end("web_search", {"n": 1})])
+    paired = [_row("web_search", {"n": 1}, query="x")]
     assert paired[0].tool_output == '{"n": 1}'

@@ -113,8 +113,30 @@ takes the session's **turn lock**, writes the user row, reserves the answer's `s
 empty stream row, dispatches `AgentRun` to `chat-queue` and returns the transcript
 *including* the message just sent. The start sends the ids of the turn and no text, and it
 rejects a duplicate workflow id. Temporal answers a duplicate with HTTP 409, which the
-website counts as started. The model call runs on `chat-model-queue`. A deep research turn
-dispatches `ResearchTask` to `research-queue`.
+website counts as started. The model call runs on `chat-model-queue`. A deep research
+request is a plan run, described in the next section.
+
+### The plan layer
+
+A deep research request starts a **plan run**. `start_research_task` starts a planner
+`AgentRun` with the conversation's frozen internet switch. The planner builds the plan tree
+with the plan tools of the todo server and answers with an orientation. Its answer row
+carries the plan reference that the plan card reads. The plan run then waits in
+`awaiting_review`, and no workflow of the session is open.
+
+A decision starts a new run and nothing waits for a person. `decide_plan`
+(`api/chat/plans.rs`) holds the turn lock, checks the decision id, the version and the state,
+and returns a typed outcome. A rejection starts the next planner round with the comment as
+its opening message. An approval freezes the tree and starts the organizer. A cancel of a
+plan in review writes `cancelled`, and a cancel of a running plan writes the stop row and
+cancels its runs. While a plan waits or runs, the conversation refuses a new message.
+
+The organizer delegates the sections of the approved tree. A briefing names the section and
+a purpose: `execute`, `review` or `correct`. A section takes at most two corrections, and
+every sub-agent run of the plan counts against the plan budget (`agent_plan_run_budget`).
+Each sub-agent thread of a section writes its prompt and its report or review as plan
+documents. The organizer's final report ends with a generated table of the sections that
+have no accepting review. The plan runs take their agent activity on `research-queue`.
 
 `AgentRun` keeps the run in `agent_runs` and its model conversation in
 `agent_run_messages`. A worker sends the stored thread to the agent's `/run/stream` feed and
@@ -283,7 +305,7 @@ a model that hits its token limit every time must not look like one that never r
 
 `/admin/metrics` lists the agent runs running right now (user, conversation, both
 switches, elapsed time) with a **Kill** button. It is a **Temporal visibility query** on
-`WorkflowType IN ('AgentRun', 'ResearchTask')`, so it is true in both directions across a
+`WorkflowType = 'AgentRun'`, so it is true in both directions across a
 website restart: it does not lose the runs that were already running, and it does not keep
 listing one whose process died. Each open workflow is one entry, so a delegated turn shows
 each sub-agent that runs. An `AgentRun` takes its session and turn from its row in

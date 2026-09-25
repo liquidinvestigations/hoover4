@@ -6,6 +6,8 @@ Tools:
     ``edit_todo``   rewrites the rows and leaves the goal alone
     ``mark_todo``   batched status changes by item id
 
+The plan tools of a deep-research plan run register on this server from `plan_tools`.
+
 **This server holds no rules of its own.** Every shape, every limit and both of the
 rules that stop the plan protocol being gamed live in `database.chat_todos`, which the
 chat workflow reads directly. A check re-implemented here would be a second copy that
@@ -267,6 +269,10 @@ async def health(_request: Any):
     return JSONResponse({"status": "ok", "service": "hoover4-agent-todo"})
 
 
+# The plan tools register on the same server. They import `mcp` from this module.
+from agent_todo_server import plan_tools  # noqa: E402,F401
+
+
 def main() -> None:
     log.info("Starting Hoover4 agent todo MCP server")
     mcp.run(
@@ -277,4 +283,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # Run as `__main__`, this file is a second copy of the module, and the plan tools are on
+    # the `mcp` of the imported copy. Serve that copy.
+    from agent_todo_server.server import main as imported_main
+
+    imported_main()

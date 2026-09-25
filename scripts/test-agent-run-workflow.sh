@@ -12,7 +12,9 @@
 # delegation: fan-in once, a depth 1 delegation to depth 2, the run budget, a retry of the
 # delegation, a duplicate child start, a child started after a stop, and the agent run sweep.
 # Two cases cover the lifecycle: a stop during the stream writes nothing after the ending,
-# and the sweep ends the children of a failed parent. Each case terminates the workflows it
+# and the sweep ends the children of a failed parent. Two cases cover the plan layer: a flat plan
+# through review, a rejection, an approval and completion, with no workflow open during review,
+# and the refusal of a third correction of one section. Each case terminates the workflows it
 # started before it deletes its rows.
 #
 # Arguments: optional pytest arguments, for example -k stopped. Settings: AGENT_RUN_CONTAINER

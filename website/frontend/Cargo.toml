@@ -53,6 +53,8 @@ web-sys = {version = "0.3", features = [
     # The sidebar handle recognises its double-click from the press timestamps, because
     # the drag overlay stops any `click`/`dblclick` from ever being dispatched.
     "Performance",
+    # The plan card makes a random decision id with the browser's crypto source.
+    "Crypto",
 ]}
 tokio = { version = "1.48", features = ["rt-multi-thread", "full"], optional = true}
 wasm-bindgen = "0.2.105"

@@ -471,7 +471,7 @@ services:
       # container that does not exist would cost a connect timeout per batch before
       # failing anyway. The key defaults to false.
       - "NER_URL_FALLBACK=${NER_URL_FALLBACK:-}"
-      # The full research agent, for the P_agent ResearchTask workflow. Same network.
+      # The full research agent, for an AgentRun in a thread with internet tools on. Same network.
       - "RESEARCH_AGENT_URL=${RESEARCH_AGENT_URL:-http://hoover4-full-research-agent:8000}"
       # The documents-only agent. A durable turn in a thread with internet tools off
       # goes here, so a conversation does not answer some questions with the open web

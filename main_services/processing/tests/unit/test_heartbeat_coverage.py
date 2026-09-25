@@ -104,6 +104,9 @@ def test_every_activity_body_heartbeats():
     def decorator_names(node):
         names = []
         for d in node.decorator_list:
+            # `@with_heartbeat(interval_seconds=...)` counts as `@with_heartbeat`.
+            if isinstance(d, ast.Call):
+                d = d.func
             if isinstance(d, ast.Name):
                 names.append(d.id)
             elif isinstance(d, ast.Attribute):

@@ -352,6 +352,16 @@ fn ChatConversationPanel(
         });
     });
 
+    // The plan card's decisions open a new turn, which this panel then polls.
+    use_context_provider(|| crate::components::chat_components::plan_card::PlanCardContext {
+        session_id,
+        on_turn_started: Callback::new(move |_: ()| {
+            error.set(None);
+            sending.set(true);
+            start_polling.call(());
+        }),
+    });
+
     // Resume polling after a refresh that found a turn in flight.
     let mut poll_resumed = use_signal(|| false);
     if *sending.read() && !*poll_resumed.read() && !loaded_for.read().is_empty() {
@@ -417,7 +427,11 @@ fn ChatConversationPanel(
         spawn(async move {
             if opts.deep_research {
                 match chat_start_research(id.clone(), text, opts).await {
-                    Ok(_) => {
+                    Ok(run_id) => {
+                        crate::components::chat_components::plan_card::remember_started_plan(
+                            id.clone(),
+                            run_id,
+                        );
                         // The Temporal task streams into the same table the poll loop
                         // reads, so a research turn renders live like an inline one.
                         let mut o = *options.peek();
@@ -537,6 +551,10 @@ fn ChatConversationPanel(
                 match_count,
                 stream: stream_turn.read().clone(),
                 stream_live: !*interrupted.read(),
+                // A plan that has no planner answer row yet shows its card from here.
+                pending_plan: crate::components::chat_components::plan_card::started_plan(
+                    &session_id.read(),
+                ),
             }
             if *interrupted.read() {
                 div {

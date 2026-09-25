@@ -25,7 +25,7 @@ use crate::components::chat_components::tool_disclosure::ToolCallDisclosure;
 
 /// Route one tool call to its card.
 ///
-/// `running` is true between `start_tool` and `end_tool`, when there is no output yet,
+/// `running` is true between the `tool_start` and `tool_result` events, when there is no output yet,
 /// which is what lets a card show the query while the search is still running.
 #[component]
 pub fn ToolCard(

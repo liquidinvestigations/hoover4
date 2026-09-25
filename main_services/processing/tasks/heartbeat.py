@@ -153,7 +153,7 @@ class HeartbeatClock:
         return True
 
 
-def with_heartbeat(fn):
+def with_heartbeat(fn=None, *, interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS):
     """Decorate a sync activity so its body always heartbeats while it runs.
 
     Apply directly under ``@activity.defn``::
@@ -161,6 +161,10 @@ def with_heartbeat(fn):
         @activity.defn
         @with_heartbeat
         def parse_something(params): ...
+
+    ``@with_heartbeat(interval_seconds=5)`` sets a shorter beat for one activity. Only an
+    activity that must learn of a cancel quickly needs it, because the worker receives a
+    cancel only with a heartbeat reply.
 
     **Why this is a blanket default rather than a per-activity choice.**
     Every one of the 55 call sites declares ``HEARTBEAT_TIMEOUT``, and that
@@ -185,12 +189,15 @@ def with_heartbeat(fn):
     """
     import functools
 
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        with heartbeat_pump(fn.__name__):
-            return fn(*args, **kwargs)
+    def decorate(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            with heartbeat_pump(fn.__name__, interval_seconds=interval_seconds):
+                return fn(*args, **kwargs)
 
-    return wrapper
+        return wrapper
+
+    return decorate if fn is None else decorate(fn)
 
 
 @contextmanager

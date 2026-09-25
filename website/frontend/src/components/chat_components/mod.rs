@@ -12,6 +12,7 @@ pub mod gate_overlay;
 pub mod locked_options;
 pub mod markdown_text;
 pub mod model_selector;
+pub mod plan_card;
 pub mod session_card;
 pub mod tool_cards;
 pub mod tool_disclosure;

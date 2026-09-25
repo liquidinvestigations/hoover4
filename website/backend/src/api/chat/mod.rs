@@ -27,6 +27,7 @@
 
 pub mod gate;
 pub mod llm_events;
+pub mod plans;
 
 use std::time::{Duration, Instant};
 
@@ -254,6 +255,10 @@ pub async fn send_message(
     if stream_state(username, &session_id).await?.active {
         anyhow::bail!("a turn is already running in this conversation");
     }
+    // The pending plan rule: a plan that waits for review or runs owns the conversation.
+    if db_chat::plans::session_has_open_plan(username, &session_id).await? {
+        anyhow::bail!(plans::PLAN_PENDING_TEXT);
+    }
 
     // Everything that decides seqs happens before the dispatch, so the transcript this
     // returns is the one the poller continues from.
@@ -369,10 +374,6 @@ fn chat_workflow_id(session_id: &str, start_seq: u32) -> String {
     format!("chat-{session_id}-{start_seq}")
 }
 
-/// The workflow id one deep-research turn runs under.
-fn research_workflow_id(session_id: &str, start_seq: u32) -> String {
-    format!("research-{session_id}-{start_seq}")
-}
 
 // ---------------------------------------------------------------------------
 // Polling the in-flight turn
@@ -488,10 +489,13 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
     // ago. A turn that never wrote a stream row at all is not "interrupted": nothing has
     // claimed it yet, and `send_message` writes that row before it dispatches precisely
     // so the window does not exist for an accepted turn.
-    let interrupted = turn_open && newest_ms.is_some() && !advancing;
+    // A plan that waits for review or runs a long execution writes no stream rows for a
+    // while, so its turn is never reported as interrupted (the pending plan rule).
+    let plan_pending = db_chat::plans::session_has_open_plan(username, session_id).await?;
+    let interrupted = turn_open && newest_ms.is_some() && !advancing && !plan_pending;
     let active = turn_open && advancing;
 
-    // A tool row stays live past `is_final`: the writer marks it final at `end_tool`,
+    // A tool row stays live past `is_final`: the writer marks it final at `tool_result`,
     // well before the durable `chat_messages` row exists, which the workflow only
     // writes once the whole agent activity returns. Dropping a tool row the moment it
     // finalises left a completed tool with no displayed representation for that
@@ -537,12 +541,12 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
             tool_call_index: r.tool_call_index,
             tool_name: r.tool_name.clone(),
             summary: r.content.clone(),
-            // `is_final` on a tool row means `end_tool` has been seen, not that the
+            // `is_final` on a tool row means `tool_result` has been seen, not that the
             // durable row exists yet: the row above stays live in that interval on
             // purpose (see the comment on `live`), and the card reads this to switch
             // from a running state to a completed one before the durable row arrives.
             done: r.is_final != 0,
-            // A running tool's stream row is written once, at `start_tool`, and not
+            // A running tool's stream row is written once, at `tool_start`, and not
             // touched again until the call finalises into `chat_messages`, the keepalive
             // rewrites the *assistant* row. So its `updated_at` is when the call started,
             // which is what the card's counter needs to survive a refresh.
@@ -740,7 +744,8 @@ fn subagent_entries(runs: &[db_chat::AgentRunRow]) -> Vec<common::chat_types::Su
         e
     };
 
-    let mut out = Vec::new();
+    // Each entry with the start time of its batch's delegating run, for the cap below.
+    let mut out: Vec<(i64, common::chat_types::SubagentRunEntry)> = Vec::new();
     let leads = runs
         .iter()
         .filter(|r| r.depth == 0 && r.continues.is_empty());
@@ -749,16 +754,25 @@ fn subagent_entries(runs: &[db_chat::AgentRunRow]) -> Vec<common::chat_types::Su
             continue;
         };
         for child in children(lead_last) {
-            out.push(entry(child, &lead.thread));
+            out.push((lead_last.started_ms, entry(child, &lead.thread)));
             if let Some(child_last) = newest(&child.thread) {
                 for grandchild in children(child_last) {
-                    out.push(entry(grandchild, &child.thread));
+                    out.push((child_last.started_ms, entry(grandchild, &child.thread)));
                 }
             }
         }
     }
-    out
+    // The cap. A plan's organizer counts its runs against the plan budget, not the turn
+    // limit, so the 5 + 25 bound needs the cap to hold. Past it the newest batches stay.
+    if out.len() > SUBAGENT_ENTRIES_CAP {
+        out.sort_by_key(|(batch_ms, _)| std::cmp::Reverse(*batch_ms));
+        out.truncate(SUBAGENT_ENTRIES_CAP);
+    }
+    out.into_iter().map(|(_, e)| e).collect()
 }
+
+/// The most entries in the poll's `subagent_runs`: 5 depth 1 runs and 5 x 5 depth 2 runs.
+const SUBAGENT_ENTRIES_CAP: usize = 30;
 
 /// What the poll and the session load both need to know about the tail of a session.
 struct TurnTail {
@@ -875,7 +889,6 @@ pub async fn poll_chat(
 /// 2. Cancel the workflow of every `running` run of the turn, read from `agent_runs`.
 ///    `AgentRun` catches the cancellation and writes the ending of the run. A run that
 ///    waits for its children has no open workflow, and its children end it.
-/// 3. Cancel the `ResearchTask` of the turn, which has no run rows.
 ///
 /// A 404 from a cancellation counts as success, because the workflow ended before the
 /// request. The turn is found from the transcript and the run rows, so a stop during a
@@ -906,12 +919,6 @@ pub async fn stop_chat_turn(user: &CurrentUser, session_id: String) -> anyhow::R
         // A failed cancellation of one run does not keep the others running. The stop row
         // still ends that run at its next `open_run`, fan-in or sweep.
         if let Err(e) = cancel_workflow(&run.workflow_id).await {
-            tracing::warn!("stop of session {session_id}: {e}");
-        }
-    }
-    if transcript_open {
-        let research = research_workflow_id(&session_id, user_seq + 1);
-        if let Err(e) = cancel_workflow(&research).await {
             tracing::warn!("stop of session {session_id}: {e}");
         }
     }
@@ -962,16 +969,18 @@ fn stream_stall() -> Duration {
     Duration::from_secs(secs.clamp(5, 3600))
 }
 
-/// Hand a question to the research agent rather than the chat agent.
+/// Start a deep-research request: a plan run whose first run is a planner.
 ///
-/// Both are durable now and both reserve their transcript position the same way; what
-/// differs is which agent answers, how long it is allowed to take, and which queue it
-/// waits on. A research run is exhaustive and measured in minutes, so it must never sit
-/// behind a chat turn, and a chat turn must never sit behind it.
+/// The planner builds the plan tree and answers with an orientation. The plan then waits
+/// for review with no workflow open, and [`plans::decide_plan`] starts each later run. The
+/// planner runs on `research-queue`, so a research run never sits behind a chat turn, and
+/// a chat turn never sits behind it.
 ///
-/// Returns the Temporal run id, or a rate-limit refusal via the same `ChatSendResult`
-/// shape used by [`send_message`] when limited (here encoded as an error string with
-/// retry seconds. Research returns only a run id on success).
+/// The internet switch is the conversation's frozen value, which `lock_session_options`
+/// returns. The request's value is ignored once the conversation is locked, as for a chat
+/// turn.
+///
+/// Returns the plan run id, or the retry delay of a rate limit.
 pub async fn start_research_task(
     user: &CurrentUser,
     session_id: String,
@@ -1000,23 +1009,21 @@ pub async fn start_research_task(
     let permitted = list_permitted_collections(user).await?;
     let allowed = intersect_collections(&session.collections, &permitted);
 
-    // Deep research allocates transcript seqs exactly like an inline turn, so it takes
-    // the same lock rather than racing one. `try_lock` for the same reason
-    // `send_message` uses it: one turn at a time per session, said out loud.
+    // Deep research reserves transcript seqs exactly like a chat turn, so it takes the
+    // same lock, and it refuses rather than waits, as `send_message` does.
     let _guard = db_chat::turn_lock(username, &session_id)
         .try_lock_owned()
         .map_err(|_| anyhow::anyhow!("a turn is already running in this conversation"))?;
-
-    // ...and the same cross-process check `send_message` makes, for the same reason: this
-    // guard is dropped when the function returns, so it cannot keep a *second* research
-    // task (or an inline send) off the seq this one is about to reserve.
     if stream_state(username, &session_id).await?.active {
         anyhow::bail!("a turn is already running in this conversation");
     }
+    if db_chat::plans::session_has_open_plan(username, &session_id).await? {
+        anyhow::bail!(plans::PLAN_PENDING_TEXT);
+    }
 
-    // Deep research is one of the two frozen switches; a thread that started as a
-    // research thread stays one.
-    db_chat::lock_session_options(
+    // Deep research is one of the two frozen switches. A thread that started as a research
+    // thread stays one. The returned options are the frozen ones.
+    let frozen = db_chat::lock_session_options(
         username,
         &session_id,
         ChatOptions {
@@ -1026,20 +1033,13 @@ pub async fn start_research_task(
     )
     .await?;
 
-    let history = db_chat::list_messages(username, &session_id).await?;
-    let mut seq = db_chat::next_seq(username, &session_id).await?;
-    // The turn uuid every row of this research turn carries, transcript and stream alike.
-    // The *stream* writer in the Temporal worker derives the identical string from
-    // `(session_id, start_seq)` (`P_agent/stream_writer.py`). It is a coordination key
-    // between two processes that cannot pass one to each other, so the format is load
-    // bearing on both sides. The user row was written without it, which left the turn's
-    // first row unattributable and made the collision detector blind to exactly the
-    // collision this path causes.
-    let turn_uuid = format!("research-{session_id}-{}", seq + 1);
+    let is_first_turn = db_chat::list_messages(username, &session_id).await?.is_empty();
+    let turn_uuid = crate::db_auth::sessions::generate_session_id();
+    let user_seq = db_chat::next_seq(username, &session_id).await?;
     db_chat::append_message(
         username,
         &session_id,
-        seq,
+        user_seq,
         ChatRole::User,
         &message,
         AppendMessageExtras {
@@ -1048,29 +1048,21 @@ pub async fn start_research_task(
         },
     )
     .await?;
-    db_chat::detect_seq_collision(username, &session_id, seq, &turn_uuid).await?;
-    seq += 1;
-
-    if history.is_empty() {
+    db_chat::detect_seq_collision(username, &session_id, user_seq, &turn_uuid).await?;
+    if is_first_turn {
         db_chat::touch_session(username, &session_id, Some(&title_from_message(&message)), None)
             .await?;
     } else {
         db_chat::touch_session(username, &session_id, None, None).await?;
     }
 
-    // No "Research task started" placeholder in `chat_messages`: the Temporal activity
-    // streams its progress into chat_message_stream, so the turn renders live exactly
-    // like a chat turn and the workflow writes the finished rows at `seq`.
-    //
-    // An empty *stream* row does go in, though, and it is required rather than
-    // decorative. The same reason it is in `send_message`. It is the only thing telling
-    // the poller the turn exists before the worker picks the activity up, and the
-    // activity keeps rewriting it, which is what stops the stall detector calling a
-    // healthy run interrupted.
+    // The empty stream row tells the poller that the turn exists before the worker picks
+    // the run up, as in `send_message`.
+    let start_seq = user_seq + 1;
     db_chat::append_stream_row(
         username,
         &session_id,
-        seq,
+        start_seq,
         ChatRole::Assistant,
         "",
         "",
@@ -1081,36 +1073,41 @@ pub async fn start_research_task(
     )
     .await?;
 
-    let run_id = match start_agent_workflow(AgentWorkflowStart {
-        workflow_type: "ResearchTask",
-        task_queue: RESEARCH_TASK_QUEUE,
-        workflow_id: &research_workflow_id(&session_id, seq),
-        input: serde_json::json!({
-            "username": username,
-            "session_id": &session_id,
-            "query": &message,
-            "allowed_collections": &allowed,
-            "start_seq": seq,
-            "internet_tools": requested_options.internet_tools,
-            "llm_model": "",
-            "turn_uuid": &turn_uuid,
-            // A research thread is titled from its first message. Its answer arrives
-            // minutes later and is exhaustive rather than conversational, so a title drawn
-            // from it describes the report, not the question that was asked.
-            "summarize_session": false,
-        }),
+    let plan_run_id = new_run_id();
+    if let Err(e) = start_agent_workflow(AgentWorkflowStart {
+        workflow_type: "AgentRun",
+        task_queue: CHAT_TASK_QUEUE,
+        workflow_id: &plans::planner_workflow_id(&plan_run_id, 0),
+        input: plans::research_start_input(
+            frozen,
+            &new_run_id(),
+            &plan_run_id,
+            username,
+            &session_id,
+            user_seq,
+            &turn_uuid,
+            &allowed,
+        ),
     })
     .await
     {
-        Ok(run_id) => run_id,
-        Err(e) => {
-            // The workflow never started, so nothing will ever rewrite that row. Close
-            // it here rather than leaving the page spinning until the stall timeout.
-            let _ = db_chat::mark_stream_final(username, &session_id).await;
-            return Err(e);
-        }
-    };
-    Ok(Ok(run_id))
+        tracing::error!("could not start the research plan for {session_id}: {e:#}");
+        let _ = db_chat::append_message(
+            username,
+            &session_id,
+            start_seq,
+            ChatRole::Error,
+            &format!("The research plan could not be started: {e}"),
+            AppendMessageExtras {
+                message_uuid: turn_uuid.clone(),
+                ..Default::default()
+            },
+        )
+        .await;
+        let _ = db_chat::mark_stream_final(username, &session_id).await;
+        return Err(e);
+    }
+    Ok(Ok(plan_run_id))
 }
 
 /// Every agent turn running anywhere right now. Admin only.
@@ -1237,10 +1234,6 @@ const CHAT_TASK_QUEUE: &str = "chat-queue";
 #[allow(dead_code)]
 const CHAT_MODEL_TASK_QUEUE: &str = "chat-model-queue";
 
-/// The queue research turns are dispatched to. Its own queue, with four slots outside
-/// the twelve chat-model slots, so a research run cannot sit behind ingestion and cannot
-/// take a chat turn's slot.
-const RESEARCH_TASK_QUEUE: &str = "research-queue";
 
 fn temporal_base_url() -> String {
     std::env::var("TEMPORAL_HTTP_URL").unwrap_or_else(|_| "http://localhost:21908".to_string())
@@ -1355,14 +1348,14 @@ struct RunningWorkflow {
     started_at: String,
 }
 
-/// Every running `AgentRun` and `ResearchTask`.
+/// Every running `AgentRun`.
 ///
 /// An `AgentRun` takes its session and turn from its row in `agent_runs`, because a
 /// sub-agent or a continuation has the workflow id `run-{run_id}`, which names neither.
 /// A lead whose row `open_run` has not written yet falls back to its workflow id, which
-/// is `chat-{session_id}-{start_seq}`. A `ResearchTask` has no row and uses its id.
+/// is `chat-{session_id}-{start_seq}`.
 async fn list_running_agent_workflows() -> anyhow::Result<Vec<RunningWorkflow>> {
-    let query = "WorkflowType IN ('AgentRun', 'ResearchTask') AND ExecutionStatus = 'Running'";
+    let query = "WorkflowType = 'AgentRun' AND ExecutionStatus = 'Running'";
     let url = format!(
         "{}/api/v1/namespaces/default/workflows",
         temporal_base_url()
@@ -1427,13 +1420,11 @@ async fn list_running_agent_workflows() -> anyhow::Result<Vec<RunningWorkflow>> 
 
 /// Split an agent workflow id back into the session and the seq it reserved.
 ///
-/// The id is built by [`chat_workflow_id`] / [`research_workflow_id`] and is the only
+/// The id is built by [`chat_workflow_id`] and is the only
 /// thing Temporal's visibility index carries about the turn, so it is parsed rather than
 /// looked up. A session id contains no `-`, so the last one separates the seq.
 fn split_agent_workflow_id(workflow_id: &str) -> Option<(String, u32)> {
-    let rest = workflow_id
-        .strip_prefix("chat-")
-        .or_else(|| workflow_id.strip_prefix("research-"))?;
+    let rest = workflow_id.strip_prefix("chat-")?;
     let (session_id, seq) = rest.rsplit_once('-')?;
     if session_id.is_empty() {
         return None;
@@ -1485,16 +1476,8 @@ mod tests {
         // The id is the only thing Temporal's visibility index carries about a turn, so
         // the admin panel depends on this being exactly the inverse of the builders.
         let session = "4f3a9c2b1d";
-        for id in [
-            chat_workflow_id(session, 7),
-            research_workflow_id(session, 7),
-        ] {
-            assert_eq!(
-                split_agent_workflow_id(&id),
-                Some((session.to_string(), 7)),
-                "failed on {id}"
-            );
-        }
+        let id = chat_workflow_id(session, 7);
+        assert_eq!(split_agent_workflow_id(&id), Some((session.to_string(), 7)));
     }
 
     #[test]

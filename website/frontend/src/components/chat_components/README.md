@@ -14,6 +14,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
 | `tool_cards/subagent_card.rs` | `run_subagent`: each sub-agent's state, live tool calls and partial text from the poll's `subagent_runs` while the batch is open, a depth 2 sub-agent under its parent, then the reports from the tool row's `tool_output`. |
 | `tool_cards/entities_card.rs` | `list_document_entities`: the two tiers apart, each rule-validated value a link to its explainer card in the document viewer. |
+| `plan_card.rs` | The plan card of a deep-research request, under the planner's answer row. It reads the plan run and the tree through `chat_plan_view`, sends approve, ask for changes and stop through `chat_decide_plan`, and reads the plan again every 3 s until the plan ends. While the plan runs it lists the sections from `sections_json` and the live sub-agent runs from the poll. A request that has no planner answer yet shows its card from the plan run that this tab started. |
 | `tool_disclosure.rs` | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
 | `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet, see below. |
 | `conversation_find.rs` | "Search in conversation" bar (0/N + up/down), mirroring the document find box chrome. |
@@ -82,7 +83,7 @@ those columns existed show the stored summary with a note, instead of a blank pa
 
 ### `web_search`
 
-* **Pending** (streaming, `start_tool` seen, no `end_tool`): the query in quotes, the
+* **Pending** (streaming, `tool_start` seen, no `tool_result`): the query in quotes, the
   sources it is waiting on, and a seconds counter. A pending search with no counter is
   indistinguishable from a wedged one.
 * **Collapsed:** `web_search · "danube water level" · 30 results · 7 sources`, plus a
@@ -202,7 +203,7 @@ pending `web_search` card show the query. It is truncated at 400 chars, so the c
 it best-effort and fall back to a bare label.
 
 The row also carries `elapsed_ms`, measured **server-side**. A running tool's stream row is
-written once, at `start_tool`, and not rewritten until the call finalises (the keepalive
+written once, at `tool_start`, and not rewritten until the call finalises (the keepalive
 touches the assistant row), so its `updated_at` is when the call started. Refreshing the
 page mid-call used to restart the counter at 0, which made a two-minute browse read as
 having just begun: the reassuring number showing up exactly when the worrying one is true.

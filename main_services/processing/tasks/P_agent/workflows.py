@@ -1,14 +1,14 @@
 """Temporal workflows for AI agent turns.
 
-`AgentRun` owns one agent run. A chat turn is one `AgentRun`, and its state lives in the
-`agent_runs` and `agent_run_messages` tables, so the workflow input and results hold ids
-only. `ResearchTask` owns a deep research run and keeps the older shape: one agent call
-and a payload that it writes into the transcript.
+`AgentRun` owns one agent run. A chat turn is one `AgentRun`, and a deep-research request
+is a plan run whose planner and organizer runs are each one `AgentRun`. The state lives in
+the `agent_runs` and `agent_run_messages` tables, so the workflow input and results hold
+ids only.
 
 `AgentRun` runs on `chat-queue`. Its agent call runs on the queue in its row,
-`chat-model-queue` for a chat turn. Deep research runs on `research-queue`. None of these is the ingestion queue. An ingestion backlog
-delaying a person at a screen is the failure a shared queue guarantees, and these three
-queues make it impossible.
+`chat-model-queue` for a chat turn and `research-queue` for a plan run. None of these is
+the ingestion queue. An ingestion backlog delaying a person at a screen is the failure a
+shared queue guarantees, and these three queues make it impossible.
 """
 
 import asyncio
@@ -31,24 +31,19 @@ with workflow.unsafe.imports_passed_through():
         Continuation,
         OpenedRun,
         ReadTodoParams,
-        ResearchTaskParams,
         RunAgentParams,
         RunRef,
         RunSummary,
         WriteEndingParams,
-        WriteResultParams,
         append_nag,
         continue_run,
         fan_in,
         open_run,
         read_chat_todo,
         run_agent,
-        run_research_agent,
         summarize_if_first_turn,
-        write_chat_message,
         write_ending,
     )
-    from tasks.P_agent.trajectory import pair_tool_calls
 
 
 #: The queue `AgentRun` is dispatched to, and the queue that writes the transcript,
@@ -66,9 +61,9 @@ CHAT_TASK_QUEUE = "chat-queue"
 #: running sub-agent.
 CHAT_MODEL_TASK_QUEUE = "chat-model-queue"
 
-#: The queue `ResearchTask` is dispatched to. Four slots, outside the twelve chat-model
-#: slots, so a research run cannot take a chat turn's slot and an ingestion backlog
-#: cannot sit in front of it.
+#: The queue of the agent activity of a plan run: its planner and organizer runs and their
+#: sub-agents. Four slots, outside the twelve chat-model slots, so a research run cannot
+#: take a chat turn's slot and an ingestion backlog cannot sit in front of it.
 RESEARCH_TASK_QUEUE = "research-queue"
 
 #: How long the chat agent activity may go without proving it is alive before Temporal
@@ -82,83 +77,12 @@ RESEARCH_TASK_QUEUE = "research-queue"
 #: stall window is deliberately the larger of the two, by a wide margin: 60 s here
 #: against a 180 s default there.
 #:
-#: 60 s is four missed beats -- `run_agent` carries `@with_heartbeat`, whose
-#: pump beats every `HEARTBEAT_INTERVAL` (15 s) for as long as the body runs, so the
-#: agent's own latency never enters this budget. Lowering it further starts trading
+#: `run_agent` carries a heartbeat pump that beats every `RUN_AGENT_HEARTBEAT_SECONDS`
+#: (5 s) for as long as the body runs, so the agent's own latency never enters this
+#: budget. Lowering it further starts trading
 #: against a loaded box missing beats; raising it is worse than it looks, because the
 #: deadline is also how long a wedged slot stays occupied (see `tasks.heartbeat`).
 CHAT_AGENT_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
-
-async def _write_row(params, seq: int, role: str, content: str, **extra) -> None:
-    """Append one finished transcript row.
-
-    Short and retryable: the insert is keyed on `(username, session_id, seq)`, so a retry
-    replaces the row rather than appending a second one.
-
-    The timeout arguments and `task_queue` are spelled out rather than unpacked from a
-    shared dict. `test_every_execute_activity_declares_a_heartbeat_timeout` and
-    `test_agent_activities_declare_their_task_queue` read the call sites as source, so a
-    dict would hide both from the checks that exist to find a wedged activity or a
-    queue nobody polls.
-    """
-    await workflow.execute_activity(
-        write_chat_message,
-        WriteResultParams(
-            username=params.username,
-            session_id=params.session_id,
-            seq=seq,
-            role=role,
-            content=content,
-            **extra,
-        ),
-        start_to_close_timeout=timedelta(minutes=2),
-        heartbeat_timeout=HEARTBEAT_TIMEOUT,
-        retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        task_queue=CHAT_TASK_QUEUE,
-    )
-
-
-async def _write_payload(
-    params, payload: dict, empty_answer: str, start_seq: int
-) -> tuple[str, int, int]:
-    """Write a finished research payload into the transcript. Return the answer, the next
-    free `seq`, and the peak context of the run.
-
-    Only `ResearchTask` calls it. It writes the same row shapes that `run_agent` writes for
-    a chat turn, so the page renders a research transcript and a chat transcript the same
-    way.
-    """
-    seq = start_seq
-
-    # Pair start/end events into one row each, with the arguments, the result and any
-    # documents surfaced, so every tool call renders as one card.
-    for call in pair_tool_calls(payload.get("tool_calls", [])):
-        await _write_row(
-            params, seq, "tool", call.summary,
-            tool_name=call.tool_name,
-            tool_input=call.tool_input,
-            tool_output=call.tool_output,
-            doc_refs=call.doc_refs,
-        )
-        seq += 1
-
-    # Token counts as the provider billed them. A missing key is 0, which every reader
-    # renders as unknown -- an agent that reported no usage must not look free.
-    usage = payload.get("usage") or {}
-    peak = int(usage.get("peak_context_tokens") or 0)
-    answer = payload.get("answer") or empty_answer
-    await _write_row(
-        params, seq, "assistant", answer,
-        # The agent separates its narration from its answer; carrying the narration
-        # through as `reasoning` is what keeps the disclosure working.
-        reasoning=payload.get("reasoning") or "",
-        model=payload.get("model") or "",
-        context_tokens=int(usage.get("context_tokens") or 0),
-        peak_context_tokens=peak,
-        context_window=int(usage.get("context_window") or 0),
-    )
-    return answer, seq + 1, peak
-
 
 def _was_cancelled(exc: BaseException) -> bool:
     """Whether this failure is a cancellation wearing another exception's clothes.
@@ -180,6 +104,10 @@ def _was_cancelled(exc: BaseException) -> bool:
 #: watching that has produced nothing for a quarter of an hour is wedged, and failing it
 #: returns the answer slot to them.
 RUN_AGENT_TIMEOUT = timedelta(seconds=900)
+#: The start-to-close and heartbeat timeouts of `run_agent` for a run of a plan, of any
+#: kind. A research round runs longer than a chat turn and nobody waits at the screen.
+PLAN_RUN_AGENT_TIMEOUT = timedelta(seconds=2400)
+PLAN_RUN_AGENT_HEARTBEAT_TIMEOUT = timedelta(minutes=10)
 
 #: Nothing in an `AgentRun` input or result is text. The largest result, a `run_agent`
 #: summary with five children, stays under this bound.
@@ -253,8 +181,15 @@ class AgentRun:
             return "closed"
         if summary.outcome == "delegated":
             if summary.children:
-                for child in summary.children:
-                    await start_run(self._settings(inp, child, "subagent"), f"run-{child}")
+                # A stop here must not leave a child row with no workflow, so the starts
+                # finish before the cancellation goes on. Each started child closes in
+                # `open_run`, because the turn has a stop row.
+                starts = asyncio.ensure_future(self._start_children(inp, summary.children))
+                try:
+                    await asyncio.shield(starts)
+                except asyncio.CancelledError:
+                    await starts
+                    raise
             else:
                 continuation: Continuation = await workflow.execute_activity(
                     continue_run,
@@ -273,6 +208,10 @@ class AgentRun:
             await self._summarize_if_first_turn(inp)
         return "completed"
 
+    async def _start_children(self, inp: AgentRunInput, children: list[str]) -> None:
+        for child in children:
+            await start_run(self._settings(inp, child, "subagent"), f"run-{child}")
+
     async def _run_agent(self, inp: AgentRunInput, opened: OpenedRun) -> RunSummary:
         """One `run_agent` attempt chain, which is the only writer of the run while it runs.
 
@@ -280,7 +219,7 @@ class AgentRun:
         `write_ending` never runs beside an attempt that still writes rows. An attempt can
         end without an error after the stop arrived. The pending cancellation then raises
         here, so the run still ends as `cancelled`. Children that such an attempt wrote
-        have no workflow, and the agent run sweep ends them.
+        have no workflow, and the `cancelled` ending of `write_ending` ends them.
         """
         summary = await workflow.execute_activity(
             run_agent,
@@ -293,8 +232,10 @@ class AgentRun:
                 llm_model=inp.llm_model,
                 internet_tools=inp.internet_tools,
             ),
-            start_to_close_timeout=RUN_AGENT_TIMEOUT,
-            heartbeat_timeout=CHAT_AGENT_HEARTBEAT_TIMEOUT,
+            start_to_close_timeout=(PLAN_RUN_AGENT_TIMEOUT if opened.plan
+                                    else RUN_AGENT_TIMEOUT),
+            heartbeat_timeout=(PLAN_RUN_AGENT_HEARTBEAT_TIMEOUT if opened.plan
+                               else CHAT_AGENT_HEARTBEAT_TIMEOUT),
             retry_policy=RetryPolicy(maximum_attempts=2),
             task_queue=opened.queue,
             cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
@@ -456,44 +397,3 @@ def _cause_text(exc: BaseException) -> str:
             text = str(seen)
         seen = seen.__cause__
     return text
-
-
-@workflow.defn
-class ResearchTask:
-    """Run the full research agent for one question and write the result into the chat.
-
-    Split into two activities on purpose: the agent call is slow and retryable, while
-    the write is fast and keyed, so a retried agent call cannot leave a half-written
-    transcript behind.
-
-    A failure is written into the transcript as an `error` row rather than left as a
-    silently failed workflow. The user is looking at a chat window waiting for an
-    answer, and "nothing ever appeared" is the one outcome that gives them nothing to
-    act on.
-
-    It runs on `research-queue` so an ingestion backlog cannot sit in front of it, and
-    so its four slots sit outside the twelve chat-model slots.
-    """
-
-    @workflow.run
-    async def run(self, params: "ResearchTaskParams") -> str:
-        seq = params.start_seq
-        try:
-            raw = await workflow.execute_activity(
-                run_research_agent,
-                params,
-                start_to_close_timeout=timedelta(seconds=2400),
-                heartbeat_timeout=timedelta(minutes=10),
-                retry_policy=RetryPolicy(maximum_attempts=2),
-                task_queue=RESEARCH_TASK_QUEUE,
-            )
-        except Exception as e:  # noqa: BLE001 - recorded for the user, then re-raised
-            await _write_row(
-                params, seq, "error", f"The research task failed: {e}",
-            )
-            raise
-
-        answer, _, _ = await _write_payload(
-            params, json.loads(raw), "(the research agent returned an empty answer)", seq
-        )
-        return answer

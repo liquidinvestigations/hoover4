@@ -100,6 +100,31 @@ pub async fn chat_start_research(
     }
 }
 
+/// Approve, reject or cancel a deep-research plan. The outcome is typed.
+#[server]
+pub async fn chat_decide_plan(
+    request: common::plan_types::PlanDecisionRequest,
+) -> Result<common::plan_types::PlanDecisionOutcome, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::plans::decide_plan(&user, request)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+/// The plan run state and the tree at `version`, or the newest tree when it is 0. `None`
+/// for a missing or foreign plan run.
+#[server]
+pub async fn chat_plan_view(
+    session_id: String,
+    plan_run_id: String,
+    version: u64,
+) -> Result<Option<common::plan_types::PlanView>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::plans::get_plan_view(&user, session_id, plan_run_id, version)
+        .await
+        .map_err(to_server_fn_error)
+}
+
 /// Agent turns running right now, chat and research alike. Admin only.
 #[server]
 pub async fn chat_admin_live_runs() -> Result<Vec<LiveChatRun>, ServerFnError> {

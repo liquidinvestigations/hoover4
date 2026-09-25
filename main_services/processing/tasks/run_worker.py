@@ -643,6 +643,14 @@ OPERATIONS_QUEUE_SLOTS = {
 }
 
 
+#: The longest gap between two heartbeats that the SDK sends for a `run_agent` activity.
+#: The SDK holds back each heartbeat for 0.8 of the heartbeat timeout by default, which is
+#: 48 s for a chat run, and a stop reaches the activity only with a heartbeat reply. At 5 s,
+#: with the `run_agent` pump at `RUN_AGENT_HEARTBEAT_SECONDS`, a stop ends the run in
+#: about 10 s or less.
+RUN_AGENT_HEARTBEAT_THROTTLE = timedelta(seconds=5)
+
+
 async def run_chat_worker():
   """Serve the three agent queues from one process.
 
@@ -652,10 +660,10 @@ async def run_chat_worker():
   stay separate so a long model turn cannot hold a write slot, and a research turn cannot
   take a chat-model slot.
 
-  `chat-queue` carries `AgentRun` and its short activities (open, nag, ending, todo read,
-  title). `chat-model-queue` carries `run_agent` for a chat turn. `research-queue` carries
-  `ResearchTask` and its own `run_research_agent`, and `run_agent` for a run whose row
-  names that queue. A slot is one agent run in flight, not one model call. One run makes
+  `chat-queue` carries `AgentRun` and its short activities (open, nag, ending, fan-in,
+  todo read, title). `chat-model-queue` carries `run_agent` for a chat turn.
+  `research-queue` carries `run_agent` for a run whose row names that queue: the planner
+  and organizer runs of a deep-research plan, and their sub-agents. A slot is one agent run in flight, not one model call. One run makes
   up to `AGENT_MAX_TOOL_TURNS` model calls in sequence. Each sub-agent runs its own
   `run_agent` on its parent's queue, so a delegated turn takes one slot for each running
   sub-agent.
@@ -672,10 +680,7 @@ async def run_chat_worker():
       open_run,
       read_chat_todo,
       run_agent,
-      run_research_agent,
       summarize_if_first_turn,
-      summarize_session,
-      write_chat_message,
       write_ending,
   )
   from .P_agent.workflows import (
@@ -683,7 +688,6 @@ async def run_chat_worker():
       CHAT_TASK_QUEUE,
       RESEARCH_TASK_QUEUE,
       AgentRun,
-      ResearchTask,
   )
   from .visibility import ensure_search_attributes
   log.info("Starting Chat worker...")
@@ -707,7 +711,7 @@ async def run_chat_worker():
         workflows=[AgentRun],
         activities=[
             open_run, append_nag, write_ending, summarize_if_first_turn, fan_in,
-            continue_run, read_chat_todo, summarize_session, write_chat_message,
+            continue_run, read_chat_todo,
         ],
         activity_executor=activity_executor,
         max_concurrent_activities=low_latency_slots,
@@ -718,6 +722,7 @@ async def run_chat_worker():
         workflow_runner=sandboxed_runner(),
         task_queue=CHAT_MODEL_TASK_QUEUE,
         graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        max_heartbeat_throttle_interval=RUN_AGENT_HEARTBEAT_THROTTLE,
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[],
         activities=[run_agent],
@@ -730,9 +735,10 @@ async def run_chat_worker():
         workflow_runner=sandboxed_runner(),
         task_queue=RESEARCH_TASK_QUEUE,
         graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        max_heartbeat_throttle_interval=RUN_AGENT_HEARTBEAT_THROTTLE,
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
-        workflows=[ResearchTask],
-        activities=[run_research_agent, run_agent],
+        workflows=[],
+        activities=[run_agent],
         activity_executor=activity_executor,
         max_concurrent_activities=research_slots,
       ),

@@ -105,6 +105,15 @@ def test_the_catalogue_arm_selects_the_smallest_passing_count(tmp_path):
     assert sorted({r["match_count"] for r in records if r["kind"] == "sample"}) == [6, 7, 8]
 
 
+def test_a_catalogue_request_binds_the_listed_deferred_tools():
+    deferred = [{"type": "function", "function": {"name": f"tool_{n}", "parameters": {}}} for n in range(12)]
+    fixture = dict(FIXTURE, deferred_tools=deferred)
+    series = probe.Series("m", "m", "qwen3_xml", 0.0, 64, "test", [fixture], Path("unused"))
+    request = probe.page_request(series, fixture, "", 1, [f"tool_{n}" for n in range(6)])
+    names = [tool["function"]["name"] for tool in request["tools"]]
+    assert names == ["read_documents"] + [f"tool_{n}" for n in range(6)]
+
+
 def test_a_failed_tokenizer_sizes_pages_by_bytes_and_records_it(tmp_path):
     status, records = run(tmp_path, FakeModel(limit=5000, tokenizer_works=False), "--parallel", "1")
     assert status == probe.EXIT_OK

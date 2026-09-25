@@ -218,7 +218,6 @@ async def run_events(scripted_model, tools, replies, **stream_kwargs):
     events = [
         event
         async for event in agent.stream(
-            query=None,
             session_id="s1",
             username="alice",
             allowed_collections=["testdata"],
@@ -260,7 +259,8 @@ async def test_a_run_streams_model_turns_and_a_raised_call_as_an_error_result(sc
     ]
     agent, events = await run_events(scripted, tools, replies, run_id="run-2")
     types = [e["type"] for e in events]
-    assert "start_tool" not in types and "end_tool" not in types
+    assert set(types) <= {"model_turn", "tool_start", "tool_result", "start", "response",
+                          "start_response", "end"}
     assert types.count("model_turn") == 2
     first_turn = next(e for e in events if e["type"] == "model_turn")["content"]
     assert first_turn["index"] == 1
@@ -418,7 +418,7 @@ async def test_a_retry_runs_the_unanswered_call_before_the_next_model_call(scrip
         ToolMessage(content="first result", tool_call_id="c1", name="search_collections"),
     ]
     events = [e async for e in agent.stream(
-        query=None, session_id="s1", username="alice", allowed_collections=["testdata"],
+        session_id="s1", username="alice", allowed_collections=["testdata"],
         thread=thread, run_id="run-d4")]
     assert [a for n, step, a in seen if step == "start"] == [{"query": "two"}]
     result = next(e["content"] for e in events if e["type"] == "tool_result")

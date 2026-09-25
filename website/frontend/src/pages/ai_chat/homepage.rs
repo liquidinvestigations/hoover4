@@ -92,7 +92,15 @@ pub fn AiChatPage() -> Element {
                     // one per press. So the failure paths take it back out.
                     let sent = if opts.deep_research {
                         match chat_start_research(id.clone(), text, opts).await {
-                            Ok(_) => true,
+                            Ok(run_id) => {
+                                // The session page shows the plan card from this value
+                                // until the planner answers.
+                                crate::components::chat_components::plan_card::remember_started_plan(
+                                    id.clone(),
+                                    run_id,
+                                );
+                                true
+                            }
                             Err(e) => {
                                 if let Some(secs) = rate_limited_seconds(&e.to_string()) {
                                     retry_after.set(Some(secs));

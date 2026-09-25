@@ -43,4 +43,6 @@ EXPOSE 8088
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request,os; urllib.request.urlopen(f\"http://127.0.0.1:{os.getenv('PORT','8088')}/health\", timeout=5)" || exit 1
 
-CMD ["python", "-m", "agent_todo_server.server"]
+# The package entry, never `agent_todo_server.server`: run as `__main__`, `server.py` is a
+# second copy of the module, and the plan tools register on the other copy's `mcp`.
+CMD ["python", "-m", "agent_todo_server"]

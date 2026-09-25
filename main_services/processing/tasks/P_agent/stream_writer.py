@@ -1,9 +1,8 @@
-"""Mirror a streaming research-agent run into `chat_message_stream`.
+"""Mirror a streaming agent run into `chat_message_stream` and `agent_run_messages`.
 
-The Python twin of the website's streaming turn (`website/backend/src/api/chat/mod.rs`,
-`TurnState`, `handle_stream_event`). The two must agree: a transcript should read
-identically whether the turn ran inline or as a Temporal research task, and the poll
-endpoint makes no distinction.
+`RunStreamClient` consumes the agent's `POST /run/stream` for one attempt of one run.
+Its base class `ResearchStreamWriter` holds the live transcript rules that every run that
+writes a transcript applies.
 
 The rules copied from the Rust side, kept in the same words:
 
@@ -14,8 +13,7 @@ The rules copied from the Rust side, kept in the same words:
     never appended;
   * a keepalive rewrite every KEEPALIVE_SECONDS bumps `updated_at` even when the model
     is quiet, or the website's stall detector would mark a healthy research run
-    "interrupted". Research turns have no live-runs entry, so staleness is the only
-    signal the poll has.
+    "interrupted". Staleness is the signal the poll reads.
 """
 
 from __future__ import annotations
@@ -168,8 +166,6 @@ def _chat_history(username: str, session_id: str, before_seq: int) -> list[dict]
     ]
 
 
-AGENT_TIMEOUT_SECONDS = int(os.getenv("RESEARCH_AGENT_TIMEOUT_SECONDS", "1800"))
-
 #: Minimum interval between rewrites of the growing assistant partial. Each rewrite is
 #: a ClickHouse insert; 300 ms reads as live without hammering the table.
 STREAM_WRITE_MIN_INTERVAL = 0.3
@@ -183,11 +179,8 @@ CONNECT_TIMEOUT_SECONDS = 10
 
 
 class ResearchStreamWriter:
-    """Consume the agent's `/chat/stream` for one research task and mirror it live.
-
-    Produces the same payload dict `/chat` returned, so the workflow's finalisation
-    code does not change.
-    """
+    """The live transcript rows of one turn: the assistant partial, the tool rows, the
+    keepalive and the final marks. `RunStreamClient` feeds it the events of a run."""
 
     def __init__(self, params):
         self.params = params
@@ -214,7 +207,6 @@ class ResearchStreamWriter:
         self.assistant_row_started = False
         #: True until the first tool call that is not part of the plan-first opening.
         self.in_plan_first_opening = True
-        self.tool_events: list[dict[str, Any]] = []
         #: Token counts from the agent's `end` frame. Empty until it arrives, and empty
         #: for good if the provider reported no usage -- which the workflow records as 0
         #: and every reader shows as unknown.
@@ -316,142 +308,6 @@ class ResearchStreamWriter:
             seq, role, content, reasoning, tool_name, tool_call_index, is_final=True
         )
 
-    # ------------------------------------------------------------------ the run
-
-    def run(self) -> dict[str, Any]:
-        """Stream the agent run; return the `/chat`-shaped payload."""
-        # Take over the placeholder row the website wrote when it accepted the task,
-        # before the first event arrives. Two reasons, and neither can be dropped: the keepalive
-        # only refreshes rows it knows are open, and a model that spends more time reasoning
-        # than CHAT_STREAM_STALL_SECONDS before saying anything would otherwise let that
-        # placeholder go stale and the page would call a healthy run interrupted.
-        self._write_assistant(force=True)
-        self._keepalive_thread = threading.Thread(
-            target=self._keepalive_loop, daemon=True, name="research-stream-keepalive"
-        )
-        self._keepalive_thread.start()
-
-        # The website resolved and allowlist-checked this against the caller's identity,
-        # which cannot be done here. Only fall back to the server default when nothing
-        # was sent, which is the research path's older callers.
-        llm_model = getattr(self.params, "llm_model", "") or _chat_model()
-        from .activities import agent_url_for
-
-        agent_url = agent_url_for(getattr(self.params, "internet_tools", True))
-        response = requests.post(
-            f"{agent_url}/chat/stream",
-            json={
-                "session_id": self.params.session_id,
-                "user_id": self.params.username,
-                "message_id": f"{self.params.session_id}-{self.params.start_seq}",
-                "query": self.params.query,
-                "chat_history": _chat_history(
-                    self.params.username, self.params.session_id, self.params.start_seq
-                ),
-                "username": self.params.username,
-                "allowed_collections": self.params.allowed_collections,
-                "llm_model": llm_model,
-                "extra_tool_turns": getattr(self.params, "extra_tool_turns", 0),
-            },
-            timeout=(CONNECT_TIMEOUT_SECONDS, AGENT_TIMEOUT_SECONDS),
-            stream=True,
-        )
-        response.raise_for_status()
-
-        # The feed is `data: {json}\n\n` frames; the JSON itself contains no newlines,
-        # so iter_lines is a complete frame parser here.
-        for line in response.iter_lines(decode_unicode=True):
-            if not line or not line.startswith("data: "):
-                continue
-            try:
-                chunk = json.loads(line[len("data: "):])
-            except ValueError:
-                log.warning("[P_agent] unparseable stream frame: %.200s", line)
-                continue
-            kind = chunk.get("type")
-            if kind == "error":
-                raise RuntimeError(chunk.get("content") or "unknown agent error")
-            # Token counts ride on the `end` frame beside `content`, not inside it, so
-            # they are taken here rather than in `_handle`.
-            if kind == "end" and isinstance(chunk.get("usage"), dict):
-                self.usage = dict(chunk["usage"])
-            self._handle(kind, chunk.get("content"))
-
-        # Final stream state: the assistant row is complete, every row goes final. The
-        # workflow writes the finished chat_messages rows; these stay only for the TTL.
-        if self.assistant_row_started:
-            self._write_assistant(force=True)
-        self._finish_stream_rows()
-
-        answer = self._answer_text()
-        reasoning = self.reasoning.strip()
-        if not answer and reasoning:
-            # Same fallback as the inline path: a turn that called tools and then said
-            # nothing new answers with its narration rather than a blank bubble.
-            answer = reasoning
-            reasoning = ""
-        return {
-            "answer": answer,
-            "reasoning": reasoning,
-            "tool_calls": self.tool_events,
-            "model": llm_model,
-            # Empty when the provider reported no usage at all. The workflow writes 0 in
-            # that case and every reader renders 0 as unknown, never as free.
-            "usage": {**self.usage, "context_window": context_window_for(llm_model)},
-        }
-
-    def _handle(self, kind: str | None, content: Any) -> None:
-        if kind == "reasoning":
-            self.reasoning += str(content or "")
-            self._write_assistant()
-        elif kind == "response":
-            self.answer += str(content or "")
-            self._write_assistant()
-        elif kind == "start_tool":
-            # Narration before a tool call is not the answer -- except the block that
-            # opens a plan-first turn, which stays in it. See `_keeps_preamble`.
-            keep_preamble = self._keeps_preamble(content)
-            if self.answer.strip():
-                if keep_preamble:
-                    if self.plan_prose:
-                        self.plan_prose += "\n\n"
-                    self.plan_prose += self.answer.strip()
-                else:
-                    if self.reasoning:
-                        self.reasoning += "\n\n"
-                    self.reasoning += self.answer.strip()
-                self.answer = ""
-            # The tool takes the seq the assistant partial occupied; the assistant
-            # resumes one later, so live and finalised transcripts order identically.
-            tool_seq = self.params.start_seq + self.tool_count
-            if self.assistant_row_started:
-                self._mark_final(
-                    tool_seq, "assistant", self._answer_text(), reasoning=self.reasoning
-                )
-                self.assistant_row_started = False
-            name = _tool_name(content)
-            summary = json.dumps(content, default=str)[:400] if content else ""
-            index = self.tool_count
-            self._insert_stream_row(
-                tool_seq, "tool", summary, tool_name=name, tool_call_index=index
-            )
-            self.pending_tools.append((tool_seq, index, name, summary, _tool_call_id(content)))
-            self.tool_events.append({"phase": "start", "content": content})
-            self.tool_count += 1
-        elif kind == "end_tool":
-            self.tool_events.append({"phase": "end", "content": content})
-            match = self._take_pending(_tool_call_id(content))
-            if match is not None:
-                seq, index, name, summary, _ = match
-                self._mark_final(
-                    seq, "tool", summary, tool_name=name, tool_call_index=index
-                )
-            # Reopen the assistant row so the turn always owns one non-final row: the
-            # website's stall detector reads staleness, and a research run that goes
-            # quiet between tools with nothing open would read as finished.
-            self._write_assistant(force=True)
-        # start / start_reasoning / start_response / end need no row writes.
-
     def _keeps_preamble(self, content: Any) -> bool:
         """Whether the prose before this tool call belongs in the answer, closing the
         plan-first opening if this call is not part of it.
@@ -467,25 +323,11 @@ class ResearchStreamWriter:
         every tool called so far has been a todo tool, and ends for good at the first
         call that is real work.
 
-        The agent has the same rule in `research_agent/agent.py::keeps_preamble`, for
-        its own non-streaming path. Two copies because the two run in different images;
-        they are one rule and must move together.
         """
         self.in_plan_first_opening = (
             self.in_plan_first_opening and _tool_name(content) in PLAN_FIRST_TOOLS
         )
         return self.in_plan_first_opening
-
-    def _take_pending(self, tool_call_id):
-        """Pop the start this end belongs to, by tool_call_id when it has one, else the
-        oldest unmatched start. Same rules as `trajectory.pair_tool_calls`."""
-        if tool_call_id:
-            for i, entry in enumerate(self.pending_tools):
-                if entry[4] == tool_call_id:
-                    return self.pending_tools.pop(i)
-        if self.pending_tools:
-            return self.pending_tools.pop(0)
-        return None
 
     def _finish_stream_rows(self) -> None:
         """Mark this turn's rows final: the poll's `is_final = 0` filter hides them, and
@@ -530,9 +372,8 @@ BROWSER_SERVER_URL = os.getenv("BROWSER_SERVER_URL", "http://hoover4-mcp-browser
 def tool_row_fields(name: str, args: Any, content: str) -> dict[str, str]:
     """The `chat_messages` columns of one finished tool call, in today's row shape.
 
-    The same rules as `trajectory.pair_tool_calls`: a canonical broker page is stored as its
-    own bytes, every other result as truncated JSON, and the summary is the start of the
-    arguments.
+    A canonical broker page is stored as its own bytes, every other result as truncated
+    JSON, and the summary is the start of the arguments.
     """
     from tasks.P_agent.trajectory import (
         TOOL_SUMMARY_CHARS, _dumps, extract_doc_refs, is_canonical_page, truncate,
@@ -657,6 +498,8 @@ class RunStreamClient(ResearchStreamWriter):
             "run_id": self.row.run_id,
             "kind": self.row.kind,
             "depth": self.row.depth,
+            # The purpose of a plan sub-agent. `review` adds the verdict block to its prompt.
+            "purpose": self.row.purpose or None,
             "username": self.row.username,
             "session_id": self.row.session_id,
             "allowed_collections": self.allowed_collections,

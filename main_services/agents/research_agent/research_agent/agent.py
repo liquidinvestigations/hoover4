@@ -77,48 +77,6 @@ log = logging.getLogger(__name__)
 #: hard backstop behind this.
 MAX_TOOL_TURNS = int(os.getenv("AGENT_MAX_TOOL_TURNS", "12"))
 
-#: The tool calls a plan-first opening is made of. Prose in front of any of them, before
-#: any other tool has run, is the plan being proposed and belongs in the answer.
-#:
-#: `read_todo` is in the list and it is not decoration: the protocol tells the model to
-#: check whether a plan is needed before writing one, so the very first call of a
-#: plan-first turn is a read. Watching a real turn is how that was found -- the
-#: understanding-and-approaches prose went behind the reasoning disclosure because the
-#: exception was written for `write_todo` alone.
-PLAN_FIRST_TOOLS = ("read_todo", "write_todo", "edit_todo", "mark_todo")
-
-
-def tool_name_of(content: Any) -> str:
-    """The tool's name out of a LangGraph tool event, whichever shape it arrives in."""
-    if not isinstance(content, dict):
-        return ""
-    name = content.get("name") or content.get("tool")
-    if not name:
-        output = content.get("output")
-        if isinstance(output, dict):
-            name = output.get("name")
-    return str(name or "")
-
-
-def keeps_preamble(in_plan_first_opening: bool, content: Any) -> bool:
-    """Whether the prose before this tool call belongs in the answer, not the reasoning.
-
-    Everything a model says before calling a tool is normally narration about the call
-    -- "let me search the collections first" -- and it is folded into `reasoning`,
-    behind the disclosure, so the scratchpad does not reach the transcript.
-
-    **The plan-first block is the one exception, and it is deliberate.** Both profiles
-    are told to open a fresh plan by restating the task and weighing two or three
-    approaches before writing the chosen one into the todo. That prose is the part the
-    user most needs to see -- it is what they would correct -- so hiding it behind a
-    disclosure would defeat the instruction that produced it.
-
-    The exception is bounded by the opening itself: it holds while every tool called so
-    far has been a todo tool, and ends for good at the first call that is real work.
-    """
-    return in_plan_first_opening and tool_name_of(content) in PLAN_FIRST_TOOLS
-
-
 #: Compactions applied during the run currently executing, waiting for the token count
 #: that says what they bought.
 #:
@@ -177,6 +135,14 @@ CHAT_SESSION_HEADER = "X-Hoover4-Chat-Session"
 #: browser server keys a browser by it, so each run gets its own browser. It carries no
 #: authority either.
 AGENT_RUN_HEADER = "X-Hoover4-Agent-Run"
+
+#: The prompt profile of each run kind that has its own. A chat lead keeps the profile of
+#: its container, `internal_search` or `full_research`.
+RUN_KIND_PROFILES = {
+    "subagent": "research_subagent",
+    "planner": "planner",
+    "organizer": "organizer",
+}
 
 
 def llm_streaming_enabled() -> bool:
@@ -334,7 +300,9 @@ class MCPGatewayAgent:
         run_id: Optional[str] = None,
         kind: str = "chat",
         can_delegate: bool = True,
+        purpose: Optional[str] = None,
     ):
+        # `purpose` is not in the key: the key holds the run id, and a run has one purpose.
         model = self._resolve_model(llm_model)
         key = self._acl_key(
             username, allowed_collections, session_id, model, run_id, kind, can_delegate
@@ -344,7 +312,8 @@ class MCPGatewayAgent:
             return self._graphs[key]
 
         self._graphs[key] = await self._create_graph(
-            username, allowed_collections, session_id, model, run_id, kind, can_delegate
+            username, allowed_collections, session_id, model, run_id, kind, can_delegate,
+            purpose,
         )
         while len(self._graphs) > MAX_CACHED_GRAPHS:
             evicted, _ = self._graphs.popitem(last=False)
@@ -373,15 +342,15 @@ class MCPGatewayAgent:
         run_id: Optional[str] = None,
         kind: str = "chat",
         can_delegate: bool = True,
+        purpose: Optional[str] = None,
     ):
         """Create the agent graph with MCP tools, scoped to one caller's ACL.
 
         `kind` selects the tool packs (`agent_common.tool_packs`). `can_delegate` false
-        removes `run_subagent` from the packs. A graph with a `run_id` serves
-        `/run/stream`: it stops at a `run_subagent` call and never runs a worker in
-        process (`execution.py`). A graph with no `run_id` serves `/chat/stream`.
+        removes `run_subagent` from the packs. The graph serves `/run/stream`: it stops at
+        a `run_subagent` call (`execution.py`), and the worker starts the sub-agent runs.
         """
-        stop_at_delegation = bool(run_id)
+        stop_at_delegation = True
         # Set up MCP servers. The ACL travels as connection headers so the MCP server
         # enforces it on every tool call. The model cannot widen its own permissions,
         # because it never sees or supplies them.
@@ -463,61 +432,10 @@ class MCPGatewayAgent:
         if not can_delegate:
             allowed = allowed - {DELEGATION_TOOL}
 
-        # The in-process worker of `run_subagent`, for `/chat/stream` only.
-        #
-        # Its snapshot is built from the MCP tools before `run_subagent` is added, so a
-        # worker cannot delegate. Workers reuse these tool objects, which means they reuse
-        # this graph's MCP headers and therefore the lead's chat session: that is what
-        # makes a worker's citation handles resolve in the lead's session.
-        #
-        # A `/run/stream` graph binds the same tool for its schema, and the execution node
-        # stops at it, so its worker callable is never called.
-        if DELEGATION_TOOL in allowed and stop_at_delegation:
-
-            async def never_runs(text: str) -> Sequence[BaseMessage]:
-                raise RuntimeError("a /run/stream graph delegates through run rows")
-
-            tools = list(tools) + [subagents.make_delegation_tool(never_runs)]
-        elif DELEGATION_TOOL in allowed:
-            worker_snapshot = build_snapshot(
-                tools, subagents.worker_allowed_tools(), "subagent"
-            )
-
-            def worker_prompt(names: Sequence[str]) -> str:
-                # Rendered from the worker's own tools, not the lead's, so the prompt
-                # cannot suggest a recursion the binding forbids.
-                return prompts.render(
-                    "research_subagent",
-                    tools=list(names),
-                    collections_hint=bool(allowed_collections),
-                )
-
-            worker_graph = subagents.build_worker_graph(
-                ThinkingChatOpenAI(**llm_kwargs, extra_body=tool_turn_kwargs()),
-                ThinkingChatOpenAI(**llm_kwargs, extra_body=thinking_kwargs()),
-                worker_prompt,
-                worker_snapshot,
-                AgentState,
-            )
-
-            async def run_worker(text: str) -> Sequence[BaseMessage]:
-                state = await worker_graph.ainvoke(
-                    {"messages": [HumanMessage(content=text)]},
-                    config={"recursion_limit": recursion_limit},
-                )
-                return state["messages"]
-
-            tools = list(tools) + [subagents.make_delegation_tool(run_worker)]
-            log.info(
-                "delegation bound for kind %s: %d worker tools, at most %d tasks a "
-                "call, %d at once, %d tool turns each, %d workers a turn",
-                kind,
-                len(worker_snapshot.tools_by_name),
-                subagents.MAX_TASKS_PER_CALL,
-                subagents.MAX_CONCURRENCY,
-                subagents.WORKER_TOOL_TURNS,
-                subagents.MAX_WORKERS_PER_TURN,
-            )
+        # A `/run/stream` graph binds `run_subagent` for its schema, and the execution
+        # node stops at it, so its body never runs (`subagents.make_delegation_tool`).
+        if DELEGATION_TOOL in allowed:
+            tools = list(tools) + [subagents.make_delegation_tool()]
 
         # One snapshot for this graph. The model node and the execution node both read
         # it, with the run's `bound_names`, so the model never receives a tool that the
@@ -537,7 +455,8 @@ class MCPGatewayAgent:
         # It is rendered once for each distinct tool list. `collections_hint` is the
         # caller's ACL: an empty one means every collection search will come back empty,
         # which the model should be told rather than left to discover.
-        profile = "research_subagent" if kind == "subagent" else self.profile
+        # The run kind selects the prompt. A chat lead keeps the container's profile.
+        profile = RUN_KIND_PROFILES.get(kind, self.profile)
         system_texts: Dict[Tuple[str, ...], str] = {}
 
         def system_text_for(names: Tuple[str, ...]) -> str:
@@ -547,6 +466,7 @@ class MCPGatewayAgent:
                     tools=list(names),
                     max_tool_turns=MAX_TOOL_TURNS,
                     collections_hint=bool(allowed_collections),
+                    purpose=purpose,
                 )
             return system_texts[names]
 
@@ -612,8 +532,8 @@ class MCPGatewayAgent:
         builder = StateGraph(AgentState)
         builder.add_node("agent", agent_node)
         # The execution node in place of langgraph's `ToolNode`. See
-        # research_agent/execution.py. The node keeps the name `tools`, which the
-        # `/chat/stream` event loop reads.
+        # research_agent/execution.py. The node keeps the name `tools`, which the stream
+        # loop reads.
         builder.add_node(
             "tools", make_execution_node(snapshot, stop_at_delegation=stop_at_delegation)
         )
@@ -709,7 +629,6 @@ class MCPGatewayAgent:
 
     async def stream(
         self,
-        query: str,
         chat_history: List[Dict[str, str]] = None,
         session_id: str = None,
         user_id: str = None,
@@ -722,28 +641,27 @@ class MCPGatewayAgent:
         can_delegate: bool = True,
         thread: Optional[Sequence[BaseMessage]] = None,
         tool_turns_used: int = 0,
+        purpose: Optional[str] = None,
     ) -> AsyncIterable[dict[str, Any]]:
         """Run the graph and yield its events.
 
-        `/chat/stream` passes `query` and yields the `start_tool` and `end_tool` events.
-        `/run/stream` passes `run_id` and `thread`, the rebuilt run messages, in place of
-        `query`. It yields the `model_turn`, `tool_start`, `tool_result` and `delegate`
-        events in place of `start_tool` and `end_tool`, and releases the run's graph at the
-        end. A run that stops at `run_subagent` sends `delegate` and then `end`.
+        `/run/stream` passes `run_id` and `thread`, the rebuilt run messages. The stream
+        yields the `model_turn`, `tool_start`, `tool_result` and `delegate` events, and
+        releases the run's graph at the end. A run that stops at `run_subagent` sends
+        `delegate` and then `end`.
         """
         # Build (or reuse) the graph whose MCP connections carry this caller's ACL and
         # chat session, keyed also by the model that will answer.
         model_id = self._resolve_model(llm_model)
         provider = llm_events.provider_from_base_url()
-        run_events = bool(run_id)
         graph = await self._graph_for(
             username or user_id, allowed_collections, session_id, model_id,
-            run_id, kind, can_delegate,
+            run_id, kind, can_delegate, purpose,
         )
         try:
             async for event in self._stream_graph(
-                graph, query, chat_history, session_id, user_id, username, model_id,
-                provider, extra_tool_turns, run_events, thread, tool_turns_used,
+                graph, chat_history, session_id, user_id, username, model_id,
+                provider, extra_tool_turns, thread, tool_turns_used,
             ):
                 yield event
         finally:
@@ -753,7 +671,6 @@ class MCPGatewayAgent:
     async def _stream_graph(
         self,
         graph: Any,
-        query: Optional[str],
         chat_history: Optional[List[Dict[str, str]]],
         session_id: Optional[str],
         user_id: Optional[str],
@@ -761,16 +678,12 @@ class MCPGatewayAgent:
         model_id: str,
         provider: str,
         extra_tool_turns: int,
-        run_events: bool,
         thread: Optional[Sequence[BaseMessage]],
         tool_turns_used: int,
     ) -> AsyncIterable[dict[str, Any]]:
         messages: List[BaseMessage] = list(history_to_langchain(chat_history or []))
         thread_offset = len(messages)
-        if thread is not None:
-            messages.extend(thread)
-        else:
-            messages.append(HumanMessage(content=query or ""))
+        messages.extend(thread or [])
 
         # The budget travels with the run, not with the cached graph. `extra_tool_turns`
         # is what the chat workflow adds per nag: the base budget stays, so the total a
@@ -814,23 +727,6 @@ class MCPGatewayAgent:
         # with every other request, append to a list belonging to this request only.
         pending_compactions: List[compaction.CompactionReport] = []
         _PENDING_COMPACTIONS.set(pending_compactions)
-        # This turn's sub-agent budget, installed for the same reason and in the same
-        # place. It bounds the whole user turn rather than one `run_subagent` call,
-        # because a nagged turn runs the agent again and the second run can delegate
-        # again. A per-wave cap alone would let the total grow with the nags.
-        turn_budget = subagents.start_turn(
-            session_id, continuing=bool(extra_tool_turns)
-        )
-        # What delegation had already spent when this run started. A nag round continues
-        # the turn's budget, so the counters are cumulative across rounds and this run's
-        # share is the difference. Adding the running total to every round would count
-        # the first round's workers again in the second.
-        workers_before = subagents.TurnBudget(
-            workers=turn_budget.workers,
-            prompt_tokens=turn_budget.prompt_tokens,
-            completion_tokens=turn_budget.completion_tokens,
-            model_calls=turn_budget.model_calls,
-        )
         # Whether layer two ran at all in this turn. A separate flag because
         # `pending_compactions` is drained as each compaction's token count arrives, and
         # by the end of the run it says nothing about what happened.
@@ -860,11 +756,9 @@ class MCPGatewayAgent:
             kind = event["event"]
             node = event["metadata"].get("langgraph_node")
 
-            # The run events of research_agent/execution.py and the model node. Only a
-            # `/run/stream` request forwards them. The `/chat/stream` consumers read
-            # `start_tool` and `end_tool` below.
+            # The run events of research_agent/execution.py and the model node.
             if kind == "on_custom_event":
-                if run_events and event.get("name") in (MODEL_TURN, TOOL_START, TOOL_RESULT, DELEGATE):
+                if event.get("name") in (MODEL_TURN, TOOL_START, TOOL_RESULT, DELEGATE):
                     yield {
                         "is_task_complete": False,
                         "type": event["name"],
@@ -1016,45 +910,7 @@ class MCPGatewayAgent:
 
             if node == "tools":
                 llm_started = False
-                if run_events:
-                    continue
-                if kind == "on_tool_start":
-                    # `event["data"]` on a start is only `{"input": {...}}`. The tool's
-                    # name lives on the event, not in its data, and until the matching
-                    # end event arrives there is nowhere else to get it. A consumer
-                    # rendering the call *while it runs* (the website's streaming chat)
-                    # would otherwise have to label every in-flight card "tool".
-                    start_data = recurse_json_decode(
-                        self.tools_type_adapter.dump_python(event["data"])
-                    )
-                    if isinstance(start_data, dict) and not start_data.get("name"):
-                        start_data["name"] = event.get("name") or ""
-                    # The run id is what makes a start and its own end pairable. Without
-                    # it a consumer has nothing but the tool's name and arrival order:
-                    # a model that issues two calls to the SAME tool at once (which
-                    # these models do, observed milliseconds apart) then has the second
-                    # result matched to the first call, and a card shows a result that
-                    # belongs to a different question. A start event carries no
-                    # tool_call_id at all, so this is the only identity available.
-                    if isinstance(start_data, dict):
-                        start_data["run_id"] = str(event.get("run_id") or "")
-                    yield {
-                        "is_task_complete": False,
-                        "type": "start_tool",
-                        "content": start_data,
-                    }
-                elif kind == "on_tool_end":
-                    end_data = recurse_json_decode(
-                        self.tools_type_adapter.dump_python(event["data"])
-                    )
-                    if isinstance(end_data, dict):
-                        end_data["run_id"] = str(event.get("run_id") or "")
-                    yield {
-                        "is_task_complete": False,
-                        "type": "end_tool",
-                        "content": end_data,
-                    }
-        
+
         # A summarised turn says so; an evicted one does not.
         #
         # The difference is what the user can still check. Eviction takes tool results
@@ -1080,23 +936,6 @@ class MCPGatewayAgent:
             }
             all_content += notice
 
-        # What the workers this run delegated to were billed.
-        #
-        # Their model calls happen inside a tool call, on a graph of their own, so not one
-        # of them reaches the event loop above. Leaving them out would report a delegating
-        # turn as costing what its lead alone cost, which is the one number the caps exist
-        # to make visible. `context_tokens` and `peak_context_tokens` are deliberately NOT
-        # touched: both are statements about a single model call's context, and a worker's
-        # context is not the lead's.
-        delegated_prompt = turn_budget.prompt_tokens - workers_before.prompt_tokens
-        delegated_completion = (
-            turn_budget.completion_tokens - workers_before.completion_tokens
-        )
-        delegated_calls = turn_budget.model_calls - workers_before.model_calls
-        prompt_tokens_total += delegated_prompt
-        completion_tokens_total += delegated_completion
-        model_calls += delegated_calls
-
         yield {
             "is_task_complete": True,
             "type": "end",
@@ -1111,124 +950,7 @@ class MCPGatewayAgent:
                 "prompt_tokens": prompt_tokens_total,
                 "completion_tokens": completion_tokens_total,
                 "model_calls": model_calls,
-                # Of the totals above, what this run's sub-agents accounted for. Zero on
-                # a turn that did not delegate, which is most of them.
-                "subagent_prompt_tokens": delegated_prompt,
-                "subagent_completion_tokens": delegated_completion,
-                "subagent_model_calls": delegated_calls,
-                "subagents_run": turn_budget.workers - workers_before.workers,
             },
-        }
-
-
-    async def run(
-        self,
-        query: str,
-        chat_history: List[Dict[str, str]] = None,
-        session_id: str = None,
-        user_id: str = None,
-        username: str = None,
-        allowed_collections: List[str] = None,
-        llm_model: str = None,
-        extra_tool_turns: int = 0,
-    ) -> Dict[str, Any]:
-        """Run to completion and return the whole trajectory in one object.
-
-        The streaming endpoint is the right shape for a browser; a server-side caller
-        (the Hoover4 website backend) wants the finished answer plus the tool calls it
-        made, so it does not have to reassemble SSE fragments in Rust.
-        """
-        # The answer body is the content produced AFTER the last tool call.
-        #
-        # A reasoning model narrates its plan as ordinary content alongside the tool
-        # calls it is about to make ("I need to search the collections. Let me start by
-        # listing them..."), and those chunks arrive on the same `response` channel as
-        # the real answer. Concatenating everything shipped the model's scratchpad into
-        # the transcript ahead of the answer, and it does not happen in every chat
-        # configuration, so it is commonly missed.
-        #
-        # So every `start_tool` moves what has accumulated so far into the preamble,
-        # which is returned as `reasoning` and rendered behind the existing tool
-        # disclosure rather than discarded. Content genuinely produced after the last
-        # tool is the answer.
-        answer_parts: List[str] = []
-        # The plan-first opening, held apart from the answer so the next fold into the
-        # preamble cannot sweep it up with the narration around it.
-        plan_parts: List[str] = []
-        preamble_parts: List[str] = []
-        reasoning_parts: List[str] = []
-        tool_calls: List[Dict[str, Any]] = []
-        resolved_model = self._resolve_model(llm_model)
-        # Filled from the `end` event. Empty when the run produced no model call at all,
-        # which a caller must read as unknown rather than as zero tokens spent.
-        usage: Dict[str, int] = {}
-        # True until the first tool call that is not part of the plan-first opening.
-        in_plan_first_opening = True
-
-        async for chunk in self.stream(
-            query=query,
-            chat_history=chat_history,
-            session_id=session_id,
-            user_id=user_id,
-            username=username,
-            allowed_collections=allowed_collections,
-            llm_model=llm_model,
-            extra_tool_turns=extra_tool_turns,
-        ):
-            kind = chunk.get("type")
-            if kind == "response":
-                answer_parts.append(chunk.get("content") or "")
-            elif kind == "reasoning":
-                reasoning_parts.append(str(chunk.get("content") or ""))
-            elif kind == "start_tool":
-                # Whatever the model said before deciding to call a tool is narration
-                # about the call, not the answer -- except for the block that opens a
-                # plan-first turn, which is kept. See `keeps_preamble`.
-                keep = keeps_preamble(in_plan_first_opening, chunk.get("content"))
-                if answer_parts:
-                    (plan_parts if keep else preamble_parts).extend(answer_parts)
-                    answer_parts = []
-                in_plan_first_opening = keep
-                tool_calls.append({"phase": "start", "content": chunk.get("content")})
-            elif kind == "end_tool":
-                tool_calls.append({"phase": "end", "content": chunk.get("content")})
-            elif kind == "error":
-                raise RuntimeError(chunk.get("content"))
-            elif kind == "end":
-                if chunk.get("model"):
-                    resolved_model = chunk["model"]
-                if isinstance(chunk.get("usage"), dict):
-                    usage = dict(chunk["usage"])
-
-        answer = "\n\n".join(
-            part for part in ("".join(plan_parts).strip(), "".join(answer_parts).strip())
-            if part
-        )
-        preamble = "".join(preamble_parts).strip()
-        if not answer:
-            # A turn that called tools and then said nothing new. Returning an empty
-            # answer would render as a blank assistant bubble, which reads as a failure;
-            # the narration is the only thing the model produced, so it becomes the
-            # answer rather than being dropped on the floor.
-            answer = preamble
-            preamble = ""
-
-        # Model narration goes in with the reasoning, behind the disclosure.
-        reasoning = "\n\n".join(part for part in ("".join(reasoning_parts).strip(), preamble)
-                                if part)
-
-        return {
-            "answer": answer,
-            "reasoning": reasoning,
-            "tool_calls": tool_calls,
-            # The model that actually answered, so the transcript row can record it.
-            # Reported by the agent rather than assumed by the caller: the website and
-            # the Temporal research path reach different agents, and a per-message model
-            # is only meaningful if it names what really ran.
-            "model": resolved_model,
-            # Token counts as the provider billed them, for the transcript row and the
-            # session's running peak. Empty when no model call reported any.
-            "usage": usage,
         }
 
 

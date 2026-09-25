@@ -197,7 +197,6 @@ DEFAULTS = {
         "max_held_polls_per_user": "8",
         "rate_chat_poll_per_minute": "1800",
         "browser_max_contexts": "16",
-        "agent_subagent_concurrency": "5",
         # The sub-agent budgets of a chat turn and of a research plan run.
         "agent_subagent_max_per_turn": "6",
         "agent_plan_run_budget": "300",
@@ -1261,7 +1260,6 @@ def render_main_env(cfg):
     env["HOOVER4_MAX_HELD_POLLS_PER_USER"] = cfg.get(m, "max_held_polls_per_user")
     env["HOOVER4_RATE_CHAT_POLL_PER_MINUTE"] = cfg.get(m, "rate_chat_poll_per_minute")
     env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")
-    env["AGENT_SUBAGENT_CONCURRENCY"] = cfg.get(m, "agent_subagent_concurrency")
     # The sub-agent budgets of the worker's run_agent. Empty keeps 6 and 300.
     env["AGENT_SUBAGENT_MAX_PER_TURN"] = cfg.get(m, "agent_subagent_max_per_turn") or "6"
     env["AGENT_PLAN_RUN_BUDGET"] = cfg.get(m, "agent_plan_run_budget") or "300"

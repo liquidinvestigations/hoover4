@@ -6,13 +6,14 @@ A FastAPI-based research agent with MCP (Model Context Protocol) tool integratio
 
 One image, two containers, different tool sets, and the difference is deliberate. A third
 profile, `research_subagent`, has no container of its own: it is the profile of a sub-agent
-run, and of the in-process workers of `/chat/stream`. See "Delegation" below.
+run. See "Delegation" below. The `planner` and `organizer` profiles are the prompts of the
+two run kinds of a deep research plan.
 
 | | `hoover4-internal-search-agent` (21936) | `hoover4-full-research-agent` (21937) |
 |---|---|---|
 | `AGENT_PROFILE` | `internal_search` | `full_research` |
 | MCP servers | collections **only** | collections + metasearch + browser + ddg + whois + wikipedia |
-| Used by | the website's AI Chat page | the Temporal `ResearchTask` |
+| Used by | the runs of a thread with internet tools off | the runs of a thread with internet tools on |
 
 `hoover4-full-research-agent` runs four uvicorn worker processes (`UVICORN_WORKERS`).
 Each process holds its own graph cache and MCP connections. Citation `[Dn]` handles
@@ -32,7 +33,8 @@ search UI:
 
 1. The **website backend** resolves the user's permitted collections (group grants union
    public collections). It is the only component that can. It owns the auth tables.
-2. It passes that list to the agent as `allowed_collections` on the `/chat` request.
+2. It passes that list with the turn to the Temporal worker, and the worker's `run_agent`
+   sends it to the agent as `allowed_collections` on the `/run/stream` request.
 3. `acl_headers()` turns it into `X-Hoover4-Collections: <list>` plus
    `Authorization: Bearer $MCP_SHARED_SECRET`, set as **MCP connection headers**.
 4. The agent caches **one graph per ACL and chat session** (`_acl_key`), so a connection
@@ -78,70 +80,29 @@ every agent reads it at tool-discovery time and there is only one copy to mainta
 ## Delegation
 
 A lead binds `run_subagent` when the `delegation` pack is in its run kind's packs, which
-is the default for both agents. The tool splits a question into one to five briefings. The
-two request paths run them in different places:
+is the default for both agents. The tool splits a question into one to five briefings.
+`/run/stream` stops the run at `run_subagent` (`execution.py`). The execution node runs
+every other call of that model turn, then sends `tool_start` and `delegate` for each
+`run_subagent` call and ends the graph with no answer. The worker writes one sub-agent run
+for each accepted briefing, and each runs as an `AgentRun` of its own, with the
+`research_subagent` profile. When the last one ends, a continuation of the delegating run
+sends the thread back with one `tool` result for each call, and the model continues. A
+sub-agent at depth 1 can delegate again, and a run at depth 2 cannot. The worker applies the
+budgets. See `processing/tasks/Readme.md` for the runs, the fan-in and the budgets.
 
-- **`/run/stream`** stops the run at `run_subagent` (`execution.py`). The execution node
-  runs every other call of that model turn, then sends `tool_start` and `delegate` for each
-  `run_subagent` call and ends the graph with no answer. The worker writes one sub-agent run
-  for each accepted briefing, and each runs as an `AgentRun` of its own, with the
-  `research_subagent` profile. When the last one ends, a continuation of the delegating run
-  sends the thread back with one `tool` result for each call, and the model continues. A
-  sub-agent at depth 1 can delegate again, and a run at depth 2 cannot. See
-  `processing/tasks/Readme.md` for the runs, the fan-in and the budgets.
-- **`/chat/stream`** runs the briefings at once in-process, each in a fresh context, with no
-  peer coordination. See `research_agent/subagents.py`. The rest of this section describes
-  this path.
+**Depth is enforced by what is bound.** A `/run/stream` request with `can_delegate` false
+does not bind `run_subagent`, so a call to it gets the execution node's `tool_unavailable`
+result. A prompt asking a model not to recurse eventually meets a model that does.
 
-**One level, enforced by what is bound.** A worker's snapshot is built from the MCP tools
-before the delegation tool is added to the lead's, and `run_subagent` is in
-`IN_PROCESS_WORKER_EXCLUDED` as well. These are two independent reasons a worker cannot
-delegate, and neither is a sentence in a prompt. A `/run/stream` request with
-`can_delegate` false does not bind `run_subagent`, so a call to it gets the execution
-node's `tool_unavailable` result. A prompt asking a model not to recurse eventually meets a model that does. Every
-other cap is an environment-overridable number; the depth is not, because it is not a
-number.
+**A plan briefing names its section.** An organizer's briefing carries `plan_node_id`, a
+section of the approved tree, and `purpose`: `execute`, `review` or `correct`. The request
+sends a sub-agent's `purpose`, and `review` adds the verdict block to its prompt. The worker
+refuses a section briefing from any other run kind, and a third correction of one section.
 
-| cap | default | why |
-|---|---|---|
-| `AGENT_SUBAGENT_MAX_TASKS` | 5 | tasks one call may carry; beyond it a model is fanning out rather than decomposing |
-| `AGENT_SUBAGENT_CONCURRENCY` | 5 | workers at once; more in flight buys queueing, not answers |
-| `AGENT_SUBAGENT_TOOL_TURNS` | 6 | tool turns per worker, then it is made to write its report |
-| `AGENT_SUBAGENT_MAX_PER_TURN` | 10 | workers per **user turn**, across every call it makes |
-| delegation depth | 1 | not bindable, so not exceedable |
-
-The per-turn cap is not the per-call cap because a nagged turn runs the agent again on the
-same user message and can delegate again. A budget reset per run would multiply the ceiling
-by the nag count. The signal for "this is a nag round" is the non-zero `extra_tool_turns`
-the chat workflow sends, and the budget is keyed by chat session.
-
-**Workers get the `subagent` packs less the interactive browser tools and the todo
-writers.** So a worker gets `read_page` and `read_todo`, and not the tools that drive a page
-or write the plan. Reading a page is the overwhelmingly common browser action and needs no
-persistent context; driving one does, and the browser server holds eight contexts in total.
-A worker has one objective and a few tool turns, so it has nothing to plan, and it is
-never nagged, for the same reason.
-
-**Workers run on the lead's MCP connections, and that is the citation contract.** Citation
-handles are allocated per chat session by the collection-search server, keyed by the
-session header those connections carry. A worker citing a document under a session of its
-own would hand back a `[D1]` the lead cannot resolve, and an answer citing a document
-nobody can open is a correctness bug rather than a cosmetic one. Sharing the connections
-has a second benefit: a delegating turn costs the browser server one context, the same as
-a plain turn.
-
-A worker returns its written report, the handles it allocated, and the document behind each
-one. Reports that come back empty are named in the response's `note`: noticing a thin report
-and re-delegating is the lead's job, not the worker's.
-
-**The workers' tokens are counted into the turn.** Their model calls happen inside a tool
-call, on a graph of their own, so not one of them reaches the lead's event stream. A turn
-reporting its lead's cost alone would under-report by the whole factor that makes these caps
-necessary. The `end` event's `usage` carries them in the totals and names their share
-separately in `subagent_prompt_tokens`, `subagent_completion_tokens`,
-`subagent_model_calls` and `subagents_run`. `context_tokens` and `peak_context_tokens` are
-deliberately untouched: both describe one model call's context, and a worker's context is
-not the lead's.
+**Sub-agents share the conversation's session header, and that is the citation contract.**
+Citation handles are allocated per chat session by the collection-search server, keyed by
+the session header. Every run of a turn sends the conversation's session id, so a sub-agent's
+`[D1]` resolves in the lead's answer.
 
 ## Tool packs and deferred binding
 
@@ -151,7 +112,7 @@ A tool pack is a named set of tools (`agent_common/tool_packs.py`): `catalogue`,
 `AGENT_PACKS_SUBAGENT`, `AGENT_PACKS_PLANNER` and `AGENT_PACKS_ORGANIZER` name, as a comma
 list or `all`. `deploy.py` renders them from `hoover4.ini`. The service refuses to start on an
 unknown pack name. A tool that an MCP server lists and no pack names is refused for every
-run. A `/chat/stream` lead is kind `chat`, and its in-process worker is kind `subagent`.
+run.
 
 Each graph builds one `CatalogueSnapshot` (`tool_catalogue.py`) from the tools of its packs.
 The snapshot splits them into core tools, which every model call binds, and deferred tools.
@@ -210,8 +171,7 @@ stored messages into langchain messages, with the tool calls and the stored usag
 compaction can measure the thread before the first new model call. The run has
 `max(0, AGENT_MAX_TOOL_TURNS + extra_tool_turns - tool_turns_used)` tool turns left.
 
-The stream uses the frame shape of `/chat/stream`, and sends these events in place of
-`start_tool` and `end_tool`:
+The stream sends `data: {json}` frames with these events:
 
 | type | content |
 |---|---|
@@ -509,71 +469,15 @@ The application is configured entirely via environment variables (rendered from
 ### Run Streaming
 - **POST** `/run/stream` - Stream one agent run. See "The run request" above.
 
-### Chat Streaming
-- **POST** `/chat/stream` - Stream chat responses from the agent
-
-**Request Body:**
-```json
-{
-  "query": "Your research question",
-  "context_id": "unique_context_id",
-  "thread_id": "unique_thread_id"
-}
-```
-
 ### API Information
 - **GET** `/` - API information and configuration details
 
 ## Usage Examples
 
-### Basic Chat Request
-
-```bash
-curl -X POST http://localhost:8000/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "What are the latest developments in AI research?",
-    "context_id": "research_123",
-    "thread_id": "thread_456"
-  }'
-```
-
 ### Health Check
 
 ```bash
 curl http://localhost:8000/health
-```
-
-### Python Client Example
-
-```python
-import asyncio
-import aiohttp
-import json
-
-async def chat_with_agent():
-    async with aiohttp.ClientSession() as session:
-        payload = {
-            "query": "Help me understand quantum computing",
-            "context_id": "quantum_research",
-            "thread_id": "session_001"
-        }
-
-        async with session.post(
-            "http://localhost:8000/chat/stream",
-            json=payload
-        ) as response:
-            async for line in response.content:
-                if line:
-                    line_str = line.decode('utf-8').strip()
-                    if line_str.startswith('data: '):
-                        data_str = line_str[6:]
-                        chunk = json.loads(data_str)
-                        print(f"Type: {chunk.get('type')}")
-                        print(f"Content: {chunk.get('content')}")
-
-# Run the example
-asyncio.run(chat_with_agent())
 ```
 
 ## Response Format
@@ -595,8 +499,7 @@ The streaming endpoint returns Server-Sent Events with JSON data:
 - `reasoning`: Reasoning content (if supported by model)
 - `start_response`: Beginning of final response
 - `response`: Final response content
-- `start_tool`: Tool execution start
-- `end_tool`: Tool execution end
+- `model_turn`, `tool_start`, `tool_result`, `delegate`: the run events, see "The run request"
 - `error`: Error occurred
 - `end`: Final completion signal
 

@@ -264,6 +264,11 @@ pub struct ChatMessageItem {
     /// past. **0 means the provider never said**: render unknown, never a percentage.
     #[serde(default)]
     pub context_window: u32,
+    /// A [`ChatPlanReference`](crate::plan_types::ChatPlanReference) as JSON, on the answer
+    /// row of a planner run. Empty on every other row. The plan card reads it to find its
+    /// plan run and the version the person reviews.
+    #[serde(default)]
+    pub plan_reference_json: String,
     /// Transient, never stored: true on entries synthesised from the in-flight stream
     /// (`chat_message_stream`) rather than read from `chat_messages`. The transcript
     /// renders these with a pending/running treatment instead of the finished one.
@@ -317,6 +322,15 @@ impl ChatMessageItem {
         ))
     }
 
+    /// The plan this row shows a card for, or `None` when `plan_reference_json` is empty
+    /// or invalid.
+    pub fn plan_reference(&self) -> Option<crate::plan_types::ChatPlanReference> {
+        if self.plan_reference_json.is_empty() {
+            return None;
+        }
+        serde_json::from_str(&self.plan_reference_json).ok()
+    }
+
     /// Parsed [`ChatDocRef`] list, or empty when the column is blank / invalid.
     pub fn parsed_doc_refs(&self) -> Vec<ChatDocRef> {
         if self.doc_refs.is_empty() {
@@ -368,7 +382,8 @@ pub struct StreamToolRow {
     pub tool_name: String,
     /// Input summary while running, output summary once `done`.
     pub summary: String,
-    /// False between start_tool and end_tool, the card renders a running state.
+    /// False between the `tool_start` and `tool_result` events of the call. The card
+    /// renders a running state.
     pub done: bool,
     /// How long this call has been running, in milliseconds, as of this poll.
     ///
@@ -1061,6 +1076,7 @@ mod tests {
             context_tokens: context,
             peak_context_tokens: peak,
             context_window: window,
+            plan_reference_json: String::new(),
             streaming: false,
         }
     }

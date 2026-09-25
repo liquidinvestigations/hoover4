@@ -1,6 +1,6 @@
 """The execution node: it runs the tool calls of one model turn.
 
-It replaces langgraph's `ToolNode` in the lead's graph and in the in-process worker graph.
+It replaces langgraph's `ToolNode` in the graph of every agent run.
 For each call of the last model turn it does these steps:
 
 1. It sends a `tool_start` event.
@@ -319,7 +319,7 @@ def pending_calls(messages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], int]:
 
 def _briefings_of(args: Any) -> Optional[List[Dict[str, Any]]]:
     """The briefings of one `run_subagent` call as dicts, or `None` when they cannot be
-    read. The same coercion as the in-process tool."""
+    read. The coercion of `subagents._as_briefings`."""
     from research_agent.subagents import _as_briefings
 
     raw = args.get("tasks") if isinstance(args, dict) else None
@@ -334,8 +334,8 @@ def make_execution_node(
 ):
     """Return the execution node of a graph over one catalogue snapshot.
 
-    `emit_events` false sends no `tool_start` or `tool_result` event. The in-process worker
-    graph sets it, because its calls are not calls of the run that streams the events.
+    `emit_events` false sends no `tool_start` or `tool_result` event. A test graph sets
+    it.
     `stop_at_delegation` true ends the run at a `run_subagent` call (module docstring).
     """
 

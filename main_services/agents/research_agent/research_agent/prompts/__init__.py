@@ -48,11 +48,13 @@ log = logging.getLogger(__name__)
 #: the fragments more than one profile includes.
 TEMPLATE_DIR = Path(__file__).parent
 
-#: The three profiles, and the template each renders from.
+#: The profiles, and the template each renders from.
 PROFILES: Dict[str, str] = {
     "internal_search": "internal_search.md.j2",
     "full_research": "full_research.md.j2",
     "research_subagent": "research_subagent.md.j2",
+    "planner": "planner.md.j2",
+    "organizer": "organizer.md.j2",
 }
 
 DEFAULT_PROFILE = "internal_search"
@@ -166,11 +168,6 @@ def default_tool_turns(profile: str) -> int:
     templates exist to prevent. `agent` imports this package, so the import cannot happen
     at module scope.
     """
-    if (profile or "").strip().lower() == "research_subagent":
-        from research_agent import subagents
-
-        return subagents.WORKER_TOOL_TURNS
-
     from research_agent.agent import MAX_TOOL_TURNS
 
     return MAX_TOOL_TURNS

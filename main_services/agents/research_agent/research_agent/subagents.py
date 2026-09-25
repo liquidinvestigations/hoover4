@@ -1,59 +1,37 @@
-"""Delegation: one lead agent, several workers, exactly one level deep.
+"""Delegation: the `run_subagent` tool schema and the briefing it carries.
 
 A hard research question is several independent questions wearing one coat. The lead
-agent splits it into briefings, runs them at once with fresh context each, and writes the
-answer from what comes back. Workers do not talk to each other and do not plan; they have
-one objective and a small budget.
+agent splits it into briefings, and each briefing runs as a sub-agent run of its own with
+fresh context. The sub-agents do not talk to each other.
 
-The in-process workers of this module serve `/chat/stream` only. A `/run/stream` run stops
-at `run_subagent`, and the worker starts each briefing as an `AgentRun` of its own, up to
-depth 2 (`execution.py`).
+A `/run/stream` run stops at `run_subagent` (`execution.py`). The worker then starts each
+accepted briefing as an `AgentRun` of its own, up to depth 2, and applies the budgets
+(`tasks/P_agent/run_budgets.py`). This module defines the tool the model sees and the
+briefing shape. The tool body never runs, because the execution node stops first.
 
-**Depth is enforced by what is bound, not by what the prompt asks.** A worker's snapshot
-is built from the MCP tools before `run_subagent` is added, and `run_subagent` is in
-`IN_PROCESS_WORKER_EXCLUDED`, so a worker cannot delegate however it is prompted. Which
-leads bind `run_subagent` is decided by the tool packs (`agent_common.tool_packs`).
+**Depth is enforced by what is bound, not by what the prompt asks.** A run at depth 2 binds
+no `run_subagent`. Which run kinds bind it is decided by the tool packs
+(`agent_common.tool_packs`).
 
-**Every cap is a number.** The measured cost of an orchestrator-plus-workers run is
-roughly an order of magnitude over a plain turn, so "please use few workers" in a prompt
-is not a budget. Asking for more tasks than the cap allows does not fail the call: the
-surplus is refused *by name* in the response, the way every other batched tool here
-reports what it would not do.
-
-**Workers share the lead's chat session, and that is the citation contract.** Handles are
-allocated per session by the collection-search server (`citations.HandleTable`), keyed by
-the session header the MCP connection carries. A worker citing a document in a session of
-its own would hand back `[D1]` meaning something the lead cannot resolve, and an answer
-citing a document nobody can open is a correctness bug. Reusing the lead's connections
-gives the lead's session id for free, and has a second benefit: `read_page` runs against
-the conversation's single browser context rather than opening one per worker, so a
-delegating turn costs the browser server exactly what a plain turn costs it.
+**Every cap is a number.** Asking for more tasks than a cap allows does not fail the call:
+the surplus is refused *by name* in the result that the continuation receives.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
-from collections import OrderedDict
-from contextvars import ContextVar
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, FrozenSet, List, Optional, Sequence
+from typing import Any, Dict, List, Literal, Optional
 
-from langchain_core.messages import BaseMessage, HumanMessage, RemoveMessage, SystemMessage
 from langchain_core.tools import StructuredTool
-from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
-
-from agent_common.tool_packs import PACKS, allowed_tools, configured_packs
-from research_agent import compaction
-from research_agent.execution import make_execution_node
 
 log = logging.getLogger(__name__)
 
 #: The name the lead agent calls to delegate.
 DELEGATION_TOOL = "run_subagent"
+
 
 def _cap(name: str, default: int) -> int:
     """A cap from the environment, falling back to its default.
@@ -72,139 +50,6 @@ def _cap(name: str, default: int) -> int:
 #: Tasks one `run_subagent` call may carry. The published upper end of "3-5 per wave";
 #: beyond it a model is fanning out instead of decomposing.
 MAX_TASKS_PER_CALL = _cap("AGENT_SUBAGENT_MAX_TASKS", 5)
-
-#: Workers running at once. Sized to what the serving configuration can actually keep
-#: busy. More in flight buys queueing, not answers.
-MAX_CONCURRENCY = _cap("AGENT_SUBAGENT_CONCURRENCY", 3)
-
-#: Tool turns one worker may take before it is made to write its report. The failure mode
-#: this bounds is one worker that never stops, which a lead cannot detect from outside.
-WORKER_TOOL_TURNS = _cap("AGENT_SUBAGENT_TOOL_TURNS", 6)
-
-#: Workers one user turn may spend in total, across every `run_subagent` call it makes.
-#: Per-call is not enough: a nagged turn runs the agent again and the second run can
-#: delegate again, so the ceiling that matters is the turn's, not the wave's.
-#:
-#: Six is one full wave of five plus one follow-up after a nag, and it is sized against a
-#: measured cost rather than a round number: a worker runs about 85 000 tokens here, so ten
-#: of them is roughly 850 000 on top of a lead that is itself growing. Enough to fire
-#: compaction in the middle of a wave, on a window of 262 144. Raising it is an environment
-#: variable and needs no rebuild.
-MAX_WORKERS_PER_TURN = _cap("AGENT_SUBAGENT_MAX_PER_TURN", 6)
-
-#: The tools an in-process worker does not get, although the `subagent` packs name them.
-#: The six interactive browser tools and the three todo writers, because an in-process
-#: worker is not an agent run: it has no browser and no todo list of its own. `read_todo`
-#: stays, so a worker can read the plan its briefing came out of, and `read_page` stays.
-#: `run_subagent` is here too, because a worker does not delegate.
-IN_PROCESS_WORKER_EXCLUDED = PACKS["browser"] | frozenset(
-    {"write_todo", "edit_todo", "mark_todo", DELEGATION_TOOL}
-)
-
-
-def worker_allowed_tools() -> FrozenSet[str]:
-    """The tool names of an in-process worker: the configured `subagent` packs less
-    `IN_PROCESS_WORKER_EXCLUDED`."""
-    kind = "subagent"
-    return allowed_tools(kind, configured_packs(kind)) - IN_PROCESS_WORKER_EXCLUDED
-
-
-#: Workers already spent by the user turn currently running.
-#:
-#: A `ContextVar` for the same reason the compaction trail is one: the compiled graph is
-#: cached and shared across concurrent conversations, while the budget belongs to exactly
-#: one of them. A run that never installs a counter is not delegating under a budget
-#: (which is the case for a direct call in a test), and gets the per-call cap only.
-@dataclass
-class TurnBudget:
-    """What one user turn has spent on delegation, and what it may still spend.
-
-    It carries the token counts as well as the worker count because a worker's model calls
-    happen inside a tool call and never reach the lead's own event stream. A delegating
-    turn whose reported cost was the lead's alone would under-report by roughly the factor
-    that makes these caps necessary in the first place, which is precisely the number a
-    reader of the turn's footer needs.
-    """
-
-    workers: int = 0
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    model_calls: int = 0
-
-
-_TURN_BUDGET: ContextVar[Optional[TurnBudget]] = ContextVar(
-    "hoover4_subagent_turn_budget", default=None
-)
-
-#: Live turn budgets, by chat session. Bounded, least-recently-used, for the reason every
-#: per-session map in this process is: one process serves every conversation on the site.
-_TURN_BUDGETS: "OrderedDict[str, TurnBudget]" = OrderedDict()
-MAX_TRACKED_TURNS = _cap("AGENT_SUBAGENT_TRACKED_TURNS", 512)
-
-
-def start_turn(session_id: Optional[str] = None, continuing: bool = False) -> TurnBudget:
-    """Install this run's delegation budget and return it.
-
-    Called once per run by the lead's `stream`.
-
-    **A nag round continues the turn's budget rather than starting a new one.** A nagged
-    turn is the agent run again on the same user message, and it can delegate again, so a
-    budget reset per run would multiply the ceiling by the nag count, which is exactly
-    the case the cap exists for. The chat workflow's own signal for "this is a nag round"
-    is a non-zero extra tool budget, and `continuing` is that signal; a first round with a
-    session id clears whatever the previous turn left behind.
-    """
-    if session_id and continuing:
-        budget = _TURN_BUDGETS.get(session_id)
-        if budget is not None:
-            _TURN_BUDGETS.move_to_end(session_id)
-            _TURN_BUDGET.set(budget)
-            return budget
-    budget = TurnBudget()
-    if session_id:
-        _TURN_BUDGETS[session_id] = budget
-        _TURN_BUDGETS.move_to_end(session_id)
-        while len(_TURN_BUDGETS) > MAX_TRACKED_TURNS:
-            _TURN_BUDGETS.popitem(last=False)
-    _TURN_BUDGET.set(budget)
-    return budget
-
-
-def turn_budget() -> Optional[TurnBudget]:
-    """This run's delegation budget, or `None` when nothing installed one."""
-    return _TURN_BUDGET.get()
-
-
-def _take_worker_slots(wanted: int) -> int:
-    """Claim up to `wanted` slots from the turn's budget, returning how many were given."""
-    budget = _TURN_BUDGET.get()
-    if budget is None:
-        return wanted
-    room = max(0, MAX_WORKERS_PER_TURN - budget.workers)
-    granted = min(wanted, room)
-    budget.workers += granted
-    return granted
-
-
-def worker_usage(messages: Sequence[BaseMessage]) -> Dict[str, int]:
-    """What one worker's model calls were billed, off the messages it produced.
-
-    Read from `usage_metadata`, which is what the provider counted, rather than
-    re-tokenising anything. A message shape that carries no usage contributes nothing,
-    unknown, never free.
-    """
-    usage = {"prompt_tokens": 0, "completion_tokens": 0, "model_calls": 0}
-    for message in messages:
-        meta = getattr(message, "usage_metadata", None)
-        if not isinstance(meta, dict):
-            continue
-        prompt = int(meta.get("input_tokens") or 0)
-        if not prompt:
-            continue
-        usage["prompt_tokens"] += prompt
-        usage["completion_tokens"] += int(meta.get("output_tokens") or 0)
-        usage["model_calls"] += 1
-    return usage
 
 
 class Briefing(BaseModel):
@@ -230,6 +75,20 @@ class Briefing(BaseModel):
         description=(
             "What the report must contain to be usable: the facts, the quotes, the "
             "documents to cite."
+        ),
+    )
+    plan_node_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Organizer only: the node_id of the plan section this briefing works on. "
+            "Leave it out in every other run."
+        ),
+    )
+    purpose: Optional[Literal["execute", "review", "correct"]] = Field(
+        default=None,
+        description=(
+            "Organizer only, with plan_node_id: execute the section, review its report, "
+            "or correct it after a rejected review."
         ),
     )
 
@@ -281,204 +140,16 @@ def _as_briefings(value: Any) -> Optional[List[Briefing]]:
     return out
 
 
-def build_worker_graph(
-    llm: Any,
-    plain_llm: Any,
-    system_prompt_for: Callable[[Sequence[str]], str],
-    snapshot: Any,
-    state_schema: Any,
-):
-    """A worker's own agent loop: call tools, then answer, under a fixed budget.
+def make_delegation_tool() -> StructuredTool:
+    """The `run_subagent` tool, for its schema.
 
-    Deliberately smaller than the lead's graph. There is no nag, no plan-first opening and
-    no repeat-call guard beyond the budget, because a worker has one objective and
-    `WORKER_TOOL_TURNS` turns to meet it: the cheapest correct behaviour when it runs out
-    is to write up what it has, which is what the forced-answer node does.
-
-    It uses the same carrier as the lead: `snapshot` is a `CatalogueSnapshot`, the model
-    node binds its core tools and the worker's `bound_names`, and the execution node of
-    research_agent/execution.py runs the calls. `system_prompt_for` renders the prompt
-    from the names one call binds. The worker sends no run events.
-    """
-    prompts_by_names: Dict[tuple, str] = {}
-
-    def messages_for(state) -> List[BaseMessage]:
-        names = tuple(snapshot.callable_names(state.get("bound_names") or ()))
-        if names not in prompts_by_names:
-            prompts_by_names[names] = system_prompt_for(names)
-        return [SystemMessage(content=prompts_by_names[names])] + list(state["messages"])
-
-    async def agent(state, config):
-        bound = snapshot.tools_for(state.get("bound_names") or ())
-        reply = await llm.bind_tools(bound).ainvoke(messages_for(state), config)
-        return {"messages": [reply]}
-
-    async def report(state, config):
-        return {"messages": [await plain_llm.ainvoke(messages_for(state), config)]}
-
-    builder = StateGraph(state_schema)
-    builder.add_node("agent", agent)
-    builder.add_node("tools", make_execution_node(snapshot, emit_events=False))
-
-    def should_continue(state):
-        last = state["messages"][-1]
-        if not getattr(last, "tool_calls", None):
-            return END
-        turns = sum(1 for m in state["messages"] if getattr(m, "tool_calls", None))
-        if turns >= WORKER_TOOL_TURNS:
-            log.info("subagent hit its %d-turn budget; forcing a report", WORKER_TOOL_TURNS)
-            return "report_entry"
-        return "tools"
-
-    def report_entry(state):
-        # The trailing AIMessage holds tool calls that will never be satisfied, and an
-        # OpenAI-shaped request carrying tool_calls with no matching results is rejected
-        # outright. `add_messages` merges by id and cannot delete, hence `RemoveMessage`.
-        last = state["messages"][-1]
-        return {
-            "messages": [
-                RemoveMessage(id=last.id),
-                HumanMessage(
-                    content=(
-                        "Stop searching and write your report now, from what the tool "
-                        "results above already contain. Say plainly what you could not "
-                        "establish."
-                    )
-                ),
-            ]
-        }
-
-    builder.add_node("report_entry", report_entry)
-    builder.add_node("report", report)
-    builder.set_entry_point("agent")
-    builder.add_conditional_edges("agent", should_continue)
-    builder.add_edge("tools", "agent")
-    builder.add_edge("report_entry", "report")
-    builder.add_edge("report", END)
-    return builder.compile()
-
-
-def _report_of(messages: Sequence[BaseMessage]) -> str:
-    """The worker's last piece of prose."""
-    for message in reversed(messages):
-        if getattr(message, "tool_calls", None):
-            continue
-        content = getattr(message, "content", "")
-        if isinstance(content, list):
-            content = "".join(
-                part.get("text", "")
-                for part in content
-                if isinstance(part, dict) and part.get("type") == "text"
-            )
-        if isinstance(content, str) and content.strip():
-            return content.strip()
-    return ""
-
-
-def make_delegation_tool(run_worker: Callable[[str], Any]) -> StructuredTool:
-    """The `run_subagent` tool, over a callable that runs one briefing to completion.
-
-    `run_worker` takes the briefing text and returns the worker's finished message list.
-    Injecting it keeps the graph construction in `agent.py`, where the model and the MCP
-    connections already live.
+    The execution node of a `/run/stream` graph stops at a `run_subagent` call before it
+    runs any tool body, so this body refuses. A call that reaches it is a graph that was
+    built without the stop.
     """
 
     async def run_subagent(tasks: Any) -> Dict[str, Any]:
-        briefings = _as_briefings(tasks)
-        if briefings is None:
-            return {
-                "success": False,
-                "error": "tasks must be a list of {objective, known, bring_back}",
-            }
-        if not briefings:
-            return {"success": False, "error": "no tasks were given"}
-
-        notes: List[str] = []
-        refused: List[str] = []
-        if len(briefings) > MAX_TASKS_PER_CALL:
-            for surplus in briefings[MAX_TASKS_PER_CALL:]:
-                refused.append(surplus.objective)
-            notes.append(
-                f"{len(briefings)} tasks were asked for and this call runs at most "
-                f"{MAX_TASKS_PER_CALL}. Refused: "
-                + "; ".join(f'"{objective}"' for objective in refused)
-                + ". Split the work differently or delegate the rest in a later call."
-            )
-            briefings = briefings[:MAX_TASKS_PER_CALL]
-
-        granted = _take_worker_slots(len(briefings))
-        if granted < len(briefings):
-            for surplus in briefings[granted:]:
-                refused.append(surplus.objective)
-            notes.append(
-                f"This turn has spent its budget of {MAX_WORKERS_PER_TURN} sub-agents, "
-                f"so {len(briefings) - granted} of these did not run. Refused: "
-                + "; ".join(f'"{b.objective}"' for b in briefings[granted:])
-                + ". Answer from what you have."
-            )
-            briefings = briefings[:granted]
-        if not briefings:
-            return {
-                "success": False,
-                "reports": [],
-                "refused": refused,
-                "note": " ".join(notes),
-                "error": "no sub-agent was run",
-            }
-
-        semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
-
-        async def one(index: int, briefing: Briefing) -> Dict[str, Any]:
-            async with semaphore:
-                try:
-                    messages = await run_worker(briefing_text(briefing))
-                except Exception as exc:  # noqa: BLE001 - one worker must not fail the wave
-                    log.warning("sub-agent %d failed: %s", index + 1, exc)
-                    return {
-                        "task": index + 1,
-                        "objective": briefing.objective,
-                        "report": "",
-                        "handles": [],
-                        "citations": [],
-                        "error": str(exc),
-                    }
-            usage = worker_usage(messages)
-            budget = _TURN_BUDGET.get()
-            if budget is not None:
-                budget.prompt_tokens += usage["prompt_tokens"]
-                budget.completion_tokens += usage["completion_tokens"]
-                budget.model_calls += usage["model_calls"]
-            return {
-                "task": index + 1,
-                "objective": briefing.objective,
-                "report": _report_of(messages),
-                # Handles the worker's own `cite_documents` calls allocated. They are the
-                # lead's handles: the worker ran on the lead's session, so writing one of
-                # these into the answer resolves to the document the worker read.
-                "handles": compaction.issued_citations(messages),
-                "citations": compaction.citation_index(messages),
-                "tool_calls": sum(
-                    1 for m in messages if getattr(m, "tool_calls", None)
-                ),
-                "usage": usage,
-            }
-
-        results = await asyncio.gather(
-            *(one(i, briefing) for i, briefing in enumerate(briefings))
-        )
-        thin = [r["objective"] for r in results if not r.get("report")]
-        if thin:
-            notes.append(
-                "These came back with no report and are yours to redo or answer without: "
-                + "; ".join(f'"{objective}"' for objective in thin)
-                + "."
-            )
-        return {
-            "success": True,
-            "reports": list(results),
-            "refused": refused,
-            "note": " ".join(notes),
-        }
+        raise RuntimeError("a run delegates through its run rows, never in process")
 
     return StructuredTool.from_function(
         coroutine=run_subagent,

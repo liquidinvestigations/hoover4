@@ -24,6 +24,25 @@ the browser server uses for its per-chat isolation, behind the same bearer token
 collection server checks. A session id the model could write would let it read and
 rewrite another conversation's plan.
 
+## The plan tools
+
+The same server serves the plan tools of a deep research plan, in `plan_tools.py`:
+`read_plan`, `append_node`, `append_child`, `move_node`, `edit_node`, `remove_node` and
+`read_plan_document`. The tree rules and the storage are in
+[`../../processing/database/agent_plans.py`](../../processing/database/agent_plans.py),
+which the worker reads as well.
+
+The server reads the agent run id from `X-Hoover4-Agent-Run`, reads that run's
+`agent_runs` row under the owner from the other two headers, and takes its `plan_run_id`.
+A sub-agent row copies the `plan_run_id`, so the sub-agents of a planner reach the plan too.
+**No role check exists.** The plan run state is the only rule: a change is accepted only in
+`planning` or `revising`. After approval `read_plan` returns the approved version.
+
+**One change of a plan at a time.** Each version is one row, so two parallel changes that
+read the same version would lose one of them. The server holds one `asyncio.Lock` for each
+plan run. A change takes the lock, reads the newest version, writes version plus one, and
+releases the lock. This holds because the server runs as one process in one container.
+
 ## Build context
 
 **Its build context is `main_services`**, wider than every other MCP server's, because the

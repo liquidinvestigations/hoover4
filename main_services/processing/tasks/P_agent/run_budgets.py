@@ -11,6 +11,11 @@ run's `refused_json`, and the continuation gives them to the model beside the re
 | turn budget | depth 0 with no plan run | sub-agent rows of the turn | `AGENT_SUBAGENT_MAX_PER_TURN` |
 | plan budget | depth 0 with a plan run | sub-agent rows of the plan run | `AGENT_PLAN_RUN_BUDGET` |
 | share | depth 1 | none | its own `subagent_share` |
+| plan section | every caller | none | a briefing with `plan_node_id` is valid only in an `organizer` run, for a section of the approved tree, with a `purpose` |
+| corrections | organizer | `correct` sub-agent rows of the plan run and section | `MAX_CORRECTIONS` |
+
+The plan section and correction rules run before the budget rules, so a refused briefing
+takes no share of the budget. A briefing with no `plan_node_id` loses its `purpose`.
 
 A sub-agent row is a row with `depth >= 1` and no `continues_run_id`, because a
 continuation takes the place of a run and is not a new sub-agent. The counts exclude the rows
@@ -43,6 +48,13 @@ DEFAULT_PLAN_LIMIT = 300
 TOO_MANY_BRIEFINGS = "too_many_briefings"
 BUDGET_SPENT = "subagent_budget_spent"
 DEPTH_LIMIT = "depth_limit"
+PLAN_NODE_NOT_ALLOWED = "plan_node_not_allowed"
+CORRECTION_LIMIT = "correction_limit"
+
+#: The most `correct` sub-agent runs of one plan section. A third correction is refused.
+MAX_CORRECTIONS = 2
+#: The purposes an organizer's briefing may name.
+PURPOSES = ("execute", "review", "correct")
 
 
 def _positive(name: str, default: int) -> int:
@@ -87,15 +99,43 @@ def _refusal(call_id: str, briefing: dict[str, Any], reason: str) -> dict[str, A
             "reason": reason}
 
 
+def _plan_refusal(briefing: dict[str, Any], kind: str, sections: set[str] | None,
+                  corrections: dict[str, int]) -> str:
+    """The plan section and correction rules for one briefing. Empty when it passes.
+
+    Counts an accepted correction into `corrections`, so a second correction of one section
+    in the same call counts the first.
+    """
+    node = str(briefing.get("plan_node_id") or "").strip()
+    if not node:
+        briefing.pop("purpose", None)
+        briefing.pop("plan_node_id", None)
+        return ""
+    purpose = str(briefing.get("purpose") or "").strip()
+    if kind != "organizer" or not sections or node not in sections or purpose not in PURPOSES:
+        return PLAN_NODE_NOT_ALLOWED
+    briefing["plan_node_id"], briefing["purpose"] = node, purpose
+    if purpose == "correct":
+        if corrections.get(node, 0) >= MAX_CORRECTIONS:
+            return CORRECTION_LIMIT
+        corrections[node] = corrections.get(node, 0) + 1
+    return ""
+
+
 def decide(calls: list[tuple[str, list[dict[str, Any]]]], *, depth: int, used: int,
-           limit: int, own_share: int) -> Decision:
+           limit: int, own_share: int, kind: str = "chat",
+           sections: set[str] | None = None,
+           corrections: dict[str, int] | None = None) -> Decision:
     """Apply the rules to the briefings of one delegation.
 
     `calls` holds `(tool_call_id, briefings)` for each `run_subagent` call, in call order.
     `used` is the count of the turn or plan budget, and `limit` its limit. Both are ignored
-    for a depth 1 caller, which reads `own_share`.
+    for a depth 1 caller, which reads `own_share`. `kind` is the caller's run kind,
+    `sections` the section node ids of the approved tree for an organizer, and
+    `corrections` the `correct` runs of each section so far.
     """
     decision = Decision(caller_share=own_share)
+    corrections = dict(corrections or {})
     wanted: list[tuple[str, dict[str, Any]]] = []
     for call_id, briefings in calls:
         for position, briefing in enumerate(briefings):
@@ -103,6 +143,8 @@ def decide(calls: list[tuple[str, list[dict[str, Any]]]], *, depth: int, used: i
                 decision.refused.append(_refusal(call_id, briefing, DEPTH_LIMIT))
             elif position >= MAX_BRIEFINGS_PER_CALL:
                 decision.refused.append(_refusal(call_id, briefing, TOO_MANY_BRIEFINGS))
+            elif reason := _plan_refusal(briefing, kind, sections, corrections):
+                decision.refused.append(_refusal(call_id, briefing, reason))
             else:
                 wanted.append((call_id, briefing))
     allowance = max(0, own_share if depth >= 1 else limit - used)
@@ -141,12 +183,32 @@ def count_used(username: str, session_id: str, *, turn_seq: int, plan_run_id: st
     return int(rows[0][0]) if rows else 0
 
 
+def count_corrections(username: str, session_id: str, *, plan_run_id: str,
+                      own_batch_id: str) -> dict[str, int]:
+    """The `correct` sub-agent rows of each section of a plan run, outside the caller's
+    own batch, so a retry of the same delegation counts what it counted first."""
+    from database.agent_runs import _client
+
+    with _client() as client:
+        rows = client.query(
+            "SELECT toString(plan_node_id), count() FROM agent_runs FINAL "
+            "WHERE username = {u:String} AND session_id = {s:String} "
+            "AND plan_run_id = {p:UUID} AND purpose = 'correct' "
+            "AND continues_run_id IS NULL AND plan_node_id IS NOT NULL "
+            "AND (batch_id IS NULL OR batch_id != {b:UUID}) GROUP BY plan_node_id",
+            parameters={"u": username, "s": session_id, "p": plan_run_id,
+                        "b": own_batch_id},
+        ).result_rows
+    return {str(node): int(n) for node, n in rows}
+
+
 def limit_for(plan_run_id: str | None) -> int:
     return plan_limit() if plan_run_id else turn_limit()
 
 
 __all__ = [
-    "Accepted", "BUDGET_SPENT", "DEPTH_LIMIT", "Decision", "MAX_BRIEFINGS_PER_CALL",
-    "MAX_DEPTH", "TOO_MANY_BRIEFINGS", "count_used", "decide", "limit_for", "plan_limit",
-    "turn_limit",
+    "Accepted", "BUDGET_SPENT", "CORRECTION_LIMIT", "DEPTH_LIMIT", "Decision",
+    "MAX_BRIEFINGS_PER_CALL", "MAX_CORRECTIONS", "MAX_DEPTH", "PLAN_NODE_NOT_ALLOWED",
+    "PURPOSES", "TOO_MANY_BRIEFINGS", "count_corrections", "count_used", "decide",
+    "limit_for", "plan_limit", "turn_limit",
 ]

@@ -6,9 +6,8 @@
    plan is overhead.
 
    **Delegation follows the binding.** A `/run/stream` sub-agent at depth 1 binds
-   `run_subagent` and gets the delegation paragraph. A sub-agent at depth 2 and an in-process
-   worker bind no `run_subagent`, so the paragraph does not render and the tool section does
-   not name it. The binding is the limit, because a model can ignore its instructions.
+   `run_subagent` and gets the delegation paragraph. A sub-agent at depth 2 binds no
+   `run_subagent`, so the paragraph does not render and the tool section does not name it. The binding is the limit, because a model can ignore its instructions.
 
    **The verdict block** renders for a sub-agent whose `purpose` is `review`. The organizer
    reads the fenced JSON block at the end of the report.

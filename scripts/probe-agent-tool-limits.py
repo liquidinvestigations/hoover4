@@ -232,6 +232,11 @@ def page_request(series: Series, fixture: dict, content: str, parallel: int, cat
         "name": fixture["page_tool"], "arguments": json.dumps(fixture.get("page_arguments", {}))}}
         for i in range(parallel)]
     if catalogue is not None:
+        # The bind step makes each listed match callable on the next model call, so the
+        # request carries the schemas of the listed deferred tools.
+        bound = {tool["function"]["name"]: tool for tool in fixture.get("deferred_tools", [])}
+        listed = {tool["function"]["name"] for tool in tools}
+        tools += [bound[name] for name in catalogue if name in bound and name not in listed]
         results = [json.dumps({"matches": catalogue, "query": fixture["catalogue_query"]})]
         calls = [{"id": "probe-0", "type": "function", "function": {
             "name": "search_agent_tools", "arguments": json.dumps({"query": fixture["catalogue_query"]})}}]

@@ -204,8 +204,6 @@ browser_max_contexts = 16
 ; Hard memory ceiling for hoover4-mcp-browser. Sixteen live chats at 500 MB
 ; plus the template fit in 24 GB with room.
 mcp_browser_mem_limit = 24G
-; Subagent workers the full-research agent may start at once from one call.
-agent_subagent_concurrency = 5
 ; Sub-agent runs one chat turn may start through run_subagent, at every depth.
 ; A chat turn that runs a plan counts against agent_plan_run_budget instead.
 agent_subagent_max_per_turn = 6

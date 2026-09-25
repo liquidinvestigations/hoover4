@@ -64,7 +64,6 @@ _SKIP_WORKFLOW_TYPES = frozenset({
     "CollectEtaSamples",
     "SweepChatArtifacts",
     "AgentRun",
-    "ResearchTask",
     "PdfProcessingAndScan",
 })
 
