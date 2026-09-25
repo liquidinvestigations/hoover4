@@ -110,10 +110,11 @@ def test_office_containers_are_documents_and_are_never_expanded(detect, name, do
 def test_docx_still_reports_archive_but_is_not_expanded(detect):
     """The union is left accurate -- only the *decision* changed."""
     mimes, coarse = detect("easychair.docx")
+    # `file`'s own order: its primary match first.
     assert mimes == [
-        "application/octet-stream",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/zip",
+        "application/octet-stream",
     ]
     assert coarse == ["archive", "doc", "other"]
     assert not should_expand_as_archive(coarse, mimes)

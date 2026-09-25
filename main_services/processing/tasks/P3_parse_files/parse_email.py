@@ -120,7 +120,9 @@ def _message_bytes(file_path: str) -> bytes:
     reads as the start of a body, losing every header in the file.
     """
     from tasks.P3_parse_files.sniff_email import strip_email_envelope
+    from tasks.P3_parse_files.temp_dirs import require_input_file
 
+    require_input_file(file_path)
     with open(file_path, "rb") as handle:
         return strip_email_envelope(handle.read())
 

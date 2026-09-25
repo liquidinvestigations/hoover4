@@ -293,6 +293,28 @@ fn validate_node_key(value: &str) -> Result<(), AgentError> {
     Ok(())
 }
 
+/// A model cannot write U+001F, so it writes the six characters `\u001f` for it. This
+/// reads that escape, in either letter case, as the separator, and then checks the key.
+fn node_key_argument(value: &str) -> Result<String, AgentError> {
+    let decoded = value.replace("\\u001f", "\u{1f}").replace("\\u001F", "\u{1f}");
+    validate_node_key(&decoded)?;
+    Ok(decoded)
+}
+
+#[cfg(test)]
+mod node_key_tests {
+    use super::node_key_argument;
+
+    #[test]
+    fn the_escaped_separator_is_the_separator() {
+        let key = node_key_argument("textfiles_extra\\u001f\\u001F/").ok();
+        assert_eq!(key.as_deref(), Some("textfiles_extra\u{1f}\u{1f}/"));
+        let key = node_key_argument("textfiles_extra\u{1f}\u{1f}/").ok();
+        assert_eq!(key.as_deref(), Some("textfiles_extra\u{1f}\u{1f}/"));
+        assert!(node_key_argument("a\u{7}b").is_err());
+    }
+}
+
 /// Refuses a position whose kind this route does not issue.
 fn wrong_position_kind(route: &str, position: &AgentPosition, accepted: &str) -> AgentError {
     AgentError::invalid_argument(format!(
@@ -368,6 +390,41 @@ async fn folder_source_fingerprint(
     Ok(format!("{collection_dataset}:{count}:{updated}"))
 }
 
+/// The row that a document route reads, which decides the dataset it resolves to when
+/// one blob is in more than one dataset. Each dataset parses a blob on its own, so a
+/// blob can have an email row or a table row in one dataset and none in another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum DatasetRow {
+    /// Any dataset that holds the blob.
+    Any,
+    /// A dataset with an `email_headers` row for the blob.
+    Email,
+    /// A dataset with an `ok` `table_documents` row for the blob.
+    Table,
+}
+
+impl DatasetRow {
+    /// The query that lists the datasets with the row, or `None` for [`DatasetRow::Any`].
+    fn holder_query(self) -> Option<&'static str> {
+        match self {
+            Self::Any => None,
+            Self::Email => Some("SELECT DISTINCT collection_dataset FROM email_headers WHERE email_hash = ?"),
+            Self::Table => Some(
+                "SELECT DISTINCT collection_dataset FROM table_documents FINAL WHERE hash = ? AND status = 'ok'",
+            ),
+        }
+    }
+}
+
+/// Chooses one dataset from the readable datasets that hold a blob. A dataset that
+/// holds the row the route reads comes first. Name order decides between equals, so the
+/// same request always reads the same dataset.
+fn choose_document_dataset(readable: &[String], holders: &[String]) -> Option<String> {
+    let mut ordered: Vec<&String> = readable.iter().collect();
+    ordered.sort_by_key(|dataset| (!holders.contains(dataset), dataset.as_str()));
+    ordered.first().map(|dataset| (*dataset).clone())
+}
+
 /// Resolve `collectionname` and `file_hash` to the `collection_dataset` that holds it,
 /// restricted to datasets the caller may read.
 ///
@@ -376,28 +433,77 @@ async fn folder_source_fingerprint(
 /// result it came from). The agent names a document by collection and hash alone, so
 /// this one query is new: `SELECT DISTINCT collection_dataset FROM blobs WHERE
 /// blob_hash = ?`, scoped to the collection's own database exactly as every other read
-/// in this module is.
+/// in this module is. `row` names the row the route reads, and
+/// [`choose_document_dataset`] prefers a dataset that holds it.
 async fn resolve_document_dataset(
     user: &CurrentUser,
     permitted: &PermissionSet,
     collectionname: &str,
     file_hash: &str,
+    row: DatasetRow,
 ) -> Result<String, AgentError> {
     require_collection(permitted, collectionname)?;
     collection_db_name(collectionname).map_err(|e| AgentError::invalid_argument(e.to_string()))?;
     let client = get_collection_client(collectionname);
+    let unavailable = |e: clickhouse::error::Error| {
+        AgentError::new(StatusCode::SERVICE_UNAVAILABLE, "backend_unavailable", e.to_string())
+    };
     let candidates: Vec<String> = client
-        .query("SELECT DISTINCT collection_dataset FROM blobs WHERE blob_hash = ? LIMIT 20")
+        .query("SELECT DISTINCT collection_dataset FROM blobs WHERE blob_hash = ? ORDER BY collection_dataset LIMIT 20")
         .bind(file_hash)
         .fetch_all()
         .await
-        .map_err(|e| AgentError::new(StatusCode::SERVICE_UNAVAILABLE, "backend_unavailable", e.to_string()))?;
+        .map_err(unavailable)?;
+    let mut readable = Vec::with_capacity(candidates.len());
     for candidate in candidates {
         if permissions::assert_can_read(user, &candidate).await.is_ok() {
-            return Ok(candidate);
+            readable.push(candidate);
         }
     }
-    Err(AgentError::not_found(format!("no readable dataset in {collectionname:?} holds {file_hash:?}")))
+    let holders: Vec<String> = match row.holder_query() {
+        Some(query) if readable.len() > 1 => {
+            client.query(query).bind(file_hash).fetch_all().await.map_err(unavailable)?
+        }
+        _ => Vec::new(),
+    };
+    choose_document_dataset(&readable, &holders)
+        .ok_or_else(|| AgentError::not_found(format!("no readable dataset in {collectionname:?} holds {file_hash:?}")))
+}
+
+#[cfg(test)]
+mod dataset_choice_tests {
+    use super::choose_document_dataset;
+
+    fn names(items: &[&str]) -> Vec<String> {
+        items.iter().map(|item| item.to_string()).collect()
+    }
+
+    #[test]
+    fn the_dataset_that_holds_the_row_wins() {
+        // One blob in two datasets. Only the second one parsed it into an email row.
+        let readable = names(&["enron_dasovich_j", "enron_maildir"]);
+        let holders = names(&["enron_maildir"]);
+        assert_eq!(choose_document_dataset(&readable, &holders).as_deref(), Some("enron_maildir"));
+        let readable = names(&["enron_maildir", "enron_dasovich_j"]);
+        let holders = names(&["enron_dasovich_j"]);
+        assert_eq!(choose_document_dataset(&readable, &holders).as_deref(), Some("enron_dasovich_j"));
+    }
+
+    #[test]
+    fn name_order_decides_between_equals() {
+        let readable = names(&["b_set", "a_set"]);
+        assert_eq!(choose_document_dataset(&readable, &[]).as_deref(), Some("a_set"));
+        let holders = names(&["a_set", "b_set"]);
+        assert_eq!(choose_document_dataset(&readable, &holders).as_deref(), Some("a_set"));
+    }
+
+    #[test]
+    fn a_holder_the_caller_cannot_read_is_never_chosen() {
+        let readable = names(&["b_set"]);
+        let holders = names(&["a_set"]);
+        assert_eq!(choose_document_dataset(&readable, &holders).as_deref(), Some("b_set"));
+        assert_eq!(choose_document_dataset(&[], &holders), None);
+    }
 }
 
 /// Include every searched collection in the continuation fingerprint.

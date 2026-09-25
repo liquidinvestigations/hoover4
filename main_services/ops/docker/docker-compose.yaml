@@ -440,6 +440,10 @@ services:
       # concurrent worker processes at once. Its reset class in deploy.py VOLUMES is
       # `cache`, so --reset keeps it.
       - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/easyocr_models_cache:/root/.EasyOCR
+      # The copies of the files of each plan in progress, which the P0, P_admin and P_ops
+      # workflows pass as base_temp_dir. A recreated container keeps them, so a resumed
+      # parse, email or archive activity finds its input file. Reset class `data`.
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/worker_temp_files:/tmp/hoover4
       # Secrets rule: the ini stores the host PATH, deploy.py renders it as a mount
       # source, and the container reads the file. No key value ever enters a .env, a
       # compose file, a log line or a command line. /dev/null when no provider is set.

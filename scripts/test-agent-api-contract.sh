@@ -338,6 +338,34 @@ for facet in ("file_types", "file_paths"):
     assert status == 200 and body["total_count"] == value["count"], (facet, value, body["total_count"])
 '
 
+py_case "unknown-id: an escaped node id is read, an unknown node id is not_found" '
+F = {"collectionname": "testdata", "dataset": "testdata_shapes"}
+status, root = post("folders/list", F)
+assert status == 200 and root["children"], root
+key = root["children"][0]["node_id"]
+assert "\x1f" in key, key
+escaped = key.replace("\x1f", "\\u001f")
+status, listed = post("folders/list", {**F, "node_id": escaped})
+assert status == 200 and listed["breadcrumb"][-1]["node_id"] == key, listed["breadcrumb"]
+status, found = post("folders/search", {**F, "node_id": escaped, "query": "a"})
+assert status == 200, found
+unknown = key + "no-such-node"
+refused(*post("folders/list", {**F, "node_id": unknown}), 404, "not_found")
+refused(*post("folders/search", {**F, "node_id": unknown, "query": "a"}), 404, "not_found")
+'
+
+py_case "unknown-id: a column id that the sheet does not have is invalid_argument" '
+T = {"collectionname": "testdata", "file_hash": "'"$TABLE_DOC"'", "sheet": 0}
+status, overview = post("tables/overview", {"collectionname": "testdata", "file_hash": T["file_hash"]})
+assert status == 200, overview
+ids = [c["column_id"] for c in overview["sheets"][0]["columns"]]
+missing = max(ids) + 1
+status, body = post("tables/page", {**T, "columns": [ids[0], missing]})
+refused(status, body, 400, "invalid_argument")
+assert f"{min(ids)} to {max(ids)}" in body["message"], body
+refused(*post("tables/page", {**T, "sort": {"column": missing, "direction": "asc"}}), 400, "invalid_argument")
+'
+
 py_case "integer-facet: a value that is not a term id is refused" '
 refused(*post("search/results", {**TESTDATA, "facet_filters": {"file_types": ["text"]}}), 400, "invalid_argument")
 refused(*post("search/results", {**TESTDATA, "facet_filters": {"no_such_facet": ["1"]}}), 400, "invalid_argument")

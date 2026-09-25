@@ -1563,6 +1563,30 @@ mod tests {
     }
 
     #[test]
+    fn a_delegated_turn_stays_open_until_its_last_run_ends() {
+        // The run rows of one delegated turn, in the order the worker writes them. The
+        // transcript already holds an answer row after the user row at every step.
+        let mut lead = run("lead", 0, "waiting_for_children");
+        lead.delegated_batch = "b0".into();
+        let k1 = child("k1", "lead", "b0", "c1", 1, "running", 1);
+        let k2 = child("k2", "lead", "b0", "c2", 1, "running", 2);
+        let ended = |r: &db_chat::AgentRunRow| {
+            let mut r = r.clone();
+            r.state = "completed".into();
+            r
+        };
+        // One child ended, and then both, before the continuation row exists.
+        assert!(turn_is_open(Some(1), Some(3), &[lead.clone(), ended(&k1), k2.clone()]));
+        assert!(turn_is_open(Some(1), Some(3), &[lead.clone(), ended(&k1), ended(&k2)]));
+        // The continuation runs. `write_ending` ends the original lead first.
+        let cont = continuation("cont", &lead, "running", 3);
+        assert!(turn_is_open(Some(1), Some(3), &[lead.clone(), ended(&k1), ended(&k2), cont.clone()]));
+        assert!(turn_is_open(Some(1), Some(3), &[ended(&lead), ended(&k1), ended(&k2), cont.clone()]));
+        // Only the terminal row of the last run closes the turn.
+        assert!(!turn_is_open(Some(1), Some(3), &[ended(&lead), ended(&k1), ended(&k2), ended(&cont)]));
+    }
+
+    #[test]
     fn the_poll_lists_only_the_newest_batch_of_each_thread() {
         // The lead delegated batch b0 (two children), was continued by lead2, which
         // delegated batch b1 (one child). The chain rule keeps lead waiting, but only b1

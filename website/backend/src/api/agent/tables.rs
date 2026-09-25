@@ -38,7 +38,7 @@ async fn table_context(
 ) -> Result<TableContext, AgentError> {
     let header = requested_collections_header(headers);
     let permitted = permitted_collectionnames(user, &header).await?;
-    let collection_dataset = resolve_document_dataset(user, &permitted, collectionname, file_hash).await?;
+    let collection_dataset = resolve_document_dataset(user, &permitted, collectionname, file_hash, DatasetRow::Table).await?;
     let identifier = DocumentIdentifier { collection_dataset, file_hash: file_hash.to_string() };
     let manifest = table_browse::load_table_manifest(user, &identifier)
         .await
@@ -92,6 +92,19 @@ fn column_label(context: &TableContext, sheet: u16, column: u32) -> Result<Strin
         .find(|candidate| candidate.column_id == column)
         .map(|candidate| candidate.label())
         .ok_or_else(|| AgentError::not_found(format!("this sheet has no column {column}")))
+}
+
+/// Refuses a column id that the sheet does not have with 400 `invalid_argument`. The
+/// message gives the lowest and highest column id of the sheet.
+fn require_column_id(sheet_column_ids: &[u32], sheet: u16, column: u32) -> Result<(), AgentError> {
+    if sheet_column_ids.contains(&column) {
+        return Ok(());
+    }
+    let range = match (sheet_column_ids.iter().min(), sheet_column_ids.iter().max()) {
+        (Some(low), Some(high)) => format!("Its column ids are {low} to {high}."),
+        _ => "It has no columns.".to_string(),
+    };
+    Err(AgentError::invalid_argument(format!("sheet {sheet} has no column id {column}. {range}")))
 }
 
 fn column_info(column: &common::document_tables::TableColumnInfo) -> AgentTableColumnInfo {
@@ -232,6 +245,16 @@ async fn tables_page_body(
     let context =
         table_context(user, headers, &body.collectionname, &body.file_hash, body.expected_source.as_deref(), deadline).await?;
     let sheet = require_sheet(&context, body.sheet)?;
+    let sheet_column_ids: Vec<u32> = context.overview.columns_of(body.sheet).iter().map(|c| c.column_id).collect();
+    let requested_columns = body
+        .columns
+        .iter()
+        .copied()
+        .chain(body.sort.as_ref().map(|s| s.column))
+        .chain(body.filters.iter().map(|f| f.column));
+    for column in requested_columns {
+        require_column_id(&sheet_column_ids, body.sheet, column)?;
+    }
     if row_start > 0 && row_start >= sheet.row_count && windowed {
         return Err(AgentError::invalid_argument("row_start is past the last row of the sheet"));
     }
@@ -503,4 +526,19 @@ async fn tables_search_cells_body(
         hits,
         page_info: AgentPageInfo { source: context.source, next_position, total: Some(hit_count), partial: false },
     })
+}
+
+#[cfg(test)]
+mod column_id_tests {
+    use super::require_column_id;
+
+    #[test]
+    fn an_unknown_column_id_names_the_range() {
+        assert!(require_column_id(&[1, 2, 3], 0, 2).is_ok());
+        let refused = require_column_id(&[1, 2, 3], 0, 0).err().map(|e| (e.error, e.message));
+        assert_eq!(
+            refused,
+            Some(("invalid_argument", "sheet 0 has no column id 0. Its column ids are 1 to 3.".to_string()))
+        );
+    }
 }

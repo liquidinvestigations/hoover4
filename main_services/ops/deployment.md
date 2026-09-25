@@ -231,7 +231,8 @@ project's images and unnamed volumes with it.
 
 What a reset destroys is the derived data. It empties the folders under
 `[storage] volumes_path` that hold ClickHouse, Manticore, Garage blobs, Temporal's
-Cassandra and Elasticsearch, the monitoring data and the website's build target. It keeps
+Cassandra and Elasticsearch, the monitoring data, the worker's temporary copies of plan files
+and the website's build target. It keeps
 the folders themselves. The corpus is a separate bind mount (`testdata_dir`) outside
 `volumes_path`, and no step here touches it. Everything except the corpus is re-creatable
 from the corpus.

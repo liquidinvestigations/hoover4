@@ -79,9 +79,14 @@ VOLUMES = (
     # ClickHouse mounts the backup root too, and its image has `sh`.
     Volume("ops_backups", "main", "clickhouse", 0, 0,
            "clickhouse/clickhouse-server:25.8", "data"),
-    # The two folders below belong to services built from this repository. Their image
+    # The three folders below belong to services built from this repository. Their image
     # name depends on the compose provider, so the emptying runs in the Cassandra image.
     Volume("hoover4-website-target", "main", "temporal-cassandra", 0, 0,
+           CASSANDRA_IMAGE, "data"),
+    # The worker's copies of the files of each plan in progress, at /tmp/hoover4. A
+    # recreated worker container keeps them, so a resumed workflow finds its input files.
+    # The worker writes as root.
+    Volume("worker_temp_files", "main", "temporal-cassandra", 0, 0,
            CASSANDRA_IMAGE, "data"),
     Volume("easyocr_models_cache", "main", "temporal-cassandra", 0, 0,
            CASSANDRA_IMAGE, "cache"),

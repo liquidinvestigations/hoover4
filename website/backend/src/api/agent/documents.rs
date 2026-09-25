@@ -13,17 +13,19 @@ mod document_pages_tests;
 // documents: the shared reads
 // ===================================================================================
 
-/// Resolves one document of a collection that the caller may read.
+/// Resolves one document of a collection that the caller may read, in a dataset that
+/// holds `row` when one does.
 async fn document_identifier(
     user: &CurrentUser,
     headers: &HeaderMap,
     collectionname: &str,
     file_hash: &str,
+    row: DatasetRow,
 ) -> Result<DocumentIdentifier, AgentError> {
     validate_plain_text(file_hash)?;
     let header = requested_collections_header(headers);
     let permitted = permitted_collectionnames(user, &header).await?;
-    let collection_dataset = resolve_document_dataset(user, &permitted, collectionname, file_hash).await?;
+    let collection_dataset = resolve_document_dataset(user, &permitted, collectionname, file_hash, row).await?;
     Ok(DocumentIdentifier { collection_dataset, file_hash: file_hash.to_string() })
 }
 
@@ -267,7 +269,7 @@ async fn documents_read_body(
 
     let mut planned = Vec::with_capacity(body.file_hash.len());
     for file_hash in &body.file_hash {
-        let identifier = document_identifier(user, headers, &body.collectionname, file_hash).await?;
+        let identifier = document_identifier(user, headers, &body.collectionname, file_hash, DatasetRow::Any).await?;
         let sources = text_sources_of(user, &identifier).await?;
         let chosen = match (&body.position, &wanted_source) {
             (Some(_), Some(wanted)) => Some(
@@ -426,7 +428,7 @@ async fn documents_search_text_body(
         Some(AgentPosition::HitKey { page_id, ordinal }) => Some((*page_id, *ordinal)),
         Some(other) => return Err(wrong_position_kind("documents/search_text", other, "HitKey")),
     };
-    let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash).await?;
+    let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash, DatasetRow::Any).await?;
     let sources = text_sources_of(user, &identifier).await?;
     let chosen = match &body.source {
         Some(wanted) => sources
@@ -528,7 +530,7 @@ async fn documents_sources_body(
     body: DocumentsSourcesRequest,
     deadline: Deadline,
 ) -> Result<DocumentsSourcesResponse, AgentError> {
-    let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash).await?;
+    let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash, DatasetRow::Any).await?;
     let items: Vec<DocumentSourceItem> = get_document_sources::get_document_sources(user, identifier.clone())
         .await
         .map_err(AgentError::from_anyhow)?
@@ -648,7 +650,7 @@ async fn documents_metadata_body(
     headers: &HeaderMap,
     body: DocumentsMetadataRequest,
 ) -> Result<DocumentsMetadataResponse, AgentError> {
-    let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash).await?;
+    let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash, DatasetRow::Any).await?;
     let source = format!("{}:metadata", body.file_hash);
     verify_expected_source(body.expected_source.as_deref(), &source)?;
 
@@ -739,10 +741,10 @@ async fn documents_email_body(
         Some(AgentPosition::Offset { offset }) => *offset,
         Some(other) => return Err(wrong_position_kind("documents/email", other, "Offset")),
     };
-    let identifier = document_identifier(user, request_headers, &body.collectionname, &body.file_hash).await?;
+    let identifier = document_identifier(user, request_headers, &body.collectionname, &body.file_hash, DatasetRow::Email).await?;
     let centre = match &body.node {
         Some(node) if node != &body.file_hash => {
-            document_identifier(user, request_headers, &body.collectionname, node).await?
+            document_identifier(user, request_headers, &body.collectionname, node, DatasetRow::Email).await?
         }
         _ => identifier.clone(),
     };
@@ -872,7 +874,7 @@ async fn documents_diff_sources_body(
     body: DocumentsDiffSourcesRequest,
     deadline: Deadline,
 ) -> Result<DocumentsDiffSourcesResponse, AgentError> {
-    let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash).await?;
+    let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash, DatasetRow::Any).await?;
     let sources = text_sources_of(user, &identifier).await?;
     let pages = StoredTextPages { user, identifier: &identifier, collectionname: &body.collectionname, deadline };
     let mut fingerprints = Vec::with_capacity(2);
@@ -1004,7 +1006,7 @@ async fn documents_pdf_search_body(
     {
         return Err(AgentError::invalid_argument("page_from must not be after page_to"));
     }
-    let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash).await?;
+    let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash, DatasetRow::Any).await?;
     let source = format!("{}:pdf:{}", body.file_hash, body.source);
     verify_expected_source(body.expected_source.as_deref(), &source)?;
 

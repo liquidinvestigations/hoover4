@@ -21,6 +21,24 @@ T = TypeVar("T", bound=BaseModel)
 
 
 NODE_KEY_FIELDS = {"node_id", "node_key"}
+ESCAPED_NODE_KEY_SEPARATORS = ("\\u001f", "\\u001F")
+
+
+def decode_node_keys(item: Any, key: Any = None) -> Any:
+    """Read the six characters `\\u001f` in a node key field as U+001F.
+
+    A model cannot write U+001F, which joins the parts of every folder node key, so it
+    writes the JSON escape as text. The backend route reads the escape the same way.
+    """
+    if isinstance(item, str) and key in NODE_KEY_FIELDS:
+        for escaped in ESCAPED_NODE_KEY_SEPARATORS:
+            item = item.replace(escaped, "\x1f")
+        return item
+    if isinstance(item, dict):
+        return {name: decode_node_keys(nested, name) for name, nested in item.items()}
+    if isinstance(item, list):
+        return [decode_node_keys(nested) for nested in item]
+    return item
 
 
 class AgentModel(BaseModel):
@@ -59,6 +77,7 @@ class AgentRequest(AgentModel):
                 return True
             return item.get("kind") == "ValueKey"
 
+        value = decode_node_keys(value)
         visit(value)
         return value
 

@@ -65,12 +65,17 @@ own fields: `source`, `next_position`, `total` and `partial`. A request continue
 refused with `409` `source_changed`, and a position of a kind the route does not issue with
 `400`. Search pages stop at the website's 1,000-result limit, so page 50 is refused with `400`.
 A folder route accepts the short dataset name that `collections/list` returns or the full
-`<collection>_<dataset>` name, and answers with the short name. A search facet filter takes
+`<collection>_<dataset>` name, and answers with the short name. A folder node id reads the six
+characters `\u001f` as the U+001F separator, because a model cannot write that character. A
+node id that names no node of the dataset is `404` `not_found`. A search facet filter takes
 the term ids that `facet_counts` and `search/facet_values` return, except
 `collection_dataset`, which takes dataset names.
 
 A document route reads one window of a document: one stored text page, one page of hits,
-or one page of a kept PDF search result. Two reads grow with the document and run under the
+or one page of a kept PDF search result. The agent names a document by its file hash, and one
+blob can be in more than one dataset. The route reads a dataset that the caller can read and
+that holds the row the route reads: the `email_headers` row for `documents/email`, and the
+table manifest row for a table route. Name order decides between equal datasets. Two reads grow with the document and run under the
 30 s deadline. `documents/pdf_search` searches the whole PDF when no kept result matches, and
 `documents/sources` with a `query` counts the hits of every source over the whole document.
 `documents/read` reads one stored text page of each of at most 20 documents. With a
@@ -99,7 +104,9 @@ every cell of the sheet, `tables/column_values` groups the whole column, and a s
 filtered or searched `tables/page` reads every matching row of the sheet.
 `tables/overview` lists 20 sheets a page with `Offset` positions, each with its column ids.
 `tables/page` reads 50 rows of at most 60 columns: `columns` names the column ids, and the
-website's clamp keeps the first 60 and returns what it kept as `clamps`. With no sort, filter
+website's clamp keeps the first 60 and returns what it kept as `clamps`. A column id in
+`columns`, `sort` or `filters` that the sheet does not have is `400` `invalid_argument`, and
+the message gives the lowest and highest column id of the sheet. With no sort, filter
 or search it starts at `row_start` and continues with `Rows` positions, computed from the row
 id with no query. A sorted, filtered or searched page continues with `Offset` positions, as the
 table viewer reads it. A cell over 2,000 characters is cut and marked with `cut`, and

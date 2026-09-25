@@ -76,6 +76,22 @@ for raw in sys.stdin:
 """
 
 
+#: The `ApplicationError.type` of a file that Tika refused at every step of the chain.
+TIKA_PARSE_FAILED = "TikaParseFailed"
+
+
+class ExtractousParseError(RuntimeError):
+    """Extractous answered and reported a parse error for the file.
+
+    The helper process is still healthy, and the same bytes give the same error again.
+    A helper that crashed or closed its output raises a different exception.
+    """
+
+
+class NoExtensionForType(ValueError):
+    """The candidate type maps to no known extension, so the step cannot run."""
+
+
 def _drain_stderr(proc: subprocess.Popen) -> None:
     """Read stderr to EOF so a noisy child cannot fill a PIPE and block."""
     stderr = proc.stderr
@@ -218,7 +234,7 @@ class ExtractousHelperPool:
             raise
         if not out.get("ok", True):
             self._checkin(proc)
-            raise RuntimeError(
+            raise ExtractousParseError(
                 f"extractous failed for {file_path}: {out.get('error')!r}"
             )
         self._checkin(proc)
@@ -290,7 +306,7 @@ def _extract_with_hinted_type(file_path: str, mime_type: str) -> tuple[str, dict
     against this pinned version and against the latest upstream Rust API. The
     filename's extension is the only lever that reaches its detector. It is a hint
     the detector weighs against the bytes. Content that already names its own type
-    in a header wins over the copy's extension. Raises `ValueError` when `mime_type`
+    in a header wins over the copy's extension. Raises `NoExtensionForType` when `mime_type`
     maps to no known extension, so the caller can skip the step.
 
     A symbolic link is tried first: it costs nothing, it crosses a filesystem
@@ -307,7 +323,7 @@ def _extract_with_hinted_type(file_path: str, mime_type: str) -> tuple[str, dict
 
     extension = extension_for_mime_type(mime_type)
     if extension is None:
-        raise ValueError(f"no extension known for {mime_type!r}")
+        raise NoExtensionForType(f"no extension known for {mime_type!r}")
     tmp_dir = tempfile.mkdtemp(prefix="hoover4-tika-hint-")
     hinted_path = os.path.join(tmp_dir, "attempt" + extension)
     try:
@@ -357,11 +373,18 @@ def _extract_with_extractous(file_path: str) -> tuple[str, dict]:
     native call, not of the name attached to them, so a second attempt under a
     different extension pays the same worst case for a result already certain. Only
     a parse failure -- extractous returning `ok: false` -- lets the chain move on.
+
+    When every step ends in a parse failure, the error is deterministic: Tika gives
+    the same Java exception for the same bytes on every attempt. The function then
+    raises a non-retryable `ApplicationError` of type `TIKA_PARSE_FAILED`. When a step
+    fails in another way, for example a helper crash, the `RuntimeError` stays
+    retryable.
     """
     from temporalio.exceptions import ApplicationError
 
     attempts: List[str] = []
     errors: List[str] = []
+    all_parse_errors = True
 
     for source, mime_type in _detector_candidate_types(file_path):
         attempts.append(f"{source} ({mime_type})")
@@ -371,6 +394,8 @@ def _extract_with_extractous(file_path: str) -> tuple[str, dict]:
             raise
         except Exception as exc:
             errors.append(f"{attempts[-1]}: {exc}")
+            all_parse_errors = all_parse_errors and isinstance(
+                exc, (ExtractousParseError, NoExtensionForType))
             continue
         log.info("[P3] extractous succeeded at %s for %s", source, file_path)
         return text, meta
@@ -383,14 +408,18 @@ def _extract_with_extractous(file_path: str) -> tuple[str, dict]:
             raise
         except Exception as exc:
             errors.append(f"{attempts[-1]}: {exc}")
+            all_parse_errors = all_parse_errors and isinstance(exc, ExtractousParseError)
         else:
             log.info("[P3] extractous succeeded via its own detection for %s", file_path)
             return text, meta
 
-    raise RuntimeError(
+    message = (
         f"extractous failed for {file_path} after {len(attempts)} attempt(s): "
         + "; ".join(errors)
     )
+    if all_parse_errors:
+        raise ApplicationError(message, type=TIKA_PARSE_FAILED, non_retryable=True)
+    raise RuntimeError(message)
 
 
 @activity.defn
@@ -403,7 +432,10 @@ def run_tika_and_store(params: RunTikaParams) -> Dict[str, Any]:
     from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
 
+    from tasks.P3_parse_files.temp_dirs import require_input_file
+
     log.info("[P3] Running Extractous for %s", params.file_path)
+    require_input_file(params.file_path)
 
     # Extract text and metadata using Extractous (subprocess: interruptible)
     result_text, meta_parsed = _extract_with_extractous(params.file_path)

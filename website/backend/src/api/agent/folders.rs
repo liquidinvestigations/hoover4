@@ -81,6 +81,33 @@ async fn folders_overview_body(
 
 const FOLDER_PAGE_SIZE: u64 = 200;
 
+/// Refuses a node key that names no node of the dataset with 404 `not_found`. Without
+/// this check, a listing of an unknown key is an empty success.
+async fn require_node(
+    deadline: &Deadline,
+    collectionname: &str,
+    collection_dataset: &str,
+    node_key: &str,
+) -> Result<(), AgentError> {
+    if node_key == dataset_root_key(collection_dataset) {
+        return Ok(());
+    }
+    let count: u64 = deadline
+        .collection_client(collectionname)
+        .query("SELECT count() FROM vfs_nodes FINAL WHERE collection_dataset = ? AND node_key = ?")
+        .bind(collection_dataset)
+        .bind(node_key)
+        .fetch_one()
+        .await
+        .map_err(AgentError::from_clickhouse)?;
+    if count == 0 {
+        return Err(AgentError::not_found(format!(
+            "the dataset has no node {node_key:?}. folders/list gives the node ids of a folder"
+        )));
+    }
+    Ok(())
+}
+
 fn node_kind_str(kind: common::vfs::VfsNodeKind) -> &'static str {
     match kind {
         common::vfs::VfsNodeKind::Dir => "dir",
@@ -106,7 +133,7 @@ async fn folders_list_body(
     body: FoldersListRequest,
     deadline: Deadline,
 ) -> Result<FoldersListResponse, AgentError> {
-    if let Some(node_id) = &body.node_id { validate_node_key(node_id)?; }
+    let node_id = body.node_id.as_deref().map(node_key_argument).transpose()?;
     if let Some(other) = body.position.as_ref().filter(|p| !matches!(p, AgentPosition::NodeKey { .. })) {
         return Err(wrong_position_kind("folders/list", other, "NodeKey"));
     }
@@ -118,7 +145,8 @@ async fn folders_list_body(
     let source = folder_source_fingerprint(&deadline, &body.collectionname, &collection_dataset).await?;
     verify_expected_source(body.expected_source.as_deref(), &source)?;
 
-    let node_key = body.node_id.clone().unwrap_or_else(|| dataset_root_key(&collection_dataset));
+    let node_key = node_id.unwrap_or_else(|| dataset_root_key(&collection_dataset));
+    require_node(&deadline, &body.collectionname, &collection_dataset, &node_key).await?;
 
     let breadcrumb = vfs_api::vfs_tree_path_to(user, collection_dataset.clone(), node_key.clone())
         .await
@@ -133,8 +161,8 @@ async fn folders_list_body(
     // One row past the page tells whether another page exists.
     let mut children_page = match &body.position {
         Some(AgentPosition::NodeKey { node_key: after }) => {
-            validate_node_key(after)?;
-            vfs_api::vfs_tree_children_after(user, collection_dataset.clone(), node_key.clone(), after.clone(), FOLDER_PAGE_SIZE + 1)
+            let after = node_key_argument(after)?;
+            vfs_api::vfs_tree_children_after(user, collection_dataset.clone(), node_key.clone(), after, FOLDER_PAGE_SIZE + 1)
                 .await
                 .map_err(AgentError::from_anyhow)?
         }
@@ -269,7 +297,7 @@ async fn folders_search_body(
     deadline: Deadline,
 ) -> Result<FoldersSearchResponse, AgentError> {
     validate_plain_text(&body.query)?;
-    if let Some(node_id) = &body.node_id { validate_node_key(node_id)?; }
+    let node_id = body.node_id.as_deref().map(node_key_argument).transpose()?;
     let cap = vfs_api::tree::MAX_CHILDREN_PER_PAGE;
     let offset = match &body.position {
         None => 0,
@@ -288,7 +316,8 @@ async fn folders_search_body(
     let source = folder_source_fingerprint(&deadline, &body.collectionname, &collection_dataset).await?;
     verify_expected_source(body.expected_source.as_deref(), &source)?;
 
-    let node_key = body.node_id.clone().unwrap_or_else(|| dataset_root_key(&collection_dataset));
+    let node_key = node_id.unwrap_or_else(|| dataset_root_key(&collection_dataset));
+    require_node(&deadline, &body.collectionname, &collection_dataset, &node_key).await?;
     let results = vfs_api::vfs_search_in_folder(
         user,
         collection_dataset.clone(),

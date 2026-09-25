@@ -22,7 +22,6 @@ class DetectMimeParams:
 
 def _run_file_multi(file_path: str) -> Tuple[List[str], List[str], List[str]]:
     """Run `file` to obtain possible multiple mime types, encodings, and extensions."""
-    mime_types: Set[str] = set()
     encodings: Set[str] = set()
     extensions: Set[str] = set()
 
@@ -53,6 +52,10 @@ def _run_file_multi(file_path: str) -> Tuple[List[str], List[str], List[str]]:
                     txt = txt.strip()
                     if not txt:
                         continue
+                    # `file` exits 0 when it cannot read the path, and prints its
+                    # reason where a type goes. That reason is not a type.
+                    if txt.startswith("cannot open"):
+                        continue
                     if is_extension:
                         # Slash-separated list, filter unknowns
                         parts = [p.strip() for p in txt.split('/') if p.strip()]
@@ -71,20 +74,23 @@ def _run_file_multi(file_path: str) -> Tuple[List[str], List[str], List[str]]:
         except Exception:
             return []
 
-    # Collect using -k to keep going
-    mime_types.update(_collect_values(["file", "-k", "--mime-type", file_path]))
+    # Collect using -k to keep going. The MIME types keep `file`'s own order, because
+    # callers read the first one as `file`'s primary match. Sorting put
+    # `application/octet-stream` ahead of `image/jpeg` for a JPEG with EXIF data.
+    mime_order: Dict[str, None] = dict.fromkeys(
+        _collect_values(["file", "-k", "--mime-type", file_path]))
     encodings.update(_collect_values(["file", "-k", "--mime-encoding", file_path]))
     extensions.update(_collect_values(["file", "-k", "--extension", file_path], is_extension=True))
 
     # Fallbacks
-    if not mime_types or not encodings:
+    if not mime_order or not encodings:
         guessed, enc = mimetypes.guess_type(file_path)
         if guessed:
-            mime_types.add(guessed)
+            mime_order.setdefault(guessed, None)
         if enc:
             encodings.add(enc)
 
-    return sorted(mime_types), sorted(encodings), sorted(extensions)
+    return list(mime_order), sorted(encodings), sorted(extensions)
 
 
 def _extract_extensions(file_path: str) -> List[str]:
@@ -111,7 +117,7 @@ def _detect_gnu_file(params: DetectMimeParams,
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
 
     mime_types_list, encodings_list, ext_list = file_multi or _run_file_multi(params.file_path)
-    mime_types: List[str] = [m for m in mime_types_list if m]
+    mime_types: List[str] = sorted(m for m in mime_types_list if m)
     mime_encodings: List[str] = [e for e in encodings_list if e]
     coarse_types: List[str] = sorted({coarse_file_type(m) for m in mime_types if m})
     # Combine filename-derived extensions with `file --extension`
@@ -130,6 +136,15 @@ def _detect_magika(params: DetectMimeParams) -> Dict[str, Any]:
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
 
     res = identify_path_with_magika(params.file_path)
+    # `res.output` raises a ValueError that names no status when the status is not OK,
+    # so the status is read first and named in the error.
+    if not getattr(res, "ok", True):
+        status = getattr(res, "status", None)
+        status_value = getattr(status, "value", status)
+        if status_value == "file_not_found_error":
+            from tasks.P3_parse_files.temp_dirs import require_input_file
+            require_input_file(params.file_path)
+        raise RuntimeError(f"magika status {status_value} for {params.file_path}")
     # Use res.output (may be overwritten result)
     ct = res.output
     mime_types: List[str] = []
@@ -350,7 +365,14 @@ def detect_mime_all(params: DetectMimeParams) -> Dict[str, Any]:
     Failure stays per detector. One that raises contributes no `file_types` row and
     reports its error under its own name in `errors`, exactly as a failed activity in
     the old fan-out did; the other three still store and still return.
+
+    A missing input path fails the whole activity at its first attempt, before any
+    detector runs, because no detector can read it and `file` would report its own
+    "cannot open" text as a type.
     """
+    from tasks.P3_parse_files.temp_dirs import is_temp_copy_missing, require_input_file
+
+    require_input_file(params.file_path)
     file_multi = None
     try:
         file_multi = _run_file_multi(params.file_path)
@@ -372,6 +394,10 @@ def detect_mime_all(params: DetectMimeParams) -> Dict[str, Any]:
         try:
             res = runners[name]()
         except Exception as exc:
+            # The file went away after the check above. The other detectors cannot
+            # read it either, so the activity fails with the one cause.
+            if is_temp_copy_missing(exc):
+                raise
             errors[name] = "%s: %s" % (type(exc).__name__, exc)
             continue
         results[name] = res

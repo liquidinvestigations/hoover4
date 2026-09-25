@@ -132,3 +132,18 @@ def test_node_key_fields_accept_only_the_separator_control_character():
         FoldersListRequest(collectionname="testdata", dataset="shapes", node_id="a\x00b")
     with pytest.raises(ValueError):
         FoldersListRequest(collectionname="test\x1fdata", dataset="shapes")
+
+
+def test_an_escaped_separator_in_a_node_key_is_the_separator():
+    from collection_search_server.backend_client import FoldersListRequest, FoldersSearchRequest
+
+    escaped = "textfiles_extra\\u001f\\u001F/"
+    key = "textfiles_extra\x1f\x1f/"
+    assert FoldersListRequest(collectionname="testdata", dataset="extra", node_id=escaped).node_id == key
+    request = FoldersListRequest.model_validate({
+        "collectionname": "testdata", "dataset": "extra",
+        "position": {"kind": "NodeKey", "node_key": escaped},
+    })
+    assert request.position.node_key == key
+    search = FoldersSearchRequest(collectionname="testdata", dataset="extra", query="a\\u001f", node_id=escaped)
+    assert search.node_id == key and search.query == "a\\u001f"

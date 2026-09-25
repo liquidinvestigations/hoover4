@@ -30,10 +30,15 @@ def classify_pairs(pairs, plan_hashes_by_hash, stage_is_off) -> dict[str, list]:
     return classes
 
 
+#: Error names that the outcome row of another error name proves recovered.
+_OUTCOME_NAME_ALIASES = {"detector_error_tika": ("parse_error_tika",)}
+
+
 def recovery_activity(task_name: str) -> str | None:
     """Map an Error name to the activity that can prove its recovery."""
     direct = {
         "detector_error_tika": "run_tika_and_store",
+        "parse_error_tika": "run_tika_and_store",
         "extract_plaintext_chunks": "extract_plaintext_chunks",
         "parse_office_xml_and_store": "parse_office_xml_and_store",
         "parse_table_and_store": "parse_table_and_store",
@@ -218,6 +223,10 @@ def reconcile_selected_errors(params: ReconcileErrorsParams) -> dict:
         ).result_rows
     evidence = {(str(hash), str(task_name)) for hash, task_name, activity_name in rows
                 if recovery_activity(str(task_name)) == str(activity_name)}
+    # A successful `run_tika_and_store` writes its outcome under `detector_error_tika`,
+    # and it proves the recovery of a `parse_error_tika` row of the same file too.
+    evidence |= {(hash, alias) for hash, task_name in list(evidence)
+                 for alias in _OUTCOME_NAME_ALIASES.get(task_name, ())}
     unknown = [pair for pair in selected if recovery_activity(pair[1]) is None]
     recovered = [pair for pair in selected if pair in evidence and pair not in current]
     still_failing = [pair for pair in selected

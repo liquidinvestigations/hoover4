@@ -18,6 +18,11 @@ Builds processing plans from VFS statistics to chunk work into manageable batche
 ### P2 - Execute Plan
 
 Schedules plan chunks for distributed execution and manages temporary download and cleanup steps.
+`download_plan_files` copies each blob of a plan to `/tmp/hoover4/<collection_dataset>/<plan_hash>/`
+in the worker, and the P3 parse, email and archive activities read that copy. `/tmp/hoover4` is
+the volume `worker_temp_files`, so a recreated worker container keeps the copies of the plans in
+progress. When a copy is missing all the same, each reader raises the non-retryable
+`TempCopyMissing` error that names the path. It does not detect a type for the path.
 
 ### P3 - Parse Files
 

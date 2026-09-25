@@ -15,6 +15,7 @@ KNOWN_TASK_NAMES = frozenset(
         "detector_error_extension",
         "detector_error_content_sniff",
         "detector_error_tika",
+        "parse_error_tika",
         "detector_error_unknown",
         "archive_scan",
         "email_scan",

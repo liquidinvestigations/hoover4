@@ -23,7 +23,9 @@ class ExtractPlaintextParams:
 def extract_plaintext_chunks(params: ExtractPlaintextParams) -> int:
     """Activity that reads text files and inserts into text_content in 3MB chunks."""
     from tasks.P3_parse_files.parse_common import insert_text_chunks
+    from tasks.P3_parse_files.temp_dirs import require_input_file
     log.info("[P3] Extracting plaintext chunks for %s", params.file_path)
+    require_input_file(params.file_path)
     with open(params.file_path, "rb") as f:
         data = f.read()
     return insert_text_chunks(params.collectionname, params.collection_dataset, params.file_hash, "raw_text", data)
