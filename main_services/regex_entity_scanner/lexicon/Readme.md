@@ -1,8 +1,8 @@
 # Investigative lexicon
 
 Term lists that point a reader at the passages worth reading first. They cover the language of
-concealment, bribery, accounting manipulation, pressure and dissent, conflict and crime, and the
-vocabulary that marks a document as a contract, a legal letter, an invoice, a proof of payment or a
+concealment, bribery, accounting manipulation, pressure and dissent, conflict and crime, the
+atrocity crimes of international law, and the vocabulary that marks a document as a contract, a legal letter, an invoice, a proof of payment or a
 scam. The scanner loads every list at startup and reports each match as a **signal**.
 
 A signal is a reason to look, never a finding. Keyword search on its own finds a minority of the
@@ -24,9 +24,21 @@ of files. The categories are one flat list, and each term belongs to exactly one
 language:
 
 `concealment`, `accounting`, `bribery`, `rationalisation`, `hostility`, `litigation`, `crime`,
-`financial_crime`, `violence`, `sexual_misconduct`, `coded_language`, `scam`, `marketing`,
-`legal_document`, `contract`, `legal_letter`, `memorandum`, `invoice`, `invoice_draft`,
-`invoice_final`, `payment_proof`, `international_transfer`, `jurisdiction`.
+`financial_crime`, `violence`, `sexual_misconduct`, `genocide`, `crimes_against_humanity`,
+`war_crimes`, `coded_language`, `scam`, `marketing`, `legal_document`, `contract`, `legal_letter`,
+`memorandum`, `invoice`, `invoice_draft`, `invoice_final`, `payment_proof`, `international_transfer`,
+`jurisdiction`.
+
+`genocide`, `crimes_against_humanity` and `war_crimes` follow Articles 6, 7 and 8 of the Rome
+Statute, one category per crime. Each holds three kinds of term: the statutory elements as courts and
+commissions of inquiry quote them (`intent to destroy`, `widespread or systematic attack`, `human
+shields`), the names of the acts and their traces as investigators and reporters write them (`mass
+grave`, `filtration camp`, `double tap strike`), and the words of the people ordering or inciting
+them (`wipe them out`, `take no prisoners`, dehumanising names for a group). A term that fits more
+than one crime sits in the one whose statute names it: torture and enforced disappearance under
+crimes against humanity, hostage-taking and pillage under war crimes. Hostage-taking in the sense of
+a kidnapping stays in `violence`, and forced prostitution outside armed conflict in
+`sexual_misconduct`.
 
 ## Term files
 
@@ -86,6 +98,10 @@ investigators' list, which itself follows the fraud phrases Ernst & Young and th
 | `uk-cpr-pre-action` | Practice Direction – Pre-Action Conduct and Protocols, UK Civil Procedure Rules | Open Government Licence |
 | `mou-definition` | Vocabulary of non-binding instruments | terms only |
 | `courts-db` | Court names from Free Law Project courts-db | BSD-2-Clause |
+| `rome-statute` | The elements of genocide, crimes against humanity and war crimes and the rules on incitement, command responsibility and superior orders, Articles 6–8, 25, 28 and 33 of the Rome Statute of the International Criminal Court, from its authentic Arabic, English, French, Russian and Spanish texts | treaty text |
+| `genocide-convention` | The punishable acts of Article III, Convention on the Prevention and Punishment of the Crime of Genocide | treaty text |
+| `un-atrocity-framework` | Incitement and dehumanisation indicators, **paraphrased**, UN *Framework of Analysis for Atrocity Crimes* | paraphrase only |
+| `vstgb` | German Code of Crimes against International Law (Völkerstrafgesetzbuch), §§ 3–12 | German statute, in the public domain under § 5 UrhG |
 
 Lists that would fit here but cannot be used: HurtLex (non-commercial licence), Hatebase and its
 successor (access-controlled), and the IWF keyword list (members only, and the kind of list that

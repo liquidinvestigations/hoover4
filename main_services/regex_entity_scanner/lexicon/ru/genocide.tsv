@@ -1,0 +1,38 @@
+term	tier	speaker	concept	source	review	note
+акт геноцида	H	accuser	act of genocide	genocide-convention	mt-edited	
+акты геноцида	H	accuser	acts of genocide	genocide-convention	mt-edited	
+заговор с целью совершения геноцида	H	accuser	conspiracy to commit genocide	genocide-convention	mt-edited	
+лагерь уничтожения	H	accuser	extermination camp	curated	mt-edited	
+лагеря уничтожения	H	accuser	extermination camp	curated	mt-edited	
+лагерях уничтожения	H	accuser	extermination camp	curated	mt-edited	
+намерение уничтожить	H	accuser	intent to destroy	rome-statute	mt-edited	ст. 6
+намерением уничтожить	H	accuser	intent to destroy	rome-statute	mt-edited	
+насильственная передача детей	H	accuser	forcible transfer of children	rome-statute	mt-edited	ст. 6 e)
+национальной, этнической, расовой или религиозной группы	H	accuser	national, ethnical, racial or religious group	rome-statute	mt-edited	
+национальную, этническую, расовую или религиозную группу	H	accuser	national, ethnical, racial or religious group	rome-statute	mt-edited	ст. 6
+никто не должен выжить	H	actor	none of them should survive	curated	mt-edited	
+подстрекательство к геноциду	H	accuser	incitement to genocide	curated	mt-edited	
+предотвращение деторождения	H	accuser	prevent births within the group	rome-statute	mt-edited	ст. 6 d)
+преступление геноцида	H	accuser	crime of genocide	genocide-convention	mt-edited	
+прямое и публичное подстрекательство	H	accuser	direct and public incitement	rome-statute	mt-edited	ст. 25
+соучастие в геноциде	H	accuser	complicity in genocide	genocide-convention	mt-edited	
+стереть их с лица земли	H	actor	wipe them off the face of the earth	un-atrocity-framework	mt-edited	call to destroy a group
+телесных повреждений или умственного расстройства	H	accuser	serious bodily or mental harm	rome-statute	mt-edited	ст. 6 b)
+убийство членов группы	H	accuser	killing members of the group	rome-statute	mt-edited	ст. 6 a)
+убить их всех	H	actor	kill them all	un-atrocity-framework	mt-edited	call to destroy a group
+уничтожение группы	H	accuser	destruction of the group	rome-statute	mt-edited	
+уничтожить их всех	H	actor	exterminate them	un-atrocity-framework	mt-edited	call to destroy a group
+условия жизни, рассчитанные на	H	accuser	conditions of life calculated to bring about	rome-statute	mt-edited	ст. 6 c)
+геноцид*	M	accuser	genocide	rome-statute	mt-edited	also political and historical argument
+голодомор	M	accuser	holodomor	curated	mt-edited	
+лагерь смерти	M	accuser	death camp	curated	mt-edited	also history teaching
+лагеря смерти	M	accuser	death camp	curated	mt-edited	also history teaching
+недочеловек*	M	actor	subhuman	un-atrocity-framework	mt-edited	dehumanising language
+отрицание геноцида	M	accuser	genocide denial	curated	mt-edited	
+по этническому признаку	M	accuser	because of their ethnicity	curated	mt-edited	
+расовая чистота	M	actor	racial purity	curated	mt-edited	
+шоа	M	accuser	shoah	curated	mt-edited	
+окончательное решение	L	accuser	final solution	curated	mt-edited	Holocaust; also an ordinary phrase
+паразиты	L	actor	vermin	un-atrocity-framework	mt-edited	dehumanising language only beside other signals
+тараканы	L	actor	cockroaches	un-atrocity-framework	mt-edited	dehumanising language only beside other signals
+холокост	L	accuser	holocaust	curated	mt-edited	also history teaching

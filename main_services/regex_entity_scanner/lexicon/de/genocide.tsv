@@ -1,0 +1,37 @@
+term	tier	speaker	concept	source	review	note
+alle umbringen	H	actor	kill them all	un-atrocity-framework	mt-edited	call to destroy a group
+als solche ganz oder teilweise zu zerstören	H	accuser	intent to destroy	vstgb	mt-edited	§ 6 VStGB
+Aufruf zum Völkermord	H	accuser	incitement to genocide	curated	mt-edited	
+Aufstachelung zum Völkermord	H	accuser	incitement to genocide	curated	mt-edited	
+Beihilfe zum Völkermord	H	accuser	complicity in genocide	genocide-convention	mt-edited	
+Geburten innerhalb der Gruppe	H	accuser	prevent births within the group	vstgb	mt-edited	§ 6 Abs. 1 Nr. 4 VStGB
+genozidale Absicht	H	accuser	genocidal intent	curated	mt-edited	
+gewaltsame Überführung von Kindern	H	accuser	forcible transfer of children	genocide-convention	mt-edited	
+keiner von ihnen darf überleben	H	actor	none of them should survive	curated	mt-edited	
+Kinder der Gruppe gewaltsam	H	accuser	forcibly transferring children	vstgb	mt-edited	§ 6 Abs. 1 Nr. 5 VStGB
+körperliche Zerstörung	H	accuser	conditions of life calculated to bring about	vstgb	mt-edited	§ 6 Abs. 1 Nr. 3 VStGB
+nationale, rassische, religiöse oder ethnische Gruppe	H	accuser	national, ethnical, racial or religious group	vstgb	mt-edited	§ 6 VStGB
+rottet sie aus	H	actor	exterminate them	un-atrocity-framework	mt-edited	call to destroy a group
+schwere körperliche oder seelische Schäden	H	accuser	serious bodily or mental harm	vstgb	mt-edited	§ 6 Abs. 1 Nr. 2 VStGB
+Tötung von Mitgliedern der Gruppe	H	accuser	killing members of the group	vstgb	mt-edited	
+Verbrechen des Völkermordes	H	accuser	crime of genocide	genocide-convention	mt-edited	
+vernichtet sie alle	H	actor	exterminate them	un-atrocity-framework	mt-edited	call to destroy a group
+Vernichtungslager	H	accuser	extermination camp	curated	mt-edited	
+von der Landkarte tilgen	H	actor	wipe them off the map	un-atrocity-framework	mt-edited	call to destroy a group
+Zerstörung der Gruppe	H	accuser	destruction of the group	vstgb	mt-edited	
+öffentliche Aufforderung zum Völkermord	H	accuser	direct and public incitement	curated	mt-edited	
+ausrotten	M	actor	exterminate them	un-atrocity-framework	mt-edited	also pests and weeds
+Endlösung	M	accuser	final solution	curated	mt-edited	Holocaust
+Genozid*	M	accuser	genocide	rome-statute	mt-edited	also political and historical argument
+Leugnung des Völkermords	M	accuser	genocide denial	curated	mt-edited	
+Rassenreinheit	M	actor	racial purity	curated	mt-edited	
+Schoah	M	accuser	shoah	curated	mt-edited	
+Todeslager	M	accuser	death camp	curated	mt-edited	also history teaching
+Voelkermord*	M	accuser	genocide	vstgb	mt-edited	ASCII spelling
+Völkermord*	M	accuser	genocide	vstgb	mt-edited	§ 6 VStGB; also political and historical argument
+wegen ihrer ethnischen Zugehörigkeit	M	accuser	because of their ethnicity	curated	mt-edited	
+Zwangsbekehrung*	M	accuser	forced conversion	curated	mt-edited	
+Zwangskonvertierung*	M	accuser	forced conversion	curated	mt-edited	
+Kakerlaken	L	actor	cockroaches	un-atrocity-framework	mt-edited	dehumanising language only beside other signals
+Schädlinge	L	actor	vermin	un-atrocity-framework	mt-edited	dehumanising language only beside other signals; also pest control
+Ungeziefer	L	actor	vermin	un-atrocity-framework	mt-edited	dehumanising language only beside other signals

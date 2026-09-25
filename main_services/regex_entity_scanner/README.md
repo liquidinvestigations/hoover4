@@ -187,12 +187,12 @@ Details in [docs/Explainer_Cards.md](docs/Explainer_Cards.md).
 
 Beside the entities, the service matches term lists that point a reader at passages worth reading
 first. They cover concealment, bribery, accounting manipulation, pressure and dissent, hostility,
-legal exposure, crime, financial crime, violence, sexual misconduct, coded language and scams, and
-the vocabulary of contracts, legal letters, memoranda, invoices, payment proofs, international
-transfers and governing-law clauses. There are twenty-three categories on one level, in English,
-German, French and Russian. A match is a *signal*: whole words, matched without regard to case,
-punctuation or accents, carrying a tier, who usually writes it, and flags when it is negated,
-quoted or inside a disclaimer. A signal proves nothing on its own, and every category says what it
+legal exposure, crime, financial crime, violence, sexual misconduct, genocide, crimes against
+humanity, war crimes, coded language and scams, and the vocabulary of contracts, legal letters,
+memoranda, invoices, payment proofs, international transfers and governing-law clauses. There are
+twenty-six categories on one level, in English, German, French and Russian. A match is a *signal*:
+whole words, matched without regard to case, punctuation or accents, carrying a tier, who usually
+writes it, and flags when it is negated, quoted or inside a disclaimer. A signal proves nothing on its own, and every category says what it
 does not prove.
 
 Signals never enter overlap resolution with entities, and they answer under their own
