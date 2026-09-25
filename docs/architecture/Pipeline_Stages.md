@@ -106,7 +106,8 @@ searched is [Search architecture](Search_Architecture.md).
 ## Stage timing, and the admin view over it
 
 A rolling sampler writes per-stage progress into `processing_eta_samples` in the global
-database, and per-activity durations land in `processing_task_runs`. Those two are what
+database, and per-activity durations, with one row for each file of a P3 stage activity,
+land in `processing_task_runs`. Those two are what
 answer "where is the time going" before any tuning decision, reading the workflow service's
 own history instead gives you days of retention and nothing aggregable.
 

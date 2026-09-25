@@ -1,8 +1,6 @@
-"""Video parsing activities and workflow for ffprobe and frame extraction."""
+"""Video parsing activities for ffprobe and frame extraction, and their stage activity."""
 
-from temporalio import workflow, activity
-from temporalio.common import RetryPolicy
-from datetime import timedelta
+from temporalio import activity
 from typing import Dict, Any, List
 from dataclasses import dataclass
 import subprocess
@@ -14,9 +12,13 @@ import logging
 
 log = logging.getLogger(__name__)
 
-from tasks.P3_parse_files.parse_archives import CleanupTempDirParams, RecordArchiveContainerParams
-from tasks.P0_scan_disk.workflows import HandleFoldersParams
-from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT, heartbeat_pump, with_heartbeat
+from tasks.P3_parse_files.batch_runner import BatchFile, BatchResult, StageBatchParams, run_batch
+from tasks.P3_parse_files.parse_archives import (
+    RecordArchiveContainerParams,
+    count_member_files,
+    record_archive_container,
+)
+from tasks.heartbeat import heartbeat_pump, with_heartbeat
 
 
 def _run_ffprobe_json(file_path: str, timeout_seconds: int) -> Dict[str, Any]:
@@ -197,98 +199,36 @@ def video_extract_frames_and_subtitles(params: VideoExtractParams) -> Dict[str, 
     return {"out_dir": out_dir}
 
 
+@activity.defn
+@with_heartbeat
+def video_batch(params: StageBatchParams) -> BatchResult:
+    """Probe each video of a group, extract its frames and subtitles, then record it.
 
-@dataclass
-class VideoProcessingWorkflowParams:
-    collectionname: str
-    collection_dataset: str
-    video_hash: str
-    file_path: str
-    timeout_seconds: int
-
-
-
-
-@workflow.defn
-class VideoProcessingAndScan:
-    @workflow.run
-    async def run(self, params: VideoProcessingWorkflowParams) -> str:
-        collection_dataset: str = params.collection_dataset
-        video_hash: str = params.video_hash
-        file_path: str = params.file_path
-
-        # 1) ffprobe and store metadata
-        _ = await workflow.execute_activity(
-            video_ffprobe_and_store,
-            VideoMetaParams(
+    The value of a file is the dictionary of `video_extract_frames_and_subtitles` with
+    `member_count` added. A file whose probe or extraction fails gets no archive row.
+    """
+    def step(file: BatchFile) -> Dict[str, Any]:
+        video_ffprobe_and_store(VideoMetaParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            video_hash=file.item_hash,
+            file_path=file.file_path,
+        ))
+        value = video_extract_frames_and_subtitles(VideoExtractParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            video_hash=file.item_hash,
+            file_path=file.file_path,
+        ))
+        if value.get("out_dir"):
+            record_archive_container(RecordArchiveContainerParams(
                 collectionname=params.collectionname,
-                collection_dataset=collection_dataset,
-                video_hash=video_hash,
-                file_path=file_path,
-            ),
-            start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
+                collection_dataset=params.collection_dataset,
+                archive_hash=file.item_hash,
+                archive_types=["video"],
+            ))
+        return {**value, "member_count": count_member_files(value.get("out_dir") or "")}
 
-        # 2) Extract frames and subtitles
-        res = await workflow.execute_activity(
-            video_extract_frames_and_subtitles,
-            VideoExtractParams(
-                collectionname=params.collectionname,
-                collection_dataset=collection_dataset,
-                video_hash=video_hash,
-                file_path=file_path,
-            ),
-            start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
-        out_dir = res.get("out_dir")
-
-        # 3) Record an archive-like container and scan folder
-        if out_dir:
-            args = HandleFoldersParams(
-                collectionname=params.collectionname,
-                collection_dataset=collection_dataset,
-                dataset_path=out_dir,
-                folder_path="/",
-                container_hash=video_hash,
-                root_path_prefix="",
-            )
-            with workflow.unsafe.imports_passed_through():
-                from tasks.P0_scan_disk.workflows import HandleFolders
-                from tasks.P3_parse_files.parse_archives import cleanup_temp_dir
-                from tasks.P3_parse_files.parse_archives import record_archive_container
-                from tasks.visibility import dataset_search_attributes
-
-            await workflow.execute_activity(
-                record_archive_container,
-                RecordArchiveContainerParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=collection_dataset,
-                    archive_hash=video_hash,
-                    archive_types=["video"],
-                ),
-                start_to_close_timeout=timedelta(minutes=10),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-            )
-
-            await workflow.execute_child_workflow(
-                HandleFolders.run,
-                args,
-                id=f"scan-video-{collection_dataset}-{video_hash}",
-                task_queue="processing-common-queue",
-                search_attributes=dataset_search_attributes(collection_dataset),
-            )
-
-            await workflow.execute_activity(
-                cleanup_temp_dir,
-                CleanupTempDirParams(out_dir=out_dir),
-                start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-            )
-
-        return "video_ok"
+    return run_batch("video_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="video_extract_frames_and_subtitles")

@@ -22,7 +22,9 @@ The workflow starts at the dataset root. Each `HandleFolders` run scans one fold
 sorted name ranges. The planning activity returns range boundaries. The scan activity ingests
 file batches and returns only child folder names. A shared limit keeps at most 16 child
 workflows in flight. A run continues from its last range boundary when its history reaches its
-limit. Hashing uses one streaming pass for `sha3_256`, `md5`, `sha1`, and `sha256`. Blob storage
+limit. P3 extracts archives, emails, PDFs and videos into container folders. The member scan of
+a P3 group scans those folders in process with the same two activity functions, and starts no
+`HandleFolders`. Hashing uses one streaming pass for `sha3_256`, `md5`, `sha1`, and `sha256`. Blob storage
 uses ClickHouse (`blob_values`) for small files and the collection Garage bucket for larger files.
 
 ## A rescan detects change, and it detects deletion

@@ -8,6 +8,9 @@ import json
 import os
 import logging
 from tasks.heartbeat import with_heartbeat
+from tasks.P3_parse_files.batch_runner import (
+    BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
+)
 
 log = logging.getLogger(__name__)
 
@@ -83,4 +86,24 @@ def parse_audio_metadata_and_store(params: ParseAudioParams) -> str:
         insert_arrow_idempotent(client, "audio_metadata", tbl_meta)
 
     return "audio_ok"
+
+
+@activity.defn
+@with_heartbeat
+def parse_audio_metadata_batch(params: StageBatchParams) -> BatchResult:
+    """The audio metadata of each file of a group, one `parse_audio_metadata_and_store` call a file."""
+    def step(file: BatchFile) -> str:
+        return parse_audio_metadata_and_store(ParseAudioParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            file_hash=file.item_hash,
+            file_path=file.file_path,
+            timeout_seconds=try_budget_seconds("parse_audio_metadata_batch",
+                                               file.file_size_bytes),
+            op_id=params.op_id,
+        ))
+
+    return run_batch("parse_audio_metadata_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="parse_audio_metadata_and_store")
 

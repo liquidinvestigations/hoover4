@@ -1,7 +1,6 @@
 """Error recording keeps every Temporal activity argument below the payload limit."""
 
 import asyncio
-from dataclasses import asdict
 from datetime import datetime, timezone
 import json
 import hashlib
@@ -10,11 +9,17 @@ import pytest
 
 from temporalio import workflow
 
+from temporalio.converter import PayloadConverter
+
 from tasks.P3_parse_files import parse_common
-from tasks.operation_failure_capture import TEMPORAL_BLOB_LIMIT_BYTES
+from tasks.payload_guard import payload_size
+
+#: The budget of one record input, in encoded bytes as the payload guard measures it.
+BUDGET = 262_144
 
 
 def _record_errors(monkeypatch, count: int, error_log: str):
+    assert parse_common.ERROR_PAYLOAD_BUDGET_BYTES == BUDGET
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     scheduled = []
     results = [RuntimeError("failed") for _ in range(count)]
@@ -47,7 +52,8 @@ def _record_errors(monkeypatch, count: int, error_log: str):
 
 
 def _serialized_size(params) -> int:
-    return len(json.dumps(asdict(params)).encode("utf-8"))
+    """The size that the payload guard measures for one activity input."""
+    return payload_size(PayloadConverter.default.to_payloads([params])[0])
 
 
 def test_short_errors_use_one_activity(monkeypatch):
@@ -55,7 +61,7 @@ def test_short_errors_use_one_activity(monkeypatch):
 
     assert inserted == 10
     assert len(scheduled) == 1
-    assert _serialized_size(scheduled[0]) < TEMPORAL_BLOB_LIMIT_BYTES
+    assert _serialized_size(scheduled[0]) <= BUDGET
 
 
 def test_production_sized_errors_are_split_below_the_limit(monkeypatch):
@@ -64,7 +70,7 @@ def test_production_sized_errors_are_split_below_the_limit(monkeypatch):
 
     assert inserted == 5000
     assert len(scheduled) > 1
-    assert all(_serialized_size(params) < TEMPORAL_BLOB_LIMIT_BYTES for params in scheduled)
+    assert all(_serialized_size(params) <= BUDGET for params in scheduled)
 
 
 def test_oversized_error_log_is_truncated_before_scheduling(monkeypatch):
@@ -73,7 +79,7 @@ def test_oversized_error_log_is_truncated_before_scheduling(monkeypatch):
     assert inserted == 1
     assert len(scheduled) == 1
     assert parse_common.ERROR_PAYLOAD_TRUNCATION_MARKER in scheduled[0].errors[0]["error_logs"]
-    assert _serialized_size(scheduled[0]) < TEMPORAL_BLOB_LIMIT_BYTES
+    assert _serialized_size(scheduled[0]) <= BUDGET
 
 
 def test_no_errors_does_not_schedule_an_activity(monkeypatch):
@@ -111,3 +117,28 @@ def test_helper_rejects_missing_source_ids_before_writing(monkeypatch):
             [RuntimeError("failed")], task_ids=["P4_ExtractEntities"],
             starts=[now], collectionname="collection", collection_dataset="dataset",
             item_hashes=["hash"], source_execution_ids=[], op_id="op"))
+
+
+def test_200_ascii_rows_of_5_kb_stay_under_the_budget(monkeypatch):
+    inserted, scheduled = _record_errors(monkeypatch, 200, "e" * 5000)
+    assert inserted == 200
+    assert sum(len(params.errors) for params in scheduled) == 200
+    assert all(_serialized_size(params) <= BUDGET for params in scheduled)
+
+
+def test_200_arabic_rows_of_5_kb_stay_under_the_budget_in_more_batches(monkeypatch):
+    _, ascii_batches = _record_errors(monkeypatch, 200, "e" * 5000)
+    inserted, scheduled = _record_errors(monkeypatch, 200, "\u0639" * 5000)
+    assert inserted == 200
+    assert all(_serialized_size(params) <= BUDGET for params in scheduled)
+    assert len(scheduled) > len(ascii_batches)
+    # The measure is exact, so a full batch sits close to the budget.
+    assert max(_serialized_size(params) for params in scheduled) > BUDGET - 40_000
+
+
+def test_one_arabic_row_of_1_mb_is_cut_to_fit(monkeypatch):
+    inserted, scheduled = _record_errors(monkeypatch, 1, "\u0639" * (1024 * 1024))
+    assert inserted == 1
+    assert len(scheduled) == 1
+    assert scheduled[0].errors[0]["error_logs"].endswith(parse_common.ERROR_PAYLOAD_TRUNCATION_MARKER)
+    assert _serialized_size(scheduled[0]) <= BUDGET

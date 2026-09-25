@@ -93,8 +93,9 @@ admin processing view draws. Its stage identifiers are stored strings mirrored a
 in the shared Rust types. A stage identifier that exists on one side only makes a bar
 disappear with no error anywhere.
 
-`processing_task_runs` carries per-activity durations, one row per **attempt**: a retry is a
-second execution and gets a second row, which is what makes "this task costs forty minutes"
+`processing_task_runs` carries per-activity durations, one row per **attempt**, and one row
+for each file of an attempt of a P3 stage activity: a retry is a second execution and gets a
+second row, which is what makes "this task costs forty minutes"
 include the time spent failing. That is the table to read before any tuning decision.
 
 ## The search engine

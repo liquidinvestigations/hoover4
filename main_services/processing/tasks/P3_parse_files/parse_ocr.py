@@ -32,6 +32,9 @@ from temporalio import activity
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.P3_parse_files.image_loader import image_dimensions
 from tasks.task_timing import SkippedOutcome
+from tasks.P3_parse_files.batch_runner import (
+    BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
+)
 from tasks.text_sources import (
     ENGINE_EASYOCR, ENGINE_TESSERACT, MIN_OCR_IMAGE_PX, ocr_extracted_by,
 )
@@ -225,3 +228,23 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
     log.info("[P3] OCR %s complete for %s: %d/%d passes in %d ms",
              params.engine, params.file_hash, done, len(passes), total_ms)
     return f"ocr_ok_{done}_passes"
+
+
+@activity.defn
+@with_heartbeat
+def run_ocr_batch(params: StageBatchParams) -> BatchResult:
+    """OCR with the engine `params.engine` for each image of a group, one `run_ocr_and_store` call a file."""
+    def step(file: BatchFile) -> str | SkippedOutcome:
+        return run_ocr_and_store(RunOcrParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            file_hash=file.item_hash,
+            file_path=file.file_path,
+            engine=params.engine,
+            timeout_seconds=try_budget_seconds("run_ocr_batch", file.file_size_bytes),
+            op_id=params.op_id,
+        ))
+
+    return run_batch("run_ocr_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="run_ocr_and_store")

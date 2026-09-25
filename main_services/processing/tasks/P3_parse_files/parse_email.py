@@ -1,14 +1,19 @@
-"""Email parsing activities and workflow for headers and attachments."""
+"""Email parsing activities for headers and attachments, and their stage activities."""
 
-from temporalio import activity, workflow
-from temporalio.common import RetryPolicy
+from temporalio import activity
 from typing import Dict, Any, List
 from dataclasses import dataclass
 import json
 import os
 import logging
-from datetime import timedelta
-from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT, with_heartbeat
+from tasks.heartbeat import with_heartbeat
+from tasks.P3_parse_files.batch_runner import (
+    BatchFile,
+    BatchResult,
+    StageBatchParams,
+    file_budget_seconds,
+    run_batch,
+)
 
 log = logging.getLogger(__name__)
 
@@ -261,9 +266,8 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
     Returns:
       - { "out_dir": str, "attachment_count": int }
 
-    The count is what lets the caller skip the scan entirely. Most messages in a mail
-    corpus carry no attachment at all, and scanning the empty directory anyway costs a
-    child workflow and two activities per message to discover nothing.
+    The count lets the group give the member scan no folder for a message with no
+    attachment, which is most messages in a mail corpus.
     """
     import os as _os
     from tasks.P3_parse_files.temp_dirs import make_temp_dir
@@ -304,8 +308,8 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
         written += 1
 
     if written == 0:
-        # Remove it here rather than leaving the caller a cleanup activity to run for
-        # a directory that was never used.
+        # Remove it here, because the member scan gets no folder for this message and
+        # nothing else removes it.
         try:
             _os.rmdir(out_dir)
         except OSError:
@@ -313,84 +317,43 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
     return {"out_dir": out_dir, "attachment_count": written}
 
 
-@dataclass
-class EmailExtractionWorkflowParams:
-    collectionname: str
-    collection_dataset: str
-    email_hash: str
-    timeout_seconds: int
-    file_path: str | None = None
-    archive_path: str | None = None
+@activity.defn
+@with_heartbeat
+def parse_email_headers_batch(params: StageBatchParams) -> BatchResult:
+    """Store the headers and the text parts of each email of a group."""
+    def step(file: BatchFile) -> str:
+        return parse_email_extract_text_headers(ParseEmailHeadersParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            email_hash=file.item_hash,
+            file_path=file.file_path,
+        ))
+
+    return run_batch("parse_email_headers_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="parse_email_extract_text_headers")
 
 
+@activity.defn
+@with_heartbeat
+def extract_email_attachments_batch(params: StageBatchParams) -> BatchResult:
+    """Write the attachments of each email of a group into its own temporary folder.
 
-@workflow.defn
-class EmailExtractionAndScan:
-    """Workflow that extracts email headers/text, unpacks attachments, scans via P0, and cleans up."""
-    @workflow.run
-    async def run(self, params: EmailExtractionWorkflowParams) -> str:
-        # Defensive read of file_path to avoid KeyError on older histories
-        file_path: str = (params.file_path or params.archive_path or "")
-        if not file_path:
-            from temporalio.exceptions import ApplicationError
-            raise ApplicationError("EmailExtractionAndScan missing file_path", non_retryable=True)
+    The value of a file is the dictionary of `extract_email_attachments_to_temp` with
+    `member_count` added.
+    """
+    from tasks.P3_parse_files.parse_archives import count_member_files
 
-        # 1) Extract headers + text content
-        await workflow.execute_activity(
-            parse_email_extract_text_headers,
-            ParseEmailHeadersParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, email_hash=params.email_hash, file_path=file_path),
-            start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
+    def step(file: BatchFile) -> Dict[str, Any]:
+        value = extract_email_attachments_to_temp(ExtractEmailAttachmentsParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            email_hash=file.item_hash,
+            file_path=file.file_path,
+            timeout_seconds=file_budget_seconds(file.file_size_bytes),
+        ))
+        return {**value, "member_count": count_member_files(value.get("out_dir") or "")}
 
-        # 2) Extract attachments to temp dir
-        res = await workflow.execute_activity(
-            extract_email_attachments_to_temp,
-            ExtractEmailAttachmentsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, email_hash=params.email_hash, file_path=file_path, timeout_seconds=params.timeout_seconds),
-            start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
-        out_dir = res.get("out_dir")
-
-        # A message with no attachments is the common case in a mail corpus, and the
-        # activity above has already removed the empty directory. Scanning it anyway
-        # costs a child workflow and a cleanup activity per message to find nothing --
-        # on a maildir that is about a third of every Temporal execution the ingest
-        # makes. `attachment_count` is absent only on a result written by an older
-        # worker mid-upgrade, where the old unconditional behaviour is still correct.
-        if res.get("attachment_count", 1) == 0:
-            return out_dir
-
-        # 3) Scan extracted attachments via P0 as child workflow
-        with workflow.unsafe.imports_passed_through():
-            from tasks.P0_scan_disk.workflows import HandleFolders, HandleFoldersParams
-            from tasks.visibility import dataset_search_attributes
-        await workflow.execute_child_workflow(
-            HandleFolders.run,
-            HandleFoldersParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                dataset_path=out_dir,
-                folder_path="/",
-                container_hash=params.email_hash,
-                root_path_prefix="",
-            ),
-            id=f"scan-email-{params.collection_dataset}-{params.email_hash}",
-            task_queue="processing-common-queue",
-            search_attributes=dataset_search_attributes(params.collection_dataset),
-        )
-
-        # 4) Cleanup temp dir (reuse cleanup_temp_dir from archives module)
-        with workflow.unsafe.imports_passed_through():
-            from tasks.P3_parse_files.parse_archives import cleanup_temp_dir, CleanupTempDirParams
-        await workflow.execute_activity(
-            cleanup_temp_dir,
-            CleanupTempDirParams(out_dir=out_dir),
-            start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
-
-        return out_dir
+    return run_batch("extract_email_attachments_batch", params.files,
+                     key=lambda f: f.item_hash, size=lambda f: f.file_size_bytes, step=step,
+                     task_name="extract_email_attachments_to_temp")

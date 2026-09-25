@@ -247,20 +247,18 @@ async def run_common_worker():
         ExecuteSinglePlan,
         ProcessItemsBatched,
     )
-    from .P3_parse_files.workflows import ParseSingleFile
-    from .P3_parse_files.parse_archives import ArchiveExtractionAndScan, extract_archive_to_temp, cleanup_temp_dir, record_archive_container
-    from .P3_parse_files.parse_email import parse_email_extract_text_headers, extract_email_attachments_to_temp, EmailExtractionAndScan
+    from .P3_parse_files.parse_archives import extract_archive_batch
+    from .P3_parse_files.parse_email import parse_email_headers_batch, extract_email_attachments_batch
     from .P3_parse_files.document_dates import resolve_document_dates
-    from .P3_parse_files.parse_text import extract_plaintext_chunks
-    from .P3_parse_files.parse_office_xml import parse_office_xml_and_store
-    from .P3_parse_files.parse_table import parse_table_and_store
-    from .P3_parse_files.parse_mime import (
-        detect_mime_all,
-    )
-    from .P3_parse_files.parse_pdf import PdfProcessingAndScan, pdf_get_metadata_and_store, pdf_small_extract_text_and_images, pdf_large_split_to_chunks
-    from .P3_parse_files.parse_image import parse_image_metadata_and_store
-    from .P3_parse_files.parse_audio import parse_audio_metadata_and_store
-    from .P3_parse_files.parse_video import VideoProcessingAndScan, video_ffprobe_and_store, video_extract_frames_and_subtitles
+    from .P3_parse_files.parse_text import extract_plaintext_batch
+    from .P3_parse_files.parse_office_xml import parse_office_xml_batch
+    from .P3_parse_files.parse_table import parse_table_batch
+    from .P3_parse_files.parse_mime import detect_mime_batch
+    from .P3_parse_files.parse_pdf import pdf_metadata_batch, pdf_extract_batch
+    from .P3_parse_files.parse_image import parse_image_metadata_batch
+    from .P3_parse_files.parse_audio import parse_audio_metadata_batch
+    from .P3_parse_files.parse_video import video_batch
+    from .P3_parse_files.member_scan import scan_container_folders
     from .plan_utils import fetch_plan_hashes
     from .P4_extract_entities.workflows import ExtractEntitiesForPlan, ScanRegexEntitiesForPlan
     from .P4_extract_entities.scan_regex_entities import scan_regex_entities_for_hashes
@@ -353,11 +351,6 @@ async def run_common_worker():
             ExecutePlans,
             ExecuteSinglePlan,
             ProcessItemsBatched,
-            ParseSingleFile,
-            ArchiveExtractionAndScan,
-            EmailExtractionAndScan,
-            PdfProcessingAndScan,
-            VideoProcessingAndScan,
             ExtractEntitiesForPlan,
             ScanRegexEntitiesForPlan,
             ChunkEmbedForPlan,
@@ -383,23 +376,23 @@ async def run_common_worker():
             mark_plan_finished,
             ensure_temp_dir_exists,
             record_processing_errors,
-            extract_archive_to_temp,
-            cleanup_temp_dir,
-            record_archive_container,
-            parse_email_extract_text_headers,
-            extract_email_attachments_to_temp,
             resolve_document_dates,
-            extract_plaintext_chunks,
-            parse_office_xml_and_store,
-            parse_table_and_store,
-            pdf_get_metadata_and_store,
-            pdf_small_extract_text_and_images,
-            pdf_large_split_to_chunks,
-            parse_image_metadata_and_store,
-            parse_audio_metadata_and_store,
-            video_ffprobe_and_store,
-            video_extract_frames_and_subtitles,
-            detect_mime_all,
+
+            # The stage activities of the group workflow on this queue. Each one runs
+            # its per-file function for every file of its stage.
+            detect_mime_batch,
+            extract_plaintext_batch,
+            parse_office_xml_batch,
+            parse_table_batch,
+            parse_image_metadata_batch,
+            parse_audio_metadata_batch,
+            parse_email_headers_batch,
+            extract_email_attachments_batch,
+            extract_archive_batch,
+            pdf_metadata_batch,
+            pdf_extract_batch,
+            video_batch,
+            scan_container_folders,
 
             # Regex entity scanning: CPU work in another container, so it pipelines
             # HTTP here and belongs on the common queue rather than on the NLP tier's.
@@ -443,7 +436,7 @@ async def run_common_worker():
 
 async def run_tika_worker():
     # Localized import for Tika-only worker
-    from .P3_parse_files.parse_tika import run_tika_and_store
+    from .P3_parse_files.parse_tika import run_tika_batch
     from .visibility import ensure_search_attributes
 
     log.info("Starting Tika worker...")
@@ -459,7 +452,7 @@ async def run_tika_worker():
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
           workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
           workflows=[],
-          activities=[run_tika_and_store],
+          activities=[run_tika_batch],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,
           max_concurrent_workflow_tasks=CONCURRENCY*2,
@@ -475,12 +468,12 @@ async def run_ocr_worker():
     # (`processing-ocr-queue`, not `processing-easyocr-queue`) because OCR is becoming
     # several engines behind one HTTP contract, and a queue named after one of them
     # would have to be renamed again -- which costs a full reset every time.
-    from .P3_parse_files.parse_ocr import run_ocr_and_store
+    from .P3_parse_files.parse_ocr import run_ocr_batch
     # Searchable-PDF assembly shares this queue rather than getting one of its own: it is
     # one OCR call per page, so it must be bounded by the same tier that bounds image OCR.
     # A queue of its own would let a 500-page scan and every image in the corpus compete
     # for the OCR service from two directions at once.
-    from .P3_parse_files.parse_ocr_pdf import run_ocr_pdf_and_store
+    from .P3_parse_files.parse_ocr_pdf import run_ocr_pdf_batch
     from .visibility import ensure_search_attributes
 
     log.info("Starting OCR worker...")
@@ -496,7 +489,7 @@ async def run_ocr_worker():
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
           workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
           workflows=[],
-          activities=[run_ocr_and_store, run_ocr_pdf_and_store],
+          activities=[run_ocr_batch, run_ocr_pdf_batch],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,
           max_concurrent_workflow_tasks=CONCURRENCY*2,

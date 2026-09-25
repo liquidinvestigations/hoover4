@@ -14,8 +14,6 @@ from tasks.P2_execute_plan.activities import (
 PROCESSING_ROOT = Path(__file__).parents[2]
 ERROR_WRITER_CALL_FILES = (
     "tasks/P2_execute_plan/workflows.py",
-    "tasks/P3_parse_files/workflows.py",
-    "tasks/P3_parse_files/parse_pdf.py",
     "tasks/P4_extract_entities/workflows.py",
     "tasks/P5_chunk_embed/workflows.py",
     "tasks/P6_index_data/workflows.py",
@@ -131,5 +129,5 @@ def test_every_error_writer_call_passes_op_id():
         for relative_path, node in calls
         if "op_id" not in {keyword.arg for keyword in node.keywords}
     ]
-    assert len(calls) == 8
+    assert len(calls) == 6
     assert not missing, "Error writer calls without op_id: " + ", ".join(missing)

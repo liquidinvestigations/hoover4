@@ -73,6 +73,52 @@ HEARTBEAT_INTERVAL_SECONDS = HEARTBEAT_INTERVAL.total_seconds()
 #: nothing at all.
 ACTIVITY_MAX_ATTEMPTS = 5
 
+#: The batch progress of each running attempt, by workflow run id, activity id and attempt.
+#: `batch_progress` registers it, and `send_heartbeat` reads it from any thread.
+_BATCH_PROGRESS: dict = {}
+
+
+def _attempt_key() -> tuple:
+    info = activity.info()
+    return (info.workflow_run_id, info.activity_id, info.attempt)
+
+
+def send_heartbeat(*details) -> None:
+    """Send one heartbeat of this activity attempt.
+
+    Every heartbeat that a stage activity can send goes through here. When the batch
+    runner has registered a progress for this attempt, its detail goes first. When the
+    progress returns None, the file in progress has passed its time limit, and the
+    heartbeat is dropped, so the server ends the attempt at HEARTBEAT_TIMEOUT.
+    """
+    if not activity.in_activity():
+        return
+    progress = _BATCH_PROGRESS.get(_attempt_key()) if _BATCH_PROGRESS else None
+    if progress is None:
+        activity.heartbeat(*details)
+        return
+    first = progress.heartbeat_detail()
+    if first is not None:
+        activity.heartbeat(first, *details)
+
+
+@contextmanager
+def batch_progress(progress):
+    """Register `progress` for this activity attempt while the body runs.
+
+    `progress.heartbeat_detail()` returns the first heartbeat detail, or None to drop the
+    heartbeat. Outside an activity nothing is registered.
+    """
+    if not activity.in_activity():
+        yield
+        return
+    key = _attempt_key()
+    _BATCH_PROGRESS[key] = progress
+    try:
+        yield
+    finally:
+        _BATCH_PROGRESS.pop(key, None)
+
 
 def worker_is_stopping() -> bool:
     """Whether this activity has been asked to stop.
@@ -113,8 +159,7 @@ def stop_if_worker_is_stopping(*progress) -> None:
     from temporalio.exceptions import ApplicationError
 
     detail = " ".join(str(p) for p in progress)
-    if activity.in_activity():
-        activity.heartbeat(*progress)
+    send_heartbeat(*progress)
     raise ApplicationError(
         "worker is shutting down; stopped at an item boundary"
         + (" after %s" % detail if detail else "")
@@ -148,8 +193,7 @@ class HeartbeatClock:
         if now - self._last < self.interval_seconds:
             return False
         self._last = now
-        if activity.in_activity():
-            activity.heartbeat(*details)
+        send_heartbeat(*details)
         return True
 
 
@@ -231,7 +275,7 @@ def heartbeat_pump(*details, interval_seconds: float = HEARTBEAT_INTERVAL_SECOND
     def pump():
         while not done.wait(interval_seconds):
             try:
-                ctx.run(activity.heartbeat, *details)
+                ctx.run(send_heartbeat, *details)
             except Exception:
                 return          # activity finished or was cancelled; stop quietly
 

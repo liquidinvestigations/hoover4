@@ -144,8 +144,92 @@ def test_durable_operation_result_writes_outcomes_before_task_run(monkeypatch):
     monkeypatch.setattr(clickhouse, "insert_durable", lambda _client, table, *_args,
                         **_kwargs: written.append(table))
 
-    task_timing._write_operation_result("collection", ["task"], [["outcome"]])
+    task_timing._write_operation_result("collection", [["task"]], [["outcome"]])
     assert written == ["processing_document_outcomes", "processing_task_runs"]
+
+
+# -- the rows of a stage activity --------------------------------------------
+
+
+@dataclass
+class _StageParams:
+    collectionname: str = "testdata"
+    collection_dataset: str = "testdata_testfiles"
+    plan_hash: str = "planhash"
+    op_id: str = ""
+    engine: str = ""
+
+
+def _batch():
+    from tasks.P3_parse_files.batch_runner import BatchResult, FileResult
+
+    return BatchResult(stage="extract_plaintext_batch", results=[
+        FileResult("h1", "extract_plaintext_chunks", "ok", attempts=1,
+                   started_at_ms=1_790_000_000_000, run_time_ms=11),
+        FileResult("h2", "extract_plaintext_chunks", "skipped", attempts=1, run_time_ms=12),
+        FileResult("h3", "extract_plaintext_chunks", "failed", error_type="Broken",
+                   attempts=5, run_time_ms=13),
+    ])
+
+
+def test_a_batch_with_an_op_id_writes_a_run_row_for_each_file_and_its_outcomes(monkeypatch):
+    calls = []
+    monkeypatch.setattr(task_timing, "_write_operation_result",
+                        lambda collection, rows, outcomes: calls.append((rows, outcomes)))
+    batch = _batch()
+    interceptor = _TimingActivityInbound(_FakeNext(result=batch))
+    result = asyncio.run(interceptor.execute_activity(
+        _input("extract_plaintext_batch", _StageParams(op_id="op"))))
+
+    assert result is batch
+    [(rows, outcomes)] = calls
+    columns = list(_RUNS_COLUMNS)
+    task, hash_, outcome, run_time = (columns.index(c) for c in
+                                      ("task_name", "hash", "outcome", "run_time_ms"))
+    assert [(r[task], r[hash_], r[outcome], r[run_time]) for r in rows] == [
+        ("extract_plaintext_chunks", "h1", "ok", 11),
+        ("extract_plaintext_chunks", "h2", "skipped", 12),
+        ("extract_plaintext_chunks", "h3", "error", 13),
+    ]
+    assert rows[0][columns.index("started_at")].year == 2026
+    assert [(o[2], o[3], o[4], o[8]) for o in outcomes] == [
+        ("h1", "extract_plaintext_chunks", "extract_plaintext_chunks", "ok"),
+        ("h2", "extract_plaintext_chunks", "extract_plaintext_chunks", "skipped"),
+    ]
+
+
+def test_a_batch_without_an_op_id_buffers_one_run_row_for_each_file(recorder, monkeypatch):
+    monkeypatch.setattr(task_timing, "_write_operation_result",
+                        lambda *args: pytest.fail("no op_id writes no outcome row"))
+    interceptor = _TimingActivityInbound(_FakeNext(result=_batch()))
+    asyncio.run(interceptor.execute_activity(_input("extract_plaintext_batch", _StageParams())))
+    rows = _row(recorder)
+    assert [row[2] for row in rows] == ["h1", "h2", "h3"]
+    assert [row[3] for row in rows] == ["ok", "skipped", "error"]
+    assert _row(recorder, "processing_document_outcomes") == []
+
+
+def test_a_stage_activity_that_raises_writes_one_row_for_the_stage(recorder):
+    interceptor = _TimingActivityInbound(_FakeNext(error=RuntimeError("stuck")))
+    with pytest.raises(RuntimeError):
+        asyncio.run(interceptor.execute_activity(
+            _input("extract_plaintext_batch", _StageParams(op_id="op"))))
+    rows = _row(recorder)
+    assert [(row[1], row[2], row[3]) for row in rows] == [
+        ("extract_plaintext_batch", "planhash", "error")]
+
+
+def test_the_ocr_outcome_name_carries_the_engine_of_the_stage(monkeypatch):
+    from tasks.P3_parse_files.batch_runner import BatchResult, FileResult
+
+    calls = []
+    monkeypatch.setattr(task_timing, "_write_operation_result",
+                        lambda collection, rows, outcomes: calls.append(outcomes))
+    batch = BatchResult(stage="run_ocr_batch",
+                        results=[FileResult("h1", "run_ocr_and_store", "ok")])
+    asyncio.run(_TimingActivityInbound(_FakeNext(result=batch)).execute_activity(
+        _input("run_ocr_batch", _StageParams(op_id="op", engine="easyocr"))))
+    assert calls[0][0][3] == "run_ocr_and_store[easyocr]"
 
 
 # -- the interceptor ---------------------------------------------------------

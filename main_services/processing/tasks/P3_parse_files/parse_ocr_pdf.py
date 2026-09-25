@@ -28,6 +28,13 @@ from typing import List, Optional
 from temporalio import activity
 
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
+from tasks.P3_parse_files.batch_runner import (
+    BatchFile,
+    BatchResult,
+    StageBatchParams,
+    file_budget_seconds,
+    run_batch,
+)
 from tasks.task_timing import SkippedOutcome
 from tasks.text_sources import ENGINE_EASYOCR, ENGINE_TESSERACT
 
@@ -247,3 +254,23 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str | SkippedOutcome:
     log.info("[P3] OCR-PDF %s complete for %s: %d/%d variants in %d ms",
              params.engine, params.pdf_hash, done, len(passes), total_ms)
     return f"ocr_pdf_ok_{done}_variants"
+
+
+@activity.defn
+@with_heartbeat
+def run_ocr_pdf_batch(params: StageBatchParams) -> BatchResult:
+    """A searchable PDF of each PDF of a group, from the OCR engine `params.engine`."""
+    def step(file: BatchFile) -> str | SkippedOutcome:
+        return run_ocr_pdf_and_store(RunOcrPdfParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            pdf_hash=file.item_hash,
+            file_path=file.file_path,
+            engine=params.engine,
+            timeout_seconds=file_budget_seconds(file.file_size_bytes),
+            op_id=params.op_id,
+        ))
+
+    return run_batch("run_ocr_pdf_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="run_ocr_pdf_and_store")

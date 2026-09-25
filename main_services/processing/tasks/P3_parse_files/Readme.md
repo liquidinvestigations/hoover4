@@ -1,6 +1,6 @@
 # P3 - Parse Files
 
-This stage parses downloaded files by type and writes structured content and metadata to ClickHouse. It uses Temporal workflows to route files to specialized handlers.
+This stage parses downloaded files by type and writes structured content and metadata to ClickHouse. The group workflow `ProcessItemsBatched` of P2 routes the files of a group to stage activities, and each stage activity calls the per-file function of its stage for each of its files.
 
 ## Key Responsibilities
 
@@ -15,7 +15,10 @@ This stage parses downloaded files by type and writes structured content and met
 
 ## Entry Points
 
-- Workflow: `ParseSingleFile` in `workflows.py`
+- Stage activities: one `*_batch` activity for each stage, in the module of its per-file
+  function (see "Stage activities" below), and `scan_container_folders` in `member_scan.py`
+- Runner: `batch_runner.py`, the shared loop of every stage activity
+- Routing and error names: the pure functions of `workflows.py`
 - Activities: `parse_*` modules (e.g., `parse_pdf.py`, `parse_email.py`, `parse_image.py`)
 - OCR: `parse_ocr.py` (images -> `raw_ocr_results` + text) and `parse_ocr_pdf.py`
   (PDFs -> a derived searchable PDF + a `pdf_ocr_results` row)
@@ -172,18 +175,65 @@ The disagreement is resolved once, at the end, by `resolve_canonical_file_type` 
 `P6_index_data`. That is where a document gets the single type the search index and the
 filter pane use. Nothing here picks a winner.
 
+## Stage activities and the batch runner
+
+The group workflow runs one activity for each stage over the files of that stage. Each
+stage activity calls `run_batch` in `batch_runner.py`, with a step that calls the existing
+per-file function for one file. `run_batch` returns one `FileResult` for each file, in
+input order. The rows of each file carry the per-file function name.
+
+| stage activity | per-file function | queue | Error name of a failed file |
+|---|---|---|---|
+| `detect_mime_batch` | `detect_mime_all` | common | `detector_error_<name>` for each detector |
+| `run_tika_batch` | `run_tika_and_store` | Tika | `detector_error_tika` or `parse_error_tika` |
+| `extract_plaintext_batch` | `extract_plaintext_chunks` | common | the same |
+| `parse_office_xml_batch` | `parse_office_xml_and_store` | common | the same |
+| `parse_table_batch` | `parse_table_and_store` | common | the same |
+| `parse_image_metadata_batch` | `parse_image_metadata_and_store` | common | the same |
+| `run_ocr_batch` | `run_ocr_and_store`, once for each engine | OCR | `run_ocr_and_store[<engine>]` |
+| `parse_audio_metadata_batch` | `parse_audio_metadata_and_store` | common | the same |
+| `parse_email_headers_batch` | `parse_email_extract_text_headers` | common | `email_scan` |
+| `extract_email_attachments_batch` | `extract_email_attachments_to_temp` | common | `email_scan` |
+| `extract_archive_batch` | `extract_archive_to_temp`, then `record_archive_container` | common | `archive_scan` |
+| `pdf_metadata_batch` | `pdf_get_metadata_and_store` | common | `pdf_process` |
+| `run_ocr_pdf_batch` | `run_ocr_pdf_and_store`, once for each engine | OCR | `run_ocr_pdf_and_store[<engine>]` |
+| `pdf_extract_batch` | `pdf_small_extract_text_and_images` or `pdf_large_split_to_chunks`, then `record_archive_container` | common | `pdf_process` |
+| `video_batch` | `video_ffprobe_and_store`, `video_extract_frames_and_subtitles`, then `record_archive_container` | common | `video_process` |
+| `scan_container_folders` | `scan_folder_tree` for each folder, then `cleanup_temp_dir` | common | the Error name of the chain that extracted the folder |
+
+The value of each extraction stage (`extract_email_attachments_batch`,
+`extract_archive_batch`, `pdf_extract_batch` and `video_batch`) is the dictionary of the
+per-file call, with `member_count` added. `member_count` is the number of files that the
+extraction wrote into `out_dir`, at all levels. `scan_container_folders` uses it only for
+time limits. `member_scan_seconds` gives one try of a folder the budget of the source
+file plus 6 h for each started block of 500 members, and at least 6 h.
+`plan_folder_ranges` divides the scan of a folder into ranges, and it reads the folder
+listing. `pdf_extract_batch` takes the small path when the PDF is below
+`PDF_SMALL_BYTES` (64 MiB) or below `PDF_SMALL_PAGES` (1,000 pages). It takes the large
+path only when the PDF reaches both limits.
+
+The runner catches the failure of each file. A try that raises puts the file on a wait
+list with the backoff of the default Temporal retry policy (1, 2, 4 and 8 s), and the
+runner goes on with the next file. A non-retryable error, or the fifth try, gives the file
+a failed result. A try has a time limit equal to the file's budget. After that limit,
+`send_heartbeat` drops every heartbeat of the attempt, and the server ends the attempt.
+
+Every heartbeat of a stage activity carries the batch detail first. The next attempt
+restores the finished files from it and does not run them again. A file that is in
+progress when 2 attempts end gets a failed result of type `StageAttemptLost`. A stage
+activity has no attempt limit, and the runner fails it with `StageNoProgress` after 5
+consecutive attempts that finish no new file.
+
 ## A container that extracted nothing is not scanned
 
 `extract_email_attachments_to_temp` and `extract_archive_to_temp` both return how many
 files they actually wrote, and both remove the temp directory themselves when that count
-is zero. Their callers then skip the `HandleFolders` child workflow *and* the
-`cleanup_temp_dir` activity entirely.
+is zero. The group then gives the member scan no folder for that file.
 
-The case this exists for is the ordinary one: most messages in a mail corpus carry no
-attachment, so the old unconditional scan spent a child workflow, a `list_disk_folder`
-and a `cleanup_temp_dir` per message to discover an empty folder. On a maildir that was
-roughly a third of every Temporal execution the whole ingest made, and Temporal
-executions, not the work inside them, are what this pipeline's throughput is made of.
+Most messages in a mail corpus carry no attachment, so most email extractions write
+nothing. The member scan of a folder costs one `plan_folder_ranges` call and one
+`scan_folder_range` call, also when the folder is empty. The group skips these calls for
+each email or archive extraction that wrote no file.
 
 ## A tabular document is read twice: as text, and as a grid
 
@@ -226,7 +276,7 @@ only the interpreter's own, and the calamine reader skips a sheet with no used r
 
 `pdf_small_extract_text_and_images` extracts page images into a temp directory that is
 then scanned as a container with the PDF as its `container_hash`, so every image is a
-real member of the PDF: it gets a `vfs_files` row, its own `ParseSingleFile` run, its own
+real member of the PDF: it gets a `vfs_files` row, its own parse in a later group, its own
 MIME detection and its own OCR. The searchable-PDF assembly (`parse_ocr_pdf.py`) OCRs the
 same pages again for its own rendition.
 

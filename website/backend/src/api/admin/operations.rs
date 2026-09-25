@@ -365,8 +365,11 @@ async fn fetch_rows(
 
 /// Task types this collection has run, with how often they failed.
 ///
-/// Numerator and denominator both come from `processing_task_runs`, which holds one row
-/// per activity execution whatever its outcome. Taking the failures from
+/// Numerator and denominator both come from `processing_task_runs`. It holds one row for
+/// each activity execution whatever its outcome, with one exception. A parse stage
+/// activity that returns writes one row for each file of its batch and no row of its
+/// own. A stage name gets a row only when its activity raises, so each stage name shows
+/// a failure rate of 100 percent. Taking the failures from
 /// `processing_errors` instead would divide one table's count by another's, and the two
 /// do not name detector failures the same way. A rate off a mismatched denominator is
 /// worse than no rate, because it is believable.

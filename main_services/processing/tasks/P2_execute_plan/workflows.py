@@ -1,42 +1,63 @@
-"""Workflows for executing processing plans and per-file parsing tasks."""
+"""Workflows for executing processing plans and the batched parse of each group."""
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from temporalio.exceptions import ActivityError
 from datetime import timedelta
+import dataclasses
 import traceback
 import math
 import asyncio
 import logging
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
-from tasks.P3_parse_files.workflows import ParseSingleFileParams
 from tasks.workflow_window import run_with_window
 
 log = logging.getLogger(__name__)
 
-# Items one `ProcessItemsBatched` run covers before continuing as new. Each item is a
-# child workflow, and each child workflow is a handful of events on this execution's
-# history; the 51,200-event cap is a hard failure of the whole plan, not a slowdown.
-MAX_ITEMS_PER_RUN = 2000
-
 # Items one `ProcessItemsBatched` execution drives. A plan is split into groups of this
 # size and the groups run as siblings, because a single workflow execution decides one
-# thing at a time and a per-file chain is a dozen decisions deep -- one driver is a
-# latency ceiling, not a capacity one. Small enough that a plan of any realistic size
-# gets several drivers; large enough that the drivers themselves stay a rounding error
-# against the files they carry.
+# thing at a time -- one driver is a latency ceiling, not a capacity one. Each group runs
+# one activity for each parse stage over its files, so its history grows with the stages
+# and not with the files.
 PLAN_GROUP_SIZE = 100
 
-# Sibling drivers one plan may run at once. Each drives a 32-file window, so this is
-# also the bound on files in flight per plan -- without it a large corpus multiplies
-# plans in flight by groups by window and puts thousands of executions on the server at
-# once, which is a different failure from the one the siblings fix.
+# Sibling drivers one plan may run at once. Without this bound a large corpus multiplies
+# plans in flight by groups and puts thousands of stage activities on the server at once,
+# which is a different failure from the one the siblings fix.
 MAX_PLAN_DRIVERS = 8
 
 
 # Import activities and sibling workflows through the sandbox
 with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
+    from tasks.P3_parse_files.batch_runner import (
+        FILE_BASE_SECONDS,
+        STAGE_QUEUES,
+        BatchFile,
+        BatchResult,
+        ContainerFolder,
+        FileResult,
+        ScanContainerFoldersParams,
+        StageBatchParams,
+        file_error,
+        folder_stage_timeout_seconds,
+        stage_failure_results,
+        stage_timeout_seconds,
+    )
+    from tasks.P3_parse_files.workflows import (
+        ROUTE_ERROR_NAMES,
+        _detector_error_task_ids,
+        _detector_results_for_error_capture,
+        combine_detector_results,
+        detector_results_for_file,
+        ocr_error_name,
+        ocr_pdf_error_name,
+        route_stages,
+    )
+    from tasks.P3_parse_files.parse_mime import LOCAL_DETECTORS
+    from tasks.text_sources import OCR_ENGINES
     from tasks.P2_execute_plan.activities import (
         list_pending_plans,
         get_plan_items_metadata,
@@ -54,7 +75,6 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P1_compute_plans.activities import count_new_blobs, CountNewBlobsParams
     from tasks.P1_compute_plans.workflows import ComputePlans
-    from tasks.P3_parse_files.workflows import ParseSingleFile
     from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id
     from tasks.P3_parse_files.document_dates import (
         resolve_document_dates,
@@ -387,18 +407,17 @@ class ExecuteSinglePlan:
         # sibling workflows rather than driven from one.
         #
         # Temporal serialises workflow tasks WITHIN an execution: a workflow makes one
-        # decision at a time, no matter how many workers are free. A per-file chain is
-        # about a dozen of those round trips deep, so one driver's rate is capped by its
+        # decision at a time, no matter how many workers are free. The stages of a group
+        # are up to six of those round trips deep, so one driver's rate is capped by its
         # own task loop, and measurably so -- a synthetic fan-out on this cluster tops
         # out near 50 executions a second from one parent and passes 150 from thirty-two.
         # Sibling drivers cost nothing but their own start event and lift that ceiling
         # in proportion.
-        # Deduplicate before splitting. A child workflow is keyed by the item hash, so
-        # the same hash landing in two groups means two concurrent starts of one id --
-        # a WorkflowAlreadyStartedError that loses the file. `get_plan_items_metadata`
-        # is the one that must not produce duplicates and no longer does; this stays as
-        # the guard, because the cost of being wrong here is a file that never parses
-        # and the cost of the guard is a set.
+        # Deduplicate before splitting. A stage extracts a container into a folder named
+        # by the item hash, so two items of one hash, in one group or in two, would
+        # extract into one folder, and the member scan of one would remove the folder
+        # under the other. `get_plan_items_metadata` must not produce duplicates and does
+        # not. This set stays as the guard, because its cost is small.
         seen_hashes: set = set()
         unique_items = []
         for it in items:
@@ -566,73 +585,272 @@ class ProcessItemsBatchedParams:
 
 @workflow.defn
 class ProcessItemsBatched:
-    """Workflow that spawns per-file child workflows in parallel."""
+    """Parse the files of one group of a plan, one stage activity at a time.
+
+    Each stage runs one activity over every file of the group that takes that stage. The
+    group starts no child workflow. The member scan of every folder that the group
+    extracted is one activity too.
+    """
     @workflow.run
     async def run(self, params: ProcessItemsBatchedParams) -> str:
         if not params.items:
             return "no items"
 
-        # A child workflow costs about five history events here, so a run that covers
-        # more than MAX_ITEMS_PER_RUN items walks toward Temporal's 51,200-event hard
-        # cap. Hitting it fails the whole plan with nothing partial recorded, which is
-        # far worse than the continuation this costs. P1 caps a plan at 1000 items, so
-        # this is a guard against a future plan sizing, not something today's traffic
-        # reaches.
-        this_run = params.items[:MAX_ITEMS_PER_RUN]
-        remaining = params.items[MAX_ITEMS_PER_RUN:]
-
-        # A sliding window, not batches. Per-file wall time on this pipeline has a p99
-        # about fifteen times its p50, so a barrier every 32 files means a handful of
-        # large files idle 31 slots for tens of seconds each -- most of the parse
-        # phase went there. With a window the next file starts the moment one finishes.
-        CONCURRENCY = 32
-        started_at = workflow.now()
-        item_hashes = [
-            (it.get("item_hash") or "") if isinstance(it, dict) else ""
-            for it in this_run
+        files = [
+            BatchFile(
+                item_hash=(it.get("item_hash") or "") if isinstance(it, dict) else "",
+                file_path=f"{params.out_dir}/{(it.get('item_hash') or '') if isinstance(it, dict) else ''}",
+                file_size_bytes=int((it.get("file_size_bytes") or 0) if isinstance(it, dict) else 0),
+            )
+            for it in params.items
         ]
+        starts: Dict[Tuple[str, str], Any] = {}
 
-        def _factory(it):
-            args = ParseSingleFileParams(
+        async def run_stage(name: str, items: List[Any], engine: str = "") -> List[FileResult]:
+            """The one catch point of the group: one result for each item, in item order."""
+            if not items:
+                return []
+            starts[name, engine] = workflow.now()
+            folders = name == "scan_container_folders"
+            if folders:
+                arg: Any = ScanContainerFoldersParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    plan_hash=params.plan_hash,
+                    folders=items,
+                    op_id=params.op_id,
+                )
+                keys = [folder.container_hash for folder in items]
+                timeout = folder_stage_timeout_seconds(items)
+            else:
+                arg = StageBatchParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    plan_hash=params.plan_hash,
+                    files=items,
+                    op_id=params.op_id,
+                    engine=engine,
+                )
+                keys = [file.item_hash for file in items]
+                timeout = stage_timeout_seconds(name, [file.file_size_bytes for file in items])
+            try:
+                batch = await workflow.execute_activity(
+                    name,
+                    arg,
+                    result_type=BatchResult,
+                    start_to_close_timeout=timedelta(seconds=timeout),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    # No attempt limit. The runner fails the stage after consecutive
+                    # attempts that finish no new file.
+                    retry_policy=RetryPolicy(maximum_attempts=0),
+                    task_queue=STAGE_QUEUES[name],
+                )
+                return batch.results
+            except ActivityError as exc:
+                return stage_failure_results(name, keys, exc)
+
+        # Stage 1: the local detectors and Tika, at once.
+        detect, tika = await asyncio.gather(
+            run_stage("detect_mime_batch", files),
+            run_stage("run_tika_batch", files),
+        )
+        detector_results = [detector_results_for_file(d, t) for d, t in zip(detect, tika)]
+        combined = [combine_detector_results(results) for results in detector_results]
+        routes = [route_stages(types) for types in combined]
+
+        def with_route(route: str) -> List[int]:
+            return [index for index, file_routes in enumerate(routes) if route in file_routes]
+
+        # The result of each parser entry of each file, by its error name. A chain
+        # result is the first failed result of its steps, or the result of its last step.
+        entries: List[Dict[str, FileResult]] = [{} for _ in files]
+        entry_starts: List[Dict[str, Tuple[str, str]]] = [{} for _ in files]
+        ocr_pdf_entries: List[Dict[str, FileResult]] = [{} for _ in files]
+
+        def put(index: int, error_name: str, result: FileResult, stage: Tuple[str, str],
+                into: Optional[List[Dict[str, FileResult]]] = None) -> None:
+            (entries if into is None else into)[index][error_name] = result
+            entry_starts[index].setdefault(error_name, stage)
+
+        def batch_file(index: int, **fields: Any) -> BatchFile:
+            return dataclasses.replace(files[index], **fields)
+
+        async def single(name: str, route: str, error_name: str, engine: str = "",
+                         with_types: bool = False) -> None:
+            indexes = with_route(route)
+            items = [
+                batch_file(i, mime_types=combined[i]["mime_types"],
+                           mime_encodings=combined[i]["mime_encodings"])
+                if with_types else files[i]
+                for i in indexes
+            ]
+            for i, result in zip(indexes, await run_stage(name, items, engine)):
+                put(i, error_name, result, (name, engine))
+
+        # Each folder, with the file index and the chain error name it belongs to.
+        folders: List[Tuple[int, ContainerFolder]] = []
+
+        def add_folder(index: int, result: FileResult, error_name: str, count_key: str = "") -> None:
+            value = result.value if isinstance(result.value, dict) else {}
+            if result.status == "failed" or not value.get("out_dir"):
+                return
+            if count_key and not int(value.get(count_key) or 0) > 0:
+                return
+            folders.append((index, ContainerFolder(
+                container_hash=files[index].item_hash,
+                out_dir=value["out_dir"],
+                error_task_name=error_name,
+                source_size_bytes=files[index].file_size_bytes,
+                member_count=int(value.get("member_count") or 0),
+            )))
+
+        async def email_chain() -> None:
+            indexes = with_route("email")
+            headers = await run_stage("parse_email_headers_batch", [files[i] for i in indexes])
+            passed = []
+            for i, result in zip(indexes, headers):
+                put(i, "email_scan", result, ("parse_email_headers_batch", ""))
+                if result.status != "failed":
+                    passed.append(i)
+            attachments = await run_stage("extract_email_attachments_batch",
+                                          [files[i] for i in passed])
+            for i, result in zip(passed, attachments):
+                put(i, "email_scan", result, ("parse_email_headers_batch", ""))
+                add_folder(i, result, "email_scan", "attachment_count")
+
+        async def archive_stage() -> None:
+            indexes = with_route("archive")
+            items = [batch_file(i, mime_types=combined[i]["mime_types"]) for i in indexes]
+            for i, result in zip(indexes, await run_stage("extract_archive_batch", items)):
+                put(i, "archive_scan", result, ("extract_archive_batch", ""))
+                add_folder(i, result, "archive_scan", "entry_count")
+
+        ocr_pdf_tasks: List[Any] = []
+
+        async def ocr_pdf_stage(indexes: List[int], items: List[BatchFile], engine: str) -> None:
+            results = await run_stage("run_ocr_pdf_batch", items, engine)
+            for i, result in zip(indexes, results):
+                put(i, ocr_pdf_error_name(engine), result, ("run_ocr_pdf_batch", engine),
+                    into=ocr_pdf_entries)
+
+        async def pdf_chain() -> None:
+            indexes = with_route("pdf")
+            meta = await run_stage("pdf_metadata_batch", [files[i] for i in indexes])
+            passed: List[int] = []
+            items: List[BatchFile] = []
+            for i, result in zip(indexes, meta):
+                put(i, "pdf_process", result, ("pdf_metadata_batch", ""))
+                if result.status == "failed":
+                    continue
+                value = result.value if isinstance(result.value, dict) else {}
+                passed.append(i)
+                items.append(batch_file(i, page_count=int(value.get("page_count") or 0),
+                                        pdf_size_bytes=int(value.get("size_bytes") or 0)))
+            for engine in OCR_ENGINES:
+                ocr_pdf_tasks.append(asyncio.create_task(ocr_pdf_stage(passed, items, engine)))
+            for i, result in zip(passed, await run_stage("pdf_extract_batch", items)):
+                put(i, "pdf_process", result, ("pdf_metadata_batch", ""))
+                add_folder(i, result, "pdf_process")
+
+        async def video_stage() -> None:
+            indexes = with_route("video")
+            for i, result in zip(indexes, await run_stage("video_batch", [files[i] for i in indexes])):
+                put(i, "video_process", result, ("video_batch", ""))
+                add_folder(i, result, "video_process")
+
+        async def containers() -> None:
+            await asyncio.gather(email_chain(), archive_stage(), pdf_chain(), video_stage())
+            scan = await run_stage("scan_container_folders", [folder for _, folder in folders])
+            # Matched by position: one file can extract two folders with one hash.
+            for (i, folder), result in zip(folders, scan):
+                if result.status == "failed":
+                    entries[i][folder.error_task_name] = result
+
+        # Stage 2: every chain at once.
+        stage_two = [
+            single("extract_plaintext_batch", "text", "extract_plaintext_chunks"),
+            single("parse_office_xml_batch", "office_xml", "parse_office_xml_and_store"),
+            single("parse_table_batch", "table", "parse_table_and_store", with_types=True),
+            single("parse_image_metadata_batch", "image", "parse_image_metadata_and_store"),
+        ]
+        stage_two += [single("run_ocr_batch", "image", ocr_error_name(engine), engine=engine)
+                      for engine in OCR_ENGINES]
+        stage_two += [single("parse_audio_metadata_batch", "audio",
+                             "parse_audio_metadata_and_store"), containers()]
+        await asyncio.gather(*stage_two)
+        await asyncio.gather(*ocr_pdf_tasks)
+
+        # Stage 3: the detector errors, best effort, then the parser errors.
+        run_id = workflow.info().run_id
+        parser_names: List[List[str]] = []
+        parser_results: List[List[Any]] = []
+        for i, file_routes in enumerate(routes):
+            names = []
+            for route in file_routes:
+                names.append(ROUTE_ERROR_NAMES[route])
+                if route == "image":
+                    names += [ocr_error_name(engine) for engine in OCR_ENGINES]
+            names = [name for name in names if name in entries[i]]
+            parser_names.append(names)
+            parser_results.append([_as_error_input(entries[i][name]) for name in names])
+
+        detector_names = list(LOCAL_DETECTORS) + ["tika"]
+        detector_inputs: List[Any] = []
+        detector_task_ids: List[str] = []
+        for i, results in enumerate(detector_results):
+            detector_inputs += _detector_results_for_error_capture(
+                detector_names, results, parser_names[i], parser_results[i])
+            detector_task_ids += _detector_error_task_ids(
+                detector_names, results, parser_names[i], parser_results[i])
+        detector_start = starts.get(("detect_mime_batch", ""), workflow.now())
+        try:
+            await record_errors_from_results(
+                detector_inputs,
+                source_execution_ids=[source_execution_id(run_id, "P3.group.detector", n)
+                                      for n in range(len(detector_inputs))],
+                task_ids=detector_task_ids,
+                starts=[detector_start] * len(detector_inputs),
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
-                plan_hash=params.plan_hash,
-                item_hash=it.get('item_hash'),
-                file_path=f"{params.out_dir}/{it.get('item_hash')}",
-                file_size_bytes=it.get('file_size_bytes'),
+                item_hashes=[file.item_hash for file in files for _ in detector_names],
                 op_id=params.op_id,
+                default_task_name="detector_error_unknown",
             )
-            return lambda: workflow.execute_child_workflow(
-                ParseSingleFile.run,
-                args,
-                id=f"parse-file-{params.collection_dataset}-{params.plan_hash}-{it.get('item_hash')}",
-                task_queue="processing-common-queue",
-                search_attributes=dataset_search_attributes(params.collection_dataset),
-            )
+        except Exception:
+            # Best effort: a detector that failed must not also fail the parse. The log
+            # line keeps the loss visible.
+            log.exception("[P3] failed to record detector errors for %s group of plan %s",
+                          params.collection_dataset, params.plan_hash)
 
-        results = await run_with_window([_factory(it) for it in this_run], CONCURRENCY)
-
-        # This caller supplies the complete result list once. The helper writes
-        # byte-bounded activity batches in sequence.
+        parser_inputs: List[Any] = []
+        parser_task_ids: List[str] = []
+        parser_starts: List[Any] = []
+        parser_hashes: List[str] = []
+        for i, file in enumerate(files):
+            named = list(zip(parser_names[i], parser_results[i]))
+            named += [(name, _as_error_input(ocr_pdf_entries[i][name]))
+                      for name in (ocr_pdf_error_name(engine) for engine in OCR_ENGINES)
+                      if name in ocr_pdf_entries[i]]
+            for name, result in named:
+                parser_inputs.append(result)
+                parser_task_ids.append(name)
+                parser_starts.append(starts.get(entry_starts[i][name], workflow.now()))
+                parser_hashes.append(file.item_hash)
         await record_errors_from_results(
-            results,
-            source_execution_ids=[source_execution_id(workflow.info().run_id,
-                "P2.parse_file", ordinal) for ordinal, _ in enumerate(this_run)],
-            task_ids=["P3_ParseSingleFile"] * len(results),
-            starts=[started_at] * len(results),
+            parser_inputs,
+            source_execution_ids=[source_execution_id(run_id, "P3.group.parser", n)
+                                  for n in range(len(parser_inputs))],
+            task_ids=parser_task_ids,
+            starts=parser_starts,
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
-            item_hashes=item_hashes,
+            item_hashes=parser_hashes,
             op_id=params.op_id,
+            start_to_close_timeout_seconds=FILE_BASE_SECONDS,
         )
+        return f"processed {len(files)} items"
 
-        if remaining:
-            workflow.continue_as_new(ProcessItemsBatchedParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                plan_hash=params.plan_hash,
-                out_dir=params.out_dir,
-                items=remaining,
-                op_id=params.op_id,
-            ))
-        return f"processed {len(results)} items"
+
+def _as_error_input(result: FileResult) -> Any:
+    """A failed result as the exception that the error recorder reads, else its value."""
+    return file_error(result) if result.status == "failed" else result.value

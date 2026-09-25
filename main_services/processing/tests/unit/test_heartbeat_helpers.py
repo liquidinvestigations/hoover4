@@ -97,3 +97,67 @@ def test_clock_never_raises_outside_an_activity(monkeypatch, in_activity):
     monkeypatch.setattr(activity, "in_activity", lambda: in_activity)
     monkeypatch.setattr(activity, "heartbeat", lambda *d: None)
     assert hb.HeartbeatClock(interval_seconds=0).beat("x") is True
+
+
+# send_heartbeat and batch_progress: the batch detail goes first on every send.
+
+class _Progress:
+    def __init__(self, detail):
+        self.detail = detail
+
+    def heartbeat_detail(self):
+        return self.detail
+
+
+def _install_attempt(monkeypatch, attempt=1):
+    info = type("Info", (), {"workflow_run_id": "run", "activity_id": "1", "attempt": attempt})
+    monkeypatch.setattr(activity, "info", lambda: info)
+
+
+def test_every_send_of_the_module_puts_the_batch_detail_first(monkeypatch):
+    ctx = _FakeActivityContext().install(monkeypatch)
+    _install_attempt(monkeypatch)
+    detail = {"v": 2}
+    with hb.batch_progress(_Progress(detail)):
+        hb.HeartbeatClock(interval_seconds=0).beat("clock")
+        with hb.heartbeat_pump("pump", interval_seconds=0.02):
+            time.sleep(0.1)
+        monkeypatch.setattr(hb, "worker_is_stopping", lambda: True)
+        with pytest.raises(Exception):
+            hb.stop_if_worker_is_stopping("stop")
+    assert ctx.beats[0] == (detail, "clock")
+    assert (detail, "pump") in ctx.beats
+    assert ctx.beats[-1] == (detail, "stop")
+    assert hb._BATCH_PROGRESS == {}
+
+
+def test_with_nothing_registered_the_details_pass_unchanged_without_info(monkeypatch):
+    ctx = _FakeActivityContext().install(monkeypatch)
+
+    def no_info():
+        raise AssertionError("activity.info() was called")
+
+    monkeypatch.setattr(activity, "info", no_info)
+    hb.send_heartbeat("a", 1)
+    assert ctx.beats == [("a", 1)]
+
+
+def test_a_progress_that_returns_none_drops_the_heartbeat(monkeypatch):
+    ctx = _FakeActivityContext().install(monkeypatch)
+    _install_attempt(monkeypatch)
+    with hb.batch_progress(_Progress(None)):
+        hb.send_heartbeat("dropped")
+    assert ctx.beats == []
+
+
+def test_two_attempts_keep_their_own_registrations(monkeypatch):
+    ctx = _FakeActivityContext().install(monkeypatch)
+    _install_attempt(monkeypatch, attempt=1)
+    with hb.batch_progress(_Progress({"att": 1})):
+        _install_attempt(monkeypatch, attempt=2)
+        with hb.batch_progress(_Progress({"att": 2})):
+            assert len(hb._BATCH_PROGRESS) == 2
+            hb.send_heartbeat()
+        _install_attempt(monkeypatch, attempt=1)
+        hb.send_heartbeat()
+    assert ctx.beats == [({"att": 2},), ({"att": 1},)]

@@ -1,11 +1,8 @@
-"""PDF parsing activities and workflow for metadata, text, and images."""
+"""PDF parsing activities for metadata, text, and images, and their stage activities."""
 
-from temporalio import workflow, activity
-from temporalio.common import RetryPolicy
-from datetime import timedelta
+from temporalio import activity
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
-import asyncio
 import os
 import json
 import math
@@ -14,11 +11,14 @@ import subprocess
 import logging
 log = logging.getLogger(__name__)
 
-from tasks.P0_scan_disk.workflows import HandleFoldersParams
-from tasks.P3_parse_files.parse_archives import CleanupTempDirParams, RecordArchiveContainerParams
-from tasks.P3_parse_files.parse_ocr_pdf import RunOcrPdfParams, run_ocr_pdf_and_store
-from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT, HeartbeatClock, heartbeat_pump, with_heartbeat
-from tasks.text_sources import OCR_ENGINES
+from tasks.P3_parse_files.batch_runner import (BatchFile, BatchResult, StageBatchParams,
+                                               run_batch)
+from tasks.P3_parse_files.parse_archives import (
+    RecordArchiveContainerParams,
+    count_member_files,
+    record_archive_container,
+)
+from tasks.heartbeat import HeartbeatClock, heartbeat_pump, with_heartbeat
 
 
 #: Wall-clock ceiling for one qpdf/pdftotext invocation. These had NO timeout,
@@ -442,171 +442,72 @@ def pdf_large_split_to_chunks(params: PdfLargeParams) -> Dict[str, Any]:
     return {"out_dir": out_dir, "chunks": chunk_files}
 
 
-@dataclass
-class PdfProcessingWorkflowParams:
-    collectionname: str
-    collection_dataset: str
-    pdf_hash: str
-    file_path: str
-    timeout_seconds: int
-    op_id: str = ""
+#: A PDF takes the small path when it is below either limit, and the large path when it
+#: reaches both.
+PDF_SMALL_BYTES = 64 * 1024 * 1024
+PDF_SMALL_PAGES = 1000
 
 
+def pdf_takes_small_path(file: BatchFile) -> bool:
+    """Whether `pdf_extract_batch` extracts this file whole, not in page chunks."""
+    return file.pdf_size_bytes < PDF_SMALL_BYTES or file.page_count < PDF_SMALL_PAGES
 
 
-@workflow.defn
-class PdfProcessingAndScan:
-    @workflow.run
-    async def run(self, params: PdfProcessingWorkflowParams) -> str:
-        # 1) Gather metadata and store
-        meta = await workflow.execute_activity(
-            pdf_get_metadata_and_store,
-            PdfMetaParams(
+@activity.defn
+@with_heartbeat
+def pdf_metadata_batch(params: StageBatchParams) -> BatchResult:
+    """Store the metadata of each PDF of a group. The value gives its page count and size."""
+    def step(file: BatchFile) -> Dict[str, Any]:
+        return pdf_get_metadata_and_store(PdfMetaParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            pdf_hash=file.item_hash,
+            file_path=file.file_path,
+        ))
+
+    return run_batch("pdf_metadata_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="pdf_get_metadata_and_store")
+
+
+@activity.defn
+@with_heartbeat
+def pdf_extract_batch(params: StageBatchParams) -> BatchResult:
+    """Extract the text and images of each PDF of a group, then record its container.
+
+    A small PDF is extracted whole, and a large one is split into page chunks. The value
+    of a file is the dictionary of the call it took, with `member_count` added. A file
+    whose extraction fails gets no archive row.
+    """
+    def step(file: BatchFile) -> Dict[str, Any]:
+        if pdf_takes_small_path(file):
+            value = pdf_small_extract_text_and_images(PdfSmallParams(
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
-                pdf_hash=params.pdf_hash,
-                file_path=params.file_path,
-            ),
-            start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
-        page_count = int(meta.get("page_count") or 0)
-        size_bytes = int(meta.get("size_bytes") or 0)
-
-        # 1b) Searchable PDFs, one activity per engine, started now and awaited at the
-        # end. Which engines run (and whether any do) is decided inside the activity
-        # from `pdf_ocr_provider` and `dataset_settings`, not here: a workflow argument
-        # would freeze the value at schedule time, and the apply job exists
-        # to reach activities that are already in flight.
-        #
-        # On the OCR queue rather than the common one: the work is one OCR call per page,
-        # so it belongs behind the same bounded tier as image OCR. An engine with nothing
-        # configured records a skip and succeeds, so this fan-out costs nothing on a box
-        # with no OCR tier at all.
-        ocr_pdf_futures = [
-            workflow.execute_activity(
-                run_ocr_pdf_and_store,
-                RunOcrPdfParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    pdf_hash=params.pdf_hash,
-                    file_path=params.file_path,
-                    engine=engine,
-                    timeout_seconds=params.timeout_seconds,
-                    op_id=params.op_id,
-                ),
-                start_to_close_timeout=timedelta(seconds=max(params.timeout_seconds, 3600)),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                task_queue="processing-ocr-queue",
-            )
-            for engine in OCR_ENGINES
-        ]
-
-        # 2) Branch by size and page count
-        SMALL_BYTES = 64 * 1024 * 1024
-        SMALL_PAGES = 1000
-
-        # Create child workflow args for scanning
-        out_dir = None
-        if size_bytes < SMALL_BYTES or page_count < SMALL_PAGES:
-            res = await workflow.execute_activity(
-                pdf_small_extract_text_and_images,
-                PdfSmallParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    pdf_hash=params.pdf_hash,
-                    file_path=params.file_path,
-                    page_count=page_count,
-                ),
-                start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-            )
-            out_dir = res.get("out_dir")
+                pdf_hash=file.item_hash,
+                file_path=file.file_path,
+                page_count=file.page_count,
+            ))
         else:
-            res = await workflow.execute_activity(
-                pdf_large_split_to_chunks,
-                PdfLargeParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    pdf_hash=params.pdf_hash,
-                    file_path=params.file_path,
-                    page_count=page_count,
-                    size_bytes=size_bytes,
-                ),
-                start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-            )
-            out_dir = res.get("out_dir")
-
-        # 3) Scan the out_dir via P0 as a container, then cleanup
-        if out_dir:
-            args = HandleFoldersParams(
+            value = pdf_large_split_to_chunks(PdfLargeParams(
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
-                dataset_path=out_dir,
-                folder_path="/",
-                container_hash=params.pdf_hash,
-                root_path_prefix="",
-            )
-            with workflow.unsafe.imports_passed_through():
-                from tasks.P0_scan_disk.workflows import HandleFolders
-                from tasks.P3_parse_files.parse_archives import cleanup_temp_dir
-                from tasks.P3_parse_files.parse_archives import record_archive_container
-                from tasks.visibility import dataset_search_attributes
-
-            # Record an archive-like container row for discoverability
-            await workflow.execute_activity(
-                record_archive_container,
-                RecordArchiveContainerParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    archive_hash=params.pdf_hash,
-                    archive_types=["pdf"],
-                ),
-                start_to_close_timeout=timedelta(minutes=10),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-            )
-
-            await workflow.execute_child_workflow(
-                HandleFolders.run,
-                args,
-                id=f"scan-pdf-{params.collection_dataset}-{params.pdf_hash}",
-                task_queue="processing-common-queue",
-                search_attributes=dataset_search_attributes(params.collection_dataset),
-            )
-
-            await workflow.execute_activity(
-                cleanup_temp_dir,
-                CleanupTempDirParams(out_dir=out_dir),
-                start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-            )
-
-        # The searchable PDFs are independent of the text/image path above, so they run
-        # alongside it and are collected here. Errors are recorded rather than raised: a
-        # failure to derive a searchable PDF must not lose the text extraction that
-        # already succeeded for the same document.
-        if ocr_pdf_futures:
-            results = await asyncio.gather(*ocr_pdf_futures, return_exceptions=True)
-            with workflow.unsafe.imports_passed_through():
-                from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id
-            await record_errors_from_results(
-                results,
-                source_execution_ids=[source_execution_id(workflow.info().run_id,
-                    "P3.pdf_ocr", ordinal) for ordinal, _ in enumerate(OCR_ENGINES)],
-                task_ids=[f"run_ocr_pdf_and_store[{engine}]" for engine in OCR_ENGINES],
-                starts=[workflow.now()] * len(OCR_ENGINES),
+                pdf_hash=file.item_hash,
+                file_path=file.file_path,
+                page_count=file.page_count,
+                size_bytes=file.pdf_size_bytes,
+            ))
+        if value.get("out_dir"):
+            record_archive_container(RecordArchiveContainerParams(
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
-                item_hashes=[params.pdf_hash] * len(OCR_ENGINES),
-                op_id=params.op_id,
-                start_to_close_timeout_seconds=params.timeout_seconds,
-            )
+                archive_hash=file.item_hash,
+                archive_types=["pdf"],
+            ))
+        return {**value, "member_count": count_member_files(value.get("out_dir") or "")}
 
-        return "ok"
+    return run_batch("pdf_extract_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name=lambda f: ("pdf_small_extract_text_and_images"
+                                          if pdf_takes_small_path(f)
+                                          else "pdf_large_split_to_chunks"))

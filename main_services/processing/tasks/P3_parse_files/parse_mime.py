@@ -8,6 +8,9 @@ import threading
 import mimetypes
 import os
 from tasks.heartbeat import with_heartbeat
+from tasks.P3_parse_files.batch_runner import (
+    BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
+)
 
 
 @dataclass
@@ -355,7 +358,10 @@ LOCAL_DETECTORS = ("file", "magika", "extension", "content_sniff")
 @activity.defn
 @with_heartbeat
 def detect_mime_all(params: DetectMimeParams) -> Dict[str, Any]:
-    """All four local detectors in one activity, one `file` run, one insert.
+    """All four local detectors for one file, one `file` run, one insert.
+
+    No worker registers this function as an activity. `detect_mime_batch` calls it once
+    for each file of a group, as one try of that file.
 
     Each detector is cheap -- tens of milliseconds -- so scheduling four Temporal
     activities to carry them costs several times what the work does. They are also not
@@ -363,12 +369,13 @@ def detect_mime_all(params: DetectMimeParams) -> Dict[str, Any]:
     subprocess launch each. Running them together pays for that once.
 
     Failure stays per detector. One that raises contributes no `file_types` row and
-    reports its error under its own name in `errors`, exactly as a failed activity in
-    the old fan-out did; the other three still store and still return.
+    reports its error under its own name in `errors`. The other three detectors still
+    store their rows and return their results.
 
-    A missing input path fails the whole activity at its first attempt, before any
-    detector runs, because no detector can read it and `file` would report its own
-    "cannot open" text as a type.
+    A missing input path raises a non-retryable `TempCopyMissing` error before any
+    detector runs. No detector can read the path, and `file` would report its own
+    "cannot open" text as a type. The error fails the try of this one file, and
+    `detect_mime_batch` goes on with the next file of the group.
     """
     from tasks.P3_parse_files.temp_dirs import is_temp_copy_missing, require_input_file
 
@@ -395,7 +402,7 @@ def detect_mime_all(params: DetectMimeParams) -> Dict[str, Any]:
             res = runners[name]()
         except Exception as exc:
             # The file went away after the check above. The other detectors cannot
-            # read it either, so the activity fails with the one cause.
+            # read it either, so the try of this file fails with the one cause.
             if is_temp_copy_missing(exc):
                 raise
             errors[name] = "%s: %s" % (type(exc).__name__, exc)
@@ -404,6 +411,25 @@ def detect_mime_all(params: DetectMimeParams) -> Dict[str, Any]:
         rows.append({"extracted_by": name, **res})
     _store_file_types_many(params, rows)
     return {"detectors": results, "errors": errors}
+
+
+@activity.defn
+@with_heartbeat
+def detect_mime_batch(params: StageBatchParams) -> BatchResult:
+    """The four local detectors for each file of a group, one `detect_mime_all` call a file."""
+    def step(file: BatchFile) -> Dict[str, Any]:
+        return detect_mime_all(DetectMimeParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            file_hash=file.item_hash,
+            file_path=file.file_path,
+            timeout_seconds=try_budget_seconds("detect_mime_batch", file.file_size_bytes),
+            op_id=params.op_id,
+        ))
+
+    return run_batch("detect_mime_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="detect_mime_all")
 
 
 def _detect_from_name(params: DetectMimeParams) -> Dict[str, Any]:

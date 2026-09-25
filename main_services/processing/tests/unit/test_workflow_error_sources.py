@@ -17,8 +17,7 @@ from tasks.P6_index_data import workflows as index_workflows
 from tasks.P6_index_data.params import IndexDatasetPlanParams
 from tasks.P2_execute_plan import workflows as plan_workflows
 from tasks.P3_parse_files import workflows as parse_workflows
-from tasks.P3_parse_files import parse_pdf
-from tasks.P3_parse_files import parse_common
+from tasks.P3_parse_files.batch_runner import BatchResult, FileResult
 
 
 def test_p6_failed_writers_keep_one_source_id_for_each_chunk_member(monkeypatch):
@@ -120,195 +119,51 @@ def test_failed_chunks_keep_their_source_id_for_each_hash(
     assert json.loads(passed["source_execution_ids"][100]) == ["run", label, 1]
 
 
-def test_p2_continuation_uses_new_run_id_for_aligned_children(monkeypatch):
+def test_group_detector_and_parser_ids_follow_file_and_entry_order(monkeypatch):
+    """Detector ids are 5 x file index + detector index. Parser ids count every entry."""
     captured = []
-    next_runs = []
-    run_id = ["first"]
-    monkeypatch.setattr(plan_workflows, "MAX_ITEMS_PER_RUN", 2)
+    hashes = ["a", "b"]
+    detector_names = list(parse_workflows.LOCAL_DETECTORS) + ["tika"]
+
+    def execute_activity(name, params, **_kwargs):
+        async def result():
+            results = []
+            for file in params.files:
+                if name == "detect_mime_batch":
+                    value = {"detectors": {}, "errors": {n: "failed" for n in detector_names[:-1]}}
+                    value["detectors"][detector_names[1]] = {"coarse_types": ["text"]}
+                    results.append(FileResult(file.item_hash, "detect_mime_all", "ok", value))
+                else:
+                    results.append(FileResult(file.item_hash, name, "failed",
+                                              error_type="Broken", error_message=name))
+            return BatchResult(stage=name, results=results)
+        return result()
+
+    async def record(results, **kwargs):
+        captured.append((results, kwargs))
+        return len(results)
+
+    monkeypatch.setattr(plan_workflows.workflow, "execute_activity", execute_activity)
     monkeypatch.setattr(plan_workflows.workflow, "now", lambda:
                         datetime(2026, 1, 1, tzinfo=timezone.utc))
     monkeypatch.setattr(plan_workflows.workflow, "info", lambda:
-                        SimpleNamespace(run_id=run_id[0]))
-    monkeypatch.setattr(plan_workflows.workflow, "continue_as_new", next_runs.append)
-
-    def execute_child(_run, child, **_kwargs):
-        async def result():
-            raise RuntimeError(child.item_hash)
-        return result()
-
-    async def run_window(factories, _limit):
-        return await asyncio.gather(*(factory() for factory in factories),
-                                    return_exceptions=True)
-
-    async def record(results, **kwargs):
-        captured.append((results, kwargs))
-        return len(results)
-
-    monkeypatch.setattr(plan_workflows, "run_with_window", run_window)
-    monkeypatch.setattr(plan_workflows.workflow, "execute_child_workflow", execute_child)
+                        SimpleNamespace(run_id="group-run"))
     monkeypatch.setattr(plan_workflows, "record_errors_from_results", record)
-    items = [{"item_hash": value} for value in ("a", "b", "c")]
     params = plan_workflows.ProcessItemsBatchedParams(
-        "collection", "dataset", "plan", "/tmp", items, "op")
-    asyncio.run(plan_workflows.ProcessItemsBatched().run(params))
-    assert len(next_runs) == 1
-    run_id[0] = "second"
-    asyncio.run(plan_workflows.ProcessItemsBatched().run(next_runs[0]))
-
-    assert [call[1]["item_hashes"] for call in captured] == [["a", "b"], ["c"]]
-    assert [[str(result) for result in results] for results, _ in captured] == [
-        ["a", "b"], ["c"]]
-    assert [[json.loads(source) for source in call[1]["source_execution_ids"]]
-            for call in captured] == [
-                [["first", "P2.parse_file", 0], ["first", "P2.parse_file", 1]],
-                [["second", "P2.parse_file", 0]],
-            ]
-    assert all(len(results) == len(kwargs["source_execution_ids"])
-               for results, kwargs in captured)
-
-
-@pytest.mark.parametrize("parser_present", [False, True])
-def test_p3_detector_and_parser_ids_follow_scheduled_results(monkeypatch, parser_present):
-    captured = []
-    detector_names = list(parse_workflows.LOCAL_DETECTORS)
-    assert len(detector_names) == 4
-    local = {"detectors": {name: {"coarse_types": [], "mime_types": []}
-                           for name in detector_names[1:]},
-             "errors": {detector_names[0]: "local detector failed"}}
-    if parser_present:
-        local["detectors"][detector_names[1]]["coarse_types"] = ["text"]
-
-    def execute_activity(fn, _params, **_kwargs):
-        async def result():
-            if fn is parse_workflows.detect_mime_all:
-                return local
-            if fn is parse_workflows.run_tika_and_store:
-                raise RuntimeError("tika failed")
-            if fn is parse_workflows.extract_plaintext_chunks:
-                raise RuntimeError("parser failed")
-            raise AssertionError(fn.__name__)
-        return result()
-
-    async def record(results, **kwargs):
-        captured.append((results, kwargs))
-        return len(results)
-
-    monkeypatch.setattr(parse_workflows.workflow, "execute_activity", execute_activity)
-    monkeypatch.setattr(parse_workflows.workflow, "now", lambda:
-                        datetime(2026, 1, 1, tzinfo=timezone.utc))
-    monkeypatch.setattr(parse_workflows.workflow, "info", lambda:
-                        SimpleNamespace(run_id="parse-run"))
-    monkeypatch.setattr(parse_workflows, "record_errors_from_results", record)
-    params = parse_workflows.ParseSingleFileParams(
-        "collection", "dataset", "plan", "hash", "/tmp/file", 0, "op")
-    asyncio.run(parse_workflows.ParseSingleFile().run(params))
+        "collection", "dataset", "plan", "/tmp", [{"item_hash": h} for h in hashes], "op")
+    assert asyncio.run(plan_workflows.ProcessItemsBatched().run(params)) == "processed 2 items"
 
     detector_results, detector = captured[0]
-    assert len(detector_results) == len(detector_names) + 1
-    assert isinstance(detector_results[0], Exception)
-    assert isinstance(detector_results[-1], Exception)
+    assert len(detector_results) == len(detector_names) * len(hashes)
+    assert detector["item_hashes"] == [h for h in hashes for _ in detector_names]
     assert detector["task_ids"] == [f"detector_error_{name}"
-                                     for name in detector_names + ["tika"]]
+                                    for _ in hashes for name in detector_names]
     assert [json.loads(source) for source in detector["source_execution_ids"]] == [
-        ["parse-run", "P3.detector", index]
-        for index in range(len(detector_names) + 1)
-    ]
+        ["group-run", "P3.group.detector", index]
+        for index in range(len(detector_names) * len(hashes))]
     parser_results, parser = captured[1]
-    assert len(parser_results) == int(parser_present)
-    assert parser["task_ids"] == (["extract_plaintext_chunks"] if parser_present else [])
-    assert [json.loads(source) for source in parser["source_execution_ids"]] == (
-        [["parse-run", "P3.parser", 0]] if parser_present else [])
-
-
-def test_p3_email_child_schedules_and_parent_records_operation(monkeypatch):
-    children = []
-    recorded = []
-    local = {"detectors": {
-        name: {"coarse_types": ["email"], "mime_types": []}
-        for name in parse_workflows.LOCAL_DETECTORS
-    }}
-
-    def execute_activity(fn, _params, **_kwargs):
-        async def result():
-            if fn is parse_workflows.detect_mime_all:
-                return local
-            if fn is parse_workflows.run_tika_and_store:
-                return {"coarse_types": [], "mime_types": []}
-            raise AssertionError(fn.__name__)
-        return result()
-
-    def execute_child(run, child, **kwargs):
-        children.append((run, child, kwargs))
-
-        async def result():
-            return "email complete"
-        return result()
-
-    async def record(results, **kwargs):
-        recorded.append((results, kwargs))
-        return len(results)
-
-    monkeypatch.setattr(parse_workflows.workflow, "execute_activity", execute_activity)
-    monkeypatch.setattr(parse_workflows.workflow, "execute_child_workflow", execute_child)
-    monkeypatch.setattr(parse_workflows.workflow, "now", lambda:
-                        datetime(2026, 1, 1, tzinfo=timezone.utc))
-    monkeypatch.setattr(parse_workflows.workflow, "info", lambda:
-                        SimpleNamespace(run_id="email-run"))
-    monkeypatch.setattr(parse_workflows, "record_errors_from_results", record)
-
-    params = parse_workflows.ParseSingleFileParams(
-        "collection", "dataset", "plan", "email-hash", "/tmp/mail.eml", 0, "operation")
-    assert asyncio.run(parse_workflows.ParseSingleFile().run(params)) == "ok"
-
-    assert len(children) == 1
-    run, child, options = children[0]
-    assert run is parse_workflows.EmailExtractionAndScan.run
-    assert child.email_hash == "email-hash"
-    assert child.file_path == "/tmp/mail.eml"
-    assert options["id"] == "email-scan-dataset-email-hash"
-    assert recorded[1][1]["task_ids"] == ["email_scan"]
-    assert recorded[1][1]["op_id"] == "operation"
-
-
-def test_pdf_ocr_ids_follow_engine_results_when_one_fails(monkeypatch):
-    captured = []
-    assert len(parse_pdf.OCR_ENGINES) >= 2
-    failing_engine = parse_pdf.OCR_ENGINES[1]
-
-    def execute_activity(fn, params, **_kwargs):
-        async def result():
-            if fn is parse_pdf.pdf_get_metadata_and_store:
-                return {"page_count": 1, "size_bytes": 1}
-            if fn is parse_pdf.pdf_small_extract_text_and_images:
-                return {"out_dir": None}
-            if fn is parse_pdf.run_ocr_pdf_and_store:
-                if params.engine == failing_engine:
-                    raise RuntimeError("ocr failed")
-                return "ok"
-            raise AssertionError(fn.__name__)
-        return result()
-
-    async def record(results, **kwargs):
-        captured.append((results, kwargs))
-        return len(results)
-
-    monkeypatch.setattr(parse_pdf.workflow, "execute_activity", execute_activity)
-    monkeypatch.setattr(parse_pdf.workflow, "now", lambda:
-                        datetime(2026, 1, 1, tzinfo=timezone.utc))
-    monkeypatch.setattr(parse_pdf.workflow, "info", lambda:
-                        SimpleNamespace(run_id="pdf-run"))
-    monkeypatch.setattr(parse_common, "record_errors_from_results", record)
-    params = parse_pdf.PdfProcessingWorkflowParams(
-        "collection", "dataset", "pdf-hash", "/tmp/file.pdf", 60, "op")
-    asyncio.run(parse_pdf.PdfProcessingAndScan().run(params))
-
-    results, passed = captured[0]
-    assert len(results) == len(parse_pdf.OCR_ENGINES)
-    assert isinstance(results[1], Exception)
-    assert passed["task_ids"] == [f"run_ocr_pdf_and_store[{engine}]"
-                                  for engine in parse_pdf.OCR_ENGINES]
-    assert passed["item_hashes"] == ["pdf-hash"] * len(results)
-    assert [json.loads(source) for source in passed["source_execution_ids"]] == [
-        ["pdf-run", "P3.pdf_ocr", index]
-        for index in range(len(results))
-    ]
+    assert parser["task_ids"] == ["extract_plaintext_chunks"] * len(hashes)
+    assert parser["item_hashes"] == hashes
+    assert all(isinstance(result, Exception) for result in parser_results)
+    assert [json.loads(source) for source in parser["source_execution_ids"]] == [
+        ["group-run", "P3.group.parser", index] for index in range(len(hashes))]

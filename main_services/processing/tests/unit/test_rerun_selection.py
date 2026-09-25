@@ -390,7 +390,7 @@ def test_office_xml_direct_error_vetoes_same_execution_outcome(monkeypatch):
     assert isinstance(result, dict)
     assert error_rows[0]["op_id"] == "op"
     assert error_rows[0]["hash"] == "hash"
-    run_row, outcomes = written[0]
+    [run_row], outcomes = written[0]
     columns = dict(zip(task_timing._RUNS_COLUMNS, run_row))
     assert columns["outcome"] == "ok"
     assert columns["op_id"] == outcomes[0][0] == "op"
@@ -409,3 +409,65 @@ def test_office_xml_direct_error_vetoes_same_execution_outcome(monkeypatch):
         ReconcileErrorsParams("op", "collection", "dataset"))
     assert counts["recovered_errors"] == 0
     assert counts["still_failing_errors"] == 1
+
+
+def _join_outcomes_to_runs(outcomes, runs):
+    """The join of `reconcile_selected_errors`, over rows that the interceptor built."""
+    from tasks.task_timing import _OUTCOME_COLUMNS, _RUNS_COLUMNS
+
+    o_at = {name: index for index, name in enumerate(_OUTCOME_COLUMNS)}
+    r_at = {name: index for index, name in enumerate(_RUNS_COLUMNS)}
+    joined = set()
+    for o in outcomes:
+        for r in runs:
+            if (r[r_at["op_id"]] == o[o_at["op_id"]]
+                    and r[r_at["collection_dataset"]] == o[o_at["collection_dataset"]]
+                    and r[r_at["task_name"]] == o[o_at["activity_name"]]
+                    and r[r_at["workflow_run_id"]] == o[o_at["workflow_run_id"]]
+                    and r[r_at["activity_id"]] == o[o_at["activity_id"]]
+                    and r[r_at["attempt"]] == o[o_at["attempt"]]
+                    and r[r_at["outcome"]] == o[o_at["outcome"]]
+                    and o[o_at["outcome"]] in ("ok", "skipped")):
+                joined.add((o[o_at["hash"]], o[o_at["error_task_name"]],
+                            o[o_at["activity_name"]]))
+    return sorted(joined)
+
+
+def test_two_files_of_one_stage_activity_each_prove_their_own_recovery(monkeypatch):
+    import database.clickhouse as clickhouse
+    import database.operation_ledger as ledger
+    from tasks import task_timing
+    from tasks.P3_parse_files.batch_runner import BatchResult, FileResult
+
+    fields = SimpleNamespace(workflow_run_id="run", activity_id="3", attempt=1)
+    stage_row = [None] * len(task_timing._RUNS_COLUMNS)
+    columns = list(task_timing._RUNS_COLUMNS)
+    for name, value in (("collection_dataset", "dataset"), ("op_id", "op"),
+                        ("workflow_run_id", "run"), ("activity_id", "3"), ("attempt", 1)):
+        stage_row[columns.index(name)] = value
+    batch = BatchResult(stage="extract_plaintext_batch", results=[
+        FileResult("h1", "extract_plaintext_chunks", "ok"),
+        FileResult("h2", "extract_plaintext_chunks", "skipped"),
+        FileResult("h3", "extract_plaintext_chunks", "ok"),
+    ])
+    runs, outcomes = task_timing._batch_rows(batch, stage_row, fields, "op", "dataset", "")
+
+    selected = [("h1", "extract_plaintext_chunks"), ("h2", "extract_plaintext_chunks"),
+                ("h3", "extract_plaintext_chunks"), ("h4", "unknown_task")]
+    client = _Client([("FROM processing_document_outcomes",
+                       _join_outcomes_to_runs(outcomes, runs))])
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
+    monkeypatch.setattr(ledger, "pairs_with_event", lambda *_args:
+                        selected if _args[-1] == "selected"
+                        else [("h3", "extract_plaintext_chunks")])
+    monkeypatch.setattr(ledger, "delete_error_pairs", lambda *_args: None)
+    monkeypatch.setattr(ledger, "insert_error_events", lambda *_args: None)
+    monkeypatch.setattr(rerun_selection.activity, "heartbeat", lambda: None)
+
+    result = rerun_selection.reconcile_selected_errors(
+        ReconcileErrorsParams("op", "collection", "dataset"))
+
+    # h1 and h2 recovered. h3 has an outcome row and a current Error. h4 has no
+    # recovery activity.
+    assert result == {"recovered_errors": 2, "still_failing_errors": 1,
+                      "unknown_task_errors": 1}

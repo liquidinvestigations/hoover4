@@ -50,6 +50,9 @@ from temporalio import activity
 
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.task_timing import SkippedOutcome
+from tasks.P3_parse_files.batch_runner import (
+    BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
+)
 from tasks.P3_parse_files.table_formats import (
     MAX_CELL_BYTES,
     MAX_CELLS_PER_DOCUMENT,
@@ -634,3 +637,27 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
             "row_count": row_count, "column_count": column_count,
             "cell_count": collector.cell_count,
             "truncated": collector.truncation.truncated}
+
+
+@activity.defn
+@with_heartbeat
+def parse_table_batch(params: StageBatchParams) -> BatchResult:
+    """The cell grid of each file of a group, one `parse_table_and_store` call a file.
+
+    Each call gets the MIME types and encodings that the detectors recorded for its file.
+    """
+    def step(file: BatchFile) -> Dict[str, Any] | SkippedOutcome:
+        return parse_table_and_store(ParseTableParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            file_hash=file.item_hash,
+            file_path=file.file_path,
+            timeout_seconds=try_budget_seconds("parse_table_batch", file.file_size_bytes),
+            mime_types=file.mime_types,
+            mime_encodings=file.mime_encodings,
+            op_id=params.op_id,
+        ))
+
+    return run_batch("parse_table_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="parse_table_and_store")

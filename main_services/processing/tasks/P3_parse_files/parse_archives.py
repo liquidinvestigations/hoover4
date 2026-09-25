@@ -1,14 +1,12 @@
-"""Archive extraction activities and workflow for scan orchestration."""
+"""Archive extraction activities, and the archive stage activity of the group workflow."""
 
-from temporalio import workflow, activity
-from temporalio.common import RetryPolicy
-from datetime import timedelta
+from temporalio import activity
 from typing import Dict, Any, List
 from dataclasses import dataclass
 import os
-import asyncio
 import logging
-from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT, heartbeat_pump, with_heartbeat
+from tasks.heartbeat import heartbeat_pump, with_heartbeat
+from tasks.P3_parse_files.batch_runner import BatchFile, BatchResult, StageBatchParams, run_batch
 
 log = logging.getLogger(__name__)
 
@@ -69,9 +67,8 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
             )
         raise RuntimeError(f"7z extraction failed for {params.archive_path}: {res.stderr[:200]}\n{res.stdout[:200]}")
 
-    # Counted here so the caller can skip the scan of an archive that turned out to
-    # hold nothing -- a child workflow and a cleanup activity to discover an empty
-    # directory. 7z exits 0 on an empty archive, so a zero count is not an error.
+    # Counted here so the group gives the member scan no folder for an archive that
+    # holds nothing. 7z exits 0 on an empty archive, so a zero count is not an error.
     entry_count = sum(len(files) for _root, _dirs, files in os.walk(out_dir))
     if entry_count == 0:
         shutil.rmtree(out_dir, ignore_errors=True)
@@ -120,86 +117,43 @@ def cleanup_temp_dir(params: CleanupTempDirParams) -> str:
     return params.out_dir
 
 
-@dataclass
-class ArchiveExtractionWorkflowParams:
-    collectionname: str
-    collection_dataset: str
-    archive_hash: str
-    archive_types: List[str]
-    archive_path: str
-    timeout_seconds: int
 
 
-@workflow.defn
-class ArchiveExtractionAndScan:
-    """Workflow that extracts an archive, scans it via P0, and cleans up."""
-    @workflow.run
-    async def run(self, params: "ArchiveExtractionWorkflowParams") -> str:
-        # 1) Extract to temp dir
-        res = await workflow.execute_activity(
-            extract_archive_to_temp,
-            ExtractArchiveParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                archive_hash=params.archive_hash,
-                archive_types=params.archive_types,
-                archive_path=params.archive_path,
-            ),
-            start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
-        out_dir = res.get("out_dir")
+def count_member_files(out_dir: str) -> int:
+    """The files under `out_dir`, at every level. A folder that does not exist has none.
 
-        # 2) Record archive container row
-        await workflow.execute_activity(
-            record_archive_container,
-            RecordArchiveContainerParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                archive_hash=params.archive_hash,
-                archive_types=params.archive_types,
-            ),
-            start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
+    An extraction stage puts this count in its value, and the member scan sets the time
+    limit of the folder from it.
+    """
+    if not out_dir:
+        return 0
+    return sum(len(files) for _root, _dirs, files in os.walk(out_dir))
 
-        # An archive that extracted to nothing has already had its directory removed;
-        # scanning it would cost a child workflow and a cleanup activity to find an
-        # empty folder. `entry_count` is absent only on a result written by an older
-        # worker mid-upgrade, where the old unconditional behaviour is still correct.
-        if res.get("entry_count", 1) == 0:
-            return out_dir
 
-        # 3) Coordinate P0 scan as child workflow, with container and root overrides
+@activity.defn
+@with_heartbeat
+def extract_archive_batch(params: StageBatchParams) -> BatchResult:
+    """Extract each archive of a group into its own temporary folder, then record it.
 
-        # Import within sandbox
-        with workflow.unsafe.imports_passed_through():
-            from tasks.P0_scan_disk.workflows import HandleFolders, HandleFoldersParams
-            from tasks.visibility import dataset_search_attributes
-        await workflow.execute_child_workflow(
-            HandleFolders.run,
-            HandleFoldersParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                dataset_path=out_dir,
-                folder_path="/",
-                container_hash=params.archive_hash,
-                root_path_prefix="",
-            ),
-            id=f"scan-archive-{params.collection_dataset}-{params.archive_hash}",
-            task_queue="processing-common-queue",
-            search_attributes=dataset_search_attributes(params.collection_dataset),
-        )
+    The value of a file is the dictionary of `extract_archive_to_temp` with `member_count`
+    added. A file whose extraction fails gets no archive row.
+    """
+    def step(file: BatchFile) -> Dict[str, Any]:
+        value = extract_archive_to_temp(ExtractArchiveParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            archive_hash=file.item_hash,
+            archive_types=list(file.mime_types),
+            archive_path=file.file_path,
+        ))
+        record_archive_container(RecordArchiveContainerParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            archive_hash=file.item_hash,
+            archive_types=list(file.mime_types),
+        ))
+        return {**value, "member_count": count_member_files(value.get("out_dir") or "")}
 
-        # 4) Cleanup temp dir
-        await workflow.execute_activity(
-            cleanup_temp_dir,
-            CleanupTempDirParams(out_dir=out_dir),
-            start_to_close_timeout=timedelta(seconds=params.timeout_seconds),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
-
-        return out_dir
+    return run_batch("extract_archive_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="extract_archive_to_temp")

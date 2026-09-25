@@ -80,7 +80,7 @@ def test_oversize_stack_is_capped_and_says_truncated():
             "eventId": "1",
             "eventType": "EVENT_TYPE_WORKFLOW_EXECUTION_STARTED",
             "workflowExecutionStartedEventAttributes": {
-                "workflowType": {"name": "ParseSingleFile"},
+                "workflowType": {"name": "ProcessItemsBatched"},
             },
         },
         {

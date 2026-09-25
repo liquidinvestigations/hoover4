@@ -16,6 +16,9 @@ import tempfile
 import threading
 
 from tasks.heartbeat import heartbeat_pump, with_heartbeat
+from tasks.P3_parse_files.batch_runner import (
+    BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
+)
 
 log = logging.getLogger(__name__)
 
@@ -40,8 +43,9 @@ def _coarse_from_mime(mime: str) -> str:
 # Hard cap for a single Extractous call, regardless of the activity timeout.
 _EXTRACTOUS_SUBPROCESS_TIMEOUT_S = 600
 
-# Matches the tika worker's activity-slot count. One helper per in-flight
-# extract; extras wait on the idle queue rather than spawning unbounded.
+# The pool size when HOOVER4_TIKA_CONCURRENCY is empty. `_get_pool` sizes the pool to the
+# tika worker's activity-slot count, one helper for each extract in progress. Extra
+# checkouts wait on the idle queue and spawn no helper.
 _EXTRACTOUS_POOL_SIZE = 8
 
 # How long a checkout parks on the idle queue before re-checking whether it may
@@ -267,7 +271,12 @@ def _get_pool() -> ExtractousHelperPool:
         return _pool
     with _pool_lock:
         if _pool is None:
-            _pool = ExtractousHelperPool()
+            # The worker process imports tasks.run_worker before it starts, so this
+            # import loads no second copy of it.
+            from tasks.run_worker import worker_concurrency
+
+            _pool = ExtractousHelperPool(
+                size=worker_concurrency("tika", _EXTRACTOUS_POOL_SIZE))
         return _pool
 
 
@@ -508,3 +517,22 @@ def run_tika_and_store(params: RunTikaParams) -> Dict[str, Any]:
         "coarse_types": coarse_types,
         "extensions": extensions,
     }
+
+
+@activity.defn
+@with_heartbeat
+def run_tika_batch(params: StageBatchParams) -> BatchResult:
+    """Extractous text and metadata for each file of a group."""
+    def step(file: BatchFile) -> Dict[str, Any]:
+        return run_tika_and_store(RunTikaParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            file_hash=file.item_hash,
+            file_path=file.file_path,
+            timeout_seconds=try_budget_seconds("run_tika_batch", file.file_size_bytes),
+            op_id=params.op_id,
+        ))
+
+    return run_batch("run_tika_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="run_tika_and_store")

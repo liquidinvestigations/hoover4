@@ -51,9 +51,9 @@ struct StageCounts {
 /// four different index writers and a dozen parse tasks report separately. Mapping them
 /// onto the five bars is what lets a failure be shown next to the work it belongs to
 /// instead of only as a dataset-wide total. The default is the execute bar because the
-/// parse tasks are per-file children of plan execution and they are the long tail;
-/// mirrored on the processing side by `tasks/P_admin/failed_file_retry.py`, which
-/// decides what a retry of each task has to re-run.
+/// parse tasks run as stage activities of the group workflow of plan execution, and they
+/// are the long tail. `tasks/P_admin/failed_file_retry.py` holds the same mapping on the
+/// processing side, and decides what a retry of each task has to re-run.
 fn stage_for_task(task_name: &str) -> &'static str {
     match task_name {
         "archive_scan" => STAGE_SCAN,

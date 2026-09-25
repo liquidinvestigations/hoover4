@@ -62,8 +62,9 @@ ClickHouse storage is split across `1 + N` databases.
 `operation_error_events` stores `selection_complete` after all selector class events.
 Its JSON value stores the filter and counts. A missing marker permits synchronous removal
 of partial class events. `processing_document_outcomes` stores a document hash for each
-successful operation activity. The matching task run has the same workflow run, activity id,
-attempt and outcome.
+successful operation activity, and one for each successful file of a stage activity. The
+matching task run has the same workflow run, activity id, attempt and outcome. A stage
+activity writes one task run for each of its files, so each file has its own match.
 
 `processing_errors` uses `error_identity` as its replacement key. Each source execution
 assigns an identity before it calls the recorder. Recorder retries keep that identity.

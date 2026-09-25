@@ -46,6 +46,9 @@ from xml.etree import ElementTree as ET
 from temporalio import activity
 
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
+from tasks.P3_parse_files.batch_runner import (
+    BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
+)
 
 log = logging.getLogger(__name__)
 
@@ -515,3 +518,23 @@ def parse_office_xml_and_store(params: ParseOfficeXmlParams) -> Dict[str, Any]:
              run_time_ms, params.file_hash)
     return {"kind": result.kind, "chars": len(result.text), "segments": segments,
             "parts_read": result.parts_read, "dropped": result.dropped}
+
+
+@activity.defn
+@with_heartbeat
+def parse_office_xml_batch(params: StageBatchParams) -> BatchResult:
+    """The office XML text of each file of a group, one `parse_office_xml_and_store` call a file."""
+    def step(file: BatchFile) -> Dict[str, Any]:
+        return parse_office_xml_and_store(ParseOfficeXmlParams(
+            collectionname=params.collectionname,
+            collection_dataset=params.collection_dataset,
+            file_hash=file.item_hash,
+            file_path=file.file_path,
+            timeout_seconds=try_budget_seconds("parse_office_xml_batch",
+                                               file.file_size_bytes),
+            op_id=params.op_id,
+        ))
+
+    return run_batch("parse_office_xml_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=step,
+                     task_name="parse_office_xml_and_store")

@@ -24,12 +24,14 @@ TEMP_COPY_MISSING = "TempCopyMissing"
 
 
 def require_input_file(file_path: str) -> None:
-    """Raise a non-retryable error when the input file of an activity does not exist.
+    """Raise a non-retryable error when the input file of a per-file call does not exist.
 
-    The P2 download step writes a temporary copy of each plan file, and the P3 activities
+    The P2 download step writes a temporary copy of each plan file, and the P3 stages
     read that copy. When the copy is missing, every retry reads the same missing path, and
     a detector that runs on it reports its own error text as a file type. This check stops
-    the activity at its first attempt, with an error that names the path.
+    the tries of that file at the first one, with an error that names the path. Inside a
+    stage activity, the runner gives the file a failed result and goes on with the next
+    file.
     """
     if os.path.exists(file_path):
         return

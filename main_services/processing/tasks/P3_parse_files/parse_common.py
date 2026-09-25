@@ -7,7 +7,7 @@ import json
 import hashlib
 from dataclasses import dataclass
 from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
-from tasks.operation_failure_capture import TEMPORAL_BLOB_LIMIT_BYTES
+from tasks.payload_guard import MAX_PAYLOAD_BYTES, payload_size
 
 
 log = logging.getLogger(__name__)
@@ -23,9 +23,9 @@ log = logging.getLogger(__name__)
 DEFAULT_TEXT_SEGMENT_BYTES = 256 * 1024
 
 
-# Half the limit leaves headroom for the Temporal envelope and the six fields outside
-# `error_logs`.
-ERROR_PAYLOAD_BUDGET_BYTES = TEMPORAL_BLOB_LIMIT_BYTES // 2
+# The largest encoded input of one record activity, as the payload guard measures it.
+# Half the guard's limit leaves room for the other arguments of the workflow task.
+ERROR_PAYLOAD_BUDGET_BYTES = MAX_PAYLOAD_BYTES // 2
 ERROR_PAYLOAD_TRUNCATION_MARKER = "\n[error log truncated for the Temporal payload limit]"
 
 
@@ -383,27 +383,37 @@ async def record_errors_from_results(
         from tasks.P2_execute_plan.activities import record_processing_errors as _record_processing_errors
         from tasks.P2_execute_plan.activities import RecordProcessingErrorsParams as _RecordProcessingErrorsParams
 
+    # Every size below is the encoded size that the payload guard measures. The JSON
+    # converter writes each character outside ASCII as an escape of 6 or 12 bytes, so a
+    # UTF-8 count is too small for such text. The encoded batch is the empty input, each
+    # row, and one comma between two rows.
+    if _wf.in_workflow():
+        converter = _wf.payload_converter()
+    else:
+        from temporalio.converter import PayloadConverter
+        converter = PayloadConverter.default
+
+    def encoded_size(value: Any) -> int:
+        return payload_size(converter.to_payloads([value])[0])
+
+    empty_batch_bytes = encoded_size(
+        _RecordProcessingErrorsParams(collectionname=collectionname, errors=[]))
+
     def row_size_bytes(row: Dict[str, Any]) -> int:
-        return (
-            len(str(row.get("error_logs") or "").encode("utf-8"))
-            + len(str(row.get("collection_dataset") or "").encode("utf-8"))
-            + len(str(row.get("hash") or "").encode("utf-8"))
-            + len(str(row.get("task_name") or "").encode("utf-8"))
-            + len(str(row.get("workflow_run_id") or "").encode("utf-8"))
-            + len(str(row.get("op_id") or "").encode("utf-8"))
-            + len(str(row.get("error_identity") or "").encode("utf-8"))
-            + 128
-        )
+        # The data of the row alone: the metadata of the payload is in the empty batch.
+        return len(converter.to_payloads([row])[0].data)
 
     def truncate_error_logs(row: Dict[str, Any]) -> None:
-        fixed_size = row_size_bytes({**row, "error_logs": ""})
-        allowed_log_bytes = max(0, ERROR_PAYLOAD_BUDGET_BYTES - fixed_size)
+        allowed = ERROR_PAYLOAD_BUDGET_BYTES - empty_batch_bytes
         error_log = str(row.get("error_logs") or "")
-        if len(error_log.encode("utf-8")) <= allowed_log_bytes:
-            return
-        marker_bytes = ERROR_PAYLOAD_TRUNCATION_MARKER.encode("utf-8")
-        content_bytes = error_log.encode("utf-8")[:max(0, allowed_log_bytes - len(marker_bytes))]
-        row["error_logs"] = content_bytes.decode("utf-8", errors="ignore") + ERROR_PAYLOAD_TRUNCATION_MARKER
+        size = row_size_bytes(row)
+        while size > allowed and error_log:
+            # Cut in proportion to the excess, then measure again. Each pass removes at
+            # least one character, so the loop ends.
+            keep = len(error_log) * allowed // size - len(ERROR_PAYLOAD_TRUNCATION_MARKER)
+            error_log = error_log[:max(0, min(keep, len(error_log) - 1))]
+            row["error_logs"] = error_log + ERROR_PAYLOAD_TRUNCATION_MARKER
+            size = row_size_bytes(row)
 
     async def record_batch(rows: List[Dict[str, Any]]) -> None:
         await _wf.execute_activity(
@@ -415,14 +425,15 @@ async def record_errors_from_results(
         )
 
     batch: List[Dict[str, Any]] = []
-    batch_size_bytes = 0
+    batch_size_bytes = empty_batch_bytes
     for error_row in error_rows:
         truncate_error_logs(error_row)
-        error_row_size_bytes = row_size_bytes(error_row)
+        error_row_size_bytes = row_size_bytes(error_row) + (1 if batch else 0)
         if batch and batch_size_bytes + error_row_size_bytes > ERROR_PAYLOAD_BUDGET_BYTES:
             await record_batch(batch)
             batch = []
-            batch_size_bytes = 0
+            batch_size_bytes = empty_batch_bytes
+            error_row_size_bytes -= 1
         batch.append(error_row)
         batch_size_bytes += error_row_size_bytes
     if batch:

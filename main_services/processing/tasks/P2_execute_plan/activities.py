@@ -86,11 +86,12 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
 
     # `LIMIT 1 BY h.item_hash` decides correctness here. `blobs` is a
     # ReplacingMergeTree and this join does not read it FINAL, so a hash whose rows have
-    # not merged yet joins more than once and the same item comes back twice. The
-    # caller turns each item into a child workflow keyed by that hash, and two of them
-    # at the same time is a WorkflowAlreadyStartedError -- one file silently unparsed.
-    # Ordering by size descending first keeps the row that actually carries blob
-    # metadata when one of the duplicates joined nothing.
+    # not merged yet joins more than once and the same item comes back twice. A stage
+    # of the group workflow extracts a container into a folder named by the item hash,
+    # so two items of one hash would extract into one folder, and the member scan of
+    # one would remove the folder under the other. Ordering by size descending first
+    # keeps the row that actually carries blob metadata when one of the duplicates
+    # joined nothing.
     sql = f"""
         SELECT h.item_hash,
                b.blob_size_bytes,

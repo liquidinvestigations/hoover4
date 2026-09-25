@@ -9,7 +9,6 @@ from tasks.ocr_pdf_client import engines_for_provider, service_configured
 
 KNOWN_TASK_NAMES = frozenset(
     {
-        "P3_ParseSingleFile",
         "detector_error_file",
         "detector_error_magika",
         "detector_error_extension",

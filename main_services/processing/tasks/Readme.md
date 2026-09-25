@@ -96,8 +96,8 @@ lifecycle and its terminal write is what releases the operations lock. Runs on
 in this fleet. See [P_ops/Readme.md](P_ops/Readme.md). A failed operation also writes a
 tree of worker stack traces into the global `operation_failures` table
 (`tasks/operation_failure_capture.py`). A pipeline workflow that fails an operation writes
-the same way. The PDF child workflow reports an unreadable PDF to `ParseSingleFile`
-through `processing_errors` and does not write `operation_failures`.
+the same way. The group workflow `ProcessItemsBatched` records an unreadable PDF, like
+every failed file, in `processing_errors`, and does not write `operation_failures` for it.
 
 ### P_agent - every AI agent turn
 
@@ -227,7 +227,19 @@ that missed one beat misses the next. Three attempts has been observed running o
 20-millisecond activity and failing that file's whole parse. An attempt that is never
 needed costs nothing, and every activity is idempotent on retry. Activities with a
 real loop additionally beat a `HeartbeatClock` inside it, which is evidence of forward
-progress rather than only a live thread. `threading`/`contextvars`/`time` are imported lazily inside the
+progress rather than only a live thread.
+
+Every heartbeat goes through `send_heartbeat` (`heartbeat.py`): the pump, the
+`HeartbeatClock`, `stop_if_worker_is_stopping`, and the cursor heartbeat of a scan range.
+A stage activity of the group workflow registers its batch progress with
+`batch_progress`, and `send_heartbeat` then puts the batch detail first on every
+heartbeat of that attempt. When a file passes its try time limit, `send_heartbeat` drops
+every heartbeat of the attempt, so the server ends the attempt at the heartbeat timeout.
+A new direct call of `activity.heartbeat` inside a stage keeps a stalled attempt alive,
+so a stage must not make one. A stage activity has no attempt limit
+(`RetryPolicy(maximum_attempts=0)`). Its runner fails it after 5 consecutive attempts
+that finish no new file, and it gives each file its own 5 tries inside an attempt.
+`threading`/`contextvars`/`time` are imported lazily inside the
 helpers, never at module scope, because workflow modules import `HEARTBEAT_TIMEOUT` from
 here and the workflow sandbox restricts those modules.
 
@@ -271,7 +283,7 @@ a read timeout does not. `RemoteResult.provider` records which endpoint actually
 
 Every worker installs `TaskTimingInterceptor` (a Temporal **activity inbound
 interceptor**), so one row lands in the collection's `processing_task_runs` per activity
-execution: task name, dataset, artifact hash, wall duration, outcome, attempt, queue,
+execution, and one row for each file of a stage activity of the group workflow: task name, dataset, artifact hash, wall duration, outcome, attempt, queue,
 worker process, plus queue-wait (`scheduled_at`, `schedule_to_start_ms`,
 `retry_backoff_ms`) and the parent workflow identity (`workflow_id`, `workflow_run_id`,
 `workflow_type`). The interceptor is the hook rather than the 79 call sites or
@@ -279,9 +291,16 @@ worker process, plus queue-wait (`scheduled_at`, `schedule_to_start_ms`,
 adds. `tests/unit/test_task_timing.py` asserts every `Worker(...)` installs it.
 
 Operation-owned successful and skipped rows are durable before an activity returns.
-The interceptor writes document outcomes first for direct P3 activities, P4 and P5
-chunk members, and hashes returned by P6 writers. Each outcome and task run share
+The interceptor writes document outcomes first for each file of a P3 stage activity, P4
+and P5 chunk members, and hashes returned by P6 writers. Each outcome and task run share
 the Temporal execution identity.
+
+A stage activity returns a `BatchResult`. The interceptor writes one run row for each
+file, with the per-file function name, the file hash, and the file's own outcome, run
+time and start. The attempt, the activity id and the queue-wait columns are those of the
+stage activity, the same on every file row. A stage name, such as `run_tika_batch`, gets a
+run row only when the stage activity raises, so it always has the outcome `error`, and a
+failure rate grouped by task name shows each stage name at 100 percent.
 
 Three properties decide what the table can answer:
 

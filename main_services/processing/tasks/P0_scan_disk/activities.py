@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 
 from database.clickhouse import get_collection_client
 from database.s3 import collection_bucket, get_s3_client, ensure_bucket
-from tasks.heartbeat import HEARTBEAT_INTERVAL, HeartbeatClock, with_heartbeat
+from tasks.heartbeat import HEARTBEAT_INTERVAL, HeartbeatClock, send_heartbeat, with_heartbeat
 from tasks.operation_failure_capture import TEMPORAL_BLOB_LIMIT_BYTES
 
 
@@ -282,7 +282,12 @@ def _resume_after_name(after_name: str, until_name: str) -> str:
 @activity.defn
 @with_heartbeat
 def scan_folder_range(params: ScanFolderRangeParams) -> RangeResult:
-    """Ingest one name range and return only names for child folder workflows."""
+    """Ingest one name range and return only the names of its subfolders.
+
+    The disk scan starts a child folder workflow for each name. The member scan of
+    `tasks/P3_parse_files/member_scan.py` calls this function in process and scans each
+    name itself.
+    """
     folder = params.folder
     file_after_name = _resume_after_name(folder.after_name, params.until_name)
     listed = _range_entries(
@@ -322,8 +327,10 @@ def scan_folder_range(params: ScanFolderRangeParams) -> RangeResult:
             file_sizes=[file["size"] for file in batch],
         ))
         files_ingested += len(batch)
-        if activity.in_activity():
-            activity.heartbeat({"last_file_name": batch[-1]["path"].rsplit("/", 1)[-1]})
+        # Through send_heartbeat, so that inside the member scan of a group the batch
+        # detail stays the first detail. The cursor then is not details[0], and a retry
+        # scans its range from the start, which is safe because every write is idempotent.
+        send_heartbeat({"last_file_name": batch[-1]["path"].rsplit("/", 1)[-1]})
     return RangeResult(dirs, files_ingested, len(dirs))
 
 

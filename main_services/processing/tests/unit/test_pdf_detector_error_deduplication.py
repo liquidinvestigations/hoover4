@@ -1,7 +1,6 @@
 """PDF parser failures are the single Error record for unreadable PDFs."""
 
 from tasks.P3_parse_files import workflows
-from tasks.operation_failure_capture import _SKIP_WORKFLOW_TYPES
 
 
 class TemporalCauseFailure(RuntimeError):
@@ -56,7 +55,3 @@ def test_tika_error_remains_after_a_non_qpdf_pdf_failure():
     )
 
     assert results == [None, tika_error]
-
-
-def test_pdf_child_workflow_does_not_write_an_operation_failure():
-    assert "PdfProcessingAndScan" in _SKIP_WORKFLOW_TYPES

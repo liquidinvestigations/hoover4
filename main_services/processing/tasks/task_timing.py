@@ -1,4 +1,10 @@
-"""Where processing time goes: one row per activity execution, batched, best-effort.
+"""Where processing time goes: rows of activity run time, batched, best-effort.
+
+An activity execution writes one row, with one exception. A stage activity that returns
+a ``BatchResult`` writes one row for each file of its batch and no row of its own. A
+stage activity that raises writes one row under its stage name. ``count()`` over
+``processing_task_runs`` therefore counts files for a P3 stage. To count executions,
+count the distinct ``(workflow_run_id, activity_id, attempt)`` values.
 
 The hook is a **Temporal activity inbound interceptor** (:class:`TaskTimingInterceptor`),
 installed on every worker in ``run_worker.py``. That is the one place in this codebase
@@ -31,7 +37,7 @@ activity still runs.
 **Routing.** Per-collection rows go to that collection's own database. The collection
 is read off the activity's parameter dataclass (virtually all of them carry
 ``collectionname`` and ``collection_dataset``). An activity whose parameters name no
-collection -- ``ensure_temp_dir_exists``, ``cleanup_temp_dir``, ``collect_eta_samples``,
+collection -- ``ensure_temp_dir_exists``, ``collect_eta_samples``,
 the P_agent chat activities -- is recorded in the global ``Hoover4_Processing`` copy of
 ``processing_task_runs`` with an empty ``collection_dataset``. The INFO log names that
 table the first time a given task type takes this path.
@@ -659,6 +665,29 @@ class SkippedOutcome:
         self.value = value
 
 
+#: The `processing_errors` task name that a successful run of each task proves recovered.
+_OUTCOME_NAMES = {
+    "run_tika_and_store": "detector_error_tika",
+    "extract_plaintext_chunks": "extract_plaintext_chunks",
+    "parse_office_xml_and_store": "parse_office_xml_and_store",
+    "parse_table_and_store": "parse_table_and_store",
+    "parse_image_metadata_and_store": "parse_image_metadata_and_store",
+    "parse_audio_metadata_and_store": "parse_audio_metadata_and_store",
+    "extract_entities_for_hashes": "P4_ExtractEntities",
+    "scan_regex_entities_for_hashes": "P4_ScanRegexEntities",
+    "chunk_embed_for_hashes": "P5_ChunkEmbed",
+    "index_text_pages": "P6_IndexTextPages",
+    "index_vectors": "P6_IndexVectors",
+}
+
+
+def _outcome_name(task_name: str, engine: str) -> str | None:
+    """The error name that an `ok` or `skipped` run of `task_name` proves recovered."""
+    if task_name in ("run_ocr_and_store", "run_ocr_pdf_and_store"):
+        return f"{task_name}[{engine or ''}]"
+    return _OUTCOME_NAMES.get(task_name)
+
+
 def _outcome_rows(args: Sequence[Any], fields: _ActivityFields,
                   op_id: str, dataset: str, outcome: str, result: Any) -> list[list]:
     """Build document evidence for a successful activity execution."""
@@ -666,23 +695,7 @@ def _outcome_rows(args: Sequence[Any], fields: _ActivityFields,
         return []
     params = args[0]
     name = fields.task_name
-    names = {
-        "run_tika_and_store": "detector_error_tika",
-        "extract_plaintext_chunks": "extract_plaintext_chunks",
-        "parse_office_xml_and_store": "parse_office_xml_and_store",
-        "parse_table_and_store": "parse_table_and_store",
-        "parse_image_metadata_and_store": "parse_image_metadata_and_store",
-        "parse_audio_metadata_and_store": "parse_audio_metadata_and_store",
-        "extract_entities_for_hashes": "P4_ExtractEntities",
-        "scan_regex_entities_for_hashes": "P4_ScanRegexEntities",
-        "chunk_embed_for_hashes": "P5_ChunkEmbed",
-        "index_text_pages": "P6_IndexTextPages",
-        "index_vectors": "P6_IndexVectors",
-    }
-    if name in ("run_ocr_and_store", "run_ocr_pdf_and_store"):
-        error_name = f"{name}[{getattr(params, 'engine', '')}]"
-    else:
-        error_name = names.get(name)
+    error_name = _outcome_name(name, getattr(params, "engine", ""))
     if not error_name:
         return []
     if name in ("index_text_pages", "index_vectors"):
@@ -699,16 +712,46 @@ def _outcome_rows(args: Sequence[Any], fields: _ActivityFields,
             for hash in dict.fromkeys(hashes) if hash]
 
 
-def _write_operation_result(collectionname: str, row: list, outcomes: list[list]) -> None:
-    """Write document evidence before its matching activity run."""
+def _write_operation_result(collectionname: str, rows: list[list], outcomes: list[list]) -> None:
+    """Write document evidence before its matching activity runs."""
     from database.clickhouse import get_collection_client, insert_durable
 
     with get_collection_client(collectionname) as client:
         if outcomes:
             insert_durable(client, "processing_document_outcomes", outcomes,
                            column_names=_OUTCOME_COLUMNS)
-        insert_durable(client, "processing_task_runs", [row],
+        insert_durable(client, "processing_task_runs", rows,
                        column_names=_RUNS_COLUMNS)
+
+
+def _batch_rows(batch: Any, stage_row: list, fields: _ActivityFields, op_id: str,
+                dataset: str, engine: str) -> tuple[list[list], list[list]]:
+    """One run row for each file of a stage activity, and its outcome rows.
+
+    A file row carries the per-file function name, the file hash, the file's own
+    outcome, run time and start. The columns of the stage activity, such as the attempt
+    and the queue wait, are the same on every file row. An outcome row exists for each
+    `ok` or `skipped` file whose task proves an error name recovered.
+    """
+    run_rows: list[list] = []
+    outcomes: list[list] = []
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    attempt = min(max(fields.attempt, 0), 65535)
+    for file in batch.results:
+        outcome = "error" if file.status == "failed" else file.status
+        started_at = (datetime.fromtimestamp(file.started_at_ms / 1000, timezone.utc)
+                      .replace(tzinfo=None) if file.started_at_ms else stage_row[5])
+        row = list(stage_row)
+        row[1], row[2], row[3] = file.task_name, file.item_hash, outcome
+        row[4] = min(max(int(file.run_time_ms or 0), 0), 4_294_967_295)
+        row[5] = started_at
+        run_rows.append(row)
+        error_name = _outcome_name(file.task_name, engine)
+        if op_id and outcome in ("ok", "skipped") and error_name and file.item_hash:
+            outcomes.append([op_id, dataset, file.item_hash, error_name, file.task_name,
+                             fields.workflow_run_id, fields.activity_id, attempt,
+                             outcome, now])
+    return run_rows, outcomes
 
 
 class _TimingActivityInbound(ActivityInboundInterceptor):
@@ -764,15 +807,36 @@ class _TimingActivityInbound(ActivityInboundInterceptor):
                     op_id,
                     fields.activity_id,
                 ]
-            if op_id and outcome in ("ok", "skipped") and collectionname:
-                _write_operation_result(collectionname, row, _outcome_rows(
+            batch = _batch_of(result) if outcome == "ok" else None
+            if batch is not None:
+                run_rows, outcomes = _batch_rows(
+                    batch, row, fields, op_id, dataset,
+                    _first_attr(input.args, ("engine",)))
+                if op_id and collectionname:
+                    _write_operation_result(collectionname, run_rows, outcomes)
+                else:
+                    for file_row in run_rows:
+                        _recorder.record(collectionname, file_row)
+            elif op_id and outcome in ("ok", "skipped") and collectionname:
+                _write_operation_result(collectionname, [row], _outcome_rows(
                     input.args, fields, op_id, dataset, outcome, result))
             else:
                 _recorder.record(collectionname, row)
 
 
+def _batch_of(result: Any) -> Any:
+    """The `BatchResult` that a stage activity returned, or None for any other result."""
+    from tasks.P3_parse_files.batch_runner import BatchResult
+
+    return result if isinstance(result, BatchResult) else None
+
+
 class TaskTimingInterceptor(Interceptor):
-    """Install on every ``Worker`` to get a ``processing_task_runs`` row per execution."""
+    """Install on every ``Worker`` to get ``processing_task_runs`` rows.
+
+    An activity execution gets one row. A stage activity that returns gets one row for
+    each file of its batch in place of its own row.
+    """
 
     def intercept_activity(
         self, next: ActivityInboundInterceptor
