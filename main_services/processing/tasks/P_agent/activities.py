@@ -385,7 +385,11 @@ class AgentRunInput:
     start_seq: int = 0
     #: The uuid of every stream row of the turn. The website writes the user row with it.
     turn_uuid: str = ""
-    allowed_collections: list[str] = field(default_factory=list)
+    #: The collections the caller may read. A start through Temporal's HTTP route can store
+    #: an empty list as `null`, so `None` is accepted and becomes `[]`. With an empty list
+    #: the collection server refuses every call, and the website agent routes use the
+    #: caller's own permitted collections.
+    allowed_collections: list[str] | None = field(default_factory=list)
     #: Resolved and allowlist-checked by the website. Empty takes the server default.
     llm_model: str = ""
     #: The conversation's frozen switch. It selects the agent service.
@@ -393,6 +397,10 @@ class AgentRunInput:
     plan_run_id: str = ""
     #: The decision row that started a planner round or an organizer step.
     decision_id: str = ""
+
+    def __post_init__(self):
+        if self.allowed_collections is None:
+            self.allowed_collections = []
 
 
 @dataclass

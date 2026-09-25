@@ -123,6 +123,18 @@ def test_agent_run_input_holds_ids_and_settings_only():
         assert not names & {"query", "answer", "content", "result", "briefing", "report"}, params
 
 
+@pytest.mark.parametrize("stored", [None, []])
+def test_agent_run_input_reads_null_collections_as_an_empty_list(stored):
+    # The start payload as Temporal's HTTP route stores it for a user with no collection.
+    start = {"run_id": RUN_ID, "username": "u", "session_id": "s", "kind": "chat",
+             "turn_seq": 1, "start_seq": 2, "turn_uuid": "t", "allowed_collections": stored,
+             "llm_model": "", "internet_tools": False}
+    converter = DataConverter.default.payload_converter
+    payloads = converter.to_payloads([start])
+    (inp,) = converter.from_payloads(payloads, [AgentRunInput])
+    assert inp.allowed_collections == []
+
+
 # ---------------------------------------------------------------- the fakes
 
 

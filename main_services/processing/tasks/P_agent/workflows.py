@@ -228,7 +228,7 @@ class AgentRun:
                 username=inp.username,
                 session_id=inp.session_id,
                 turn_uuid=inp.turn_uuid,
-                allowed_collections=list(inp.allowed_collections),
+                allowed_collections=list(inp.allowed_collections or []),
                 llm_model=inp.llm_model,
                 internet_tools=inp.internet_tools,
             ),
