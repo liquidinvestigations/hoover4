@@ -21,6 +21,20 @@ const CATEGORY_HEADER: &str = "id\ttitle\tcatches\tdoes_not_prove";
 /// A prefix shorter than this matches too many unrelated words to be a signal of anything.
 const MIN_STEM_CHARS: usize = 3;
 
+/// A double quote inside a cell is legal to this loader but not to the CSV-style readers that
+/// treat `"` as a field quote, GitHub's file view among them, which then refuse the whole file.
+/// The lists are meant to be read and searched there, so a quote is refused at load time.
+fn refuse_quotes(line: &str, at: impl Fn() -> String) -> Result<()> {
+    if line.contains('"') {
+        bail!(
+            "{}: a double quote makes the file unreadable to CSV-style TSV readers; rephrase \
+             without it",
+            at()
+        );
+    }
+    Ok(())
+}
+
 pub struct Loaded {
     pub categories: Vec<CategoryDoc>,
     pub languages: Vec<String>,
@@ -143,6 +157,7 @@ fn parse_categories(raw: &str, path: &Path) -> Result<Vec<CategoryDoc>> {
         if line.trim().is_empty() {
             continue;
         }
+        refuse_quotes(line, || format!("{}:{}", path.display(), index + 2))?;
         let cells: Vec<&str> = line.split('\t').collect();
         let [id, title, catches, does_not_prove] = cells[..] else {
             bail!(
@@ -187,6 +202,7 @@ fn parse_terms(raw: &str, path: &Path, lang: &str, category: usize) -> Result<Ve
             continue;
         }
         let at = || format!("{}:{line_no}", path.display());
+        refuse_quotes(line, at)?;
         let cells: Vec<&str> = line.split('\t').collect();
         let [term, tier, speaker, concept, source, review, note] = cells[..] else {
             bail!("{} has {} columns; expected 7", at(), cells.len());
@@ -265,4 +281,20 @@ pub fn counts(terms: &[Term], categories: usize) -> Vec<BTreeMap<String, usize>>
         *out[term.category].entry(term.lang.clone()).or_insert(0) += 1;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_terms, TERM_HEADER};
+    use std::path::Path;
+
+    #[test]
+    fn a_double_quote_in_a_row_is_refused() {
+        let raw = format!(
+            "{TERM_HEADER}\ntold me to\tM\tinsider\ttold me to\tcurated\toriginal\ta \"quoted\" note\n"
+        );
+        let err =
+            parse_terms(&raw, Path::new("en/x.tsv"), "en", 0).expect_err("the row is refused");
+        assert!(err.to_string().contains("en/x.tsv:2"), "{err}");
+    }
 }

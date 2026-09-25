@@ -49,6 +49,8 @@ startup, naming the file and line:
 
 Each of these would otherwise load as a lexicon that quietly matches less than it claims to, or
 counts one word twice.
+A double quote anywhere is refused too. CSV-style TSV readers, GitHub's file view among them, take
+it for a field quote and refuse to show the whole file.
 
 The version is the first twelve hex digits of a SHA-256 over every file loaded. It is a content
 hash rather than a hand-bumped number, because the lists are edited far more often than the code.
