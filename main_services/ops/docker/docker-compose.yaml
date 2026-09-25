@@ -521,6 +521,9 @@ services:
       - "HOOVER4_CHAT_MODEL_CONCURRENCY=${HOOVER4_CHAT_MODEL_CONCURRENCY:-}"
       - "HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY=${HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY:-}"
       - "HOOVER4_RESEARCH_CONCURRENCY=${HOOVER4_RESEARCH_CONCURRENCY:-}"
+      # The sub-agent budgets that run_agent applies when a run delegates.
+      - "AGENT_SUBAGENT_MAX_PER_TURN=${AGENT_SUBAGENT_MAX_PER_TURN:-6}"
+      - "AGENT_PLAN_RUN_BUDGET=${AGENT_PLAN_RUN_BUDGET:-300}"
       # A rendered .env is substituted INTO this file; it does not reach the container by
       # itself. Without this line the worker reads no graceful shutdown period, falls
       # back to its own default, and the ini key silently stops deciding anything.

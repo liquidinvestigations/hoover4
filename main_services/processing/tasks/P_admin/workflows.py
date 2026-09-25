@@ -23,6 +23,7 @@ with workflow.unsafe.imports_passed_through():
         sweep_orphan_table_cells,
     )
     from tasks.P_ops.activities import supervise_operations
+    from tasks.P_agent.supervise import supervise_agent_runs
     from tasks.P_admin.ocr_languages import (
         ApplyOcrLanguagesParams,
         OcrStageParams,
@@ -298,6 +299,22 @@ class CollectEtaSamples:
                 if _is_cancellation(exc):
                     raise
                 workflow.logger.warning("Operation supervision failed: %s", exc)
+
+            # The agent run sweep. A run that was open before this call existed replays
+            # with no marker and skips it until its next continue-as-new.
+            if workflow.patched("agent-run-sweep"):
+                try:
+                    await workflow.execute_activity(
+                        supervise_agent_runs,
+                        task_queue="operations-queue",
+                        start_to_close_timeout=timedelta(minutes=10),
+                        heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                        retry_policy=RetryPolicy(maximum_attempts=2),
+                    )
+                except ActivityError as exc:
+                    if _is_cancellation(exc):
+                        raise
+                    workflow.logger.warning("Agent run supervision failed: %s", exc)
             state.passes += 1
 
             if state.passes >= CONTINUE_AS_NEW_PASSES:

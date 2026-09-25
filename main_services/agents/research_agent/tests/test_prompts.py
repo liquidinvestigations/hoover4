@@ -149,6 +149,26 @@ def test_the_lead_prompt_offers_delegation_and_the_narrow_one_does_not():
     assert subagents.DELEGATION_TOOL not in rendered("internal_search")
 
 
+@pytest.mark.parametrize("profile", sorted(PROFILE_TOOLS))
+def test_the_delegation_paragraph_follows_the_binding(profile):
+    """Each profile has the delegation paragraph when `run_subagent` is bound, and none when
+    it is not. No profile says that a worker cannot delegate."""
+    tools = set(PROFILE_TOOLS[profile])
+    with_tool = prompts.render(profile, tools=sorted(tools | {subagents.DELEGATION_TOOL}))
+    without = prompts.render(profile, tools=sorted(tools - {subagents.DELEGATION_TOOL}))
+    assert f"`{subagents.DELEGATION_TOOL}` in one call" in with_tool.replace("\n", " ")
+    assert subagents.DELEGATION_TOOL not in without
+    assert "cannot delegate" not in with_tool + without
+
+
+def test_a_review_briefing_gets_the_verdict_block():
+    tools = sorted(PROFILE_TOOLS["research_subagent"])
+    review = prompts.render("research_subagent", tools=tools, purpose="review")
+    execute = prompts.render("research_subagent", tools=tools, purpose="execute")
+    assert '{"verdict": "accept", "defect_classes": []}' in review
+    assert "verdict" not in execute
+
+
 def test_the_budget_in_the_prose_is_the_budget_in_the_code():
     """The number the model is told is the number `should_continue` enforces.
 

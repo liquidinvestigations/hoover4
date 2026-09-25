@@ -208,6 +208,11 @@ browser_max_contexts = 16
 mcp_browser_mem_limit = 24G
 ; Subagent workers the full-research agent may start at once from one call.
 agent_subagent_concurrency = 5
+; Sub-agent runs one chat turn may start through run_subagent, at every depth.
+; A chat turn that runs a plan counts against agent_plan_run_budget instead.
+agent_subagent_max_per_turn = 6
+; Sub-agent runs one research plan may start over all its organizer steps.
+agent_plan_run_budget = 300
 ; Tool packs for each kind of agent run: a comma list of pack names, or all.
 ; The packs are catalogue, collections, conversation, plan, delegation, web and
 ; browser. The agent service refuses to start on an unknown pack name.

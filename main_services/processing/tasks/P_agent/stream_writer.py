@@ -28,6 +28,8 @@ import time
 from typing import Any
 
 import requests
+from temporalio import activity
+from temporalio.exceptions import CancelledError
 
 log = logging.getLogger(__name__)
 
@@ -513,3 +515,343 @@ class ResearchStreamWriter:
         self._closed.set()
         if self._keepalive_thread is not None:
             self._keepalive_thread.join(timeout=2)
+
+
+# ---------------------------------------------------------------------- the run stream
+
+#: An attempt that receives no agent event for this long fails. The heartbeat keeps a
+#: silent attempt alive, so without this bound a wedged agent holds the slot for the whole
+#: start-to-close timeout. It is the read timeout of the stream request.
+RUN_STREAM_IDLE_SECONDS = 300
+
+#: The browser server, which keeps one browser for each run until the run releases it.
+BROWSER_SERVER_URL = os.getenv("BROWSER_SERVER_URL", "http://hoover4-mcp-browser:8087")
+
+def tool_row_fields(name: str, args: Any, content: str) -> dict[str, str]:
+    """The `chat_messages` columns of one finished tool call, in today's row shape.
+
+    The same rules as `trajectory.pair_tool_calls`: a canonical broker page is stored as its
+    own bytes, every other result as truncated JSON, and the summary is the start of the
+    arguments.
+    """
+    from tasks.P_agent.trajectory import (
+        TOOL_SUMMARY_CHARS, _dumps, extract_doc_refs, is_canonical_page, truncate,
+        truncate_json,
+    )
+
+    tool_input = _dumps(args if args is not None else {})
+    if is_canonical_page(content):
+        tool_output = content
+        result: Any = content
+    else:
+        try:
+            result = json.loads(content)
+        except (TypeError, ValueError):
+            result = content
+        tool_output = truncate_json(_dumps(result))
+    refs = extract_doc_refs(name, result)
+    return {
+        "tool_name": name,
+        "tool_input": truncate_json(tool_input),
+        "tool_output": tool_output,
+        "content": truncate(tool_input, TOOL_SUMMARY_CHARS),
+        "doc_refs": _dumps(refs) if refs else "",
+    }
+
+
+class _TurnParams:
+    """The fields `ResearchStreamWriter` reads, for one attempt of one run."""
+
+    def __init__(self, username: str, session_id: str, start_seq: int, turn_uuid: str):
+        self.username = username
+        self.session_id = session_id
+        self.start_seq = start_seq
+        self.turn_uuid = turn_uuid
+
+
+class RunStreamClient(ResearchStreamWriter):
+    """Consume `POST /run/stream` for one attempt of one agent run.
+
+    It writes every event as it arrives, so the database holds the run and no answer or tool
+    result crosses a Temporal payload:
+
+    * `model_turn`, `tool_start` and `tool_result` go into `agent_run_messages`, at the
+      message index the agent gives. A streaming partial of the next model message is an
+      `is_final = 0` row, rewritten at most every `STREAM_WRITE_MIN_INTERVAL` seconds.
+    * For a run that writes the transcript, the live rows go into `chat_message_stream` as
+      the parent class writes them. A tool call takes its transcript seq when it starts, and
+      its finished row goes into `chat_messages` at that seq when its result arrives. The
+      result is paired with its call by `tool_call_id`, never by arrival order, so two
+      parallel calls keep their own arguments.
+
+    The run row is written through one `RunRowWriter`, so the keepalive and the state
+    writes cannot replace each other.
+    """
+
+    def __init__(self, row, messages, writer, *, turn_uuid: str, history: list[dict],
+                 allowed_collections: list[str], llm_model: str, internet_tools: bool,
+                 write_chat_row):
+        from database import agent_runs
+
+        self.row = row
+        self.run_writer = writer
+        self.transcript = agent_runs.writes_transcript(row)
+        self.messages = messages
+        self.history = history
+        self.allowed_collections = allowed_collections
+        self.llm_model = llm_model or _chat_model()
+        self.internet_tools = internet_tools
+        self._write_chat_row = write_chat_row
+        self.next_idx = (max(m.idx for m in messages) + 1) if messages else 0
+        seqs = list(agent_runs.iter_thread_tool_seqs(messages))
+        self.next_seq = max([row.next_seq] + [s + 1 for s in seqs])
+        super().__init__(_TurnParams(row.username, row.session_id, self.next_seq, turn_uuid))
+        #: Started calls, by `tool_call_id`: (seq, stream index, name, args, summary).
+        self.calls: dict[str, tuple[int, int, str, Any, str]] = {}
+        self.tool_turns_used = row.tool_turns_used
+        self.partial_text = ""
+        self.partial_reasoning = ""
+        self._last_partial = 0.0
+        self.model = self.llm_model
+        #: The `delegate` events of this attempt, in call order. A run that delegates
+        #: sends them after the `tool_start` of each `run_subagent` call and before `end`.
+        self.delegates: list[dict[str, Any]] = []
+
+    # ------------------------------------------------------------------ writes
+
+    def _message(self, idx: int, role: str, **fields) -> None:
+        from database import agent_runs
+
+        agent_runs.write_message(
+            self.row.username, self.row.session_id, self.row.thread_id, self.row.run_id,
+            agent_runs.RunMessageRow(idx=idx, role=role, run_id=self.row.run_id, **fields),
+        )
+
+    def _insert_stream_row(self, *args, **kwargs) -> None:
+        if self.transcript:
+            super()._insert_stream_row(*args, **kwargs)
+
+    def _write_partial(self) -> None:
+        now = time.monotonic()
+        if now - self._last_partial < STREAM_WRITE_MIN_INTERVAL:
+            return
+        self._last_partial = now
+        self._message(self.next_idx, "ai", content=self.partial_text,
+                      reasoning=self.partial_reasoning, is_final=0)
+
+    def _free_seq(self) -> int:
+        """The lowest seq that no started-and-unfinished call holds, after every row so far."""
+        return self.params.start_seq + self.tool_count
+
+    def _record_progress(self) -> None:
+        pending = [seq for seq, *_ in self.calls.values()]
+        self.next_seq = min(pending) if pending else self._free_seq()
+        self.run_writer.write(next_seq=self.next_seq, tool_turns_used=self.tool_turns_used)
+
+    # ------------------------------------------------------------------ the request
+
+    def request_body(self) -> dict[str, Any]:
+        from database import agent_runs
+
+        return {
+            "run_id": self.row.run_id,
+            "kind": self.row.kind,
+            "depth": self.row.depth,
+            "username": self.row.username,
+            "session_id": self.row.session_id,
+            "allowed_collections": self.allowed_collections,
+            "llm_model": self.llm_model,
+            "history": self.history if agent_runs.writes_transcript(self.row) else [],
+            "messages": [run_message(m) for m in self.messages],
+            "tool_turns_used": self.row.tool_turns_used,
+            "extra_tool_turns": self.row.extra_tool_turns,
+            "can_delegate": self.row.depth < 2,
+        }
+
+    def run(self) -> dict[str, Any]:
+        """Stream the run; return the answer fields. Raises on an agent error."""
+        if self.transcript:
+            self._write_assistant(force=True)
+            self._keepalive_thread = threading.Thread(
+                target=self._keepalive_loop, daemon=True, name="run-stream-keepalive"
+            )
+            self._keepalive_thread.start()
+
+        from .activities import agent_url_for
+
+        response = requests.post(
+            f"{agent_url_for(self.internet_tools)}/run/stream",
+            json=self.request_body(),
+            timeout=(CONNECT_TIMEOUT_SECONDS, RUN_STREAM_IDLE_SECONDS),
+            stream=True,
+        )
+        with response:
+            return self._read_stream(response)
+
+    def _read_stream(self, response) -> dict[str, Any]:
+        response.raise_for_status()
+        ended = False
+        for line in response.iter_lines(decode_unicode=True):
+            # A stop cancels the attempt. The workflow waits for the attempt to end before
+            # it writes the ending, so the attempt stops at the first event after the
+            # cancellation and writes nothing more.
+            if activity.in_activity() and activity.is_cancelled():
+                raise CancelledError("the run was stopped")
+            if not line or not line.startswith("data: "):
+                continue
+            try:
+                chunk = json.loads(line[len("data: "):])
+            except ValueError:
+                log.warning("[P_agent] unparseable run frame: %.200s", line)
+                continue
+            kind = chunk.get("type")
+            if kind == "error":
+                raise RuntimeError(chunk.get("content") or "unknown agent error")
+            if kind == "end":
+                if isinstance(chunk.get("usage"), dict):
+                    self.usage = dict(chunk["usage"])
+                self.model = chunk.get("model") or self.model
+                ended = True
+                continue
+            self._handle_run_event(kind, chunk.get("content"))
+        if not ended:
+            raise RuntimeError("the agent stream ended without an end event")
+
+        if self.transcript and self.assistant_row_started:
+            self._write_assistant(force=True)
+        answer = self._answer_text()
+        reasoning = self.reasoning.strip()
+        if not answer and reasoning:
+            answer, reasoning = reasoning, ""
+        return {"answer": answer, "reasoning": reasoning, "model": self.model,
+                "usage": {**self.usage, "context_window": context_window_for(self.model)}}
+
+    # ------------------------------------------------------------------ the events
+
+    def _handle_run_event(self, kind: str | None, content: Any) -> None:
+        if kind == "reasoning":
+            text = str(content or "")
+            self.reasoning += text
+            self.partial_reasoning += text
+            self._write_assistant()
+            self._write_partial()
+        elif kind == "response":
+            text = str(content or "")
+            self.answer += text
+            self.partial_text += text
+            self._write_assistant()
+            self._write_partial()
+        elif kind == "model_turn" and isinstance(content, dict):
+            self._model_turn(content)
+        elif kind == "tool_start" and isinstance(content, dict):
+            self._tool_start(content)
+        elif kind == "tool_result" and isinstance(content, dict):
+            self._tool_result(content)
+        elif kind == "delegate" and isinstance(content, dict):
+            self.delegates.append(content)
+
+    def _model_turn(self, content: dict[str, Any]) -> None:
+        idx = int(content.get("index", self.next_idx))
+        calls = [
+            {"id": str(c.get("id") or ""), "name": str(c.get("name") or ""),
+             "args": c.get("args") if isinstance(c.get("args"), dict) else {}}
+            for c in content.get("tool_calls") or []
+        ]
+        self._message(
+            idx, "ai",
+            content=str(content.get("text") or ""),
+            reasoning=str(content.get("reasoning") or ""),
+            tool_calls_json=json.dumps(calls),
+            usage_json=json.dumps(content.get("usage") or {}),
+            is_final=1,
+        )
+        self.next_idx = idx + 1
+        self.partial_text = ""
+        self.partial_reasoning = ""
+        if calls:
+            self.tool_turns_used += 1
+            self.run_writer.write(tool_turns_used=self.tool_turns_used)
+
+    def _tool_start(self, content: dict[str, Any]) -> None:
+        call_id = str(content.get("tool_call_id") or "")
+        name = str(content.get("name") or "")
+        args = content.get("args")
+        # The prose before a call is narration, except a plan-first opening. The parent
+        # class applies that rule and moves the assistant partial one seq down.
+        keep_preamble = self._keeps_preamble({"name": name})
+        if self.answer.strip():
+            if keep_preamble:
+                self.plan_prose = "\n\n".join(p for p in (self.plan_prose, self.answer.strip()) if p)
+            else:
+                self.reasoning = "\n\n".join(p for p in (self.reasoning, self.answer.strip()) if p)
+            self.answer = ""
+        seq = self._free_seq()
+        if self.assistant_row_started:
+            self._mark_final(seq, "assistant", self._answer_text(), reasoning=self.reasoning)
+            self.assistant_row_started = False
+        summary = json.dumps({"name": name, "input": args}, default=str)[:400]
+        index = self.tool_count
+        self._insert_stream_row(seq, "tool", summary, tool_name=name, tool_call_index=index)
+        self.pending_tools.append((seq, index, name, summary, call_id))
+        self.calls[call_id] = (seq, index, name, args, summary)
+        self.tool_count += 1
+
+    def _tool_result(self, content: dict[str, Any]) -> None:
+        call_id = str(content.get("tool_call_id") or "")
+        name = str(content.get("name") or "")
+        text = content.get("content")
+        text = text if isinstance(text, str) else json.dumps(text, default=str)
+        started = self.calls.pop(call_id, None)
+        self.pending_tools = [p for p in self.pending_tools if p[4] != call_id]
+        if started is None:
+            # A result with no start: the call still gets a seq, so its row is not lost.
+            seq, index, args, summary = self._free_seq(), self.tool_count, {}, ""
+            self.tool_count += 1
+        else:
+            seq, index, _, args, summary = started
+        idx = int(content.get("index", self.next_idx))
+        self._message(
+            idx, "tool", content=text, tool_call_id=call_id, tool_name=name,
+            usage_json=json.dumps({"chat_seq": seq, "status": content.get("status") or "ok",
+                                   "measure": content.get("measure")}, default=str),
+        )
+        self.next_idx = max(self.next_idx, idx + 1)
+        if self.transcript:
+            self._write_chat_row(seq=seq, role="tool", **tool_row_fields(name, args, text))
+            self._mark_final(seq, "tool", summary, tool_name=name, tool_call_index=index)
+        self._record_progress()
+        if self.transcript:
+            self._write_assistant(force=True)
+
+
+def run_message(message) -> dict[str, Any]:
+    """One stored thread message in the `RunMessage` shape of the agent's run request."""
+    out: dict[str, Any] = {"role": message.role, "content": message.content}
+    if message.role == "ai":
+        out["tool_calls"] = message.tool_calls
+        usage = message.usage
+        if usage:
+            out["usage"] = {k: int(usage.get(k) or 0)
+                            for k in ("input_tokens", "output_tokens", "total_tokens")}
+    elif message.role == "tool":
+        out["tool_call_id"] = message.tool_call_id
+        out["name"] = message.tool_name or None
+    return out
+
+
+def prepare_thread(messages):
+    """The complete messages of a thread, which a request sends.
+
+    A partial (`is_final = 0`) is dropped, because its complete form never arrived. When the
+    last `ai` message has calls with no `tool` message, the thread keeps them, and the agent
+    runs the missing calls before its next model call.
+    """
+    return [m for m in messages if m.is_final]
+
+
+def release_browser(run_id: str) -> None:
+    """Release the run's browser. Best effort: the browser server also reaps idle browsers."""
+    try:
+        requests.post(f"{BROWSER_SERVER_URL}/runs/{run_id}/release", timeout=(5, 10))
+    except Exception:  # noqa: BLE001 - a missed release costs one idle browser
+        log.warning("[P_agent] could not release the browser of run %s", run_id, exc_info=True)

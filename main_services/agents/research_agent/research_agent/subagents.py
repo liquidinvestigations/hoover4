@@ -5,6 +5,10 @@ agent splits it into briefings, runs them at once with fresh context each, and w
 answer from what comes back. Workers do not talk to each other and do not plan; they have
 one objective and a small budget.
 
+The in-process workers of this module serve `/chat/stream` only. A `/run/stream` run stops
+at `run_subagent`, and the worker starts each briefing as an `AgentRun` of its own, up to
+depth 2 (`execution.py`).
+
 **Depth is enforced by what is bound, not by what the prompt asks.** A worker's snapshot
 is built from the MCP tools before `run_subagent` is added, and `run_subagent` is in
 `IN_PROCESS_WORKER_EXCLUDED`, so a worker cannot delegate however it is prompted. Which
@@ -485,9 +489,9 @@ def make_delegation_tool(run_worker: Callable[[str], Any]) -> StructuredTool:
             f"between two and {MAX_TASKS_PER_CALL} tasks in one call; each is a briefing "
             "with an `objective` (the one question it answers), `known` (what you have "
             "already established, so it does not repeat your work) and `bring_back` "
-            "(what its report must contain). They run in parallel, cannot see each "
-            "other, and cannot delegate further. Each returns a written report plus the "
-            "citation handles it allocated, which are yours to write into your answer. "
+            "(what its report must contain). They run in parallel and cannot see each "
+            "other. Each returns a written report plus the citation handles it "
+            "allocated, which are yours to write into your answer. "
             "Use it when parts of the question can be pursued independently; do the work "
             "yourself when it is one thread."
         ),

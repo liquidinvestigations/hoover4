@@ -341,6 +341,91 @@ async def test_a_continued_run_has_only_the_tool_turns_left(scripted):
     assert events[-1]["type"] == "end"
 
 
+# --------------------------------------------------------- the stop at run_subagent
+
+
+def _briefing(objective):
+    return {"objective": objective, "known": "", "bring_back": "the documents"}
+
+
+async def test_a_model_turn_with_two_run_subagent_calls_is_one_delegation(scripted):
+    seen: List[Any] = []
+    tools = [dict_tool("search_collections", LIST_SCHEMA, seen)]
+    replies = [AIMessage(content="", tool_calls=[
+        {"id": "d1", "name": "run_subagent", "args": {"tasks": [_briefing("A"), _briefing("B")]}},
+        {"id": "c1", "name": "search_collections", "args": {"query": "lease"}},
+        {"id": "d2", "name": "run_subagent", "args": {"tasks": json.dumps([_briefing("C")])}},
+    ])]
+    _, events = await run_events(scripted, tools, replies, run_id="run-d1")
+    types = [e["type"] for e in events]
+    # One model call: the run ends at the delegation and asks the model nothing more.
+    assert types.count("model_turn") == 1 and scripted.replies == []
+    results = [e["content"] for e in events if e["type"] == "tool_result"]
+    assert [r["tool_call_id"] for r in results] == ["c1"]
+    assert [a for n, step, a in seen if step == "start"] == [{"query": "lease"}]
+    delegates = [e["content"] for e in events if e["type"] == "delegate"]
+    assert [d["tool_call_id"] for d in delegates] == ["d1", "d2"]
+    assert [[b["objective"] for b in d["briefings"]] for d in delegates] == [["A", "B"], ["C"]]
+    # The continuation writes the two results after the one result of this turn.
+    assert [d["index"] for d in delegates] == [3, 4]
+    starts = [e["content"]["tool_call_id"] for e in events if e["type"] == "tool_start"]
+    assert starts[-2:] == ["d1", "d2"]
+    assert types.index("delegate") > max(i for i, t in enumerate(types) if t == "tool_start")
+    assert events[-1]["type"] == "end" and events[-1]["content"] == ""
+
+
+async def test_run_subagent_with_unreadable_briefings_gets_an_error_and_does_not_stop(scripted):
+    replies = [
+        AIMessage(content="", tool_calls=[
+            {"id": "d1", "name": "run_subagent", "args": {"tasks": "not json"}}]),
+        AIMessage(content="Done."),
+    ]
+    _, events = await run_events(scripted, [dict_tool("search_collections", LIST_SCHEMA, [])],
+                                 replies, run_id="run-d2")
+    assert not [e for e in events if e["type"] == "delegate"]
+    result = next(e["content"] for e in events if e["type"] == "tool_result")
+    assert json.loads(result["content"])["error"] == "invalid_arguments"
+    assert [e["type"] for e in events].count("model_turn") == 2
+
+
+async def test_a_depth_2_run_gets_tool_unavailable_for_run_subagent(scripted):
+    """`depth-limit`: a graph with `can_delegate` false binds no `run_subagent`, so the call
+    gets the execution node's `tool_unavailable` result and no `delegate` event."""
+    replies = [
+        AIMessage(content="", tool_calls=[
+            {"id": "d1", "name": "run_subagent", "args": {"tasks": [_briefing("A")]}}]),
+        AIMessage(content="Done."),
+    ]
+    _, events = await run_events(scripted, [dict_tool("search_collections", LIST_SCHEMA, [])],
+                                 replies, run_id="run-d3", kind="subagent", can_delegate=False)
+    assert not [e for e in events if e["type"] == "delegate"]
+    result = next(e["content"] for e in events if e["type"] == "tool_result")
+    assert json.loads(result["content"])["error"] == "tool_unavailable"
+
+
+async def test_a_retry_runs_the_unanswered_call_before_the_next_model_call(scripted):
+    seen: List[Any] = []
+    tools = [dict_tool("search_collections", LIST_SCHEMA, seen)]
+    FakeClient.tools = tools
+    scripted.replies.extend([AIMessage(content="Done.")])
+    agent = agent_module.MCPGatewayAgent(["http://stub/mcp"], "test", "", "stub-model", "full_research")
+    thread = [
+        HumanMessage(content="Find the lease."),
+        AIMessage(content="", tool_calls=[
+            {"id": "c1", "name": "search_collections", "args": {"query": "one"}},
+            {"id": "c2", "name": "search_collections", "args": {"query": "two"}},
+        ]),
+        ToolMessage(content="first result", tool_call_id="c1", name="search_collections"),
+    ]
+    events = [e async for e in agent.stream(
+        query=None, session_id="s1", username="alice", allowed_collections=["testdata"],
+        thread=thread, run_id="run-d4")]
+    assert [a for n, step, a in seen if step == "start"] == [{"query": "two"}]
+    result = next(e["content"] for e in events if e["type"] == "tool_result")
+    assert (result["tool_call_id"], result["index"]) == ("c2", 3)
+    assert [e["type"] for e in events].count("model_turn") == 1
+
+
 # --------------------------------------------------------- the batch result budget
 
 

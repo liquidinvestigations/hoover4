@@ -22,6 +22,7 @@ use common::admin_types::{
     DatasetTextVariant,
 };
 use common::current_user::CurrentUser;
+use common::storage_tree::compose_collection_dataset;
 use time::format_description::well_known::Rfc3339;
 
 use crate::api::admin::operations;
@@ -444,15 +445,6 @@ fn is_safe_folder_name(name: &str) -> bool {
         && !name.contains('/')
         && !name.contains('\\')
         && name != ".."
-}
-
-/// The dataset id the pipeline composes: `<collectionname>_<dataset_name>`.
-///
-/// Mirrors `compose_collection_dataset` in `tasks/P0_scan_disk/submit_job.py`. Never split
-/// it to recover the collection. A dataset name may contain `_`; resolve through the
-/// `dataset` table instead.
-fn compose_collection_dataset(collectionname: &str, dataset_name: &str) -> String {
-    format!("{collectionname}_{dataset_name}")
 }
 
 /// The pipeline's dataset-name rule, duplicated here so the form can refuse before the

@@ -38,6 +38,18 @@ message artifact. The node takes it out of the artifact, adds the share and the 
 puts it in the `tool_result` event and in the tool message's `response_metadata` under
 `call_measure`. The model never reads it.
 
+**The calls it runs.** The node runs the calls of the last `ai` message that have no `tool`
+message after it. For a new model turn that is every call. A retry whose stored thread ends
+with some calls unanswered starts the graph at this node, so it runs only the missing calls.
+
+**The stop at `run_subagent`.** With `stop_at_delegation` true, which is the `/run/stream`
+graph, a `run_subagent` call does not run in process. The node runs every other call of the
+turn first, with the batch budget. It then sends a `tool_start` and one `delegate` event for
+each `run_subagent` call, in call order, and sets `delegated` in the state, so the graph ends.
+The thread keeps the `ai` message with those calls and no `tool` message for them. The worker
+writes the sub-agent runs, and the continuation adds their results. A `run_subagent` call
+whose briefings cannot be read gets an `invalid_arguments` result and does not delegate.
+
 The events are langchain custom events, so `agent.stream` receives them from
 `astream_events` as `on_custom_event` with the event type as the name.
 """
@@ -84,6 +96,10 @@ PLAN_MUTATIONS = frozenset({"append_node", "append_child", "move_node", "edit_no
 TOOL_START = "tool_start"
 TOOL_RESULT = "tool_result"
 MODEL_TURN = "model_turn"
+DELEGATE = "delegate"
+
+#: The delegation tool. On the `/run/stream` graph the node stops at it.
+DELEGATION_TOOL = "run_subagent"
 
 #: The request header that carries one call's page share to the page broker.
 PAGE_SHARE_HEADER = "X-Hoover4-Page-Share"
@@ -285,11 +301,42 @@ async def _emit(name: str, data: Dict[str, Any], config: Optional[RunnableConfig
         pass
 
 
-def make_execution_node(snapshot: CatalogueSnapshot, emit_events: bool = True):
+def pending_calls(messages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], int]:
+    """The calls of the last `ai` message that have no `tool` message after it, in call
+    order, and the position of that `ai` message. `([], -1)` when the thread ends with no
+    unanswered call."""
+    answered = set()
+    for position in range(len(messages) - 1, -1, -1):
+        message = messages[position]
+        if isinstance(message, ToolMessage):
+            answered.add(message.tool_call_id)
+            continue
+        calls = list(getattr(message, "tool_calls", None) or [])
+        missing = [c for c in calls if (c.get("id") or "") not in answered]
+        return (missing, position) if missing else ([], -1)
+    return [], -1
+
+
+def _briefings_of(args: Any) -> Optional[List[Dict[str, Any]]]:
+    """The briefings of one `run_subagent` call as dicts, or `None` when they cannot be
+    read. The same coercion as the in-process tool."""
+    from research_agent.subagents import _as_briefings
+
+    raw = args.get("tasks") if isinstance(args, dict) else None
+    briefings = _as_briefings(raw)
+    if not briefings:
+        return None
+    return [b.model_dump() for b in briefings]
+
+
+def make_execution_node(
+    snapshot: CatalogueSnapshot, emit_events: bool = True, stop_at_delegation: bool = False,
+):
     """Return the execution node of a graph over one catalogue snapshot.
 
     `emit_events` false sends no `tool_start` or `tool_result` event. The in-process worker
     graph sets it, because its calls are not calls of the run that streams the events.
+    `stop_at_delegation` true ends the run at a `run_subagent` call (module docstring).
     """
 
     async def emit(name: str, data: Dict[str, Any], config: Optional[RunnableConfig]) -> None:
@@ -298,10 +345,22 @@ def make_execution_node(snapshot: CatalogueSnapshot, emit_events: bool = True):
 
     async def execute(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
         messages = state["messages"]
-        calls = list(getattr(messages[-1], "tool_calls", None) or [])
+        calls, _ = pending_calls(messages)
         bound = tuple(state.get("bound_names") or ())
         allowed = set(snapshot.callable_names(bound))
         base_index = len(messages) - int(state.get("thread_offset") or 0)
+        delegations: List[Tuple[Dict[str, Any], List[Dict[str, Any]]]] = []
+        if stop_at_delegation and DELEGATION_TOOL in allowed:
+            kept = []
+            for call in calls:
+                briefings = (
+                    _briefings_of(call.get("args")) if call.get("name") == DELEGATION_TOOL else None
+                )
+                if briefings is None:
+                    kept.append(call)
+                else:
+                    delegations.append((call, briefings))
+            calls = kept
         budget = (
             await asyncio.to_thread(batch_budget, [c.get("name") or "" for c in calls], messages)
             if calls else None
@@ -327,6 +386,13 @@ def make_execution_node(snapshot: CatalogueSnapshot, emit_events: bool = True):
             if budget is not None and budget.exhausted:
                 status = "error"
                 content = empty_page_text(name)
+            elif stop_at_delegation and name == DELEGATION_TOOL and name in allowed:
+                status = "error"
+                content = _error(
+                    "invalid_arguments",
+                    "tasks must be a list of 1 to 5 briefings, each with an objective",
+                    tool=name,
+                )
             elif name not in allowed:
                 status = "error"
                 content = _error(
@@ -410,7 +476,27 @@ def make_execution_node(snapshot: CatalogueSnapshot, emit_events: bool = True):
         for call, message in zip(calls, out):
             if call.get("name") == SEARCH_TOOL and message.status != "error":
                 newest.extend(matched_names(message.content))
-        return {"messages": out, "bound_names": bind_names(snapshot, bound, newest)}
+        update: Dict[str, Any] = {"messages": out, "bound_names": bind_names(snapshot, bound, newest)}
+        if delegations:
+            # The continuation writes the results of these calls at the next indexes.
+            index = base_index + len(out)
+            for position, (call, briefings) in enumerate(delegations):
+                event = {
+                    "index": index + position,
+                    "tool_call_id": call.get("id") or "",
+                    "name": DELEGATION_TOOL,
+                    "args": call.get("args") or {},
+                }
+                await emit(TOOL_START, event, config)
+            for position, (call, briefings) in enumerate(delegations):
+                await emit(
+                    DELEGATE,
+                    {"index": index + position, "tool_call_id": call.get("id") or "",
+                     "briefings": briefings},
+                    config,
+                )
+            update["delegated"] = True
+        return update
 
     return execute
 
@@ -441,7 +527,7 @@ def model_turn_event(index: int, message: Any) -> Dict[str, Any]:
 
 
 __all__ = [
-    "BatchBudget", "MODEL_TURN", "PAGE_SHARE_HEADER", "PLAN_MUTATIONS", "TOOL_RESULT",
+    "BatchBudget", "DELEGATE", "DELEGATION_TOOL", "MODEL_TURN", "PAGE_SHARE_HEADER", "PLAN_MUTATIONS", "TOOL_RESULT",
     "TOOL_START", "batch_budget", "empty_page_text", "make_execution_node", "model_turn_event",
-    "page_share_client", "safe_budget", "split_measure", "token_budget", "validation_error",
+    "page_share_client", "pending_calls", "safe_budget", "split_measure", "token_budget", "validation_error",
 ]

@@ -15,7 +15,8 @@ from agent_common import tool_packs
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent import compaction, llm_events, prompts, subagents
 from research_agent.execution import (
-    MODEL_TURN, TOOL_RESULT, TOOL_START, make_execution_node, model_turn_event, page_share_client,
+    DELEGATE, MODEL_TURN, TOOL_RESULT, TOOL_START, make_execution_node, model_turn_event,
+    page_share_client, pending_calls,
 )
 from research_agent.run_messages import history_to_langchain
 from research_agent.tool_catalogue import DELEGATION_TOOL, build_snapshot
@@ -156,6 +157,9 @@ class AgentState(TypedDict, total=False):
     #: How many messages the request started with. The tool-turn count reads only the
     #: messages after it, which are the turns this request made.
     request_start: int
+    #: Set by the execution node of a `/run/stream` graph when the run stops at
+    #: `run_subagent`. The graph then ends with no answer.
+    delegated: bool
 
 
 #: Headers the ACL-aware MCP servers read to scope a call to one user. The agent never
@@ -373,8 +377,11 @@ class MCPGatewayAgent:
         """Create the agent graph with MCP tools, scoped to one caller's ACL.
 
         `kind` selects the tool packs (`agent_common.tool_packs`). `can_delegate` false
-        removes `run_subagent` from the packs.
+        removes `run_subagent` from the packs. A graph with a `run_id` serves
+        `/run/stream`: it stops at a `run_subagent` call and never runs a worker in
+        process (`execution.py`). A graph with no `run_id` serves `/chat/stream`.
         """
+        stop_at_delegation = bool(run_id)
         # Set up MCP servers. The ACL travels as connection headers so the MCP server
         # enforces it on every tool call. The model cannot widen its own permissions,
         # because it never sees or supplies them.
@@ -456,13 +463,22 @@ class MCPGatewayAgent:
         if not can_delegate:
             allowed = allowed - {DELEGATION_TOOL}
 
-        # The in-process worker of `run_subagent`.
+        # The in-process worker of `run_subagent`, for `/chat/stream` only.
         #
         # Its snapshot is built from the MCP tools before `run_subagent` is added, so a
         # worker cannot delegate. Workers reuse these tool objects, which means they reuse
         # this graph's MCP headers and therefore the lead's chat session: that is what
         # makes a worker's citation handles resolve in the lead's session.
-        if DELEGATION_TOOL in allowed:
+        #
+        # A `/run/stream` graph binds the same tool for its schema, and the execution node
+        # stops at it, so its worker callable is never called.
+        if DELEGATION_TOOL in allowed and stop_at_delegation:
+
+            async def never_runs(text: str) -> Sequence[BaseMessage]:
+                raise RuntimeError("a /run/stream graph delegates through run rows")
+
+            tools = list(tools) + [subagents.make_delegation_tool(never_runs)]
+        elif DELEGATION_TOOL in allowed:
             worker_snapshot = build_snapshot(
                 tools, subagents.worker_allowed_tools(), "subagent"
             )
@@ -598,7 +614,9 @@ class MCPGatewayAgent:
         # The execution node in place of langgraph's `ToolNode`. See
         # research_agent/execution.py. The node keeps the name `tools`, which the
         # `/chat/stream` event loop reads.
-        builder.add_node("tools", make_execution_node(snapshot))
+        builder.add_node(
+            "tools", make_execution_node(snapshot, stop_at_delegation=stop_at_delegation)
+        )
 
         def _tool_turns(state: AgentState) -> int:
             """The tool turns this request made. A continued thread's earlier turns are
@@ -669,9 +687,21 @@ class MCPGatewayAgent:
         builder.add_node("finalize_entry", finalize_entry)
         builder.add_node("finalize", finalize_node)
 
-        builder.set_entry_point("agent")
+        def entry(state: AgentState):
+            """Start at the execution node when the thread ends with unanswered calls.
+
+            That is a retry of an attempt that ended during a tool call. The stored model
+            message keeps its calls, and the missing ones run before the next model call.
+            """
+            calls, _ = pending_calls(state["messages"])
+            return "tools" if calls else "agent"
+
+        def after_tools(state: AgentState):
+            return END if state.get("delegated") else "agent"
+
+        builder.set_conditional_entry_point(entry, ["tools", "agent"])
         builder.add_conditional_edges("agent", should_continue)
-        builder.add_edge("tools", "agent")
+        builder.add_conditional_edges("tools", after_tools, ["agent", END])
         builder.add_edge("finalize_entry", "finalize")
         builder.add_edge("finalize", END)
 
@@ -697,8 +727,9 @@ class MCPGatewayAgent:
 
         `/chat/stream` passes `query` and yields the `start_tool` and `end_tool` events.
         `/run/stream` passes `run_id` and `thread`, the rebuilt run messages, in place of
-        `query`. It yields the `model_turn`, `tool_start` and `tool_result` events in
-        place of `start_tool` and `end_tool`, and releases the run's graph at the end.
+        `query`. It yields the `model_turn`, `tool_start`, `tool_result` and `delegate`
+        events in place of `start_tool` and `end_tool`, and releases the run's graph at the
+        end. A run that stops at `run_subagent` sends `delegate` and then `end`.
         """
         # Build (or reuse) the graph whose MCP connections carry this caller's ACL and
         # chat session, keyed also by the model that will answer.
@@ -756,6 +787,7 @@ class MCPGatewayAgent:
             "bound_names": (),
             "thread_offset": thread_offset,
             "request_start": len(messages),
+            "delegated": False,
         }
 
         # Prepare config with Langfuse callback if available
@@ -832,7 +864,7 @@ class MCPGatewayAgent:
             # `/run/stream` request forwards them. The `/chat/stream` consumers read
             # `start_tool` and `end_tool` below.
             if kind == "on_custom_event":
-                if run_events and event.get("name") in (MODEL_TURN, TOOL_START, TOOL_RESULT):
+                if run_events and event.get("name") in (MODEL_TURN, TOOL_START, TOOL_RESULT, DELEGATE):
                     yield {
                         "is_task_complete": False,
                         "type": event["name"],

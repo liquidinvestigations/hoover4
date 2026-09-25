@@ -77,7 +77,8 @@ Not a pipeline stage. Creates and drops the per-collection ClickHouse databases
 runs `CollectEtaSamples`. The self-scheduling singleton that writes
 `processing_eta_samples` for the admin processing page (100-event rates, items/s and
 bytes/s combined pessimistically, 20x-cost throttle, finished collections skipped).
-Runs on `processing-common-queue`. See [P_admin/Readme.md](P_admin/Readme.md).
+Runs on `processing-common-queue`. Each pass also calls the operation sweep and, behind the
+`agent-run-sweep` patch, the agent run sweep on `operations-queue`. See [P_admin/Readme.md](P_admin/Readme.md).
 
 ### P_ops - Long operations a person can start
 
@@ -95,11 +96,45 @@ through `processing_errors` and does not write `operation_failures`.
 
 ### P_agent - every AI agent turn
 
-**Both kinds of turn run here.** `ChatTurn` owns an ordinary chat message on `chat-queue`;
-its model call runs on `chat-model-queue`. `ResearchTask` owns an exhaustive research run
-on `research-queue`. They differ in which agent they reach, how long they may take and
-which queue they wait on, not in what they do with the result, so they share their
-activities and their transcript writer.
+**Both kinds of turn run here.** `AgentRun` owns an ordinary chat message on `chat-queue`.
+Its agent call, `run_agent`, runs on the queue in its run row, `chat-model-queue` for a chat
+turn. `ResearchTask` owns an exhaustive research run on `research-queue`.
+
+`AgentRun` keeps its state in `agent_runs` and `agent_run_messages`
+(`database/agent_runs.py`). Its input holds ids and settings only. `open_run` writes the
+row and the opening message from the user row, `run_agent` sends the stored thread to the
+agent's `POST /run/stream` and writes each event as it arrives, and `write_ending` writes the
+terminal state and the ending row. No answer or tool result crosses a Temporal payload. A
+tool result is paired with its call by `tool_call_id`, so two parallel calls keep their own
+arguments. A retry of `run_agent` continues from the stored thread and the row's `next_seq`, and the
+agent runs a call that the failed attempt left without a result before its next model call.
+A turn with a stop row in `agent_turn_stops` closes in `open_run`.
+
+**Delegation runs through run rows.** The agent stops a run at `run_subagent` and sends one
+`delegate` event for each call. `run_agent` then writes one `tool` row for each call, applies
+the budgets of `run_budgets.py`, writes a child row and an opening message for each accepted
+briefing, and puts its own row in `waiting_for_children`. The workflow starts one abandoned
+child `AgentRun` for each child, with the parent's collections, model and internet switch in
+its input, and returns. When a run ends, `fan_in` reads its sibling set. When every sibling
+is terminal, `continue_run` writes a continuation row of the parent, and the workflow starts
+it. The continuation's `run_agent` adds one `tool` result for each `run_subagent` call, the
+JSON `{"reports": [...], "refused": [...]}`, and rewrites the call's transcript row with it.
+`write_ending` of a continuation writes its state into every run it continues. Child and
+continuation ids are `uuid5` values, so a retry and a second writer write the same rows, and
+a refused duplicate workflow start counts as started. A child at depth 2 cannot delegate.
+
+The budgets: at most 5 briefings a call, `AGENT_SUBAGENT_MAX_PER_TURN` sub-agent runs a chat
+turn (default 6), `AGENT_PLAN_RUN_BUDGET` a plan run (default 300), and a depth 1 run spends
+only the share its parent gave it. The surplus is refused by name in the continuation's
+result. The counts leave out the caller's own batch, so a retry counts what it counted first.
+
+**The agent run sweep** (`supervise.py`) runs on `operations-queue` after the operation sweep
+of each `CollectEtaSamples` pass. It ends a running row whose workflow closed or does not
+exist, as `failed` or, for a stopped turn, `cancelled`, and runs `fan_in` for it. It
+continues a waiting row whose workflow closed and whose batch is terminal. It leaves a row
+younger than 120 s, and a child whose parent's workflow still runs. A child whose parent
+is terminal is ended when its own workflow is closed or absent, because no attempt of a
+terminal parent starts it.
 
 The website holds nothing open for either: it writes the user row, reserves the answer's
 seq and dispatches. That is what makes a turn survive a browser reload, a website restart
@@ -108,15 +143,17 @@ and a worker crash.
 None of the three queues is the ingestion queue. An ingestion backlog delaying
 somebody waiting at a screen is the one failure a shared queue guarantees. **The worker
 deploys before the website**: a workflow addressed to a queue nothing polls waits for ever
-with no error anywhere. A slot is one turn in flight, not one model call.
+with no error anywhere. A `chat-model-queue` slot is one agent run in flight, not one model
+call, and a delegated turn takes one slot for each running sub-agent.
 
-Two activities per turn on purpose: the agent call is slow and retryable, the write is fast
-and keyed, so a retried agent call cannot leave half a transcript.
+`ResearchTask` uses two activities on purpose: the agent call is slow and retryable, the
+write is fast and keyed, so a retried agent call cannot leave half a transcript.
 
 `nagging.py` is why a chat turn is a loop rather than one call. An agent stops when the
-model stops calling tools, which is not the same as the work being done, so `ChatTurn` reads
+model stops calling tools, which is not the same as the work being done, so `AgentRun` reads
 the session's todo afterwards and runs the agent again (under its own `nag` role in the
-transcript) while items are still open. **The counters live in the workflow, not in the
+transcript) while items are still open. `append_nag` writes the nag row, the nag text into
+the thread and the counters into the run row. **The counters live in the run row, not in the
 agent**, because they have to outlive an agent process that restarts mid-turn. Two nags
 while the plan is not moving, five in the whole turn, and each buys a fixed extra tool
 budget rather than resetting it. What counts as the plan moving is
@@ -287,10 +324,11 @@ Workers are split into dedicated queues to control throughput and resource usage
 - `processing-index-planner-queue`, P6 shard planning (`plan_shards`). MUST run at
   exactly one worker process: the planner does a read-modify-write on the shard ledger
   and assignments, which is only race-free when serialized.
-- `chat-queue`, `ChatTurn` plus transcript writes, todo reads and session titles
-  (`main.py worker chat`, concurrency from `chat_low_latency_concurrency`).
-- `chat-model-queue`, `run_research_agent` for those chat turns
-  (`chat_model_concurrency`). A slot is one turn, not one model call.
+- `chat-queue`, `AgentRun` plus `open_run`, `append_nag`, `write_ending`, `fan_in`,
+  `continue_run`, todo reads and session titles (`main.py worker chat`, concurrency from `chat_low_latency_concurrency`).
+- `chat-model-queue`, `run_agent` for those chat turns
+  (`chat_model_concurrency`). A slot is one agent run, not one model call. A delegated
+  turn takes one slot for each running sub-agent.
 - `research-queue`, `ResearchTask` (`research_concurrency`). Four slots, outside the
   chat-model slots.
 

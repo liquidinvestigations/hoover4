@@ -1,6 +1,6 @@
 """The nag loop's rules, and the one that makes the cap real.
 
-The loop itself lives in `ChatTurn` and needs Temporal to run; everything it decides
+The loop itself lives in `AgentRun` and needs Temporal to run; everything it decides
 with is here and is pure, so the counters can be exercised without a workflow.
 
 The case worth reading twice is

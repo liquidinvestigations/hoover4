@@ -7,6 +7,15 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The dataset id the pipeline composes: `<collectionname>_<dataset_name>`.
+///
+/// Mirrors `compose_collection_dataset` in `tasks/P0_scan_disk/submit_job.py`. Never split
+/// it to recover the collection. A dataset name may contain `_`, so resolve the collection
+/// through the `dataset` table instead.
+pub fn compose_collection_dataset(collectionname: &str, dataset_name: &str) -> String {
+    format!("{collectionname}_{dataset_name}")
+}
+
 /// One dataset as the storage surfaces need it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct DatasetSummary {

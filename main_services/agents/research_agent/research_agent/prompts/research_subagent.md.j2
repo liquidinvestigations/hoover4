@@ -1,15 +1,17 @@
 {# The worker profile, run by every sub-agent the lead delegates to.
 
    **No plan-first block, and not by omission.** `_blocks/plan_first.md.j2` renders only
-   where the todo writers are bound, and a worker binds none of them
-   (`subagents.WORKER_DENIED_TOOLS`), so the block is empty here whatever this template
-   does. A worker has one objective and a few tool turns; a plan is pure overhead, and it
-   could not write one anyway.
+   where the todo writers are bound, and a worker binds none of them, so the block is empty
+   here whatever this template does. A worker has one objective and a few tool turns, so a
+   plan is overhead.
 
-   **Nothing here limits delegation.** A worker cannot delegate because `run_subagent` is
-   not bound on this profile, which is the only mechanism that survives a model ignoring
-   its instructions. Being absent from the bound list, it is also absent from the tool
-   section above, so this prompt does not even mention it.
+   **Delegation follows the binding.** A `/run/stream` sub-agent at depth 1 binds
+   `run_subagent` and gets the delegation paragraph. A sub-agent at depth 2 and an in-process
+   worker bind no `run_subagent`, so the paragraph does not render and the tool section does
+   not name it. The binding is the limit, because a model can ignore its instructions.
+
+   **The verdict block** renders for a sub-agent whose `purpose` is `review`. The organizer
+   reads the fenced JSON block at the end of the report.
 
    Citing matters more here than in the other two profiles: the handles a worker allocates
    are the lead's handles, because it runs on the lead's chat session, and they are how the
@@ -27,6 +29,25 @@ Search once or twice from the angles that matter and then write up. Your report 
 the lead researcher, not by the user: give the findings, the evidence and what you could
 not establish, in that order, and say plainly where each fact came from — the user's
 documents{% if web_enabled %} or the open web{% endif %}.
+{% if subagents_enabled %}
+
+When your objective holds independent parts that each need several searches, you can send
+them to {{ tool('run_subagent') }} in one call. Each worker starts fresh, so tell it what you
+have already established and what its report must contain. Your share of workers is small,
+and a call past it is refused by name. Do the work yourself when it is one thread.
+{% endif %}
+{% if purpose == "review" %}
+
+You review the work of another researcher. End your report with one fenced JSON block and
+nothing after it, in this form:
+
+```json
+{"verdict": "accept", "defect_classes": []}
+```
+
+Set `verdict` to `accept` or `reject`. List in `defect_classes` the class of each defect you
+found, as short lowercase names.
+{% endif %}
 
 {% include '_blocks/citation.md.j2' %}
 

@@ -28,7 +28,8 @@ When the question is several independent questions wearing one coat, split it an
 parts to {{ tool('run_subagent') }} in one call: each worker starts fresh, so tell it what you have
 already established and what its report must contain. Do the work yourself when it is one
 thread — a delegated turn costs several times what a plain one costs. Their reports come
-back to you with the citation handles they allocated, which are yours to use.
+back to you as the result of the call, with the citation handles they allocated, which are yours to use.
+Put every part you delegate into one call.
 {% endif %}
 
 {% include '_blocks/citation.md.j2' %}

@@ -592,6 +592,7 @@ pub async fn delete_session(username: &str, session_id: &str) -> anyhow::Result<
     if let Err(e) = artifacts::soft_delete_session_artifacts(username, session_id).await {
         tracing::error!("could not soft-delete artifacts for session {session_id}: {e}");
     }
+    delete_session_runs(username, session_id).await;
     row.is_deleted = 1;
     row.updated_at = now();
     insert_row("chat_sessions", &row).await
@@ -801,4 +802,193 @@ pub async fn mark_stream_final(username: &str, session_id: &str) -> anyhow::Resu
         .await?;
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Agent runs: `agent_runs`, `agent_run_messages` and `agent_turn_stops`. The worker
+// writes the first two, and this process writes the stop rows. Every read uses `FINAL`,
+// because the worker rewrites a run row and a streaming message many times.
+// ---------------------------------------------------------------------------
+
+/// One `agent_runs` row, as the website reads it. The UUID columns come as text, and a
+/// null UUID comes as an empty string.
+#[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
+pub struct AgentRunRow {
+    pub rid: String,
+    pub owner: String,
+    pub sid: String,
+    pub turn_seq: u32,
+    pub thread: String,
+    pub parent_rid: String,
+    pub batch: String,
+    pub continues: String,
+    pub delegated_batch: String,
+    pub depth: u8,
+    pub kind: String,
+    pub state: String,
+    pub workflow_id: String,
+    pub briefing: String,
+    pub tool_call_id: String,
+    /// The result, cut to the poll's text limit.
+    pub result_head: String,
+    /// The error, cut to the poll's text limit.
+    pub error_head: String,
+    pub started_ms: i64,
+    pub updated_ms: i64,
+}
+
+impl AgentRunRow {
+    /// The run is open: its workflow runs, or it waits for the runs it delegated to.
+    pub fn is_open(&self) -> bool {
+        matches!(self.state.as_str(), "running" | "waiting_for_children")
+    }
+}
+
+/// The select list of [`AgentRunRow`]. The aliases have names no column has, because
+/// ClickHouse resolves an alias before the column of the same name.
+const RUN_SELECT: &str = "SELECT toString(run_id) AS rid, username AS owner, session_id AS sid, \
+     turn_seq, toString(thread_id) AS thread, \
+     ifNull(toString(parent_run_id), '') AS parent_rid, \
+     ifNull(toString(batch_id), '') AS batch, \
+     ifNull(toString(continues_run_id), '') AS continues, \
+     ifNull(toString(delegated_batch_id), '') AS delegated_batch, \
+     depth, kind, state, workflow_id, briefing, tool_call_id, \
+     substringUTF8(result, 1, 2000) AS result_head, \
+     substringUTF8(error, 1, 2000) AS error_head, \
+     toUnixTimestamp64Milli(started_at) AS started_ms, \
+     toUnixTimestamp64Milli(updated_at) AS updated_ms \
+     FROM agent_runs FINAL";
+
+/// Every run of one turn: the lead, its continuations, and every sub-agent run.
+pub async fn turn_runs(
+    username: &str,
+    session_id: &str,
+    turn_seq: u32,
+) -> anyhow::Result<Vec<AgentRunRow>> {
+    let rows = get_global_client()
+        .query(&format!(
+            "{RUN_SELECT} WHERE username = ? AND session_id = ? AND turn_seq = ? \
+             ORDER BY started_at, run_id"
+        ))
+        .bind(username)
+        .bind(session_id)
+        .bind(turn_seq)
+        .fetch_all::<AgentRunRow>()
+        .await?;
+    Ok(rows)
+}
+
+/// The run rows of the named workflows, for every owner. Only the admin live-runs list
+/// calls this, after its admin check.
+pub async fn runs_by_workflow_ids(workflow_ids: &[String]) -> anyhow::Result<Vec<AgentRunRow>> {
+    if workflow_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = get_global_client()
+        .query(&format!("{RUN_SELECT} WHERE has(?, workflow_id)"))
+        .bind(workflow_ids)
+        .fetch_all::<AgentRunRow>()
+        .await?;
+    Ok(rows)
+}
+
+/// One `agent_run_messages` row, as the poll reads it.
+#[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
+pub struct RunMessageHead {
+    pub thread: String,
+    pub idx: u32,
+    pub role: String,
+    /// The content, cut to the poll's text limit.
+    pub text: String,
+    pub tool_name: String,
+    pub tool_calls_json: String,
+    pub is_final: u8,
+}
+
+/// The last `per_thread` messages of each named thread, newest first within a thread.
+pub async fn thread_message_tails(
+    username: &str,
+    session_id: &str,
+    threads: &[String],
+    per_thread: usize,
+) -> anyhow::Result<Vec<RunMessageHead>> {
+    if threads.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = get_global_client()
+        .query(&format!(
+            "SELECT toString(thread_id) AS thread, idx, role, \
+                    substringUTF8(content, 1, 2000) AS text, tool_name, tool_calls_json, \
+                    is_final \
+             FROM agent_run_messages FINAL \
+             WHERE username = ? AND session_id = ? AND has(?, toString(thread_id)) \
+             ORDER BY thread_id, idx DESC LIMIT {per_thread} BY thread_id"
+        ))
+        .bind(username)
+        .bind(session_id)
+        .bind(threads)
+        .fetch_all::<RunMessageHead>()
+        .await?;
+    Ok(rows)
+}
+
+/// The count of tool results in each named thread, as `(thread, count)`.
+pub async fn thread_tool_counts(
+    username: &str,
+    session_id: &str,
+    threads: &[String],
+) -> anyhow::Result<Vec<(String, u64)>> {
+    if threads.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = get_global_client()
+        .query(
+            "SELECT toString(thread_id) AS thread, countIf(role = 'tool') AS tools \
+             FROM agent_run_messages FINAL \
+             WHERE username = ? AND session_id = ? AND has(?, toString(thread_id)) \
+             GROUP BY thread_id",
+        )
+        .bind(username)
+        .bind(session_id)
+        .bind(threads)
+        .fetch_all::<(String, u64)>()
+        .await?;
+    Ok(rows)
+}
+
+#[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
+struct TurnStopRow {
+    username: String,
+    session_id: String,
+    turn_seq: u32,
+    #[serde(with = "clickhouse::serde::time::datetime64::millis")]
+    created_at: time::OffsetDateTime,
+}
+
+/// Write the stop row of one turn. The insert is synchronous, so a run whose workflow
+/// starts after this returns reads the row in `open_run` and closes as `cancelled`.
+pub async fn write_turn_stop(username: &str, session_id: &str, turn_seq: u32) -> anyhow::Result<()> {
+    let row = TurnStopRow {
+        username: username.to_string(),
+        session_id: session_id.to_string(),
+        turn_seq,
+        created_at: now(),
+    };
+    insert_row("agent_turn_stops", &row).await
+}
+
+/// Delete the run rows, run messages and stop rows of one session. Each failure is
+/// logged and does not stop the others, because the session delete goes on regardless.
+async fn delete_session_runs(username: &str, session_id: &str) {
+    for table in ["agent_runs", "agent_run_messages", "agent_turn_stops"] {
+        let result = get_global_client()
+            .query(&format!("DELETE FROM {table} WHERE username = ? AND session_id = ?"))
+            .bind(username)
+            .bind(session_id)
+            .execute()
+            .await;
+        if let Err(e) = result {
+            tracing::error!("could not delete the {table} rows of session {session_id}: {e}");
+        }
+    }
 }

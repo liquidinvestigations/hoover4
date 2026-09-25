@@ -221,6 +221,23 @@ def test_both_research_agents_receive_the_pack_keys():
             assert f"{key}=${{{key}:-all}}" in environment, (name, key)
 
 
+def test_the_subagent_budgets_default_to_6_and_300():
+    env = _env("settings-defaults.ini")
+    assert (env["AGENT_SUBAGENT_MAX_PER_TURN"], env["AGENT_PLAN_RUN_BUDGET"]) == ("6", "300")
+
+
+def test_a_set_subagent_budget_is_rendered_and_an_empty_one_is_the_default():
+    env = _env("agent-budgets.ini")
+    assert (env["AGENT_SUBAGENT_MAX_PER_TURN"], env["AGENT_PLAN_RUN_BUDGET"]) == ("4", "300")
+
+
+def test_the_worker_receives_the_subagent_budgets():
+    main = dict(_compose_documents())["docker-compose.yaml"]["services"]
+    environment = main["hoover4-worker"]["environment"]
+    for key, default in (("AGENT_SUBAGENT_MAX_PER_TURN", 6), ("AGENT_PLAN_RUN_BUDGET", 300)):
+        assert f"{key}=${{{key}:-{default}}}" in environment, key
+
+
 def test_cassandra_heap_new_follows_the_cpus():
     assert _env("cassandra-heap-new.ini")["CASSANDRA_HEAP_NEW"] == "600M"
 

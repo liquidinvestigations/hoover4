@@ -5,7 +5,7 @@ being finished: the commonest way a turn ends badly is with a plan on the table 
 half of it undone. A nag runs the agent again, in the same turn, pointed at the item it
 left open.
 
-**The rules here are pure and the loop that applies them lives in `ChatTurn`.** Not in
+**The rules here are pure and the loop that applies them lives in `AgentRun`.** Not in
 the agent: a nag counter kept inside the agent process is lost the moment that process
 restarts, and the workflow is the only thing that knows the user's turn is still going.
 

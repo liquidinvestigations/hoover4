@@ -14,6 +14,7 @@
 
 pub mod browser_card;
 pub mod entities_card;
+pub mod subagent_card;
 pub mod web_search_card;
 
 use std::collections::HashMap;
@@ -41,9 +42,21 @@ pub fn ToolCard(
     /// collection and hash alone.
     #[props(default)]
     datasets: HashMap<String, String>,
+    /// The poll's sub-agent entries of the open turn. Only the `run_subagent` card reads
+    /// them, and every other row receives an empty list.
+    #[props(default)]
+    subagent_runs: Vec<common::chat_types::SubagentRunEntry>,
 ) -> Element {
     let running = running.unwrap_or(false);
     match tool_name.as_str() {
+        "run_subagent" => rsx! {
+            subagent_card::SubagentCard {
+                tool_input: tool_input.clone(),
+                tool_output: tool_output.clone(),
+                running,
+                subagent_runs: subagent_runs.clone(),
+            }
+        },
         "list_document_entities" => rsx! {
             entities_card::EntitiesCard {
                 tool_input: tool_input.clone(),

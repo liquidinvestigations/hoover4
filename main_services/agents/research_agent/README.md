@@ -5,8 +5,8 @@ A FastAPI-based research agent with MCP (Model Context Protocol) tool integratio
 ## The agent profiles
 
 One image, two containers, different tool sets, and the difference is deliberate. A third
-profile, `research_subagent`, has no container of its own: it is the profile the
-full-research agent's workers run in-process. See "Delegation" below.
+profile, `research_subagent`, has no container of its own: it is the profile of a sub-agent
+run, and of the in-process workers of `/chat/stream`. See "Delegation" below.
 
 | | `hoover4-internal-search-agent` (21936) | `hoover4-full-research-agent` (21937) |
 |---|---|---|
@@ -78,15 +78,27 @@ every agent reads it at tool-discovery time and there is only one copy to mainta
 ## Delegation
 
 A lead binds `run_subagent` when the `delegation` pack is in its run kind's packs, which
-is the default for both agents. The tool splits a question into two to five briefings and
-runs them at once in-process, each in a fresh context, with no peer coordination. See
-`research_agent/subagents.py`.
+is the default for both agents. The tool splits a question into one to five briefings. The
+two request paths run them in different places:
+
+- **`/run/stream`** stops the run at `run_subagent` (`execution.py`). The execution node
+  runs every other call of that model turn, then sends `tool_start` and `delegate` for each
+  `run_subagent` call and ends the graph with no answer. The worker writes one sub-agent run
+  for each accepted briefing, and each runs as an `AgentRun` of its own, with the
+  `research_subagent` profile. When the last one ends, a continuation of the delegating run
+  sends the thread back with one `tool` result for each call, and the model continues. A
+  sub-agent at depth 1 can delegate again, and a run at depth 2 cannot. See
+  `processing/tasks/Readme.md` for the runs, the fan-in and the budgets.
+- **`/chat/stream`** runs the briefings at once in-process, each in a fresh context, with no
+  peer coordination. See `research_agent/subagents.py`. The rest of this section describes
+  this path.
 
 **One level, enforced by what is bound.** A worker's snapshot is built from the MCP tools
 before the delegation tool is added to the lead's, and `run_subagent` is in
 `IN_PROCESS_WORKER_EXCLUDED` as well. These are two independent reasons a worker cannot
 delegate, and neither is a sentence in a prompt. A `/run/stream` request with
-`can_delegate` false does not bind `run_subagent`. A prompt asking a model not to recurse eventually meets a model that does. Every
+`can_delegate` false does not bind `run_subagent`, so a call to it gets the execution
+node's `tool_unavailable` result. A prompt asking a model not to recurse eventually meets a model that does. Every
 other cap is an environment-overridable number; the depth is not, because it is not a
 number.
 
@@ -206,11 +218,20 @@ The stream uses the frame shape of `/chat/stream`, and sends these events in pla
 | `model_turn` | `index`, `text`, `reasoning`, `tool_calls` with `id`, `name` and `args`, `usage` |
 | `tool_start` | `index`, `tool_call_id`, `name`, `args` |
 | `tool_result` | `index`, `tool_call_id`, `name`, `content`, `measure` (the call measure, or `null`), `status` (`ok` or `error`) |
+| `delegate` | `index`, `tool_call_id`, `briefings` (each `objective`, `known`, `bring_back`) |
 
 `index` is the message position in the run's thread. A call that raised sends a
 `tool_result` with `status` `error`, and `content` is the error text the model receives. The
-graph cache key holds the run id, and the run's graph is released when its stream ends. A
-`run_subagent` call runs the in-process worker path.
+graph cache key holds the run id, and the run's graph is released when its stream ends.
+
+A `run_subagent` call stops the run: one `delegate` event for each such call of the model
+turn, in call order, after the results of the other calls, then `end` with an empty answer.
+A model turn with two `run_subagent` calls is one delegation. A call whose briefings cannot
+be read gets an `invalid_arguments` result and does not stop the run.
+
+When the thread ends with an `ai` message whose calls do not all have a `tool` message, the
+graph starts at the execution node and runs the missing calls before the next model call.
+That is a retry of an attempt that ended during a call.
 
 ## Per-chat and per-run browser sessions
 

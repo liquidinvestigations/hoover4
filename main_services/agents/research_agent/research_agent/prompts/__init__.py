@@ -153,7 +153,7 @@ TOOL_GROUPS: Tuple[ToolGroup, ...] = (
     ToolGroup(
         ("run_subagent",),
         "delegate independent parts of a hard question to several researchers at once, "
-        "each starting fresh. They cannot see each other and cannot delegate further.",
+        "each starting fresh. They cannot see each other.",
     ),
 )
 
@@ -235,6 +235,7 @@ def render(
     collections_hint: bool = True,
     web_enabled: Optional[bool] = None,
     subagents_enabled: Optional[bool] = None,
+    purpose: Optional[str] = None,
     strict: bool = False,
 ) -> str:
     """Render one profile's system prompt for the deployment it will run in.
@@ -242,6 +243,9 @@ def render(
     `tools` is the bound tool list (names or tool objects), and everything the prompt
     says about the tool surface is derived from it. `web_enabled` and `subagents_enabled`
     default to what that list implies and are overridable only so a test can pin them.
+
+    `purpose` is the purpose of an organizer's briefing (`execute`, `review` or `correct`).
+    `review` adds the verdict block to the sub-agent profile. `None` adds nothing.
 
     `strict` turns a template naming an unbound tool into `UnboundToolError` instead of a
     logged warning. The drift test renders strict; the running agent does not.
@@ -276,6 +280,7 @@ def render(
             int(max_tool_turns) if max_tool_turns is not None else default_tool_turns(name)
         ),
         "collections_hint": bool(collections_hint),
+        "purpose": (purpose or "").strip().lower(),
         # Defaults for the shared blocks, so a profile template that forgets to set one
         # renders sensible prose rather than raising on StrictUndefined.
         "citation_artefact": "answer",

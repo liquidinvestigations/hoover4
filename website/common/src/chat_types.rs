@@ -401,6 +401,72 @@ pub struct StreamTurn {
     /// Version stamp: milliseconds of the newest stream row. The poll loop's change
     /// detection is built on it.
     pub updated_ms: i64,
+    /// The sub-agent runs of the current delegation batches of this turn, at most 30.
+    /// Empty when no batch is open. The `run_subagent` card finds its entries by
+    /// `batch_id` and `tool_call_id`. A batch that ended leaves this list, and the card
+    /// then reads the reports from the tool row's `tool_output`.
+    #[serde(default)]
+    pub subagent_runs: Vec<SubagentRunEntry>,
+}
+
+/// Characters kept of each sub-agent message, report and error in a poll.
+pub const SUBAGENT_TEXT_CHARS: usize = 2_000;
+
+/// Messages of a running sub-agent thread that a poll returns, newest last.
+pub const SUBAGENT_MESSAGES_PER_RUN: usize = 20;
+
+/// One sub-agent thread of an open delegation batch, as the poll returns it.
+///
+/// A continuation folds into the first run of its thread, so one entry stands for one
+/// briefing.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SubagentRunEntry {
+    /// The first run of the thread.
+    pub run_id: String,
+    /// The entry `run_id` of the thread that delegated this one.
+    pub parent_run_id: String,
+    /// 1 or 2.
+    pub depth: u8,
+    /// The delegation batch, as the `run_subagent` tool row holds it in `tool_input`.
+    pub batch_id: String,
+    /// The `run_subagent` call this thread answers.
+    pub tool_call_id: String,
+    /// The state of the newest run of the thread: `running`, `waiting_for_children`,
+    /// `completed`, `failed` or `cancelled`.
+    pub state: String,
+    /// The objective of the briefing.
+    pub objective: String,
+    /// The count of tool results in the thread.
+    pub tool_calls: u32,
+    /// For a `running` entry only: the last messages of the thread, oldest first.
+    #[serde(default)]
+    pub messages: Vec<SubagentMessage>,
+    /// For a terminal entry: the report, or the error of a failed run.
+    #[serde(default)]
+    pub report: String,
+}
+
+impl SubagentRunEntry {
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.state.as_str(), "completed" | "failed" | "cancelled")
+    }
+}
+
+/// One message of a running sub-agent thread.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SubagentMessage {
+    /// `human`, `ai` or `tool`.
+    pub role: String,
+    /// The text, cut to [`SUBAGENT_TEXT_CHARS`].
+    pub content: String,
+    /// The tool of a `tool` message.
+    #[serde(default)]
+    pub tool_name: String,
+    /// The tools an `ai` message calls.
+    #[serde(default)]
+    pub calls: Vec<String>,
+    /// False while the message is a streaming partial.
+    pub is_final: bool,
 }
 
 /// One poll of the tail of a transcript.

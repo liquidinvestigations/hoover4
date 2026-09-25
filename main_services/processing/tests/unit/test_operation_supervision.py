@@ -223,10 +223,11 @@ def test_collector_runs_supervision_after_sampling_failure(monkeypatch):
         workflows.workflow, "logger", SimpleNamespace(warning=lambda *_args: None),
     )
     monkeypatch.setattr(workflows.workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(workflows.workflow, "patched", lambda _patch_id: True)
     monkeypatch.setattr(workflows.asyncio, "sleep", stop)
     with pytest.raises(RuntimeError, match="stop"):
         asyncio.run(workflows.CollectEtaSamples().run())
-    assert calls == ["collect_eta_samples", "supervise_operations"]
+    assert calls == ["collect_eta_samples", "supervise_operations", "supervise_agent_runs"]
 
 
 def test_collector_starts_next_pass_after_supervision_failure(monkeypatch):
@@ -251,10 +252,11 @@ def test_collector_starts_next_pass_after_supervision_failure(monkeypatch):
         workflows.workflow, "logger", SimpleNamespace(warning=lambda *_args: None),
     )
     monkeypatch.setattr(workflows.workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(workflows.workflow, "patched", lambda _patch_id: True)
     monkeypatch.setattr(workflows.asyncio, "sleep", stop)
     with pytest.raises(RuntimeError, match="stop"):
         asyncio.run(workflows.CollectEtaSamples().run())
-    assert calls == ["collect_eta_samples", "supervise_operations"]
+    assert calls == ["collect_eta_samples", "supervise_operations", "supervise_agent_runs"]
 
 
 def test_collector_reraises_a_cancelled_activity(monkeypatch):
@@ -268,3 +270,27 @@ def test_collector_reraises_a_cancelled_activity(monkeypatch):
     monkeypatch.setattr(workflows.workflow, "execute_activity", execute_activity)
     with pytest.raises(_ActivityFailure):
         asyncio.run(workflows.CollectEtaSamples().run())
+
+
+def test_a_collector_that_replays_with_no_patch_marker_skips_the_agent_run_sweep(monkeypatch):
+    from tasks.P_admin import workflows
+
+    calls = []
+    patches = []
+
+    async def execute_activity(name, *_args, **_kwargs):
+        calls.append(name.__name__)
+        return SimpleNamespace(duration_ms=1, completed_collections=[], active_collections=[])
+
+    async def stop(_seconds):
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(workflows.workflow, "now", lambda: datetime(2026, 1, 1))
+    monkeypatch.setattr(workflows.workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(workflows.workflow, "patched",
+                        lambda patch_id: patches.append(patch_id) or False)
+    monkeypatch.setattr(workflows.asyncio, "sleep", stop)
+    with pytest.raises(RuntimeError, match="stop"):
+        asyncio.run(workflows.CollectEtaSamples().run())
+    assert calls == ["collect_eta_samples", "supervise_operations"]
+    assert patches == ["agent-run-sweep"]

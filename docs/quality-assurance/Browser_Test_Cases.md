@@ -197,6 +197,9 @@ The chat page, conversation history, and a missing session.
 | `501-ai-chat` | Exercises the ai chat case. | none named | `--names ai-chat` |
 | `502-ai-chat-history` | Exercises the ai chat history case. | none named | `--names ai-chat-history` |
 | `503-ai-chat-session-missing` | Exercises the ai chat session missing case. | none named | `--names ai-chat-session-missing` |
+| `504-ai-chat-delegation-running` | Opens the newest conversation while its sub-agents run and shows the run_subagent card with their live state. | a chat turn that delegates, running in the newest conversation of the capture identity | `--names ai-chat-delegation-running` |
+| `505-ai-chat-delegation-reports` | Opens the newest conversation after its sub-agents ended and shows the run_subagent card with their reports and the answer. | a finished delegated turn in the newest conversation of the capture identity | `--names ai-chat-delegation-reports` |
+| `506-ai-chat-entities-card` | Opens the newest conversation and shows the list_document_entities card of a live call over a paged result. | a finished `list_document_entities` call in the newest conversation of the capture identity | `--names ai-chat-entities-card` |
 
 ## Admin
 
@@ -237,6 +240,7 @@ Admin dashboard, collections, users, groups, settings, metrics, and operations.
 | `631-admin-operations-temporal-link` | Exercises the Temporal deep link on an operations row. | none named | `--names admin-operations-temporal-link` |
 | `632-admin-failure-scrubbed` | Exercises the scrubbed-copy control on a failure tree. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-failure-scrubbed --operation-id ID` |
 | `633-admin-operation-detail` | Exercises both second-page controls and rows on the operation detail page. | `reruns`, with the failed import from `main_services/verify-reruns.sh` | `--names admin-operation-detail --operation-id ID` |
+| `634-admin-metrics-live-runs` | Shows the live chats panel while a delegated turn runs, with one row for each open run. | a running agent turn | `--names admin-metrics-live-runs` |
 
 ## Manual QA procedures
 

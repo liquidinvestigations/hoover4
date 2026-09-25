@@ -1,11 +1,12 @@
 """Temporal workflows for AI agent turns.
 
-Two workflows, one shape. `ChatTurn` owns an ordinary chat turn and `ResearchTask` owns a
-deep research run: they differ in which agent they reach, how long they may take, and
-which queue they are dispatched to, not in what they do with the result.
+`AgentRun` owns one agent run. A chat turn is one `AgentRun`, and its state lives in the
+`agent_runs` and `agent_run_messages` tables, so the workflow input and results hold ids
+only. `ResearchTask` owns a deep research run and keeps the older shape: one agent call
+and a payload that it writes into the transcript.
 
-`ChatTurn` runs on `chat-queue`. Its model call runs on `chat-model-queue`. Deep research
-runs on `research-queue`. None of these is the ingestion queue. An ingestion backlog
+`AgentRun` runs on `chat-queue`. Its agent call runs on the queue in its row,
+`chat-model-queue` for a chat turn. Deep research runs on `research-queue`. None of these is the ingestion queue. An ingestion backlog
 delaying a person at a screen is the failure a shared queue guarantees, and these three
 queues make it impossible.
 """
@@ -16,27 +17,41 @@ from dataclasses import replace
 from datetime import timedelta
 
 from temporalio import workflow
-from temporalio.common import RetryPolicy
-from temporalio.exceptions import CancelledError
+from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
+from temporalio.exceptions import ActivityError, CancelledError, WorkflowAlreadyStartedError
+from temporalio.workflow import ActivityCancellationType, ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():
     from database import chat_todos
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P_agent import nagging
     from tasks.P_agent.activities import (
+        AgentRunInput,
+        AppendNagParams,
+        Continuation,
+        OpenedRun,
         ReadTodoParams,
         ResearchTaskParams,
-        SummarizeSessionParams,
+        RunAgentParams,
+        RunRef,
+        RunSummary,
+        WriteEndingParams,
         WriteResultParams,
+        append_nag,
+        continue_run,
+        fan_in,
+        open_run,
         read_chat_todo,
+        run_agent,
         run_research_agent,
-        summarize_session,
+        summarize_if_first_turn,
         write_chat_message,
+        write_ending,
     )
     from tasks.P_agent.trajectory import pair_tool_calls
 
 
-#: The queue `ChatTurn` is dispatched to, and the queue that writes the transcript,
+#: The queue `AgentRun` is dispatched to, and the queue that writes the transcript,
 #: reads the todo list and titles the session. Named here so the worker that polls it
 #: and the caller that addresses it cannot drift: a workflow addressed to a queue nothing
 #: is polling waits for ever with no error anywhere, which presents as chat hanging.
@@ -45,10 +60,10 @@ with workflow.unsafe.imports_passed_through():
 #: same patch or not at all.
 CHAT_TASK_QUEUE = "chat-queue"
 
-#: The queue `ChatTurn` sends `run_research_agent` to. Twelve slots means twelve
-#: concurrent turns. One turn still makes up to `AGENT_MAX_TOOL_TURNS` model calls in
-#: sequence and starts up to `AGENT_SUBAGENT_CONCURRENCY` workers, and none of those
-#: go through Temporal.
+#: The queue a chat turn's `run_agent` goes to. One slot is one agent run in flight, and
+#: one run makes up to `AGENT_MAX_TOOL_TURNS` model calls in sequence. Each sub-agent runs
+#: its own `run_agent` on its parent's queue, so a delegated turn takes one slot for each
+#: running sub-agent.
 CHAT_MODEL_TASK_QUEUE = "chat-model-queue"
 
 #: The queue `ResearchTask` is dispatched to. Four slots, outside the twelve chat-model
@@ -67,7 +82,7 @@ RESEARCH_TASK_QUEUE = "research-queue"
 #: stall window is deliberately the larger of the two, by a wide margin: 60 s here
 #: against a 180 s default there.
 #:
-#: 60 s is four missed beats -- `run_research_agent` carries `@with_heartbeat`, whose
+#: 60 s is four missed beats -- `run_agent` carries `@with_heartbeat`, whose
 #: pump beats every `HEARTBEAT_INTERVAL` (15 s) for as long as the body runs, so the
 #: agent's own latency never enters this budget. Lowering it further starts trading
 #: against a loaded box missing beats; raising it is worse than it looks, because the
@@ -104,22 +119,14 @@ async def _write_row(params, seq: int, role: str, content: str, **extra) -> None
 
 
 async def _write_payload(
-    params, payload: dict, empty_answer: str, start_seq: int, peak_floor: int = 0
+    params, payload: dict, empty_answer: str, start_seq: int
 ) -> tuple[str, int, int]:
-    """Write a finished agent payload into the transcript; return the answer, the next
-    free `seq`, and the turn's peak context so far.
+    """Write a finished research payload into the transcript. Return the answer, the next
+    free `seq`, and the peak context of the run.
 
-    Shared by both workflows because a research transcript and a chat transcript are the
-    same rows -- keeping one writer is what stops them drifting into rendering
-    differently, which they have done before.
-
-    The starting position is passed rather than read off `params` because a nagged chat
-    turn writes several payloads into one turn, and each has to land after the last.
-
-    `peak_floor` is there for the same reason: one user turn is several agent runs once
-    the nag loop is involved, and "peak this turn" is the maximum over all of them. Each
-    round's row carries the running maximum, so the row a reader sees last is the row
-    that tells the truth about the turn.
+    Only `ResearchTask` calls it. It writes the same row shapes that `run_agent` writes for
+    a chat turn, so the page renders a research transcript and a chat transcript the same
+    way.
     """
     seq = start_seq
 
@@ -138,7 +145,7 @@ async def _write_payload(
     # Token counts as the provider billed them. A missing key is 0, which every reader
     # renders as unknown -- an agent that reported no usage must not look free.
     usage = payload.get("usage") or {}
-    peak = max(peak_floor, int(usage.get("peak_context_tokens") or 0))
+    peak = int(usage.get("peak_context_tokens") or 0)
     answer = payload.get("answer") or empty_answer
     await _write_row(
         params, seq, "assistant", answer,
@@ -169,182 +176,286 @@ def _was_cancelled(exc: BaseException) -> bool:
     return False
 
 
-async def _write_ending(params, seq: int, message: str) -> None:
-    """Write a turn's last row, whatever is happening to the workflow around it.
+#: The start-to-close timeout of `run_agent` for a run with no plan. A chat turn a person is
+#: watching that has produced nothing for a quarter of an hour is wedged, and failing it
+#: returns the answer slot to them.
+RUN_AGENT_TIMEOUT = timedelta(seconds=900)
 
-    Shielded because the common reason a turn needs an ending is that it was cancelled,
-    and a cancelled workflow cannot schedule new work in its own scope. Without the shield
-    the stop button leaves a user row with nothing after it and the page follows a turn
-    that will never speak again.
-    """
-    await asyncio.shield(_write_row(params, seq, "error", message))
-
-
-async def _name_the_conversation(params, answer: str) -> None:
-    """Give the conversation an LLM-written title, if this is the turn that names it.
-
-    **Fire and forget, and it can never fail the turn.** The answer is already written and
-    the user is already reading it by the time this runs, so a summariser that is down, or
-    slow, or returns nonsense, is worth a mediocre title and nothing else. Three things
-    enforce that together, because any one of them alone leaves a way for it to bite:
-
-      * one attempt, so a broken endpoint is not retried into the user's face;
-      * a short timeout, so a hung summariser cannot hold the workflow open;
-      * every exception swallowed here, including the Temporal timeout and the activity
-        failure that the activity itself cannot catch.
-
-    The activity is careful too. This is the belt to its braces: a caller must not have to
-    trust an activity to be harmless.
-
-    A cancellation still propagates -- it is a `BaseException`, and a stop button pressed
-    while the title is being written should end the workflow rather than be absorbed. The
-    answer is already in the transcript by then, so nothing is lost.
-
-    The fallback is the provisional title the website wrote from the first message, which
-    is already in place -- doing nothing is the correct failure.
-    """
-    if not getattr(params, "summarize_session", False):
-        return
-    try:
-        await workflow.execute_activity(
-            summarize_session,
-            SummarizeSessionParams(
-                username=params.username,
-                session_id=params.session_id,
-                user_message=params.query,
-                answer=answer,
-            ),
-            start_to_close_timeout=timedelta(seconds=90),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=1),
-            task_queue=CHAT_TASK_QUEUE,
-        )
-    except Exception:  # noqa: BLE001 - a title is never worth an answer
-        workflow.logger.warning(
-            "could not title session %s; keeping the provisional title",
-            params.session_id,
-        )
+#: Nothing in an `AgentRun` input or result is text. The largest result, a `run_agent`
+#: summary with five children, stays under this bound.
+AGENT_RUN_PAYLOAD_BYTES = 4096
 
 
 @workflow.defn
-class ChatTurn:
-    """Own one ordinary chat turn, from dispatch to final answer.
+class AgentRun:
+    """Own one agent run, from its opening message to its terminal state.
 
-    Every chat turn runs here. Before this, an ordinary turn was an HTTP request the
-    website held open against the agent container: a website restart, a closed browser or
-    a timed-out request lost the turn and the user saw a conversation that stopped
-    mid-sentence. The workflow survives all three, and the turn resumes on whichever
-    worker picks it up.
+    A chat turn is one `AgentRun`, started by the website on `chat-queue`. The workflow
+    input holds ids and settings only. Every activity reads the run row and the thread from
+    `agent_runs` and `agent_run_messages`, so a retry reads the same state and no answer,
+    tool result or briefing crosses a Temporal payload.
 
-    It runs on `chat-queue` so an ingestion backlog can never delay a chat turn.
-    The model call goes to `chat-model-queue` so a long turn cannot hold a write slot.
+    The run uses no Signal, no Update and no continue-as-new, and it never waits for a
+    person. A stop cancels the workflow. The cancellation reaches the workflow as a
+    `CancelledError`, or as an `ActivityError` that wraps it, and both write the
+    `cancelled` ending. A workflow that starts after a stop closes in `open_run`.
 
-    Cancellation is what the interface's stop button does, and it writes an ending rather
-    than vanishing: a user row with nothing after it leaves the page following a turn
-    that will never speak again. The write is shielded because a cancelled workflow
-    cannot schedule new work in its own scope.
+    **The nag loop runs here** for a chat lead, with the rules of `tasks.P_agent.nagging`.
+    The two counters are row columns, so they outlive a worker restart.
 
-    **The nag loop lives here** rather than in the agent, for the same reason the turn
-    does: the workflow is what knows a user's turn is still going, and both nag counters
-    have to outlive an agent process that may be restarted mid-turn. See
-    `tasks.P_agent.nagging` for the rules it applies.
+    The agent activity goes to the queue in the row, `chat-model-queue` for a chat lead.
+    The short activities run on `chat-queue`.
+
+    **Delegation.** A run that stops at `run_subagent` ends as `delegated` with its row in
+    `waiting_for_children`. It starts one abandoned child `AgentRun` for each accepted
+    briefing, and returns. When a run ends, `fan_in` continues its parent once the last
+    run of its batch is terminal, and this workflow starts the continuation. A run with no
+    accepted briefing is continued at once through `continue_run`. Every start rejects a
+    duplicate workflow id, and a refused duplicate counts as started, because the run it
+    names exists.
     """
 
+    def __init__(self) -> None:
+        #: The todo snapshot taken when the last nag was written, to compare against.
+        self._todo_before_nag: dict | None = None
+
     @workflow.run
-    async def run(self, params: "ResearchTaskParams") -> str:
-        seq = params.start_seq
-        answer = ""
-        #: Nags since the plan last actually moved, and nags in this whole user turn.
-        #: The first resets on progress; the second never does, which is what keeps a
-        #: model from farming resets and nagging itself forever.
-        nags_without_progress = 0
-        nags_this_turn = 0
-        #: The largest context any round of this turn was billed for. One user turn is
-        #: several agent runs once the nag loop is involved, so the peak is a maximum
-        #: over the rounds and not whatever the last one happened to cost.
-        turn_peak = 0
-        #: The snapshot taken when the last nag was written, to compare against.
-        todo_before_nag: dict | None = None
-        round_params = params
-
-        while True:
-            try:
-                raw = await workflow.execute_activity(
-                    run_research_agent,
-                    round_params,
-                    # Shorter than a research run on purpose. A chat turn a user is
-                    # watching that has produced nothing for a quarter of an hour is
-                    # wedged, and failing it returns the answer slot to them.
-                    start_to_close_timeout=timedelta(seconds=900),
-                    heartbeat_timeout=CHAT_AGENT_HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=2),
-                    task_queue=CHAT_MODEL_TASK_QUEUE,
+    async def run(self, inp: AgentRunInput) -> str:
+        opened: OpenedRun = await workflow.execute_activity(
+            open_run,
+            inp,
+            start_to_close_timeout=timedelta(seconds=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            task_queue=CHAT_TASK_QUEUE,
+        )
+        if opened.state == "closed":
+            if opened.continuation_run_id:
+                await start_run(self._settings(inp, opened.continuation_run_id),
+                                f"run-{opened.continuation_run_id}")
+            return "closed"
+        try:
+            summary = await self._rounds(inp, opened)
+        except asyncio.CancelledError:
+            await asyncio.shield(self._finish(inp, "cancelled"))
+            raise
+        except ActivityError as exc:
+            # A stop arrives here as well: cancelling a workflow cancels the activity it
+            # waits on, and Temporal reports that as an `ActivityError` around the
+            # cancellation.
+            if _was_cancelled(exc):
+                await asyncio.shield(self._finish(inp, "cancelled"))
+            else:
+                await self._finish(inp, "failed", _cause_text(exc))
+            raise
+        # Outside the try: a failure below cannot rewrite the state of this run.
+        if summary.outcome == "closed":
+            return "closed"
+        if summary.outcome == "delegated":
+            if summary.children:
+                for child in summary.children:
+                    await start_run(self._settings(inp, child, "subagent"), f"run-{child}")
+            else:
+                continuation: Continuation = await workflow.execute_activity(
+                    continue_run,
+                    RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
+                    start_to_close_timeout=timedelta(seconds=30),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    task_queue=CHAT_TASK_QUEUE,
                 )
-            except asyncio.CancelledError:
-                await _write_ending(params, seq, "This turn was stopped.")
-                raise
-            except Exception as e:  # noqa: BLE001 - recorded for the user, then re-raised
-                # A stop reaches here too, not only through `CancelledError`: cancelling
-                # a workflow cancels the activity it is waiting on, and Temporal reports
-                # that as an `ActivityError` wrapping the cancellation. Read as a failure
-                # it put "The assistant could not answer: Activity cancelled" in front of
-                # a user who had just pressed stop and knew perfectly well why the answer
-                # had ended.
-                if _was_cancelled(e):
-                    await _write_ending(params, seq, "This turn was stopped.")
-                else:
-                    await _write_ending(params, seq, f"The assistant could not answer: {e}")
-                raise
+                if continuation.run_id:
+                    await start_run(self._settings(inp, continuation.run_id),
+                                    continuation.workflow_id)
+            return "delegated"
+        await self._finish(inp, "completed")
+        if opened.is_chat_lead:
+            await self._summarize_if_first_turn(inp)
+        return "completed"
 
-            answer, seq, turn_peak = await _write_payload(
-                params, json.loads(raw), "(the assistant returned an empty answer)", seq,
-                peak_floor=turn_peak,
-            )
+    async def _run_agent(self, inp: AgentRunInput, opened: OpenedRun) -> RunSummary:
+        """One `run_agent` attempt chain, which is the only writer of the run while it runs.
 
-            todo = await self._read_todo(params)
+        A stop waits for the attempt to end (`WAIT_CANCELLATION_COMPLETED`), so
+        `write_ending` never runs beside an attempt that still writes rows. An attempt can
+        end without an error after the stop arrived. The pending cancellation then raises
+        here, so the run still ends as `cancelled`. Children that such an attempt wrote
+        have no workflow, and the agent run sweep ends them.
+        """
+        summary = await workflow.execute_activity(
+            run_agent,
+            RunAgentParams(
+                run_id=inp.run_id,
+                username=inp.username,
+                session_id=inp.session_id,
+                turn_uuid=inp.turn_uuid,
+                allowed_collections=list(inp.allowed_collections),
+                llm_model=inp.llm_model,
+                internet_tools=inp.internet_tools,
+            ),
+            start_to_close_timeout=RUN_AGENT_TIMEOUT,
+            heartbeat_timeout=CHAT_AGENT_HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=2),
+            task_queue=opened.queue,
+            cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+        )
+        task = asyncio.current_task()
+        if task is not None and task.cancelling():
+            raise asyncio.CancelledError()
+        return summary
+
+    async def _rounds(self, inp: AgentRunInput, opened: OpenedRun) -> RunSummary:
+        summary = await self._run_agent(inp, opened)
+        nags_this_turn = opened.nags_this_turn
+        nags_without_progress = opened.nags_without_progress
+        while summary.outcome == "answered" and opened.is_chat_lead:
+            todo = await self._read_todo(inp)
             # Progress is the store's question, asked of the two snapshots either side of
-            # the last nag. It is deliberately indifferent to status: see `nagging`.
-            if todo_before_nag is not None and chat_todos.is_material_change(
-                todo_before_nag, todo
+            # the last nag. A run with no earlier snapshot resets no counter.
+            if self._todo_before_nag is not None and chat_todos.is_material_change(
+                self._todo_before_nag, todo
             ):
                 nags_without_progress = 0
-
             stop = nagging.stop_reason(todo, nags_without_progress, nags_this_turn)
             if stop:
                 if stop != "resolved":
-                    await _write_row(params, seq, nagging.NAG_ROLE, stop)
-                    seq += 1
+                    await self._append_nag(inp, summary, stop, starts_round=False)
                 break
-
             nags_this_turn += 1
             nags_without_progress += 1
-            todo_before_nag = todo
-            message = nagging.nag_message(todo, nags_without_progress)
-            await _write_row(params, seq, nagging.NAG_ROLE, message)
-            seq += 1
-            round_params = replace(
-                params,
-                query=message,
-                start_seq=seq,
+            self._todo_before_nag = todo
+            await self._append_nag(
+                inp, summary, nagging.nag_message(todo, nags_without_progress),
+                starts_round=True,
+                nags_this_turn=nags_this_turn,
+                nags_without_progress=nags_without_progress,
                 # Extended, never reset: five nags on a reset budget would be sixty tool
                 # turns, and a nag with no budget left cannot do anything at all.
                 extra_tool_turns=nags_this_turn * nagging.NAG_TOOL_TURN_INCREMENT,
             )
+            summary = await self._run_agent(inp, opened)
+        return summary
 
-        await _name_the_conversation(params, answer)
-        return answer
+    async def _append_nag(self, inp: AgentRunInput, summary: RunSummary, message: str,
+                          starts_round: bool, **counters) -> int:
+        return await workflow.execute_activity(
+            append_nag,
+            AppendNagParams(
+                run_id=inp.run_id,
+                username=inp.username,
+                session_id=inp.session_id,
+                seq=summary.next_seq,
+                idx=summary.next_idx,
+                message=message,
+                starts_round=starts_round,
+                **counters,
+            ),
+            start_to_close_timeout=timedelta(seconds=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            task_queue=CHAT_TASK_QUEUE,
+        )
 
-    async def _read_todo(self, params: "ResearchTaskParams") -> dict:
+    async def _read_todo(self, inp: AgentRunInput) -> dict:
         """This session's todo list, as the nag loop's two questions need it."""
         raw = await workflow.execute_activity(
             read_chat_todo,
-            ReadTodoParams(username=params.username, session_id=params.session_id),
+            ReadTodoParams(username=inp.username, session_id=inp.session_id),
             start_to_close_timeout=timedelta(seconds=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             task_queue=CHAT_TASK_QUEUE,
         )
         return json.loads(raw)
+
+    async def _finish(self, inp: AgentRunInput, state: str, error: str = "") -> None:
+        await workflow.execute_activity(
+            write_ending,
+            WriteEndingParams(
+                run_id=inp.run_id,
+                username=inp.username,
+                session_id=inp.session_id,
+                state=state,
+                error=error,
+                turn_uuid=inp.turn_uuid,
+            ),
+            start_to_close_timeout=timedelta(minutes=2),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            task_queue=CHAT_TASK_QUEUE,
+        )
+        continuation: Continuation = await workflow.execute_activity(
+            fan_in,
+            RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
+            start_to_close_timeout=timedelta(seconds=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            task_queue=CHAT_TASK_QUEUE,
+        )
+        if continuation.run_id:
+            await start_run(self._settings(inp, continuation.run_id), continuation.workflow_id)
+
+    @staticmethod
+    def _settings(inp: AgentRunInput, run_id: str, kind: str = "") -> AgentRunInput:
+        """The input of a child or a continuation: its run id, and the settings that the
+        row has no columns for (the collections, the model, the internet switch and the
+        turn uuid), copied from this run's input. The row holds the rest."""
+        return replace(inp, run_id=run_id, kind=kind or inp.kind, plan_run_id="",
+                       decision_id="")
+
+    async def _summarize_if_first_turn(self, inp: AgentRunInput) -> None:
+        """Name the conversation after its first turn. It can never fail the run.
+
+        One attempt, a short timeout, and every exception caught here. The answer is
+        already written, so a summariser that is down is worth the provisional title and
+        nothing else. A cancellation still propagates, because it is a `BaseException`.
+        """
+        try:
+            await workflow.execute_activity(
+                summarize_if_first_turn,
+                RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
+                start_to_close_timeout=timedelta(seconds=90),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=1),
+                task_queue=CHAT_TASK_QUEUE,
+            )
+        except Exception:  # noqa: BLE001 - a title is never worth an answer
+            workflow.logger.warning(
+                "could not title session %s, keeping the provisional title", inp.session_id
+            )
+
+
+async def start_run(child_input: AgentRunInput, workflow_id: str) -> bool:
+    """Start an abandoned `AgentRun` child. Returns false when Temporal refused a duplicate
+    workflow id, which counts as started, because the run it names exists.
+
+    The child outlives this workflow (`ParentClosePolicy.ABANDON`), so a parent that ends
+    right after the start does not cancel it.
+    """
+    try:
+        await workflow.start_child_workflow(
+            AgentRun.run,
+            child_input,
+            id=workflow_id,
+            task_queue=CHAT_TASK_QUEUE,
+            parent_close_policy=ParentClosePolicy.ABANDON,
+            id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE,
+        )
+    except WorkflowAlreadyStartedError:
+        workflow.logger.info("run %s is already started", workflow_id)
+        return False
+    return True
+
+
+def _cause_text(exc: BaseException) -> str:
+    """The innermost message of a failure, for the ending row a person reads."""
+    seen: BaseException | None = exc
+    text = str(exc)
+    while seen is not None:
+        if str(seen):
+            text = str(seen)
+        seen = seen.__cause__
+    return text
 
 
 @workflow.defn

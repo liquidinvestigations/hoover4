@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use common::chat_types::{ChatDocRef, ChatMessageItem, ChatRole, StreamTurn, merge_citations};
+use common::storage_tree::compose_collection_dataset;
 use dioxus::prelude::*;
 
 use crate::components::chat_components::{
@@ -48,6 +49,10 @@ pub fn ChatTranscript(
     // document's entities names it by collection and hash, and the dataset that makes it
     // addressable was named earlier in the same conversation by whatever found it.
     let datasets = dataset_by_hash(&messages);
+    let subagent_runs = stream
+        .as_ref()
+        .map(|t| t.subagent_runs.clone())
+        .unwrap_or_default();
 
     rsx! {
         div {
@@ -71,6 +76,13 @@ pub fn ChatTranscript(
                     } else {
                         Vec::new()
                     };
+                    // Only a delegation row reads the entries. The others get an empty
+                    // list, so a poll that moves a sub-agent re-renders that row alone.
+                    let runs = if m.tool_name == "run_subagent" {
+                        subagent_runs.clone()
+                    } else {
+                        Vec::new()
+                    };
                     rsx! {
                         MessageEntry {
                             key: "{m.seq}",
@@ -78,6 +90,7 @@ pub fn ChatTranscript(
                             highlight,
                             sources,
                             datasets: datasets.clone(),
+                            subagent_runs: runs,
                         }
                     }
                 }
@@ -174,15 +187,19 @@ fn collect_datasets(
     }
     match value {
         serde_json::Value::Object(fields) => {
-            let hash = fields.get("file_hash").and_then(|v| v.as_str()).unwrap_or_default();
-            let dataset = fields
-                .get("collection_dataset")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
+            let text = |key: &str| fields.get(key).and_then(|v| v.as_str()).unwrap_or_default();
+            let hash = text("file_hash");
+            // A paged search item carries the collection and the short dataset name that
+            // `collections/list` returns, and no `collection_dataset`.
+            let dataset = match (text("collection_dataset"), text("collectionname"), text("dataset")) {
+                (full, _, _) if !full.is_empty() => full.to_string(),
+                (_, collection, short) if !collection.is_empty() && !short.is_empty() => {
+                    compose_collection_dataset(collection, short)
+                }
+                _ => String::new(),
+            };
             if !hash.is_empty() && !dataset.is_empty() {
-                datasets
-                    .entry(hash.to_string())
-                    .or_insert_with(|| dataset.to_string());
+                datasets.entry(hash.to_string()).or_insert(dataset);
             }
             for nested in fields.values() {
                 collect_datasets(nested, datasets, depth + 1);
@@ -230,6 +247,9 @@ fn MessageEntry(
     /// See [`dataset_by_hash`]. Read by the entities card and by nothing else.
     #[props(default)]
     datasets: HashMap<String, String>,
+    /// The sub-agent entries of the open turn, for a `run_subagent` row only.
+    #[props(default)]
+    subagent_runs: Vec<common::chat_types::SubagentRunEntry>,
 ) -> Element {
     let ring = if highlight {
         "outline: 2px solid #F59E0B; outline-offset: 2px;"
@@ -302,6 +322,7 @@ fn MessageEntry(
                         tool_output: message.tool_output.clone(),
                         content_summary: message.content.clone(),
                         datasets: datasets.clone(),
+                        subagent_runs: subagent_runs.clone(),
                     }
                     if !refs.is_empty() {
                         DocRefsDisclosure { tool_name: message.tool_name.clone(), refs }
@@ -541,5 +562,32 @@ fn SourcesStrip(sources: Vec<ChatDocRef>) -> Element {
                 }
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_paged_search_item_names_its_dataset() {
+        let page = serde_json::json!({
+            "items": [{
+                "collectionname": "testdata",
+                "file_hash": "abc123",
+                "path": "/reports/one.pdf",
+                "title": "one.pdf",
+                "snippet": "",
+                "canonical_file_type": "pdf",
+                "dataset": "testfiles"
+            }]
+        });
+        let mut datasets = HashMap::new();
+        collect_datasets(&page, &mut datasets, 0);
+        assert_eq!(
+            datasets.get("abc123").map(String::as_str),
+            Some("testdata_testfiles")
+        );
     }
 }

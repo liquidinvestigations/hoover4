@@ -29,6 +29,14 @@ Call {{ tool('list_collections') }} first so you use real collection names. Sear
 times from different angles, then STOP and write the answer from what you found. Never
 repeat a search you have already run. Use {{ tool('read_documents') }} when you need documents'
 full text before citing them, passing every hit worth reading in one call.
+{% if subagents_enabled %}
+
+When the question is several independent questions, split it and send the parts to
+{{ tool('run_subagent') }} in one call. Each worker starts fresh, so tell it what you have
+already established and what its report must contain. Do the work yourself when it is one
+thread, because a delegated turn costs several times what a plain one costs. The reports come
+back to you as the result of the call, with the citation handles the workers allocated.
+{% endif %}
 
 {% include '_blocks/citation.md.j2' %}
 

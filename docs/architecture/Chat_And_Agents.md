@@ -110,11 +110,39 @@ collapsing them would hide that the agent chose one of the things it found.
 
 **Every turn is a Temporal workflow, and the website holds nothing open.** `send_message`
 takes the session's **turn lock**, writes the user row, reserves the answer's `seq` as an
-empty stream row, dispatches `ChatTurn` to `chat-queue` and returns the transcript
-*including* the message just sent. The model call runs on `chat-model-queue`. A deep
-research turn dispatches `ResearchTask` to `research-queue`. A worker consumes the agent's
-`/chat/stream` SSE feed and mirrors it into `chat_message_stream`; the page follows it with
+empty stream row, dispatches `AgentRun` to `chat-queue` and returns the transcript
+*including* the message just sent. The start sends the ids of the turn and no text, and it
+rejects a duplicate workflow id. Temporal answers a duplicate with HTTP 409, which the
+website counts as started. The model call runs on `chat-model-queue`. A deep research turn
+dispatches `ResearchTask` to `research-queue`.
+
+`AgentRun` keeps the run in `agent_runs` and its model conversation in
+`agent_run_messages`. A worker sends the stored thread to the agent's `/run/stream` feed and
+writes each event as it arrives: the messages into `agent_run_messages`, the live rows into
+`chat_message_stream`, and each finished tool row and the answer into `chat_messages`. A
+tool row is paired with its call by `tool_call_id`. The page follows the turn with
 `chat_poll`.
+
+**A turn can delegate through run rows.** When the model calls `run_subagent`, the agent
+ends the run after the other calls of that model turn. The worker writes one sub-agent run
+for each accepted briefing, and each runs as an `AgentRun` of its own. A sub-agent writes no
+transcript row. The transcript shows one `run_subagent` tool row for each call, first with
+the state `delegated`. When the last sub-agent ends, a continuation of the lead reads the
+reports as the result of the call, the tool row takes the reports, and the continuation
+writes the answer. A sub-agent at depth 1 can delegate once more, and a run at depth 2
+cannot. A chat turn starts at most `agent_subagent_max_per_turn` sub-agent runs, and the
+model reads each refused briefing by name. An agent run sweep on `operations-queue` ends a
+run whose workflow closed without an ending, and continues its parent.
+
+**The `run_subagent` card shows the sub-agents.** While a batch is open, `chat_poll`
+returns its entries in `stream.subagent_runs`, one for each briefing, with the state, the
+count of tool calls, and for a running entry the last 20 messages of its thread, each cut
+to 2,000 characters. For each thread it lists only the batch of the newest run, which
+bounds the list to 30 entries. A terminal entry carries its report. The card finds its
+entries by the `batch_id` and `tool_call_id` in the tool row's `tool_input`, and shows a
+depth 2 entry under its depth 1 entry. When the batch ends, the entries leave the poll and
+the card reads the reports from the tool row's `tool_output`. Deleting a session deletes its
+rows in `agent_runs`, `agent_run_messages` and `agent_turn_stops`.
 
 That is what makes a turn survive things it used to die of: a website restart, a closed
 tab, a request that timed out. The turn carries on and the page picks it back up, because
@@ -128,7 +156,10 @@ one that holds across processes.
 | Piece | Where |
 |---|---|
 | dispatch | `api::chat::start_agent_workflow`, `CHAT_TASK_QUEUE`, `RESEARCH_TASK_QUEUE` |
-| the workflow | `main_services/processing/tasks/P_agent/workflows.py`, `ChatTurn` |
+| the workflow | `main_services/processing/tasks/P_agent/workflows.py`, `AgentRun` |
+| run storage | `main_services/processing/database/agent_runs.py` |
+| delegation, fan-in and budgets | `P_agent/activities.py` (`_delegate`, `fan_in`, `continue_run`), `P_agent/run_budgets.py` |
+| the agent run sweep | `main_services/processing/tasks/P_agent/supervise.py` |
 | stream consumer, fold into rows | `main_services/processing/tasks/P_agent/stream_writer.py` |
 | stream table I/O | `db_chat::{append_stream_row, read_stream_rows, mark_stream_final}` |
 | long-poll | `api::chat::poll_chat`, `RateLimitKind::ChatPoll` |
@@ -138,7 +169,8 @@ them is the ingestion queue.** An ingestion backlog delaying a person waiting at
 is the one failure a shared queue guarantees. The queue names are declared in the workflow
 module and mirrored in `api::chat`: a workflow addressed to a queue nothing polls waits for
 ever with no error anywhere, and presents as chat hanging. **Deploy the worker before the
-website**, for the same reason. A slot is one turn in flight, not one model call.
+website**, for the same reason. A `chat-model-queue` slot is one agent run in flight, not
+one model call, and a delegated turn takes one slot for each running sub-agent.
 
 Three rules that are commonly broken and hard to notice:
 
@@ -146,10 +178,12 @@ Three rules that are commonly broken and hard to notice:
   shadows the column, so sibling `argMax(…, updated_at)` calls become aggregates inside
   aggregates (`Code: 184`); but `clickhouse::Row` also matches columns **by name**, so
   renaming the alias alone breaks this. Aggregate as `last_*` inside, rename outside.
-- **Liveness comes from the transcript and the stream table, and from nothing in the
-  website.** `ChatPollResult` carries `active`, computed from `db_chat::turn_boundaries`
-  (a turn is open while the last user row has no assistant/error row after it), and from
-  how recently its stream rows moved. There is deliberately no registry of runs the
+- **Liveness comes from the transcript, the run rows and the stream table, and from
+  nothing in the website.** `ChatPollResult` carries `active`. A turn is open while the
+  last user row has no assistant/error row after it (`db_chat::turn_boundaries`), or while
+  a run of that turn in `agent_runs` is `running` or `waiting_for_children`. The second
+  test keeps a nag round and a delegation open, because both follow an assistant or tool
+  row. `active` also needs the stream rows or the run rows to have moved recently. There is deliberately no registry of runs the
   website is holding, because there are none: a registry would empty on a restart while
   the turns themselves carried on, and every one of them would read as interrupted.
 - **A turn always keeps exactly one non-final stream row open**, from before the agent
@@ -173,9 +207,13 @@ poll loop waits and retries instead of counting it toward `failures >= 3` and de
 "lost contact with the chat" while the turn is still running. The parser searches for the
 marker rather than stripping a prefix: `ServerFnError` may wrap the message.
 
-Stop and interruption: the composer's stop button is a **Temporal cancellation**, addressed
-to the workflow id the turn's reserved seq gives it. `ChatTurn` catches the cancellation
-and writes an ending into the transcript inside `asyncio.shield`. A cancelled workflow
+Stop and interruption: the composer's stop button first writes the turn's row in
+`agent_turn_stops` with a synchronous insert. It then sends a **Temporal cancellation** to
+the workflow of every `running` run of the turn, read from `agent_runs`, and counts a 404
+as success. A run whose workflow starts after the stop row reads it in `open_run` and
+closes as `cancelled`, and a fan-in that reads it starts no continuation. `AgentRun`
+catches the cancellation and writes an ending into the transcript inside
+`asyncio.shield`. A cancelled workflow
 that vanished would leave a user row with nothing after it, and the page would
 follow a turn that will never speak again. A turn whose rows stop advancing for
 `CHAT_STREAM_STALL_SECONDS` (default 180) renders as **interrupted** with a Dismiss button,
@@ -243,11 +281,13 @@ a model that hits its token limit every time must not look like one that never r
 
 ## Admin: live chats
 
-`/admin/metrics` lists the agent turns running right now (user, conversation, both
-switches, elapsed time) with a **Kill** button. It is a **Temporal visibility query**, so
-it is true in both directions across a website restart: it does not lose the turns that
-were already running, and it does not keep listing one whose process died. Chat turns and
-research turns are both there, because both are workflows.
+`/admin/metrics` lists the agent runs running right now (user, conversation, both
+switches, elapsed time) with a **Kill** button. It is a **Temporal visibility query** on
+`WorkflowType IN ('AgentRun', 'ResearchTask')`, so it is true in both directions across a
+website restart: it does not lose the runs that were already running, and it does not keep
+listing one whose process died. Each open workflow is one entry, so a delegated turn shows
+each sub-agent that runs. An `AgentRun` takes its session and turn from its row in
+`agent_runs`, because a sub-agent's workflow id `run-{run_id}` names neither.
 
 Kill is the same cancellation the user's own stop button sends, so an admin-stopped turn
 ends the way a user-stopped one does: with an ending in the transcript rather than a

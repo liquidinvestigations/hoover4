@@ -198,6 +198,9 @@ DEFAULTS = {
         "rate_chat_poll_per_minute": "1800",
         "browser_max_contexts": "16",
         "agent_subagent_concurrency": "5",
+        # The sub-agent budgets of a chat turn and of a research plan run.
+        "agent_subagent_max_per_turn": "6",
+        "agent_plan_run_budget": "300",
         # Tool packs for each kind of agent run: a comma list of pack names, or `all`.
         "agent_packs_chat": "all",
         "agent_packs_subagent": "all",
@@ -1259,6 +1262,9 @@ def render_main_env(cfg):
     env["HOOVER4_RATE_CHAT_POLL_PER_MINUTE"] = cfg.get(m, "rate_chat_poll_per_minute")
     env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")
     env["AGENT_SUBAGENT_CONCURRENCY"] = cfg.get(m, "agent_subagent_concurrency")
+    # The sub-agent budgets of the worker's run_agent. Empty keeps 6 and 300.
+    env["AGENT_SUBAGENT_MAX_PER_TURN"] = cfg.get(m, "agent_subagent_max_per_turn") or "6"
+    env["AGENT_PLAN_RUN_BUDGET"] = cfg.get(m, "agent_plan_run_budget") or "300"
     for kind in ("chat", "subagent", "planner", "organizer"):
         env[f"AGENT_PACKS_{kind.upper()}"] = cfg.get(m, f"agent_packs_{kind}") or "all"
     env.update(agent_probe_env(cfg))

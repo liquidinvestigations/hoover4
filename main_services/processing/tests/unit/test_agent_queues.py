@@ -44,12 +44,19 @@ def test_queue_name_constants():
     assert agent_workflows.RESEARCH_TASK_QUEUE == "research-queue"
 
 
+def _queue(call: ast.Call) -> str | None:
+    """The queue a call site names: a constant, or the row's queue for the agent call."""
+    value = _kwarg(call, "task_queue")
+    if isinstance(value, ast.Attribute) and value.attr == "queue":
+        return "row"
+    return _name(value)
+
+
 def test_agent_activities_declare_their_task_queue():
     missing = []
     for call in _iter_execute_activity():
         activity = _name(call.args[0]) if call.args else None
-        queue = _name(_kwarg(call, "task_queue"))
-        if queue is None:
+        if _queue(call) is None:
             missing.append(f"{WORKFLOWS_PATH.name}:{call.lineno} {activity}")
     assert not missing, (
         "execute_activity call site(s) without task_queue -- these run on the "
@@ -58,15 +65,10 @@ def test_agent_activities_declare_their_task_queue():
     )
 
 
-def test_chat_model_calls_go_to_the_model_queue():
-    queues = [
-        _name(_kwarg(call, "task_queue"))
-        for call in _iter_execute_activity()
-        if _name(call.args[0]) == "run_research_agent"
-        and call.lineno < _research_task_lineno()
-    ]
-    assert queues, "ChatTurn has no run_research_agent call"
-    assert all(q == "CHAT_MODEL_TASK_QUEUE" for q in queues), queues
+def test_the_agent_call_goes_to_the_queue_in_the_run_row():
+    queues = [_queue(call) for call in _iter_execute_activity()
+              if _name(call.args[0]) == "run_agent"]
+    assert queues == ["row"], queues
 
 
 def test_research_model_calls_go_to_the_research_queue():
@@ -80,8 +82,9 @@ def test_research_model_calls_go_to_the_research_queue():
     assert all(q == "RESEARCH_TASK_QUEUE" for q in queues), queues
 
 
-def test_writes_todo_and_title_go_to_the_low_latency_queue():
-    for activity in ("write_chat_message", "read_chat_todo", "summarize_session"):
+def test_short_agent_activities_go_to_the_low_latency_queue():
+    for activity in ("open_run", "append_nag", "write_ending", "read_chat_todo",
+                     "summarize_if_first_turn", "write_chat_message"):
         queues = [
             _name(_kwarg(call, "task_queue"))
             for call in _iter_execute_activity()
