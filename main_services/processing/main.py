@@ -168,23 +168,33 @@ def test_extract_ner_from_text():
     print(entities)
 
 
+#: How long `add-disk-dataset` follows its operation before it exits 0.
+FOLLOW_SECONDS = 60
+
+
 @cli.command()
 @click.argument("collectionname", type=str)
 @click.argument("dataset_name", type=str)
 @click.argument("path", type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=str))
-@click.option("--wait/--no-wait", default=True, show_default=True,
-              help="Block until ingestion finishes. --no-wait submits the workflow "
-                   "and returns, leaving it to run server-side.")
-def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bool):
+@click.option("--wait/--no-wait", default=None,
+              help="Default: follow the operation for 60 s, then exit 0 while it runs on. "
+                   "--wait follows it to the end. --no-wait returns at once.")
+def add_disk_dataset(collectionname: str, dataset_name: str, path: str,
+                     wait: bool | None):
     """Create a dataset inside an existing collection and start disk ingestion.
 
-    Submits an `add_dataset` operation, prints its id, and then follows it. All three
-    stages -- scan, compute plans, execute plans -- are sequenced server-side by the
-    operation, so this command holds nothing the work depends on.
+    Submits an `add_dataset` operation, prints its id, and then follows it for
+    `FOLLOW_SECONDS`. The `Operation` workflow sequences the three stages (scan, compute
+    plans, execute plans) on the server, so this command holds nothing the work depends
+    on. After the minute the command prints that processing continues and exits 0. It
+    exits 1 when the operation reaches `errored` inside the minute. `--wait` follows the
+    operation to its end, and `--no-wait` returns after the submission.
 
-    Ctrl-C therefore DETACHES: it stops the watching, never the ingest. `--no-wait`
-    skips the watching from the start. Either way the operation id names the work for
-    as long as the log exists, which is for ever.
+    Ctrl-C DETACHES: it stops the watching, never the ingest. Either way the operation
+    id names the work for as long as the log exists, which is for ever.
+
+    Every path after the submission ends the process through `end_process`, because the
+    Temporal client can keep a normal exit waiting after the last line.
 
     An existing dataset is a rescan, not a collision: the scan re-ingests every path it
     finds and tombstones what it no longer finds, which is how an edited or deleted
@@ -194,8 +204,8 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
     from tasks.P0_scan_disk.submit_job import (
         compose_collection_dataset, prepare_disk_dataset,
     )
-    from tasks.P_ops.cli import submit_operation, tail_operation, where_to_look
-    from database.operations import OperationLocked
+    from tasks.P_ops.cli import end_process, submit_operation, tail_operation, where_to_look
+    from database.operations import OperationLocked, get_operation
 
     collection_dataset = compose_collection_dataset(collectionname, dataset_name)
     path = prepare_disk_dataset(collectionname, dataset_name, path)
@@ -208,12 +218,21 @@ def add_disk_dataset(collectionname: str, dataset_name: str, path: str, wait: bo
     except OperationLocked as e:
         raise click.ClickException(str(e))
     click.echo(f"operation {op_id}")
-    if not wait:
+    if wait is False:
         click.echo(where_to_look(op_id))
-        return
-    state = tail_operation(op_id)
+        end_process(0)
+    state = tail_operation(op_id, deadline_seconds=None if wait else FOLLOW_SECONDS)
     if state == "errored":
-        raise click.ClickException(f"{op_id} failed.")
+        click.echo(f"Error: {op_id} failed.", err=True)
+        end_process(1)
+    if state == "following":
+        row = get_operation(op_id)
+        if row and row["state"] == "queued":
+            click.echo(f"{op_id} is queued. It starts when a slot for add_dataset is free.")
+        else:
+            click.echo(f"{op_id} is processing. It continues after this command exits.")
+        click.echo(where_to_look(op_id))
+    end_process(0)
 
 
 @cli.group()
@@ -229,7 +248,7 @@ def operations():
 @operations.command(name="list")
 # `default=None`, not `default=""`: click validates a non-None default against the
 # choice list, so an empty-string default makes the option impossible to omit.
-@click.option("--state", type=click.Choice(["pending", "running", "finished",
+@click.option("--state", type=click.Choice(["pending", "queued", "running", "finished",
                                             "errored", "cancelled"]), default=None)
 @click.option("--collection", "collectionname", type=str, default="")
 @click.option("--kind", type=str, default="")
@@ -261,7 +280,12 @@ def operations_show(op_id: str, follow: bool):
     if row is None:
         raise click.ClickException(f"No operation with id {op_id}.")
     click.echo(format_row(row))
-    click.echo(f"started   {row['started_at']}")
+    click.echo(f"queued at {row['started_at']}")
+    run_started_at = row.get("run_started_at")
+    if run_started_at is not None and run_started_at.timestamp() > 0:
+        click.echo(f"started   {run_started_at}")
+    else:
+        click.echo("started   not yet")
     if row["finished_at"].timestamp() > 0:
         click.echo(f"finished  {row['finished_at']}")
     click.echo(f"user      {row['user_id']}")
@@ -816,7 +840,7 @@ def list_collections_cmd():
         print(f"{collectionname}\t{collection_db_name(collectionname)}\t{counts.get(collectionname, 0)}")
 
 @cli.command()
-@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "ocr", "nlp", "embed", "indexing", "index-planner", "operations", "chat"]))
+@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "ocr", "nlp", "embed", "indexing", "index-planner", "email-graph", "operations", "chat"]))
 def worker(worker_type: str | None = None):
     """Run worker(s). If worker_type provided, runs that worker; else spawns all.
 
@@ -852,6 +876,9 @@ def worker(worker_type: str | None = None):
         elif worker_type == "index-planner":
             from tasks.run_worker import run_index_planner_worker
             asyncio.run(run_index_planner_worker())
+        elif worker_type == "email-graph":
+            from tasks.run_worker import run_email_graph_worker
+            asyncio.run(run_email_graph_worker())
         elif worker_type == "operations":
             from tasks.run_worker import run_operations_worker
             asyncio.run(run_operations_worker())
@@ -893,17 +920,22 @@ def worker(worker_type: str | None = None):
     signal.signal(signal.SIGTERM, request_shutdown)
 
     # Initial spawn set. "index-planner" MUST stay at exactly one process:
-    # a second planner worker would corrupt the Manticore shard ledger. The common tier
-    # is where the fan-out lands, so its process count follows the host rather than a
-    # constant -- see tasks/run_worker.py:common_worker_processes.
-    from tasks.run_worker import common_worker_processes
+    # a second planner worker would corrupt the Manticore shard ledger. "email-graph"
+    # MUST stay at exactly one process: two graph runs on one collection can delete the
+    # rows that the other run wrote. The common and index process counts are keys, see
+    # tasks/run_worker.py:common_worker_processes and indexing_worker_processes.
+    from tasks.run_worker import common_worker_processes, indexing_worker_processes
     common_count = common_worker_processes()
-    log.info("Spawning %d common workers", common_count)
+    indexing_count = indexing_worker_processes()
+    log.info("Spawning %d common workers and %d index workers", common_count, indexing_count)
     # `chat` is one process and is listed first on purpose: it is the only process with a
     # person waiting on the other end, so it must exist before anything competes for the
     # host's memory. It polls chat-queue, chat-model-queue and research-queue, and never
     # the ingestion queue.
-    for wt in ["chat", "tika", "ocr", "nlp", "embed", "indexing", "index-planner"] + ["common"] * common_count:
+    for wt in (["chat", "tika", "ocr", "nlp", "embed"]
+               + ["indexing"] * indexing_count
+               + ["email-graph", "index-planner"]
+               + ["common"] * common_count):
         cmd = [sys.executable, this, "worker", wt]
         log.info("Spawning worker: %s", " ".join(cmd))
         p = subprocess.Popen(cmd)

@@ -522,6 +522,7 @@ services:
       - "HOOVER4_NLP_CONCURRENCY=${HOOVER4_NLP_CONCURRENCY:-}"
       - "HOOVER4_EMBED_CONCURRENCY=${HOOVER4_EMBED_CONCURRENCY:-}"
       - "HOOVER4_INDEXING_CONCURRENCY=${HOOVER4_INDEXING_CONCURRENCY:-}"
+      - "HOOVER4_INDEXING_WORKERS=${HOOVER4_INDEXING_WORKERS:-}"
       - "HOOVER4_CHAT_MODEL_CONCURRENCY=${HOOVER4_CHAT_MODEL_CONCURRENCY:-}"
       - "HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY=${HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY:-}"
       - "HOOVER4_RESEARCH_CONCURRENCY=${HOOVER4_RESEARCH_CONCURRENCY:-}"
@@ -610,6 +611,9 @@ services:
       # substituted INTO this file and does not reach the container by itself.
       - "HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS=${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}"
       - "HOOVER4_OPERATIONS_CONCURRENCY=${HOOVER4_OPERATIONS_CONCURRENCY:-}"
+      # The [operations] caps as kind=value pairs. Empty gives every kind the code's
+      # default cap of 2.
+      - "HOOVER4_OPERATION_CAPS=${HOOVER4_OPERATION_CAPS:-}"
       # The object-store export reads these, and they are the same names and defaults
       # the worker and the website use.
       - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"

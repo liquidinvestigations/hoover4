@@ -13,7 +13,9 @@ Ctrl-C ends a *view*.
 import asyncio
 import logging
 import os
+import sys
 import time
+from typing import NoReturn
 
 import click
 
@@ -50,8 +52,12 @@ def format_row(row: dict) -> str:
     return f"{row['op_id']}  {row['kind']}  {target}  {row['state']}{progress}"
 
 
-def tail_operation(op_id: str) -> str:
+def tail_operation(op_id: str, deadline_seconds: float | None = None) -> str:
     """Print an operation's progress until it reaches a terminal state.
+
+    Returns the terminal state, `detached` on Ctrl-C, or `following` when
+    `deadline_seconds` passes before a terminal state. With no deadline it follows the
+    operation to its end.
 
     Ctrl-C here detaches and returns; it does not cancel. The distinction is the point
     of the whole layer, so the message says it in as many words rather than leaving a
@@ -59,7 +65,9 @@ def tail_operation(op_id: str) -> str:
     """
     from database.operations import TERMINAL_STATES, get_operation
 
+    deadline = None if deadline_seconds is None else time.monotonic() + deadline_seconds
     last = ""
+    row = None
     try:
         while True:
             row = get_operation(op_id)
@@ -74,13 +82,31 @@ def tail_operation(op_id: str) -> str:
                     if row["state"] != "finished" and row["error"]:
                         click.echo(row["error"])
                     return row["state"]
-            time.sleep(TAIL_INTERVAL_SECONDS)
+            if deadline is not None and time.monotonic() >= deadline:
+                return "following"
+            pause = TAIL_INTERVAL_SECONDS
+            if deadline is not None:
+                pause = max(0.0, min(pause, deadline - time.monotonic()))
+            time.sleep(pause)
     except KeyboardInterrupt:
         click.echo("")
-        click.echo(f"Detached from {op_id}. The operation is still running: this "
+        state = row["state"] if row else "pending"
+        click.echo(f"Detached from {op_id}. The operation is still {state}: this "
                    f"command was only watching it, and stopping it stops nothing.")
         click.echo(where_to_look(op_id))
         return "detached"
+
+
+def end_process(code: int) -> NoReturn:
+    """Flush stdout and stderr, then end the process with `code` at once.
+
+    `os._exit` skips the interpreter's exit handlers. The Temporal client leaves a
+    runtime thread that can keep a normal exit waiting for hours after the last line.
+    This command holds no file and no lock that needs a handler.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)
 
 
 def submit_operation(kind: str, collectionname: str = "", collection_dataset: str = "",

@@ -2,7 +2,7 @@
 
 use common::admin_types::*;
 use common::failure_types::{FailureInstanceRow, FailureListFilter, FailureListSort, FailureTree, FailuresPage};
-use common::metrics_types::{AdminMetrics, AdminUserLlmMetrics};
+use common::metrics_types::{AdminMetrics, AdminUserLlmMetrics, ManticoreLoad};
 use common::operations_types::{OperationDetail, OperationsPage};
 use common::processing_types::*;
 use dioxus::prelude::*;
@@ -89,6 +89,7 @@ admin_server_fn!(admin_list_deployment_config, backend::api::admin::settings::ad
 
 admin_server_fn!(admin_get_metrics, backend::api::admin::metrics::admin_get_metrics, () -> AdminMetrics);
 admin_server_fn!(admin_get_user_llm, backend::api::admin::metrics::admin_get_user_llm, (username: String) -> AdminUserLlmMetrics);
+admin_server_fn!(admin_get_manticore_load, backend::api::admin::metrics::admin_get_manticore_load, () -> ManticoreLoad);
 
 admin_server_fn!(admin_list_settings, backend::api::admin::settings::admin_list_settings, () -> Vec<ServerSettingItem>);
 admin_server_fn!(admin_set_setting, backend::api::admin::settings::admin_set_setting, (key: String, value: String));

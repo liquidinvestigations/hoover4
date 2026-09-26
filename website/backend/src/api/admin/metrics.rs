@@ -2,6 +2,7 @@
 //!
 //! Reads the rolling 24h `usage_events` / `api_events` tables written by
 //! [`crate::api::telemetry`], and the chat tables for the per-user LLM view.
+//! [`admin_get_manticore_load`] reads Manticore's own status for the load panel.
 //! Every entry point is admin-gated.
 //!
 //! The TTL on both tables is applied by background merges, so rows can outlive
@@ -14,6 +15,7 @@ use common::metrics_types::*;
 use crate::api::rate_limit::{self, RateLimitKind};
 use crate::auth::guard;
 use crate::db_utils::clickhouse_utils::get_global_client;
+use crate::db_utils::manticore_utils::{manticore_raw_sql, ManticoreRawRow};
 
 const LAST_24H: &str = "event_ts >= now() - INTERVAL 24 HOUR";
 
@@ -231,4 +233,173 @@ pub async fn admin_get_user_llm(
         chat_per_minute: rate_limit::per_minute_limit(RateLimitKind::ChatMessage),
         api_per_minute: rate_limit::per_minute_limit(RateLimitKind::ApiCall),
     })
+}
+
+/// Status calls that one page load runs at once, one for each Manticore table.
+const MANTICORE_STATUS_PARALLELISM: usize = 8;
+
+/// Manticore's thread load, its work queue, and the memory and disk of its tables, for
+/// `/admin/metrics`. It reads `SHOW STATUS`, `SHOW TABLES`, then `SHOW TABLE <t> STATUS`
+/// for each table. A table whose status call fails counts as unread and the rest still
+/// show. A failure of the first two calls fails the whole call.
+pub async fn admin_get_manticore_load(user: &CurrentUser) -> anyhow::Result<ManticoreLoad> {
+    use futures::StreamExt;
+
+    guard::require_admin(user)?;
+    let status = manticore_raw_sql("SHOW STATUS").await?;
+    let tables = manticore_raw_sql("SHOW TABLES").await?;
+    let names: Vec<String> = tables
+        .iter()
+        .filter_map(|row| row.get("Table").and_then(serde_json::Value::as_str))
+        .map(str::to_string)
+        .collect();
+    let per_table: Vec<(String, anyhow::Result<Vec<ManticoreRawRow>>)> =
+        futures::stream::iter(names)
+            .map(|name| async move {
+                // The name comes from SHOW TABLES and is interpolated into a statement,
+                // so any name outside the table naming rule is refused, never sent.
+                if !is_plain_table_name(&name) {
+                    let refused = anyhow::anyhow!("table name {name:?} is not a plain name");
+                    return (name, Err(refused));
+                }
+                let rows = manticore_raw_sql(&format!("SHOW TABLE {name} STATUS")).await;
+                (name, rows)
+            })
+            .buffer_unordered(MANTICORE_STATUS_PARALLELISM)
+            .collect()
+            .await;
+    let read_at = format_ts(time::OffsetDateTime::now_utc().unix_timestamp());
+    Ok(manticore_load_from_rows(&status, per_table, read_at))
+}
+
+fn is_plain_table_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+}
+
+/// The value of one `Counter`/`Value` or `Variable_name`/`Value` row, by name.
+fn status_value<'a>(rows: &'a [ManticoreRawRow], key_column: &str, name: &str) -> &'a str {
+    rows.iter()
+        .find(|row| row.get(key_column).and_then(serde_json::Value::as_str) == Some(name))
+        .and_then(|row| row.get("Value").and_then(serde_json::Value::as_str))
+        .unwrap_or("")
+}
+
+/// Three numbers of a `load` value, `"0.10 0.20 0.30"`. A value that does not parse is 0.
+fn three_numbers(raw: &str) -> [f64; 3] {
+    let mut out = [0.0; 3];
+    for (slot, part) in out.iter_mut().zip(raw.split_whitespace()) {
+        *slot = part.parse().unwrap_or(0.0);
+    }
+    out
+}
+
+/// Assemble the panel from the raw rows. Pure, so the parsing is tested without a server.
+fn manticore_load_from_rows(
+    status: &[ManticoreRawRow],
+    per_table: Vec<(String, anyhow::Result<Vec<ManticoreRawRow>>)>,
+    read_at: String,
+) -> ManticoreLoad {
+    let counter = |name: &str| status_value(status, "Counter", name);
+    let table_count = per_table.len() as u32;
+    let mut unread_tables = 0;
+    let mut tables: Vec<ManticoreTableLoad> = Vec::new();
+    for (table, rows) in per_table {
+        let Ok(rows) = rows else {
+            unread_tables += 1;
+            continue;
+        };
+        let variable = |name: &str| status_value(&rows, "Variable_name", name);
+        tables.push(ManticoreTableLoad {
+            table,
+            ram_bytes: variable("ram_bytes").parse().unwrap_or(0),
+            disk_bytes: variable("disk_bytes").parse().unwrap_or(0),
+            disk_chunks: variable("disk_chunks").parse().unwrap_or(0),
+            optimizing: variable("optimizing").parse::<u32>().unwrap_or(0) > 0,
+        });
+    }
+    let ram_bytes_total = tables.iter().map(|t| t.ram_bytes).sum();
+    let disk_bytes_total = tables.iter().map(|t| t.disk_bytes).sum();
+    let mut optimizing_tables: Vec<String> = tables
+        .iter()
+        .filter(|t| t.optimizing)
+        .map(|t| t.table.clone())
+        .collect();
+    optimizing_tables.sort();
+    tables.sort_by(|a, b| b.ram_bytes.cmp(&a.ram_bytes).then_with(|| a.table.cmp(&b.table)));
+    tables.truncate(10);
+    ManticoreLoad {
+        read_at,
+        uptime_seconds: counter("uptime").parse().unwrap_or(0),
+        load: three_numbers(counter("load")),
+        load_primary: three_numbers(counter("load_primary")),
+        load_secondary: three_numbers(counter("load_secondary")),
+        workers_total: counter("workers_total").parse().unwrap_or(0),
+        workers_active: counter("workers_active").parse().unwrap_or(0),
+        work_queue_length: counter("work_queue_length").parse().unwrap_or(0),
+        table_count,
+        unread_tables,
+        ram_bytes_total,
+        disk_bytes_total,
+        optimizing_tables,
+        largest_tables: tables,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db_utils::manticore_utils::parse_raw_sql_response;
+
+    fn rows(body: &str) -> Vec<ManticoreRawRow> {
+        parse_raw_sql_response(body).unwrap()
+    }
+
+    #[test]
+    fn the_panel_sums_the_tables_read_and_counts_the_rest() {
+        let status = rows(
+            r#"[{"data":[{"Counter":"uptime","Value":"41078"},
+            {"Counter":"workers_total","Value":"16"},{"Counter":"workers_active","Value":"3"},
+            {"Counter":"work_queue_length","Value":"17"},
+            {"Counter":"load","Value":"0.10 0.20 0.30"},
+            {"Counter":"load_primary","Value":"N/A 1.5 x"}],"error":""}]"#,
+        );
+        let table = |ram: u64, optimizing: u32| {
+            Ok(rows(&format!(
+                r#"[{{"data":[{{"Variable_name":"ram_bytes","Value":"{ram}"}},
+                {{"Variable_name":"disk_bytes","Value":"100"}},
+                {{"Variable_name":"disk_chunks","Value":"2"}},
+                {{"Variable_name":"optimizing","Value":"{optimizing}"}}],"error":""}}]"#
+            )))
+        };
+        let load = manticore_load_from_rows(
+            &status,
+            vec![
+                ("a_pages".to_string(), table(10, 0)),
+                ("b_pages".to_string(), table(30, 1)),
+                ("c_vfs".to_string(), Err(anyhow::anyhow!("gone"))),
+            ],
+            "2026-01-01T00:00:00Z".to_string(),
+        );
+        assert_eq!(load.uptime_seconds, 41078);
+        assert_eq!(load.load, [0.1, 0.2, 0.3]);
+        assert_eq!(load.load_primary, [0.0, 1.5, 0.0]);
+        assert_eq!(load.load_secondary, [0.0, 0.0, 0.0]);
+        assert_eq!((load.workers_active, load.workers_total, load.work_queue_length), (3, 16, 17));
+        assert_eq!((load.table_count, load.unread_tables), (3, 1));
+        assert_eq!((load.ram_bytes_total, load.disk_bytes_total), (40, 200));
+        assert_eq!(load.optimizing_tables, vec!["b_pages".to_string()]);
+        assert_eq!(load.largest_tables[0].table, "b_pages");
+        assert_eq!(load.largest_tables[0].disk_chunks, 2);
+    }
+
+    #[test]
+    fn only_a_plain_table_name_is_sent() {
+        assert!(is_plain_table_name("testdata_1_pages"));
+        assert!(!is_plain_table_name(""));
+        assert!(!is_plain_table_name("a; DROP TABLE b"));
+        assert!(!is_plain_table_name("Upper"));
+    }
 }

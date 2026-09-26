@@ -403,7 +403,7 @@ restart_resilience() {
     # Re-drive: the restart killed the client, not the work. Only the SEQUENCING of the
     # three stages lived in that client, so this hands it back.
     echo "== restart resilience: re-driving the client after the restart =="
-    run_step add-disk-dataset "$coll" "$ds" "$root" || true
+    run_step add-disk-dataset "$coll" "$ds" "$root" --wait || true
 
     deadline=$(( $(date +%s) + POLL_TIMEOUT ))
     while true; do
@@ -475,7 +475,7 @@ ingest_dataset() {
         return 0
     fi
     echo "     ${coll}_${ds} <- $root"
-    run_step add-disk-dataset "$coll" "$ds" "$root"
+    run_step add-disk-dataset "$coll" "$ds" "$root" --wait
 }
 
 # The filename-only hit lives in the testdata checkout at qa/filenames.

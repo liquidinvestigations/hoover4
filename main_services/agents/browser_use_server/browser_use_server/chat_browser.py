@@ -46,10 +46,14 @@ loads nothing. Chromium has disabled that switch for MV3 by default.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import os
+import re
 import shutil
+import signal
 import socket
+import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -88,6 +92,61 @@ CHROMIUM_START_TIMEOUT = float(os.getenv("BROWSER_CHROMIUM_START_TIMEOUT", "45")
 #: boundary nor redirect-aware, so it is exactly a third opinion. Default comes from
 #: urlcheck's own deny-list. A second literal list here is what let the two drift.
 BLOCKED_ORIGIN_HOSTS = os.getenv("BROWSER_BLOCKED_ORIGINS", netfilter.DEFAULT_BLOCKED_HOSTS)
+
+
+#: The prefix of every chat's profile folder under the temporary directory.
+PROFILE_PREFIX = "h4browser-"
+
+
+@functools.lru_cache(maxsize=4)
+def user_agent_for(executable: str) -> str | None:
+    """The user agent of a headed Chromium of the version that `executable` runs.
+
+    Headless Chromium sends `HeadlessChrome/<version>`, and some bot checks refuse that
+    word. This keeps the reduced form Chromium itself sends, with `0.0.0` for the minor
+    parts, so the word `Headless` is the only difference. The major version is read from
+    the binary, so it follows the image. `None` when `--version` gives no version.
+    """
+    try:
+        done = subprocess.run(
+            [executable, "--version"], capture_output=True, text=True, timeout=10, check=False
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("could not read the version of %s: %s", executable, exc)
+        return None
+    match = re.search(r"\b(\d+)\.\d+\.\d+\.\d+\b", done.stdout or "")
+    if not match:
+        log.warning("%s --version printed no version: %r", executable, (done.stdout or "")[:200])
+        return None
+    return (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+        f"Chrome/{match.group(1)}.0.0.0 Safari/537.36"
+    )
+
+
+def sweep_leftover_profiles(root: str | None = None) -> int:
+    """Remove every chat profile folder under `root`. Returns how many went.
+
+    Called once at server start, before any browser exists, so no folder found here
+    belongs to a live browser.
+    """
+    root = root or tempfile.gettempdir()
+    removed = 0
+    try:
+        names = os.listdir(root)
+    except OSError as exc:
+        log.warning("could not list %s for leftover profiles: %s", root, exc)
+        return 0
+    for name in names:
+        path = os.path.join(root, name)
+        if not name.startswith(PROFILE_PREFIX) or not os.path.isdir(path):
+            continue
+        try:
+            shutil.rmtree(path)
+            removed += 1
+        except OSError as exc:
+            log.warning("leftover profile %s not removed: %s", path, exc)
+    return removed
 
 
 class BrowserSpawnFailed(RuntimeError):
@@ -183,7 +242,7 @@ async def start(session_id: str) -> ChatBrowser:
     import nodriver
 
     chat = ChatBrowser(session_id=session_id)
-    chat.profile_dir = tempfile.mkdtemp(prefix=f"h4browser-{session_id[:24]}-")
+    chat.profile_dir = tempfile.mkdtemp(prefix=f"{PROFILE_PREFIX}{session_id[:24]}-")
     chat.cdp_port = _free_port()
 
     config = nodriver.Config(
@@ -203,6 +262,9 @@ async def start(session_id: str) -> ChatBrowser:
     config.add_argument("--disable-dev-shm-usage")
     config.add_argument("--disable-gpu")
     config.add_argument(f"--window-size={VIEWPORT_WIDTH},{VIEWPORT_HEIGHT}")
+    user_agent = user_agent_for(str(config.browser_executable_path))
+    if user_agent:
+        config.add_argument(f"--user-agent={user_agent}")
     # The line that survives a redirect. Consulted by Chromium for every request in every
     # tab, before a connection is opened, which is the coverage a tool-argument check
     # cannot have. See :mod:`.netfilter`.
@@ -225,7 +287,7 @@ async def start(session_id: str) -> ChatBrowser:
         chat.browser = await nodriver.Browser.create(config)
     except Exception as exc:
         await _stop_chromium(chat)
-        _cleanup_profile(chat)
+        await _cleanup_profile(chat)
         raise BrowserSpawnFailed(f"chromium did not start: {exc}") from exc
 
     try:
@@ -254,6 +316,9 @@ async def _launch_chromium(chat: ChatBrowser, config) -> None:
         # cheap correct answer; the messages are noise, and a browser that will not start
         # is caught by the port probe below rather than by reading its log.
         stderr=asyncio.subprocess.DEVNULL,
+        # Its own process group, so `_stop_chromium` ends the renderers and helpers too.
+        # Ending only the parent leaves children that write into the profile folder.
+        start_new_session=True,
     )
     if not await _wait_for_cdp(chat.cdp_port, CHROMIUM_START_TIMEOUT):
         raise BrowserSpawnFailed(
@@ -290,15 +355,36 @@ async def _wait_for_cdp(port: int, timeout: float) -> bool:
     return False
 
 
+def _signal_group(pgid: int, sig: int) -> bool:
+    """Send `sig` to a process group. False when the group no longer exists."""
+    try:
+        os.killpg(pgid, sig)
+        return True
+    except ProcessLookupError:
+        return False
+
+
+def _group_alive(pgid: int) -> bool:
+    return _signal_group(pgid, 0)
+
+
 async def _stop_chromium(chat: ChatBrowser) -> None:
+    """End the Chromium process group: the browser and every child it started."""
     proc, chat.chromium = chat.chromium, None
-    if proc is None or proc.returncode is not None:
+    if proc is None:
         return
-    proc.terminate()
+    pgid = proc.pid
+    _signal_group(pgid, signal.SIGTERM)
     try:
         await asyncio.wait_for(proc.wait(), timeout=8)
     except asyncio.TimeoutError:
-        proc.kill()
+        pass
+    deadline = time.monotonic() + 2
+    while _group_alive(pgid) and time.monotonic() < deadline:
+        await asyncio.sleep(0.1)
+    if _group_alive(pgid):
+        _signal_group(pgid, signal.SIGKILL)
+    if proc.returncode is None:
         await proc.wait()
 
 
@@ -438,13 +524,29 @@ async def stop(chat: ChatBrowser) -> None:
         except Exception as exc:  # noqa: BLE001 - we are already in the teardown path
             log.debug("nodriver stop for %s: %s", chat.session_id, exc)
     await _stop_chromium(chat)
-    _cleanup_profile(chat)
+    await _cleanup_profile(chat)
     log.info("chat %s: browser torn down", chat.session_id)
 
 
-def _cleanup_profile(chat: ChatBrowser) -> None:
-    if chat.profile_dir and os.path.isdir(chat.profile_dir):
-        shutil.rmtree(chat.profile_dir, ignore_errors=True)
+async def _cleanup_profile(chat: ChatBrowser) -> None:
+    """Remove the profile folder. Retries, because a child can still write into it."""
+    last: OSError | None = None
+    if chat.profile_dir:
+        for _attempt in range(3):
+            try:
+                shutil.rmtree(chat.profile_dir)
+                last = None
+                break
+            except FileNotFoundError:
+                last = None
+                break
+            except OSError as exc:
+                last = exc
+                await asyncio.sleep(0.5)
+        if last is not None:
+            log.warning(
+                "chat %s: profile %s not removed: %s", chat.session_id, chat.profile_dir, last
+            )
     chat.profile_dir = ""
 
 

@@ -41,7 +41,17 @@ An apply command with no orphan rows starts no purge operation.
 
 ## Who writes the row
 
-The **workflow** writes `running` on entry, refreshes progress while the real work runs
+The dispatcher writes the row as `pending`, with `started_at` set to the dispatch time.
+The **workflow** first asks `admit_operation` for a slot of its kind. The cap of each kind is
+a key of the `[operations]` section, rendered into `HOOVER4_OPERATION_CAPS`, with a default
+of 2. When the running operations of the kind and the older `pending` or `queued` rows of the
+kind fill the cap, the row becomes `queued` and the workflow asks again every 30 s, with no
+time limit. The oldest row by `(started_at, op_id)` starts first. Admission writes `running`
+and `run_started_at`, the real start. `run_started_at` stays epoch 0 until then. A `queued`
+row holds the lock like a running one, and a cancel of a queued operation lands it in
+`cancelled`. After 240 requests the workflow continues as new under the same id.
+
+The workflow then refreshes progress while the real work runs
 beneath it, and writes exactly one of `finished` or `errored` with `finished_at` set. That
 terminal write is what releases the lock, so it is on the way out of every path.
 
@@ -108,7 +118,7 @@ invented for them would sit empty and then be full, which reports less than no b
 
 A plan is the unit the pipeline finishes, and the only one whose total is known before the
 work is done, which is why so many kinds count it. The estimate is derived from this
-operation's own elapsed time rather than from the global ETA sampler, so it is right for
+operation's own elapsed time since `run_started_at` rather than from the global ETA sampler, so it is right for
 this run's data even when nothing comparable has been ingested before. `progress_total = 0`
 means "not yet known", which is a different statement from "no work".
 
@@ -117,7 +127,7 @@ do not erase each other. Per-stage and per-document counters belong there.
 
 ## The queues
 
-Four, served from one process in the `hoover4-ops` container. The slot counts are the point
+Five, served from one process in the `hoover4-ops` container. The slot counts are the point
 of the split, not the split itself:
 
 | queue | slots | what runs there |
@@ -126,6 +136,7 @@ of the split, not the split itself:
 | `operations-clickhouse-queue` | 1 | ClickHouse backup and restore driving and polling |
 | `operations-manticore-queue` | 2 | Manticore backup, decompress, import |
 | `operations-garage-queue` | 2 | object-store enumerate, get, put, volume writing |
+| `operations-admission-queue` | 1 | `admit_operation`, so the count and the write of one admission never interleave with another |
 
 ClickHouse gets exactly one because concurrent backups and restores are disabled in its
 server config anyway: a second slot would only queue inside ClickHouse, where nothing here

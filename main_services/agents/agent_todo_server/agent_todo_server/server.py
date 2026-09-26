@@ -2,9 +2,9 @@
 
 Tools:
     ``read_todo``   the whole list, cheap, callable any time
-    ``write_todo``  replaces goal and items wholesale -- the plan-first call
-    ``edit_todo``   rewrites the rows and leaves the goal alone
-    ``mark_todo``   batched status changes by item id
+    ``write_todo``  replaces the goal and the steps, the plan-first call
+    ``edit_todo``   replaces the steps and keeps the goal
+    ``mark_todo``   one status for a list of step ids
 
 The plan tools of a deep-research plan run register on this server from `plan_tools`.
 
@@ -13,25 +13,24 @@ rules that stop the plan protocol being gamed live in `database.chat_todos`, whi
 chat workflow reads directly. A check re-implemented here would be a second copy that
 drifts, and the disagreement would surface as a model told its write was accepted while
 the workflow reads a list that never changed. What this module adds is exactly three
-things: the caller's identity out of the request headers, the argument coercion models
-need, and a refusal the model can read.
+things: the caller's identity out of the request headers, typed arguments, and a
+refusal the model can read.
 
-Four tools rather than one dispatch tool with a `mode` argument. Each has a genuinely
-different argument shape -- no arguments, a goal plus rows, rows alone, marks -- and a
-typed schema is what makes a model call it correctly the first time.
+Four tools rather than one dispatch tool with a `mode` argument. Each has a different
+argument shape (no arguments, a goal and a list of step strings, a list of step strings,
+a list of step ids with one status), and a typed schema is what makes a model call it
+correctly the first time. No argument is a JSON object, so the store gives every id.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field
-
-from agent_common import batching
 
 from agent_todo_server.identity import Caller, CallerUnknown, parse_caller
 
@@ -47,15 +46,15 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 SERVER_INSTRUCTIONS = (
-    "Keep the plan for this conversation. Call `read_todo` to see it -- it is cheap and "
-    "safe to call at any point. When `needs_plan` comes back true there is no live plan, "
-    "so write one with `write_todo`: a one-line goal and the steps you intend to take. "
-    "As you work, `mark_todo` each step in_progress and then done. If the plan itself "
-    "changes -- a step turns out to be unnecessary, or a new one appears -- use "
-    "`edit_todo` to rewrite the rows, or `write_todo` to replace the whole plan when the "
-    "goal has moved. An item you are abandoning is `cancelled` and must carry a note "
-    "saying why, because a cancelled item counts as settled and the note is the whole "
-    "record of the decision."
+    "Keep the plan for this conversation. Call `read_todo` to see it. The call is cheap "
+    "and you can make it at any point. When `needs_plan` is true there is no live plan, "
+    "so write one with `write_todo`: a goal of one or two sentences and `steps`, a list "
+    "of the steps you intend to take. The server gives each step its id. As you work, "
+    "call `mark_todo` with the step `ids`, first with in_progress and then with done. "
+    "When a step becomes unnecessary or a new one appears, call `edit_todo` with the full "
+    "list of `steps`. When the goal changes, call `write_todo` again. A step you abandon "
+    "is `cancelled` and needs a note that says why, because a cancelled step counts as "
+    "settled and the note is the only record of the decision."
 )
 
 
@@ -116,13 +115,9 @@ def _response(todo: dict, error: str | None = None) -> TodoResponse:
     )
 
 
-# `items` and `marks` are annotated `Any`, not `list[TodoItem]`, and the shape lives in
-# each tool's description instead. A declared list rejects the string an XML-style
-# tool-call parser produces for every list parameter before any of this module runs, and
-# the model then retries the identical call until its turn budget is gone -- the failure
-# `agent_common.batching` exists to prevent. `Any` moves the refusal to the store, which
-# answers in words the model can act on. The four separate tools are what carry the
-# typing this relies on: no `mode` argument to get wrong.
+# The step lists are typed lists of strings. The agent decodes a JSON string argument
+# against this schema before the call (`research_agent/tool_args.py`), so a parser that
+# sends a list as a string still reaches the store.
 
 
 def _refused(caller: Caller | None, message: str) -> TodoResponse:
@@ -163,26 +158,20 @@ def read_todo() -> TodoResponse:
 
 @mcp.tool(
     name="write_todo",
-    description="""Replace the whole plan for this conversation -- the goal and every step. Use it at the start of a piece of work, and again whenever the objective itself changes.
-
-Args:
-    goal: str
-        One or two sentences saying what this conversation is trying to achieve.
-    items: list[{id, text, status, note}]
-        The steps, in the order you mean to do them, e.g.
-        [{"id": "1", "text": "find the contract", "status": "pending"}]
-        `id` may be omitted and is then numbered for you. `status` defaults to pending.
-""",
+    description=(
+        "Write the plan for this conversation, as a goal and a list of steps. Call it at "
+        "the start of a piece of work, and again when the goal changes. Give goal as one "
+        "or two sentences. Give steps as a list of short sentences, in the order you mean "
+        "to do them. The server numbers the steps 1, 2, 3, and each step starts as pending."
+    ),
 )
-def write_todo(goal: str = "", items: Any = None) -> TodoResponse:
+def write_todo(goal: str, steps: list[str]) -> TodoResponse:
     try:
         caller = _caller()
     except CallerUnknown as exc:
         return _refused(None, str(exc))
     try:
-        todo = chat_todos.write_todo(
-            caller.username, caller.session_id, goal, batching.as_objects(items)
-        )
+        todo = chat_todos.write_steps(caller.username, caller.session_id, goal, steps)
     except chat_todos.TodoError as exc:
         return _refused(caller, str(exc))
     log.info(
@@ -197,25 +186,19 @@ def write_todo(goal: str = "", items: Any = None) -> TodoResponse:
 
 @mcp.tool(
     name="edit_todo",
-    description="""Rewrite the steps of the plan without touching the goal. Use it to add a step you did not foresee, reword one, or drop one that turned out to be unnecessary.
-
-Send the list you want to end up with, not a patch -- every step you still want, including the ones that have not changed. Anything you leave out is removed.
-
-Args:
-    items: list[{id, text, status, note}]
-        The complete list of steps after your edit. Keep each step's existing `id` and
-        `status` so its progress is not reset.
-""",
+    description=(
+        "Replace the steps of the plan and keep the goal. Give the full list of steps you "
+        "want, in order. A step with the same text as before keeps its id and its status. "
+        "A step you leave out is removed."
+    ),
 )
-def edit_todo(items: Any = None) -> TodoResponse:
+def edit_todo(steps: list[str]) -> TodoResponse:
     try:
         caller = _caller()
     except CallerUnknown as exc:
         return _refused(None, str(exc))
     try:
-        todo = chat_todos.edit_todo(
-            caller.username, caller.session_id, batching.as_objects(items)
-        )
+        todo = chat_todos.edit_steps(caller.username, caller.session_id, steps)
     except chat_todos.TodoError as exc:
         return _refused(caller, str(exc))
     log.info(
@@ -230,26 +213,24 @@ def edit_todo(items: Any = None) -> TodoResponse:
 
 @mcp.tool(
     name="mark_todo",
-    description="""Change the status of one or more steps. Mark several at once rather than one call per step.
-
-Args:
-    marks: list[{id, status, note}]
-        e.g. [{"id": "1", "status": "done"}, {"id": "2", "status": "in_progress"}]
-        `status` is pending, in_progress, done or cancelled. A step you are giving up on
-        is `cancelled` and MUST carry a `note` saying why -- a cancelled step counts as
-        settled, so the note is the entire record of the decision, and the call is
-        refused without it.
-""",
+    description=(
+        "Set the status of one or more steps in one call. Give ids as a list of step ids "
+        "from the plan, and one status for all of them: pending, in_progress, done or "
+        "cancelled. A cancelled step needs a note that says why, and the call is refused "
+        "without it. Mark a step when you start it and when you finish it."
+    ),
 )
-def mark_todo(marks: Any = None) -> TodoResponse:
+def mark_todo(
+    ids: list[str],
+    status: Literal["pending", "in_progress", "done", "cancelled"],
+    note: str = "",
+) -> TodoResponse:
     try:
         caller = _caller()
     except CallerUnknown as exc:
         return _refused(None, str(exc))
     try:
-        todo = chat_todos.mark_todo(
-            caller.username, caller.session_id, batching.as_objects(marks)
-        )
+        todo = chat_todos.mark_steps(caller.username, caller.session_id, ids, status, note)
     except chat_todos.TodoError as exc:
         return _refused(caller, str(exc))
     log.info(

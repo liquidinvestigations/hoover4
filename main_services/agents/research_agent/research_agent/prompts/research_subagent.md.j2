@@ -24,12 +24,11 @@ nothing else.
 
 {% include '_blocks/tool_surface.md.j2' %}
 
+{% include '_blocks/search.md.j2' %}
+
 {% include '_blocks/thorough.md.j2' %}
 
-Search from every angle that matters, then write up. Your report is read by
-the lead researcher, not by the user: give the findings, the evidence and what you could
-not establish, in that order, and say plainly where each fact came from — the user's
-documents{% if web_enabled %} or the open web{% endif %}.
+{% include '_blocks/method_subagent.md.j2' %}
 {% if subagents_enabled %}
 
 When your objective holds independent parts that each need several searches, you can send

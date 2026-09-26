@@ -295,11 +295,12 @@ Paths are **in-container** paths under `datasets_mount_path`, so a corpus at
 
 ### Ingest in stages, smallest first
 
-`add-disk-dataset` blocks through scan → compute-plans → execute-plans, which is correct:
-the stages must run in order and only the CLI sequences them. Two consequences:
+The `Operation` workflow runs scan, compute plans and execute plans in order, on the
+server. `add-disk-dataset` follows that operation for 60 s, prints that processing
+continues, and exits 0. `--wait` follows it to the end. Two consequences:
 
-* **Killing the CLI does not stop the work.** The workflows keep running server-side
-  while the caller sees a dead command. Run each ingest under `tmux` or `nohup`.
+* **Ending the CLI does not stop the work.** Follow the operation with
+  `main.py operations show <op_id> --follow`, or on the admin operations page.
 * **Never redeploy while one is running.** `./deploy` recreates `hoover4-worker` and
   SIGKILLs whatever is attached to it.
 

@@ -103,7 +103,7 @@ fn OperationsContent() -> Element {
                             page.set(0);
                         },
                         option { value: "", "Any state" }
-                        for s in ["pending", "running", "finished", "errored", "cancelled"] {
+                        for s in ["pending", "queued", "running", "finished", "errored", "cancelled"] {
                             option { value: "{s}", "{s}" }
                         }
                     }
@@ -261,7 +261,7 @@ fn format_duration(seconds: u64) -> String {
 fn state_colour(state: &str) -> &'static str {
     match state {
         "running" => "#417690",
-        "pending" => "#8a6d3b",
+        "pending" | "queued" => "#8a6d3b",
         "finished" => "#2e7d32",
         "cancelled" => "#666",
         _ => C_DANGER,
@@ -289,6 +289,7 @@ pub fn OperationsTable(
                     th { style: TH, "Kind" }
                     th { style: TH, "Target" }
                     th { style: TH, "State" }
+                    th { style: TH, "Queued at" }
                     th { style: TH, "Started" }
                     th { style: TH, "Duration" }
                     th { style: TH, "Progress" }
@@ -323,7 +324,8 @@ fn OperationTableRow(
     let mut msg = msg;
     let mut error_msg = error_msg;
 
-    let running = row.state == "running" || row.state == "pending";
+    // A queued row holds its target like a running one, so it gets the same Cancel.
+    let running = matches!(row.state.as_str(), "pending" | "queued" | "running");
     let target = row.target.clone();
     let confirm_ready = !row.destructive || *confirm_text.read() == target;
 
@@ -367,7 +369,20 @@ fn OperationTableRow(
                 "{row.state}"
             }
             td { style: TD, "{row.started_at}" }
-            td { style: TD, "{format_duration(row.duration_seconds)}" }
+            td { style: TD,
+                if let Some(run_started_at) = row.run_started_at.as_ref() {
+                    "{run_started_at}"
+                } else {
+                    "-"
+                }
+            }
+            td { style: TD,
+                if row.run_started_at.is_some() {
+                    "{format_duration(row.duration_seconds)}"
+                } else {
+                    "-"
+                }
+            }
             td { style: TD, ProgressCell { row: row.clone() } }
             td { style: TD,
                 if row.eta_seconds > 0 {
@@ -466,7 +481,9 @@ fn ProgressCell(row: OperationRow) -> Element {
     if row.progress_total == 0 {
         return rsx! {
             span { style: HELP_TEXT,
-                if row.state == "running" || row.state == "pending" {
+                if row.state == "queued" {
+                    "waiting for a free slot"
+                } else if row.state == "running" || row.state == "pending" {
                     "counting work…"
                 } else {
                     "n/a"

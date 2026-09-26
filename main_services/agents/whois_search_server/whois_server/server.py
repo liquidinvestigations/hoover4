@@ -177,6 +177,8 @@ MAX_DOMAINS = int(os.getenv("WHOIS_MAX_DOMAINS", "10"))
     name="whois_lookup",
     description="""Look up the registration of several domains at once. Returns registrar, creation and expiry dates, name servers, and contact information per domain.
 
+A registrant field that is null means the registry did not publish it. The registrar is the company that sold the domain, and it is not the registrant.
+
 Ask about every domain you are curious about in one call rather than one per turn.
 
 Args:

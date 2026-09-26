@@ -68,14 +68,20 @@ was missed told the model to call a name that no longer existed.
 
 Blocks in `prompts/_blocks/` are shared, and each guards itself: the plan-first block
 renders only where the todo writers are bound, so a worker profile cannot be handed an
-instruction to call a tool it does not have.
+instruction to call a tool it does not have. `search.md.j2` tells the model to search the
+documents before the web, and to put every form of a name in one `search_collections` call.
+It also gives the query syntax that the model gets wrong most often. Each `method_*.md.j2` block is
+the research method of one role: the two chat profiles, the planner, the organizer and the
+researcher. A sentence in these blocks that names a tool renders only when that tool is
+bound.
 
-**Keep them short.** Qwen3.5-2B follows a long, numbered, multi-clause prompt by doing all
-of it forever: an earlier five-step draft made the model search, search again, then re-run
-a query it had already run until the request died with no answer. Detail belongs in tool
-descriptions, which the model reads in context at the moment it picks a tool. The Manticore
-MATCH syntax deliberately lives in the collection MCP server's `instructions` instead, where
-every agent reads it at tool-discovery time and there is only one copy to maintain.
+**Keep the tool notes short.** Qwen3.5-2B follows a long, numbered, multi-clause prompt by
+doing all of it forever: an earlier five-step draft made the model search, search again,
+then re-run a query it had already run until the request died with no answer. The method
+blocks are long, about 3,000 tokens each, and they are written for the served model. Detail on one tool belongs in its description, which the model reads in
+context at the moment it picks a tool. The Manticore match syntax reaches the model through
+the search block and the descriptions of the search tools. The collection MCP server also
+renders it into its `instructions`, which this agent does not pass to the model.
 
 ## Delegation
 

@@ -92,8 +92,10 @@ workflow id **is** the `op_id` of its row in the global `operations` table, so a
 that was killed, or that deliberately detached, can always find its work again, and the
 row outlives Temporal's history, which is retained for a day. The workflow owns the row's
 lifecycle and its terminal write is what releases the operations lock. Runs on
-`operations-queue` and the three store queues, in the `hoover4-ops` container rather than
-in this fleet. See [P_ops/Readme.md](P_ops/Readme.md). A failed operation also writes a
+`operations-queue`, the three store queues and `operations-admission-queue`, in the
+`hoover4-ops` container rather than in this fleet. The admission queue has one slot. It keeps
+the running operations of each kind at the cap of the `[operations]` section, and a
+`queued` row waits there for a slot. See [P_ops/Readme.md](P_ops/Readme.md). A failed operation also writes a
 tree of worker stack traces into the global `operation_failures` table
 (`tasks/operation_failure_capture.py`). A pipeline workflow that fails an operation writes
 the same way. The group workflow `ProcessItemsBatched` records an unreadable PDF, like
@@ -273,6 +275,15 @@ workflows it touches: drain the queue, or terminate and re-drive, and only then 
 the worker. `.agents/check-workflow-diff.py` says which of the two a diff is and names
 the files.
 
+**The pipeline drain.** No workflow versioning exists. A change to the command sequence of
+`Operation`, `IngestAndProcessDataset`, `ExecutePlans`, `ExecuteSinglePlan` or
+`IndexDatasetPlan` therefore needs the drain before the deploy. With the old workers still
+up, count the open workflows of these five types with `temporal workflow count --address
+temporal:7233` and an `ExecutionStatus='Running'` query. Cancel each live operation with
+`main.py operations cancel <op_id>`, and cancel a workflow with no operation row by its id.
+Deploy only when the count is 0. A `queued` operation is cancelled like the others, and a
+person dispatches it again after the deploy with `main.py operations rerun <op_id>`.
+
 Outbound HTTP from activities (NER, OCR, embeddings) goes through
 `remote.py`: `(connect, read)` two-tuple timeouts (`GPU_CONNECT_TIMEOUT_MS`, default
 2 s connect), an ordered endpoint list with an optional CPU twin, and a per-endpoint,
@@ -352,10 +363,15 @@ Workers are split into dedicated queues to control throughput and resource usage
   (`main.py worker nlp`, concurrency 4).
 - `processing-embed-queue`, P5 chunk+embed against the remote embeddings service
   (`main.py worker embed`, concurrency 6).
-- `processing-indexing-queue`, P6 Manticore writes.
+- `processing-indexing-queue`, P6 Manticore writes and the dataset-wide tree steps
+  (`main.py worker indexing`, `indexing_workers` processes, 4 by default, of one slot
+  each).
 - `processing-index-planner-queue`, P6 shard planning (`plan_shards`). MUST run at
   exactly one worker process: the planner does a read-modify-write on the shard ledger
   and assignments, which is only race-free when serialized.
+- `processing-email-graph-queue`, `build_email_graph` (`main.py worker email-graph`).
+  MUST run at exactly one worker process of one slot. A run deletes its collection's
+  rows that are older than its own start. Two runs at once can delete each other's rows.
 - `chat-queue`, `AgentRun` plus `open_run`, `append_nag`, `write_ending`, `fan_in`,
   `continue_run`, todo reads and session titles (`main.py worker chat`, concurrency from `chat_low_latency_concurrency`).
 - `chat-model-queue`, `run_agent` for those chat turns

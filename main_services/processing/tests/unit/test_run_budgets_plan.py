@@ -50,3 +50,21 @@ def test_an_accepted_section_briefing_keeps_its_node_and_purpose():
 def test_a_briefing_with_no_node_loses_its_purpose():
     [accepted] = _decide([_b("review", node=None)], kind="chat").accepted
     assert "purpose" not in accepted.briefing and "plan_node_id" not in accepted.briefing
+
+
+def test_a_refused_node_names_the_sections_of_the_approved_tree():
+    sections = {SECTION: "Who signed the lease?", "s2": "Who controls the landlord?"}
+    decision = rb.decide([("c1", [_b("execute", node="unknown")])], depth=0, used=0,
+                         limit=300, own_share=0, kind="organizer", sections=sections,
+                         corrections={})
+    [refusal] = decision.refused
+    assert refusal["reason"] == rb.PLAN_NODE_NOT_ALLOWED
+    assert refusal["message"] == (
+        f"The sections are: {SECTION} (Who signed the lease?), s2 (Who controls the landlord?).")
+
+
+def test_a_refusal_with_no_section_has_no_message():
+    decision = _decide([_b("execute")], sections=frozenset())
+    [refusal] = decision.refused
+    assert refusal["reason"] == rb.PLAN_NODE_NOT_ALLOWED
+    assert "message" not in refusal

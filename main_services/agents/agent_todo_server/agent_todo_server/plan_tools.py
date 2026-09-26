@@ -23,6 +23,10 @@ The server holds one `asyncio.Lock` for each plan run. A mutation takes the lock
 newest version, applies the change, writes version plus one, and releases the lock, so the
 next holder reads the new version. This holds because the server runs as one process.
 
+**One version for each mutation key.** A mutation that carries `X-Hoover4-Idempotency-Key`
+stores the key on the version it writes. A second call with that key writes nothing and
+returns that version. A mutation with no key writes a new version each time.
+
 The tree rules live in `database.agent_plans`, which the worker reads as well.
 """
 
@@ -30,8 +34,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field
@@ -41,6 +46,10 @@ from agent_todo_server.server import mcp
 from database import agent_plans, agent_runs
 
 log = logging.getLogger(__name__)
+
+#: The header that carries the key of one plan mutation. A retried mutation carries the
+#: same key, and the server answers it with the version the first call wrote.
+IDEMPOTENCY_HEADER = "x-hoover4-idempotency-key"
 
 #: The most characters `read_plan_document` returns in one call.
 DOCUMENT_PAGE_CHARS = 16_000
@@ -156,8 +165,18 @@ def _snapshot(ctx: PlanContext, version: int | None = None):
                                      ctx.plan_run.plan_id, version)
 
 
+def idempotency_key(headers: dict[str, str]) -> uuid.UUID | None:
+    """The UUID in `X-Hoover4-Idempotency-Key`, or None for a missing or malformed value."""
+    lowered = {key.lower(): value for key, value in headers.items()}
+    try:
+        return uuid.UUID(str(lowered.get(IDEMPOTENCY_HEADER, "")).strip())
+    except ValueError:
+        return None
+
+
 async def _mutate(operation: str, **args: Any) -> PlanResponse:
     headers = _headers()
+    key = idempotency_key(headers)
     try:
         ctx = await asyncio.to_thread(_context, headers)
     except PlanRefused as exc:
@@ -168,6 +187,13 @@ async def _mutate(operation: str, **args: Any) -> PlanResponse:
             ctx = await asyncio.to_thread(_context, headers)
         except PlanRefused as exc:
             return PlanResponse(success=False, code=exc.code, error=str(exc))
+        if key is not None:
+            stored = await asyncio.to_thread(
+                agent_plans.snapshot_by_key, ctx.caller.username, ctx.caller.session_id,
+                ctx.plan_run.plan_id, key)
+            if stored is not None:
+                # A retry of a mutation that landed: answer with the version it wrote.
+                return _response(ctx, stored)
         if ctx.plan_run.state not in agent_plans.MUTABLE_STATES:
             refused = PlanRefused(
                 "plan_frozen",
@@ -179,7 +205,7 @@ async def _mutate(operation: str, **args: Any) -> PlanResponse:
         try:
             new = await asyncio.to_thread(
                 agent_plans.mutate, ctx.caller.username, ctx.caller.session_id,
-                ctx.plan_run.plan_id, operation, **args)
+                ctx.plan_run.plan_id, operation, idempotency_key=key, **args)
         except agent_plans.PlanError as exc:
             return _response(ctx, await asyncio.to_thread(_snapshot, ctx),
                              PlanRefused("invalid_plan_change", str(exc)))
@@ -231,10 +257,12 @@ async def append_child(parent_id: str = "", text: str = "") -> PlanResponse:
     name="move_node",
     description=(
         "Move a node and its subtree under `new_parent_id` at `position` (1 is first). "
-        "An empty `new_parent_id` means the root. The root cannot move."
+        "An empty `new_parent_id` means the root. The root cannot move. "
+        "A position of 0 puts the node last."
     ),
 )
-async def move_node(node_id: str = "", new_parent_id: str = "", position: Any = 0) -> PlanResponse:
+async def move_node(node_id: str = "", new_parent_id: str = "",
+                    position: Annotated[int, Field(ge=0)] = 0) -> PlanResponse:
     return await _mutate("move_node", node_id=node_id, new_parent_id=new_parent_id,
                          position=position)
 
@@ -263,7 +291,8 @@ async def remove_node(node_id: str = "") -> PlanResponse:
         "`document_id`, the result lists the documents in `text`, one a line."
     ),
 )
-async def read_plan_document(document_id: str = "", offset: Any = 0) -> PlanDocumentPage:
+async def read_plan_document(document_id: str = "",
+                             offset: Annotated[int, Field(ge=0)] = 0) -> PlanDocumentPage:
     try:
         ctx = await asyncio.to_thread(_context, _headers())
     except PlanRefused as exc:

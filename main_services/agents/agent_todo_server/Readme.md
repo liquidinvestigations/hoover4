@@ -5,7 +5,7 @@ One todo list per chat conversation (a goal and a list of steps) exposed as four
 
 **The server holds no rules.** Every shape, limit and refusal lives in
 [`../../processing/database/chat_todos.py`](../../processing/database/chat_todos.py),
-which the chat workflow reads directly. This server is identity, argument coercion and a
+which the chat workflow reads directly. This server is identity, typed arguments and a
 readable refusal on top of it. Two of those rules must never be
 relaxed here: a `cancelled` item requires a note, and a bare status flip is not a
 material change. Both exist so the plan protocol cannot be gamed, and a second copy of
@@ -13,8 +13,12 @@ either at this layer is how the tool and the workflow start disagreeing about wh
 plan was abandoned or finished.
 
 Four tools rather than one dispatcher with a `mode` argument: each argument shape is
-genuinely different, and a typed schema is what makes a model call it correctly the first
-time.
+different, and a typed schema is what makes a model call it correctly the first time.
+`write_todo` takes a `goal` and `steps`, a list of step strings. `edit_todo` takes `steps`.
+`mark_todo` takes `ids`, a list of step ids, one `status` and an optional `note`. No
+argument is a JSON object: the store gives each step its id, `1`, `2`, `3` in order, and a
+step that `edit_todo` keeps by its text keeps its id and status. An empty goal or an empty
+step list is refused.
 
 ## The caller
 
@@ -42,6 +46,12 @@ A sub-agent row copies the `plan_run_id`, so the sub-agents of a planner reach t
 read the same version would lose one of them. The server holds one `asyncio.Lock` for each
 plan run. A change takes the lock, reads the newest version, writes version plus one, and
 releases the lock. This holds because the server runs as one process in one container.
+
+**One version for each mutation key.** A change that carries a UUID in
+`X-Hoover4-Idempotency-Key` stores it on the version it writes, in the `idempotency_key`
+column of `agent_plan_snapshots`. A second change with that key writes nothing and returns
+that version. A change with no key, or with a value that is not a UUID, writes a new
+version each time.
 
 ## Build context
 

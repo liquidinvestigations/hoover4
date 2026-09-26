@@ -22,6 +22,16 @@ The table is a `ReplacingMergeTree(row_version)` ordered by `(started_at, op_id)
 update is an insert of the whole row with a higher `row_version` **and the original
 `started_at`**. Changing `started_at` writes a second row rather than replacing the
 first, which is why every update path here reads the current row before writing.
+
+`started_at` is the dispatch time. `run_started_at` is the real start, written once when
+the row leaves `pending` or `queued` for `running`. Epoch 0 there means the operation has
+not started.
+
+A row is `pending` from dispatch until its workflow asks for admission. Admission lets at
+most the configured cap of operations of one kind run at once (`operation_caps()`). A
+row over its cap is `queued`, and it waits with no time limit. The oldest waiting row of
+a kind starts first, ordered by `(started_at, op_id)`. A `queued` row is live, so it holds
+its target like a running one.
 """
 
 import json
@@ -33,9 +43,12 @@ import pyarrow as pa
 
 log = logging.getLogger(__name__)
 
-#: States a row can be in. The first two are live; the last three are terminal.
-LIVE_STATES = ("pending", "running")
+#: States a row can be in. `LIVE_STATES` hold the lock. `TERMINAL_STATES` never change again.
+LIVE_STATES = ("pending", "queued", "running")
 TERMINAL_STATES = ("finished", "errored", "cancelled")
+
+#: `LIVE_STATES` as a SQL list, for the `state IN (...)` clauses below.
+_LIVE_SQL = ", ".join(f"'{state}'" for state in LIVE_STATES)
 
 #: Every operation kind, what it acts on, and whether it destroys data.
 #:
@@ -107,7 +120,7 @@ DRIVEN_KINDS = (
 #: default on every update.
 COLUMNS = (
     "op_id", "kind", "target_kind", "collectionname", "collection_dataset",
-    "state", "started_at", "finished_at", "updated_at",
+    "state", "started_at", "run_started_at", "finished_at", "updated_at",
     "progress_done", "progress_total", "eta_seconds",
     "detail", "error", "user_id", "rerun_of", "row_version",
 )
@@ -215,6 +228,7 @@ def _insert_row(row: dict) -> None:
         "collection_dataset": pa.array([row["collection_dataset"]], type=pa.string()),
         "state": pa.array([row["state"]], type=pa.string()),
         "started_at": pa.array([row["started_at"]], type=pa.timestamp("s")),
+        "run_started_at": pa.array([row["run_started_at"]], type=pa.timestamp("s")),
         "finished_at": pa.array([row["finished_at"]], type=pa.timestamp("s")),
         "updated_at": pa.array([row["updated_at"]], type=pa.timestamp("s")),
         "progress_done": pa.array([int(row["progress_done"])], type=pa.uint64()),
@@ -236,7 +250,7 @@ def lock_clause(kind: str, collectionname: str,
     target_kind = KINDS[kind]["target_kind"]
     if target_kind == "dataset":
         return (
-            "state IN ('pending', 'running') AND "
+            f"state IN ({_LIVE_SQL}) AND "
             "(collection_dataset = {collection_dataset:String} OR "
             "(target_kind = 'collection' AND collectionname = {collectionname:String}))",
             {
@@ -246,7 +260,7 @@ def lock_clause(kind: str, collectionname: str,
         )
     if target_kind == "collection":
         return (
-            "state IN ('pending', 'running') AND collectionname = {collectionname:String}",
+            f"state IN ({_LIVE_SQL}) AND collectionname = {{collectionname:String}}",
             {"collectionname": collectionname},
         )
     raise ValueError(f"Unknown operation target kind: {target_kind}")
@@ -280,7 +294,7 @@ def open_operations_for_collection(collectionname: str) -> list[dict]:
     re-index.
     """
     return _select(
-        "collectionname = {name:String} AND state IN ('pending', 'running')",
+        f"collectionname = {{name:String}} AND state IN ({_LIVE_SQL})",
         {"name": collectionname},
     )
 
@@ -305,8 +319,9 @@ def create_operation(kind: str, collectionname: str = "", collection_dataset: st
         "collection_dataset": collection_dataset,
         "state": "pending",
         "started_at": now,
-        # Epoch 0 is the table's own "not finished" sentinel, and a naive datetime
-        # because the column is naive UTC.
+        # Epoch 0 is the table's own "not started" and "not finished" sentinel, and a
+        # naive datetime because the column is naive UTC.
+        "run_started_at": datetime(1970, 1, 1),
         "finished_at": datetime(1970, 1, 1),
         "updated_at": now,
         "progress_done": 0,
@@ -347,7 +362,7 @@ def list_operations(state: str = "", collectionname: str = "", kind: str = "",
 
 def live_operations(limit: int = 500) -> list[dict]:
     """Live operation rows for the collector supervisor."""
-    return _select("state IN ('pending', 'running')", {}, limit=limit)
+    return _select(f"state IN ({_LIVE_SQL})", {}, limit=limit)
 
 
 def update_operation(op_id: str, *, base_row: dict | None = None, **changes) -> dict | None:
@@ -402,3 +417,71 @@ def merge_detail(op_id: str, **fields) -> dict | None:
         detail = {}
     detail.update(fields)
     return update_operation(op_id, detail=json.dumps(detail, sort_keys=True))
+
+
+#: The cap of a kind that `HOOVER4_OPERATION_CAPS` does not name.
+DEFAULT_OPERATION_CAP = 2
+
+
+def operation_caps() -> dict[str, int]:
+    """The most running operations of each kind, from `HOOVER4_OPERATION_CAPS`.
+
+    The variable holds `kind=value` pairs joined by commas, rendered from the
+    `[operations]` section of `hoover4.ini`. Every kind of `KINDS` gets
+    `DEFAULT_OPERATION_CAP` unless the variable names it. A pair that does not parse, a
+    value below 1, or a kind not in `KINDS` logs a warning and is ignored.
+    """
+    import os
+
+    caps = {kind: DEFAULT_OPERATION_CAP for kind in KINDS}
+    raw = os.environ.get("HOOVER4_OPERATION_CAPS", "")
+    for pair in raw.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        kind, sep, value = pair.partition("=")
+        kind = kind.strip()
+        if not sep or kind not in KINDS:
+            log.warning("HOOVER4_OPERATION_CAPS: ignored %r, not a known kind=value pair", pair)
+            continue
+        try:
+            cap = int(value.strip())
+        except ValueError:
+            log.warning("HOOVER4_OPERATION_CAPS: ignored %r, the value is not a whole number", pair)
+            continue
+        if cap < 1:
+            log.warning("HOOVER4_OPERATION_CAPS: ignored %r, the value is below 1", pair)
+            continue
+        caps[kind] = cap
+    return caps
+
+
+def admission_decision(running: int, ahead: int, cap: int) -> str:
+    """`running` when a slot is free and no older row of the kind waits, else `queued`."""
+    return "running" if running + ahead < cap else "queued"
+
+
+def count_admission(row: dict) -> tuple[int, int]:
+    """The running operations of the row's kind, and the live rows that wait ahead of it.
+
+    A row waits ahead when it is `pending` or `queued` and is older by
+    `(started_at, op_id)`. `countIf` over an empty match returns one row of zeros, which
+    is the correct answer here.
+    """
+    from .clickhouse import get_global_client
+
+    sql = (
+        "SELECT countIf(state = 'running') AS running, "
+        "countIf(state IN ('pending', 'queued') AND "
+        "(started_at, op_id) < ({started_at:DateTime}, {op_id:String})) AS ahead "
+        f"FROM operations FINAL WHERE kind = {{kind:String}} AND state IN ({_LIVE_SQL})"
+    )
+    parameters = {
+        "kind": row["kind"],
+        "started_at": row["started_at"],
+        "op_id": row["op_id"],
+    }
+    with get_global_client() as client:
+        result = _row_dicts(client.query(sql, parameters=parameters))
+    first = result[0] if result else {"running": 0, "ahead": 0}
+    return int(first["running"]), int(first["ahead"])

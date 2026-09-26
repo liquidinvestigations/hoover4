@@ -12,6 +12,7 @@ decides and which code reads it.
 - [`[storage]`](#storage)
 - [`[ai_services]`](#ai_services)
 - [`[main_services]`](#main_services)
+- [`[operations]`](#operations)
 - [`[llm_provider.*]`](#llm_provider)
 - [Secrets](#secrets)
 - [Every key, by section](#every-key-by-section)
@@ -149,6 +150,11 @@ An empty key gives 4 for `chat_model_concurrency` and `research_concurrency`, an
 `common_max_cached_workflows` (default `100`) is the number of workflow runs that each
 common-worker process keeps in memory. The SDK default is 1000.
 
+`indexing_workers` is the number of index-worker processes on `processing-indexing-queue`.
+Empty gives 4, and the release template sets 8. Each process has `indexing_concurrency`
+slots, 1 by default. The email graph runs in one more process of its own, on
+`processing-email-graph-queue` with one slot, and no key changes that count.
+
 `browser_max_contexts` is live Chromium processes on `hoover4-mcp-browser`, one per chat.
 `mcp_browser_mem_limit` is that container's memory ceiling.
 `agent_subagent_max_per_turn` (default `6`) is how many sub-agent runs one chat turn may
@@ -157,7 +163,9 @@ one research plan may start. A turn that runs a plan counts against the plan bud
 The worker refuses the briefings past a budget by name, and the model reads the refusals.
 `agent_packs_chat`, `agent_packs_subagent`, `agent_packs_planner` and
 `agent_packs_organizer` give the tool packs of each kind of agent run, as a comma list of
-pack names or `all`. The default is `all`. The packs are `catalogue`, `collections`,
+pack names or `all`. The default is `all`, except for `agent_packs_planner`, whose default
+is `collections,web,plan`, so that the planner writes the tree with the plan tools and has no
+todo tool. The packs are `catalogue`, `collections`,
 `conversation`, `plan`, `delegation`, `web` and `browser`. A run binds and calls only the
 tools of its packs, and the agent service refuses to start on an unknown pack name.
 `agent_max_page_tokens` and `agent_completion_reserve_tokens` switch the agents' result
@@ -281,6 +289,20 @@ is reproducible. `garage_capacity` sizes the object store's advertised capacity.
 `serena_enabled` and `serena_port` control the symbol-navigation server, which is development
 tooling and is published on loopback only.
 
+## `[operations]`
+
+One key for each operation kind, named `<kind>_cap`, with the default `2`. A cap is the most
+operations of that kind that run at once across the deployment. No key covers a group of
+kinds. `deploy.py` refuses a value below 1, and prints a warning for an unknown key in the
+section. It renders the 16 values into one variable, `HOOVER4_OPERATION_CAPS`, in
+`hoover4-ops`, as `kind=value` pairs joined by commas.
+
+An operation over its cap is stored as `queued`. It waits with no time limit, and the oldest
+queued operation of its kind starts when a slot is free. A queued operation holds its dataset
+or collection. A second operation on that target is refused until the first one ends or is
+cancelled. A change to a cap takes effect when `hoover4-ops` is created again,
+which `./deploy` does.
+
 ## `[llm_provider.*]`
 
 One section per provider, each with the same five keys: `enabled`, `base_url`, `model`,
@@ -343,7 +365,7 @@ is the map back to the group above that explains it.
 - `tesseract_cpu_concurrency`, `tesseract_threads_per_page`, `tesseract_cpu_cpus`, `tesseract_cpu_mem_limit`
 - `regex_scanner_queue_depth`, `website_release_mode`, `search_max_parallelism`, `search_timeout_seconds`
 - `common_workers`, `common_concurrency`, `common_max_cached_workflows`, `worker_mem_limit`, `tika_concurrency`
-- `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`
+- `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`, `indexing_workers`
 - `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`
 - `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
 - `mcp_browser_mem_limit`, `full_research_agent_workers`
@@ -373,6 +395,14 @@ is the map back to the group above that explains it.
 - `temporal_mem_limit`, `temporal_cpus`, `temporal_retention`
 - `temporal_history_persistence_qps`, `temporal_frontend_persistence_qps`, `temporal_matching_persistence_qps`
 - `container_log_max_size`, `container_log_max_files`
+
+### `[operations]`: the operation caps
+
+- `add_dataset_cap`, `rescan_dataset_cap`, `compute_plans_cap`, `execute_plans_cap`
+- `purge_dataset_cap`, `delete_dataset_cap`, `change_ocr_languages_cap`, `reindex_collection_cap`
+- `refresh_document_locations_cap`, `retry_failed_files_cap`, `ensure_collection_cap`
+- `drop_collection_database_cap`, `export_collection_cap`, `import_collection_cap`
+- `purge_unattributed_entities_cap`, `backfill_vectors_cap`
 
 ### `[llm_provider.selfhosted]`
 

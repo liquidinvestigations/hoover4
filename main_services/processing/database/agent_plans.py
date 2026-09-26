@@ -193,7 +193,11 @@ def children_of(snapshot: PlanSnapshot, parent_id: str) -> list[PlanNode]:
 
 
 def sections(snapshot: PlanSnapshot) -> list[tuple[PlanNode, list[PlanNode]]]:
-    """Each section in tree order, with its tasks: a node with at least one leaf child."""
+    """Each section in tree order, with its tasks: a node with at least one leaf child.
+
+    The root counts. The Rust copy is `has_section` in `website/common/src/plan_types.rs`.
+    The two copies are one rule and change in one patch.
+    """
     parents = {n.parent_id for n in snapshot.nodes if n.parent_id is not None}
     out = []
     for node in _ordered(snapshot.nodes):
@@ -356,10 +360,29 @@ def read_snapshot(username: str, session_id: str, plan_id: str,
     return PlanSnapshot(plan_id, int(rows[0][0]), nodes_from_json(rows[0][1]))
 
 
-def write_snapshot(username: str, session_id: str, snapshot: PlanSnapshot) -> None:
-    """Write one version with a synchronous insert. The key is the version itself, so a
-    retry of the same write replaces the row with equal content."""
-    key = uuid.uuid5(PLAN_NAMESPACE, f"snapshot:{snapshot.plan_id}:{snapshot.version}")
+def snapshot_by_key(username: str, session_id: str, plan_id: str,
+                    idempotency_key: uuid.UUID) -> PlanSnapshot | None:
+    """The newest snapshot that a mutation with `idempotency_key` wrote, or None."""
+    with _client() as client:
+        rows = client.query(
+            "SELECT version, nodes_json FROM agent_plan_snapshots FINAL "
+            "WHERE username = {u:String} AND session_id = {s:String} AND plan_id = {p:UUID} "
+            "AND idempotency_key = {k:UUID} ORDER BY version DESC LIMIT 1",
+            parameters={"u": username, "s": session_id, "p": plan_id, "k": str(idempotency_key)},
+        ).result_rows
+    if not rows:
+        return None
+    return PlanSnapshot(plan_id, int(rows[0][0]), nodes_from_json(rows[0][1]))
+
+
+def write_snapshot(username: str, session_id: str, snapshot: PlanSnapshot,
+                   idempotency_key: uuid.UUID | None = None) -> None:
+    """Write one version with a synchronous insert.
+
+    `idempotency_key` is the key of the mutation that made this version, which
+    [`snapshot_by_key`] finds on a retry. With no key, the key is derived from the
+    version, so a retry of the same write replaces the row with equal content."""
+    key = idempotency_key or uuid.uuid5(PLAN_NAMESPACE, f"snapshot:{snapshot.plan_id}:{snapshot.version}")
     _insert("agent_plan_snapshots", [[
         uuid.UUID(snapshot.plan_id), username, session_id, snapshot.version,
         nodes_json(snapshot.nodes), snapshot.checksum, key, _now(),
@@ -376,17 +399,18 @@ def create_plan(username: str, session_id: str, plan_id: str, query: str) -> Pla
     return snapshot
 
 
-def mutate(username: str, session_id: str, plan_id: str, operation: str,
-           **args: Any) -> PlanSnapshot:
+def mutate(username: str, session_id: str, plan_id: str, operation: str, *,
+           idempotency_key: uuid.UUID | None = None, **args: Any) -> PlanSnapshot:
     """Read the newest version, apply one operation, and write version plus one.
 
     The caller holds the plan run's lock, so the next holder reads the version this wrote.
+    `idempotency_key` goes into the snapshot row, see [`write_snapshot`].
     """
     current = read_snapshot(username, session_id, plan_id)
     if current is None:
         raise PlanError("this plan has no tree yet")
     new = apply(current, operation, **args)
-    write_snapshot(username, session_id, new)
+    write_snapshot(username, session_id, new, idempotency_key)
     return new
 
 

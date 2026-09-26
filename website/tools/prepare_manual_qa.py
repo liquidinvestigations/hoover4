@@ -369,7 +369,7 @@ def fixture_outcomes(contract: dict[str, object], resolved: dict[str, object]) -
 def ingest_commands() -> list[list[str]]:
     """Local dataset ingest commands. Discovery never calls these."""
     return [
-        ["uv", "run", "python", "main.py", "add-disk-dataset", "testdata", dataset, str(root)]
+        ["uv", "run", "python", "main.py", "add-disk-dataset", "testdata", dataset, str(root), "--wait"]
         for dataset, root in LOCAL_INGEST
     ]
 

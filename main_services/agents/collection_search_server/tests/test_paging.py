@@ -24,7 +24,7 @@ TOOLS = {
 
 SAMPLES = {
     "list_collections": {"collections": [{"collectionname": "c", "document_count": 1, "datasets": [{"name": "d", "document_count": 1}]}]},
-    "search_collections": {"documents": [{"collectionname": "c", "file_hash": "h", "path": "/h", "title": "h", "snippet": "h", "canonical_file_type": "text", "size": 1, "document_date": None, "dataset": "d"}], "total_count": 3, "facet_counts": {"file_types": [{"value": "pdf", "id": 7, "count": 2}]}, "page": 0, "has_more": True, "next_position": None, "total": 3, "partial": False},
+    "search_collections": {"documents": [{"collectionname": "c", "file_hash": "h", "path": "/h", "title": "h", "snippet": "h", "canonical_file_type": "text", "size": 1, "document_date": None, "dataset": "d"}], "total_count": 3, "facet_counts": {"file_types": [{"value": "pdf", "id": 7, "count": 2}]}, "page": 0, "has_more": True, "query_notes": [], "next_position": None, "total": 3, "partial": False},
     "search_facet_values": {"terms": [{"id": 1, "text": "pdf", "count": 2}], "resolved": {"1": "pdf"}},
     "search_histogram": {"buckets": [{"start": 1, "end": 2, "count": 1, "label": None}], "date_field": "date"},
     "search_entity_explainer": {"explanation": {"title": "person", "subtitle": "", "body": "", "facts": [], "references": []}, "documents": [{"file_hash": "h", "path": "/h", "title": "h", "snippet": "h"}]},
@@ -656,3 +656,110 @@ def test_a_unit_stored_with_a_moved_field_is_read_as_unit_text_at_a_smaller_shar
     assert any((page.get("fields") or {}).get("cut", {}).get("field") == "" for page in pages)
     assert any((page.get("fields") or {}).get("cut", {}).get("field") == "/cells/big" for page in pages)
     assert_walk_invariants(texts, response.model_dump(mode="json", by_alias=True)["rows"], 24_000, 2_000)
+
+
+@pytest.mark.parametrize("unit_bytes,count", [(2_500, 9), (15_000, 3)])
+def test_rows_keep_their_identity_when_the_facets_fill_the_page(monkeypatch, unit_bytes, count):
+    """Rows and 10 KB of facets in a 24,000-byte page: no row loses a field, and the
+    facets wait for a later page before any row is cut. A 15,000-byte row fits a page
+    only without the facets."""
+    Store(monkeypatch)
+    tool, values, documents = search_window(monkeypatch, 10_000, unit_bytes, count)
+    pages = walk(json.loads(tool.render(tool.model.model_validate(values), {}, "")))
+    shown = [row for page in pages for row in page["items"]]
+    assert [row["file_hash"] for row in shown] == [row["file_hash"] for row in documents]
+    for row in shown:
+        assert row["file_hash"] and row["path"] and row["collectionname"]
+        assert "cut" not in row
+    # The facets are on each page that can hold them beside a row. No page holds 10 KB of
+    # facets beside a 15,000-byte row, so that result shows no facets.
+    with_facets = [page for page in pages if "facet_counts" in (page.get("fields") or {})]
+    assert bool(with_facets) == (unit_bytes < 10_000)
+
+
+def test_a_row_larger_than_the_page_keeps_its_identity_and_moves_its_snippet(monkeypatch):
+    Store(monkeypatch)
+    tool, values, documents = search_window(monkeypatch, 500, 40_000, 1)
+    pages = walk(json.loads(tool.render(tool.model.model_validate(values), {}, "")))
+    first = pages[0]["items"][0]
+    assert first["cut"]["field"] == "/snippet"
+    assert (first["file_hash"], first["path"], first["collectionname"]) == ("0", "/h", "c")
+
+
+def test_the_identity_fields_are_never_the_largest_string_field():
+    from agent_common.result_pages import largest_string_field
+
+    row = {"file_hash": "h" * 100, "path": "/" + "p" * 90, "collectionname": "c", "snippet": "s" * 10}
+    assert largest_string_field(row, exclude=paging.IDENTITY_FIELDS) == ("/snippet", "s" * 10)
+    assert largest_string_field({"path": "p"}, exclude=paging.IDENTITY_FIELDS) is None
+
+
+def forms_backend(monkeypatch, found, failing=()):
+    """A route that answers each query form with the rows in `found[form]`, and fails for
+    each form in `failing`. Returns the list of the forms it was asked for."""
+    from collection_search_server.backend_client import AgentError
+
+    asked = []
+
+    def post(self, route, request, response_model, expected_source=None):
+        asked.append(request.query)
+        if request.query in failing:
+            return AgentError(error="invalid_argument", message="query has no searchable terms")
+        documents = [{**SAMPLES["search_collections"]["documents"][0], "file_hash": h, "path": "/" + h} for h in found[request.query]]
+        return response_model.model_validate({
+            **SAMPLES["search_collections"], "documents": documents, "total_count": len(documents),
+            "has_more": False, "total": len(documents), "source": "s-" + request.query,
+            "query_notes": ["read 1 OR as |, because OR is an ordinary word in a search"] if " OR " in request.query else [],
+        })
+
+    monkeypatch.setattr("collection_search_server.backend_client.BackendClient.post", post)
+    return asked
+
+
+def test_the_query_forms_run_in_one_call_and_merge_their_rows(monkeypatch):
+    Store(monkeypatch)
+    found = {"a@x.com": ["1", "2"], '"A B"': ["2", "3"], '"B, A"': ["4"], "aB": ["1", "4", "5"]}
+    asked = forms_backend(monkeypatch, found)
+    page = json.loads(tools_search.search_collections.fn(queries=list(found)))
+    assert asked == list(found)
+    union = {h for hashes in found.values() for h in hashes}
+    assert page["total_units"] == len(union)
+    rows = {row["file_hash"]: row["matched_queries"] for row in page["items"]}
+    assert rows == {"1": ["a@x.com", "aB"], "2": ["a@x.com", '"A B"'], "3": ['"A B"'],
+                    "4": ['"B, A"', "aB"], "5": ["aB"]}
+    assert [row["file_hash"] for row in page["items"]] == ["1", "2", "3", "4", "5"]
+
+
+def test_a_failing_query_form_is_a_note_and_the_others_return_rows(monkeypatch):
+    Store(monkeypatch)
+    forms_backend(monkeypatch, {"a": ["1"], "b": ["2"]}, failing={"NOT"})
+    page = json.loads(tools_search.search_collections.fn(queries=["a", "NOT", "b"], query=""))
+    assert [row["file_hash"] for row in page["items"]] == ["1", "2"]
+    assert any("'NOT' failed" in note for note in page["fields"]["query_notes"])
+
+
+def test_the_query_is_the_first_form_and_its_rewrite_is_noted(monkeypatch):
+    Store(monkeypatch)
+    asked = forms_backend(monkeypatch, {"a OR b": ["1"], "c": ["1"]})
+    page = json.loads(tools_search.search_collections.fn(query="a OR b", queries=["c"]))
+    assert asked == ["a OR b", "c"]
+    assert page["items"][0]["matched_queries"] == ["a OR b", "c"]
+    assert any("OR as |" in note for note in page["fields"]["query_notes"])
+
+
+def test_a_merged_result_larger_than_a_page_continues_with_read_more(monkeypatch):
+    Store(monkeypatch)
+    found = {"a": [f"a{n}" for n in range(200)], "b": [f"b{n}" for n in range(200)]}
+    forms_backend(monkeypatch, found)
+    pages = walk(json.loads(tools_search.search_collections.fn(queries=["a", "b"])))
+    shown = [row["file_hash"] for page in pages for row in page["items"]]
+    assert shown == found["a"] + found["b"]
+    assert len(pages) > 1
+
+
+def test_one_query_without_the_list_is_one_route_search(monkeypatch):
+    asked = forms_backend(monkeypatch, {"a OR b": ["1"]})
+    page = json.loads(tools_search.search_collections.fn(query="a OR b"))
+    assert asked == ["a OR b"]
+    assert "matched_queries" not in page["items"][0]
+    assert page["fields"]["query_notes"] == ["read 1 OR as |, because OR is an ordinary word in a search"]

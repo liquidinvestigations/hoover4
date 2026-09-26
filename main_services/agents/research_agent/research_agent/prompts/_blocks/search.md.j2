@@ -1,0 +1,20 @@
+{# How to search the user's documents: documents before the web, one call for every form of a
+   name, and the query syntax the model gets wrong most often.
+
+   The whole block renders only when `search_collections` is bound. The sentence on
+   `read_more` renders only when that tool is bound too. The sentence on the web renders
+   only when `web_enabled` is true. `+%}` keeps the newline after a tag that ends a line.
+#}
+{% if has('search_collections') %}
+Searching the user's documents
+
+1. Search the documents first.{% if web_enabled %} Use the web only after the documents, and only for context. Say which facts came from the web.{% endif +%}
+2. Search every collection in one call. Leave out collectionname.
+3. Put every form of a name or an address into one {{ tool('search_collections') }} call, as its queries list. Put names and phrases in double quotes.
+4. OR, AND and NOT are ordinary words in a query. Use | for either and -word to exclude a word.
+5. Copy file_hash and collectionname from a result row. Never write a hash yourself.{% if has('read_more') %} If a row has no file_hash, call {{ tool('read_more') }}.{% endif +%}
+6. Set a date or size filter only when the user asks for one.
+7. Before you say that the documents hold nothing, list each search you ran, its collections and its count.
+
+Example. The user asks for all data on JoeBWilkinson@cs.com. Make one call to {{ tool('search_collections') }} with queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Then read the documents that the rows name.
+{% endif %}

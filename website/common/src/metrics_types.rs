@@ -94,3 +94,39 @@ pub struct AdminUserLlmMetrics {
     pub chat_per_minute: u64,
     pub api_per_minute: u64,
 }
+
+/// Manticore's own load and the memory of its tables, read from `SHOW STATUS` and
+/// `SHOW TABLE <t> STATUS` when the page asks. Manticore reports no process memory and no
+/// CPU time, so neither is here.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+pub struct ManticoreLoad {
+    /// RFC 3339, when the website read the values.
+    pub read_at: String,
+    pub uptime_seconds: u64,
+    /// `load` over 1, 5 and 15 minutes, as Manticore reports it.
+    pub load: [f64; 3],
+    pub load_primary: [f64; 3],
+    pub load_secondary: [f64; 3],
+    pub workers_total: u32,
+    pub workers_active: u32,
+    pub work_queue_length: u32,
+    pub table_count: u32,
+    /// Tables whose status call failed. Their bytes are not in the totals.
+    pub unread_tables: u32,
+    /// Sum of `ram_bytes` over the tables read.
+    pub ram_bytes_total: u64,
+    pub disk_bytes_total: u64,
+    pub optimizing_tables: Vec<String>,
+    /// The 10 largest tables by `ram_bytes`.
+    pub largest_tables: Vec<ManticoreTableLoad>,
+}
+
+/// One table's line of `SHOW TABLE <t> STATUS`.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+pub struct ManticoreTableLoad {
+    pub table: String,
+    pub ram_bytes: u64,
+    pub disk_bytes: u64,
+    pub disk_chunks: u32,
+    pub optimizing: bool,
+}

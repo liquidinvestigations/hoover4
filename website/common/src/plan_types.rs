@@ -57,6 +57,9 @@ pub enum PlanDecisionOutcome {
     Terminal { state: String },
     /// The run start failed after the readiness gate. The transcript holds an error row.
     StartFailed { error: String },
+    /// The reviewed version has no section, so an approve is refused.
+    /// `sections` is empty, and `root_node_id` names the root.
+    EmptyPlan { root_node_id: String },
 }
 
 /// The `plan_reference_json` of a planner's answer row: the plan the card shows.
@@ -97,5 +100,79 @@ pub struct PlanView {
 impl PlanView {
     pub fn is_terminal(&self) -> bool {
         PLAN_TERMINAL_STATES.contains(&self.state.as_str())
+    }
+}
+
+/// Whether a tree has a section: a node with at least one leaf child. The root counts.
+/// The Python copy is `sections` in `main_services/processing/database/agent_plans.py`.
+/// The two copies are one rule and change in one patch.
+///
+/// A root whose children are all leaves is one section, with those leaves as its tasks.
+pub fn has_section(nodes: &[PlanNodeView]) -> bool {
+    let parents: std::collections::HashSet<&str> =
+        nodes.iter().filter_map(|n| n.parent_id.as_deref()).collect();
+    // A node with a parent is a child. A child that is not a parent is a leaf, and its
+    // parent is a section. The Python copy also requires the parent to be in the tree.
+    let ids: std::collections::HashSet<&str> = nodes.iter().map(|n| n.node_id.as_str()).collect();
+    nodes.iter().any(|n| {
+        !parents.contains(n.node_id.as_str())
+            && n.parent_id.as_deref().is_some_and(|parent| ids.contains(parent))
+    })
+}
+
+/// The node id of the root of a tree: the node with no parent. Empty when there is none.
+pub fn root_node_id(nodes: &[PlanNodeView]) -> String {
+    nodes
+        .iter()
+        .find(|n| n.parent_id.is_none())
+        .map(|n| n.node_id.clone())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(id: &str, parent: Option<&str>) -> PlanNodeView {
+        PlanNodeView {
+            node_id: id.into(),
+            parent_id: parent.map(Into::into),
+            ordinal: 0,
+            text: id.into(),
+        }
+    }
+
+    #[test]
+    fn a_root_only_tree_has_no_section() {
+        let nodes = [node("root", None)];
+        assert!(!has_section(&nodes));
+        assert_eq!(root_node_id(&nodes), "root");
+    }
+
+    #[test]
+    fn a_section_of_two_tasks_is_a_section() {
+        let nodes = [
+            node("root", None),
+            node("s1", Some("root")),
+            node("t1", Some("s1")),
+            node("t2", Some("s1")),
+        ];
+        assert!(has_section(&nodes));
+    }
+
+    #[test]
+    fn a_root_with_only_leaf_children_is_a_section() {
+        let nodes = [
+            node("root", None),
+            node("s1", Some("root")),
+            node("s2", Some("root")),
+        ];
+        assert!(has_section(&nodes));
+    }
+
+    #[test]
+    fn an_empty_tree_has_no_section_and_no_root() {
+        assert!(!has_section(&[]));
+        assert_eq!(root_node_id(&[]), "");
     }
 }

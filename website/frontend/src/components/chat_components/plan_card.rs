@@ -9,6 +9,8 @@
 //! - `executing`: the sections from `sections_json`, and the live runs of the current batch
 //!   from the poll's `subagent_runs`.
 //! - `completed`, `failed`, `cancelled`: the sections, with each failed section marked.
+//!   A `completed` run whose tree has no section says that the planner finished with no
+//!   section.
 //!
 //! A card whose version is older than the run's `reviewed_version`, or whose answer row a
 //! later planner answer of the same plan run follows, shows its tree labelled as an earlier
@@ -23,8 +25,8 @@
 
 use common::chat_types::SubagentRunEntry;
 use common::plan_types::{
-    ChatPlanReference, PlanAction, PlanDecisionOutcome, PlanDecisionRequest, PlanNodeView,
-    PlanView, MAX_PLAN_COMMENT_CHARS,
+    has_section, ChatPlanReference, PlanAction, PlanDecisionOutcome, PlanDecisionRequest,
+    PlanNodeView, PlanView, MAX_PLAN_COMMENT_CHARS,
 };
 use dioxus::prelude::*;
 
@@ -219,7 +221,11 @@ pub fn PlanCard(
     let can_stop = !stale && !terminal;
     let sections = parse_sections(&view.sections_json);
     let show_sections = !sections.is_empty() && !stale;
-    let state_label = state_text(&view.state);
+    let state_label = if view.state == "completed" && !has_section(&view.nodes) {
+        NO_SECTION_TEXT
+    } else {
+        state_text(&view.state)
+    };
     let rows = tree_rows(&view.nodes);
     let is_busy = *busy.read();
     let comment_len = comment.read().trim().chars().count();
@@ -364,6 +370,9 @@ fn CardHeader(state_label: String) -> Element {
     }
 }
 
+/// The state text of a completed plan run whose tree has no section.
+const NO_SECTION_TEXT: &str = "The planner finished with no section";
+
 /// The text the card shows for a plan run state.
 fn state_text(state: &str) -> &'static str {
     match state {
@@ -398,6 +407,11 @@ fn outcome_text(outcome: &PlanDecisionOutcome) -> Option<String> {
         PlanDecisionOutcome::StartFailed { error } => {
             Some(format!("The next run did not start: {error}"))
         }
+        PlanDecisionOutcome::EmptyPlan { .. } => Some(
+            "This plan has no section, so it cannot run. Reject it with a comment, and the \
+             planner writes it again."
+                .to_string(),
+        ),
     }
 }
 
@@ -697,6 +711,19 @@ mod tests {
                 ("1.2 second task".to_string(), 2),
                 ("2 section two".to_string(), 1),
             ]
+        );
+    }
+
+    #[test]
+    fn an_empty_plan_refusal_tells_the_person_to_reject_it() {
+        let text = outcome_text(&PlanDecisionOutcome::EmptyPlan {
+            root_node_id: "root".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            text,
+            "This plan has no section, so it cannot run. Reject it with a comment, and the \
+             planner writes it again."
         );
     }
 

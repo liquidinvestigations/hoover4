@@ -70,6 +70,130 @@ impl PreparedMatch {
     }
 }
 
+/// One token of [`rewrite_boolean_words`]: its byte range in the query.
+struct WordToken {
+    start: usize,
+    end: usize,
+}
+
+/// Split a query into tokens for [`rewrite_boolean_words`]. Whitespace separates tokens,
+/// `(` and `)` outside quotes are tokens of their own, and a quoted run, closed or not,
+/// stays inside the token that holds it.
+fn boolean_word_tokens(query: &str) -> Vec<WordToken> {
+    let mut tokens = Vec::new();
+    let mut start: Option<usize> = None;
+    let mut in_phrase = false;
+    for (i, c) in query.char_indices() {
+        if c == '"' {
+            in_phrase = !in_phrase;
+            start.get_or_insert(i);
+            continue;
+        }
+        if in_phrase {
+            continue;
+        }
+        if c.is_whitespace() || c == '(' || c == ')' {
+            if let Some(s) = start.take() {
+                tokens.push(WordToken { start: s, end: i });
+            }
+            if c != '(' && c != ')' {
+                continue;
+            }
+            tokens.push(WordToken { start: i, end: i + 1 });
+            continue;
+        }
+        start.get_or_insert(i);
+    }
+    if let Some(s) = start {
+        tokens.push(WordToken { start: s, end: query.len() });
+    }
+    tokens
+}
+
+/// Read the words `OR`, `AND` and `NOT` as the operators they are in a Boolean search.
+///
+/// Manticore reads these words as ordinary search terms, so `a OR b` finds only a text
+/// that holds all three words. The rule: `OR` between two terms becomes `|`, a bare
+/// `AND` is dropped because every word must occur anyway, and `NOT x` becomes `-x`. An
+/// `OR` or `NOT` with no term on the needed side is dropped. Only the upper-case words
+/// are operators, and nothing inside double quotes changes. Each operator token is
+/// replaced in place and the rest of the text is kept as it is, so `"a b"~3` and an
+/// unbalanced quote reach the later passes unchanged.
+///
+/// The Python copy is `_rewrite_boolean_words` in
+/// `collection_search_server/backends.py`. The two copies are one rule and change in
+/// one patch.
+fn rewrite_boolean_words(query: &str) -> (String, Vec<String>) {
+    let tokens = boolean_word_tokens(query);
+    let text = |t: &WordToken| &query[t.start..t.end];
+    let is_term = |s: &str| !matches!(s, "OR" | "AND" | "NOT" | "|" | "(" | ")");
+    let (mut or_read, mut and_dropped, mut not_read, mut stray) = (0usize, 0usize, 0usize, 0usize);
+    let mut out = String::with_capacity(query.len());
+    // The last token written to the output, for the left side of an `OR`.
+    let mut last_written: Option<String> = None;
+    let mut join_next = false;
+    let mut cursor = 0usize;
+    for (i, token) in tokens.iter().enumerate() {
+        let gap = &query[cursor..token.start];
+        if !join_next {
+            out.push_str(gap);
+        }
+        join_next = false;
+        cursor = token.end;
+        let word = text(token);
+        let next = tokens.get(i + 1).map(text);
+        let written = match word {
+            "AND" => {
+                and_dropped += 1;
+                None
+            }
+            "OR" => {
+                let before = last_written.as_deref().is_some_and(|w| is_term(w) || w == ")");
+                let after = next.is_some_and(|w| is_term(w) || w == "(");
+                if before && after {
+                    or_read += 1;
+                    Some("|")
+                } else {
+                    stray += 1;
+                    None
+                }
+            }
+            "NOT" => {
+                if next.is_some_and(|w| is_term(w) || w == "(") {
+                    not_read += 1;
+                    join_next = true;
+                    Some("-")
+                } else {
+                    stray += 1;
+                    None
+                }
+            }
+            other => Some(other),
+        };
+        if let Some(w) = written {
+            out.push_str(w);
+            if w != "-" {
+                last_written = Some(w.to_string());
+            }
+        }
+    }
+    out.push_str(&query[cursor..]);
+    let mut repairs = Vec::new();
+    if or_read > 0 {
+        repairs.push(format!("read {or_read} OR as |, because OR is an ordinary word in a search"));
+    }
+    if and_dropped > 0 {
+        repairs.push(format!("dropped {and_dropped} AND, because every word of a query must occur anyway"));
+    }
+    if not_read > 0 {
+        repairs.push(format!("read {not_read} NOT x as -x, because NOT is an ordinary word in a search"));
+    }
+    if stray > 0 {
+        repairs.push(format!("dropped {stray} OR or NOT with no word on one side"));
+    }
+    (out, repairs)
+}
+
 /// Drop a dangling `"`. An unbalanced quote is `syntax error, unexpected $end`.
 fn balance_quotes(query: &str) -> (String, Vec<String>) {
     if query.matches('"').count() % 2 == 0 {
@@ -275,12 +399,17 @@ fn split_keeping_quotes(token: &str) -> Vec<&str> {
 /// Escaping stays last: the SQL literal is a separate concern from the query language
 /// living inside it, and running the repair pass over already-escaped text would count
 /// the escape backslashes as content.
+///
+/// The words `OR`, `AND` and `NOT` are read first, by [`rewrite_boolean_words`], and
+/// each rewrite is one line of `repairs`.
 pub fn prepare_match_query(query: &str) -> Result<PreparedMatch, MatchQueryError> {
     if query.trim().is_empty() {
         return Err(MatchQueryError("query is empty".to_string()));
     }
 
-    let (cleaned, mut repairs) = balance_quotes(query);
+    let (cleaned, mut repairs) = rewrite_boolean_words(query);
+    let (cleaned, quote_repairs) = balance_quotes(&cleaned);
+    repairs.extend(quote_repairs);
     let (cleaned, paren_repairs) = balance_parens(&cleaned);
     let (cleaned, operator_repairs) = neutralise_stray_operators(&cleaned);
     repairs.extend(paren_repairs);
@@ -415,6 +544,44 @@ mod tests {
     #[test]
     fn whitespace_is_trimmed_and_collapsed() {
         assert_eq!(prepared("  a   b  "), "a b");
+    }
+
+    /// The rewrite of `OR`, `AND` and `NOT`. The Python copy in
+    /// `collection_search_server/tests/test_backends_rewrite.py` holds the same table,
+    /// and the two tables change in one patch. The output is the text before the escape.
+    const OR_LINE: &str = "read 1 OR as |, because OR is an ordinary word in a search";
+    const AND_LINE: &str = "dropped 1 AND, because every word of a query must occur anyway";
+    const NOT_LINE: &str = "read 1 NOT x as -x, because NOT is an ordinary word in a search";
+    const STRAY_LINE: &str = "dropped 1 OR or NOT with no word on one side";
+
+    #[test]
+    fn the_boolean_words_are_read_as_operators() {
+        let table: &[(&str, &str, &[&str])] = &[
+            (r#"JoeBWilkinson@cs.com OR "Joe B Wilkinson""#, r#"JoeBWilkinson@cs.com | "Joe B Wilkinson""#, &[OR_LINE]),
+            ("LJM AND Raptor", "LJM Raptor", &[AND_LINE]),
+            ("water NOT draft", "water -draft", &[NOT_LINE]),
+            ("(a OR b) AND c", "(a | b) c", &[OR_LINE, AND_LINE]),
+            (r#""cats OR dogs""#, r#""cats OR dogs""#, &[]),
+            ("water or sewage", "water or sewage", &[]),
+            ("OR water", "water", &[STRAY_LINE]),
+            ("a OR OR b", "a | b", &[OR_LINE, STRAY_LINE]),
+            (r#""a b"~3 OR c"#, r#""a b"~3 | c"#, &[OR_LINE]),
+            (r#"a OR "b"#, r#"a | "b"#, &[OR_LINE]),
+        ];
+        for (input, want, want_repairs) in table {
+            let (got, repairs) = rewrite_boolean_words(input);
+            assert_eq!(got.split_whitespace().collect::<Vec<_>>().join(" "), *want, "for {input:?}");
+            assert_eq!(repairs, want_repairs.iter().map(|s| s.to_string()).collect::<Vec<_>>(), "for {input:?}");
+        }
+        assert_eq!(
+            prepare_match_query("NOT"),
+            Err(MatchQueryError("query has no searchable terms".to_string()))
+        );
+        // The rewrite runs first, so its lines come before the repairs of the later passes.
+        let p = prepare_match_query(r#"a OR "b"#).unwrap();
+        assert_eq!(p.expr, "a | b");
+        assert_eq!(p.repairs[0], OR_LINE);
+        assert_eq!(p.repairs.len(), 2);
     }
 
     /// The characters measured against a live Manticore as breaking the extended

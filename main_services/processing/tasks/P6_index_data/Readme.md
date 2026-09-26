@@ -20,7 +20,10 @@ Text and vector writers keep separate outcomes for each shard chunk.
 `build_vfs_nodes` runs once per `ExecutePlans` batch before the per-plan children;
 afterwards it runs again, followed by `resolve_canonical_file_type`'s dataset-wide sweep
 when plans ran, `refresh_stale_document_locations`, `index_vfs_structure` and
-`index_entity_terms`. `IndexDatasetPlan` itself writes shards and the email graph.
+`index_entity_terms`. When the batch ran plans, `build_email_graph` runs after them,
+once, on `processing-email-graph-queue`. A batch that ran no plan, for example a rescan of
+known bytes, skips the graph, because the graph reads the whole collection and nothing it
+reads has changed. `IndexDatasetPlan` itself writes shards only.
 `RefreshDocumentLocations` rebuilds the tree and rewrites page-row folder attributes
 for a dataset whose indexed locations lag `vfs_files`. It does not extract, OCR, or
 embed, and it is not started at deployment. It reads indexed `file_paths` from the
@@ -109,7 +112,12 @@ in the index.
 rather than dataset-scoped, because its most common edge is `identity` (the same message
 present in two custodians' mailboxes), and an edge builder that could only see one dataset
 would never find one. The identity rows for the dataset that just finished are refreshed
-first, then the whole collection's edges and clusters are rebuilt and swept.
+first, then the whole collection's edges and clusters are rebuilt and swept. It runs once
+at the end of each `ExecutePlans` batch that ran plans, so a large dataset or a dataset with
+nested archives builds the graph more than once, and edges appear during the ingest. Its
+queue, `processing-email-graph-queue`, has one process with one slot for the whole
+deployment. The sweep deletes the collection's rows that are older than the run's own
+start, so two runs on one collection at once can delete the rows that the other run wrote.
 
 Three of the four edge kinds come from an exact key (the message id, an RFC threading
 header, `vfs_files.container_hash`) and record `confidence = 1.0`. The fourth is inferred
@@ -128,7 +136,9 @@ records is the TRUE size of the component, never the reader's render budget.
 ## Usage
 
 - Triggered by P2 after the P4 entity-extraction stage completes.
-- Indexing activities run on `processing-indexing-queue`.
+- Indexing activities run on `processing-indexing-queue`, served by `indexing_workers`
+  processes (4 by default) of one slot each.
+- `build_email_graph` runs on `processing-email-graph-queue`, one process of one slot.
 
 ## Navigation
 

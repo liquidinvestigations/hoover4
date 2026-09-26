@@ -463,13 +463,18 @@ class ReadPageTool(Tool):
             await chat_browser.enforce_tab_cap(chat, router_mod.MAX_TABS_PER_CHAT)
 
         failed = bool(outcome.pages) and all(page.error for page in outcome.pages)
+        blocked = sum(1 for page in outcome.pages if page.blocked)
+        detail = f"{len(outcome.pages)} page(s)"
+        if blocked:
+            # The count of blocked pages for a period is summed from this text.
+            detail += f", {blocked} blocked by a bot check"
         # The real elapsed time, not zero: this is the slowest tool the router offers
         # (several navigations and captures), and `/admin/ai_status` averaging a hardcoded
         # zero into the browser column would make the one tool worth watching invisible.
         telemetry.record_async(
             "browser", provider="read_page",
             latency_ms=(time.monotonic() - started) * 1000.0,
-            ok=not failed, detail=f"{len(outcome.pages)} page(s)",
+            ok=not failed, detail=detail,
             session_id=chat.session_id,
         )
         result = ToolResult(
@@ -506,7 +511,10 @@ READ_PAGE_DESCRIPTION = (
     "it instead of navigating and snapshotting one URL at a time. Pass `goal` to say what "
     "you are looking for, so long pages are cut around the relevant part. Pages that "
     "refuse, time out or return nothing are reported individually, and the rest still come "
-    "back."
+    "back. Some sites show a bot check page, for example \"Just a moment...\". read_page "
+    "waits for it to clear. If it does not clear, the page is reported as BLOCKED BY A BOT "
+    "CHECK, and its text is not the page. Do not use that text as a source. Try the "
+    "archived copy with web_search and sources [\"wayback\"], or another page."
 )
 
 
@@ -633,6 +641,10 @@ def main() -> None:
     log.info("Starting Hoover4 browser MCP router")
 
     async def serve():
+        # A profile folder that an earlier process left behind belongs to no browser now.
+        removed = chat_browser.sweep_leftover_profiles()
+        if removed:
+            log.info("removed %d leftover browser profile folder(s)", removed)
         # The template browser starts here rather than lazily, so a broken image fails at
         # boot with a log line instead of on the first user's first tool call.
         try:

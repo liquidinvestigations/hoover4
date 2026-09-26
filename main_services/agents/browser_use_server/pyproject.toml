@@ -12,6 +12,8 @@ dependencies = [
     # Screenshot downscaling to a 1280x720 WebP thumbnail. Without it capture.py falls
     # back to storing the raw PNG, which works but is ~10x the bytes.
     "pillow>=10.0",
+    # The text of a PDF that `read_page` opens.
+    "pypdf>=4.0",
     # agent_common's own dependencies. Declared here as well because the image installs
     # `./agent_common` before this package (see the Dockerfile) and pip resolves the two
     # separately.

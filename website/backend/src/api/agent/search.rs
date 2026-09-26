@@ -240,10 +240,25 @@ async fn search_facet_counts(
                     Some(AgentFacetCount { value: item.display_string.clone(), id: Some(*id), count: item.count })
                 }
             })
-            .collect();
-        counts.insert(field.to_string(), values);
+            .collect::<Vec<_>>();
+        // An empty list tells the reader nothing and fills a page ahead of the rows.
+        if !values.is_empty() {
+            counts.insert(field.to_string(), values);
+        }
     }
     Ok((counts, partial))
+}
+
+/// The repairs that the full-text match builder applies to `query`, for example `OR`
+/// read as `|`. The search itself builds the match in `search_sql::match_argument`,
+/// which escapes every `@` first, so the same escape runs here and the notes describe
+/// the query that ran. An empty query is a browse and has no notes.
+fn query_notes(query: &str) -> Vec<String> {
+    let query = query.trim().replace('@', "\\@");
+    if query.is_empty() {
+        return Vec::new();
+    }
+    crate::db_utils::manticore_match::prepare_match_query(&query).map(|p| p.repairs).unwrap_or_default()
 }
 
 pub async fn search_results(
@@ -324,6 +339,7 @@ async fn search_results_body(
         facet_counts,
         page,
         has_more: next_position.is_some(),
+        query_notes: query_notes(&body.query),
         page_info: AgentPageInfo {
             source,
             next_position,

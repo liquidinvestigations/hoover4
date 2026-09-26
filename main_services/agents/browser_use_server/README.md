@@ -46,7 +46,7 @@ The Enron scandal was an accounting scandal … Arthur Andersen …
 NOTE: 1 repeated URL ("https://example.com") was run once. Send each distinct URL once; …
 ```
 
-Three behaviours are worth knowing before changing it:
+Read these behaviours before you change it:
 
 * **`goal` is not an inner agent loop**, and one must not be added. It is passed to the
   extraction, which keeps the paragraphs carrying the goal's words when the budget forces a
@@ -58,6 +58,23 @@ Three behaviours are worth knowing before changing it:
 * **A page that failed is reported as failed**, per URL, and the rest of the call still
   returns. A navigation that errored is still extracted and still captured: a cookie wall or
   a CAPTCHA is the most valuable screenshot this server produces.
+* **A bot check page is waited out, then reported as blocked.** After the navigation, a
+  probe in the page looks for a bot check. It matches titles such as "Just a moment...",
+  the Cloudflare challenge elements, and phrases such as "verify you are human". A page with
+  no check costs one probe and no wait. A page with a check is probed every 0.5 s for up to
+  `READ_PAGE_BOT_CHECK_WAIT_S`. When the check clears, the extraction runs on the page it
+  led to. When it stays, the page gets no extraction and renders as
+  `BLOCKED BY A BOT CHECK: <url>`, with a line that tells the model to try the archived copy
+  through `web_search`. The telemetry row of the call then has the detail
+  `<n> page(s), <b> blocked by a bot check`, so the count for a period is a sum over
+  `ai_service_telemetry` rows with `service = 'browser'` and `provider = 'read_page'`.
+* **A PDF is read through its text layer.** The same probe reads the document's content
+  type. For `application/pdf`, a script in the page fetches the file again, so the proxy
+  filter applies, and returns it as base64 in slices of 1 MB. `pypdf` reads the text of the
+  first 50 pages, and the goal cuts it like a web page. A file over
+  `READ_PAGE_PDF_MAX_BYTES` is not read, because `pypdf` gets no text from a cut file. The
+  page error names the size of the file and the limit, after the first slice. A PDF with
+  no text layer, for example a scan, is reported as `the PDF has no text layer`.
 
 ### The interactive six
 
@@ -139,6 +156,17 @@ its pipes are ours. Chromium's stderr goes to `DEVNULL`: in a container it write
 continuous stream of D-Bus and GCM errors, and on a pipe nobody reads, that pipe fills and
 the browser blocks on write, a wedge that looks exactly like a hung page.
 
+The process starts in a session of its own, so its process group holds the browser and
+every renderer and helper it starts.
+
+**The user agent has no `Headless`.** Headless Chromium sends `HeadlessChrome/<version>`,
+and some bot checks refuse that word. `user_agent_for()` runs `<chromium> --version` once,
+reads the major version, and `start()` passes `--user-agent` with the string a headed
+Chromium of that version sends (`Chrome/<major>.0.0.0`). The version follows the image. When
+the version does not parse, no flag is passed and the browser sends its own string. The
+client hints still name `Chromium`, so a site that compares them with the user agent can
+still refuse the page.
+
 ## The sidecar answers to `localhost`, not `127.0.0.1`
 
 playwright-mcp defaults `--allowed-hosts` to "the host the server is bound to", spelled
@@ -167,7 +195,12 @@ the agent sees, mid-conversation, with nothing in the transcript saying so.
 | `BROWSER_REAP_INTERVAL` | `60` | how often the reaper sweeps |
 | `BROWSER_MAX_TABS_PER_CHAT` | `6` | a model opening a tab per result must not exhaust the container |
 
-Eviction tears down both processes and deletes the profile directory. The evicted chat's
+Eviction tears down both processes and deletes the profile directory. The stop sends
+`SIGTERM` to the whole Chromium process group, waits up to 8 s, and sends `SIGKILL` to what
+is left. A child that outlives its parent can write into the profile folder after the
+removal, which leaves an almost empty `h4browser-*` folder behind. The removal tries three
+times and logs a warning when it fails, and at start the server removes every `h4browser-*`
+folder that an earlier process left in the temporary directory. The evicted chat's
 next call transparently starts a fresh browser. Its cookies and tabs are gone, which the
 design accepts. Coming back always costs somebody else their browser: the cap is a memory
 ceiling. A browser with a call in flight is never evicted. When every browser under the cap
@@ -396,6 +429,8 @@ without them and `/health` lists what it loaded.
 | `READ_PAGE_TOTAL_CHARS` | `30000` | the whole call's text budget, divided across its URLs |
 | `READ_PAGE_MAX_URLS` | `6` | more than this in one call is refused by name, not silently trimmed |
 | `READ_PAGE_NAVIGATE_TIMEOUT_MS` | `25000` | one dead host must not spend a batched call's whole wall clock |
+| `READ_PAGE_BOT_CHECK_WAIT_S` | `10` | seconds a page on a bot check gets to clear before it is reported as blocked |
+| `READ_PAGE_PDF_MAX_BYTES` | `33554432` | the largest PDF that is read. A larger one is reported as not read, with its size |
 | `BROWSER_NAV_TIMEOUT` | `30` | seconds, handed to the sidecar as `--timeout-navigation` |
 | `BROWSER_ACTION_TIMEOUT` | `15` | seconds, `--timeout-action` |
 | `BROWSER_WINDOW_WIDTH` / `_HEIGHT` | `1280` / `720` | viewport, and the thumbnail's ceiling |
@@ -418,10 +453,10 @@ failure rather than a visible one.
 ## Tests
 
 ```bash
-docker exec hoover4-mcp-browser python -m pytest tests/ -q   # 101 tests
+docker exec hoover4-mcp-browser python -m pytest tests/ -q
 ```
 
-Four groups, none of which need Chromium or Node:
+These groups need neither Chromium nor Node:
 
 * **`test_urlcheck.py`** covers the security boundary, tested hardest: schemes, every non-public
   address range in v4 and v6, the named services on this network, the
@@ -439,3 +474,10 @@ Four groups, none of which need Chromium or Node:
   silently), and that the PAC script refuses every shape of internal target and falls
   closed. The end-to-end proof needs a real Chromium and the network and is recorded in
   `netfilter.py`'s docstring.
+* **`test_bot_check.py`** covers the bot check wait against a fake sidecar: one probe for a
+  page with no check, the extraction after a check clears, and the blocked page with no
+  extraction when it stays. It also covers the PDF read in slices, the size cap and a PDF
+  with no text layer.
+* **`test_user_agent.py`** covers the user agent built from a fake `--version`, the
+  startup sweep of profile folders, the profile removal, and the stop of a whole process
+  group.

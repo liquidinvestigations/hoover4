@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Compare the operation kind and input registries in Python and Rust."""
+"""Compare the operation kind and input registries in Python and Rust.
+
+Also compare the `[operations]` cap keys of `DEFAULTS` in `deploy.py` with `KINDS`:
+each kind has one key named `<kind>_cap`, in `KINDS` order.
+"""
 
 import ast
 import re
@@ -11,6 +15,7 @@ ROOT = Path.cwd()
 PYTHON_OPERATIONS = ROOT / "main_services/processing/database/operations.py"
 PYTHON_INPUTS = ROOT / "main_services/processing/database/operation_inputs.py"
 RUST_OPERATIONS = ROOT / "website/backend/src/api/admin/operations.rs"
+DEPLOY = ROOT / "deploy.py"
 
 
 class ParseError(Exception):
@@ -37,6 +42,25 @@ def python_assignment(path: Path, name: str):
             except ValueError as error:
                 raise ParseError(f"cannot parse {name} in {path}") from error
     raise ParseError(f"cannot parse {name} in {path}")
+
+
+def deploy_cap_keys(path: Path) -> list[str]:
+    """The keys of `DEFAULTS["operations"]` in `deploy.py`, in source order."""
+    try:
+        tree = ast.parse(path.read_text())
+    except (OSError, SyntaxError) as error:
+        raise ParseError(f"cannot parse {path}: {error}") from error
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "DEFAULTS" and isinstance(node.value, ast.Dict)):
+            for key, value in zip(node.value.keys, node.value.values):
+                if isinstance(key, ast.Constant) and key.value == "operations":
+                    try:
+                        return list(ast.literal_eval(value))
+                    except ValueError as error:
+                        raise ParseError(f"cannot parse DEFAULTS['operations'] in {path}") from error
+    raise ParseError(f"cannot parse DEFAULTS['operations'] in {path}")
 
 
 def rust_array(source: str, name: str) -> str:
@@ -74,6 +98,7 @@ def main() -> int:
         python_driven = set(python_assignment(PYTHON_OPERATIONS, "DRIVEN_KINDS"))
         python_inputs = python_assignment(PYTHON_INPUTS, "INPUT_KEYS")
         rust_kinds, rust_driven, rust_inputs = parse_rust(RUST_OPERATIONS.read_text())
+        cap_keys = deploy_cap_keys(DEPLOY)
     except (OSError, ParseError) as error:
         print(error)
         return 2
@@ -100,6 +125,15 @@ def main() -> int:
             differences.append(f"inputs: {kind} {key} only in python")
         for key in sorted(rust_keys - python_keys):
             differences.append(f"inputs: {kind} {key} only in rust")
+    expected_caps = [f"{name}_cap" for name in python_kinds]
+    for key in expected_caps:
+        if key not in cap_keys:
+            differences.append(f"caps: {key} missing from deploy.py DEFAULTS['operations']")
+    for key in cap_keys:
+        if key not in expected_caps:
+            differences.append(f"caps: {key} in deploy.py is not a kind of KINDS")
+    if not differences and cap_keys != expected_caps:
+        differences.append("caps: deploy.py DEFAULTS['operations'] is not in KINDS order")
     print("\n".join(differences))
     return 1 if differences else 0
 

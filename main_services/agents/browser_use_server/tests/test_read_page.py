@@ -87,6 +87,15 @@ class TestRender:
         assert "## A" in out and "## B" in out and "alpha" in out and "beta" in out
         assert "NOTE: one repeated URL" in out
 
+    def test_a_blocked_page_carries_the_label_not_could_not_read(self):
+        out = read_page.render(
+            ReadResult(pages=[PageRead(
+                url="https://a.example", error=read_page.BOT_CHECK_ERROR, blocked=True
+            )])
+        )
+        assert f"{read_page.BOT_CHECK_LABEL}: https://a.example." in out
+        assert "COULD NOT READ" not in out
+
     def test_truncation_is_stated(self):
         out = read_page.render(
             ReadResult(pages=[PageRead(url="https://a.example", text="x", truncated=True)])

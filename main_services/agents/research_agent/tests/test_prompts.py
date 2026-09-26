@@ -80,7 +80,9 @@ BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
 
 #: Backticked words that are deliberately not tools: fields, arguments and states the
 #: prompts name. Listed so that a genuinely new tool name cannot hide among them.
-NOT_TOOLS = frozenset({"needs_plan", "cancelled", "goal", "degraded", "max_results"})
+NOT_TOOLS = frozenset(
+    {"needs_plan", "cancelled", "goal", "steps", "degraded", "max_results", "queries"}
+)
 
 #: The union of every name any profile binds. A backticked word inside it, in a prompt for
 #: a profile that does not bind it, is drift, which is what the second pass looks for.
@@ -145,6 +147,16 @@ def test_a_worker_prompt_has_no_plan_first_block_and_no_delegation():
     assert "read_todo" in text
 
 
+@pytest.mark.parametrize("profile", sorted(PROFILE_TOOLS))
+def test_the_todo_text_names_the_steps_argument(profile):
+    """`write_todo` takes `steps`. No chat profile tells the model to send the steps as items,
+    and each profile that binds the todo writers names the `steps` argument."""
+    text = rendered(profile)
+    assert "as items" not in text
+    if "write_todo" in PROFILE_TOOLS[profile]:
+        assert "`steps`" in text
+
+
 def test_the_lead_prompt_offers_delegation_and_the_narrow_one_does_not():
     assert subagents.DELEGATION_TOOL in rendered("full_research")
     assert subagents.DELEGATION_TOOL not in rendered("internal_search")
@@ -201,12 +213,14 @@ def test_naming_an_unbound_tool_is_an_error_under_strict_rendering():
     """The mechanism the drift test relies on, tested directly.
 
     Without this, a template could stop using `tool()` and every other assertion here
-    would keep passing while checking nothing.
+    would keep passing while checking nothing. The delegation paragraph is guarded by
+    `subagents_enabled` alone, so forcing it on without the tool names an unbound tool.
     """
     with pytest.raises(prompts.UnboundToolError):
         prompts.render(
-            "internal_search",
-            tools=sorted(INTERNAL_SEARCH_TOOLS - {"list_collections"}),
+            "full_research",
+            tools=sorted(INTERNAL_SEARCH_TOOLS),
+            subagents_enabled=True,
             strict=True,
         )
 
@@ -271,15 +285,86 @@ def test_the_thorough_block_names_the_web_only_where_it_is_bound():
 def test_the_narrow_profile_no_longer_stops_after_two_or_three_searches():
     text = rendered("internal_search")
     assert "Search two or three" not in text
-    assert "Never repeat a search you have already run." in text
+    assert "Go from broad searches to narrow searches." in text
 
 
 def test_the_planner_plans_a_thorough_investigation():
     tools = sorted(FULL_RESEARCH_TOOLS | PACKS["plan"])
-    assert "Plan for a thorough investigation" in prompts.render(
+    assert "Research method for a plan" in prompts.render(
         "planner", tools=tools, strict=True)
 
 
 def test_the_organizer_tells_each_researcher_to_try_every_tool():
     tools = sorted(FULL_RESEARCH_TOOLS | PACKS["plan"] | {"run_subagent"})
-    assert "try every tool" in prompts.render("organizer", tools=tools, strict=True)
+    assert "How to write an execute briefing" in prompts.render(
+        "organizer", tools=tools, strict=True)
+
+
+#: Every tool of every pack. A profile rendered with all of them must still render strictly,
+#: because each sentence of a block that names a tool is guarded by `has()`.
+EVERY_PACK_TOOLS = sorted(frozenset().union(*PACKS.values()))
+
+#: The method block of each profile, and its first line.
+METHOD_TITLES = {
+    "full_research": "Research method",
+    "internal_search": "Research method",
+    "planner": "Research method for a plan",
+    "organizer": "Research method for running a plan",
+    "research_subagent": "Research method for a researcher",
+}
+
+#: The words that no method block holds.
+ETHICS_WORDS = ("ethic", "moral", "privacy", "consent", "harm", "victim", "safety")
+
+
+@pytest.mark.parametrize("profile", sorted(prompts.PROFILES))
+def test_every_profile_renders_strictly_with_every_pack(profile):
+    text = prompts.render(profile, tools=EVERY_PACK_TOOLS, strict=True)
+    assert METHOD_TITLES[profile] + "\n" in text
+
+
+@pytest.mark.parametrize("profile", sorted(prompts.PROFILES))
+def test_every_tool_a_block_names_is_backticked_and_bound(profile):
+    """A method block names a tool only through `tool()`, so no bare tool name is left."""
+    tools = sorted(PROFILE_TOOLS.get(profile, FULL_RESEARCH_TOOLS | PACKS["plan"]))
+    text = prompts.render(profile, tools=tools, strict=True)
+    every = frozenset().union(*PACKS.values())
+    bare = {word for word in re.findall(r"(?<![`\w])([a-z]+_[a-z_]+)(?![`\w])", text)}
+    assert not (bare & every), f"bare tool names in {profile}: {sorted(bare & every)}"
+
+
+def test_the_narrow_profile_without_the_web_says_nothing_of_the_web():
+    tools = sorted(INTERNAL_SEARCH_TOOLS)
+    text = prompts.render("internal_search", tools=tools, strict=True)
+    assert "web_search" not in text
+    assert "Use the web only after the documents" not in text
+    assert "Search the documents first." in text
+
+
+def test_the_full_profile_searches_the_documents_before_the_web():
+    text = rendered("full_research")
+    assert "Search the documents first. Use the web only after the documents" in text
+    assert "as its queries list" in text
+
+
+def test_the_planner_with_its_packs_names_no_todo_tool():
+    from agent_common.tool_packs import allowed_tools
+
+    tools = sorted(allowed_tools("planner", "collections,web,plan"))
+    text = prompts.render("planner", tools=tools, strict=True)
+    assert "todo" not in text
+    assert "Research method for a plan" in text
+    assert "`append_child`" in text
+
+
+def test_the_method_blocks_hold_no_ethics_wording():
+    for path in sorted((prompts.TEMPLATE_DIR / "_blocks").glob("method_*.md.j2")):
+        body = path.read_text().lower()
+        found = [word for word in ETHICS_WORDS if word in body]
+        assert not found, f"{path.name} holds {found}"
+
+
+def test_the_todo_tools_are_a_checklist_and_not_the_plan():
+    text = rendered("internal_search")
+    assert "your working checklist for this conversation" in text
+    assert "write the plan" not in text

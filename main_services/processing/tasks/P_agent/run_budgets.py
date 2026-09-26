@@ -15,7 +15,8 @@ run's `refused_json`, and the continuation gives them to the model beside the re
 | corrections | organizer | `correct` sub-agent rows of the plan run and section | `MAX_CORRECTIONS` |
 
 The plan section and correction rules run before the budget rules, so a refused briefing
-takes no share of the budget. A briefing with no `plan_node_id` loses its `purpose`.
+takes no share of the budget. A briefing with no `plan_node_id` loses its `purpose`. A
+refusal by the plan section rule names the sections of the approved tree in its `message`.
 
 A sub-agent row is a row with `depth >= 1` and no `continues_run_id`, because a
 continuation takes the place of a run and is not a new sub-agent. The counts exclude the rows
@@ -34,6 +35,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import Any
 
 #: The most briefings one `run_subagent` call runs. The agent's tool schema says the same.
@@ -94,12 +96,34 @@ class Decision:
     caller_share: int = 0
 
 
-def _refusal(call_id: str, briefing: dict[str, Any], reason: str) -> dict[str, Any]:
-    return {"tool_call_id": call_id, "objective": str(briefing.get("objective") or ""),
-            "reason": reason}
+#: The most sections that the refusal of a briefing names.
+MAX_NAMED_SECTIONS = 20
 
 
-def _plan_refusal(briefing: dict[str, Any], kind: str, sections: set[str] | None,
+def _refusal(call_id: str, briefing: dict[str, Any], reason: str,
+             message: str = "") -> dict[str, Any]:
+    refusal = {"tool_call_id": call_id, "objective": str(briefing.get("objective") or ""),
+               "reason": reason}
+    if message:
+        refusal["message"] = message
+    return refusal
+
+
+def _sections_text(sections: Mapping[str, str] | set[str] | None) -> str:
+    """The valid section ids, with their titles when `sections` maps ids to titles.
+
+    Empty when there is no section. At most `MAX_NAMED_SECTIONS` are named.
+    """
+    if not sections:
+        return ""
+    titles = sections if isinstance(sections, Mapping) else {}
+    named = [f"{node} ({titles[node]})" if titles.get(node) else str(node)
+             for node in list(sections)[:MAX_NAMED_SECTIONS]]
+    return "The sections are: " + ", ".join(named) + "."
+
+
+def _plan_refusal(briefing: dict[str, Any], kind: str,
+                  sections: Mapping[str, str] | set[str] | None,
                   corrections: dict[str, int]) -> str:
     """The plan section and correction rules for one briefing. Empty when it passes.
 
@@ -124,15 +148,16 @@ def _plan_refusal(briefing: dict[str, Any], kind: str, sections: set[str] | None
 
 def decide(calls: list[tuple[str, list[dict[str, Any]]]], *, depth: int, used: int,
            limit: int, own_share: int, kind: str = "chat",
-           sections: set[str] | None = None,
+           sections: Mapping[str, str] | set[str] | None = None,
            corrections: dict[str, int] | None = None) -> Decision:
     """Apply the rules to the briefings of one delegation.
 
     `calls` holds `(tool_call_id, briefings)` for each `run_subagent` call, in call order.
     `used` is the count of the turn or plan budget, and `limit` its limit. Both are ignored
     for a depth 1 caller, which reads `own_share`. `kind` is the caller's run kind,
-    `sections` the section node ids of the approved tree for an organizer, and
-    `corrections` the `correct` runs of each section so far.
+    `sections` the sections of the approved tree for an organizer, as `{node_id: title}` or
+    as a set of node ids, and `corrections` the `correct` runs of each section so far. A
+    refusal for a node that is not a section names the sections in its `message`.
     """
     decision = Decision(caller_share=own_share)
     corrections = dict(corrections or {})
@@ -144,7 +169,8 @@ def decide(calls: list[tuple[str, list[dict[str, Any]]]], *, depth: int, used: i
             elif position >= MAX_BRIEFINGS_PER_CALL:
                 decision.refused.append(_refusal(call_id, briefing, TOO_MANY_BRIEFINGS))
             elif reason := _plan_refusal(briefing, kind, sections, corrections):
-                decision.refused.append(_refusal(call_id, briefing, reason))
+                message = _sections_text(sections) if reason == PLAN_NODE_NOT_ALLOWED else ""
+                decision.refused.append(_refusal(call_id, briefing, reason, message))
             else:
                 wanted.append((call_id, briefing))
     allowance = max(0, own_share if depth >= 1 else limit - used)

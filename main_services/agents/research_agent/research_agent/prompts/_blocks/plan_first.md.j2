@@ -25,9 +25,9 @@ reply, before any other tool call:
 1. restate what you understand the task to be, in one or two sentences;
 2. give two or three approaches you could take, each with one sentence on its
    trade-off;
-3. call {{ tool('write_todo') }} with the approach you chose as the goal and the steps as items.
+3. call {{ tool('write_todo') }} with the approach you chose as the goal, and with `steps`, a list of short sentences.
 
-Then do the work, and call {{ tool('mark_todo') }} as each item is finished or {{ tool('edit_todo') }} when the
-plan itself has to change. Keep the list honest: an item you are abandoning is
+Then do the work, and call {{ tool('mark_todo') }} as each step is finished or {{ tool('edit_todo') }} when the
+plan itself has to change. Keep the list accurate: a step you are abandoning is
 `cancelled` with a note saying why, never left pending or quietly deleted.
 {% endif %}

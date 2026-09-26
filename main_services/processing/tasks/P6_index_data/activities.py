@@ -699,13 +699,16 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
             }).to_pylist()
         }
 
-        # The whole dataset's node table, for the multi-parent closure. It is one small
-        # row per node and the closure needs the containers this chunk's documents are
-        # NOT in, so it cannot be narrowed to the chunk.
+        # The dataset's container nodes, for the multi-parent closure. The closure needs
+        # the containers this chunk's documents are NOT in, so it cannot be narrowed to
+        # the chunk. container_parents_from_nodes reads only nodes of kind 'container',
+        # so the query leaves out the 'dir' and 'file' rows, which are almost all of the
+        # table.
         node_rows = client.query_arrow("""
             SELECT container_hash, path, kind, file_hash
             FROM vfs_nodes FINAL
             WHERE collection_dataset = {collection_dataset:String}
+            AND kind = 'container'
         """, {"collection_dataset": collection_dataset}).to_pylist()
 
     container_parents = container_parents_from_nodes(node_rows)

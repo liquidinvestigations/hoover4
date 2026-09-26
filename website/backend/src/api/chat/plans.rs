@@ -10,7 +10,8 @@
 //!    already has an accepted row returns `Duplicate` and starts nothing.
 //! 2. A terminal run returns `Terminal`. For approve and reject, a `reviewed_version` other
 //!    than the run's returns `StaleVersion`, and a state other than `awaiting_review`
-//!    returns `WrongState`. Cancel is accepted in every state that is not terminal.
+//!    returns `WrongState`. An approve of a reviewed tree with no section returns
+//!    `EmptyPlan`. Cancel is accepted in every state that is not terminal.
 //! 3. Approve and reject reserve a seq, write the user row and the empty stream row, write
 //!    the decision row, and start the run: a planner run `plan-{plan_run_id}-r{round}`
 //!    for a reject, an organizer run `plan-{plan_run_id}-o1` for an approve. The run reads
@@ -27,8 +28,8 @@
 use common::chat_types::{ChatOptions, ChatRole};
 use common::current_user::CurrentUser;
 use common::plan_types::{
-    PlanAction, PlanDecisionOutcome, PlanDecisionRequest, PlanNodeView, PlanView,
-    MAX_PLAN_COMMENT_CHARS,
+    has_section, root_node_id, PlanAction, PlanDecisionOutcome, PlanDecisionRequest,
+    PlanNodeView, PlanView, MAX_PLAN_COMMENT_CHARS,
 };
 
 use super::{
@@ -57,10 +58,12 @@ fn organizer_workflow_id(plan_run_id: &str) -> String {
 }
 
 /// The outcome of the checks of step 2, or `None` when the decision may go ahead.
+/// `reviewed` is the tree of the run's reviewed version.
 fn check_decision(
     run: &db_plans::PlanRunRow,
     action: PlanAction,
     reviewed_version: u64,
+    reviewed: &[PlanNodeView],
 ) -> Option<PlanDecisionOutcome> {
     if run.is_terminal() {
         return Some(PlanDecisionOutcome::Terminal {
@@ -78,6 +81,11 @@ fn check_decision(
     if run.state != "awaiting_review" {
         return Some(PlanDecisionOutcome::WrongState {
             state: run.state.clone(),
+        });
+    }
+    if action == PlanAction::Approve && !has_section(reviewed) {
+        return Some(PlanDecisionOutcome::EmptyPlan {
+            root_node_id: root_node_id(reviewed),
         });
     }
     None
@@ -116,7 +124,18 @@ pub async fn decide_plan(
             first: Box::new(PlanDecisionOutcome::Accepted),
         });
     }
-    if let Some(refusal) = check_decision(&run, request.action, request.reviewed_version) {
+    // Only an approve reads the tree, because only an approve is refused for an empty one.
+    let reviewed: Vec<PlanNodeView> = if request.action == PlanAction::Approve {
+        db_plans::read_snapshot(username, session_id, &run.pid, run.reviewed_version)
+            .await?
+            .and_then(|(_, nodes_json)| serde_json::from_str(&nodes_json).ok())
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    if let Some(refusal) =
+        check_decision(&run, request.action, request.reviewed_version, &reviewed)
+    {
         return Ok(refusal);
     }
 
@@ -485,7 +504,7 @@ mod tests {
     #[test]
     fn stale_decision_returns_the_current_version() {
         assert_eq!(
-            check_decision(&run("awaiting_review", 4), PlanAction::Approve, 3),
+            check_decision(&run("awaiting_review", 4), PlanAction::Approve, 3, &one_section()),
             Some(PlanDecisionOutcome::StaleVersion { current_version: 4 })
         );
     }
@@ -494,7 +513,7 @@ mod tests {
     fn decision_after_terminal_is_refused_for_every_action() {
         for action in [PlanAction::Approve, PlanAction::Reject, PlanAction::Cancel] {
             assert_eq!(
-                check_decision(&run("cancelled", 4), action, 4),
+                check_decision(&run("cancelled", 4), action, 4, &one_section()),
                 Some(PlanDecisionOutcome::Terminal {
                     state: "cancelled".into()
                 })
@@ -505,13 +524,64 @@ mod tests {
     #[test]
     fn approve_while_planning_is_the_wrong_state_and_cancel_is_accepted() {
         assert_eq!(
-            check_decision(&run("planning", 0), PlanAction::Approve, 0),
+            check_decision(&run("planning", 0), PlanAction::Approve, 0, &one_section()),
             Some(PlanDecisionOutcome::WrongState {
                 state: "planning".into()
             })
         );
-        assert_eq!(check_decision(&run("executing", 2), PlanAction::Cancel, 1), None);
-        assert_eq!(check_decision(&run("awaiting_review", 2), PlanAction::Reject, 2), None);
+        assert_eq!(check_decision(&run("executing", 2), PlanAction::Cancel, 1, &[]), None);
+        assert_eq!(check_decision(&run("awaiting_review", 2), PlanAction::Reject, 2, &[]), None);
+    }
+
+    fn plan_node(id: &str, parent: Option<&str>) -> PlanNodeView {
+        PlanNodeView {
+            node_id: id.into(),
+            parent_id: parent.map(Into::into),
+            ordinal: 0,
+            text: id.into(),
+        }
+    }
+
+    /// A root with one section of two tasks.
+    fn one_section() -> Vec<PlanNodeView> {
+        vec![
+            plan_node("root", None),
+            plan_node("s1", Some("root")),
+            plan_node("t1", Some("s1")),
+            plan_node("t2", Some("s1")),
+        ]
+    }
+
+    #[test]
+    fn approve_of_a_root_only_tree_is_an_empty_plan() {
+        assert_eq!(
+            check_decision(
+                &run("awaiting_review", 2),
+                PlanAction::Approve,
+                2,
+                &[plan_node("root", None)]
+            ),
+            Some(PlanDecisionOutcome::EmptyPlan {
+                root_node_id: "root".into()
+            })
+        );
+    }
+
+    #[test]
+    fn approve_of_one_section_goes_ahead_and_an_empty_plan_can_be_rejected() {
+        assert_eq!(
+            check_decision(&run("awaiting_review", 2), PlanAction::Approve, 2, &one_section()),
+            None
+        );
+        let root_only = [plan_node("root", None)];
+        assert_eq!(
+            check_decision(&run("awaiting_review", 2), PlanAction::Reject, 2, &root_only),
+            None
+        );
+        assert_eq!(
+            check_decision(&run("awaiting_review", 2), PlanAction::Cancel, 2, &root_only),
+            None
+        );
     }
 
     #[test]

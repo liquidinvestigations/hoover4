@@ -178,11 +178,11 @@ fn is_destructive(kind: &str) -> bool {
 fn lock_clause(target_kind: &str) -> anyhow::Result<&'static str> {
     match target_kind {
         "dataset" => {
-            Ok("state IN ('pending', 'running') AND \
+            Ok("state IN ('pending', 'queued', 'running') AND \
              (collection_dataset = ? OR (target_kind = 'collection' AND collectionname = ?))"
             )
         }
-        "collection" => Ok("state IN ('pending', 'running') AND collectionname = ?"),
+        "collection" => Ok("state IN ('pending', 'queued', 'running') AND collectionname = ?"),
         _ => anyhow::bail!("unknown operation target kind: {target_kind}"),
     }
 }
@@ -212,6 +212,9 @@ struct OperationDbRow {
     state: String,
     #[serde(with = "clickhouse::serde::time::datetime")]
     started_at: time::OffsetDateTime,
+    /// When the operation left `queued` and began its work. Epoch 0 means not yet.
+    #[serde(with = "clickhouse::serde::time::datetime")]
+    run_started_at: time::OffsetDateTime,
     #[serde(with = "clickhouse::serde::time::datetime")]
     finished_at: time::OffsetDateTime,
     #[serde(with = "clickhouse::serde::time::datetime")]
@@ -249,7 +252,7 @@ struct OperationErrorEventDbRow {
 /// RowBinary is positional, so a select in a different order pairs values with the
 /// wrong fields without complaining.
 const COLUMNS: &str = "op_id, kind, target_kind, collectionname, collection_dataset, \
-                       state, started_at, finished_at, updated_at, \
+                       state, started_at, run_started_at, finished_at, updated_at, \
                        progress_done, progress_total, eta_seconds, \
                        detail, error, user_id, rerun_of, row_version";
 
@@ -270,8 +273,9 @@ fn format_datetime(dt: time::OffsetDateTime) -> String {
     dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
 }
 
-/// Epoch 0 is the table's own "not finished" sentinel, not a real timestamp.
-fn finished_at_of(dt: time::OffsetDateTime) -> Option<String> {
+/// Epoch 0 is the table's own "not yet" sentinel for `run_started_at` and
+/// `finished_at`, not a real timestamp.
+fn time_or_none(dt: time::OffsetDateTime) -> Option<String> {
     if dt.unix_timestamp() <= 0 {
         None
     } else {
@@ -314,9 +318,14 @@ fn to_display_row(r: OperationDbRow) -> OperationRow {
         removed_stage_off_errors: detail_u64(&r.detail, "removed_stage_off_errors"),
         without_plan_errors: detail_u64(&r.detail, "without_plan_errors"),
         unknown_task_errors: detail_u64(&r.detail, "unknown_task_errors"),
-        duration_seconds: (end - r.started_at.unix_timestamp()).max(0) as u64,
+        duration_seconds: if r.run_started_at.unix_timestamp() > 0 {
+            (end - r.run_started_at.unix_timestamp()).max(0) as u64
+        } else {
+            0
+        },
         started_at: format_datetime(r.started_at),
-        finished_at: finished_at_of(r.finished_at),
+        run_started_at: time_or_none(r.run_started_at),
+        finished_at: time_or_none(r.finished_at),
         target,
         op_id: r.op_id,
         kind: r.kind,
@@ -733,6 +742,7 @@ pub async fn dispatch_operation(
         collection_dataset: collection_dataset.to_string(),
         state: "pending".to_string(),
         started_at: now,
+        run_started_at: epoch,
         finished_at: epoch,
         updated_at: now,
         progress_done: 0,
@@ -948,7 +958,56 @@ async fn request_cancel_finalizer(base_url: &str, op_id: &str) -> anyhow::Result
 
 #[cfg(test)]
 mod tests {
-    use super::{lock_clause, new_operation_id, project_inputs, request_cancel_finalizer, row_version, VERSION_BITS};
+    use super::{
+        lock_clause, new_operation_id, project_inputs, request_cancel_finalizer, row_version,
+        to_display_row, OperationDbRow, VERSION_BITS,
+    };
+
+    fn db_row(state: &str, run_started_at: i64, finished_at: i64) -> OperationDbRow {
+        let at = |s: i64| time::OffsetDateTime::from_unix_timestamp(s).unwrap();
+        OperationDbRow {
+            op_id: "op".to_string(),
+            kind: "add_dataset".to_string(),
+            target_kind: "dataset".to_string(),
+            collectionname: "c".to_string(),
+            collection_dataset: "c/d".to_string(),
+            state: state.to_string(),
+            started_at: at(1_000),
+            run_started_at: at(run_started_at),
+            finished_at: at(finished_at),
+            updated_at: at(1_000),
+            progress_done: 0,
+            progress_total: 0,
+            eta_seconds: 0,
+            detail: String::new(),
+            error: String::new(),
+            user_id: String::new(),
+            rerun_of: String::new(),
+            row_version: 0,
+        }
+    }
+
+    #[test]
+    fn display_row_counts_the_duration_from_the_real_start() {
+        let queued = to_display_row(db_row("queued", 0, 0));
+        assert_eq!(queued.run_started_at, None);
+        assert_eq!(queued.duration_seconds, 0);
+        assert!(queued.started_at.starts_with("1970-01-01T00:16:40"));
+
+        let running = to_display_row(db_row("running", 1_600, 0));
+        assert!(running.run_started_at.as_deref().unwrap().starts_with("1970-01-01T00:26:40"));
+        assert!(running.duration_seconds > 1_000_000);
+
+        let finished = to_display_row(db_row("finished", 1_600, 1_700));
+        assert_eq!(finished.duration_seconds, 100);
+        assert!(finished.finished_at.is_some());
+    }
+
+    #[test]
+    fn queued_rows_hold_the_lock() {
+        assert!(lock_clause("dataset").unwrap().contains("'queued'"));
+        assert!(lock_clause("collection").unwrap().contains("'queued'"));
+    }
 
     #[test]
     fn immediate_dispatch_ids_differ() {
@@ -1014,7 +1073,7 @@ mod tests {
     fn dataset_lock_clause_blocks_the_dataset_and_collection() {
         assert_eq!(
             lock_clause("dataset").unwrap(),
-            "state IN ('pending', 'running') AND (collection_dataset = ? OR \
+            "state IN ('pending', 'queued', 'running') AND (collection_dataset = ? OR \
              (target_kind = 'collection' AND collectionname = ?))"
         );
     }
@@ -1023,7 +1082,7 @@ mod tests {
     fn collection_lock_clause_blocks_the_collection() {
         assert_eq!(
             lock_clause("collection").unwrap(),
-            "state IN ('pending', 'running') AND collectionname = ?"
+            "state IN ('pending', 'queued', 'running') AND collectionname = ?"
         );
     }
 

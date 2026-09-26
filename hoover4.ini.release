@@ -213,6 +213,9 @@ ocr_concurrency       =            ; default 4
 nlp_concurrency       =            ; default 4, matching ai_server_ner_concurrency
 embed_concurrency     =            ; default 6, under ai_server_embed_concurrency
 indexing_concurrency  =            ; default 1
+; Index-worker processes, one activity slot each by default. The email graph runs in one
+; process of its own, so an index process holds one writer chunk or one dataset-wide step.
+indexing_workers      = 8          ; default 4
 ; Activity slots for chat model turns, the fast track. One slot is one agent run in flight:
 ; the lead run of a chat and each of its sub-agents take one slot each, so one chat that
 ; delegates can fill all four. With research_concurrency it bounds the agent runs that this
@@ -250,7 +253,7 @@ agent_plan_run_budget = 300
 ; browser. The agent service refuses to start on an unknown pack name.
 agent_packs_chat = all
 agent_packs_subagent = all
-agent_packs_planner = all
+agent_packs_planner = collections,web,plan
 agent_packs_organizer = all
 ; Result page limits and the catalogue match count. The probe selects these values.
 ; Empty agent_max_page_tokens or agent_completion_reserve_tokens keeps byte-safe
@@ -518,6 +521,28 @@ tesseract_cpu_mem_limit    =      ; empty is 4096M plus 1024M for each tesseract
 ; Rotation of every hoover4 container log, in the json-file driver's units.
 container_log_max_size  = 100m
 container_log_max_files = 5
+
+[operations]
+; The most running operations of each kind, counted across the deployment. An
+; operation over its cap waits as `queued`, with no time limit, and starts when a slot
+; of its kind is free, oldest first. A queued operation holds its dataset or collection
+; like a running one. Each value is a whole number of at least 1.
+add_dataset_cap                 = 2
+rescan_dataset_cap              = 2
+compute_plans_cap               = 2
+execute_plans_cap               = 2
+purge_dataset_cap               = 2
+delete_dataset_cap              = 2
+change_ocr_languages_cap        = 2
+reindex_collection_cap          = 2
+refresh_document_locations_cap  = 2
+retry_failed_files_cap          = 2
+ensure_collection_cap           = 2
+drop_collection_database_cap    = 2
+export_collection_cap           = 2
+import_collection_cap           = 2
+purge_unattributed_entities_cap = 2
+backfill_vectors_cap            = 2
 
 # ---- LLM providers --------------------------------------------------------------
 # Repeatable by name, several active at once. main_services talks to the selfhosted

@@ -33,7 +33,9 @@ the actual gate.
   of the global `operation_failures` table only. Grouping is by the stored `signature`
   column. A scrubbed copy is built at read time for the copy control. The stored rows
   stay raw.
-- `metrics.rs`, aggregates for `/admin/metrics` and `/admin/users/:username/llm`.
+- `metrics.rs`, aggregates for `/admin/metrics` and `/admin/users/:username/llm`, and
+  `admin_get_manticore_load`, which reads Manticore's `SHOW STATUS` and the status of each
+  table for the load panel of `/admin/metrics`.
 - `llm.rs`, the model catalog, the defaults and the allowlist. See below.
 
 ## `llm_models` is a ReplacingMergeTree, and both rules that follow from that

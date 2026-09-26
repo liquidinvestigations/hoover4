@@ -88,18 +88,20 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P5_chunk_embed.workflows import ChunkEmbedForPlan, ChunkEmbedForPlanParams
     from tasks.P6_index_data.workflows import (
+        EMAIL_GRAPH_TASK_QUEUE,
         INDEXING_TASK_QUEUE,
         IndexDatasetPlan,
         IndexDatasetPlanParams,
     )
     from tasks.P6_index_data.activities import (
+        build_email_graph,
         build_vfs_nodes,
         index_entity_terms,
         index_vfs_structure,
         refresh_stale_document_locations,
         resolve_canonical_file_type,
     )
-    from tasks.P6_index_data.params import BuildVfsNodesParams, RefreshDocumentLocationsParams, ResolveCanonicalFileTypeParams
+    from tasks.P6_index_data.params import BuildEmailGraphParams, BuildVfsNodesParams, RefreshDocumentLocationsParams, ResolveCanonicalFileTypeParams
     from tasks.visibility import dataset_search_attributes
 
 
@@ -296,6 +298,24 @@ class ExecutePlans:
             retry_policy=RetryPolicy(maximum_attempts=2),
             task_queue=INDEXING_TASK_QUEUE,
         )
+        # The email connection graph, once for each invocation that indexed plans, after
+        # every plan of the invocation has indexed. It sits before the continuation and
+        # restart returns for the reason the comment above gives. It reads the whole
+        # collection, so an invocation that indexed no plan skips it. Its queue has one
+        # process with one slot, because two runs on one collection can delete each
+        # other's rows.
+        if plan_hashes:
+            await workflow.execute_activity(
+                build_email_graph,
+                BuildEmailGraphParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                ),
+                start_to_close_timeout=timedelta(minutes=60),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+                task_queue=EMAIL_GRAPH_TASK_QUEUE,
+            )
 
         if continuation_hash:
             # Use execute_as_new semantics by re-invoking ourselves fresh via child

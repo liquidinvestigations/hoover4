@@ -197,7 +197,7 @@ class TestResultBudget:
     def test_the_active_tool_description_names_its_result(self):
         description = server.mcp._tool_manager._tools["search_collections"].description
         assert "documents" in description
-        assert "document hashes" in description
+        assert "file_hash" in description
 
     def test_a_small_result_set_keeps_the_full_snippet(self):
         response = _response(8, snippet_chars=1500)

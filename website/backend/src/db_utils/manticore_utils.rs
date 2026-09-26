@@ -230,6 +230,62 @@ pub async fn manticore_search_sql_uncached<T: DeserializeOwned + std::fmt::Debug
     Ok(serde_json::from_str(&manticore_post(sql).await?)?)
 }
 
+/// One row of a raw-mode Manticore result: column name to value.
+pub type ManticoreRawRow = serde_json::Map<String, serde_json::Value>;
+
+/// The time that one status statement may take, connect included.
+const RAW_SQL_TIMEOUT_SECONDS: u64 = 10;
+
+/// Run one statement through Manticore's `/sql?mode=raw` endpoint and return the rows of
+/// its first result.
+///
+/// The plain `/sql` endpoint of [`manticore_post`] takes `SELECT` only. Raw mode also takes
+/// `SHOW STATUS`, `SHOW TABLES` and `SHOW TABLE <t> STATUS`, which the admin metrics page
+/// reads. It bypasses the result cache, because a status value is only correct when it is
+/// fresh.
+pub async fn manticore_raw_sql(sql: &str) -> anyhow::Result<Vec<ManticoreRawRow>> {
+    let base = std::env::var("MANTICORE_URL").unwrap_or("http://127.0.0.1:21903".to_string());
+    let response = reqwest::Client::new()
+        .post(format!("{base}/sql?mode=raw"))
+        .timeout(Duration::from_secs(RAW_SQL_TIMEOUT_SECONDS))
+        .form(&[("query", sql)])
+        .send()
+        .await?;
+    let status = response.status();
+    let body = response.text().await?;
+    parse_raw_sql_response(&body)
+        .map_err(|e| e.context(format!("Manticore answered {status} to {sql:?}")))
+}
+
+/// The rows of the first result of a raw-mode body, or its error.
+///
+/// Manticore answers a refused statement with one object, `{"error": "..."}`, and a
+/// statement it ran with a list of results, each with an `error` field that is empty on
+/// success.
+pub fn parse_raw_sql_response(body: &str) -> anyhow::Result<Vec<ManticoreRawRow>> {
+    let value: serde_json::Value = serde_json::from_str(body)
+        .map_err(|e| anyhow::anyhow!("Manticore sent a body that is not JSON: {e}"))?;
+    let first = match &value {
+        serde_json::Value::Array(results) => results
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("Manticore sent an empty result list"))?,
+        other => other,
+    };
+    if let Some(error) = first.get("error").and_then(serde_json::Value::as_str) {
+        if !error.is_empty() {
+            anyhow::bail!(ManticoreRefused(error.to_string()));
+        }
+    }
+    let rows = first
+        .get("data")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| anyhow::anyhow!("Manticore sent a result with no data rows"))?;
+    Ok(rows
+        .iter()
+        .filter_map(|row| row.as_object().cloned())
+        .collect())
+}
+
 async fn get_cached_response(query_hash: &String, query_string: &String) -> anyhow::Result<String> {
     let client = get_global_client();
     let sql = "
@@ -304,5 +360,27 @@ mod tests {
             .context("shard testdata_1");
         assert!(is_search_timeout(&error));
         assert!(!is_search_timeout(&anyhow::anyhow!("connection refused")));
+    }
+
+    #[test]
+    fn a_raw_result_gives_its_rows() {
+        let body = r#"[{"columns":[{"Counter":{"type":"string"}},{"Value":{"type":"string"}}],
+            "data":[{"Counter":"uptime","Value":"41078"},{"Counter":"load","Value":"0.10 0.20 0.30"}],
+            "total":2,"error":"","warning":""}]"#;
+        let rows = parse_raw_sql_response(body).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[1]["Value"], "0.10 0.20 0.30");
+    }
+
+    #[test]
+    fn a_raw_error_body_is_an_error_with_its_text() {
+        let error =
+            parse_raw_sql_response(r#"{"error":"SHOW TABLE STATUS requires an existing table"}"#)
+                .unwrap_err();
+        assert!(is_manticore_refusal(&error));
+        assert!(error.to_string().contains("requires an existing table"));
+        let error = parse_raw_sql_response(r#"[{"data":[],"error":"bad query"}]"#).unwrap_err();
+        assert!(error.to_string().contains("bad query"));
+        assert!(parse_raw_sql_response("<html>").is_err());
     }
 }

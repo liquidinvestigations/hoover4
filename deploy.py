@@ -222,6 +222,8 @@ DEFAULTS = {
         "nlp_concurrency": "",
         "embed_concurrency": "",
         "indexing_concurrency": "",
+        # Index-worker processes. Empty = the worker's own default of 4.
+        "indexing_workers": "",
         "chat_model_concurrency": "",
         "chat_low_latency_concurrency": "",
         "research_concurrency": "",
@@ -235,7 +237,7 @@ DEFAULTS = {
         # Tool packs for each kind of agent run: a comma list of pack names, or `all`.
         "agent_packs_chat": "all",
         "agent_packs_subagent": "all",
-        "agent_packs_planner": "all",
+        "agent_packs_planner": "collections,web,plan",
         "agent_packs_organizer": "all",
         # The result page limits and the catalogue match count that the probe selects.
         # Empty keeps byte-safe mode and six matches.
@@ -415,6 +417,28 @@ DEFAULTS = {
         # Declared, not measured: Garage sizes partitions from it and reports the store
         # full past it. A wrong value surfaces as ingest errors hours in, not at deploy.
         "garage_capacity": "300G",
+    },
+    # The most running operations of each kind across the deployment, one key for each
+    # kind of KINDS in database/operations.py, in that order. An operation over its cap
+    # waits as `queued` with no time limit, and it holds its dataset or collection while
+    # it waits. Rendered into HOOVER4_OPERATION_CAPS for hoover4-ops.
+    "operations": {
+        "add_dataset_cap": "2",
+        "rescan_dataset_cap": "2",
+        "compute_plans_cap": "2",
+        "execute_plans_cap": "2",
+        "purge_dataset_cap": "2",
+        "delete_dataset_cap": "2",
+        "change_ocr_languages_cap": "2",
+        "reindex_collection_cap": "2",
+        "refresh_document_locations_cap": "2",
+        "retry_failed_files_cap": "2",
+        "ensure_collection_cap": "2",
+        "drop_collection_database_cap": "2",
+        "export_collection_cap": "2",
+        "import_collection_cap": "2",
+        "purge_unattributed_entities_cap": "2",
+        "backfill_vectors_cap": "2",
     },
     "llm_provider.selfhosted": {
         "enabled": "false",
@@ -828,6 +852,21 @@ def whole_number(cfg, key, minimum=1, section="main_services"):
     if value < minimum:
         fail("[%s] %s must be at least %d, got %d" % (section, key, minimum, value))
     return value
+
+
+def operation_caps_value(cfg):
+    """The `[operations]` caps as `kind=value` pairs joined by commas, in key order.
+
+    Each cap is a whole number of at least 1. A key in `[operations]` that is not a cap
+    of DEFAULTS prints a warning that names it, and the render goes on without it.
+    """
+    for key in cfg.extra.get("operations", []):
+        print("warning: [operations] %s is not a known key, so it is ignored" % key)
+    pairs = []
+    for key in DEFAULTS["operations"]:
+        value = whole_number(cfg, key, minimum=1, section="operations")
+        pairs.append("%s=%d" % (key[:-len("_cap")], value))
+    return ",".join(pairs)
 
 
 def cpu_count_value(cfg, key):
@@ -1407,6 +1446,8 @@ def render_main_env(cfg):
         env["HOOVER4_WORKER_MEM_LIMIT"] = cfg.get(m, "worker_mem_limit")
     if cfg.get(m, "common_workers"):
         env["HOOVER4_COMMON_WORKERS"] = cfg.get(m, "common_workers")
+    if cfg.get(m, "indexing_workers"):
+        env["HOOVER4_INDEXING_WORKERS"] = str(whole_number(cfg, "indexing_workers"))
     if cfg.get(m, "common_max_cached_workflows"):
         env["HOOVER4_COMMON_MAX_CACHED_WORKFLOWS"] = str(
             whole_number(cfg, "common_max_cached_workflows"))
@@ -1447,6 +1488,7 @@ def render_main_env(cfg):
     volume_bytes = backup_object_volume_bytes(cfg)
     if volume_bytes:
         env["HOOVER4_BACKUP_OBJECT_VOLUME_BYTES"] = volume_bytes
+    env["HOOVER4_OPERATION_CAPS"] = operation_caps_value(cfg)
     # Only ever used to tell a detached CLI where its operation can be watched. Not a
     # default anywhere in the tree: a deployment's address belongs to its own config.
     env["HOOVER4_ADMIN_BASE_URL"] = cfg.get(m, "admin_base_url")

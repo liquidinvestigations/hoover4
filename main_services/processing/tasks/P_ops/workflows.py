@@ -6,9 +6,11 @@ without a lookup table. That identity is the whole reason a caller can be killed
 without consequence: the work is not in the caller, and the caller's only unique
 knowledge is a string it already printed.
 
-The workflow owns the row's lifecycle. It writes `running` when it starts, waits for
-its child, and writes `finished` or `errored` with `finished_at` set. The collector
-updates progress. The cancellation finalizer writes `cancelled`. That write releases
+The workflow owns the row's lifecycle. It first asks `admit_operation` for a slot of its
+kind. While the kind is at its cap, the row is `queued` and the workflow asks again every
+`ADMISSION_POLL`, with no time limit. Admission writes `running` and `run_started_at`.
+The workflow then waits for its child, and writes `finished` or `errored` with
+`finished_at` set. The collector updates progress. The cancellation finalizer writes `cancelled`. That write releases
 the operations lock, which is why it is on the way out of every path.
 """
 
@@ -21,7 +23,8 @@ from temporalio.exceptions import ApplicationError
 
 with workflow.unsafe.imports_passed_through():
     from .activities import (
-        cancel_target_operation, count_dataset_rows_activity, record_operation_state,
+        admit_operation, cancel_target_operation, count_dataset_rows_activity,
+        record_operation_state,
         reindex_collection_activity, sample_dataset_progress,
         tombstone_dataset_row,
     )
@@ -64,6 +67,13 @@ EXPORT_STORE_TIMEOUT = timedelta(hours=24)
 #: The row writes are small, idempotent and on the critical path of the lock being
 #: released, so they retry patiently rather than giving up and stranding the lock.
 ROW_RETRY = RetryPolicy(maximum_attempts=10, initial_interval=timedelta(seconds=1))
+
+#: How long a queued operation waits between two admission requests.
+ADMISSION_POLL = timedelta(seconds=30)
+
+#: Admission requests in one run before the workflow continues as new. One wait adds
+#: about 11 history events, so 240 waits stay far below the history limit.
+ADMISSION_ATTEMPTS_PER_RUN = 240
 COLLECTION_PLANS_PER_RUN = 500
 
 
@@ -131,14 +141,25 @@ class Operation:
 
     @workflow.run
     async def run(self, params: OperationParams) -> str:
-        await workflow.execute_activity(
-            record_operation_state,
-            OperationStateParams(op_id=params.op_id, state="running"),
-            task_queue="operations-queue",
-            start_to_close_timeout=timedelta(minutes=2),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=ROW_RETRY,
-        )
+        # The admission loop is outside the `try`, so a continue-as-new and the
+        # cancellation of a queued run do not reach the `errored` handler.
+        attempts = 0
+        while True:
+            state = await workflow.execute_activity(
+                admit_operation, params.op_id,
+                task_queue="operations-admission-queue",
+                start_to_close_timeout=timedelta(minutes=2),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=ROW_RETRY,
+            )
+            if state == "running":
+                break
+            if state in ("finished", "errored", "cancelled"):
+                return state
+            attempts += 1
+            if attempts >= ADMISSION_ATTEMPTS_PER_RUN:
+                workflow.continue_as_new(params)
+            await workflow.sleep(ADMISSION_POLL)
         try:
             result = await self._dispatch(params)
         except asyncio.CancelledError:

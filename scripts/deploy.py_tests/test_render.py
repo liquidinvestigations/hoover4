@@ -201,16 +201,21 @@ PACK_KEYS = ("AGENT_PACKS_CHAT", "AGENT_PACKS_SUBAGENT", "AGENT_PACKS_PLANNER",
              "AGENT_PACKS_ORGANIZER")
 
 
-def test_agent_packs_default_to_all():
+#: The default of each pack key: the planner writes the tree with the plan tools and has no
+#: todo tool, and every other kind of run binds every pack.
+PACK_DEFAULTS = ["all", "all", "collections,web,plan", "all"]
+
+
+def test_agent_packs_default_to_all_and_the_planner_to_its_packs():
     env = _env("settings-defaults.ini")
-    assert [env[key] for key in PACK_KEYS] == ["all"] * 4
+    assert [env[key] for key in PACK_KEYS] == PACK_DEFAULTS
 
 
 def test_a_narrowed_agent_pack_value_is_rendered_and_an_empty_one_is_all():
     env = _env("agent-packs.ini")
     assert env["AGENT_PACKS_CHAT"] == "collections,catalogue,conversation"
     assert env["AGENT_PACKS_SUBAGENT"] == "all"
-    assert env["AGENT_PACKS_PLANNER"] == "all"
+    assert env["AGENT_PACKS_PLANNER"] == "collections,web,plan"
 
 
 def test_both_research_agents_receive_the_pack_keys():
@@ -448,7 +453,7 @@ def test_templates_render_the_new_settings(template_name):
     assert env["CASSANDRA_HEAP_NEW"] == "800M"
     assert env["DEFAULT_NAMESPACE_RETENTION"] == "168h"
     assert env["TESSERACT_CPU_MEM_LIMIT"] == "6144M"
-    assert [env[key] for key in PACK_KEYS] == ["all"] * 4
+    assert [env[key] for key in PACK_KEYS] == PACK_DEFAULTS
     assert deploy.temporal_retention_command(cfg)[-3:] == [
         "168h", "--address", "temporal:7233"]
 

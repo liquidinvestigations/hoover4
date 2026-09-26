@@ -1,10 +1,10 @@
 //! Admin page: `/admin/metrics`, usage counters and per-function API stats
-//! over the rolling last 24 h.
+//! over the rolling last 24 h, and Manticore's load and table memory now.
 
-use common::metrics_types::{ApiFunctionStats, UsageMetrics, UsageTimePoint};
+use common::metrics_types::{ApiFunctionStats, ManticoreLoad, UsageMetrics, UsageTimePoint};
 use dioxus::prelude::*;
 
-use crate::api::admin_api::admin_get_metrics;
+use crate::api::admin_api::{admin_get_manticore_load, admin_get_metrics};
 use crate::components::admin_components::{
     AdminGuard, AdminShell, LiveChatsPanel, HELP_TEXT, MODULE, MODULE_BODY, MODULE_CAPTION,
     TABLE, TD, TH,
@@ -55,6 +55,91 @@ fn MetricsContent() -> Element {
                 UsagePanel { usage: m.usage }
                 ApiPanel { api: m.api }
             },
+        }
+        // Its own resource, so a Manticore failure shows in this panel and the rest of
+        // the page still renders.
+        ManticorePanel {}
+    }
+}
+
+fn three_loads(values: [f64; 3]) -> String {
+    format!("{:.2}, {:.2}, {:.2}", values[0], values[1], values[2])
+}
+
+#[component]
+fn ManticorePanel() -> Element {
+    let load_res = use_resource(admin_get_manticore_load);
+    let state = load_res.read().as_ref().map(|r| r.clone().map_err(|e| e.to_string()));
+
+    rsx! {
+        div { style: MODULE,
+            h2 { style: MODULE_CAPTION, "Manticore load (now)" }
+            div { style: MODULE_BODY,
+                p { style: "{HELP_TEXT} margin: 0 0 12px;",
+                    "Manticore reports no process memory and no CPU time. The RAM figure is the memory that its tables hold. The container holds more memory than that, because it maps the table files. Thread load is shown as Manticore reports it, for the last 1, 5 and 15 minutes. The Manticore manual gives no unit for it."
+                }
+                match state {
+                    None => rsx! { "Loading\u{2026}" },
+                    Some(Err(error)) => rsx! {
+                        p { style: "{HELP_TEXT} color: #ba2121;", "Manticore status could not be read: {error}" }
+                    },
+                    Some(Ok(load)) => rsx! { ManticoreLoadTables { load } },
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ManticoreLoadTables(load: ManticoreLoad) -> Element {
+    let merging = if load.optimizing_tables.is_empty() {
+        "none".to_string()
+    } else {
+        load.optimizing_tables.join(", ")
+    };
+    rsx! {
+        table { style: "{TABLE} margin-bottom: 20px;",
+            tbody {
+                tr { td { style: TD, "Thread load (1, 5, 15 min)" } td { style: TD, "{three_loads(load.load)}" } }
+                tr { td { style: TD, "Primary thread load (1, 5, 15 min)" } td { style: TD, "{three_loads(load.load_primary)}" } }
+                tr { td { style: TD, "Secondary thread load (1, 5, 15 min)" } td { style: TD, "{three_loads(load.load_secondary)}" } }
+                tr { td { style: TD, "Worker threads busy / total" } td { style: TD, "{load.workers_active} / {load.workers_total}" } }
+                tr { td { style: TD, "Work queue" } td { style: TD, "{load.work_queue_length}" } }
+                tr { td { style: TD, "RAM held by tables" } td { style: TD, "{humanize_bytes(load.ram_bytes_total)}" } }
+                tr { td { style: TD, "Disk used by tables" } td { style: TD, "{humanize_bytes(load.disk_bytes_total)}" } }
+                tr { td { style: TD, "Tables merging" } td { style: TD, "{merging}" } }
+                tr {
+                    td { style: TD, "Tables read" }
+                    td {
+                        style: if load.unread_tables > 0 { format!("{TD} color: #ba2121;") } else { TD.to_string() },
+                        "{load.table_count - load.unread_tables} of {load.table_count}"
+                    }
+                }
+                tr { td { style: TD, "Read at" } td { style: TD, "{load.read_at}" } }
+            }
+        }
+        h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "Largest tables by RAM" }
+        table { style: TABLE,
+            thead {
+                tr {
+                    th { style: TH, "Table" }
+                    th { style: TH, "RAM" }
+                    th { style: TH, "Disk" }
+                    th { style: TH, "Disk chunks" }
+                    th { style: TH, "Merging" }
+                }
+            }
+            tbody {
+                for t in load.largest_tables {
+                    tr { key: "{t.table}",
+                        td { style: "{TD} font-family: monospace; font-size: 12px;", "{t.table}" }
+                        td { style: TD, "{humanize_bytes(t.ram_bytes)}" }
+                        td { style: TD, "{humanize_bytes(t.disk_bytes)}" }
+                        td { style: TD, "{t.disk_chunks}" }
+                        td { style: TD, if t.optimizing { "yes" } else { "no" } }
+                    }
+                }
+            }
         }
     }
 }

@@ -110,7 +110,7 @@ pub async fn latest_operation(
         return Ok(None);
     };
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
-    let running = matches!(row.state.as_str(), "pending" | "running");
+    let running = matches!(row.state.as_str(), "pending" | "queued" | "running");
     Ok(Some(DatasetOperationStatus {
         op_id: row.op_id,
         kind: row.kind,

@@ -85,7 +85,11 @@ The copy is incremental: `REPLACE` in multi-row chunks of 512, then a delete of 
 rows whose `node_key` is not in the current ClickHouse tree. There is no dataset-wide
 `DELETE` first, so the file browser never sees an empty tree because of this activity.
 
-`build_email_graph` stays inside `IndexDatasetPlan` (collection-scoped, still per plan).
+`build_email_graph` runs after the tree copy and the facet-term index, once for each
+`ExecutePlans` batch that ran plans, and before the hand-offs for the same reason. It is
+collection-scoped and runs on `processing-email-graph-queue`, one process of one slot. A
+batch that ran no plan skips it. `tests/unit/test_pipeline_stage_order.py` pins its place,
+its queue and that condition.
 
 ## Usage
 

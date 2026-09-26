@@ -26,10 +26,10 @@ whether the open web is reachable from this agent.
 wants. It does not change the tool binding, which the tool packs of the run kind decide
 (`agent_common.tool_packs`). See `active_profile`.
 
-**The Manticore MATCH syntax is deliberately not rendered here.** It reaches the model
-through the collection-search server's own `instructions`, which is read at
-tool-discovery time by whichever agent connects, and which renders from templates of its
-own for the same reasons.
+The Manticore match syntax reaches the model through the search section of the templates
+(`_blocks/search.md.j2`) and through the descriptions of the search tools. The collection
+server also renders it into its MCP instructions, which this agent does not pass to the
+model.
 """
 
 from __future__ import annotations
@@ -92,13 +92,17 @@ class ToolGroup:
 #: one; piling it into the system prompt is what made an earlier draft loop forever.
 TOOL_GROUPS: Tuple[ToolGroup, ...] = (
     ToolGroup(
-        ("list_collections",),
-        "the collections this user can read. Call it first so you use real names.",
+        ("search_collections",),
+        "the user's own documents, every collection of this chat in one call. Put the "
+        "forms of a name or an address in `queries`.",
     ),
     ToolGroup(
-        ("search_collections", "read_documents"),
-        "the user's own documents. Both take lists: send several query angles at once "
-        "and read several hits at once.",
+        ("read_documents",),
+        "read up to 20 documents from a search, by file_hash.",
+    ),
+    ToolGroup(
+        ("list_collections",),
+        "the names of the collections and datasets, when you must narrow a search.",
     ),
     ToolGroup(
         ("list_document_entities",),
@@ -146,11 +150,12 @@ TOOL_GROUPS: Tuple[ToolGroup, ...] = (
     # is the exact class of claim these templates exist to make impossible.
     ToolGroup(
         ("read_todo",),
-        "this conversation's plan, and the context an objective came out of.",
+        "this conversation's working checklist, and the context an objective came out of.",
     ),
     ToolGroup(
         ("write_todo", "edit_todo", "mark_todo"),
-        "write the plan, change it, and mark its steps done.",
+        "your working checklist for this conversation: write it, change it, and mark its "
+        "steps.",
     ),
     ToolGroup(
         ("run_subagent",),

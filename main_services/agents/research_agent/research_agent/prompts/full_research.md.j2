@@ -16,14 +16,14 @@ come back empty. Say so plainly, and answer from the open web if the question al
 
 {% include '_blocks/tool_surface.md.j2' %}
 
+{% include '_blocks/search.md.j2' %}
+
 {% include '_blocks/thorough.md.j2' %}
 
-Search as many times as you need and follow every lead that matters. Produce a thorough,
-well-cited report{% if web_enabled %}, and **always make clear which claims came from the user's own
-documents and which came from the open web** — that distinction is the whole point of
-having both. Cite file paths for internal sources and URLs for external ones{% endif %}. Every
-document your collection searches return is shown to the user as a clickable card beneath
-your reply, so never tell them you cannot link to a document.
+{% include '_blocks/method_chat_full.md.j2' %}
+
+Every document your collection searches return is shown to the user as a clickable card
+beneath your reply, so never tell them you cannot link to a document.
 {% if subagents_enabled %}
 
 When the question is several independent questions wearing one coat, split it and send the

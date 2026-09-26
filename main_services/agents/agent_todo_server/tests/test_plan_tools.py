@@ -63,6 +63,7 @@ def store(monkeypatch):
         plan_run=agent_plans.PlanRunRow(run_id=PLAN_RUN, plan_id=PLAN_ID, username="ann",
                                         session_id="s1", state=agent_plans.PLANNING),
         snapshots={1: agent_plans.initial_snapshot(PLAN_ID, "What happened?")},
+        keys={},
     )
 
     def read_run(username, session_id, run_id):
@@ -77,14 +78,21 @@ def store(monkeypatch):
         version = version or max(state.snapshots)
         return state.snapshots.get(version)
 
-    def write_snapshot(username, session_id, snapshot):
+    def write_snapshot(username, session_id, snapshot, idempotency_key=None):
         time.sleep(0.05)
         state.snapshots[snapshot.version] = snapshot
+        if idempotency_key is not None:
+            state.keys[idempotency_key] = snapshot.version
+
+    def snapshot_by_key(username, session_id, plan_id, idempotency_key):
+        version = state.keys.get(idempotency_key)
+        return state.snapshots.get(version) if version else None
 
     monkeypatch.setattr(agent_runs, "read_run", read_run)
     monkeypatch.setattr(agent_plans, "read_plan_run", read_plan_run)
     monkeypatch.setattr(agent_plans, "read_snapshot", read_snapshot)
     monkeypatch.setattr(agent_plans, "write_snapshot", write_snapshot)
+    monkeypatch.setattr(agent_plans, "snapshot_by_key", snapshot_by_key)
     monkeypatch.setattr(agent_plans, "read_documents", lambda u, s, r: [
         agent_plans.PlanDocument("doc-1", agent_plans.root_node_id(PLAN_ID), "executor",
                                  "report", 0, "x" * 20_000)])
@@ -156,3 +164,24 @@ def test_a_document_is_read_one_page_at_a_time(headers, store):
     assert (len(second.text), second.next_offset) == (4_000, None)
     listing = call(plan_tools.read_plan_document)
     assert listing.text.startswith("doc-1 report")
+
+
+def test_a_mutation_repeated_with_one_key_writes_one_version(headers, store):
+    headers["X-Hoover4-Idempotency-Key"] = "0b7c6f2e-3a4d-5e6f-8a9b-1c2d3e4f5a6b"
+    first = call(plan_tools.append_node, text="A")
+    second = call(plan_tools.append_node, text="A")
+    assert first.version == 2
+    assert second.model_dump() == first.model_dump()
+    assert sorted(store.snapshots) == [1, 2]
+
+
+def test_a_mutation_with_no_key_writes_a_version_each_time(headers, store):
+    assert call(plan_tools.append_node, text="A").version == 2
+    assert call(plan_tools.append_node, text="A").version == 3
+
+
+def test_a_malformed_key_is_read_as_no_key(headers, store):
+    headers["X-Hoover4-Idempotency-Key"] = "not-a-uuid"
+    assert call(plan_tools.append_node, text="A").version == 2
+    assert call(plan_tools.append_node, text="A").version == 3
+    assert store.keys == {}

@@ -145,7 +145,7 @@ pub fn DatasetOperationStrip(
         "errored" => ("#fdecea", "#f5c6cb", "#a94442"),
         "cancelled" => ("#f3f3f3", "#dcdcdc", "#666666"),
         _ if stale => ("#fff4e5", "#ffd8a8", "#8a5a00"),
-        "pending" | "running" => ("#e8f4fa", "#bcdff1", "#31708f"),
+        "pending" | "queued" | "running" => ("#e8f4fa", "#bcdff1", "#31708f"),
         _ => ("#eaf6ea", "#c3e6cb", "#3c763d"),
     };
 

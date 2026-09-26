@@ -12,7 +12,7 @@ because nothing ever populated it.
 | Tool | Purpose |
 |---|---|
 | `list_collections` | collection names and dataset counts this user may read |
-| `search_collections` | documents and a total count from selected permitted collections |
+| `search_collections` | documents from selected permitted collections, for one query or a list of up to 8 query forms in one call |
 | `read_documents` | one text page of each selected document, with its page range and the pages with hits |
 | `search_passages` | passages from keyword and vector ranking together, for several queries in one call |
 | `list_document_entities` | what the pipeline found in several documents, in two tiers, sharing one budget |
@@ -39,14 +39,18 @@ call no route. The page share is the `X-Hoover4-Page-Share` header of the call, 
 agent sets from its batch result budget, or 24,000 bytes when the header is absent. Every
 page, a later page of a stored window included, is at most the share of its own call. A
 page keeps the window fields when one unit fits with them, and leaves them out otherwise.
+A `search_collections` row does not include a facet whose count list is empty.
 `search_passages` and `list_document_entities` compute their whole
 result in this server, and page it as one window in the same way. Every paged tool result
 also carries the `build_page` measure of its page as an embedded resource with the URI
 `hoover4://call-measure`, after the page text. The page text is the only text block. The
 store target of a unit is the share less the measured envelope of its window: a zero-unit
-page with the window fields, the columns and a continuation that holds the largest
-position values. A unit larger than that target is stored with string fields moved out,
-largest first, until the rest fits. Its page is cut inside the first moved field and carries
+page with the columns and a continuation that holds the largest position values. The
+window fields are not in that envelope, so a page that cannot hold the fields and one unit
+leaves the fields for a later page before a unit is cut. A unit larger than that target is
+stored with string fields moved out, largest first, until the rest fits. The fields
+`file_hash`, `path`, `collectionname`, `dataset` and `collection_dataset` never move, so a
+cut search row keeps them and loses its snippet first. Its page is cut inside the first moved field and carries
 `{"cut": {"field", "returned_bytes", "total_bytes", "next_fields"}}`. `next_fields` lists the
 other moved fields. The continuations read the rest of each moved field in that order, and
 then the next unit. When not one unit fits the share of a later call, the page returns the
@@ -163,10 +167,26 @@ the model cannot interpret, plus the empty query that is worse than an error:
 | `who paid @acme` | 500 `no field 'acme' found in schema` | searched as `who paid acme` |
 | `@title test` | 500 `no field 'title' found in schema` | searched as `title test` |
 | `''` | **matched every row in the shard** | refused |
+| `a OR b`, `a AND b`, `a NOT b` | searched for the words `OR`, `AND` and `NOT` | searched as `a \| b`, `a b`, `a -b` |
+| `name@host.com` | searched as `namehost.com` | searched as the address, with `\@` |
+
+`OR`, `AND` and `NOT` are ordinary words to Manticore. `_rewrite_boolean_words` reads the
+upper-case words as `|`, as nothing and as `-`, and drops an `OR` or `NOT` with no term on
+one side. It replaces each operator word in place and changes nothing inside double quotes.
+The website search has the same rule in `website/backend/src/db_utils/manticore_match.rs`,
+and the two copies change in one patch.
 
 Repairs are reported back in the response's `note`, and Manticore's own error text is now
 returned in `error` rather than only logged. A syntax error the model never sees is one
 it cannot correct.
+
+`search_collections` gets the repairs of the website search in `query_notes`. With a
+`queries` list, and `query` as its first form when both are given, each form is one route
+search. The rows merge by `(collectionname, file_hash)` in the order they are first found,
+and each row gets `matched_queries`, the forms that found it. A form that fails adds its
+error to `query_notes`, and the other forms still run. Each form gives the first route page
+of its rows, and a form with more rows says so in `query_notes`. The merged rows page
+through `read_more` as a `LocalPagedTool` result.
 
 **The escaping is unchanged and is the injection barrier.** `\` and `'` are what could
 break out of the single-quoted SQL literal; that is a separate concern from the query

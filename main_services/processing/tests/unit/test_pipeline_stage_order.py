@@ -261,3 +261,59 @@ def test_execute_plans_refreshes_locations_before_returning_no_plans():
         f"refresh_stale_document_locations (line {refresh_line}) must precede "
         f'return "no plans" (line {no_plans_return})'
     )
+
+
+def test_index_dataset_plan_does_not_build_the_email_graph():
+    """The graph reads the whole collection. Driving it once for each plan held the index
+    slot for most of an ingest, so ExecutePlans drives it once for each invocation."""
+    import tasks.P6_index_data.workflows as p6_workflows
+    names = [name for _, name in _execute_targets(
+        open(p6_workflows.__file__).read(), "IndexDatasetPlan"
+    )]
+    assert "build_email_graph" not in names, (
+        f"IndexDatasetPlan must not execute build_email_graph: {names}"
+    )
+
+
+def test_execute_plans_builds_the_email_graph_last_on_its_own_queue():
+    """Once, after the dataset-wide steps, before the continuation hand-off, only when
+    the invocation indexed plans, and on the queue that one process with one slot
+    serves."""
+    source = open(p2_workflows.__file__).read()
+    targets = _execute_targets(source, "ExecutePlans")
+    ordered = [name for _, name in targets]
+    assert ordered.count("build_email_graph") == 1, (
+        f"ExecutePlans must execute build_email_graph once: {ordered}"
+    )
+    graph_line = next(line for line, name in targets if name == "build_email_graph")
+    terms_line = next(line for line, name in targets if name == "index_entity_terms")
+    handoff_line = next(
+        n for n, text in enumerate(source.splitlines(), start=1)
+        if text.strip() == "if continuation_hash:"
+    )
+    assert terms_line < graph_line < handoff_line, (
+        f"build_email_graph (line {graph_line}) must follow index_entity_terms "
+        f"(line {terms_line}) and precede the continuation hand-off (line {handoff_line})"
+    )
+
+    tree = ast.parse(source)
+    call = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "execute_activity" and node.args
+        and isinstance(node.args[0], ast.Name) and node.args[0].id == "build_email_graph"
+    )
+    queue = next(kw.value for kw in call.keywords if kw.arg == "task_queue")
+    assert isinstance(queue, ast.Name) and queue.id == "EMAIL_GRAPH_TASK_QUEUE", (
+        "build_email_graph must run on EMAIL_GRAPH_TASK_QUEUE"
+    )
+    guard = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.If) and any(child is call for child in ast.walk(node))
+    )
+    assert isinstance(guard.test, ast.Name) and guard.test.id == "plan_hashes", (
+        "build_email_graph must run only when the invocation indexed plans"
+    )
+
+    from tasks.P6_index_data.workflows import EMAIL_GRAPH_TASK_QUEUE, INDEXING_TASK_QUEUE
+    assert EMAIL_GRAPH_TASK_QUEUE != INDEXING_TASK_QUEUE

@@ -508,11 +508,12 @@ def _pointer_token(key: object) -> str:
     return str(key).replace("~", "~0").replace("/", "~1")
 
 
-def largest_string_field(unit: object, pointer: str = "") -> tuple[str, str] | None:
+def largest_string_field(unit: object, pointer: str = "",
+                         exclude: frozenset[str] = frozenset()) -> tuple[str, str] | None:
     """The JSON pointer and the value of the longest string inside `unit`, by UTF-8 bytes.
 
-    The marker of an earlier cut is not a candidate. `None` means that the unit holds no
-    string.
+    The marker of an earlier cut is not a candidate, and neither is a field whose pointer
+    is in `exclude`. `None` means that the unit holds no other string.
     """
     best: tuple[str, str] | None = None
     if isinstance(unit, str):
@@ -524,7 +525,10 @@ def largest_string_field(unit: object, pointer: str = "") -> tuple[str, str] | N
     else:
         return None
     for key, value in children:
-        found = largest_string_field(value, f"{pointer}/{_pointer_token(key)}")
+        child = f"{pointer}/{_pointer_token(key)}"
+        if child in exclude:
+            continue
+        found = largest_string_field(value, child, exclude)
         if found is not None and (best is None or len(found[1].encode("utf-8")) > len(best[1].encode("utf-8"))):
             best = found
     return best

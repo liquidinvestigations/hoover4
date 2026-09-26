@@ -119,7 +119,7 @@ pub struct ServerSettingItem {
 pub struct DatasetOperationStatus {
     pub op_id: String,
     pub kind: String,
-    /// `pending | running | finished | errored | cancelled`.
+    /// `pending | queued | running | finished | errored | cancelled`.
     pub state: String,
     /// JSON written by the workflow: `{"stage": …, "added": […], "removed": […]}`.
     pub detail: String,
@@ -130,11 +130,11 @@ pub struct DatasetOperationStatus {
 }
 
 impl DatasetOperationStatus {
-    /// `pending` counts as running: the row exists, it holds the lock, and the work is
-    /// on its way to a worker. Treating it as idle is what would let a second dispatch
-    /// through in the seconds before the workflow starts.
+    /// `pending` and `queued` count as running: the row exists, it holds the lock, and
+    /// the work is on its way to a worker. Treating it as idle is what would let a second
+    /// dispatch through before the workflow starts its work.
     pub fn is_running(&self) -> bool {
-        matches!(self.state.as_str(), "pending" | "running")
+        matches!(self.state.as_str(), "pending" | "queued" | "running")
     }
 }
 

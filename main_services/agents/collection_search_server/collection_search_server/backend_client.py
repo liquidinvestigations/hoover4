@@ -595,6 +595,7 @@ class SearchResultsResponse(AgentModel):
     facet_counts: dict[str, list[FacetCount]]
     page: int
     has_more: bool
+    query_notes: list[str] = Field(default_factory=list)
     source: str
     next_position: AgentPosition | None = None
     total: int | None = None

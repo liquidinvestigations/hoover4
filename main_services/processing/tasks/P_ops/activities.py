@@ -64,6 +64,53 @@ def record_operation_state(params: OperationStateParams) -> str:
 
 @activity.defn
 @with_heartbeat
+def admit_operation(op_id: str) -> str:
+    """Start the operation when its kind has a free slot, or store it as `queued`.
+
+    Returns `running`, `queued`, or the terminal state of a row that closed while it
+    waited. This runs on `operations-admission-queue`, one slot in one process, so the
+    count and the write of one admission never interleave with another admission. The
+    write waits for the insert to land, so the next admission reads it.
+
+    A retry after a successful `running` write reads `running` and writes nothing, and a
+    retry of `queued` writes nothing more. `run_started_at` is written here and only here.
+    """
+    from temporalio.exceptions import ApplicationError
+
+    from database.operations import (
+        TERMINAL_STATES, _now, admission_decision, count_admission, get_operation,
+        operation_caps, update_operation,
+    )
+
+    row = get_operation(op_id)
+    if row is None:
+        raise ApplicationError(f"operation not found: {op_id}", non_retryable=True)
+    if row["state"] in TERMINAL_STATES:
+        return row["state"]
+    if row["state"] == "running":
+        return "running"
+    cap = operation_caps()[row["kind"]]
+    running, ahead = count_admission(row)
+    decision = admission_decision(running, ahead, cap)
+    if decision == "running":
+        update_operation(op_id, base_row=row, state="running", run_started_at=_now())
+    elif row["state"] != "queued":
+        update_operation(op_id, base_row=row, state="queued")
+    log.info("operation %s (%s): %s, running %d, ahead %d, cap %d",
+             op_id, row["kind"], decision, running, ahead, cap)
+    return decision
+
+
+def real_start(row: dict) -> datetime:
+    """`run_started_at` when the operation has started, else the dispatch time."""
+    started = row.get("run_started_at")
+    if started is not None and started.year > 1970:
+        return started
+    return row["started_at"]
+
+
+@activity.defn
+@with_heartbeat
 def cancel_target_operation(op_id: str) -> dict:
     """Cancel the target, wait for closure, and return its recorded context."""
     return asyncio.run(_cancel_target_operation(op_id))
@@ -282,6 +329,7 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
     the only one whose total is known before the work is done. The estimate is derived
     from this operation's own elapsed time rather than from the global sampler, so it
     is right for this run's data even when nothing comparable has ever been ingested.
+    The elapsed time counts from the real start, so a wait in `queued` does not slow it.
 
     The Error counts cover this operation. Historical Error rows are recorded at
     selection time, before the run changes them.
@@ -316,7 +364,7 @@ def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
 
     eta = 0
     if row and total and done:
-        elapsed = max(1.0, time.time() - row["started_at"].timestamp())
+        elapsed = max(1.0, time.time() - real_start(row).timestamp())
         eta = max(0, int(elapsed / done * (total - done)))
     detail = json.loads(row.get("detail") or "{}") if row else {}
     detail.update(failed_documents=failed_documents, failed_tasks=failed_tasks)

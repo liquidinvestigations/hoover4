@@ -21,12 +21,17 @@ pub struct OperationRow {
     pub collection_dataset: String,
     /// The single string this operation acts on, already resolved from `target_kind`.
     pub target: String,
-    /// `pending` | `running` | `finished` | `errored` | `cancelled`.
+    /// `pending` | `queued` | `running` | `finished` | `errored` | `cancelled`.
+    /// `queued` waits for a free slot of its kind, and holds its target meanwhile.
     pub state: String,
+    /// When the operation was dispatched, which is when it was queued.
     pub started_at: String,
+    /// When the operation began its work. `None` while it is `pending` or `queued`.
+    pub run_started_at: Option<String>,
     /// `None` while the operation has not reached a terminal state.
     pub finished_at: Option<String>,
-    /// Wall time, in seconds, to `finished_at` or to now.
+    /// Wall time, in seconds, from `run_started_at` to `finished_at` or to now. Zero
+    /// when the operation has not started.
     pub duration_seconds: u64,
     pub progress_done: u64,
     /// **Zero means "not yet known", not "no work"**, a scan that has not produced
@@ -173,6 +178,7 @@ mod tests {
             target: String::new(),
             state: state.into(),
             started_at: String::new(),
+            run_started_at: None,
             finished_at: None,
             duration_seconds: 0,
             progress_done: 0,

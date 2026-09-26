@@ -27,10 +27,6 @@ section's `node_id` as `plan_node_id`, and a `purpose`:
 * `correct` does the section again with the defects that a review found. A section takes at
   most two corrections.
 
-In each `execute` briefing, tell the researcher to try every tool that can bear on its
-section, to start with broad queries and narrow them, and to report what it searched and
-what it could not find.
-
 Send up to five briefings in one call. When the reports arrive, review each section that
 has a new report, and correct each section whose review rejected it.
 
@@ -46,14 +42,13 @@ approved tree:
 
 A section that has no review yet needs a `review` run. A section whose review rejected it
 needs a `correct` run while `corrections` is below two.
+
+{% include '_blocks/method_organizer.md.j2' %}
 {% endif %}
 {% if has('read_plan_document') %}
+
 Read a full prompt, report or review with {{ tool('read_plan_document') }} when the summary
 you received is not enough.
 {% endif %}
-
-Answer with the final report only when each section has `review` equal to `accept`, or has
-used its two corrections. Write the findings of each section, with their sources. Name each
-section that failed, and its open defect classes.
 
 {% include '_blocks/citation.md.j2' %}

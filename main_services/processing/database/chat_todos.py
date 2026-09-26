@@ -328,6 +328,100 @@ def mark_todo(username: str, session_id: str, marks) -> dict:
     return _write_version(username, session_id, current["goal"], items)
 
 
+# ---------------------------------------------------------------------------
+# The step list operations of the todo tools
+# ---------------------------------------------------------------------------
+#
+# The todo tools take a goal and a list of step strings. The store gives each step its
+# id, so the model never writes an id or a JSON object. The item rules above still apply
+# to every written list.
+
+
+def _step_texts(steps) -> list[str]:
+    """The step strings, stripped, with the empty ones left out."""
+    if steps is None:
+        steps = []
+    if isinstance(steps, str):
+        steps = [steps]
+    if not isinstance(steps, (list, tuple)):
+        raise TodoError("steps must be a list of strings")
+    return [str(step).strip() for step in steps if str(step).strip()]
+
+
+def _folded(text: str) -> str:
+    return " ".join(text.split())
+
+
+def write_steps(username: str, session_id: str, goal, steps) -> dict:
+    """Replace the whole plan with `goal` and `steps`. The steps get the ids 1, 2, 3.
+
+    An empty goal or an empty step list is refused, because a plan with neither is not a
+    plan the nag protocol can read. The same goal and steps give the same items.
+    """
+    goal = normalise_goal(goal)
+    if not goal:
+        raise TodoError("the goal is empty. Write one or two sentences.")
+    texts = _step_texts(steps)
+    if not texts:
+        raise TodoError("steps is empty. Give at least one step.")
+    items = normalise_items(
+        [{"id": str(i), "text": text, "status": "pending", "note": ""} for i, text in enumerate(texts, 1)]
+    )
+    return _write_version(username, session_id, goal, items)
+
+
+def edit_steps(username: str, session_id: str, steps) -> dict:
+    """Replace the steps and keep the goal.
+
+    A current step whose text equals a new step, with whitespace folded, keeps its id,
+    status and note. A new step gets the next free number as its id. A current step that
+    is not in `steps` is removed.
+    """
+    texts = _step_texts(steps)
+    if not texts:
+        raise TodoError("steps is empty. Give at least one step.")
+    current = read_todo(username, session_id)
+    unused = list(current["items"])
+    numbers = [int(item["id"]) for item in current["items"] if item["id"].isdigit()]
+    next_id = max(numbers, default=0) + 1
+    items = []
+    for text in texts:
+        kept = next((item for item in unused if _folded(item["text"]) == _folded(text)), None)
+        if kept is not None:
+            unused.remove(kept)
+            items.append(dict(kept))
+            continue
+        items.append({"id": str(next_id), "text": text, "status": "pending", "note": ""})
+        next_id += 1
+    return _write_version(username, session_id, current["goal"], normalise_items(items))
+
+
+def mark_steps(username: str, session_id: str, ids, status: str, note: str = "") -> dict:
+    """Set one status, and the note when it is not empty, on each step in `ids`.
+
+    An id that is not in the plan is refused with the ids that are. `cancelled` with an
+    empty note is refused by [`normalise_item`].
+    """
+    wanted = _step_texts(ids)
+    if not wanted:
+        raise TodoError("ids is empty. Give at least one step id.")
+    current = read_todo(username, session_id)
+    by_id = {item["id"]: dict(item) for item in current["items"]}
+    if not by_id:
+        raise TodoError("there is no plan to mark yet. Call write_todo first.")
+    known = ", ".join(item["id"] for item in current["items"])
+    for item_id in wanted:
+        if item_id not in by_id:
+            raise TodoError(f"step {item_id!r} does not exist. The steps are {known}.")
+    note = str(note or "").strip()
+    for item_id in wanted:
+        by_id[item_id]["status"] = str(status or "").strip().lower()
+        if note:
+            by_id[item_id]["note"] = note
+    items = normalise_items([by_id[item["id"]] for item in current["items"]])
+    return _write_version(username, session_id, current["goal"], items)
+
+
 def delete_todos(username: str, session_id: str) -> None:
     """Drop every version for one session. Called when the chat session is deleted."""
     from .clickhouse import get_global_client

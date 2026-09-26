@@ -102,6 +102,10 @@ RESPONSE_MODELS: dict[str, type[AgentModel]] = {
     "folders/list": FoldersListResponse,
     "folders/search": FoldersSearchResponse,
 }
+#: The fields of a unit that the broker never moves out of a stored unit, as JSON
+#: pointers. A row without them cannot be read on or cited, so a cut row keeps them and
+#: loses its snippet or its text.
+IDENTITY_FIELDS = frozenset({"/file_hash", "/path", "/collectionname", "/dataset", "/collection_dataset"})
 #: The keys a route tool's continuation position may hold.
 POSITION_KEYS = frozenset({"window", "next", "artifact", "head", "start", "total", "cut", "blob", "part"})
 
@@ -311,8 +315,12 @@ def _live_page(tool: PagedTool, request: BaseModel, window_position: dict | None
 def _envelope_bytes(tool: PagedTool, window: Window, request_input: dict[str, Any],
                     window_position: dict | None, cut_field: str | None) -> int:
     """The bytes of a page of this stored window less its units. That is a zero-unit page
-    with the window fields and columns, and a continuation that holds the largest position
-    values, with a `cut` position into the field `cut_field` when it is not `None`."""
+    with the window columns, and a continuation that holds the largest position values,
+    with a `cut` position into the field `cut_field` when it is not `None`.
+
+    The window fields, the facets among them, are not measured. A page that cannot hold
+    the fields and its first unit leaves the fields for a later page (`_build_fitting`),
+    so the fields move to the continuation before a field of a unit is cut."""
     position: dict[str, Any] = {
         "window": window_position, "next": window.next, "artifact": PENDING_ARTIFACT_ID,
         "head": LARGEST_POSITION, "total": window.total, "start": LARGEST_POSITION,
@@ -322,7 +330,7 @@ def _envelope_bytes(tool: PagedTool, window: Window, request_input: dict[str, An
     text, _ = build_page(
         PageInput(tool.tool_name, tool.shape, [None], window.columns, window.total, {},
                   window.fields.get("source", ""), request_input, PENDING_ARTIFACT_ID,
-                  lambda count: position, window.fields),
+                  lambda count: position, None),
         ByteLimit(MAX_HEADER_BYTES),
     )
     return len(text.encode("utf-8")) - len(canonical_json(None))
@@ -358,9 +366,9 @@ def _store_window(tool: PagedTool, window: Window, request_input: dict[str, Any]
 def _stored_unit(unit: Any, share: int, whole_target: int, envelope: Callable[[str], int]) -> list[bytes]:
     """The stored lines of one unit. A unit whose line is longer than `whole_target` has
     string fields moved out, largest first, until the unit as its cut page shows it fits
-    `share` less `envelope(first moved field)`. Each moved field follows the line as a raw
-    segment, in the order of its `__cut` entry. A unit that still does not fit is read as
-    unit text pages."""
+    `share` less `envelope(first moved field)`. The fields of `IDENTITY_FIELDS` never move.
+    Each moved field follows the line as a raw segment, in the order of its `__cut` entry.
+    A unit that still does not fit is read as unit text pages."""
     line = canonical_json(unit).encode("utf-8")
     if len(line) <= whole_target or not isinstance(unit, dict):
         return [line, b"\n"]
@@ -368,7 +376,7 @@ def _stored_unit(unit: Any, share: int, whole_target: int, envelope: Callable[[s
     moved: list[tuple[str, bytes]] = []
     cut_target = 0
     while True:
-        found = largest_string_field(stripped)
+        found = largest_string_field(stripped, exclude=IDENTITY_FIELDS)
         if found is None or not found[0] or not found[1]:
             break
         pointer, text = found

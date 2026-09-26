@@ -91,7 +91,14 @@ fn OperationDetailBody(data: OperationDetail, plans_page: u32, events_page: u32)
             div { style: MODULE_BODY,
                 p { code { "{row.op_id}" } }
                 p { style: HELP_TEXT,
-                    "{row.kind} · {row.state} · {row.target} · {row.started_at}"
+                    "{row.kind} · {row.state} · {row.target} · queued at {row.started_at}"
+                }
+                p { style: HELP_TEXT,
+                    if let Some(run_started_at) = row.run_started_at.as_ref() {
+                        "started {run_started_at}"
+                    } else {
+                        "not started"
+                    }
                 }
                 if let Some(summary) = rerun_outcome_summary(&row) {
                     p { id: "x-op-detail-counts", "{summary}" }

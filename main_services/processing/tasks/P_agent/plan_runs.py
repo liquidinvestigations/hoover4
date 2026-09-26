@@ -131,16 +131,19 @@ def refresh_sections(username: str, session_id: str, plan_run_id: str) -> list[d
     return entries
 
 
-def approved_sections(username: str, session_id: str, plan_run_id: str) -> set[str]:
-    """The section node ids of the approved tree, for the plan section rule."""
+def approved_sections(username: str, session_id: str, plan_run_id: str) -> dict[str, str]:
+    """The sections of the approved tree as `{node_id: title}`, in tree order, for the plan
+    section rule. The refusal of a briefing names them."""
     from database import agent_plans
 
     plan_run = agent_plans.read_plan_run(username, session_id, plan_run_id)
     if plan_run is None or not plan_run.approved_version:
-        return set()
+        return {}
     snapshot = agent_plans.read_snapshot(username, session_id, plan_run.plan_id,
                                          plan_run.approved_version)
-    return agent_plans.section_ids(snapshot) if snapshot else set()
+    if not snapshot:
+        return {}
+    return {node.node_id: node.text for node, _ in agent_plans.sections(snapshot)}
 
 
 def final_answer(row, answer: str) -> str:

@@ -235,13 +235,12 @@ class IngestAndProcessDataset:
 
     `IngestDiskDataset` alone only walks the disk. The plan stages after it are separate
     workflows because they must not start until the scan has finished. Computing plans
-    over a half-scanned dataset silently plans a subset of the files, which is exactly why
-    `main.py add-disk-dataset --no-wait` refuses to submit them.
+    over a half-scanned dataset silently plans a subset of the files.
 
-    The CLI solves that by blocking in the caller. The admin UI cannot: the browser
-    request returns in milliseconds and the ingest runs for minutes. This workflow is the
-    server-side equivalent of `--wait`, so a dataset created from the web UI is *processed*
-    rather than merely scanned and left sitting there looking finished.
+    This workflow sequences the three stages on the server, for the admin UI and for
+    `main.py add-disk-dataset` alike, through the `Operation` workflow. The CLI only
+    follows the operation, for one minute by default, so a dataset is *processed* rather
+    than merely scanned and left sitting there looking finished.
     """
 
     @workflow.run

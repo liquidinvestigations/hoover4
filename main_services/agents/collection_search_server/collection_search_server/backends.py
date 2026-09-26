@@ -129,6 +129,111 @@ class PreparedMatch(NamedTuple):
     repairs: tuple[str, ...] = ()
 
 
+def _boolean_word_tokens(query: str) -> list[tuple[int, int]]:
+    """Split a query into tokens for :func:`_rewrite_boolean_words`, as `(start, end)`.
+
+    Whitespace separates tokens, `(` and `)` outside quotes are tokens of their own, and
+    a quoted run, closed or not, stays inside the token that holds it.
+    """
+    tokens: list[tuple[int, int]] = []
+    start: int | None = None
+    in_phrase = False
+    for i, char in enumerate(query):
+        if char == '"':
+            in_phrase = not in_phrase
+            if start is None:
+                start = i
+            continue
+        if in_phrase:
+            continue
+        if char.isspace() or char in "()":
+            if start is not None:
+                tokens.append((start, i))
+                start = None
+            if char in "()":
+                tokens.append((i, i + 1))
+            continue
+        if start is None:
+            start = i
+    if start is not None:
+        tokens.append((start, len(query)))
+    return tokens
+
+
+def _is_boolean_term(word: str) -> bool:
+    return word not in {"OR", "AND", "NOT", "|", "(", ")"}
+
+
+def _rewrite_boolean_words(query: str) -> tuple[str, list[str]]:
+    """Read the words `OR`, `AND` and `NOT` as the operators they are in a Boolean search.
+
+    Manticore reads these words as ordinary search terms, so `a OR b` finds only a text
+    that holds all three words. The rule: `OR` between two terms becomes `|`, a bare
+    `AND` is dropped because every word must occur anyway, and `NOT x` becomes `-x`. An
+    `OR` or `NOT` with no term on the needed side is dropped. Only the upper-case words
+    are operators, and nothing inside double quotes changes. Each operator token is
+    replaced in place and the rest of the text is kept as it is, so `"a b"~3` and an
+    unbalanced quote reach the later passes unchanged.
+
+    The Rust copy is `rewrite_boolean_words` in
+    `website/backend/src/db_utils/manticore_match.rs`. The two copies are one rule and
+    change in one patch.
+    """
+    tokens = _boolean_word_tokens(query)
+    words = [query[start:end] for start, end in tokens]
+    or_read = and_dropped = not_read = stray = 0
+    out: list[str] = []
+    # The last token written to the output, for the left side of an `OR`.
+    last_written: str | None = None
+    join_next = False
+    cursor = 0
+    for i, ((start, end), word) in enumerate(zip(tokens, words)):
+        if not join_next:
+            out.append(query[cursor:start])
+        join_next = False
+        cursor = end
+        after = words[i + 1] if i + 1 < len(words) else None
+        written: str | None
+        if word == "AND":
+            and_dropped += 1
+            written = None
+        elif word == "OR":
+            before_ok = last_written is not None and (_is_boolean_term(last_written) or last_written == ")")
+            after_ok = after is not None and (_is_boolean_term(after) or after == "(")
+            if before_ok and after_ok:
+                or_read += 1
+                written = "|"
+            else:
+                stray += 1
+                written = None
+        elif word == "NOT":
+            if after is not None and (_is_boolean_term(after) or after == "("):
+                not_read += 1
+                join_next = True
+                written = "-"
+            else:
+                stray += 1
+                written = None
+        else:
+            written = word
+        if written is not None:
+            out.append(written)
+            if written != "-":
+                last_written = written
+    out.append(query[cursor:])
+
+    repairs = []
+    if or_read:
+        repairs.append(f"read {or_read} OR as |, because OR is an ordinary word in a search")
+    if and_dropped:
+        repairs.append(f"dropped {and_dropped} AND, because every word of a query must occur anyway")
+    if not_read:
+        repairs.append(f"read {not_read} NOT x as -x, because NOT is an ordinary word in a search")
+    if stray:
+        repairs.append(f"dropped {stray} OR or NOT with no word on one side")
+    return "".join(out), repairs
+
+
 def _rewrite_field_operators(query: str) -> tuple[str, list[str]]:
     """Turn `@field` into a plain word unless `field` really is a full-text field.
 
@@ -136,10 +241,17 @@ def _rewrite_field_operators(query: str) -> tuple[str, list[str]]:
     fails the whole query with `no field 'acme' found in schema` rather than searching
     for the word. Since `page_text` is the only field there is, anything else was a false
     positive and the useful reading is the literal word.
+
+    An `@` with a word character right before it is part of a word, as in the address
+    `name@host`. It becomes `\\@`, the escape the website search uses for every `@`, so
+    Manticore reads it as a character of the word and the address stays one term.
     """
     repairs: list[str] = []
 
     def replace(m: re.Match) -> str:
+        start = m.start()
+        if start > 0 and (query[start - 1].isalnum() or query[start - 1] == "_"):
+            return "\\" + m.group(0)
         negated, body, group = m.group(1), m.group(2), m.group(3)
         if body == "*" and not negated:
             return m.group(0)  # `@*` = all fields, always valid
@@ -237,6 +349,9 @@ def prepare_match_query(query: str) -> PreparedMatch:
     * an empty query, `MATCH('')` is not an error at all, which is worse: it matches
       **every row** in the shard
 
+    The words `OR`, `AND` and `NOT` are read first, by :func:`_rewrite_boolean_words`,
+    and each rewrite is one line of `repairs`.
+
     Escaping is unchanged and stays last: `\\` and `'` are what could break out of the
     SQL string literal, and that is a separate concern from the query language living
     inside it.
@@ -244,10 +359,11 @@ def prepare_match_query(query: str) -> PreparedMatch:
     if not query or not query.strip():
         return PreparedMatch("", error="query is empty")
 
-    cleaned, repairs = _rewrite_field_operators(query)
+    cleaned, repairs = _rewrite_boolean_words(query)
+    cleaned, field_repairs = _rewrite_field_operators(cleaned)
     cleaned, quote_repairs = _balance_quotes(cleaned)
     cleaned, paren_repairs = _balance_parens(cleaned)
-    repairs = repairs + quote_repairs + paren_repairs
+    repairs = repairs + field_repairs + quote_repairs + paren_repairs
 
     cleaned = " ".join(cleaned.split())
     if not cleaned:

@@ -186,6 +186,25 @@ def common_worker_processes() -> int:
     return DEFAULT_COMMON_WORKERS
 
 
+#: Index-worker processes when `HOOVER4_INDEXING_WORKERS` says nothing. Each process
+#: serves `processing-indexing-queue` with `indexing_concurrency` slots, 1 by default.
+#: The email graph runs in its own process, so an index process holds one writer chunk
+#: or one dataset-wide activity at a time.
+DEFAULT_INDEXING_WORKERS = 4
+
+
+def indexing_worker_processes() -> int:
+    """How many index-worker processes to spawn: `HOOVER4_INDEXING_WORKERS`, else 4."""
+    import os
+    raw = os.environ.get("HOOVER4_INDEXING_WORKERS", "").strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            log.warning("HOOVER4_INDEXING_WORKERS is not a number: %r", raw)
+    return DEFAULT_INDEXING_WORKERS
+
+
 def common_max_cached_workflows() -> int:
     """Cached workflow runs for each common worker: `HOOVER4_COMMON_MAX_CACHED_WORKFLOWS`.
 
@@ -562,7 +581,7 @@ async def run_embed_worker():
 
 async def run_indexing_worker():
   from .P6_index_data.activities import (
-      build_email_graph, build_vfs_nodes, index_text_pages, index_vectors,
+      build_vfs_nodes, index_text_pages, index_vectors,
       index_entity_terms, index_vfs_structure, optimize_shard_tables,
       refresh_stale_document_locations, resolve_canonical_file_type,
   )
@@ -584,7 +603,7 @@ async def run_indexing_worker():
       workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
       workflows=[],
       activities=[index_text_pages, index_vectors, build_vfs_nodes,
-                  index_vfs_structure, build_email_graph, optimize_shard_tables,
+                  index_vfs_structure, optimize_shard_tables,
                   resolve_canonical_file_type, index_entity_terms,
                   refresh_stale_document_locations],
       activity_executor=activity_executor,
@@ -620,6 +639,36 @@ async def run_index_planner_worker():
     await run_until_signalled(worker)
 
 
+async def run_email_graph_worker():
+  # WARNING: run EXACTLY ONE process of this worker. build_email_graph deletes the
+  # rows of its collection that are older than its own start, so two concurrent runs
+  # on one collection can delete the rows that the other run wrote. The dedicated
+  # queue plus max_concurrent_activities=1 keeps one run at a time for the whole
+  # deployment. The graph reads no vector, so this worker does not probe the
+  # embedding server.
+  from .P6_index_data.activities import build_email_graph
+  from .P6_index_data.workflows import EMAIL_GRAPH_TASK_QUEUE
+  from .visibility import ensure_search_attributes
+  log.info("Starting Email graph worker...")
+  client = await Client.connect("temporal:7233")
+  await ensure_search_attributes(client)
+  CONCURRENCY = 1
+  with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
+    worker = Worker(
+      client,
+      interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
+      workflow_runner=sandboxed_runner(),
+      task_queue=EMAIL_GRAPH_TASK_QUEUE,
+      graceful_shutdown_timeout=graceful_shutdown_timeout(),
+      workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
+      workflows=[],
+      activities=[build_email_graph],
+      activity_executor=activity_executor,
+      max_concurrent_activities=CONCURRENCY,
+    )
+    await run_until_signalled(worker)
+
+
 #: Slots per operations queue. The numbers are the point of the split, not the split.
 #:
 #: `operations-queue` orchestrates and never does store work, so its slots are cheap.
@@ -627,12 +676,14 @@ async def run_index_planner_worker():
 #: another, and each is capped at what that store can usefully absorb: ClickHouse gets
 #: ONE because concurrent backups and restores are disabled in its server config
 #: anyway, and a second slot would only queue inside ClickHouse where nothing here can
-#: see it.
+#: see it. `operations-admission-queue` gets ONE so the count and the write of one
+#: admission never interleave with another, which is what keeps each kind under its cap.
 OPERATIONS_QUEUE_SLOTS = {
     "operations-queue": 8,
     "operations-clickhouse-queue": 1,
     "operations-manticore-queue": 2,
     "operations-garage-queue": 2,
+    "operations-admission-queue": 1,
 }
 
 
@@ -740,12 +791,15 @@ async def run_chat_worker():
 
 
 async def run_operations_worker():
-  """Serve all four operations queues from one process.
+  """Serve all five operations queues from one process.
 
-  One process rather than four because the slot counts, not the process boundary, are
-  what bounds the load: thirteen slots of mostly-waiting work do not need four
+  One process rather than five because the slot counts, not the process boundary, are
+  what bounds the load: fourteen slots of mostly-waiting work do not need five
   interpreters, and one process means one place for the container's memory budget to
   apply. The queues stay separate so a store's work cannot starve another store's.
+
+  `operations-admission-queue` carries `admit_operation` only, in one slot, so the caps
+  of the `[operations]` section hold across the deployment.
 
   Each store queue carries that store's own backup and restore work and nothing else,
   which is what the split is for: a long object copy cannot take the single ClickHouse
@@ -758,8 +812,8 @@ async def run_operations_worker():
   needs.
   """
   from .P_ops.activities import (
-      cancel_target_operation, count_dataset_rows_activity, record_operation_state, reindex_collection_activity,
-      sample_dataset_progress, supervise_operations, tombstone_dataset_row,
+      admit_operation, cancel_target_operation, count_dataset_rows_activity, record_operation_state,
+      reindex_collection_activity, sample_dataset_progress, supervise_operations, tombstone_dataset_row,
   )
   from .P_ops.backup import (
       begin_export, export_clickhouse, export_manticore, export_object_store,
@@ -800,6 +854,7 @@ async def run_operations_worker():
       "operations-clickhouse-queue": [export_clickhouse, import_clickhouse],
       "operations-manticore-queue": [export_manticore, import_manticore],
       "operations-garage-queue": [export_object_store, import_object_store],
+      "operations-admission-queue": [admit_operation],
     }
     for queue, slots in OPERATIONS_QUEUE_SLOTS.items():
       if queue == "operations-queue":

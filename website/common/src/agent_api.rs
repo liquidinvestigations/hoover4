@@ -201,11 +201,14 @@ pub struct AgentFacetCount {
 pub struct SearchResultsResponse {
     pub documents: Vec<AgentSearchDocument>,
     pub total_count: u64,
-    /// Every facet the search page's filter modal lists, each with at most 21 values,
-    /// the website's display limit.
+    /// Every facet the search page's filter modal lists that has at least one value, each
+    /// with at most 21 values, the website's display limit.
     pub facet_counts: BTreeMap<String, Vec<AgentFacetCount>>,
     pub page: u64,
     pub has_more: bool,
+    /// What the search changed in the query before it ran, for example `OR` read as `|`.
+    #[serde(default)]
+    pub query_notes: Vec<String>,
     #[serde(flatten)]
     pub page_info: AgentPageInfo,
 }
