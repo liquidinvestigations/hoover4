@@ -507,11 +507,15 @@ pub struct ChatPollResult {
     /// waits for a model slot. Never true together with `active`.
     #[serde(default)]
     pub interrupted: bool,
-    /// The turn is active because a run of it waits in its Temporal task queue for a free
-    /// model slot, while another run on that queue holds a slot. The page shows a waiting
-    /// line. `active` is true whenever this is true.
+    /// The turn is active because a step of it waits in its Temporal task queue for a free
+    /// slot, on a queue that a worker polls. The page shows a waiting line. `active` is
+    /// true whenever this is true.
     #[serde(default)]
     pub queued: bool,
+    /// What a queued turn waits for: `model` for a model slot, `tool` for a tool slot.
+    /// Empty when `queued` is false.
+    #[serde(default)]
+    pub queued_for: String,
     /// Opaque change-detection token: the client echoes it back on the next poll, and
     /// the server returns early when the current state produces a different one.
     pub sig: String,
@@ -551,9 +555,12 @@ pub struct ChatSessionDetail {
     /// See [`ChatPollResult::interrupted`].
     #[serde(default)]
     pub interrupted: bool,
-    /// A run of the turn waits for a free model slot. See [`ChatPollResult::queued`].
+    /// A step of the turn waits for a free slot. See [`ChatPollResult::queued`].
     #[serde(default)]
     pub queued: bool,
+    /// See [`ChatPollResult::queued_for`].
+    #[serde(default)]
+    pub queued_for: String,
 }
 
 /// Maximum length of one user message. Guards the agent's context window and keeps a

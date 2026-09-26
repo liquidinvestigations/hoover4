@@ -65,10 +65,16 @@ def test_agent_activities_declare_their_task_queue():
     )
 
 
-def test_the_agent_call_goes_to_the_queue_in_the_run_row():
+def test_the_model_step_goes_to_the_queue_in_the_run_row():
     queues = [_queue(call) for call in _iter_execute_activity()
-              if _name(call.args[0]) == "run_agent"]
+              if _name(call.args[0]) == "model_step"]
     assert queues == ["row"], queues
+
+
+def test_the_tool_call_goes_to_the_tool_queue():
+    queues = [_queue(call) for call in _iter_execute_activity()
+              if _name(call.args[0]) == "tool_call"]
+    assert queues == ["AGENT_TOOL_TASK_QUEUE"], queues
 
 
 def test_plan_runs_go_to_the_research_queue():
@@ -81,7 +87,8 @@ def test_plan_runs_go_to_the_research_queue():
 
 def test_short_agent_activities_go_to_the_low_latency_queue():
     for activity in ("open_run", "append_nag", "write_ending", "read_chat_todo",
-                     "summarize_if_first_turn"):
+                     "summarize_if_first_turn", "delegate_step", "prepare_continuation",
+                     "record_step_failure", "plan_has_sections"):
         queues = [
             _name(_kwarg(call, "task_queue"))
             for call in _iter_execute_activity()
@@ -107,11 +114,12 @@ def _chat_worker_slot_defaults() -> dict[str, int]:
     return defaults
 
 
-def test_an_empty_slot_key_gives_four_model_slots_and_four_research_slots(monkeypatch):
+def test_an_empty_slot_key_gives_three_model_slots_and_sixteen_tool_slots(monkeypatch):
     from tasks.run_worker import worker_concurrency
 
     defaults = _chat_worker_slot_defaults()
-    assert defaults == {"chat_model": 4, "chat_low_latency": 8, "research": 4}
-    for name in ("chat_model", "research"):
+    assert defaults == {"chat_model": 3, "chat_low_latency": 8, "research": 3,
+                        "agent_tool": 16}
+    for name in ("chat_model", "research", "agent_tool"):
         monkeypatch.setenv(f"HOOVER4_{name.upper()}_CONCURRENCY", "")
-        assert worker_concurrency(name, defaults[name]) == 4
+        assert worker_concurrency(name, defaults[name]) == defaults[name]

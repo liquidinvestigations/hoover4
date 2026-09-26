@@ -1,6 +1,6 @@
 """The sub-agent budgets of a run that delegates.
 
-`run_agent` applies these rules to the briefings of one delegation, in call order, and
+`delegate_step` applies these rules to the briefings of one delegation, in call order, and
 refuses the surplus briefings with a reason. The refused briefings go into the delegating
 run's `refused_json`, and the continuation gives them to the model beside the reports.
 

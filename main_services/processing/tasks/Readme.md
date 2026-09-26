@@ -104,30 +104,63 @@ every failed file, in `processing_errors`, and does not write `operation_failure
 ### P_agent - every AI agent turn
 
 **Every agent run runs here.** `AgentRun` owns an ordinary chat message on `chat-queue`, and
-each planner and organizer run of a deep research plan. Its agent call, `run_agent`, runs on
-the queue in its run row: `chat-model-queue` for a chat turn, `research-queue` for a plan run.
+each planner and organizer run of a deep research plan. The workflow runs the agent loop.
+Each model call is one `model_step` activity on the queue in its run row, `chat-model-queue`
+for a chat turn and `research-queue` for a plan run. Each tool call is one `tool_call`
+activity on `agent-tool-queue`. The step activities are in `P_agent/steps.py`.
 `plan_runs.py` writes the plan run state in `open_run` and `write_ending`, the section
 documents, and `sections_json`. A decision of the person starts the next run from the
 website, so no workflow waits for review.
 
 `AgentRun` keeps its state in `agent_runs` and `agent_run_messages`
 (`database/agent_runs.py`). Its input holds ids and settings only. `open_run` writes the
-row and the opening message from the user row, `run_agent` sends the stored thread to the
-agent's `POST /run/stream` and writes each event as it arrives, and `write_ending` writes the
-terminal state and the ending row. No answer or tool result crosses a Temporal payload. A
-tool result is paired with its call by `tool_call_id`, so two parallel calls keep their own
-arguments. A retry of `run_agent` continues from the stored thread and the row's `next_seq`, and the
-agent runs a call that the failed attempt left without a result before its next model call.
+row and the opening message from the user row, and returns the unanswered calls of the
+stored thread. `model_step` sends the stored thread to the agent's `POST /model_step`, and
+writes the reply: the `ai` message with its call entries, one live tool row for each call,
+or the answer row. `tool_call` sends one stored call to `POST /tool_call` with an
+idempotency key from the thread, the reply and the place of the call, and writes its `tool`
+message and tool row. `write_ending` writes the terminal state and the ending row. No
+answer or tool result crosses a Temporal payload. Each write has a fixed key, so a retry, a
+worker restart and a continue-as-new resume from the stored thread. A step that finds its
+own `ai` message makes no second model call, and a call that has a result runs nothing.
 A turn with a stop row in `agent_turn_stops` closes in `open_run`.
 
-**Delegation runs through run rows.** The agent stops a run at `run_subagent` and sends one
-`delegate` event for each call. `run_agent` then writes one `tool` row for each call, applies
+**The limits of the loop** are in `P_agent/model_timeouts.py`. A model step has 3,600 s
+(`llm_request_timeout_seconds`) and a tool call 300 s. Each waits at most
+`agent_queue_wait_seconds` for a slot. A model step that waits longer fails the run with
+"The model queue wait passed ... s.", and a tool call that fails after its last attempt gets
+a stored `tool_unavailable` result, which the model reads. After 600 model steps one
+`final` step binds no tool, and the run ends `completed` with `end_reason` `step_budget`.
+A reply that repeats an earlier call also gets one `final` step (`repeated_call`). The
+workflow continues as new every 250 model steps, or past 30,000 history events. A planner
+that answers with no plan section gets one more round with a note, and then fails.
+
+**Each attempt of a model step, a tool step and a title call writes one row of
+`agent_step_events`** (`database/agent_step_events.py`). The row holds the queue wait, the
+duration, the status, the error class and the tokens. The step activities write it from a `finally`
+block through the buffer of `task_timing.py`. A step that returns a stored result writes no
+row. Each attempt that starts writes one row. An attempt that passes its start-to-close
+limit on a live worker is cancelled with the reason `timed_out`, and its row has the class
+`start_to_close_timeout`. `record_step_failure` writes the row of a step that never started
+or lost its heartbeat, with `attempt` 0. The table keeps 90 days.
+
+**A change to `AgentRun` needs the drain.** A running `AgentRun` replays its history on the
+new code, and a history that does not match fails as nondeterministic, so the turn never
+ends. No workflow versioning exists. Before a worker with a changed `AgentRun` starts,
+write the stop row of each open agent turn and cancel every running `AgentRun`, with the
+old worker still up, until the count of running `AgentRun` workflows is 0. The Temporal CLI
+in the `temporal` container needs `--address` with the address that the worker connects to,
+because the default address of the CLI has no server.
+
+**Delegation runs through run rows.** A reply with `run_subagent` calls runs its other
+calls first. `delegate_step` then writes one `tool` row for each delegation call, applies
 the budgets of `run_budgets.py`, writes a child row and an opening message for each accepted
 briefing, and puts its own row in `waiting_for_children`. The workflow starts one abandoned
 child `AgentRun` for each child, with the parent's collections, model and internet switch in
 its input, and returns. When a run ends, `fan_in` reads its sibling set. When every sibling
 is terminal, `continue_run` writes a continuation row of the parent, and the workflow starts
-it. The continuation's `run_agent` adds one `tool` result for each `run_subagent` call, the
+it. The continuation's `prepare_continuation` adds one `tool` result for each `run_subagent`
+call, the
 JSON `{"reports": [...], "refused": [...]}`, and rewrites the call's transcript row with it.
 `write_ending` of a continuation writes its state into every run it continues. Child and
 continuation ids are `uuid5` values, so a retry and a second writer write the same rows, and
@@ -207,13 +240,13 @@ beats every 15 s from a pump thread. The blanket wrap is deliberate: any activit
 real work legitimately exceeds the deadline (ffprobe on a large video, a Manticore batch
 write) would otherwise be killed and retried forever.
 
-`run_agent` is the exception. Its pump beats every 5 s, and the chat-model and research
-workers set `max_heartbeat_throttle_interval` to 5 s. A stop cancels the activity, and the
-worker learns of a cancel only from a heartbeat reply, so it learns of a stop within about
-two beats. The SDK default holds a heartbeat back for 0.8 of the heartbeat timeout, which is
-48 s for a chat run. The attempt then stops at the next event from the agent service. A
-stop during a long tool call, or during a model call that waits in the model server queue,
-ends the run when that call sends its next event.
+`model_step` and `tool_call` are the exception. Their heartbeat limit is 30 s, their pump
+beats every 10 s, and the chat-model, research and tool workers set
+`max_heartbeat_throttle_interval` to 5 s. A stop cancels the activity, and the worker learns
+of a cancel only from a heartbeat reply, so it learns of a stop within about two beats. The
+request to the agent service runs in a thread of its own, so the step stops within a
+second after that, also during a long tool call or a model call that waits in the model
+server queue.
 
 The 2x margin is deliberate too, and widening it is a trap. The deadline is also how
 long a wedged slot is held before the fleet can reuse it, so a wider one starves the
@@ -373,19 +406,22 @@ Workers are split into dedicated queues to control throughput and resource usage
   MUST run at exactly one worker process of one slot. A run deletes its collection's
   rows that are older than its own start. Two runs at once can delete each other's rows.
 - `chat-queue`, `AgentRun` plus `open_run`, `append_nag`, `write_ending`, `fan_in`,
-  `continue_run`, todo reads and session titles (`main.py worker chat`, concurrency from `chat_low_latency_concurrency`).
-- `chat-model-queue`, `run_agent` for those chat turns
-  (`chat_model_concurrency`). A slot is one agent run, not one model call. A delegated
-  turn takes one slot for each running sub-agent.
-- `research-queue`, `run_agent` of a plan run (`research_concurrency`). Four slots,
-  outside the chat-model slots.
+  `continue_run`, `delegate_step`, `prepare_continuation`, `record_step_failure`,
+  `plan_has_sections`, todo reads and session titles (`main.py worker chat`, concurrency
+  from `chat_low_latency_concurrency`).
+- `chat-model-queue`, `model_step` for those chat turns and their sub-agents
+  (`chat_model_concurrency`, 3 slots). A slot is one model call in flight.
+- `research-queue`, `model_step` of a plan run (`research_concurrency`, 3 slots), outside
+  the chat-model slots.
+- `agent-tool-queue`, `tool_call` of every agent run (`agent_tool_concurrency`, 16 slots).
+  A slot is one tool call in flight. A delegation takes no tool slot.
 
 ### How the numbers are chosen
 
 Every tier's slot count comes from what that tier waits on, and `worker_concurrency()`
 lets `hoover4.ini` override any of them. The pipeline keys are empty by default, because
-a default that is a measurement is better than one a deployment guessed. The three chat
-keys are set: a slot is one turn in flight, not one model call.
+a default that is a measurement is better than one a deployment guessed. The four agent
+keys are set: a slot is one model call or one tool call in flight.
 
 The two remote tiers pipeline HTTP against a GPU that has its own admission control, so
 their number is the *server's* window (`ai_server_ner_concurrency`,

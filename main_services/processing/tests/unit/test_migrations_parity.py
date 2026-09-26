@@ -35,6 +35,7 @@ COLLAPSED_BASELINE = {
 EXPECTED_GLOBAL_TABLES = {
     "agent_runs",
     "agent_run_messages",
+    "agent_step_events",
     "agent_turn_stops",
     "agent_plan_snapshots",
     "agent_plan_runs",

@@ -227,6 +227,7 @@ DEFAULTS = {
         "chat_model_concurrency": "",
         "chat_low_latency_concurrency": "",
         "research_concurrency": "",
+        "agent_tool_concurrency": "",
         # Chat poll and browser caps. Empty would fall back to the code defaults.
         "max_held_polls_per_user": "8",
         "rate_chat_poll_per_minute": "1800",
@@ -244,12 +245,10 @@ DEFAULTS = {
         "agent_max_page_tokens": "",
         "agent_completion_reserve_tokens": "",
         "agent_catalogue_match_count": "",
-        # The budget timeouts of an agent run, in whole seconds. Empty keeps the code
-        # defaults: no queue-wait limit, 900 s for a chat run, 2400 s for a plan run, a
-        # 30 s title request, and the model client's own timeout and 2 retries.
+        # The step limits of an agent run, in whole seconds. Empty keeps the code
+        # defaults: no queue-wait limit, a 30 s title request, a 3,600 s model step in the
+        # worker, and the model client's own timeout and 2 retries in the agent services.
         "agent_queue_wait_seconds": "",
-        "chat_run_timeout_seconds": "",
-        "plan_run_timeout_seconds": "",
         "title_request_timeout_seconds": "",
         "llm_request_timeout_seconds": "",
         # The output cap of one agent model request, in tokens. Empty sends no cap.
@@ -772,8 +771,6 @@ def agent_probe_env(cfg):
 #: renders empty, which keeps the code default of the reader.
 AGENT_MODEL_NUMBER_KEYS = (
     ("agent_queue_wait_seconds", "HOOVER4_AGENT_QUEUE_WAIT_SECONDS"),
-    ("chat_run_timeout_seconds", "HOOVER4_CHAT_RUN_TIMEOUT_SECONDS"),
-    ("plan_run_timeout_seconds", "HOOVER4_PLAN_RUN_TIMEOUT_SECONDS"),
     ("title_request_timeout_seconds", "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS"),
     ("llm_request_timeout_seconds", "LLM_REQUEST_TIMEOUT_SECONDS"),
     ("agent_max_output_tokens", "AGENT_MAX_OUTPUT_TOKENS"),
@@ -785,8 +782,8 @@ AGENT_THINKING_MODES = ("off", "on", "budgeted")
 
 def agent_model_env(cfg):
     """The timeouts, the output cap and the thinking and streaming switches of the agent
-    model calls. The worker reads the four `HOOVER4_*` timeouts, and both agent services
-    read the rest.
+    model calls. The worker reads the two `HOOVER4_*` timeouts and
+    `LLM_REQUEST_TIMEOUT_SECONDS`, and both agent services read the rest.
 
     A number key must be a whole number of at least 1 when it is set. `agent_thinking`
     renders as written, and an empty value renders `off`. A value outside the three modes
@@ -817,17 +814,6 @@ def agent_model_warnings(cfg):
     if thinking and thinking.lower() not in AGENT_THINKING_MODES:
         out.append("warning: [main_services] agent_thinking = %s is not one of %s, so the "
                    "agent services use off" % (thinking, ", ".join(AGENT_THINKING_MODES)))
-    request = cfg.get(m, "llm_request_timeout_seconds").strip()
-    if request:
-        request_seconds = whole_number(cfg, "llm_request_timeout_seconds")
-        for key in ("chat_run_timeout_seconds", "plan_run_timeout_seconds"):
-            raw = cfg.get(m, key).strip()
-            run_seconds = whole_number(cfg, key) if raw else (
-                900 if key == "chat_run_timeout_seconds" else 2400)
-            if run_seconds < request_seconds:
-                out.append("warning: [main_services] %s = %d is under "
-                           "llm_request_timeout_seconds = %d, so one model call can "
-                           "outlast its run attempt" % (key, run_seconds, request_seconds))
     return out
 
 
@@ -1452,7 +1438,7 @@ def render_main_env(cfg):
         env["HOOVER4_COMMON_MAX_CACHED_WORKFLOWS"] = str(
             whole_number(cfg, "common_max_cached_workflows"))
     for tier in ("common", "tika", "ocr", "nlp", "embed", "indexing",
-                 "chat_model", "chat_low_latency", "research"):
+                 "chat_model", "chat_low_latency", "research", "agent_tool"):
         value = cfg.get(m, "%s_concurrency" % tier)
         if value:
             env["HOOVER4_%s_CONCURRENCY" % tier.upper()] = value
@@ -1497,7 +1483,7 @@ def render_main_env(cfg):
     env["HOOVER4_MAX_HELD_POLLS_PER_USER"] = cfg.get(m, "max_held_polls_per_user")
     env["HOOVER4_RATE_CHAT_POLL_PER_MINUTE"] = cfg.get(m, "rate_chat_poll_per_minute")
     env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")
-    # The sub-agent budgets of the worker's run_agent. Empty keeps 6 and 300.
+    # The sub-agent budgets of the worker's delegate_step. Empty keeps 6 and 300.
     env["AGENT_SUBAGENT_MAX_PER_TURN"] = cfg.get(m, "agent_subagent_max_per_turn") or "6"
     env["AGENT_PLAN_RUN_BUDGET"] = cfg.get(m, "agent_plan_run_budget") or "300"
     for kind in ("chat", "subagent", "planner", "organizer"):

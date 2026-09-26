@@ -5,10 +5,15 @@ is a plan run whose planner and organizer runs are each one `AgentRun`. The stat
 the `agent_runs` and `agent_run_messages` tables, so the workflow input and results hold
 ids only.
 
-`AgentRun` runs on `chat-queue`. Its agent call runs on the queue in its row,
-`chat-model-queue` for a chat turn and `research-queue` for a plan run. None of these is
-the ingestion queue. An ingestion backlog delaying a person at a screen is the failure a
-shared queue guarantees, and these three queues make it impossible.
+`AgentRun` runs the agent loop on `chat-queue`. Each model call is one `model_step`
+activity on the queue in its row, `chat-model-queue` for a chat turn and `research-queue`
+for a plan run. Each tool call is one `tool_call` activity on `agent-tool-queue`. None of
+these is the ingestion queue, so an ingestion backlog cannot delay a person at a screen.
+
+**A change to `AgentRun` needs the drain.** A running `AgentRun` replays its history on
+new code, and a history that does not match the new code fails as nondeterministic. No
+workflow versioning exists, so a deploy that changes this workflow first stops every open
+agent turn and cancels every running `AgentRun` (`tasks/Readme.md`).
 """
 
 import asyncio
@@ -18,21 +23,27 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy, WorkflowIDReusePolicy
-from temporalio.exceptions import ActivityError, CancelledError, WorkflowAlreadyStartedError
+from temporalio.exceptions import (
+    ActivityError, ApplicationError, CancelledError, TimeoutError as TemporalTimeoutError,
+    TimeoutType, WorkflowAlreadyStartedError,
+)
 from temporalio.workflow import ActivityCancellationType, ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():
     from database import chat_todos
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P_agent import nagging
-    from tasks.P_agent.model_timeouts import TIMEOUTS
+    from tasks.P_agent.model_timeouts import (
+        CONTINUE_AS_NEW_STEPS, HISTORY_EVENTS_PER_RUN, RUN_MODEL_STEPS,
+        STEP_HEARTBEAT_TIMEOUT, TIMEOUTS, TOOL_CALL_TIMEOUT,
+    )
     from tasks.P_agent.activities import (
         AgentRunInput,
         AppendNagParams,
+        CallRef,
         Continuation,
         OpenedRun,
         ReadTodoParams,
-        RunAgentParams,
         RunRef,
         RunSummary,
         WriteEndingParams,
@@ -41,49 +52,65 @@ with workflow.unsafe.imports_passed_through():
         fan_in,
         open_run,
         read_chat_todo,
-        run_agent,
         summarize_if_first_turn,
         write_ending,
     )
+    from tasks.P_agent.steps import (
+        ModelStepParams,
+        ModelStepResult,
+        StepFailure,
+        StepRef,
+        ToolCallParams,
+        delegate_step,
+        model_step,
+        plan_has_sections,
+        prepare_continuation,
+        record_step_failure,
+        tool_call,
+    )
 
 
-#: The queue `AgentRun` is dispatched to, and the queue that writes the transcript,
-#: reads the todo list and titles the session. Named here so the worker that polls it
+#: The queue `AgentRun` is dispatched to, and the queue of its short activities: open, nag,
+#: ending, fan-in, delegation, todo read and title. Named here so the worker that polls it
 #: and the caller that addresses it cannot drift: a workflow addressed to a queue nothing
 #: is polling waits for ever with no error anywhere, which presents as chat hanging.
 #:
-#: **Mirrored in `website/backend/src/api/chat/mod.rs`.** The three names move in the
+#: **Mirrored in `website/backend/src/api/chat/mod.rs`.** The queue names move in the
 #: same patch or not at all.
 CHAT_TASK_QUEUE = "chat-queue"
 
-#: The queue a chat turn's `run_agent` goes to. One slot is one agent run in flight, and
-#: one run makes up to `AGENT_MAX_TOOL_TURNS` model calls in sequence. Each sub-agent runs
-#: its own `run_agent` on its parent's queue, so a delegated turn takes one slot for each
-#: running sub-agent.
+#: The queue of the `model_step` activities of a chat turn and its sub-agents. One slot is
+#: one model call in flight.
 CHAT_MODEL_TASK_QUEUE = "chat-model-queue"
 
-#: The queue of the agent activity of a plan run: its planner and organizer runs and their
-#: sub-agents. Its own slots, outside the chat-model slots, so a research run cannot
-#: take a chat turn's slot and an ingestion backlog cannot sit in front of it.
+#: The queue of the `model_step` activities of a plan run: its planner and organizer runs
+#: and their sub-agents. Its own slots, outside the chat model slots, so a research run
+#: cannot take a chat turn's slot.
 RESEARCH_TASK_QUEUE = "research-queue"
 
-#: How long the chat agent activity may go without proving it is alive before Temporal
-#: reschedules it on another worker.
-#:
-#: **This number and the website's `CHAT_STREAM_STALL_SECONDS` are one pair and must be
-#: read together.** This one is how long a dead worker goes unnoticed; that one is how
-#: long the page waits before telling the user the turn is dead. The page must never give
-#: up first, because its advice is "ask again to retry" and a user who follows it while a
-#: reschedule is still coming gets the same answer twice, from two workflows. So the
-#: stall window is deliberately the larger of the two, by a wide margin: 60 s here
-#: against a 180 s default there.
-#:
-#: `run_agent` carries a heartbeat pump that beats every `RUN_AGENT_HEARTBEAT_SECONDS`
-#: (5 s) for as long as the body runs, so the agent's own latency never enters this
-#: budget. Lowering it further starts trading
-#: against a loaded box missing beats; raising it is worse than it looks, because the
-#: deadline is also how long a wedged slot stays occupied (see `tasks.heartbeat`).
-CHAT_AGENT_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
+#: The queue of every `tool_call` activity, of chat turns and plan runs alike. One slot is
+#: one tool call in flight. A delegation takes no tool slot.
+AGENT_TOOL_TASK_QUEUE = "agent-tool-queue"
+
+#: Nothing in an `AgentRun` input or result is text. A `RunSummary` with five children
+#: stays under this bound. A `ModelStepResult` carries one `CallRef` for each call, so a
+#: reply with more than about 12 calls passes it, and the payload guard limits still hold.
+AGENT_RUN_PAYLOAD_BYTES = 4096
+
+#: The note of the extra planner round, when the planner answered with no plan section.
+PLANNER_NO_SECTION_NOTE = (
+    "The plan has no section yet. A section is a node with at least one task under it, "
+    "and the root counts. Read the tree with read_plan. Add each section with append_node "
+    "and each of its tasks with append_child. Then answer with the orientation."
+)
+
+#: The error of a planner run that wrote no plan section after its extra round.
+PLANNER_NO_SECTION_ERROR = ("The planner wrote no plan section, so the plan cannot run. Ask "
+                            "for the research again.")
+
+#: The limits of the short activities on `chat-queue`, except the ending and the title.
+_SHORT_TIMEOUT = timedelta(seconds=30)
+
 
 def _was_cancelled(exc: BaseException) -> bool:
     """Whether this failure is a cancellation wearing another exception's clothes.
@@ -101,21 +128,31 @@ def _was_cancelled(exc: BaseException) -> bool:
     return False
 
 
-#: The start-to-close timeout of `run_agent` for a run with no plan, from
-#: `chat_run_timeout_seconds` (900 s when the key is empty). It is a budget bound: it follows
-#: the measured speed of the model server, so a slow model call that is alive is not failed.
-#: A dead worker is found by the heartbeat, which stays fixed.
-RUN_AGENT_TIMEOUT = TIMEOUTS.chat_run
-#: The start-to-close and heartbeat timeouts of `run_agent` for a run of a plan, of any
-#: kind. A research round runs longer than a chat turn and nobody waits at the screen. The
-#: start-to-close timeout comes from `plan_run_timeout_seconds` (2,400 s when the key is
-#: empty).
-PLAN_RUN_AGENT_TIMEOUT = TIMEOUTS.plan_run
-PLAN_RUN_AGENT_HEARTBEAT_TIMEOUT = timedelta(minutes=10)
+_TIMEOUT_CLASSES = {
+    TimeoutType.SCHEDULE_TO_START: "schedule_to_start_timeout",
+    TimeoutType.HEARTBEAT: "heartbeat_timeout",
+    TimeoutType.START_TO_CLOSE: "start_to_close_timeout",
+}
 
-#: Nothing in an `AgentRun` input or result is text. The largest result, a `run_agent`
-#: summary with five children, stays under this bound.
-AGENT_RUN_PAYLOAD_BYTES = 4096
+
+def _error_class(exc: BaseException) -> str:
+    """The class of a step failure, from the `TimeoutError` type in its cause chain."""
+    seen: BaseException | None = exc
+    while seen is not None:
+        if isinstance(seen, TemporalTimeoutError):
+            return _TIMEOUT_CLASSES.get(seen.type, "activity_error")
+        seen = seen.__cause__
+    return "activity_error"
+
+
+def _failure_text(exc: BaseException) -> str:
+    """The text of the `failed` ending. A model step that waited in its queue past the
+    limit gets a sentence a person can read, in place of the Temporal timeout text."""
+    if (isinstance(exc, ActivityError) and exc.activity_type == "model_step"
+            and _error_class(exc) == "schedule_to_start_timeout"):
+        seconds = int(TIMEOUTS.queue_wait.total_seconds()) if TIMEOUTS.queue_wait else 0
+        return f"The model queue wait passed {seconds:,} s."
+    return _cause_text(exc)
 
 
 @workflow.defn
@@ -127,16 +164,24 @@ class AgentRun:
     `agent_runs` and `agent_run_messages`, so a retry reads the same state and no answer,
     tool result or briefing crosses a Temporal payload.
 
-    The run uses no Signal, no Update and no continue-as-new, and it never waits for a
-    person. A stop cancels the workflow. The cancellation reaches the workflow as a
-    `CancelledError`, or as an `ActivityError` that wraps it, and both write the
-    `cancelled` ending. A workflow that starts after a stop closes in `open_run`.
+    **The loop.** A round runs the unanswered calls of the thread, then one `model_step`.
+    A reply with calls gives the next calls. A reply with no call ends the round. The
+    `ordered` calls (plan tree changes) run one after the other, the `parallel` calls run
+    at once beside them, and a `delegation` runs after both. After `RUN_MODEL_STEPS` model
+    steps, one `final` step binds no tool and the run ends. A reply whose call repeats an
+    earlier call also gets one `final` step. The workflow continues as new every
+    `CONTINUE_AS_NEW_STEPS` model steps, or when its history passes
+    `HISTORY_EVENTS_PER_RUN` events, and the new run resumes from the thread.
+
+    The run uses no Signal and no Update, and it never waits for a person. A stop cancels
+    the workflow. The cancellation reaches the workflow as a `CancelledError`, or as an
+    `ActivityError` that wraps it, and both write the `cancelled` ending. A workflow that
+    starts after a stop closes in `open_run`.
 
     **The nag loop runs here** for a chat lead, with the rules of `tasks.P_agent.nagging`.
-    The two counters are row columns, so they outlive a worker restart.
-
-    The agent activity goes to the queue in the row, `chat-model-queue` for a chat lead.
-    The short activities run on `chat-queue`.
+    The two counters are row columns, so they outlive a worker restart. **A planner that
+    answers with no plan section** gets one extra round with `PLANNER_NO_SECTION_NOTE`, and
+    then fails.
 
     **Delegation.** A run that stops at `run_subagent` ends as `delegated` with its row in
     `waiting_for_children`. It starts one abandoned child `AgentRun` for each accepted
@@ -150,13 +195,20 @@ class AgentRun:
     def __init__(self) -> None:
         #: The todo snapshot taken when the last nag was written, to compare against.
         self._todo_before_nag: dict | None = None
+        #: The model steps of the run thread.
+        self._steps = 0
+        #: The model steps of this workflow run, across its nag rounds.
+        self._steps_here = 0
+        self._planner_retry_done = False
 
     @workflow.run
     async def run(self, inp: AgentRunInput) -> str:
+        self._todo_before_nag = json.loads(inp.todo_before_nag) if inp.todo_before_nag else None
+        self._planner_retry_done = inp.planner_retry_done
         opened: OpenedRun = await workflow.execute_activity(
             open_run,
             inp,
-            start_to_close_timeout=timedelta(seconds=30),
+            start_to_close_timeout=_SHORT_TIMEOUT,
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             task_queue=CHAT_TASK_QUEUE,
@@ -166,6 +218,7 @@ class AgentRun:
                 await start_run(self._settings(inp, opened.continuation_run_id),
                                 f"run-{opened.continuation_run_id}")
             return "closed"
+        self._steps = opened.model_steps
         try:
             summary = await self._rounds(inp, opened)
         except asyncio.CancelledError:
@@ -178,7 +231,10 @@ class AgentRun:
             if _was_cancelled(exc):
                 await asyncio.shield(self._finish(inp, "cancelled"))
             else:
-                await self._finish(inp, "failed", _cause_text(exc))
+                await self._finish(inp, "failed", _failure_text(exc))
+            raise
+        except ApplicationError as exc:
+            await self._finish(inp, "failed", exc.message)
             raise
         # Outside the try: a failure below cannot rewrite the state of this run.
         if summary.outcome == "closed":
@@ -198,7 +254,7 @@ class AgentRun:
                 continuation: Continuation = await workflow.execute_activity(
                     continue_run,
                     RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
-                    start_to_close_timeout=timedelta(seconds=30),
+                    start_to_close_timeout=_SHORT_TIMEOUT,
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                     task_queue=CHAT_TASK_QUEUE,
@@ -216,48 +272,196 @@ class AgentRun:
         for child in children:
             await start_run(self._settings(inp, child, "subagent"), f"run-{child}")
 
-    async def _run_agent(self, inp: AgentRunInput, opened: OpenedRun) -> RunSummary:
-        """One `run_agent` attempt chain, which is the only writer of the run while it runs.
+    @staticmethod
+    def _ref_fields(inp: AgentRunInput) -> dict:
+        return dict(run_id=inp.run_id, username=inp.username, session_id=inp.session_id,
+                    turn_uuid=inp.turn_uuid,
+                    allowed_collections=list(inp.allowed_collections or []),
+                    llm_model=inp.llm_model, internet_tools=inp.internet_tools)
 
-        A stop waits for the attempt to end (`WAIT_CANCELLATION_COMPLETED`), so
-        `write_ending` never runs beside an attempt that still writes rows. An attempt can
-        end without an error after the stop arrived. The pending cancellation then raises
-        here, so the run still ends as `cancelled`. Children that such an attempt wrote
-        have no workflow, and the `cancelled` ending of `write_ending` ends them.
+    def _ref(self, inp: AgentRunInput) -> StepRef:
+        return StepRef(**self._ref_fields(inp))
+
+    # ------------------------------------------------------------------------ the loop
+
+    async def _agent_loop(self, inp: AgentRunInput, opened: OpenedRun,
+                          first: bool) -> RunSummary:
+        """One round: run the unanswered calls, then model steps until a reply has no call.
+
+        The first round of a workflow run adds the children's reports of a continuation
+        and starts with the unanswered calls that `open_run` found. A later round starts
+        after a nag, with no call left.
         """
-        summary = await workflow.execute_activity(
-            run_agent,
-            RunAgentParams(
-                run_id=inp.run_id,
-                username=inp.username,
-                session_id=inp.session_id,
-                turn_uuid=inp.turn_uuid,
-                allowed_collections=list(inp.allowed_collections or []),
-                llm_model=inp.llm_model,
-                internet_tools=inp.internet_tools,
-            ),
-            start_to_close_timeout=(PLAN_RUN_AGENT_TIMEOUT if opened.plan
-                                    else RUN_AGENT_TIMEOUT),
-            heartbeat_timeout=(PLAN_RUN_AGENT_HEARTBEAT_TIMEOUT if opened.plan
-                               else CHAT_AGENT_HEARTBEAT_TIMEOUT),
-            # The wait for a free slot on the model queue, from `agent_queue_wait_seconds`.
-            # None sets no limit. Temporal does not retry this timeout, so a run that waits
-            # past it fails and `write_ending` records the failure.
-            schedule_to_start_timeout=TIMEOUTS.queue_wait,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=opened.queue,
-            cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+        pending: list[CallRef] = []
+        if first:
+            if opened.continues:
+                await workflow.execute_activity(
+                    prepare_continuation, self._ref(inp),
+                    start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    task_queue=CHAT_TASK_QUEUE,
+                )
+            pending = list(opened.pending)
+        while True:
+            if pending:
+                delegated = await self._run_calls(inp, pending)
+                if delegated is not None:
+                    return delegated
+                pending = []
+            if (self._steps_here >= CONTINUE_AS_NEW_STEPS
+                    or workflow.info().get_current_history_length() > HISTORY_EVENTS_PER_RUN):
+                workflow.continue_as_new(replace(
+                    inp,
+                    todo_before_nag=(json.dumps(self._todo_before_nag)
+                                     if self._todo_before_nag is not None else ""),
+                    planner_retry_done=self._planner_retry_done,
+                ))
+            final = self._steps >= RUN_MODEL_STEPS
+            result = await self._model_step(inp, opened, "final" if final else "tools",
+                                            "step_budget" if final else "")
+            if result.outcome == "closed":
+                return RunSummary(outcome="closed", next_seq=result.next_seq)
+            if result.outcome == "answered":
+                return RunSummary(outcome="answered", next_seq=result.next_seq,
+                                  next_idx=result.next_idx,
+                                  end_reason="step_budget" if final else "")
+            if result.repeated:
+                result = await self._model_step(inp, opened, "final", "repeated_call")
+                if result.outcome == "closed":
+                    return RunSummary(outcome="closed", next_seq=result.next_seq)
+                return RunSummary(outcome="answered", next_seq=result.next_seq,
+                                  next_idx=result.next_idx, end_reason="repeated_call")
+            pending = result.calls
+
+    async def _model_step(self, inp: AgentRunInput, opened: OpenedRun, mode: str,
+                          reason: str) -> ModelStepResult:
+        self._steps += 1
+        self._steps_here += 1
+        try:
+            result = await workflow.execute_activity(
+                model_step,
+                ModelStepParams(**self._ref_fields(inp), step_no=self._steps, mode=mode,
+                                final_reason=reason),
+                start_to_close_timeout=TIMEOUTS.model_call,
+                heartbeat_timeout=STEP_HEARTBEAT_TIMEOUT,
+                # The wait for a free model slot. None sets no limit. Temporal does not
+                # retry this timeout, so a step that waits past it fails the run.
+                schedule_to_start_timeout=TIMEOUTS.queue_wait,
+                retry_policy=RetryPolicy(maximum_attempts=3,
+                                         initial_interval=timedelta(seconds=5),
+                                         backoff_coefficient=2.0,
+                                         maximum_interval=timedelta(seconds=60),
+                                         non_retryable_error_types=["ModelRequestRejected"]),
+                task_queue=opened.queue,
+                cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+            )
+        except ActivityError as exc:
+            if not _was_cancelled(exc):
+                await self._record_failure(inp, "model", opened.queue, exc,
+                                           name=inp.llm_model)
+            raise
+        self._raise_if_stopped()
+        return result
+
+    async def _run_calls(self, inp: AgentRunInput, pending: list[CallRef]) -> RunSummary | None:
+        """Run the calls of one reply. Returns the delegation summary, or None."""
+        ordered = [c for c in pending if c.kind == "ordered"]
+        parallel = [c for c in pending if c.kind == "parallel"]
+        delegations = [c for c in pending if c.kind == "delegation"]
+
+        async def in_order() -> None:
+            # The plan tree changes keep their order.
+            for call in ordered:
+                await self._tool_call(inp, call)
+
+        await asyncio.gather(in_order(), *(self._tool_call(inp, c) for c in parallel))
+        if delegations:
+            # A delegation takes no tool slot. A stop waits for it to end, so the
+            # `cancelled` ending sees every child row it wrote, and ends each of them.
+            summary = await workflow.execute_activity(
+                delegate_step, self._ref(inp),
+                start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                task_queue=CHAT_TASK_QUEUE,
+                cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+            )
+            self._raise_if_stopped()
+            return summary
+        return None
+
+    async def _tool_call(self, inp: AgentRunInput, call: CallRef) -> None:
+        """One tool call. A failure after the last attempt stores a `tool_unavailable`
+        result, and the loop goes on. Only a stop ends the run here."""
+        try:
+            await workflow.execute_activity(
+                tool_call,
+                ToolCallParams(**self._ref_fields(inp), call=call),
+                start_to_close_timeout=TOOL_CALL_TIMEOUT,
+                heartbeat_timeout=STEP_HEARTBEAT_TIMEOUT,
+                schedule_to_start_timeout=TIMEOUTS.queue_wait,
+                retry_policy=RetryPolicy(maximum_attempts=3 if call.retry else 1,
+                                         initial_interval=timedelta(seconds=2),
+                                         backoff_coefficient=2.0),
+                task_queue=AGENT_TOOL_TASK_QUEUE,
+                cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+            )
+        except ActivityError as exc:
+            if _was_cancelled(exc):
+                raise
+            await self._record_failure(inp, "tool", AGENT_TOOL_TASK_QUEUE, exc, call=call,
+                                       name=call.name)
+        self._raise_if_stopped()
+
+    async def _record_failure(self, inp: AgentRunInput, step: str, queue: str,
+                              exc: BaseException, call: CallRef | None = None,
+                              name: str = "") -> None:
+        await workflow.execute_activity(
+            record_step_failure,
+            StepFailure(**self._ref_fields(inp), step=step, name=name,
+                        error_class=_error_class(exc), task_queue=queue, call=call),
+            start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            task_queue=CHAT_TASK_QUEUE,
         )
+
+    @staticmethod
+    def _raise_if_stopped() -> None:
+        """A step can end without an error after the stop arrived, because the workflow
+        waits for it (`WAIT_CANCELLATION_COMPLETED`). The pending cancellation then raises
+        here, so the run still ends as `cancelled`."""
         task = asyncio.current_task()
         if task is not None and task.cancelling():
             raise asyncio.CancelledError()
-        return summary
+
+    # ------------------------------------------------------------------------ the rounds
 
     async def _rounds(self, inp: AgentRunInput, opened: OpenedRun) -> RunSummary:
-        summary = await self._run_agent(inp, opened)
+        summary = await self._agent_loop(inp, opened, first=True)
         nags_this_turn = opened.nags_this_turn
         nags_without_progress = opened.nags_without_progress
-        while summary.outcome == "answered" and opened.is_chat_lead:
+        while summary.outcome == "answered":
+            if opened.kind == "planner":
+                has_sections = await workflow.execute_activity(
+                    plan_has_sections, self._ref(inp),
+                    start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    task_queue=CHAT_TASK_QUEUE,
+                )
+                if has_sections:
+                    break
+                # A planner at the step budget gets no extra round, because its next round
+                # would force a second answer at once.
+                if self._planner_retry_done or summary.end_reason == "step_budget":
+                    raise ApplicationError(PLANNER_NO_SECTION_ERROR, non_retryable=True)
+                self._planner_retry_done = True
+                await self._append_nag(inp, summary, PLANNER_NO_SECTION_NOTE, starts_round=True,
+                                       nags_this_turn=nags_this_turn,
+                                       nags_without_progress=nags_without_progress)
+                summary = await self._agent_loop(inp, opened, first=False)
+                continue
+            # A forced answer binds no tool, so a nag after it cannot change the todo.
+            if summary.end_reason == "step_budget" or not opened.is_chat_lead:
+                break
             todo = await self._read_todo(inp)
             # Progress is the store's question, asked of the two snapshots either side of
             # the last nag. A run with no earlier snapshot resets no counter.
@@ -278,11 +482,8 @@ class AgentRun:
                 starts_round=True,
                 nags_this_turn=nags_this_turn,
                 nags_without_progress=nags_without_progress,
-                # Extended, never reset: five nags on a reset budget would be sixty tool
-                # turns, and a nag with no budget left cannot do anything at all.
-                extra_tool_turns=nags_this_turn * nagging.NAG_TOOL_TURN_INCREMENT,
             )
-            summary = await self._run_agent(inp, opened)
+            summary = await self._agent_loop(inp, opened, first=False)
         return summary
 
     async def _append_nag(self, inp: AgentRunInput, summary: RunSummary, message: str,
@@ -299,7 +500,7 @@ class AgentRun:
                 starts_round=starts_round,
                 **counters,
             ),
-            start_to_close_timeout=timedelta(seconds=30),
+            start_to_close_timeout=_SHORT_TIMEOUT,
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             task_queue=CHAT_TASK_QUEUE,
@@ -310,7 +511,7 @@ class AgentRun:
         raw = await workflow.execute_activity(
             read_chat_todo,
             ReadTodoParams(username=inp.username, session_id=inp.session_id),
-            start_to_close_timeout=timedelta(seconds=30),
+            start_to_close_timeout=_SHORT_TIMEOUT,
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             task_queue=CHAT_TASK_QUEUE,
@@ -336,7 +537,7 @@ class AgentRun:
         continuation: Continuation = await workflow.execute_activity(
             fan_in,
             RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
-            start_to_close_timeout=timedelta(seconds=30),
+            start_to_close_timeout=_SHORT_TIMEOUT,
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             task_queue=CHAT_TASK_QUEUE,
@@ -350,7 +551,7 @@ class AgentRun:
         row has no columns for (the collections, the model, the internet switch and the
         turn uuid), copied from this run's input. The row holds the rest."""
         return replace(inp, run_id=run_id, kind=kind or inp.kind, plan_run_id="",
-                       decision_id="")
+                       decision_id="", todo_before_nag="", planner_retry_done=False)
 
     async def _summarize_if_first_turn(self, inp: AgentRunInput) -> None:
         """Name the conversation after its first turn. It can never fail the run.

@@ -5,7 +5,7 @@
    here whatever this template does. A worker has one objective and a few tool turns, so a
    plan is overhead.
 
-   **Delegation follows the binding.** A `/run/stream` sub-agent at depth 1 binds
+   **Delegation follows the binding.** A sub-agent at depth 1 binds
    `run_subagent` and gets the delegation paragraph. A sub-agent at depth 2 binds no
    `run_subagent`, so the paragraph does not render and the tool section does not name it. The binding is the limit, because a model can ignore its instructions.
 

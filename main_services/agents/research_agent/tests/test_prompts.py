@@ -6,15 +6,13 @@ files, and the one that was missed told the model to call a name that no longer 
 Nothing failed; the model just wasted a turn.
 
 These tests are what makes that a failure. They render each profile against the tool list
-it really binds and check three things a reader cannot check by eye:
+it really binds and check two things a reader cannot check by eye:
 
 * every tool name the prompt mentions is bound on that profile (`strict=True` raises, and
   a second pass re-reads the rendered text so a hardcoded literal cannot slip past the
   `tool()` helper);
 * every tool that *is* bound reaches the prompt, because an unmentioned tool is an
-  invisible one;
-* the tool-turn budget in the prose is the number the graph enforces, read from the
-  module that enforces it.
+  invisible one.
 
 `PROFILE_TOOLS` below is the surface as deployed, and it is pinned deliberately: a change
 to what an MCP server advertises has to be made here too, which is the point at which
@@ -46,7 +44,7 @@ INTERNAL_SEARCH_TOOLS = frozenset(
 )
 
 #: The narrow set plus metasearch, the browser and whois. `run_subagent` is appended by
-#: `agent._create_graph` after the MCP tools, so it belongs to the lead and to nothing else.
+#: `agent._create_context` after the MCP tools, so it belongs to the lead and to nothing else.
 FULL_RESEARCH_TOOLS = INTERNAL_SEARCH_TOOLS | {
     "web_search",
     "list_search_sources",
@@ -180,33 +178,6 @@ def test_a_review_briefing_gets_the_verdict_block():
     execute = prompts.render("research_subagent", tools=tools, purpose="execute")
     assert '{"verdict": "accept", "defect_classes": []}' in review
     assert "verdict" not in execute
-
-
-def test_the_budget_in_the_prose_is_the_budget_in_the_code():
-    """The number the model is told is the number `should_continue` enforces.
-
-    Read from the modules that enforce it rather than restated here: the lead's budget is
-    `agent.MAX_TOOL_TURNS` for every run kind, and a prompt asserting anything else is
-    telling the model something the code contradicts.
-    """
-    from research_agent.agent import MAX_TOOL_TURNS
-
-    assert prompts.default_tool_turns("full_research") == MAX_TOOL_TURNS
-    assert prompts.default_tool_turns("internal_search") == MAX_TOOL_TURNS
-    assert prompts.default_tool_turns("research_subagent") == MAX_TOOL_TURNS
-
-    for profile in PROFILE_TOOLS:
-        budget = prompts.default_tool_turns(profile)
-        assert f"{budget} tool-calling turns" in rendered(profile)
-
-
-def test_a_changed_budget_changes_the_prose():
-    """A hardcoded number in a template would survive this; a rendered one does not."""
-    text = rendered("full_research", max_tool_turns=97)
-    assert "97 tool-calling turns" in text
-    from research_agent.agent import MAX_TOOL_TURNS
-
-    assert f"{MAX_TOOL_TURNS} tool-calling turns" not in text
 
 
 def test_naming_an_unbound_tool_is_an_error_under_strict_rendering():

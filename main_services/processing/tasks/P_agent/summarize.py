@@ -85,6 +85,25 @@ class TitleSummary:
     error: str = ""
     model: str = ""
     latency_ms: int = 0
+    #: From the `usage` object of the reply. 0 when the call got no reply body.
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+def usage_tokens(reply) -> dict[str, int]:
+    """The prompt and completion tokens of an OpenAI-style reply. 0 for a missing field."""
+    usage = reply.get("usage") if isinstance(reply, dict) else None
+    if not isinstance(usage, dict):
+        usage = {}
+
+    def count(key: str) -> int:
+        try:
+            return max(int(usage.get(key) or 0), 0)
+        except (TypeError, ValueError):
+            return 0
+
+    return {"prompt_tokens": count("prompt_tokens"),
+            "completion_tokens": count("completion_tokens")}
 
 
 def strip_think_blocks(text: str) -> str:
@@ -235,27 +254,30 @@ def title_and_summary(user_message: str, answer: str) -> TitleSummary:
     # request whose reply we chose not to use, and each one still records a row: a model
     # that hits its token limit every time must not look like one that never ran.
     try:
-        choice = response.json()["choices"][0]
+        reply = response.json()
+        choice = reply["choices"][0]
     except Exception as exc:  # noqa: BLE001
         return TitleSummary(model=model, latency_ms=elapsed(), error=f"unparseable body: {exc}")
+    tokens = usage_tokens(reply)
 
     if choice.get("finish_reason") == "length":
         # A completion cut off at max_tokens is not a title. The user's own words are
         # always better than half a sentence -- or than the model's scratchpad.
-        return TitleSummary(model=model, latency_ms=elapsed(), error="hit max_tokens")
+        return TitleSummary(model=model, latency_ms=elapsed(), **tokens, error="hit max_tokens")
 
     message = choice.get("message") or {}
     raw = (message.get("content") or "").strip()
     if not raw:
-        return TitleSummary(model=model, latency_ms=elapsed(), error="empty content")
+        return TitleSummary(model=model, latency_ms=elapsed(), **tokens, error="empty content")
 
     # Reasoning is never the answer. A model that mirrors its scratchpad into `content`
     # has told us nothing usable.
     reasoning = (message.get("reasoning_content") or "").strip()
     if reasoning and raw == reasoning:
-        return TitleSummary(model=model, latency_ms=elapsed(), error="returned only its reasoning")
+        return TitleSummary(model=model, latency_ms=elapsed(), **tokens,
+                            error="returned only its reasoning")
 
     title, summary = parse_reply(raw)
     if not title:
-        return TitleSummary(model=model, latency_ms=elapsed(), error="no usable lines")
-    return TitleSummary(title=title, summary=summary, model=model, latency_ms=elapsed())
+        return TitleSummary(model=model, latency_ms=elapsed(), **tokens, error="no usable lines")
+    return TitleSummary(title=title, summary=summary, model=model, latency_ms=elapsed(), **tokens)

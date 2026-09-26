@@ -231,8 +231,9 @@ fn ChatConversationPanel(
     let mut retry_after = use_signal(|| None::<u64>);
     let mut stream_turn = use_signal(|| None::<common::chat_types::StreamTurn>);
     let mut interrupted = use_signal(|| false);
-    // A run of the turn waits for a free model slot. The turn is active meanwhile.
-    let mut queued = use_signal(|| false);
+    // What a step of the turn waits for, `model` or `tool`, or empty when no step waits.
+    // The turn is active meanwhile.
+    let mut queued_for = use_signal(String::new);
     let mut loaded_for = use_signal(String::new);
     let mut find_query = use_signal(String::new);
     let mut match_index = use_signal(|| 0_usize);
@@ -272,7 +273,7 @@ fn ChatConversationPanel(
         // tools quietly continue without them.
         options.set(detail.session.options);
         interrupted.set(detail.interrupted);
-        queued.set(detail.queued);
+        queued_for.set(detail.queued_for.clone());
         loaded_for.set(detail.session.session_id.clone());
         // A refresh mid-answer picks the turn up exactly where a poller left it.
         if detail.active && !detail.interrupted {
@@ -311,7 +312,7 @@ fn ChatConversationPanel(
                             messages.set(current);
                         }
                         interrupted.set(result.interrupted);
-                        queued.set(result.queued);
+                        queued_for.set(result.queued_for.clone());
                         // An interrupted turn keeps whatever partial text it produced
                         // (under the banner, which is its marker), but never the
                         // "working…" placeholder: the banner already says it stopped,
@@ -399,7 +400,7 @@ fn ChatConversationPanel(
         stream_turn.set(None);
         sending.set(false);
         interrupted.set(false);
-        queued.set(false);
+        queued_for.set(String::new());
         poll_resumed.set(false);
         draft.set(String::new());
         error.set(None);
@@ -428,7 +429,7 @@ fn ChatConversationPanel(
         error.set(None);
         retry_after.set(None);
         interrupted.set(false);
-        queued.set(false);
+        queued_for.set(String::new());
         stream_turn.set(None);
         spawn(async move {
             if opts.deep_research {
@@ -557,7 +558,7 @@ fn ChatConversationPanel(
                 match_count,
                 stream: stream_turn.read().clone(),
                 stream_live: !*interrupted.read(),
-                queued: *queued.read(),
+                queued_for: queued_for.read().clone(),
                 // A plan that has no planner answer row yet shows its card from here.
                 pending_plan: crate::components::chat_components::plan_card::started_plan(
                     &session_id.read(),

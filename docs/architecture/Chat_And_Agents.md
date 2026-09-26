@@ -136,14 +136,16 @@ a purpose: `execute`, `review` or `correct`. A section takes at most two correct
 every sub-agent run of the plan counts against the plan budget (`agent_plan_run_budget`).
 Each sub-agent thread of a section writes its prompt and its report or review as plan
 documents. The organizer's final report ends with a generated table of the sections that
-have no accepting review. The plan runs take their agent activity on `research-queue`.
+have no accepting review. The plan runs take their model steps on `research-queue`.
 
 `AgentRun` keeps the run in `agent_runs` and its model conversation in
-`agent_run_messages`. A worker sends the stored thread to the agent's `/run/stream` feed and
-writes each event as it arrives: the messages into `agent_run_messages`, the live rows into
-`chat_message_stream`, and each finished tool row and the answer into `chat_messages`. A
-tool row is paired with its call by `tool_call_id`. The page follows the turn with
-`chat_poll`.
+`agent_run_messages`, and runs the agent loop. Each model call is one `model_step`
+activity: the worker sends the stored thread to the agent's `POST /model_step` and writes
+the reply as it streams, the messages into `agent_run_messages` and the live rows into
+`chat_message_stream`. Each tool call of the reply is one `tool_call` activity on
+`agent-tool-queue`: the worker sends the stored call to `POST /tool_call` and writes its
+result and its finished tool row into `chat_messages` at the seq the model step gave it.
+The answer row follows the last model step. The page follows the turn with `chat_poll`.
 
 **A turn can delegate through run rows.** When the model calls `run_subagent`, the agent
 ends the run after the other calls of that model turn. The worker writes one sub-agent run
@@ -386,18 +388,14 @@ required:
   reads without `FINAL` on purpose: `FINAL` collapses away the evidence. **A write-only
   collision detector is worse than none, because it reads as covered.**
 
-## Tool-event payload shapes
+## Tool rows
 
-```
-start  {"input": {}, "name": "list_collections"}
-start  {"input": {"query": "…", "collections": ["…"]}, "name": "search_collections"}
-end    {"output": {"content": …, "type": "tool", "name": "…", "tool_call_id": "…"}, …}
-```
-
-`name` on the **start** event is added by the agent (`main_services/agents/research_agent/research_agent/agent.py`);
-LangGraph's raw `on_tool_start` data carries only `input`, and the tool's name first
-appears under `output.name` on the end event. Without it every card rendered while a call
-was still running was labelled "tool".
+A tool row of the transcript is written twice. `model_step` writes a live row into
+`chat_message_stream` for each call of a reply, at the seq it gave the call, with the name
+and the arguments as `{"name": "…", "input": {…}}`. `tool_call` writes the finished row into
+`chat_messages` at the same seq, with `tool_name`, `tool_input`, `tool_output` and the
+document references, and marks the live row final. The name is in the stored call entry,
+so a card is labelled while its call still runs.
 
 `search_collections` hits carry `collection_dataset` + `file_hash` (the
 `DocumentIdentifier` key used by the document-preview stack).

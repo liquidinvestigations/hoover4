@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Check the batch result budget through the execution node and the page broker.
+# Check the batch result budget through the page broker, as the step endpoints apply it.
 #
 # Inside the full research agent container, the script loads the collection server's tools
-# with the agent's own connection settings, and runs one model turn of three parallel
-# `search_collections` calls through the execution node. Each call receives its page share
-# in the `X-Hoover4-Page-Share` header, and the broker returns the call measure beside the
+# with the agent's own connection settings. It computes the shares of one model step of
+# three parallel `search_collections` calls with `batch_budget`, as `/model_step` does, and
+# runs each call with its share, as `/tool_call` does. Each call receives its page share in
+# the `X-Hoover4-Page-Share` header, and the broker returns the call measure beside the
 # page. The results are the same on every run while the indexed data does not change.
 #
 # Exit status 0 when the three pages total at most 24,000 UTF-8 bytes, every page is
 # canonical and returns at least one unit, and the digest of each call measure is the
-# SHA-256 of the output that the node returned for that call. Exit status 1 otherwise.
+# SHA-256 of the output that the call returned. Exit status 1 otherwise.
 #
 # Settings: AGENT_BUDGET_CONTAINER (default hoover4-full-research-agent), MCP_TEST_USER
 # (default agent-contract-user), MCP_TEST_COLLECTIONS (default testdata) and
@@ -29,7 +30,7 @@ import json
 import os
 import sys
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from agent_common.result_pages import SAFE_MODE_BATCH_BYTES, is_canonical_page
@@ -53,26 +54,27 @@ async def main() -> int:
     }})
     tools = [t for t in await client.get_tools() if t.name == TOOL]
     snapshot = build_snapshot(tools, {TOOL}, "chat")
-    node = execution.make_execution_node(snapshot, emit_events=False)
+    tool = snapshot.tools_by_name[TOOL]
     queries = os.environ["AGENT_BUDGET_QUERIES"].split(",")[:3]
     calls = [
         {"id": f"call-{i}", "name": TOOL, "args": {"collectionname": collections, "query": q}}
         for i, q in enumerate(queries)
     ]
-    state = {
-        "messages": [HumanMessage(content="batch budget check"), AIMessage(content="", tool_calls=calls)],
-        "bound_names": (TOOL,),
-        "thread_offset": 0,
-    }
-    out = await node(state, {})
+    messages = [HumanMessage(content="batch budget check"), AIMessage(content="", tool_calls=calls)]
+    budget = execution.batch_budget([TOOL] * len(calls), messages)
     failed = False
     total = 0
-    for call, message in zip(calls, out["messages"]):
-        content = message.content
+    for call, share in zip(calls, budget.shares):
+        token = execution._PAGE_SHARE.set(int(share))
+        try:
+            result = await tool.ainvoke({"type": "tool_call", **call})
+        finally:
+            execution._PAGE_SHARE.reset(token)
+        content = execution._text_of(result.content if isinstance(result, ToolMessage) else result)
+        measure, _ = execution.split_measure(result.artifact if isinstance(result, ToolMessage) else None)
         size = len(content.encode("utf-8"))
         total += size
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        measure = (message.response_metadata or {}).get("call_measure")
         page = json.loads(content) if is_canonical_page(content) else None
         units = page.get("returned_units", 0) if page else 0
         problems = []

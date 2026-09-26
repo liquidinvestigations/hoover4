@@ -1,63 +1,15 @@
 import os
-import asyncio
-import json
 from contextlib import asynccontextmanager
-from typing import List, Literal, Optional, Dict, Any, Union
+from typing import Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, model_validator
-from enum import Enum
+from pydantic import BaseModel, Field
 from agent_common import tool_packs
+from research_agent import steps
 from research_agent.agent import build_agent
 from research_agent.prompts import active_profile, system_prompt_override
-from research_agent.run_messages import RunMessage, to_langchain
-
-
-class MessageType(str, Enum):
-    human = "human"
-    ai = "ai"
-
-class ChatMessage(BaseModel):
-    type: MessageType = Field(description="The type of the message, either human or ai")
-    content: str = Field(description="The content of the message")
-
-class RunRequest(BaseModel):
-    """One agent run's request. The caller stores the thread and sends all of it."""
-
-    run_id: str = Field(description="The agent run id. It keys the graph and the browser.")
-    kind: Literal["chat", "subagent", "planner", "organizer"] = Field(
-        description="The kind of run, which selects its tool packs"
-    )
-    depth: int = Field(description="0 for a lead, 1 or 2 for a sub-agent")
-    username: str
-    session_id: str
-    allowed_collections: List[str] = Field(default_factory=list)
-    llm_model: Optional[str] = None
-    history: List[ChatMessage] = Field(
-        default_factory=list, description="Chat history, for depth 0 only"
-    )
-    messages: List[RunMessage] = Field(
-        description="The run's thread. messages[0] is the opening human message"
-    )
-    tool_turns_used: int = Field(
-        default=0, description="Tool turns of the current round before this request"
-    )
-    extra_tool_turns: int = Field(
-        default=0, description="The nag allowance of the current round, else 0"
-    )
-    can_delegate: bool = Field(default=True, description="False at the deepest level")
-    purpose: Optional[Literal["execute", "review", "correct"]] = Field(
-        default=None,
-        description="The purpose of a plan sub-agent's briefing. `review` adds the verdict block",
-    )
-
-    @model_validator(mode="after")
-    def _opening(self):
-        if not self.messages or self.messages[0].role != "human":
-            raise ValueError("messages[0] must be the opening human message")
-        if self.depth > 0 and self.history:
-            raise ValueError("a sub-agent gets no chat history")
-        return self
+from research_agent.run_messages import to_langchain
+from research_agent.steps import ModelStepRequest, ToolCallRequest
 
 
 class MessageFeedBackRequest(BaseModel):
@@ -92,8 +44,8 @@ async def lifespan(app: FastAPI):
         "mcp_servers": os.getenv("MCP_SERVERS", "").split(",") if os.getenv("MCP_SERVERS") else [],
         "agent_name": os.getenv("AGENT_NAME", "Research Agent"),
         # `SYSTEM_PROMPT` only, and empty when it is not set. The prompt itself is
-        # rendered per graph from the tools that graph binds, which is not known until
-        # the MCP connections are open. See research_agent/prompts/ for why a prompt is
+        # rendered for each model call from the tools that call binds, which is not known
+        # until the MCP connections are open. See research_agent/prompts/ for why a prompt is
         # a function of the deployment rather than a constant.
         "system_prompt": system_prompt_override(),
         # The profile by name, separately from its prompt. It selects the prompt
@@ -173,87 +125,30 @@ async def health_check():
         )
 
 
-#: How long the run stream may send nothing before it sends a keepalive line. It must stay
-#: well under the worker's read timeout of the stream (300 s).
-KEEPALIVE_SECONDS = 30.0
-#: An SSE comment: a line that starts with ":", which a reader of `data: ` frames skips.
-KEEPALIVE_LINE = ": keepalive\n\n"
-
-
-@app.post("/run/stream")
-async def run_stream(request: RunRequest):
-    """Stream one agent run.
-
-    The request carries the whole thread, so a retry or a continuation starts from the
-    stored messages. The stream sends `model_turn`, `tool_start` and `tool_result` events,
-    and one `end` event, as `data: {json}` frames. The run's graph is released when the
-    stream ends.
-
-    While no event is ready, the stream sends the SSE comment line `: keepalive` every
-    `KEEPALIVE_SECONDS`. One model call can wait far longer than the worker's read timeout
-    of the stream, and each line restarts that timeout. A reader that takes only `data: `
-    lines skips the comment lines.
-    """
+def _agent():
     if not hasattr(app.state, "agent") or app.state.agent is None:
         raise HTTPException(status_code=500, detail="Agent not initialized")
-    agent = app.state.agent
+    return app.state.agent
+
+
+@app.post("/model_step")
+async def model_step(request: ModelStepRequest):
+    """Make one model call and stream it.
+
+    The request carries the run thread and, for a lead, the earlier turns of the chat. The
+    stream sends `reasoning` and `response` frames, one `model_turn` frame with the
+    classified calls of the reply, and one `end` frame, as `data: {json}` lines. A failed
+    call sends one `error` frame instead. While no frame is ready, the stream sends the SSE
+    comment line `: keepalive` every `steps.KEEPALIVE_SECONDS`. A client that closes the
+    request stops the model call.
+    """
+    agent = _agent()
     try:
-        thread = to_langchain(request.messages)
+        to_langchain(list(request.earlier) + list(request.messages))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    async def produce(events: asyncio.Queue):
-        try:
-            async for chunk in agent.stream(
-                chat_history=[msg.model_dump() for msg in request.history],
-                session_id=request.session_id,
-                user_id=request.username,
-                username=request.username,
-                allowed_collections=request.allowed_collections,
-                llm_model=request.llm_model,
-                extra_tool_turns=request.extra_tool_turns,
-                run_id=request.run_id,
-                kind=request.kind,
-                can_delegate=request.can_delegate,
-                thread=thread,
-                tool_turns_used=request.tool_turns_used,
-                purpose=request.purpose,
-            ):
-                await events.put(("data", chunk))
-        except Exception as e:  # noqa: BLE001 - the caller reads the error frame
-            await events.put(("error", e))
-        finally:
-            await events.put(("done", None))
-
-    async def generate():
-        events: asyncio.Queue = asyncio.Queue()
-        task = asyncio.create_task(produce(events))
-        try:
-            while True:
-                try:
-                    # A cancelled get() removes no item, so a timeout loses no event.
-                    kind, item = await asyncio.wait_for(events.get(), KEEPALIVE_SECONDS)
-                except asyncio.TimeoutError:
-                    yield KEEPALIVE_LINE
-                    continue
-                if kind == "data":
-                    yield f"data: {json.dumps(item, default=str)}\n\n"
-                elif kind == "error":
-                    error_chunk = {
-                        "is_task_complete": True,
-                        "type": "error",
-                        "content": f"Error during streaming: {str(item)}",
-                    }
-                    yield f"data: {json.dumps(error_chunk)}\n\n"
-                    break
-                else:
-                    break
-        finally:
-            # A client that disconnects stops the run.
-            task.cancel()
-
     return StreamingResponse(
-        generate(),
+        steps.stream_frames(steps.run_model_step(agent, request)),
         media_type="text/plain",
         headers={
             "Cache-Control": "no-cache",
@@ -261,6 +156,12 @@ async def run_stream(request: RunRequest):
             "Content-Type": "text/plain; charset=utf-8",
         },
     )
+
+
+@app.post("/tool_call")
+async def tool_call(request: ToolCallRequest) -> Dict[str, Any]:
+    """Run one tool call of a stored reply, and return its result as JSON."""
+    return await steps.run_tool_call(_agent(), request)
 
 
 def _require_langfuse(agent):
@@ -372,7 +273,8 @@ async def root():
         "configuration": config_info,
         "endpoints": {
             "health": "/health",
-            "run_stream": "/run/stream",
+            "model_step": "/model_step",
+            "tool_call": "/tool_call",
             "feedback_message": "/feedback/message",
             "feedback_session": "/feedback/session",
             "feedback_delete": "/feedback/{score_id}"

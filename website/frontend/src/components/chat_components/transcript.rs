@@ -24,16 +24,22 @@ pub fn ChatTranscript(
     /// False when `stream` is the leftovers of an interrupted turn rather than one that
     /// is still being produced. The content is the same; the promise it makes is not.
     stream_live: Option<bool>,
-    /// A run of the in-flight turn waits for a free model slot. The placeholder of a turn
-    /// with no content and no tool rows then says that the turn waits.
+    /// What a step of the in-flight turn waits for: `model` for a free model slot, `tool`
+    /// for a free tool slot, or empty. A non-empty value shows a waiting line at the end
+    /// of the turn, under its tool rows too.
     #[props(default)]
-    queued: bool,
+    queued_for: String,
     /// The plan run id of a deep-research request that has no planner answer row yet. The
     /// transcript shows its card at the end while the planner writes the plan.
     #[props(default)]
     pending_plan: Option<String>,
 ) -> Element {
     let stream_live = stream_live.unwrap_or(true);
+    let waiting_line = match queued_for.as_str() {
+        "model" => "The turn waits for a free model slot.",
+        "tool" => "The turn waits for a free tool slot.",
+        _ => "",
+    };
     let q = find_query.read().clone().to_lowercase();
     let matches: Vec<usize> = if q.is_empty() {
         Vec::new()
@@ -171,14 +177,16 @@ pub fn ChatTranscript(
                             span { style: "color: #4F46E5;", "\u{258D}" }
                         }
                     }
-                } else if turn.tool_rows.is_empty() && stream_live {
+                }
+                if stream_live && !waiting_line.is_empty() {
                     div {
                         style: "color: #64748B; font-size: 13px; font-style: italic;",
-                        if queued {
-                            "The turn waits for a free model slot."
-                        } else {
-                            "The assistant is working\u{2026}"
-                        }
+                        "{waiting_line}"
+                    }
+                } else if turn.content.is_empty() && turn.tool_rows.is_empty() && stream_live {
+                    div {
+                        style: "color: #64748B; font-size: 13px; font-style: italic;",
+                        "The assistant is working\u{2026}"
                     }
                 }
             }

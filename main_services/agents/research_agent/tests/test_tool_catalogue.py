@@ -164,20 +164,19 @@ async def test_the_search_tool_answers_json_with_its_matches():
     ("read a table " + "t" * (SEARCH_QUERY_MAX_CHARS - 13), None),
 ])
 async def test_the_search_query_takes_one_to_160_characters(query, error):
-    from langchain_core.messages import AIMessage, HumanMessage
+    from research_agent import steps
 
-    from research_agent.execution import make_execution_node
+    class _Agent:
+        async def context_for(self, *args, **kwargs):
+            return type("Context", (), {"snapshot": snapshot()})()
 
     assert SEARCH_QUERY_MAX_CHARS == 160
-    node = make_execution_node(snapshot(), emit_events=False)
-    state = {
-        "messages": [HumanMessage(content="q"), AIMessage(content="", tool_calls=[
-            {"id": "s", "name": "search_agent_tools", "args": {"query": query}},
-        ])],
-        "bound_names": (),
-        "thread_offset": 0,
-    }
-    content = json.loads((await node(state, {}))["messages"][0].content)
+    request = steps.ToolCallRequest(
+        run_id="r", kind="chat", depth=0, username="u", session_id="s",
+        call={"id": "s", "name": "search_agent_tools", "args": {"query": query}},
+        idempotency_key="k",
+    )
+    content = json.loads((await steps.run_tool_call(_Agent(), request))["content"])
     if error is None:
         assert "matches" in content and "error" not in content
     else:

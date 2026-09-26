@@ -15,6 +15,9 @@ This directory centralizes database utilities and schema definitions used by the
 - `agent_runs.py` - every read and write of `agent_runs`, `agent_run_messages` and
   `agent_turn_stops`: the state of each `AgentRun` workflow and its model conversation. Every
   read uses `FINAL` and the owner prefix, and a run row write adds one to `state_version`.
+- `agent_step_events.py` - the row of `agent_step_events` for each attempt of an agent model
+  call, tool call and title call, and the short error classes. The rows are buffered on the
+  timing daemon of `tasks/task_timing.py`, so a lost row never fails a step.
 
 ## One Garage bucket per collection
 
@@ -125,7 +128,7 @@ that is never planned and never noticed.
 
 | Wait | Tables |
 |---|---|
-| Do not wait | every P3 parser output: `file_types`, `text_content`, `tika_metadata`, `emails`, `email_headers`, `email_addresses`, `archives`, `pdfs`, `pdf_metadata`, `pdfs_image`, `pdf_ocr_results`, `raw_ocr_results`, `image`, `image_metadata`, `audio_metadata`, `video_metadata`, `document_dates`, `table_documents`, `table_sheets`, `table_columns`, `table_cells`; plus `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry` |
+| Do not wait | every P3 parser output: `file_types`, `text_content`, `tika_metadata`, `emails`, `email_headers`, `email_addresses`, `archives`, `pdfs`, `pdf_metadata`, `pdfs_image`, `pdf_ocr_results`, `raw_ocr_results`, `image`, `image_metadata`, `audio_metadata`, `video_metadata`, `document_dates`, `table_documents`, `table_sheets`, `table_columns`, `table_cells`; plus `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry`, `agent_step_events` |
 | Wait | `blobs`, `blob_values`, `vfs_files`, `vfs_directories`, `processing_plan_finished`, `index_state`, `manticore_shards`, `manticore_shard_assignments`, `dataset`, `processing_plans`, `schema_versions` |
 
 The Error recorder waits for its row insert before it writes the operation event.

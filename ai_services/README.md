@@ -226,21 +226,23 @@ one stream after it.
 `vllm_max_num_seqs` is 4 when the slowest stream at 8 sequences decodes below 30 tokens a
 second, and 8 otherwise. The slowest stream at 8 decoded 4.0 tokens a second, so the value is 4.
 
-The budget timeouts of `[main_services]` come from the six cells at 4 sequences. The first
-chunk time is fitted as `a + b*c` over the context `c`, and the inverse stream rate as
-`e + f*c`. Both fits are extrapolated to the full context of 262,144 tokens, which the sweep
-did not send. At that context the fit gives 861 s to the first chunk and 1.24 tokens a second.
-One worst-case request, `W`, is that first chunk plus 33,792 output tokens, 28,150 s. Each
-value is rounded up to a whole minute.
+The six cells at 4 sequences give an estimate of one worst-case request. The first chunk
+time is fitted as `a + b*c` over the context `c`, and the inverse stream rate as `e + f*c`.
+Both fits are extrapolated to the full context of 262,144 tokens, which the sweep did not
+send. At that context the fit gives 861 s to the first chunk and 1.24 tokens a second. One
+worst-case request, `W`, is that first chunk plus 33,792 output tokens, 28,150 s.
 
-| key | formula | value, s |
+The templates set the two limits of `[main_services]` below. Each is a time that a person
+waits, and neither is a bound of the model. A request as long as `W` fails at the model call
+limit while the model server still works on it.
+[Known defects](../docs/development/Known_Defects.md#the-model-call-limit-and-the-step-queue-wait-are-usability-limits-not-model-bounds)
+gives the consequences.
+
+| key | what it limits | value, s |
 |---|---|---:|
-| (the answer bound `T_ans`) | `2 * W` | 56,340 |
-| `llm_request_timeout_seconds` | `T_ans * ceil((24 - 4) / 4) + T_ans`, the model server's queue of 24 requests from two deployments, served 4 at a time, and the answer | 338,040 |
-| `chat_run_timeout_seconds` | `llm_request_timeout_seconds + T_ans`, two answers in one run | 394,380 |
-| `plan_run_timeout_seconds` | `max(2400, chat_run_timeout_seconds)` | 394,380 |
-| `agent_queue_wait_seconds` | `chat_run_timeout_seconds * max(1, ceil((10 - 4) / 4))`, 10 runs on a queue of 4 slots | 788,760 |
-| `title_request_timeout_seconds` | fixed | 120 |
+| `llm_request_timeout_seconds` | one model call, its wait in the model server's queue included | 3,600 |
+| `agent_queue_wait_seconds` | the wait of one step for a free slot | 5,400 |
+| `title_request_timeout_seconds` | the title request | 120 |
 
 ### Request parameters that the server rejects
 

@@ -108,6 +108,10 @@ class RunRow:
     nags_without_progress: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    #: The model calls of the run thread so far. A continuation copies it.
+    model_steps: int = 0
+    #: Empty for an answer. `step_budget` or `repeated_call` for a forced final answer.
+    end_reason: str = ""
     started_at: datetime | None = None
     state_version: int = 1
     updated_at: datetime | None = None
@@ -158,7 +162,7 @@ def _from_db(values) -> RunRow:
     for name in ("turn_seq", "depth", "delegate_seq", "subagent_share", "start_seq",
                  "next_seq", "tool_turns_used", "extra_tool_turns", "nags_this_turn",
                  "nags_without_progress", "prompt_tokens", "completion_tokens",
-                 "state_version"):
+                 "model_steps", "state_version"):
         data[name] = int(data[name] or 0)
     return RunRow(**data)
 
@@ -246,7 +250,7 @@ def _write_version(current: RunRow, changes: dict[str, Any]) -> RunRow:
 
 
 class RunRowWriter:
-    """The one writer of a run row inside `run_agent`.
+    """The one writer of a run row inside a step activity.
 
     It holds one lock. Under the lock it reads the row, refuses to change a terminal row,
     and writes `state_version + 1`. The keepalive thread rewrites `updated_at` every

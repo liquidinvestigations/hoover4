@@ -74,6 +74,21 @@ grep -rn "max.*token\|prompt.*budget" main_services/processing/tasks/P_agent/sum
 
 The only cap found bounds one title-and-summary completion, not the conversation.
 
+### The model call limit and the step queue wait are usability limits, not model bounds
+
+`llm_request_timeout_seconds` is 3,600 s and `agent_queue_wait_seconds` is 5,400 s. They set
+how long a person waits for one model call and for one free slot. They do not bound what the
+model server can take. The sweep in `ai_services/README.md` extrapolates one request at the
+full context and a full output to 28,150 s. Such a request fails at 3,600 s while the model
+server still works on it. A call that waits in the model server's own queue counts that wait
+against the same 3,600 s. A healthy server under full load can therefore fail a call. A run
+has no time limit, and each of its steps can wait up to 5,400 s for a slot.
+
+```
+grep -n "llm_request_timeout_seconds\|agent_queue_wait_seconds" hoover4.ini.release
+grep -n "28,150" ai_services/README.md
+```
+
 ## Configuration and deployment
 
 ### A plain container stop or restart can cut the worker's drain short

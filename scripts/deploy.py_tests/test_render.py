@@ -826,8 +826,7 @@ def test_both_research_agents_receive_the_probe_keys():
 # ---- the agent model calls ------------------------------------------------------------
 
 #: The worker's timeout variables and the agent services' model variables.
-WORKER_TIMEOUT_VARS = ("HOOVER4_AGENT_QUEUE_WAIT_SECONDS", "HOOVER4_CHAT_RUN_TIMEOUT_SECONDS",
-                       "HOOVER4_PLAN_RUN_TIMEOUT_SECONDS",
+WORKER_TIMEOUT_VARS = ("HOOVER4_AGENT_QUEUE_WAIT_SECONDS",
                        "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS")
 AGENT_MODEL_VARS = ("LLM_REQUEST_TIMEOUT_SECONDS", "AGENT_MAX_OUTPUT_TOKENS",
                     "AGENT_THINKING", "AGENT_TOOL_TURN_THINKING", "LLM_STREAMING",
@@ -843,7 +842,9 @@ def _model_env(fixture_name="settings-defaults.ini", section="main_services", **
 
 def test_empty_agent_model_keys_keep_the_code_defaults():
     env, warnings = _model_env()
-    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["", "", "", ""]
+    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["", ""]
+    assert "HOOVER4_CHAT_RUN_TIMEOUT_SECONDS" not in env
+    assert "HOOVER4_PLAN_RUN_TIMEOUT_SECONDS" not in env
     assert env["LLM_REQUEST_TIMEOUT_SECONDS"] == ""
     assert env["AGENT_MAX_OUTPUT_TOKENS"] == ""
     assert env["AGENT_THINKING"] == "off"
@@ -854,17 +855,16 @@ def test_empty_agent_model_keys_keep_the_code_defaults():
 
 def test_set_timeout_keys_land_in_their_variables():
     env, warnings = _model_env(
-        agent_queue_wait_seconds="36120", chat_run_timeout_seconds="18060",
-        plan_run_timeout_seconds="18060", title_request_timeout_seconds="120",
-        llm_request_timeout_seconds="15480", agent_max_output_tokens="32768")
-    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["36120", "18060", "18060", "120"]
-    assert env["LLM_REQUEST_TIMEOUT_SECONDS"] == "15480"
+        agent_queue_wait_seconds="5400", title_request_timeout_seconds="120",
+        llm_request_timeout_seconds="3600", agent_max_output_tokens="32768")
+    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["5400", "120"]
+    assert env["LLM_REQUEST_TIMEOUT_SECONDS"] == "3600"
     assert env["AGENT_MAX_OUTPUT_TOKENS"] == "32768"
     assert warnings == []
 
 
 @pytest.mark.parametrize("key, value", [
-    ("chat_run_timeout_seconds", "0"),
+    ("title_request_timeout_seconds", "0"),
     ("agent_queue_wait_seconds", "an hour"),
     ("llm_request_timeout_seconds", "1.5"),
     ("agent_max_output_tokens", "-1"),
@@ -875,12 +875,11 @@ def test_a_bad_agent_model_number_is_refused(key, value):
     assert key in str(refused.value)
 
 
-def test_a_run_timeout_under_the_request_timeout_warns():
-    _, warnings = _model_env(llm_request_timeout_seconds="3600",
-                             chat_run_timeout_seconds="1800",
-                             plan_run_timeout_seconds="7200")
-    assert len(warnings) == 1
-    assert "chat_run_timeout_seconds = 1800" in warnings[0]
+def test_the_agent_tool_slots_render_when_set():
+    env, _ = _model_env(agent_tool_concurrency="16")
+    assert env["HOOVER4_AGENT_TOOL_CONCURRENCY"] == "16"
+    env, _ = _model_env()
+    assert "HOOVER4_AGENT_TOOL_CONCURRENCY" not in env
 
 
 @pytest.mark.parametrize("value, rendered, warns", [
@@ -927,7 +926,11 @@ def test_the_templates_carry_the_slots_and_the_provider_temperature_rule(templat
     cfg = deploy.Config(REPO_ROOT / template_name)
     main = cfg.values["main_services"]
     assert [main[f"{tier}_concurrency"] for tier in
-            ("chat_model", "chat_low_latency", "research")] == ["4", "4", "4"]
+            ("chat_model", "chat_low_latency", "research", "agent_tool")] == [
+                "3", "4", "3", "16"]
+    assert main["agent_queue_wait_seconds"] == "5400"
+    assert main["llm_request_timeout_seconds"] == "3600"
+    assert "chat_run_timeout_seconds" not in main and "plan_run_timeout_seconds" not in main
     assert main["agent_max_output_tokens"] == "32768"
     assert cfg.values["llm_provider.selfhosted"]["send_temperature"] == "false"
     assert cfg.values["llm_provider.nvidia"]["send_temperature"] == "true"

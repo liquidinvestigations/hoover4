@@ -106,7 +106,7 @@ The two research agents share one image built from [`research_agent/`](research_
 | Agent | Port | Profile | Callers |
 |---|---|---|---|
 | `hoover4-internal-search-agent` | 21936 | `internal_search` | AI Chat with **Internet tools off**, the collection server only, because a chat about the user's own documents must not quietly turn into a web search |
-| `hoover4-full-research-agent` | 21937 | `full_research` | AI Chat with **Internet tools on**, called by the Temporal worker's `run_agent` (`RESEARCH_AGENT_URL` on the worker) |
+| `hoover4-full-research-agent` | 21937 | `full_research` | AI Chat with **Internet tools on**, called by the Temporal worker's `model_step` and `tool_call` (`RESEARCH_AGENT_URL` on the worker) |
 
 > The published ports are for host-side debugging. Anything running *inside* the
 > `hoover4` network must address these by container name.

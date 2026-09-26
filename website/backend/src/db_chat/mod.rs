@@ -921,24 +921,6 @@ pub async fn turn_runs(
     Ok(rows)
 }
 
-/// Whether a `running` run on `queue`, of any owner, has a row written at or after
-/// `since_ms`. The keepalive of a run in progress moves its row every 30 s, so a queue
-/// whose slots are held by live runs answers true. A queue that no worker polls answers
-/// false, because no row on it moves.
-pub async fn queue_has_live_run(queue: &str, since_ms: i64) -> anyhow::Result<bool> {
-    let count = get_global_client()
-        .query(
-            "SELECT count() FROM agent_runs FINAL \
-             WHERE queue = ? AND state = 'running' \
-             AND updated_at >= fromUnixTimestamp64Milli(?)",
-        )
-        .bind(queue)
-        .bind(since_ms)
-        .fetch_one::<u64>()
-        .await?;
-    Ok(count > 0)
-}
-
 /// The run rows of the named workflows, for every owner. Only the admin live-runs list
 /// calls this, after its admin check.
 pub async fn runs_by_workflow_ids(workflow_ids: &[String]) -> anyhow::Result<Vec<AgentRunRow>> {

@@ -99,6 +99,7 @@ pub async fn get_chat_session(
         active: tail.active,
         interrupted: tail.interrupted,
         queued: tail.queued,
+        queued_for: tail.queued_for,
     })
 }
 
@@ -449,12 +450,12 @@ impl Drop for HeldPollGuard {
 /// because both follow an assistant or tool row. The stream rows and the run rows say
 /// how recently something happened.
 ///
-/// A run that waits in its Temporal task queue for a free model slot writes no row, so
-/// its turn stops advancing. When the rows of an open turn are older than the stall
-/// window, this function asks Temporal whether a `running` run of the turn has its
-/// `run_agent` activity still scheduled, and whether another run on the same queue has a
-/// fresh row. Both true make the turn `queued`: it stays `active` and is not
-/// `interrupted`. See [`run_queue`]. Deriving `active`
+/// A step that waits in its Temporal task queue for a free slot writes no row, and a long
+/// tool call writes no row while it runs. When the rows of an open turn are older than
+/// [`CHAT_QUIET_MS`], this function asks Temporal what the steps of each `running` run
+/// do. A step on a worker keeps the turn `active`. A step that waits on a queue that a
+/// worker polls makes the turn `queued`, with `queued_for` `model` or `tool`: it stays
+/// `active` and is not `interrupted`. See [`run_queue`]. Deriving `active`
 /// from "a non-final stream row exists right now" looked equivalent and was not: the
 /// writer finalises one row and opens the next as two separate inserts, and a poll
 /// landing in that gap reported the turn as over.
@@ -502,20 +503,24 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
     // A plan that waits for review or runs a long execution writes no stream rows for a
     // while, so its turn is never reported as interrupted (the pending plan rule).
     let plan_pending = db_chat::plans::session_has_open_plan(username, session_id).await?;
-    // A run that waits for a model slot writes no row. Temporal says whether it waits,
-    // and a fresh row on its queue says that a live worker holds the slots it waits for.
-    let queued_run = if turn_open && !advancing && !plan_pending {
-        run_waits_in_queue(&runs, now_ms - stall_ms).await
+    // A step that waits for a slot writes no row, and a long tool call writes no row while
+    // it runs. After the quiet time, Temporal says what the steps of the turn do.
+    let quiet = turn_open
+        && !plan_pending
+        && newest_ms.is_none_or(|ms| now_ms - ms > CHAT_QUIET_MS);
+    let (working, queued_for) = if quiet {
+        turn_step_state(&runs).await
     } else {
-        false
+        (false, "")
     };
     let (active, queued, interrupted) = run_queue::turn_verdict(
         turn_open,
-        advancing,
+        advancing || working,
         plan_pending,
         newest_ms.is_some(),
-        queued_run,
+        !queued_for.is_empty(),
     );
+    let queued_for = if queued { queued_for.to_string() } else { String::new() };
 
     // A tool row stays live past `is_final`: the writer marks it final at `tool_result`,
     // well before the durable `chat_messages` row exists, which the workflow only
@@ -534,6 +539,7 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
             stream: waiting_turn(subagent_runs, last_user_seq),
             active,
             queued,
+            queued_for: queued_for.clone(),
             interrupted,
         });
     }
@@ -552,6 +558,7 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
             stream: waiting_turn(subagent_runs, last_user_seq),
             active,
             queued,
+            queued_for: queued_for.clone(),
             interrupted,
         });
     }
@@ -601,28 +608,38 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
         stream: Some(turn),
         active,
         queued,
+        queued_for,
         interrupted,
     })
 }
 
-/// Whether a `running` run of the turn has its `run_agent` activity scheduled in its task
-/// queue, while another run on that queue has a row written at or after `since_ms`. A
-/// failed read counts as false.
-async fn run_waits_in_queue(runs: &[db_chat::AgentRunRow], since_ms: i64) -> bool {
+/// How long an open turn writes no row before the page asks Temporal what its steps do.
+const CHAT_QUIET_MS: i64 = 45_000;
+
+/// What the steps of the `running` runs of a turn do: `(working, queued_for)`.
+///
+/// The first run with a step on a worker gives `(true, "")`. The first run with a model
+/// step that waits on a polled model queue gives `"model"`, and with a tool step that
+/// waits on the polled tool queue gives `"tool"`. A failed read counts as neither.
+async fn turn_step_state(runs: &[db_chat::AgentRunRow]) -> (bool, &'static str) {
     for run in runs
         .iter()
         .filter(|r| r.state == "running" && !r.workflow_id.is_empty())
     {
-        if !run_queue::run_waits_for_slot(&run.workflow_id).await {
-            continue;
-        }
-        match db_chat::queue_has_live_run(&run.queue, since_ms).await {
-            Ok(true) => return true,
-            Ok(false) => {}
-            Err(e) => tracing::warn!("live runs on {}: {e}", run.queue),
+        match run_queue::run_step_state(&run.workflow_id).await {
+            run_queue::StepState::Working => return (true, ""),
+            run_queue::StepState::QueuedModel if run_queue::queue_has_poller(&run.queue).await => {
+                return (false, "model");
+            }
+            run_queue::StepState::QueuedTool
+                if run_queue::queue_has_poller(AGENT_TOOL_TASK_QUEUE).await =>
+            {
+                return (false, "tool");
+            }
+            _ => {}
         }
     }
-    false
+    (false, "")
 }
 
 /// A turn is open when its user row has no assistant or error row after it, or when a
@@ -823,8 +840,10 @@ const SUBAGENT_ENTRIES_CAP: usize = 30;
 struct TurnTail {
     stream: Option<StreamTurn>,
     active: bool,
-    /// A run of the turn waits for a free model slot. `active` is true with it.
+    /// A step of the turn waits for a free slot. `active` is true with it.
     queued: bool,
+    /// `model` or `tool` while `queued`, else empty.
+    queued_for: String,
     interrupted: bool,
 }
 
@@ -855,7 +874,7 @@ fn poll_sig(finished_max_seq: Option<u32>, tail: &TurnTail) -> String {
             .unwrap_or_default(),
         tail.active,
         tail.interrupted,
-        tail.queued,
+        tail.queued_for,
     )
 }
 
@@ -920,6 +939,7 @@ pub async fn poll_chat(
                 active: tail.active,
                 interrupted: tail.interrupted,
                 queued: tail.queued,
+                queued_for: tail.queued_for,
                 sig: current_sig,
             });
         }
@@ -992,15 +1012,15 @@ pub async fn dismiss_interrupted_turn(user: &CurrentUser, session_id: String) ->
 /// How long a turn's stream rows may stand still before the page calls it interrupted.
 ///
 /// **This number and the worker's chat-activity heartbeat timeout are one pair and must
-/// be read together.** The heartbeat timeout (`CHAT_AGENT_HEARTBEAT_TIMEOUT` in
-/// `main_services/processing/tasks/P_agent/workflows.py`, 60 s) is how long a dead worker
+/// be read together.** The heartbeat timeout of a step (`STEP_HEARTBEAT_TIMEOUT` in
+/// `main_services/processing/tasks/P_agent/model_timeouts.py`, 30 s) is how long a dead worker
 /// goes unnoticed; this is how long the page waits before saying so. This one is
 /// deliberately the larger, by a wide margin, because the marker's advice is "ask again
 /// to retry" and Temporal reschedules the activity on its own: a page that gave up first
 /// would talk a user into a second question while the first answer was still coming, and
 /// they would get the same answer twice from two workflows.
 ///
-/// 180 s against a 60 s heartbeat timeout leaves 120 s for the reschedule to be noticed,
+/// 180 s against a 30 s heartbeat timeout leaves 150 s for the reschedule to be noticed,
 /// a worker to pick the activity up and its first row to land. Raising the heartbeat
 /// timeout without raising this by more reintroduces the defect; setting them equal
 /// reintroduces it at a different scale.
@@ -1273,15 +1293,22 @@ fn require_admin(user: &CurrentUser) -> anyhow::Result<()> {
 /// **Mirrored in `main_services/processing/tasks/P_agent/workflows.py`**. The worker
 /// polls the name it declares there and this addresses the name it declares here, and a
 /// workflow addressed to a queue nothing polls waits for ever with no error anywhere. It
-/// presents as chat hanging, so the three names move in the same patch or not at all.
+/// presents as chat hanging, so the queue names move in the same patch or not at all.
 const CHAT_TASK_QUEUE: &str = "chat-queue";
 
-/// The queue a chat turn's `run_agent` activity goes to. The website does not address
-/// this name. It is declared here so the three queue names cannot drift from the Python
-/// worker that polls them. One slot is one agent run in flight, not one model call. A
-/// delegated turn takes one slot for each running sub-agent.
+/// The queue of the `model_step` activities of a chat turn and its sub-agents. The website
+/// does not address this name. It is declared here so the queue names cannot drift from
+/// the Python worker that polls them. One slot is one model call in flight.
 #[allow(dead_code)]
 const CHAT_MODEL_TASK_QUEUE: &str = "chat-model-queue";
+
+/// The queue of every `tool_call` activity. One slot is one tool call in flight.
+///
+/// **Mirrored in `main_services/processing/tasks/P_agent/workflows.py`**, as the names
+/// above. The worker polls the name it declares there, and the page reads the pollers of
+/// the name it declares here. A name that drifts makes the page never show the wait for
+/// a tool slot.
+const AGENT_TOOL_TASK_QUEUE: &str = "agent-tool-queue";
 
 
 fn temporal_base_url() -> String {

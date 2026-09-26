@@ -1,7 +1,8 @@
 """Delegation: the briefing shape and the `run_subagent` schema.
 
-A `/run/stream` run stops at `run_subagent` before any tool body runs (`test_execution.py`
-covers the stop), and the worker applies the budgets. What is tested here is the shape the
+`/model_step` classifies a readable `run_subagent` call as a delegation, and `/tool_call`
+refuses the others before any tool body runs (`test_steps.py` covers both). The worker
+applies the budgets. What is tested here is the shape the
 model sees and the coercion of what it sends.
 """
 

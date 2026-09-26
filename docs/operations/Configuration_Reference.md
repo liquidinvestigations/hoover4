@@ -141,11 +141,12 @@ user an administrator.
 `common_workers`, `worker_mem_limit`, and the per-queue concurrency keys
 (`common_concurrency`, `tika_concurrency`, `ocr_concurrency`, `nlp_concurrency`,
 `embed_concurrency`, `indexing_concurrency`, `chat_model_concurrency`,
-`chat_low_latency_concurrency`, `research_concurrency`). Empty means the default, except
-the three chat keys, which are set: a slot is one agent run in flight, not one model call.
-A lead run and each of its sub-agents take one slot each. The templates set 4, 4 and 4.
-An empty key gives 4 for `chat_model_concurrency` and `research_concurrency`, and 8 for
-`chat_low_latency_concurrency`.
+`chat_low_latency_concurrency`, `research_concurrency`, `agent_tool_concurrency`). Empty
+means the default, except the four agent keys, which are set. A slot of
+`chat_model_concurrency` or `research_concurrency` is one model call in flight, and a slot
+of `agent_tool_concurrency` is one tool call in flight. The templates set 3, 4, 3 and 16.
+An empty key gives 3 for `chat_model_concurrency` and `research_concurrency`, 8 for
+`chat_low_latency_concurrency` and 16 for `agent_tool_concurrency`.
 
 `common_max_cached_workflows` (default `100`) is the number of workflow runs that each
 common-worker process keeps in memory. The SDK default is 1000.
@@ -177,20 +178,21 @@ and one run keeps bound, from 6 to 12. Empty means 6. `./deploy` refuses a value
 whole number in range. The tool limit probe selects these three values.
 `full_research_agent_workers` is uvicorn worker processes on `hoover4-full-research-agent`.
 
-Five keys set the budget timeouts of an agent run, in whole seconds. Each follows the measured speed of
-the model server, and an empty key keeps the code default. `agent_queue_wait_seconds` is
-how long a run may wait for a free model slot, and empty sets no limit.
-`chat_run_timeout_seconds` (empty: 900) and `plan_run_timeout_seconds` (empty: 2400) bound
-one attempt of a chat run and of a deep-research run. `title_request_timeout_seconds`
-(empty: 30) is the read timeout of the conversation title request, and the title activity
-allows two requests and 30 s more. The worker reads these four.
+Three keys set the step limits of an agent run, in whole seconds, and an empty key keeps the
+code default. An agent run has no time limit of its own: 600 model steps bound it.
+`agent_queue_wait_seconds` is how long one model step or one tool call may wait for a free
+slot. A model step that waits longer fails the run, and empty sets no limit. The templates
+set 5400. `title_request_timeout_seconds` (empty: 30) is the read timeout of the
+conversation title request, and the title activity allows two requests and 30 s more.
 `llm_request_timeout_seconds` is the read timeout of one agent model call and of the
-compaction summary. When it is set, the model client does not retry. Empty keeps the client
-default of 600 s and 2 retries, and 180 s for the summary. `./deploy` refuses a value that
-is not a whole number of at least 1. It warns, and does not refuse, when a run timeout is
-under `llm_request_timeout_seconds`. The liveness bounds do not have keys: the heartbeats,
-the agent's keepalive line every 30 s, the worker's 300 s read of the agent stream and the
-website's 180 s stall window.
+compaction summary, and the worker's limit of one model step. When it is set, the model
+client does not retry. Empty keeps the client default of 600 s and 2 retries, 180 s for the
+summary and 3,600 s for the model step. The templates set 3600. `./deploy` refuses a value
+that is not a whole number of at least 1. The worker's limits that have no key are in
+`tasks/P_agent/model_timeouts.py`: 300 s for a tool call, a 30 s heartbeat limit for each
+step, 600 model steps, and a continue-as-new every 250 model steps. The other liveness
+bounds do not have keys either: the agent's keepalive line every 30 s, the worker's 300 s
+read of the agent stream and the website's 180 s stall window.
 
 `agent_max_output_tokens` is the output cap of every agent model request, sent as
 `max_completion_tokens`. Empty sends no cap, and the templates set 32768. The `budgeted`
@@ -366,14 +368,14 @@ is the map back to the group above that explains it.
 - `regex_scanner_queue_depth`, `website_release_mode`, `search_max_parallelism`, `search_timeout_seconds`
 - `common_workers`, `common_concurrency`, `common_max_cached_workflows`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`, `indexing_workers`
-- `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`
+- `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`, `agent_tool_concurrency`
 - `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
 - `mcp_browser_mem_limit`, `full_research_agent_workers`
 - `agent_subagent_max_per_turn`, `agent_plan_run_budget`
 - `agent_packs_chat`, `agent_packs_subagent`, `agent_packs_planner`, `agent_packs_organizer`
 - `agent_max_page_tokens`, `agent_completion_reserve_tokens`, `agent_catalogue_match_count`
-- `agent_queue_wait_seconds`, `chat_run_timeout_seconds`, `plan_run_timeout_seconds`
-- `title_request_timeout_seconds`, `llm_request_timeout_seconds`, `agent_max_output_tokens`
+- `agent_queue_wait_seconds`, `title_request_timeout_seconds`, `llm_request_timeout_seconds`
+- `agent_max_output_tokens`
 - `agent_thinking`, `agent_tool_turn_thinking`, `llm_streaming`
 - `internet_tools_enabled`
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`

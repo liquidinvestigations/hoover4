@@ -1,13 +1,14 @@
-"""The tool catalogue of one agent graph, and the `search_agent_tools` tool.
+"""The tool catalogue of one step context, and the `search_agent_tools` tool.
 
-A graph binds a small core set of tools on every model call. The other tools of the run's
-packs are deferred: the model finds them with `search_agent_tools`, and the execution node
-binds the matches for the next model call (see `research_agent/execution.py`).
+A model step binds a small core set of tools on every model call. The other tools of the
+run's packs are deferred: the model finds them with `search_agent_tools`, and the matches
+are bound for the next model call.
 
-`CatalogueSnapshot` is built once for each graph from the tools that graph loaded. It holds
-only the tools of the run's packs, so the model cannot bind, run or find a tool outside
-them. The snapshot never changes, so concurrent runs that share one graph can share it.
-Every per-run value is in the run's own state (`bound_names`).
+`CatalogueSnapshot` is built once for each step context from the tools that context loaded.
+It holds only the tools of the run's packs, so the model cannot bind, run or find a tool
+outside them. The snapshot never changes, so concurrent steps that share one context can
+share it. The bound names of a run are not stored anywhere. `bound_names_from_thread`
+derives them again from the stored thread at each step.
 """
 
 from __future__ import annotations
@@ -299,8 +300,36 @@ def bind_names(
     return tuple(out[:CATALOGUE_MATCH_COUNT])
 
 
+def bound_names_from_thread(snapshot: CatalogueSnapshot, messages: Sequence[Any]) -> Tuple[str, ...]:
+    """Replay the bind step over a stored thread, and return the bound names after it.
+
+    `messages` are `RunMessage` rows in thread order. For each `ai` message with calls, the
+    `tool` messages that follow it are its batch. The names that the successful
+    `search_agent_tools` results of the batch matched are bound first, before the earlier
+    names. The function is pure, so each step of a run derives the same names from the
+    same thread, and a retried step keeps the names that earlier searches bound.
+    """
+    bound: Tuple[str, ...] = ()
+    for i, message in enumerate(messages):
+        if getattr(message, "role", None) != "ai" or not getattr(message, "tool_calls", None):
+            continue
+        ids = {call.id for call in message.tool_calls}
+        newest: List[str] = []
+        for answer in messages[i + 1:]:
+            if getattr(answer, "role", None) != "tool":
+                break
+            if (
+                answer.tool_call_id in ids
+                and answer.name == SEARCH_TOOL
+                and getattr(answer, "status", None) != "error"
+            ):
+                newest.extend(matched_names(answer.content))
+        bound = bind_names(snapshot, bound, newest)
+    return bound
+
+
 __all__ = [
     "CATALOGUE_MATCH_COUNT", "CatalogueSnapshot", "NO_MATCH_TEXT", "PACKS", "SEARCH_TOOL",
-    "bind_names", "build_snapshot", "make_search_tool", "matched_names", "search_result",
-    "tool_schema",
+    "bind_names", "bound_names_from_thread", "build_snapshot", "make_search_tool",
+    "matched_names", "search_result", "tool_schema",
 ]

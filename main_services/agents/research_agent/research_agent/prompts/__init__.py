@@ -7,15 +7,12 @@ set that nothing checks, and it goes stale silently. Renaming one tool used to m
 correcting the same sentence by hand in several prose files, and the file that was missed
 told the model to call a name that no longer existed.
 
-Two of the named parameters carry the whole contract:
+One named parameter carries the whole contract:
 
-* **`tools`** is the list of tool names actually bound on the graph, read off the MCP
-  connections at graph-construction time. The tool section of every prompt is generated
+* **`tools`** is the list of tool names that one model call binds, read off the MCP
+  connections when the step context is built. The tool section of every prompt is generated
   from it, so a tool that is not bound cannot be described and a tool that is bound cannot
   be left out. `tests/test_prompts.py` fails when a template names a tool outside it.
-* **`max_tool_turns`** is the budget the graph will really enforce, so the number in the
-  prose is the number in the code. `default_tool_turns` reads it from the module that
-  enforces it rather than restating it.
 
 The rest (`profile`, `subagents_enabled`, `collections_hint`, `web_enabled`) are the
 facts that change what a correct instruction says: which of the three profiles this is,
@@ -165,19 +162,6 @@ TOOL_GROUPS: Tuple[ToolGroup, ...] = (
 )
 
 
-def default_tool_turns(profile: str) -> int:
-    """The tool-turn budget this profile's graph will really enforce.
-
-    Imported lazily, and from the module that enforces the number rather than restated
-    here: a prompt promising a budget the code does not use is precisely the drift these
-    templates exist to prevent. `agent` imports this package, so the import cannot happen
-    at module scope.
-    """
-    from research_agent.agent import MAX_TOOL_TURNS
-
-    return MAX_TOOL_TURNS
-
-
 def _environment() -> Environment:
     """The Jinja environment. `StrictUndefined` so a mistyped parameter is loud."""
     return Environment(
@@ -233,7 +217,6 @@ def render(
     profile: str,
     *,
     tools: Iterable,
-    max_tool_turns: Optional[int] = None,
     collections_hint: bool = True,
     web_enabled: Optional[bool] = None,
     subagents_enabled: Optional[bool] = None,
@@ -278,9 +261,6 @@ def render(
         "tool": tool,
         "has": lambda tool_name: tool_name in present,
         "tool_surface": _render_tool_surface(bound),
-        "max_tool_turns": (
-            int(max_tool_turns) if max_tool_turns is not None else default_tool_turns(name)
-        ),
         "collections_hint": bool(collections_hint),
         "purpose": (purpose or "").strip().lower(),
         # Defaults for the shared blocks, so a profile template that forgets to set one
@@ -344,7 +324,6 @@ __all__ = [
     "ToolGroup",
     "UnboundToolError",
     "active_profile",
-    "default_tool_turns",
     "render",
     "system_prompt",
     "system_prompt_override",

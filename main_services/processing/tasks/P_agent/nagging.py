@@ -9,15 +9,12 @@ left open.
 the agent: a nag counter kept inside the agent process is lost the moment that process
 restarts, and the workflow is the only thing that knows the user's turn is still going.
 
-Three numbers bound it, and each answers a different failure:
+Two numbers bound it, and each answers a different failure:
 
 * **[`MAX_NAGS_WITHOUT_PROGRESS`]** -- an agent that is not moving will not start moving
   on the third ask. This resets when the plan itself changes.
 * **[`MAX_NAGS_PER_TURN`]** -- the backstop that a resetting counter cannot lift. Past
   it the turn has failed and saying so is worth more than asking again.
-* **[`NAG_TOOL_TURN_INCREMENT`]** -- each nag buys the agent a few more tool turns.
-  Neither resetting the budget (which would make five nags a sixtyfold budget) nor
-  leaving it alone (which would leave the second nag no room to do anything).
 
 **What counts as progress is [`database.chat_todos.is_material_change`], and it ignores
 status on purpose.** A model that earned a reset by flipping one row from `pending` to
@@ -38,9 +35,6 @@ MAX_NAGS_WITHOUT_PROGRESS = int(os.getenv("CHAT_MAX_NAGS_WITHOUT_PROGRESS", "2")
 
 #: How many nags one user-originated turn may ever contain, progress or not.
 MAX_NAGS_PER_TURN = int(os.getenv("CHAT_MAX_NAGS_PER_TURN", "5"))
-
-#: Extra tool turns granted to the agent per nag, cumulative across the turn.
-NAG_TOOL_TURN_INCREMENT = int(os.getenv("CHAT_NAG_TOOL_TURNS", "6"))
 
 #: Transcript role a nag is written under. It is not the user speaking, and a transcript
 #: that implies it was makes the user responsible for words they never wrote.
@@ -122,7 +116,6 @@ def nag_message(todo: dict, nag_number: int) -> str:
 __all__ = [
     "MAX_NAGS_WITHOUT_PROGRESS",
     "MAX_NAGS_PER_TURN",
-    "NAG_TOOL_TURN_INCREMENT",
     "NAG_ROLE",
     "nag_message",
     "open_items",

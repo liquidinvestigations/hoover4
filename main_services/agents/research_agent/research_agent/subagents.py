@@ -4,10 +4,11 @@ A hard research question is several independent questions wearing one coat. The 
 agent splits it into briefings, and each briefing runs as a sub-agent run of its own with
 fresh context. The sub-agents do not talk to each other.
 
-A `/run/stream` run stops at `run_subagent` (`execution.py`). The worker then starts each
-accepted briefing as an `AgentRun` of its own, up to depth 2, and applies the budgets
+A `run_subagent` call never runs in the agent service. `/model_step` classifies a call
+whose briefings `briefings_of` reads as a delegation (`steps.py`), and the worker starts
+each accepted briefing as an `AgentRun` of its own, up to depth 2, and applies the budgets
 (`tasks/P_agent/run_budgets.py`). This module defines the tool the model sees and the
-briefing shape. The tool body never runs, because the execution node stops first.
+briefing shape. The tool body never runs.
 
 **Depth is enforced by what is bound, not by what the prompt asks.** A run at depth 2 binds
 no `run_subagent`. Which run kinds bind it is decided by the tool packs
@@ -140,12 +141,23 @@ def _as_briefings(value: Any) -> Optional[List[Briefing]]:
     return out
 
 
+def briefings_of(args: Any) -> Optional[List[Dict[str, Any]]]:
+    """The briefings of one `run_subagent` call as dicts, or `None` when they cannot be
+    read. `args` is the call's argument dict, and its `tasks` value is coerced with
+    `_as_briefings`."""
+    raw = args.get("tasks") if isinstance(args, dict) else None
+    briefings = _as_briefings(raw)
+    if not briefings:
+        return None
+    return [b.model_dump() for b in briefings]
+
+
 def make_delegation_tool() -> StructuredTool:
     """The `run_subagent` tool, for its schema.
 
-    The execution node of a `/run/stream` graph stops at a `run_subagent` call before it
-    runs any tool body, so this body refuses. A call that reaches it is a graph that was
-    built without the stop.
+    The worker delegates every readable `run_subagent` call, and `/tool_call` refuses the
+    others before it runs any tool body, so this body refuses. A call that reaches it is a
+    caller that skipped both.
     """
 
     async def run_subagent(tasks: Any) -> Dict[str, Any]:

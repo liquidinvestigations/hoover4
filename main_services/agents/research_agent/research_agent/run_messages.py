@@ -1,12 +1,12 @@
 """The message rebuild: stored run messages to langchain messages.
 
-A `/run/stream` request carries the run's thread as `RunMessage` rows, in the form the
-agent run storage keeps them. `to_langchain` converts them into the messages the graph
-starts from. A `human` row becomes a `HumanMessage`, an `ai` row an `AIMessage` with its
-tool calls and its stored usage, and a `tool` row a `ToolMessage`.
+A `/model_step` request carries the run's thread, and the earlier turns of the chat, as
+`RunMessage` rows, in the form the agent run storage keeps them. `to_langchain` converts them
+into the messages of one model call. A `human` row becomes a `HumanMessage`, an `ai` row an
+`AIMessage` with its tool calls and its stored usage, and a `tool` row a `ToolMessage`.
 
-The stored usage of the last `AIMessage` lets compaction measure the thread before the first
-new model call, so a long continued thread is compacted on that call.
+The stored usage of the last `AIMessage` lets compaction measure the thread before the model
+call, so a long thread is compacted on that call.
 """
 
 from __future__ import annotations
@@ -34,6 +34,9 @@ class RunMessage(BaseModel):
     name: Optional[str] = None
     #: `ai` only: `input_tokens`, `output_tokens`, `total_tokens`.
     usage: Optional[Dict[str, int]] = None
+    #: `tool` only: `error` when the call failed. The worker copies it from the stored
+    #: usage of the row. A failed `search_agent_tools` result binds no name.
+    status: Optional[Literal["ok", "error"]] = None
 
 
 def _usage_metadata(usage: Optional[Dict[str, int]]) -> Optional[Dict[str, int]]:
@@ -71,17 +74,8 @@ def to_langchain(messages: Sequence[RunMessage]) -> List[BaseMessage]:
                     content=message.content,
                     tool_call_id=message.tool_call_id,
                     name=message.name,
+                    status="error" if message.status == "error" else "success",
                 )
             )
     return out
 
-
-def history_to_langchain(history: Sequence[Dict[str, str]]) -> List[BaseMessage]:
-    """Convert chat history rows (`type` `human` or `ai`, and `content`) to messages."""
-    out: List[BaseMessage] = []
-    for row in history or ():
-        if row.get("type") == "human":
-            out.append(HumanMessage(content=row.get("content") or ""))
-        elif row.get("type") == "ai":
-            out.append(AIMessage(content=row.get("content") or ""))
-    return out

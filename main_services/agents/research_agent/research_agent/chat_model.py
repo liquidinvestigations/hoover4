@@ -166,6 +166,26 @@ def _convert_delta_to_message_chunk(
         return default_class(content=content, id=id_)  # type: ignore
 
 class ThinkingChatOpenAI(ChatOpenAI):
+    def _create_chat_result(
+        self,
+        response: Union[dict, openai.BaseModel],
+        generation_info: Optional[dict] = None,
+    ) -> ChatResult:
+        """Build the result of a whole (non-streamed) reply, and keep its reasoning.
+
+        The parent drops the `reasoning` or `reasoning_content` field of each choice. This
+        copies it into `additional_kwargs["reasoning_content"]`, the key that a streamed
+        chunk fills in `_convert_delta_to_message_chunk`.
+        """
+        result = super()._create_chat_result(response, generation_info)
+        response_dict = response if isinstance(response, dict) else response.model_dump()
+        for generation, choice in zip(result.generations, response_dict.get("choices") or []):
+            message = (choice or {}).get("message") or {}
+            reasoning = message.get("reasoning") or message.get("reasoning_content")
+            if reasoning:
+                generation.message.additional_kwargs["reasoning_content"] = reasoning
+        return result
+
     def _convert_chunk_to_generation_chunk(
         self,
         chunk: dict,

@@ -11,7 +11,7 @@ most `SWEEP_LIMIT` rows each, from `agent_runs FINAL`:
 1. **Running rows** that started more than `SWEEP_GRACE_SECONDS` ago. The sweep reads the
    workflow of each with `describe()`. A row with a parent is read only when the parent is
    `waiting_for_children` and the parent's workflow is closed, because until then the
-   parent's `run_agent` attempt or its retry can still start the child. A row whose parent
+   parent's `delegate_step` or its retry can still start the child. A row whose parent
    is terminal is also read, because no attempt of a terminal parent starts a child. For
    a closed or absent workflow, the sweep writes the `cancelled` ending when the turn has
    a stop row, and the `failed` ending with the cause otherwise. It then runs `fan_in`.

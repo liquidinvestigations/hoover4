@@ -374,6 +374,7 @@ class _Recorder:
 
         self._unroutable: Dict[str, int] = {}
         self._ai_rows: List[list] = []
+        self._step_rows: List[list] = []
 
         self._temporal_client: Any = None
         self._loop: Any = None
@@ -456,6 +457,13 @@ class _Recorder:
         with self._lock:
             self._ai_rows.append(row)
 
+    def record_step(self, row: list) -> None:
+        """Buffer one ``agent_step_events`` row. Same process, same daemon, never raises."""
+        self.ensure_started()
+        with self._lock:
+            if len(self._step_rows) < MAX_BUFFERED_ROWS:
+                self._step_rows.append(row)
+
     def note_unroutable(self, task_name: str) -> None:
         """An activity whose parameters name no collection: recorded in the global table."""
         with self._lock:
@@ -486,6 +494,7 @@ class _Recorder:
             self._row_count = 0
             overflow, self._overflow_dropped = self._overflow_dropped, 0
             ai_rows, self._ai_rows = self._ai_rows, []
+            step_rows, self._step_rows = self._step_rows, []
 
         if overflow:
             self._warn(
@@ -498,6 +507,10 @@ class _Recorder:
             self._insert(collectionname, "processing_task_runs", _RUNS_COLUMNS, rows)
         if ai_rows:
             self._insert("", "ai_service_telemetry", _AI_COLUMNS, ai_rows)
+        if step_rows:
+            from database.agent_step_events import COLUMNS as step_columns
+
+            self._insert("", "agent_step_events", step_columns, step_rows)
 
     def _insert(
         self, collectionname: str, table: str, columns: List[str], rows: List[list]
@@ -855,3 +868,11 @@ def record_ai_service(row: list) -> None:
         _recorder.record_ai(row)
     except Exception:  # noqa: BLE001 - telemetry is never worth a failed activity
         log.debug("task_timing: ai_service_telemetry buffer failed", exc_info=True)
+
+
+def record_step_event(row: list) -> None:
+    """Enqueue one ``agent_step_events`` row onto the timing daemon. Never raises."""
+    try:
+        _recorder.record_step(row)
+    except Exception:  # noqa: BLE001 - telemetry is never worth a failed activity
+        log.debug("task_timing: agent_step_events buffer failed", exc_info=True)

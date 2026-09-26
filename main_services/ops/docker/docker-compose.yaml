@@ -513,7 +513,8 @@ services:
       # the scan stage has no absent-endpoint branch to carry.
       - "REGEX_SCANNER_URL=${REGEX_SCANNER_URL:-http://hoover4-regex-entity-scanner:19705}"
       # Worker fleet sizing. Unset for the pipeline tiers: each default is a measurement.
-      # The three chat keys are set from the ini: a slot is one turn in flight.
+      # The four agent keys are set from the ini: a slot is one model call or one tool
+      # call in flight.
       - "HOOVER4_COMMON_WORKERS=${HOOVER4_COMMON_WORKERS:-}"
       - "HOOVER4_COMMON_CONCURRENCY=${HOOVER4_COMMON_CONCURRENCY:-}"
       - "HOOVER4_COMMON_MAX_CACHED_WORKFLOWS=${HOOVER4_COMMON_MAX_CACHED_WORKFLOWS:-}"
@@ -526,7 +527,8 @@ services:
       - "HOOVER4_CHAT_MODEL_CONCURRENCY=${HOOVER4_CHAT_MODEL_CONCURRENCY:-}"
       - "HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY=${HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY:-}"
       - "HOOVER4_RESEARCH_CONCURRENCY=${HOOVER4_RESEARCH_CONCURRENCY:-}"
-      # The sub-agent budgets that run_agent applies when a run delegates.
+      - "HOOVER4_AGENT_TOOL_CONCURRENCY=${HOOVER4_AGENT_TOOL_CONCURRENCY:-}"
+      # The sub-agent budgets that delegate_step applies when a run delegates.
       - "AGENT_SUBAGENT_MAX_PER_TURN=${AGENT_SUBAGENT_MAX_PER_TURN:-6}"
       - "AGENT_PLAN_RUN_BUDGET=${AGENT_PLAN_RUN_BUDGET:-300}"
       # A rendered .env is substituted INTO this file; it does not reach the container by
@@ -546,12 +548,10 @@ services:
       - "LLM_API_KEY_FILE=/run/secrets/llm_api_key"
       # false when the active provider rejects `temperature`: the title request leaves it out.
       - "LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}"
-      # The agent-run timeouts of tasks/P_agent/model_timeouts.py. Empty keeps the code
-      # defaults: no queue-wait limit, 900 s for a chat run, 2400 s for a plan run, and a
-      # 30 s title request.
+      # The agent step limits of tasks/P_agent/model_timeouts.py. Empty keeps the code
+      # defaults: no queue-wait limit, a 3,600 s model step, and a 30 s title request.
       - "HOOVER4_AGENT_QUEUE_WAIT_SECONDS=${HOOVER4_AGENT_QUEUE_WAIT_SECONDS:-}"
-      - "HOOVER4_CHAT_RUN_TIMEOUT_SECONDS=${HOOVER4_CHAT_RUN_TIMEOUT_SECONDS:-}"
-      - "HOOVER4_PLAN_RUN_TIMEOUT_SECONDS=${HOOVER4_PLAN_RUN_TIMEOUT_SECONDS:-}"
+      - "LLM_REQUEST_TIMEOUT_SECONDS=${LLM_REQUEST_TIMEOUT_SECONDS:-}"
       - "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS=${HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS:-}"
       # Read by tests/unit/test_temporal_readiness.py. See the mount above.
       - "HOOVER4_TEMPORAL_READY_RS=/mirror/website-backend-src/temporal_ready.rs"

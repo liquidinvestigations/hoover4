@@ -16,7 +16,7 @@ two run kinds of a deep research plan.
 | Used by | the runs of a thread with internet tools off | the runs of a thread with internet tools on |
 
 `hoover4-full-research-agent` runs four uvicorn worker processes (`UVICORN_WORKERS`).
-Each process holds its own graph cache and MCP connections. Citation `[Dn]` handles
+Each process holds its own cache of step contexts. Citation `[Dn]` handles
 are allocated in the collections MCP server, so the worker processes do not split them.
 
 The profile selects the prompt template. The tool packs of the run kind select the tools.
@@ -33,16 +33,17 @@ search UI:
 
 1. The **website backend** resolves the user's permitted collections (group grants union
    public collections). It is the only component that can. It owns the auth tables.
-2. It passes that list with the turn to the Temporal worker, and the worker's `run_agent`
-   sends it to the agent as `allowed_collections` on the `/run/stream` request.
+2. It passes that list with the turn to the Temporal worker, and the worker sends it to
+   the agent as `allowed_collections` on each `/model_step` and `/tool_call` request.
 3. `acl_headers()` turns it into `X-Hoover4-Collections: <list>` plus
    `Authorization: Bearer $MCP_SHARED_SECRET`, set as **MCP connection headers**.
-4. The agent caches **one graph per ACL and chat session** (`_acl_key`), so a connection
-   opened for one user is never reused for another. The chat session is part of the key
-   because `X-Hoover4-Chat-Session` travels in the same connection headers. See the
-   browser sessions note below. The cache is LRU-bounded by `AGENT_MAX_CACHED_GRAPHS`
-   (default 24); each entry holds one live MCP connection per configured server, so it
-   cannot be allowed to grow per conversation without limit.
+4. The agent caches **one step context per ACL, chat session and run** (`_acl_key`), so
+   the connection headers built for one user are never used for another. The chat session
+   is part of the key because `X-Hoover4-Chat-Session` travels in the same connection
+   headers. See the browser sessions note below. The cache is LRU-bounded by
+   `AGENT_MAX_CACHED_GRAPHS` (default 24). A context holds no open connection, but it holds
+   the tool objects of every configured server, so it cannot be allowed to grow per
+   conversation without limit.
 5. `hoover4-mcp-collections` enforces the header on every tool call.
 
 The model never sees or supplies its own permissions. They are not tool arguments, so it
@@ -56,13 +57,13 @@ Not in compose, and not as string literals. Each profile is a `.md.j2` template 
 loader in `research_agent/prompts/__init__.py`, which is the only thing that renders one.
 `SYSTEM_PROMPT` overrides the whole rendered text; empty means "render the templates".
 
-**The prompt is a function of the deployment.** It is rendered in `_create_graph`, at the
-first point where the tool list is real, and it takes named parameters: the bound tool
-names, the tool-turn budget the graph will enforce, whether delegation is bound, whether
-the caller can read any collection at all, and whether the open web is reachable. The tool
-section is generated from the bound names, so a prompt can neither describe a tool the
-model does not have nor leave out one it does. `tests/test_prompts.py` fails when a
-template names an unbound tool or states a budget the code does not use. Renaming a tool
+**The prompt is a function of the deployment.** It is rendered for each model call from
+the step context that `_create_context` builds, at the first point where the tool list is
+real, and it takes named parameters: the bound tool names, whether delegation is bound,
+whether the caller can read any collection at all, and whether the open web is reachable.
+The tool section is generated from the bound names, so a prompt can neither describe a tool
+the model does not have nor leave out one it does. `tests/test_prompts.py` fails when a
+template names an unbound tool. Renaming a tool
 used to mean correcting the same sentence by hand in several prose files, and the one that
 was missed told the model to call a name that no longer existed.
 
@@ -87,18 +88,17 @@ renders it into its `instructions`, which this agent does not pass to the model.
 
 A lead binds `run_subagent` when the `delegation` pack is in its run kind's packs, which
 is the default for both agents. The tool splits a question into one to five briefings.
-`/run/stream` stops the run at `run_subagent` (`execution.py`). The execution node runs
-every other call of that model turn, then sends `tool_start` and `delegate` for each
-`run_subagent` call and ends the graph with no answer. The worker writes one sub-agent run
-for each accepted briefing, and each runs as an `AgentRun` of its own, with the
+`/model_step` gives a `run_subagent` call whose briefings can be read the kind
+`delegation`, with its briefings (`steps.py`). The worker runs every other call of that
+reply, and then writes one sub-agent run for each accepted briefing, and each runs as an `AgentRun` of its own, with the
 `research_subagent` profile. When the last one ends, a continuation of the delegating run
 sends the thread back with one `tool` result for each call, and the model continues. A
 sub-agent at depth 1 can delegate again, and a run at depth 2 cannot. The worker applies the
 budgets. See `processing/tasks/Readme.md` for the runs, the fan-in and the budgets.
 
-**Depth is enforced by what is bound.** A `/run/stream` request with `can_delegate` false
-does not bind `run_subagent`, so a call to it gets the execution node's `tool_unavailable`
-result. A prompt asking a model not to recurse eventually meets a model that does.
+**Depth is enforced by what is bound.** A step request with `can_delegate` false does not
+bind `run_subagent`, so a call to it is a `parallel` call, and `/tool_call` answers it with
+`tool_unavailable`. A prompt asking a model not to recurse eventually meets a model that does.
 
 **A plan briefing names its section.** An organizer's briefing carries `plan_node_id`, a
 section of the approved tree, and `purpose`: `execute`, `review` or `correct`. The request
@@ -120,7 +120,7 @@ list or `all`. `deploy.py` renders them from `hoover4.ini`. The service refuses 
 unknown pack name. A tool that an MCP server lists and no pack names is refused for every
 run.
 
-Each graph builds one `CatalogueSnapshot` (`tool_catalogue.py`) from the tools of its packs.
+Each step context builds one `CatalogueSnapshot` (`tool_catalogue.py`) from the tools of its packs.
 The snapshot splits them into core tools, which every model call binds, and deferred tools.
 The core tools are `list_collections`, `search_collections`, `search_passages`,
 `read_documents`, `list_document_entities`, `cite_documents`, `read_more`,
@@ -132,19 +132,20 @@ request as words of a tool's summary, then a name prefix, then the count of shar
 returns at most `AGENT_CATALOGUE_MATCH_COUNT` matches (6 to 12, default 6), and
 `No available tool matches this request.` when nothing matches.
 
-The model node and the execution node (`execution.py`) read the run's `bound_names` from one
-state value. The model node binds the core tools and `bound_names` for that call only. The
-execution node refuses any other name with a `tool_unavailable` error, decodes and validates
-the arguments, and runs the calls. Plan mutations run one after the other in call order, and
-the other calls run in parallel. After the batch, the bind step puts the newest matches of
-`search_agent_tools` first, then the earlier names, and keeps `AGENT_CATALOGUE_MATCH_COUNT`.
-Each request starts with no bound names.
+The bound names are not stored. `/model_step` derives them from the thread with
+`bound_names_from_thread` (`tool_catalogue.py`): for each reply of the thread, the bind step
+puts the matches of its successful `search_agent_tools` results first, then the earlier
+names, and keeps `AGENT_CATALOGUE_MATCH_COUNT`. The model call binds the core tools and the
+bound names, and the `model_turn` frame returns the bound names. `/tool_call` receives them
+back, refuses any other name with a `tool_unavailable` error, decodes and validates the
+arguments, and runs the call. The worker runs plan mutations one after the other in call
+order, and the other calls in parallel.
 
 ### The batch result budget and the call measure
 
-The result pages of all calls of one model turn share one budget. The execution node
-reserves the empty page of each call first, divides the rest equally, and sends each call its
-share in the `X-Hoover4-Page-Share` header. The connections' HTTP client factory
+The result pages of all calls of one model reply share one budget. `/model_step` reserves
+the empty page of each call first, divides the rest equally, and gives each call entry its
+`page_share`. `/tool_call` sends the share in the `X-Hoover4-Page-Share` header. The connections' HTTP client factory
 (`page_share_client`) adds the header, because the MCP adapter opens one session for each
 call. The collection server's page broker sizes each page within that share, a later page
 of a stored window included.
@@ -152,64 +153,93 @@ of a stored window included.
 - **Safe mode** is the default. One turn's results share 24,000 UTF-8 bytes, or less when
   the request bytes plus the completion reserve leave less of the context window.
 - **Token mode** needs `AGENT_MAX_PAGE_TOKENS` and `AGENT_COMPLETION_RESERVE_TOKENS`, and a
-  known context window. The node counts the request and the empty pages with the served
+  known context window. The service counts the request and the empty pages with the served
   tokenizer and applies `result_pages.allocate`. It sends the token share as a byte share,
   because a token covers at least one byte. A failed count keeps safe mode. When the empty
-  pages and the reserve do not fit, no call runs, and each call gets its empty
-  `budget_exhausted` page.
+  pages and the reserve do not fit, every call entry has `budget_exhausted`, and
+  `/tool_call` returns the empty `budget_exhausted` page with no call.
 
 A page that the broker stored as a window is read on later pages with the share it was
 stored with, when not one unit fits the current share.
 
 The broker returns the `build_page` measure of the page beside the page text, as an embedded
-resource. The adapter puts that block in the tool message artifact. The node takes it out,
-adds `page_share`, `budget_mode` and `batch_total`, and gives it as the `measure` of the
-`tool_result` event and as `response_metadata["call_measure"]` of the tool message. A tool
-that is not a broker tool has no measure. `scripts/test-agent-batch-budget.sh` runs three
-parallel `search_collections` calls through the node and checks the total and each digest.
+resource. The adapter puts that block in the tool message artifact. `/tool_call` takes it out and
+returns it as the `measure` of the response. A tool that is not a broker tool has no
+measure.
 
-## The run request: `POST /run/stream`
+## The step requests
 
-A `/run/stream` request carries one agent run: `run_id`, `kind`, `depth`, the caller's
-identity and collections, the chat `history` (depth 0 only), and the run's thread as
-`messages`. `messages[0]` is the opening human message. `run_messages.py` rebuilds the
-stored messages into langchain messages, with the tool calls and the stored usage, so
-compaction can measure the thread before the first new model call. The run has
-`max(0, AGENT_MAX_TOOL_TURNS + extra_tool_turns - tool_turns_used)` tool turns left.
+The worker runs the agent loop in the `AgentRun` workflow. For each model call it sends
+`POST /model_step`, and for each tool call of a reply it sends `POST /tool_call`. The service
+keeps no state of a run between two requests. Both requests carry the run fields of
+`StepRun` (`steps.py`): `run_id`, `kind`, `depth`, `purpose`, the caller's identity and
+collections, `llm_model` and `can_delegate`.
 
-The stream sends `data: {json}` frames with these events:
+### `POST /model_step`
 
-| type | content |
+The request adds `step_no` (1 for the first model call of the run thread), `mode` (`tools`,
+or `final` with no tool bound), `thinking` (a bool, or empty for the default of the mode),
+the run's thread as `messages`, and the earlier turns of the chat as `earlier` (depth 0
+only). `messages[0]` is the opening human message. `run_messages.py` rebuilds the stored
+messages into langchain messages, with the tool calls and the stored usage, so compaction
+can measure the thread before the model call.
+
+The response is a stream of `data: {json}` frames, in this order:
+
+| `type` | fields | when |
+|---|---|---|
+| `reasoning` | `content` | each reasoning delta |
+| `response` | `content` | each text delta |
+| `model_turn` | `text`, `reasoning`, `tool_calls` (a list of call entries), `bound_names`, `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`), `summarised` | once, after the reply ends |
+| `end` | `model`, `latency_ms`, `usage` (`prompt_tokens`, `completion_tokens`, `reasoning_tokens`) | once, last |
+| `error` | `error_class`, `retryable`, `content` | in place of `model_turn` and `end` |
+
+`error_class` is `read_timeout`, `connect_error`, `http_<status>` or `other`. `retryable` is
+false only for an HTTP 4xx status other than 408 and 429. `summarised` is true when the
+compaction of this call summarised the thread. The worker then adds the summary notice to
+the answer.
+
+A call entry is one call of the reply as the service classifies it:
+
+| field | meaning |
 |---|---|
-| `model_turn` | `index`, `text`, `reasoning`, `tool_calls` with `id`, `name` and `args`, `usage` |
-| `tool_start` | `index`, `tool_call_id`, `name`, `args` |
-| `tool_result` | `index`, `tool_call_id`, `name`, `content`, `measure` (the call measure, or `null`), `status` (`ok` or `error`) |
-| `delegate` | `index`, `tool_call_id`, `briefings` (each `objective`, `known`, `bring_back`) |
+| `id` | the call id. An id that is empty, repeated in the reply, or used by an earlier `ai` message becomes `call-{step_no}-{position}` |
+| `name`, `args` | the call as the model wrote it |
+| `kind` | `delegation` for a `run_subagent` call whose briefings can be read, `ordered` for a plan mutation, `parallel` for every other call |
+| `briefings` | the briefings of a delegation |
+| `page_share`, `budget_exhausted` | the call's share of the batch result budget, in bytes, for a `parallel` or `ordered` call |
+| `retry` | false for the browser actions (`browser_navigate`, `browser_click`, `browser_type`, `browser_select_option`, `browser_press_key`). The worker gives such a call one attempt |
+| `args_digest` | the sha1 hex of the name, a newline and the canonical JSON of the arguments |
 
-While no event is ready, the stream sends the SSE comment line `: keepalive` every 30 s
-(`KEEPALIVE_SECONDS` in `api.py`). One model call can wait longer than the worker's 300 s
+While no frame is ready, the stream sends the SSE comment line `: keepalive` every 30 s
+(`KEEPALIVE_SECONDS` in `steps.py`). One model call can wait longer than the worker's 300 s
 read timeout of the stream, and each comment line restarts that timeout. A reader of
-`data: ` frames skips the comment lines, so the frames and their order do not change.
+`data: ` frames skips the comment lines. A client that closes the request stops the model
+call.
 
-`index` is the message position in the run's thread. A call that raised sends a
-`tool_result` with `status` `error`, and `content` is the error text the model receives. The
-graph cache key holds the run id, and the run's graph is released when its stream ends.
+### `POST /tool_call`
 
-A `run_subagent` call stops the run: one `delegate` event for each such call of the model
-turn, in call order, after the results of the other calls, then `end` with an empty answer.
-A model turn with two `run_subagent` calls is one delegation. A call whose briefings cannot
-be read gets an `invalid_arguments` result and does not stop the run.
+The request adds `call` (the `id`, `name` and `args` of one stored call entry),
+`bound_names` (from the `model_turn` that made the call), `page_share`,
+`budget_exhausted` and `idempotency_key`. The service sends the key to the MCP server as
+`X-Hoover4-Idempotency-Key`, so a retried plan mutation changes the plan tree once. The
+response is JSON:
 
-When the thread ends with an `ai` message whose calls do not all have a `tool` message, the
-graph starts at the execution node and runs the missing calls before the next model call.
-That is a retry of an attempt that ended during a call.
+| field | meaning |
+|---|---|
+| `tool_call_id`, `name` | the call |
+| `content` | the result text that the model reads |
+| `status` | `ok` or `error` |
+| `error_class` | empty for `ok`. For `error`: `tool_error` (the tool raised or marked its result as an error), `tool_unavailable` (a name that this step did not bind), `invalid_arguments` (arguments that do not match the schema, or a `run_subagent` call) or `budget_exhausted` |
+| `measure` | the call measure of a broker tool, or `null` |
+| `matched_names` | the names that a `search_agent_tools` result matched |
 
 ## Per-chat and per-run browser sessions
 
 `X-Hoover4-Chat-Session` carries the chat session id alongside the ACL headers. It grants
 no authority. It is an **isolation key**. `hoover4-mcp-browser` uses it to give each
 conversation its own Chromium browser context, so cookies and storage from one chat do not
-follow the next one. A `/run/stream` request also sends `X-Hoover4-Agent-Run` with the run
+follow the next one. A step request also sends `X-Hoover4-Agent-Run` with the run
 id, and the browser server then keys the browser by the run. The chat session stays the
 key for citations, artifacts and the todo list. Sessions are dropped when the chat ends, or after
 `BROWSER_SESSION_IDLE_SECONDS` (1 h) idle. See
@@ -266,12 +296,12 @@ with a warning for a value outside the three modes.
 which is the "half the thinking" setting.
 
 **Tool-calling turns keep thinking off by default, whatever the mode.** Choosing a tool is
-routing, and letting Qwen3.5 reason about it produced the repeated-call loop the `agent`
-node has a guard for. Some models call tools more reliably with thinking on, and may answer
+routing, and letting Qwen3.5 reason about it produced the repeated-call loop that the
+worker's agent loop stops. Some models call tools more reliably with thinking on, and may answer
 directly instead of calling a tool with it off. `AGENT_TOOL_TURN_THINKING=true`, rendered
 from `[main_services] agent_tool_turn_thinking`, turns thinking on for the tool-calling
-turns. Only the `finalize` node sends the budget, because it writes prose and cannot call a
-tool.
+turns. Only a `final` model step sends the budget, because it writes prose and cannot call
+a tool.
 
 The thinking text arrives in the delta field `reasoning` from vLLM, and in
 `reasoning_content` from older servers and other providers. `chat_model.py` reads either
@@ -291,25 +321,11 @@ field and gives the agent `reasoning_content`.
 ## Stopping the model looping
 
 Small models are bad at deciding they are finished. Given results that fully answer the
-question, Qwen3.5-2B will still re-issue a search it has already run. Left alone that ends
-in langgraph's `GraphRecursionError`, which surfaces as an **HTTP 500 with no answer at
-all**. The least useful possible failure, since the tool results needed to answer were
-already in hand.
-
-`_create_graph` therefore routes to a `finalize` node when either guard trips:
-
-* **a repeated tool call**, at temperature 0 the same call returns the same result, so a
-  repeat is a stuck loop, not exploration;
-* **`AGENT_MAX_TOOL_TURNS`** (default 12) tool-calling turns.
-
-`finalize` removes the unsatisfied tool call (an OpenAI-shaped request carrying `tool_calls`
-with no matching results is rejected), appends "answer now from what you already have", and
-runs the same model **with no tools bound**, a model that cannot call a tool has to answer.
-`AGENT_RECURSION_LIMIT` (default 40) is the hard backstop behind both.
-
-`finalize` is an answer-producing node exactly like `agent`, so the SSE event loop must
-watch both. Omitting it is why the forced answer first came back as an empty string with a
-cheerful HTTP 200.
+question, Qwen3.5-2B will still re-issue a search it has already run. The worker's agent
+loop stops such a run. It sends a `final` model step, with no tool bound, when the model
+repeats a call (the `args_digest` of a call entry makes the repeat visible) or when the run
+reaches its step budget. A model that cannot call a tool has to answer. See
+`processing/tasks/Readme.md` for the loop.
 
 ## Context compaction: `AGENT_COMPACTION_FRACTION`
 
@@ -337,12 +353,12 @@ results replayed across turns all bring it into range.
 
 Three properties decide whether a citation still resolves:
 
-* **Nothing is edited.** The transformation sits in front of the prompt template, not in a
-  node that writes state, so the graph state, the trajectory the website renders and the
-  transcript rows all keep every result in full. Only the model sees less.
+* **Nothing is edited.** The transformation applies to the messages of one model call
+  only, so the stored thread, the trajectory the website renders and the transcript rows
+  all keep every result in full. Only the model sees less.
 * **A result is shortened, never removed.** An assistant message whose `tool_calls` have no
   matching tool result is rejected by an OpenAI-shaped API outright (the same constraint
-  `finalize` works around above), so the placeholder is what "dropped" has to mean here.
+  a `final` step works around), so the placeholder is what "dropped" has to mean here.
 * **An unknown window never fires the trigger.** `llm_models.context_window` is 0 when the
   provider never stated one, and there is no default to fall back on. The catalog is the
   source rather than the provider directly, so the number the trigger divides by is the
@@ -404,9 +420,8 @@ strings, and `"filename_only": "True"` for a boolean. The MCP servers validate a
 with pydantic in lax mode. That mode converts `"True"` and `"5"`, and refuses a string for a
 list or an object, so such a call fails and the model gets no result.
 
-`_create_graph` wraps every MCP tool with `with_decoded_arguments` (`agent.py`), and the
-execution node (`execution.py`) decodes the arguments of every call it runs. The workers
-use the same wrapped tools and the same execution node. Before each call, `decode_string_arguments` (`tool_args.py`)
+`_create_context` wraps every MCP tool with `with_decoded_arguments` (`agent.py`), and
+`/tool_call` (`steps.py`) decodes the arguments of every call it runs. Before each call, `decode_string_arguments` (`tool_args.py`)
 reads the parameter's JSON schema, following `anyOf`, `oneOf`, `$ref` and `type` lists. It
 changes a string argument only when the schema does not allow a string:
 
@@ -428,14 +443,14 @@ renders `true`.
 
 Under **vLLM 0.11**, streamed tool-call deltas arrived with the function name but
 `arguments` absent. langchain turned those into `tool_call_chunk`s with `args=None`, which
-never accumulated into the final `AIMessage`. `message.tool_calls` came back empty,
-`should_continue` routed straight to `END`, and the agent produced a confident answer having
-silently made **zero** tool calls. It presents as "the model is bad".
+never accumulated into the final `AIMessage`. `message.tool_calls` came back empty, the
+reply looked like an answer, and the agent produced a confident answer having silently made
+**zero** tool calls. It presents as "the model is bad".
 
-`disable_streaming` is the switch that actually matters, not `streaming`: the latter only
-affects `invoke`, while langgraph drives the model through `astream_events`, which calls
-`astream` and streams regardless. With `disable_streaming=True`, `astream` degenerates to a
-single `invoke` and the node emits a whole `AIMessage` with its `tool_calls` intact.
+With `LLM_STREAMING=false`, `/model_step` makes one `ainvoke` call and the reply arrives as
+one `AIMessage` with its `tool_calls` intact. The client also gets
+`disable_streaming=True`. `ThinkingChatOpenAI._create_chat_result` keeps the reasoning of
+such a whole reply.
 
 **Re-tested on vLLM 0.17.1 + Qwen3.5-2B: fixed.** With `LLM_STREAMING=true` a real agent run
 made 4 tool calls and returned a correctly cited answer, so the default is now on and token
@@ -506,8 +521,9 @@ The application is configured entirely via environment variables (rendered from
 ### Health Check
 - **GET** `/health` - Check agent status and readiness
 
-### Run Streaming
-- **POST** `/run/stream` - Stream one agent run. See "The run request" above.
+### Agent steps
+- **POST** `/model_step` - Make one model call and stream it. See "The step requests" above.
+- **POST** `/tool_call` - Run one tool call. See "The step requests" above.
 
 ### API Information
 - **GET** `/` - API information and configuration details
@@ -522,26 +538,8 @@ curl http://localhost:8000/health
 
 ## Response Format
 
-The streaming endpoint returns Server-Sent Events with JSON data:
-
-```json
-{
-  "is_task_complete": false,
-  "type": "start",
-  "content": ""
-}
-```
-
-### Response Types
-
-- `start`: Initial response start
-- `start_reasoning`: Beginning of reasoning phase
-- `reasoning`: Reasoning content (if supported by model)
-- `start_response`: Beginning of final response
-- `response`: Final response content
-- `model_turn`, `tool_start`, `tool_result`, `delegate`: the run events, see "The run request"
-- `error`: Error occurred
-- `end`: Final completion signal
+`/model_step` returns `data: {json}` frames. See "The step requests" above for the frame
+types and their fields.
 
 ## Development
 
@@ -588,8 +586,8 @@ are unset.
 ### Components
 
 - **FastAPI Application**: Web API with lifespan management
-- **MCP Gateway Agent**: Core agent with MCP tool integration
-- **Streaming Handler**: Real-time response streaming
+- **MCP Gateway Agent**: the cache of step contexts, with MCP tool integration
+- **Step handlers**: `steps.py`, one model call or one tool call for each request
 - **Environment Configuration**: Flexible configuration system
 
 ### MCP Integration
