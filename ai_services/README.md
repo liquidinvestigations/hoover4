@@ -133,7 +133,9 @@ The weights are the folder `dgemma_model` under `[storage] volumes_path`. Before
 start, `./deploy --ai-services` runs the built image once and downloads `vllm_model` into
 that folder. The download of about 19 GB runs for minutes, and it continues a partial folder. A
 folder is complete when it holds `config.json` and every shard that
-`model.safetensors.index.json` names, each above zero bytes. A later deploy does not
+`model.safetensors.index.json` names, each above zero bytes. A checkpoint of one shard has
+no index, so a folder with no index is complete when it holds `config.json` and one
+`*.safetensors` file above zero bytes. A later deploy does not
 download a complete folder again. `deploy.py` stops with an error when the folder is still
 incomplete after the download.
 
@@ -181,12 +183,72 @@ docker logs hoover4-vllm 2>&1 | grep -E "memory:|refusing|GPU KV cache size|Maxi
 The line `Maximum concurrency for 262,144 tokens per request` must read at least
 `vllm_max_num_seqs`. When it reads less, increase `vllm_kv_cache_gb` by one.
 
+With the defaults on the GPU box, the log reads `GPU KV cache size: 2,386,792 tokens` and
+`Maximum concurrency for 262,144 tokens per request: 9.10x`. The `memory:` line reads 117 GB
+available and 54 GB needed at 4 sequences, and 56 GB needed at 8. The other two model
+servers run beside it. With the model idle, the host keeps about 56 GiB of `MemAvailable`,
+and the swap in use does not grow.
+
+### Speed, and the agent timeouts that follow from it
+
+A sweep sent streamed requests with thinking off, a unique first line in each prompt, and
+`ignore_eos`, so each request decoded its full output. Each cell sent its requests at once.
+The first chunk is the time to the first content, and the stream rate is the decode rate of
+one stream after it.
+
+| sequences | context tokens | output tokens | slowest first chunk, s | slowest stream, tokens/s | slowest request, s |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 2,048 | 512 | 3.0 | 178.0 | 5.8 |
+| 1 | 2,048 | 4,096 | 2.8 | 351.8 | 14.4 |
+| 1 | 16,384 | 512 | 15.6 | 81.3 | 21.9 |
+| 1 | 16,384 | 4,096 | 17.5 | 133.6 | 48.1 |
+| 1 | 32,768 | 512 | 31.2 | 92.3 | 36.8 |
+| 1 | 32,768 | 4,096 | 19.7 | 164.2 | 44.7 |
+| 2 | 2,048 | 512 | 3.5 | 176.7 | 6.4 |
+| 2 | 2,048 | 4,096 | 3.7 | 124.0 | 36.1 |
+| 2 | 16,384 | 512 | 15.6 | 86.8 | 19.2 |
+| 2 | 16,384 | 4,096 | 14.7 | 37.4 | 124.0 |
+| 2 | 32,768 | 512 | 42.8 | 32.9 | 58.3 |
+| 2 | 32,768 | 4,096 | 48.5 | 16.2 | 300.8 |
+| 4 | 2,048 | 512 | 3.3 | 53.2 | 12.7 |
+| 4 | 2,048 | 4,096 | 3.4 | 46.2 | 92.1 |
+| 4 | 16,384 | 512 | 24.9 | 19.4 | 51.2 |
+| 4 | 16,384 | 4,096 | 51.7 | 12.8 | 366.0 |
+| 4 | 32,768 | 512 | 104.8 | 13.3 | 123.9 |
+| 4 | 32,768 | 4,096 | 101.6 | 6.6 | 666.7 |
+| 8 | 2,048 | 512 | 4.4 | 34.2 | 18.6 |
+| 8 | 2,048 | 4,096 | 7.0 | 15.9 | 264.2 |
+| 8 | 16,384 | 512 | 71.9 | 7.5 | 95.7 |
+| 8 | 16,384 | 4,096 | 42.8 | 8.8 | 492.4 |
+| 8 | 32,768 | 512 | 167.7 | 4.0 | 192.7 |
+| 8 | 32,768 | 4,096 | 140.4 | 6.7 | 669.0 |
+
+`vllm_max_num_seqs` is 4 when the slowest stream at 8 sequences decodes below 30 tokens a
+second, and 8 otherwise. The slowest stream at 8 decoded 4.0 tokens a second, so the value is 4.
+
+The budget timeouts of `[main_services]` come from the six cells at 4 sequences. The first
+chunk time is fitted as `a + b*c` over the context `c`, and the inverse stream rate as
+`e + f*c`. Both fits are extrapolated to the full context of 262,144 tokens, which the sweep
+did not send. At that context the fit gives 861 s to the first chunk and 1.24 tokens a second.
+One worst-case request, `W`, is that first chunk plus 33,792 output tokens, 28,150 s. Each
+value is rounded up to a whole minute.
+
+| key | formula | value, s |
+|---|---|---:|
+| (the answer bound `T_ans`) | `2 * W` | 56,340 |
+| `llm_request_timeout_seconds` | `T_ans * ceil((24 - 4) / 4) + T_ans`, the model server's queue of 24 requests from two deployments, served 4 at a time, and the answer | 338,040 |
+| `chat_run_timeout_seconds` | `llm_request_timeout_seconds + T_ans`, two answers in one run | 394,380 |
+| `plan_run_timeout_seconds` | `max(2400, chat_run_timeout_seconds)` | 394,380 |
+| `agent_queue_wait_seconds` | `chat_run_timeout_seconds * max(1, ceil((10 - 4) / 4))`, 10 runs on a queue of 4 slots | 788,760 |
+| `title_request_timeout_seconds` | fixed | 120 |
+
 ### Request parameters that the server rejects
 
 vLLM answers a request with a 400 error when it carries `temperature`, `min_p`, `seed`,
 `min_tokens`, `logit_bias`, `bad_words` or `allowed_token_ids`. A client of this server
 must leave them out. It can send `chat_template_kwargs` with `enable_thinking`, which
-wins over `vllm_default_thinking`.
+wins over `vllm_default_thinking`. `[llm_provider.selfhosted] send_temperature = false`
+makes the agents, their compaction summary and the title call leave `temperature` out.
 
 ### Differences from the vLLM recipe
 
@@ -200,6 +262,7 @@ it in these arguments.
 | `--served-model-name` | not set | `dgemma` (`vllm_served_name`) | a short name for the clients |
 | `--gpu-memory-utilization` | 0.8 | 0.60 (`vllm_gpu_fraction`) | the box runs other model servers |
 | `--kv-cache-memory` | not set | 28 GiB (`vllm_kv_cache_gb`) | a fixed KV cache for 8 sequences at the full context |
+| `--max-num-seqs` | 8 | 4 (`vllm_max_num_seqs`) | at 8, one stream decodes below 30 tokens a second |
 | `--diffusion-config` | canvas 256 | canvas 256, 32 samples, and a canvas schedule by batch size (`vllm_canvas`, `vllm_max_samples`, `vllm_canvas_schedule`) | the schedule makes a smaller canvas at a larger batch |
 | `--exclude-tools-when-tool-choice-none`, `--trust-remote-code`, `--async-scheduling`, `--max-logprobs 128`, `VLLM_USE_V2_MODEL_RUNNER=1` | not set | set by the entrypoint | the entrypoint of the build sets them, and the vLLM patches of the build need `--async-scheduling` |
 | `--chat-template` | the recipe names a tool chat template | not set (`vllm_chat_template`) | the model's own template is used until a measurement shows that tool calls need the other |

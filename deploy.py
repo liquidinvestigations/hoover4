@@ -140,7 +140,7 @@ DEFAULTS = {
         "vllm_served_name": "dgemma",
         "vllm_gpu_fraction": "0.60",
         "vllm_max_model_len": "262144",
-        "vllm_max_num_seqs": "8",
+        "vllm_max_num_seqs": "4",
         "vllm_kv_cache_gb": "28",
         "vllm_headroom_gb": "4",
         "vllm_transient_copies": "2",
@@ -1545,7 +1545,6 @@ def render_ai_env(cfg):
     for key in ("vllm_port", "ai_server_port", "easyocr_port"):
         env[key.upper()] = cfg.get(a, key)
 
-    env["LLM_MODEL_NAME"] = cfg.get(a, "vllm_model")
     env["LLM_SERVED_NAME"] = cfg.get(a, "vllm_served_name")
     for key, name in VLLM_KEY_ENV:
         env[name] = cfg.get(a, key)

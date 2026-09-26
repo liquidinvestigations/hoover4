@@ -184,9 +184,11 @@ under `llm_request_timeout_seconds`. The liveness bounds do not have keys: the h
 the agent's keepalive line every 30 s, the worker's 300 s read of the agent stream and the
 website's 180 s stall window.
 
-`agent_max_output_tokens` is the `max_tokens` of every agent model request. Empty sends no
-cap, and the templates set 32768. `agent_thinking` is the thinking mode of the answer turn,
-`off`, `on` or `budgeted`. Empty renders `off`, and another value renders with a warning,
+`agent_max_output_tokens` is the output cap of every agent model request, sent as
+`max_completion_tokens`. Empty sends no cap, and the templates set 32768. The `budgeted`
+thinking mode adds its own `max_tokens`. vLLM applies `max_completion_tokens` when a request
+carries both keys, so the thinking budget has no effect while this cap is set.
+`agent_thinking` is the thinking mode of the answer turn, `off`, `on` or `budgeted`. Empty renders `off`, and another value renders with a warning,
 after which the agent services use `off`. `agent_tool_turn_thinking` turns thinking on for
 the turns that may call a tool, and empty is `false`. `llm_streaming` is token streaming of
 the agent's model calls, and empty is `true`.

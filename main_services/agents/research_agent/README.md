@@ -223,7 +223,8 @@ Measured on this host, Qwen3.5-2B, simple question ("what is 17x23, reason it ou
 | thinking on | 1,735 | closes `</think>` after ~1,300 tokens, then answers |
 
 Roughly **4x** on a simple question. On a *hard* one (a two-trains-and-a-bird puzzle) the
-picture is much worse. Unbounded thinking does not converge at all:
+picture is much worse. Unbounded thinking does not converge at all. These runs sent no
+`AGENT_MAX_OUTPUT_TOKENS` cap:
 
 | mode | wall time | completion tokens | finish reason |
 |---|---|---|---|
@@ -233,14 +234,17 @@ picture is much worse. Unbounded thinking does not converge at all:
 | budgeted 375 (quarter) | 49.8 s | 1,399 | `length` |
 
 **Unbounded thinking is not a safe setting on this model.** It ran to a 16 K-token cap
-and nine and a half minutes without closing `</think>`. Use `budgeted` if you want
-thinking at all. The budget is what turns a non-terminating run into a ~1-minute one.
+and nine and a half minutes without closing `</think>`. With no output cap, the budget
+turned a non-terminating run into a ~1-minute one. The budget bounds a request only when
+`[main_services] agent_max_output_tokens` is empty. Both templates set that cap to 32768.
 
 There is no half-way setting inside the model, and vLLM 0.17.1 has no thinking-budget
 flag: `max_thinking_tokens`, `thinking_budget` and `reasoning_max_tokens` are all
 accepted and silently ignored in the request body (verified against the running server).
-That is why the budget here is enforced as a `max_tokens` ceiling on the whole
-completion.
+The `budgeted` mode therefore sends its budget as `max_tokens` in the request body. When
+`AGENT_MAX_OUTPUT_TOKENS` is set, the client sends that cap as `max_completion_tokens`.
+vLLM applies `max_completion_tokens` when a request carries both keys, so the budget has no
+effect.
 
 `research_agent/thinking.py` adds the control. `deploy.py` renders `AGENT_THINKING` from
 `[main_services] agent_thinking`, and an empty key renders `off`. The agent service uses `off`
@@ -250,7 +254,7 @@ with a warning for a value outside the three modes.
 |---|---|
 | `off` (default) | template prefills `<think></think>`. Fastest. |
 | `on` | unbounded reasoning. Slowest, best on multi-step questions. |
-| `budgeted` | reasoning on, completion capped at `AGENT_THINKING_BUDGET_TOKENS` + answer allowance |
+| `budgeted` | reasoning on, sends `max_tokens` of `AGENT_THINKING_BUDGET_TOKENS` + answer allowance. This caps the completion only when `AGENT_MAX_OUTPUT_TOKENS` is empty. |
 
 `AGENT_THINKING_BUDGET_TOKENS` defaults to **750**, half a measured unbudgeted thought,
 which is the "half the thinking" setting.
@@ -260,7 +264,8 @@ routing, and letting Qwen3.5 reason about it produced the repeated-call loop the
 node has a guard for. Some models call tools more reliably with thinking on, and may answer
 directly instead of calling a tool with it off. `AGENT_TOOL_TURN_THINKING=true`, rendered
 from `[main_services] agent_tool_turn_thinking`, turns thinking on for the tool-calling
-turns. The budget applies to the `finalize` node, which writes prose and cannot call a tool.
+turns. Only the `finalize` node sends the budget, because it writes prose and cannot call a
+tool.
 
 The thinking text arrives in the delta field `reasoning` from vLLM, and in
 `reasoning_content` from older servers and other providers. `chat_model.py` reads either
@@ -474,9 +479,11 @@ The application is configured entirely via environment variables (rendered from
   turns and the compaction summary. `deploy.py` renders it from the active provider's
   `send_temperature` key. Empty or unset is `true`. `research_agent/model_params.py` owns
   the rule, and the worker's title request mirrors it.
-- `AGENT_MAX_OUTPUT_TOKENS`: the `max_tokens` of every agent model request. Empty sends no
-  cap. The compaction summary keeps its own ceiling, and the `budgeted` thinking mode sends
-  its own `max_tokens`, which takes precedence.
+- `AGENT_MAX_OUTPUT_TOKENS`: the output cap of every agent model request, which the model
+  client sends as `max_completion_tokens`. Empty sends no cap. The compaction summary keeps
+  its own ceiling. The `budgeted` thinking mode adds its own `max_tokens`. When a request
+  carries both keys, vLLM applies `max_completion_tokens`, so the thinking budget has no
+  effect while this cap is set.
 - `LLM_REQUEST_TIMEOUT_SECONDS`: the read timeout of one agent model call, with a 10 s
   connect timeout. When set, the model client does not retry, so a call that receives no
   data for this long fails once and is not sent again. It is also the read timeout of the compaction summary. Empty keeps the client

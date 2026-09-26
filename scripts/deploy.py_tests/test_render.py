@@ -948,7 +948,6 @@ def test_the_worker_and_both_agents_receive_the_model_variables():
 # ---- the model server ---------------------------------------------------------------
 
 VLLM_DEFAULT_ENV = {
-    "LLM_MODEL_NAME": "nvidia/diffusiongemma-26B-A4B-it-NVFP4",
     "LLM_SERVED_NAME": "dgemma",
     "VLLM_PORT": "21960",
     "VLLM_STRUCTURED_PORT": "21963",
@@ -956,7 +955,7 @@ VLLM_DEFAULT_ENV = {
     "VLLM_BUILD_REF": "08b708e51bb8d9f4eba0e85b61dab0be7093d20e",
     "VLLM_GPU_FRACTION": "0.60",
     "VLLM_MAX_MODEL_LEN": "262144",
-    "VLLM_MAX_NUM_SEQS": "8",
+    "VLLM_MAX_NUM_SEQS": "4",
     "VLLM_KV_CACHE_GB": "28",
     "VLLM_HEADROOM_GB": "4",
     "VLLM_TRANSIENT_COPIES": "2",

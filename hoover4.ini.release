@@ -85,7 +85,8 @@ vllm_served_name   = dgemma
 vllm_gpu_fraction  = 0.60
 vllm_max_model_len = 262144
 ; The sequences vLLM runs at once. More requests wait in vLLM's own queue.
-vllm_max_num_seqs  = 8
+; 4, because at 8 one stream decodes below 30 tokens a second.
+vllm_max_num_seqs  = 4
 ; The KV cache in GiB. The start-up log line "Maximum concurrency for 262,144 tokens
 ; per request" must read at least vllm_max_num_seqs.
 vllm_kv_cache_gb   = 28
@@ -259,7 +260,10 @@ agent_max_page_tokens =
 agent_completion_reserve_tokens =
 agent_catalogue_match_count =
 ; The budget timeouts of an agent run, in whole seconds. They follow the measured
-; speed of the model server. Empty keeps the code defaults.
+; speed of the model server. Empty keeps the code defaults. The values below are
+; computed from a sweep of the model server at 4 sequences and up to 32,768 tokens of
+; context, extrapolated to the full context and a full output. ai_services/README.md
+; holds the sweep and the formulas.
 ; agent_queue_wait_seconds: the wait of a run for a free model slot. Empty is no limit.
 ; chat_run_timeout_seconds: one attempt of a chat run. Empty is 900.
 ; plan_run_timeout_seconds: one attempt of a deep-research run. Empty is 2400.
@@ -270,11 +274,11 @@ agent_catalogue_match_count =
 ;   client default (600 s and 2 retries) and 180 s for the summary.
 ; Keep chat_run_timeout_seconds and plan_run_timeout_seconds at or above
 ; llm_request_timeout_seconds. deploy.py warns when they are under it.
-agent_queue_wait_seconds =
-chat_run_timeout_seconds =
-plan_run_timeout_seconds =
-title_request_timeout_seconds =
-llm_request_timeout_seconds =
+agent_queue_wait_seconds = 788760
+chat_run_timeout_seconds = 394380
+plan_run_timeout_seconds = 394380
+title_request_timeout_seconds = 120
+llm_request_timeout_seconds = 338040
 ; The output cap of one agent model request, in tokens. Without a cap a request can
 ; decode to the end of the context window, which no timeout above bounds. Empty sends
 ; no cap.

@@ -26,7 +26,7 @@ That is the time/quality lever, and it is roughly 4x on a simple question. On a 
     budgeted 375           49.8 s    1,399 tokens   finish=length
 
 **`on` is not a safe production setting on this model** -- nine and a half minutes
-without closing `</think>`. The budget is what makes thinking usable at all.
+without closing `</think>`. With no output cap, the budget bounded that run.
 
 There is no half-way setting built into the model, and vLLM 0.17.1 has no
 thinking-budget flag -- `max_thinking_tokens`, `thinking_budget` and
@@ -35,23 +35,22 @@ the running server, they change nothing).
 
 ## What this module adds
 
-A budget in tokens, enforced where it can be: `max_tokens` bounds the whole completion,
-and a budget of N means the reasoning is allowed N tokens before the answer has to fit
-in the remainder. `AGENT_THINKING=budgeted` asks vLLM to stop at `</think>` once the
-budget is spent, which turns an unbounded ramble into a bounded one at the cost of a
-truncated thought -- acceptable, because the alternative is a turn that never ends.
+A budget in tokens. `AGENT_THINKING=budgeted` sends `max_tokens` of the budget plus
+`ANSWER_TOKEN_ALLOWANCE` in the request body. When `AGENT_MAX_OUTPUT_TOKENS` is set, the
+client sends that cap as `max_completion_tokens`. vLLM applies the cap, so the budget has
+no effect. The budget bounds the completion only when `agent_max_output_tokens` is empty.
+Both templates set that cap to 32768. The measurements above sent no cap.
 
 Three modes:
 
 * `off`     -- template prefills `<think></think>`. Fastest. **The current default.**
 * `on`      -- unbounded reasoning. Slowest, best on multi-step questions.
-* `budgeted`-- reasoning on, capped at `AGENT_THINKING_BUDGET_TOKENS`.
+* `budgeted`-- reasoning on, sends the `AGENT_THINKING_BUDGET_TOKENS` budget, see above.
 
 Tool-calling turns always run with thinking off regardless of mode. A tool call is a
 routing decision, not a reasoning problem, and Qwen3.5-2B already reasons past the point
-of usefulness into repeated calls (see `agent.py`'s `_repeated_call` guard). The budget
-applies to
-the turn that writes prose, which is where thinking changes the answer.
+of usefulness into repeated calls (see `agent.py`'s `_repeated_call` guard). Only the
+turn that writes prose sends the budget, which is where thinking changes the answer.
 """
 
 from __future__ import annotations
@@ -106,8 +105,10 @@ def thinking_kwargs(mode: str | None = None, budget: int | None = None) -> Dict[
     """Extra request body for a *prose-producing* LLM call.
 
     Returns `extra_body` content for langchain-openai: `chat_template_kwargs` selects
-    the template branch, and `max_tokens` bounds the whole completion so a runaway
-    thought cannot hold the request open until the agent timeout.
+    the template branch. In `budgeted` mode it also sends the budget as `max_tokens`.
+    When `AGENT_MAX_OUTPUT_TOKENS` is set, the client sends that cap as
+    `max_completion_tokens`. vLLM applies the cap, so the budget has no effect. The
+    budget bounds the completion only when `agent_max_output_tokens` is empty.
     """
     mode = mode or thinking_mode()
 
