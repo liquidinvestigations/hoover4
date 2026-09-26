@@ -115,7 +115,8 @@ fn boolean_word_tokens(query: &str) -> Vec<WordToken> {
 /// Manticore reads these words as ordinary search terms, so `a OR b` finds only a text
 /// that holds all three words. The rule: `OR` between two terms becomes `|`, a bare
 /// `AND` is dropped because every word must occur anyway, and `NOT x` becomes `-x`. An
-/// `OR` or `NOT` with no term on the needed side is dropped. Only the upper-case words
+/// `OR` or `NOT` with no term on the needed side is dropped. A `from:` or `to:` prefix of
+/// a word is dropped and the word stays. Only the upper-case words
 /// are operators, and nothing inside double quotes changes. Each operator token is
 /// replaced in place and the rest of the text is kept as it is, so `"a b"~3` and an
 /// unbalanced quote reach the later passes unchanged.
@@ -128,6 +129,7 @@ fn rewrite_boolean_words(query: &str) -> (String, Vec<String>) {
     let text = |t: &WordToken| &query[t.start..t.end];
     let is_term = |s: &str| !matches!(s, "OR" | "AND" | "NOT" | "|" | "(" | ")");
     let (mut or_read, mut and_dropped, mut not_read, mut stray) = (0usize, 0usize, 0usize, 0usize);
+    let mut prefix_dropped = 0usize;
     let mut out = String::with_capacity(query.len());
     // The last token written to the output, for the left side of an `OR`.
     let mut last_written: Option<String> = None;
@@ -168,7 +170,13 @@ fn rewrite_boolean_words(query: &str) -> (String, Vec<String>) {
                     None
                 }
             }
-            other => Some(other),
+            other => match without_address_prefix(other) {
+                Some(word) => {
+                    prefix_dropped += 1;
+                    Some(word)
+                }
+                None => Some(other),
+            },
         };
         if let Some(w) = written {
             out.push_str(w);
@@ -191,7 +199,26 @@ fn rewrite_boolean_words(query: &str) -> (String, Vec<String>) {
     if stray > 0 {
         repairs.push(format!("dropped {stray} OR or NOT with no word on one side"));
     }
+    if prefix_dropped > 0 {
+        repairs.push(format!(
+            "dropped {prefix_dropped} from: or to: and kept the word after it, because a search has no from or to field"
+        ));
+    }
     (out, repairs)
+}
+
+/// The prefixes of a word that a model writes for the sender or the recipient of an email.
+/// A search has no such field, so the prefix goes and the word stays.
+const ADDRESS_PREFIXES: [&str; 2] = ["from:", "to:"];
+
+/// The word after a `from:` or `to:` prefix, in any case, or `None` when the word has no
+/// such prefix or nothing after it. The Python copy is `_without_address_prefix` in
+/// `collection_search_server/backends.py`.
+fn without_address_prefix(word: &str) -> Option<&str> {
+    ADDRESS_PREFIXES.iter().find_map(|prefix| {
+        let head = word.get(..prefix.len())?;
+        (head.eq_ignore_ascii_case(prefix) && word.len() > prefix.len()).then(|| &word[prefix.len()..])
+    })
 }
 
 /// Drop a dangling `"`. An unbalanced quote is `syntax error, unexpected $end`.
@@ -553,6 +580,10 @@ mod tests {
     const AND_LINE: &str = "dropped 1 AND, because every word of a query must occur anyway";
     const NOT_LINE: &str = "read 1 NOT x as -x, because NOT is an ordinary word in a search";
     const STRAY_LINE: &str = "dropped 1 OR or NOT with no word on one side";
+    const PREFIX_LINE: &str =
+        "dropped 1 from: or to: and kept the word after it, because a search has no from or to field";
+    const PREFIX_2_LINE: &str =
+        "dropped 2 from: or to: and kept the word after it, because a search has no from or to field";
 
     #[test]
     fn the_boolean_words_are_read_as_operators() {
@@ -567,6 +598,9 @@ mod tests {
             ("a OR OR b", "a | b", &[OR_LINE, STRAY_LINE]),
             (r#""a b"~3 OR c"#, r#""a b"~3 | c"#, &[OR_LINE]),
             (r#"a OR "b"#, r#"a | "b"#, &[OR_LINE]),
+            ("from:jeff.dasovich@enron.com talking", "jeff.dasovich@enron.com talking", &[PREFIX_LINE]),
+            (r#"To:"Joe Wilkinson" OR from:kean"#, r#""Joe Wilkinson" | kean"#, &[OR_LINE, PREFIX_2_LINE]),
+            (r#""from:x" to: from"#, r#""from:x" to: from"#, &[]),
         ];
         for (input, want, want_repairs) in table {
             let (got, repairs) = rewrite_boolean_words(input);

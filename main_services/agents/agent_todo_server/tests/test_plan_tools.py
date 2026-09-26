@@ -185,3 +185,16 @@ def test_a_malformed_key_is_read_as_no_key(headers, store):
     assert call(plan_tools.append_node, text="A").version == 2
     assert call(plan_tools.append_node, text="A").version == 3
     assert store.keys == {}
+
+
+def test_a_number_path_names_the_parent_and_an_unknown_one_lists_the_nodes(headers, store):
+    # The calls of one planner reply that used numbers as parent ids.
+    assert call(plan_tools.append_node, text="Survey").success
+    child = call(plan_tools.append_child, parent_id="1", text="Search every collection")
+    assert child.success
+    assert [(s.title, s.tasks) for s in child.sections] == [("Survey", ["Search every collection"])]
+    assert "  1. Survey [" in child.tree and "    1.1. Search every collection [" in child.tree
+    refused = call(plan_tools.append_child, parent_id="3", text="Count per collection")
+    assert (refused.success, refused.code, refused.version) == (False, "invalid_plan_change", 3)
+    assert "no node has the id '3'" in refused.error
+    assert "1 " in refused.error and "(Survey)" in refused.error

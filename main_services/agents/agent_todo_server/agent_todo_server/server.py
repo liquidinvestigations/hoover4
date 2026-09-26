@@ -193,9 +193,12 @@ def write_todo(goal: str, steps: list[str]) -> TodoResponse:
 @mcp.tool(
     name="edit_todo",
     description=(
-        "Replace the steps of the plan and keep the goal. Give the full list of steps you "
-        "want, in order. A step with the same text as before keeps its id and its status. "
-        "A step you leave out is removed."
+        "Replace the steps of the plan and keep the goal. This tool takes one argument, "
+        "steps: a list of short sentences, the full list of steps you want, in order. "
+        "Each step is a plain sentence, with no id and no status. A step with the same "
+        "text as before keeps its id and its status. A step you leave out is removed. "
+        "This tool takes no goal. Only write_todo takes a goal. To set a status, use "
+        "mark_todo."
     ),
 )
 def edit_todo(steps: list[str]) -> TodoResponse:
@@ -204,7 +207,7 @@ def edit_todo(steps: list[str]) -> TodoResponse:
     except CallerUnknown as exc:
         return _refused(None, str(exc))
     if not chat_todos.read_todo(caller.username, caller.session_id).get("version"):
-        _refused(caller, NO_PLAN_ERROR)
+        return _refused(caller, NO_PLAN_ERROR)
     try:
         todo = chat_todos.edit_steps(caller.username, caller.session_id, steps)
     except chat_todos.TodoError as exc:
@@ -222,10 +225,13 @@ def edit_todo(steps: list[str]) -> TodoResponse:
 @mcp.tool(
     name="mark_todo",
     description=(
-        "Set the status of one or more steps in one call. Give ids as a list of step ids "
-        "from the plan, and one status for all of them: pending, in_progress, done or "
-        "cancelled. A cancelled step needs a note that says why, and the call is refused "
-        "without it. Mark a step when you start it and when you finish it."
+        "Set the status of one or more steps in one call. This tool takes three "
+        "arguments. ids is a list of step ids from the plan, such as 1 and 2. status is "
+        "one status for all of them: pending, in_progress, done or cancelled. note is "
+        "optional text. A cancelled step needs a note that says why, and the call is "
+        "refused without it. This tool takes no goal and no steps. Only write_todo takes "
+        "a goal, and only write_todo and edit_todo take steps. Mark a step when you start "
+        "it and when you finish it."
     ),
 )
 def mark_todo(

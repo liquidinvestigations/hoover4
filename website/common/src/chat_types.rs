@@ -522,6 +522,11 @@ pub struct ChatPollResult {
     /// Empty when `queued` is false.
     #[serde(default)]
     pub queued_for: String,
+    /// Every handle that a `cite_documents` result of the session issued, at every run
+    /// depth ([`citation_handles`]). The whole list on every poll. A sub-agent writes no
+    /// transcript row, so its handles reach the page only through this list.
+    #[serde(default)]
+    pub run_cited_handles: Vec<String>,
     /// Opaque change-detection token: the client echoes it back on the next poll, and
     /// the server returns early when the current state produces a different one.
     pub sig: String,
@@ -567,6 +572,9 @@ pub struct ChatSessionDetail {
     /// See [`ChatPollResult::queued_for`].
     #[serde(default)]
     pub queued_for: String,
+    /// See [`ChatPollResult::run_cited_handles`].
+    #[serde(default)]
+    pub run_cited_handles: Vec<String>,
 }
 
 /// Maximum length of one user message. Guards the agent's context window and keeps a
@@ -944,6 +952,23 @@ pub fn merge_citations(refs: Vec<ChatDocRef>) -> Vec<ChatDocRef> {
     merged
 }
 
+/// Every handle that the given `cite_documents` results issued, in first-seen order.
+///
+/// Parses each result with the rule of [`extract_doc_refs`], so a handle counts only when
+/// the transcript would render a card for its document. The backend passes the tool
+/// results of every run thread of a session, because a sub-agent writes no transcript row.
+pub fn citation_handles<'a>(outputs: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut handles: Vec<String> = Vec::new();
+    for output in outputs {
+        for doc in extract_doc_refs("cite_documents", output) {
+            if !doc.handle.is_empty() && !handles.contains(&doc.handle) {
+                handles.push(doc.handle);
+            }
+        }
+    }
+    handles
+}
+
 /// The number inside a `[Dn]` handle, or `None` when the string is not one.
 pub fn handle_number(handle: &str) -> Option<u32> {
     handle
@@ -1275,6 +1300,22 @@ mod tests {
         // than an unrelated passage of the same file.
         assert_eq!(refs[0].snippet, "the board approved");
         assert_eq!(refs[0].quote_reason, "");
+    }
+
+    #[test]
+    fn citation_handles_reads_raw_run_messages_in_first_seen_order() {
+        // A run message holds the tool result text itself, with no `output` wrapper.
+        let first = r#"{"success": true, "citations": [
+            {"handle": "[D2]", "collection_dataset": "c_ds", "file_hash": "bb"},
+            {"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"}]}"#;
+        let second = r#"{"success": true, "citations": [
+            {"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"},
+            {"handle": "[D5]", "collection_dataset": "c_ds", "file_hash": "ee"}]}"#;
+        let failed = r#"{"success": false, "error": "unknown handle"}"#;
+        assert_eq!(
+            citation_handles([first, "not json", failed, second]),
+            vec!["[D2]".to_string(), "[D1]".to_string(), "[D5]".to_string()]
+        );
     }
 
     #[test]

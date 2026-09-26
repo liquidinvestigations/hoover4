@@ -6,6 +6,12 @@ that takes a list of strings, and `"filename_only": "True"` for a boolean. The M
 validates the arguments with pydantic in lax mode, which refuses a string for a list or an
 object, so the tool call fails and the model gets a validation error in place of a result.
 
+The served model writes the token `<|"|>` around a string. The tool call parser of the
+model server does not always remove it. A value or a key can then hold the token, a key
+can keep a quote (`id"`), and a value can keep one layer of quotes. `repair_arguments`
+removes the token and that one layer. It returns one line for each repair, and
+`/tool_call` puts the lines in the measure of the call.
+
 `decode_string_arguments` converts such a string to the value the schema asks for, before
 the arguments leave the agent. It changes a value only when the parameter's schema does not
 allow a string and the decoded value has an allowed type. For a list of strings, a string
@@ -15,7 +21,7 @@ it was, so the server's own validation error still reaches the model.
 
 import json
 from json import JSONDecodeError
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 #: A marker in an allowed-type set. It means that one branch of the schema accepts any
 #: value, so a string is already valid and nothing is decoded.
@@ -157,3 +163,71 @@ def decode_string_arguments(args: Dict[str, Any], schema: Optional[dict]) -> Dic
         if isinstance(value, str) and name in properties:
             decoded[name] = _decode_one(value, properties[name], schema)
     return decoded
+
+
+#: The string token of the served model, which the tool call parser can leave in a value
+#: or a key.
+QUOTE_TOKEN = '<|"|>'
+
+#: The keys whose string values keep their quotes: a quoted phrase in a search query and a
+#: quote copied from a document are part of the value.
+QUOTED_TEXT_KEYS = frozenset({"query", "queries", "quote", "find"})
+
+
+def _unquoted(text: str) -> str:
+    """`text` with one layer of double quotes removed, when the quotes wrap a word that
+    holds no other quote and no space. Any other text comes back unchanged."""
+    if len(text) < 3 or text[0] != '"' or text[-1] != '"':
+        return text
+    inner = text[1:-1]
+    if '"' in inner or any(c.isspace() for c in inner):
+        return text
+    return inner
+
+
+def _repair_key(key: str, where: str, repairs: List[str]) -> str:
+    fixed = key.replace(QUOTE_TOKEN, "")
+    stripped = fixed.strip('"')
+    if stripped and '"' not in stripped:
+        fixed = stripped
+    if fixed != key:
+        repairs.append(f"key {where}{key!r} became {fixed!r}")
+    return fixed
+
+
+def _repair_value(value: Any, key: str, where: str, repairs: List[str]) -> Any:
+    if isinstance(value, dict):
+        out: Dict[str, Any] = {}
+        for raw_key, item in value.items():
+            name = _repair_key(raw_key, where, repairs) if isinstance(raw_key, str) else raw_key
+            if name in out:
+                repairs.append(f"key {where}{raw_key!r} was dropped, because {name!r} is set")
+                continue
+            out[name] = _repair_value(item, name, f"{where}{name}.", repairs)
+        return out
+    if isinstance(value, list):
+        return [_repair_value(item, key, f"{where[:-1]}[{i}].", repairs)
+                for i, item in enumerate(value)]
+    if not isinstance(value, str):
+        return value
+    fixed = value.replace(QUOTE_TOKEN, "")
+    if fixed != value:
+        repairs.append(f"value {where[:-1]} lost the quote token")
+    if key not in QUOTED_TEXT_KEYS:
+        inner = _unquoted(fixed)
+        if inner != fixed:
+            repairs.append(f"value {where[:-1]} lost one layer of quotes")
+            fixed = inner
+    return fixed
+
+
+def repair_arguments(args: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
+    """Return `args` with the served model's quote token removed from every key and string
+    value, the quotes stripped from each key, and one layer of quotes removed from each
+    string value that is one quoted word. The values under `QUOTED_TEXT_KEYS` keep their
+    quotes. The second item names each repair, and is empty when nothing changed."""
+    if not isinstance(args, dict):
+        return args, []
+    repairs: List[str] = []
+    fixed = _repair_value(args, "", "", repairs)
+    return fixed, repairs

@@ -33,6 +33,11 @@ pub fn ChatTranscript(
     /// transcript shows its card at the end while the planner writes the plan.
     #[props(default)]
     pending_plan: Option<String>,
+    /// The handles that the `cite_documents` results of every run of the session issued,
+    /// sub-agents included. A sub-agent writes no transcript row, so the rows alone miss
+    /// its handles.
+    #[props(default)]
+    run_cited_handles: Vec<String>,
 ) -> Element {
     let stream_live = stream_live.unwrap_or(true);
     let waiting_line = match queued_for.as_str() {
@@ -64,6 +69,9 @@ pub fn ChatTranscript(
     // document's entities names it by collection and hash, and the dataset that makes it
     // addressable was named earlier in the same conversation by whatever found it.
     let datasets = dataset_by_hash(&messages);
+    // Handles are allocated for the whole conversation, so a handle that any citation of
+    // any run gave is a real one. The answers mark every other handle as not cited.
+    let cited_handles = issued_handles(&messages, &run_cited_handles);
     let subagent_runs = stream
         .as_ref()
         .map(|t| t.subagent_runs.clone())
@@ -126,6 +134,7 @@ pub fn ChatTranscript(
                             message: m,
                             highlight,
                             sources,
+                            cited_handles: cited_handles.clone(),
                             datasets: datasets.clone(),
                             subagent_runs: runs,
                             plan_superseded,
@@ -180,6 +189,8 @@ pub fn ChatTranscript(
                     div {
                         key: "stream-answer-{turn.answer_seq}",
                         style: "align-self: stretch; max-width: 96%; padding: 4px 2px;",
+                        // The live answer keeps every handle a chip. Its citation rows
+                        // can still be in the stream, not in `messages`.
                         MarkdownishText { text: turn.content.clone() }
                         // The cursor marks this as the live tail rather than a finished
                         // answer, identical content, different promise.
@@ -271,6 +282,23 @@ fn collect_datasets(
     }
 }
 
+/// Every handle that a `cite_documents` result of the conversation gave: the handles of
+/// the transcript rows, and `run_cited_handles`, which the server read from the run
+/// threads of every depth.
+fn issued_handles(messages: &[ChatMessageItem], run_cited_handles: &[String]) -> Vec<String> {
+    let mut handles: Vec<String> = run_cited_handles.to_vec();
+    for message in messages {
+        if message.role == ChatRole::Tool && message.tool_name == "cite_documents" {
+            for doc in message.parsed_doc_refs() {
+                if !doc.handle.is_empty() && !handles.contains(&doc.handle) {
+                    handles.push(doc.handle);
+                }
+            }
+        }
+    }
+    handles
+}
+
 /// The citations of the turn that ends at `answer_index`.
 ///
 /// Walks backwards over the tool rows of that turn and stops at the previous answer or
@@ -301,6 +329,9 @@ fn MessageEntry(
     /// but the assistant's.
     #[props(default)]
     sources: Vec<ChatDocRef>,
+    /// The handles that the citations of the conversation gave (`issued_handles`).
+    #[props(default)]
+    cited_handles: Vec<String>,
     /// See [`dataset_by_hash`]. Read by the entities card and by nothing else.
     #[props(default)]
     datasets: HashMap<String, String>,
@@ -343,7 +374,10 @@ fn MessageEntry(
                     }
                     div {
                         "data-chat-answer": "{message.seq}",
-                        MarkdownishText { text: message.content.clone() }
+                        MarkdownishText {
+                            text: message.content.clone(),
+                            cited_handles: Some(cited_handles.clone()),
+                        }
                     }
                     if !sources.is_empty() {
                         SourcesStrip { sources: sources.clone() }
@@ -672,6 +706,9 @@ fn SourcesStrip(sources: Vec<ChatDocRef>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::chat_components::markdown_text::{
+        Block, Span, mark_uncited_handles, parse_blocks,
+    };
 
     #[test]
     fn a_paged_search_item_names_its_dataset() {
@@ -692,5 +729,72 @@ mod tests {
             datasets.get("abc123").map(String::as_str),
             Some("testdata_testfiles")
         );
+    }
+
+    fn row(seq: u32, role: ChatRole, tool_name: &str, doc_refs: &str, content: &str) -> ChatMessageItem {
+        ChatMessageItem {
+            seq,
+            role,
+            content: content.to_string(),
+            tool_name: tool_name.to_string(),
+            tool_input: String::new(),
+            tool_output: String::new(),
+            doc_refs: doc_refs.to_string(),
+            created_at: String::new(),
+            created_ms: String::new(),
+            agent_duration_ms: 0,
+            retry_errors: String::new(),
+            reasoning: String::new(),
+            context_tokens: 0,
+            peak_context_tokens: 0,
+            context_window: 0,
+            plan_reference_json: String::new(),
+            streaming: false,
+        }
+    }
+
+    /// The spans of the answer `text` as the transcript marks them.
+    fn marked(messages: &[ChatMessageItem], run_cited: &[String], text: &str) -> Vec<Span> {
+        let issued = issued_handles(messages, run_cited);
+        match mark_uncited_handles(parse_blocks(text), &issued).into_iter().next() {
+            Some(Block::Paragraph(spans)) => spans,
+            other => panic!("expected one paragraph, got {other:?}"),
+        }
+    }
+
+    /// A transcript whose only citation row issued `[D1]`, then an organizer answer.
+    fn transcript_with_d1(answer: &str) -> Vec<ChatMessageItem> {
+        vec![
+            row(1, ChatRole::User, "", "", "question"),
+            row(
+                2,
+                ChatRole::Tool,
+                "cite_documents",
+                r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"}]"#,
+                "",
+            ),
+            row(3, ChatRole::Assistant, "", "", answer),
+        ]
+    }
+
+    #[test]
+    fn a_handle_that_only_a_sub_agent_citation_issued_stays_a_chip() {
+        let messages = transcript_with_d1("See [D2].");
+        let spans = marked(&messages, &["[D2]".to_string()], "See [D2].");
+        assert!(spans.contains(&Span::Handle("[D2]".to_string())), "{spans:?}");
+    }
+
+    #[test]
+    fn a_handle_that_no_citation_of_the_session_issued_is_marked() {
+        let messages = transcript_with_d1("See [D3].");
+        let spans = marked(&messages, &["[D2]".to_string()], "See [D3].");
+        assert!(spans.contains(&Span::UncitedHandle("[D3]".to_string())), "{spans:?}");
+    }
+
+    #[test]
+    fn a_handle_that_a_transcript_citation_row_issued_is_a_chip() {
+        let messages = transcript_with_d1("See [D1].");
+        let spans = marked(&messages, &[], "See [D1].");
+        assert!(spans.contains(&Span::Handle("[D1]".to_string())), "{spans:?}");
     }
 }

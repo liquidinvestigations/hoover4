@@ -45,6 +45,11 @@ A sub-agent row copies the `plan_run_id`, so the sub-agents of a planner reach t
 **No role check exists.** The plan run state is the only rule: a change is accepted only in
 `planning` or `revising`. After approval `read_plan` returns the approved version.
 
+**A parent by id or by number path.** `read_plan` shows each node with its number path
+(`root`, `1`, `1.2`) and its id. The tools `append_child` and `move_node` accept either value as the parent.
+A value that names no node is refused with the path, id and text of the nodes. Every other
+node argument takes the id only, so a wrong number never edits or removes a node.
+
 **One change of a plan at a time.** Each version is one row, so two parallel changes that
 read the same version would lose one of them. The server holds one `asyncio.Lock` for each
 plan run. A change takes the lock, reads the newest version, writes version plus one, and

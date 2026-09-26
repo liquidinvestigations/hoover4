@@ -36,7 +36,7 @@ use std::time::{Duration, Instant};
 use rand::RngCore;
 
 use common::chat_types::{
-    title_from_message, ChatOptions, ChatPollResult, ChatRole, ChatSendResult, ChatSessionDetail,
+    citation_handles, title_from_message, ChatOptions, ChatPollResult, ChatRole, ChatSendResult, ChatSessionDetail,
     ChatSessionItem, StreamToolRow, StreamTurn, MAX_MESSAGE_CHARS,
 };
 use common::current_user::CurrentUser;
@@ -80,6 +80,7 @@ pub async fn get_chat_session(
     let messages = db_chat::list_messages(username, &session_id).await?;
     let available_collections = list_permitted_collections(user).await?;
     let tail = stream_state(username, &session_id).await?;
+    let run_cited_handles = run_cited_handles(username, &session_id).await?;
 
     let options = row.options();
     Ok(ChatSessionDetail {
@@ -100,7 +101,16 @@ pub async fn get_chat_session(
         interrupted: tail.interrupted,
         queued: tail.queued,
         queued_for: tail.queued_for,
+        run_cited_handles,
     })
+}
+
+/// Every handle that a `cite_documents` result of the session issued, at every run depth.
+/// The page marks a handle "not cited" only when it is absent from this list and from the
+/// citation rows of the transcript.
+async fn run_cited_handles(username: &str, session_id: &str) -> anyhow::Result<Vec<String>> {
+    let outputs = db_chat::session_citation_outputs(username, session_id).await?;
+    Ok(citation_handles(outputs.iter().map(String::as_str)))
 }
 
 pub async fn delete_chat_session(user: &CurrentUser, session_id: String) -> anyhow::Result<()> {
@@ -504,11 +514,10 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
     // while, so its turn is never reported as interrupted (the pending plan rule).
     let plan_pending = db_chat::plans::session_has_open_plan(username, session_id).await?;
     // A step that waits for a slot writes no row, and a long tool call writes no row while
-    // it runs. After the quiet time, Temporal says what the steps of the turn do.
-    let quiet = turn_open
-        && !plan_pending
-        && newest_ms.is_none_or(|ms| now_ms - ms > CHAT_QUIET_MS);
-    let (working, queued_for) = if quiet {
+    // it runs. After the quiet time, Temporal says what the steps of the turn do. This
+    // holds for a plan run too: an organizer that waits for its sub-agents writes no row,
+    // and a sub-agent step that runs or waits for a slot keeps the turn active.
+    let (working, queued_for) = if turn_is_quiet(turn_open, newest_ms, now_ms) {
         turn_step_state(&runs).await
     } else {
         (false, "")
@@ -615,6 +624,14 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
 
 /// How long an open turn writes no row before the page asks Temporal what its steps do.
 const CHAT_QUIET_MS: i64 = 45_000;
+
+/// An open turn is quiet when it wrote no row, or its newest row or run update is older
+/// than [`CHAT_QUIET_MS`]. The poll then reads the step state of its `running` runs from
+/// Temporal. An open plan does not change the rule, because the sub-agents of a plan run
+/// are `running` runs of the same turn.
+fn turn_is_quiet(turn_open: bool, newest_ms: Option<i64>, now_ms: i64) -> bool {
+    turn_open && newest_ms.is_none_or(|ms| now_ms - ms > CHAT_QUIET_MS)
+}
 
 /// What the steps of the `running` runs of a turn do: `(working, queued_for)`.
 ///
@@ -933,6 +950,7 @@ pub async fn poll_chat(
             if let Some(remaining) = floor.checked_sub(started.elapsed()) {
                 tokio::time::sleep(remaining).await;
             }
+            let run_cited_handles = run_cited_handles(username, &session_id).await?;
             return Ok(ChatPollResult {
                 messages,
                 stream: tail.stream,
@@ -940,6 +958,7 @@ pub async fn poll_chat(
                 interrupted: tail.interrupted,
                 queued: tail.queued,
                 queued_for: tail.queued_for,
+                run_cited_handles,
                 sig: current_sig,
             });
         }
@@ -1637,6 +1656,26 @@ mod tests {
         lead.delegated_batch = "b0".into();
         let kid = child("k1", "lead", "b0", "c1", 1, "running", 1);
         assert!(turn_is_open(Some(1), Some(1), &[lead, kid]));
+    }
+
+    #[test]
+    fn a_quiet_delegation_asks_temporal_for_the_subagent_steps() {
+        // An organizer waits for its children, and a sub-agent runs a tool call that
+        // writes no row for five minutes. The newest row is three minutes old.
+        let now = 1_000_000_000;
+        let mut lead = run("lead", 0, "waiting_for_children");
+        lead.delegated_batch = "b0".into();
+        let kid = child("k1", "lead", "b0", "c1", 1, "running", 1);
+        let open = turn_is_open(Some(1), Some(3), &[lead, kid]);
+        assert!(turn_is_quiet(open, Some(now - 180_000), now));
+        // Temporal says the sub-agent's tool step runs on a worker, so the turn is active
+        // although the plan is open and no row moved within the stall window.
+        let (active, queued, interrupted) = run_queue::turn_verdict(open, true, true, true, false);
+        assert!(active && !queued && !interrupted);
+        // A fresh row needs no Temporal read, and a closed turn is never quiet.
+        assert!(!turn_is_quiet(true, Some(now - 1_000), now));
+        assert!(!turn_is_quiet(false, None, now));
+        assert!(turn_is_quiet(true, None, now));
     }
 
     #[test]

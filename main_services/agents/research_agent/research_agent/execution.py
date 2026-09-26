@@ -2,9 +2,10 @@
 the MCP client factory, the call measure and the argument check.
 
 `/tool_call` (`steps.py`) runs one tool call with them, and `/model_step` computes the page
-share of each call of a reply with `batch_budget`. Plan mutations (`PLAN_MUTATIONS`) must
-run one after the other in call order, because each one changes the tree that the next one
-reads. The worker keeps that order. Every other call can run in parallel.
+share of each call of a reply with `batch_budget`. The plan tools and the todo tools
+(`ORDERED_TOOLS`) must run one after the other in call order, because each one reads or
+changes the state that the next one reads. The worker keeps that order. Every other call
+can run in parallel.
 
 **The batch result budget.** The result pages of all calls of one model reply share one
 budget (`batch_budget`). The empty page of every call is reserved first, and the rest is
@@ -14,7 +15,10 @@ share before it serializes the page, a later page of a stored window included, s
 is cut after it leaves the broker.
 
 - Safe mode is the default. One batch receives `SAFE_MODE_BATCH_BYTES` UTF-8 bytes, or less
-  when the request bytes plus the completion reserve leave less of the context window.
+  when the request tokens plus the completion reserve leave less of the context window. The
+  window and the reserve are tokens, so the request is counted in tokens too
+  (`request_tokens`): the billed total of the last model reply, plus one token per byte of
+  the text after it. A page of that many bytes holds at most that many tokens.
 - Token mode runs only when `AGENT_MAX_PAGE_TOKENS` and `AGENT_COMPLETION_RESERVE_TOKENS`
   are both set and the served model's context window is known. It counts the request and
   the empty pages with the served tokenizer and applies `allocate`. The share it sends is a
@@ -56,6 +60,14 @@ log = logging.getLogger(__name__)
 #: The plan mutations. They run one after the other in call order, because each one
 #: changes the tree that the next one reads.
 PLAN_MUTATIONS = frozenset({"append_node", "append_child", "move_node", "edit_node", "remove_node"})
+
+#: The calls that the worker runs in reply order, in one chain: the plan mutations, the plan
+#: read and the todo tools, because each one reads or changes state that the next one reads.
+#: `/model_step` gives them the kind `ordered`. The worker's copy is `STATE_TOOLS` in
+#: `processing/tasks/P_agent/steps.py`, and the two lists change in one patch.
+ORDERED_TOOLS = PLAN_MUTATIONS | frozenset({
+    "read_plan", "write_todo", "edit_todo", "mark_todo", "read_todo",
+})
 
 #: The delegation tool. The worker delegates a readable call, and `/tool_call` refuses it.
 DELEGATION_TOOL = "run_subagent"
@@ -165,17 +177,31 @@ def _read_api_key() -> str:
     return value
 
 
+def request_tokens(messages: Sequence[Any]) -> int:
+    """An upper bound of the request in tokens, without a tokenizer. It is the billed total
+    of the last model reply, plus one token per UTF-8 byte of the messages after that reply.
+    With no billed reply, every byte counts as one token."""
+    for index in range(len(messages) - 1, -1, -1):
+        usage = getattr(messages[index], "usage_metadata", None)
+        billed = int((usage or {}).get("total_tokens") or 0)
+        if billed:
+            return billed + len(_request_text(messages[index + 1:]).encode("utf-8"))
+    return len(_request_text(messages).encode("utf-8"))
+
+
 def safe_budget(
-    names: Sequence[str], request_bytes: int, window: int, reserve: int,
+    names: Sequence[str], request_tokens: int, window: int, reserve: int,
     batch_bytes: int = SAFE_MODE_BATCH_BYTES,
 ) -> BatchBudget:
     """The byte budget of one batch. The batch receives `batch_bytes`, cut to what the
-    request bytes plus `reserve` leave of the context window when the window is known.
-    The empty page of every call is reserved first, and the rest is divided equally."""
+    request tokens plus `reserve` leave of the context window when the window is known.
+    `window`, `reserve` and `request_tokens` are tokens. A page of N bytes holds at most N
+    tokens, so the tokens left are also a safe byte count. The empty page of every call is
+    reserved first, and the rest is divided equally."""
     empty = [len(empty_page_text(name).encode("utf-8")) for name in names]
     total = batch_bytes
     if window > 0:
-        total = min(total, max(0, window - reserve - request_bytes))
+        total = min(total, max(0, window - reserve - request_tokens))
     spare = max(0, total - sum(empty))
     return BatchBudget("bytes", tuple(e + spare // len(names) for e in empty), total)
 
@@ -208,8 +234,7 @@ def batch_budget(names: Sequence[str], messages: Sequence[Any]) -> BatchBudget:
             return token_budget(names, messages, window, counter, reserve, MAX_PAGE_TOKENS)
         except Exception as exc:  # noqa: BLE001 - every count failure keeps safe mode
             log.warning("token count failed, the batch uses safe mode: %s", exc)
-    request_bytes = len(_request_text(messages).encode("utf-8"))
-    return safe_budget(names, request_bytes, window, reserve)
+    return safe_budget(names, request_tokens(messages), window, reserve)
 
 
 def split_measure(artifact: Any) -> Tuple[Optional[Dict[str, Any]], Any]:
@@ -278,7 +303,8 @@ def pending_calls(messages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], int]:
 
 
 __all__ = [
-    "BatchBudget", "DELEGATION_TOOL", "IDEMPOTENCY_HEADER", "PAGE_SHARE_HEADER", "PLAN_MUTATIONS",
-    "batch_budget", "empty_page_text", "page_share_client", "pending_calls", "safe_budget",
-    "split_measure", "token_budget", "validation_error",
+    "BatchBudget", "DELEGATION_TOOL", "IDEMPOTENCY_HEADER", "ORDERED_TOOLS", "PAGE_SHARE_HEADER",
+    "PLAN_MUTATIONS",
+    "batch_budget", "empty_page_text", "page_share_client", "pending_calls", "request_tokens",
+    "safe_budget", "split_measure", "token_budget", "validation_error",
 ]

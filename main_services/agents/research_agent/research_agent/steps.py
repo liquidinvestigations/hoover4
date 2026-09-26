@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field, model_validator
 from research_agent import compaction, llm_events, prompts
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.execution import (
-    DELEGATION_TOOL, PLAN_MUTATIONS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
+    DELEGATION_TOOL, ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
     batch_budget, empty_page_text, split_measure, validation_error,
 )
 from research_agent.run_messages import (
@@ -45,7 +45,7 @@ from research_agent.run_messages import (
 )
 from research_agent.subagents import briefings_of
 from research_agent import thinking
-from research_agent.tool_args import decode_string_arguments
+from research_agent.tool_args import decode_string_arguments, repair_arguments
 from research_agent.tool_catalogue import SEARCH_TOOL, bound_names_from_thread, matched_names, tool_schema
 
 log = logging.getLogger(__name__)
@@ -180,7 +180,7 @@ def classify_calls(
             briefings = briefings_of(args)
         if briefings is not None:
             kind = "delegation"
-        elif name in PLAN_MUTATIONS:
+        elif name in ORDERED_TOOLS:
             kind = "ordered"
         else:
             kind = "parallel"
@@ -521,11 +521,15 @@ async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
 
     tool = snapshot.tools_by_name[name]
     schema = tool_schema(tool)
-    args = decode_string_arguments(dict(request.call.args), schema)
+    repaired, repairs = repair_arguments(dict(request.call.args))
+    if repairs:
+        log.info("tool %s: %d argument repairs: %s", name, len(repairs), "; ".join(repairs))
+    args = decode_string_arguments(repaired, schema)
     problem = validation_error(args, schema)
     if problem:
         return _tool_response(
-            request, _error("invalid_arguments", problem, tool=name), "error", "invalid_arguments"
+            request, _error("invalid_arguments", problem, tool=name), "error", "invalid_arguments",
+            _with_repairs(None, repairs),
         )
 
     share_token = _PAGE_SHARE.set(request.page_share)
@@ -552,8 +556,21 @@ async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
         content = _text_of(result)
     matched = matched_names(content) if name == SEARCH_TOOL and status == "ok" else []
     return _tool_response(
-        request, content, status, "tool_error" if status == "error" else "", measure, matched
+        request, content, status, "tool_error" if status == "error" else "",
+        _with_repairs(measure, repairs), matched
     )
+
+
+#: The measure key that lists the argument repairs of a call (`tool_args.repair_arguments`).
+ARGUMENT_REPAIRS_KEY = "argument_repairs"
+
+
+def _with_repairs(measure: Optional[Dict[str, Any]], repairs: List[str]) -> Optional[Dict[str, Any]]:
+    """The measure of a call with its argument repairs added. A call with no repair keeps
+    its measure as it was."""
+    if not repairs:
+        return measure
+    return {**(measure or {}), ARGUMENT_REPAIRS_KEY: list(repairs)}
 
 
 __all__ = [

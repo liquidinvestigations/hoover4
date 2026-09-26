@@ -53,6 +53,10 @@ DEPTH_LIMIT = "depth_limit"
 PLAN_NODE_NOT_ALLOWED = "plan_node_not_allowed"
 CORRECTION_LIMIT = "correction_limit"
 
+#: The last sentence of a refusal by the plan section rule.
+SECTION_NOT_TASK = ("A briefing names a section in plan_node_id, and never one of its tasks. "
+                    "Put the task in the objective.")
+
 #: The most `correct` sub-agent runs of one plan section. A third correction is refused.
 MAX_CORRECTIONS = 2
 #: The purposes an organizer's briefing may name.
@@ -112,14 +116,15 @@ def _refusal(call_id: str, briefing: dict[str, Any], reason: str,
 def _sections_text(sections: Mapping[str, str] | set[str] | None) -> str:
     """The valid section ids, with their titles when `sections` maps ids to titles.
 
-    Empty when there is no section. At most `MAX_NAMED_SECTIONS` are named.
+    Empty when there is no section. At most `MAX_NAMED_SECTIONS` are named. The text ends
+    with `SECTION_NOT_TASK`, because the usual refused node is a task of a named section.
     """
     if not sections:
         return ""
     titles = sections if isinstance(sections, Mapping) else {}
     named = [f"{node} ({titles[node]})" if titles.get(node) else str(node)
              for node in list(sections)[:MAX_NAMED_SECTIONS]]
-    return "The sections are: " + ", ".join(named) + "."
+    return ("The sections are: " + ", ".join(named) + ". " + SECTION_NOT_TASK)
 
 
 def _plan_refusal(briefing: dict[str, Any], kind: str,

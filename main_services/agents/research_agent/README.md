@@ -241,8 +241,15 @@ response is JSON:
 | `content` | the result text that the model reads |
 | `status` | `ok` or `error` |
 | `error_class` | empty for `ok`. For `error`: `tool_error` (the tool raised or marked its result as an error), `tool_unavailable` (a name that this step did not bind), `invalid_arguments` (arguments that do not match the schema, or a `run_subagent` call) or `budget_exhausted` |
-| `measure` | the call measure of a broker tool, or `null` |
+| `measure` | the call measure of a broker tool, or `null`. When the agent repaired the arguments, `argument_repairs` lists each repair |
 | `matched_names` | the names that a `search_agent_tools` result matched |
+
+**The arguments are repaired before the call.** The tool call parser of the model server
+can leave the model's string token `<|"|>` in a key or a value, a quote on a key (`id"`),
+or one layer of quotes around a one-word value. `tool_args.repair_arguments` removes the
+token, the quotes of a key and that one layer, and keeps the quotes of `query`, `queries`,
+`quote` and `find`, because a phrase search needs them. Each repair is one line of the
+`argument_repairs` list in the measure of the call.
 
 ## Per-chat and per-run browser sessions
 

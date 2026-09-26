@@ -117,6 +117,12 @@ which documents a search happened to return. Each citation names a document, a q
 one line of why, and gets back a handle (`[D1]`, `[D2]`) that the model writes into its
 prose; the reader sees the handle as a chip and the document beneath the answer.
 
+**A file hash start names its document.** `read_documents` and `cite_documents` accept the
+first 12 or more characters of a file hash in place of the whole hash, in a collection that
+the caller can read (`server.full_hash`). A start that more than one document shares is
+refused with up to 5 candidates. A start that no document has goes on unchanged, and the
+usual check refuses it.
+
 **The quote is checked** against the document's extracted pages before a handle is issued,
 after folding whitespace, case and typographic punctuation. Verification reads every
 extracted page in bounded batches, each continuing after the `(extracted_by, page_id)` key of
@@ -180,7 +186,12 @@ Repairs are reported back in the response's `note`, and Manticore's own error te
 returned in `error` rather than only logged. A syntax error the model never sees is one
 it cannot correct.
 
-`search_collections` gets the repairs of the website search in `query_notes`. With a
+`search_collections` gets the repairs of the website search in `query_notes`. A `from:` or
+`to:` prefix of a word is one such repair: the prefix goes and the word stays. A dataset
+name, a `collection_dataset` value or the `collection/dataset` form in `collectionname`
+becomes the collection that holds the dataset (`tools_search.collections_for`), and the
+first line of `query_notes` says so. A name that matches no dataset reaches the route
+unchanged, so the route still refuses a collection that the user cannot read. With a
 `queries` list, and `query` as its first form when both are given, each form is one route
 search. The rows merge by `(collectionname, file_hash)` in the order they are first found,
 and each row gets `matched_queries`, the forms that found it. A form that fails adds its

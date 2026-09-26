@@ -1,7 +1,7 @@
 """The plan tools: read and change the plan tree of a deep-research plan run.
 
 Tools:
-    ``read_plan``           the tree with its node ids and its sections
+    ``read_plan``           the tree with the number path and the id of each node, and its sections
     ``append_node``         a new top-level node
     ``append_child``        a new child of a node
     ``move_node``           a node to a new parent and position
@@ -17,6 +17,11 @@ tool argument names a plan, a run or an owner.
 **No role check.** Every run kind of the plan may call every plan tool. The plan run state
 is the only rule: a mutation is valid only in `planning` or `revising`. After approval the
 tree is frozen, and `read_plan` returns the approved version.
+
+**A parent by id or by number path.** `append_child` and `move_node` accept the parent as a
+node id or as the number path that `read_plan` shows (`root`, `1`, `1.2`). A value that names
+no node is refused with the path, id and text of the nodes. Every other node argument takes
+the id only, so a wrong number never edits or removes a node.
 
 **One writer at a time.** Parallel runs can change one plan, and each version is one row.
 The server holds one `asyncio.Lock` for each plan run. A mutation takes the lock, reads the
@@ -217,9 +222,11 @@ async def _mutate(operation: str, **args: Any) -> PlanResponse:
 @mcp.tool(
     name="read_plan",
     description=(
-        "Read the plan tree of this research plan: every node with its id, indented under "
-        "its parent, and the sections. A section is a node with at least one leaf child, "
-        "and its tasks are those leaves. After approval this returns the approved version."
+        "Read the plan tree of this research plan: every node with its number path and its "
+        "id, indented under its parent, and the sections. The root has the path root, a "
+        "top-level node a number such as 2, and its children 2.1 and 2.2. A section is a "
+        "node with at least one leaf child, the root included, and its tasks are those "
+        "leaves. After approval this returns the approved version."
     ),
 )
 async def read_plan() -> PlanResponse:
@@ -245,8 +252,9 @@ async def append_node(text: str = "") -> PlanResponse:
 @mcp.tool(
     name="append_child",
     description=(
-        "Add a node as the last child of `parent_id`. `text` is one line of at most 120 "
-        "characters. A node with leaf children is a section, and the leaves are its tasks."
+        "Add a node as the last child of `parent_id`. `parent_id` is the id of a node, or "
+        "its number path from read_plan, such as 1 or 1.2. `text` is one line of at most "
+        "120 characters. A node with leaf children is a section, and the leaves are its tasks."
     ),
 )
 async def append_child(parent_id: str = "", text: str = "") -> PlanResponse:
@@ -257,6 +265,7 @@ async def append_child(parent_id: str = "", text: str = "") -> PlanResponse:
     name="move_node",
     description=(
         "Move a node and its subtree under `new_parent_id` at `position` (1 is first). "
+        "`new_parent_id` is a node id or a number path such as 1.2. "
         "An empty `new_parent_id` means the root. The root cannot move. "
         "A position of 0 puts the node last."
     ),

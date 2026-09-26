@@ -3,7 +3,7 @@
 from langchain_core.tools import StructuredTool
 
 from research_agent.agent import with_decoded_arguments
-from research_agent.tool_args import decode_string_arguments
+from research_agent.tool_args import decode_string_arguments, repair_arguments
 
 # Parameters in the shape the MCP server publishes, taken from the `search_collections`
 # input schema, with `anything` added for a parameter that accepts any type.
@@ -154,3 +154,63 @@ async def test_wrapped_tool_receives_decoded_live_model_arguments():
     # The original tool is not changed.
     assert tool.coroutine is call_tool
     assert wrapped.name == tool.name and wrapped.args_schema is tool.args_schema
+
+
+# ------------------------------------------------------------------ the quote token
+#
+# The argument strings below have the shapes that a model writes when it leaks the quote
+# token into a key or a value of a tool call.
+
+
+def test_the_keys_of_a_todo_step_lose_their_quotes_and_the_values_one_layer():
+    args = {"goal": "Identify who Nili Priell Barak is.",
+            "steps": [{'id"': '"1"', '"text': "Five Ws: find who she is.",
+                       'status"': '"in_progress"'}]}
+    fixed, repairs = repair_arguments(args)
+    assert fixed == {"goal": "Identify who Nili Priell Barak is.",
+                     "steps": [{"id": "1", "text": "Five Ws: find who she is.",
+                                "status": "in_progress"}]}
+    assert len(repairs) == 5
+
+
+def test_quoted_keys_and_values_of_a_document_list_are_repaired():
+    args = {"documents": [{'"collectionname"': '"textfiles"',
+                           '"file_hash"': '"fa098b7d7a24880b2be0e2e595eb1c941808f19888afe576e8facdeb93e315d3"'}]}
+    fixed, _ = repair_arguments(args)
+    assert fixed == {"documents": [{
+        "collectionname": "textfiles",
+        "file_hash": "fa098b7d7a24880b2be0e2e595eb1c941808f19888afe576e8facdeb93e315d3"}]}
+
+
+def test_mark_todo_ids_and_status_lose_one_layer_of_quotes():
+    fixed, _ = repair_arguments({"ids": ['"1"', '"2"', '"3"'], "status": '"done"'})
+    assert fixed == {"ids": ["1", "2", "3"], "status": "done"}
+
+
+def test_a_query_keeps_its_phrase_quotes_and_loses_the_quote_token():
+    args = {"queries": ['"survey section report",', '"survey results"<|"|>', '"Raptor"'],
+            "query": '"LJM"'}
+    fixed, repairs = repair_arguments(args)
+    assert fixed == {"queries": ['"survey section report",', '"survey results"', '"Raptor"'],
+                     "query": '"LJM"'}
+    assert repairs == ["value queries[1] lost the quote token"]
+
+
+def test_the_quote_token_leaves_a_key_and_a_value_of_a_citation():
+    args = {"citations": [{"collectionname": "tables", "quote": 'a quote<|"|>',
+                           'JoeBWilkinson@cs.com<|"|>,why': "his address"}]}
+    fixed, repairs = repair_arguments(args)
+    assert fixed == {"citations": [{"collectionname": "tables", "quote": "a quote",
+                                    "JoeBWilkinson@cs.com,why": "his address"}]}
+    assert len(repairs) == 2
+
+
+def test_a_phrase_value_keeps_its_quotes_and_clean_arguments_give_no_repair():
+    args = {"note": '"not found in the reports"', "ids": ["1"], "status": "done", "n": 3}
+    assert repair_arguments(args) == (args, [])
+
+
+def test_a_repaired_key_that_is_already_set_is_dropped_and_named():
+    fixed, repairs = repair_arguments({"id": "1", 'id"': "2"})
+    assert fixed == {"id": "1"}
+    assert repairs[-1] == "key 'id\"' was dropped, because 'id' is set"

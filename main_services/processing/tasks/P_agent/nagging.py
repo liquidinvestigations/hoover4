@@ -1,9 +1,9 @@
 """When a chat turn nags the agent to keep going, and what it says when it does.
 
-The agent stops when the model stops calling tools, which is not the same as the work
-being finished: the commonest way a turn ends badly is with a plan on the table and
-half of it undone. A nag runs the agent again, in the same turn, pointed at the item it
-left open.
+The agent stops when the model stops calling tools. Its last reply is the answer, and the
+todo list can still have open items. A nag runs the agent again, in the same turn, and asks
+it to mark each open item `done` or `cancelled`. The nag does not ask for more work or for
+a second answer, and the reply of the nag round does not replace the answer.
 
 **The rules here are pure and the loop that applies them lives in `AgentRun`.** Not in
 the agent: a nag counter kept inside the agent process is lost the moment that process
@@ -22,11 +22,19 @@ status on purpose.** A model that earned a reset by flipping one row from `pendi
 removing or rewriting an item is progress; marking one done is not, however welcome it
 is. That question is asked of the store rather than re-derived here, so the tool the
 model calls and the loop that judges it cannot disagree.
+
+**The citation round comes before the todo nag.** An answer that names a document in a
+turn with no `cite_documents` call shows the reader no document card. Such an answer gets
+one more round with `CITATION_NOTE`, which asks for the citations and then the answer
+again. The reply of that round replaces the answer, unless it has no text. A turn gets one
+citation round at most.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import re
 
 from database import chat_todos
 
@@ -74,46 +82,115 @@ def stop_reason(todo: dict, nags_without_progress: int, nags_this_turn: int) -> 
 def nag_message(todo: dict, nag_number: int) -> str:
     """What the nag says, given how many it is into the current no-progress streak.
 
-    **The first nag asks for the plan to be revised, not merely continued.** The usual
-    reason an agent stops with an open todo is that it wrote a plan it could not finish,
-    and telling it to try harder at an impossible step wastes both nags. So the first
-    one offers the exit as well: finish the item, or cancel it with a reason -- which
-    the store accepts as resolved, so an over-ambitious plan does not earn two nags for
-    nothing. The second asks only for the work.
+    A nag follows a reply with no call, which the transcript already shows as the answer.
+    So the nag asks only for the todo marks: `done` for each open item that the answer
+    completes, and `cancelled` with a note for each other one. The store accepts both as
+    resolved. The nag names each open item with its id, so one `mark_todo` call for each
+    status is enough. The reply after the marks does not replace the answer
+    (`tasks.P_agent.steps.keeps_answer`).
 
-    The streak, not the turn, is what `nag_number` counts: an agent that made real
-    progress and then stopped again is in the same position as one being nagged for the
-    first time, and gets the same offer.
+    The second nag of a streak says that the list is still open.
     """
-    still_open = open_items(todo)
-    summary = chat_todos.summarise(todo)
-    nxt = still_open[0]["text"] if still_open else ""
-    head = (
-        f"You have stopped, but your todo list is not finished: {summary}. "
-        f"The next unresolved item is: {nxt}"
-    )
-    if nag_number <= 1:
-        return (
-            f"{head}\n\n"
-            "Call `read_todo` to see the whole plan, then decide which of these is "
-            "true, and act on it in this same reply:\n"
-            "- the plan is still right: keep working through it, and call `mark_todo` "
-            "as each item lands;\n"
-            "- the plan was too ambitious or is now wrong: call `write_todo` with a "
-            "revised plan, or `mark_todo` to cancel the items you are dropping, each "
-            "with a note saying why.\n\n"
-            "Do not answer with a summary of what you have already done. Either move "
-            "the work forward or change the plan."
-        )
+    lines = "\n".join(f"- {item['id']}. {item['text']}" for item in open_items(todo))
+    head = ("Your todo list is still not finished" if nag_number > 1
+            else "Your answer is written, but your todo list is not finished")
     return (
-        f"{head}\n\n"
-        "Finish the remaining items now. Work through them with your tools and call "
-        "`mark_todo` as each one lands. If an item truly cannot be done, cancel it "
-        "with a note saying why. Do not restate the plan -- act on it."
+        f"{head} ({chat_todos.summarise(todo)}). The open items are these.\n"
+        f"{lines}\n\n"
+        "Call `mark_todo` now. Give status `done` to each item that your answer "
+        "completes. Give status `cancelled` and a note with the reason to each item that "
+        "it does not complete. Do not write the answer again, and do not start new work. "
+        "After the marks, stop with no text."
     )
+
+
+#: The note of the citation round. A chat answer that names a document in a turn with no
+#: `cite_documents` call gets one more round with this note (`needs_citation_round`).
+CITATION_NOTE = (
+    "Your answer names documents, but this turn has no `cite_documents` call, so the "
+    "reader sees no document card. Call `cite_documents` now with each document that "
+    "your answer names, quotes or relies on. Then write the whole answer again, with the "
+    "handles that the call returned."
+)
+
+#: The tool whose call gives the reader a document card.
+CITE_TOOL = "cite_documents"
+
+#: A citation handle as the answer writes it, for example `[D1]`.
+HANDLE_PATTERN = re.compile(r"\[D\d+\]")
+
+#: A file hash as the answer writes it.
+HASH_PATTERN = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])")
+
+#: The shortest file name of a tool result that counts as a document name in an answer.
+#: A shorter name, such as `12.`, also matches ordinary prose.
+MIN_NAME_CHARS = 6
+
+#: The shortest part of a file hash that counts as a document name in an answer.
+MIN_HASH_CHARS = 12
+
+
+def _result_documents(message) -> list[dict]:
+    """The document references of one stored tool result."""
+    from tasks.P_agent.trajectory import extract_doc_refs
+
+    try:
+        result = json.loads(message.content or "")
+    except ValueError:
+        return []
+    return extract_doc_refs(message.tool_name or "", result)
+
+
+def names_documents(answer: str, messages) -> bool:
+    """Whether an answer names a document: a `[Dn]` handle, a file hash, or the file hash,
+    path or file name of a document that a tool result of the thread returned."""
+    if HANDLE_PATTERN.search(answer) or HASH_PATTERN.search(answer):
+        return True
+    for message in messages:
+        if message.role != "tool":
+            continue
+        for ref in _result_documents(message):
+            file_hash = ref.get("file_hash") or ""
+            if len(file_hash) >= MIN_HASH_CHARS and file_hash[:MIN_HASH_CHARS] in answer:
+                return True
+            path = (ref.get("path") or "").strip()
+            name = path.rstrip("/").rsplit("/", 1)[-1]
+            if len(path) >= MIN_NAME_CHARS and path in answer:
+                return True
+            if len(name) >= MIN_NAME_CHARS and name in answer:
+                return True
+    return False
+
+
+def is_citation_note(message) -> bool:
+    """Whether a thread message is the note of the citation round."""
+    return message.role == "human" and (message.content or "") == CITATION_NOTE
+
+
+def needs_citation_round(answer: str, messages) -> bool:
+    """Whether a chat answer gets the citation round.
+
+    The answer names a document (`names_documents`), and the thread holds no
+    `cite_documents` call and no citation note. A turn gets one citation round at most.
+    `messages` is the thread of the turn.
+    """
+    if not answer.strip():
+        return False
+    for message in messages:
+        if is_citation_note(message):
+            return False
+        if message.role == "ai" and any(
+            call.get("name") == CITE_TOOL for call in message.tool_calls
+        ):
+            return False
+    return names_documents(answer, messages)
 
 
 __all__ = [
+    "CITATION_NOTE",
+    "is_citation_note",
+    "names_documents",
+    "needs_citation_round",
     "MAX_NAGS_WITHOUT_PROGRESS",
     "MAX_NAGS_PER_TURN",
     "NAG_ROLE",

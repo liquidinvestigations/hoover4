@@ -247,6 +247,9 @@ fn ChatConversationPanel(
     // What a step of the turn waits for, `model` or `tool`, or empty when no step waits.
     // The turn is active meanwhile.
     let mut queued_for = use_signal(String::new);
+    // The handles that the citations of every run of the session issued, sub-agents
+    // included. The server sends the whole list on each load and each poll.
+    let mut run_cited_handles = use_signal(Vec::<String>::new);
     let mut loaded_for = use_signal(String::new);
     let mut find_query = use_signal(String::new);
     let mut match_index = use_signal(|| 0_usize);
@@ -287,6 +290,7 @@ fn ChatConversationPanel(
         options.set(detail.session.options);
         interrupted.set(detail.interrupted);
         queued_for.set(detail.queued_for.clone());
+        run_cited_handles.set(detail.run_cited_handles.clone());
         loaded_for.set(detail.session.session_id.clone());
         // A refresh mid-answer picks the turn up exactly where a poller left it.
         if detail.active && !detail.interrupted {
@@ -326,6 +330,9 @@ fn ChatConversationPanel(
                         }
                         interrupted.set(result.interrupted);
                         queued_for.set(result.queued_for.clone());
+                        if *run_cited_handles.peek() != result.run_cited_handles {
+                            run_cited_handles.set(result.run_cited_handles.clone());
+                        }
                         // An interrupted turn keeps whatever partial text it produced
                         // (under the banner, which is its marker), but never the
                         // "working…" placeholder: the banner already says it stopped,
@@ -572,6 +579,7 @@ fn ChatConversationPanel(
                 stream: stream_turn.read().clone(),
                 stream_live: !*interrupted.read(),
                 queued_for: queued_for.read().clone(),
+                run_cited_handles: run_cited_handles.read().clone(),
                 // A plan that has no planner answer row yet shows its card from here.
                 pending_plan: crate::components::chat_components::plan_card::started_plan(
                     &session_id.read(),

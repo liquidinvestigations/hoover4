@@ -23,7 +23,7 @@ from langfuse.langchain import CallbackHandler
 from agent_common import tool_packs
 from research_agent import compaction, model_params, prompts, subagents
 from research_agent.execution import page_share_client
-from research_agent.tool_args import decode_string_arguments
+from research_agent.tool_args import decode_string_arguments, repair_arguments
 from research_agent.tool_catalogue import DELEGATION_TOOL, CatalogueSnapshot, build_snapshot
 
 
@@ -54,7 +54,7 @@ def with_decoded_arguments(tool: Any) -> Any:
 
     The adapter builds each MCP tool with its JSON schema as `args_schema`, and langchain
     does not validate a dict schema, so the arguments reach the MCP server as the model
-    wrote them. The copy runs `decode_string_arguments` on them first. A tool with no
+    wrote them. The copy runs `repair_arguments` and `decode_string_arguments` on them first. A tool with no
     coroutine or no dict schema is returned unchanged.
     """
     original = getattr(tool, "coroutine", None)
@@ -63,7 +63,8 @@ def with_decoded_arguments(tool: Any) -> Any:
         return tool
 
     async def call_with_decoded_arguments(**arguments: Any) -> Any:
-        return await original(**decode_string_arguments(arguments, schema))
+        repaired, _ = repair_arguments(arguments)
+        return await original(**decode_string_arguments(repaired, schema))
 
     return tool.model_copy(update={"coroutine": call_with_decoded_arguments})
 

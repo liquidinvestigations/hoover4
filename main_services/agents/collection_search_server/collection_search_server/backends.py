@@ -170,7 +170,8 @@ def _rewrite_boolean_words(query: str) -> tuple[str, list[str]]:
     Manticore reads these words as ordinary search terms, so `a OR b` finds only a text
     that holds all three words. The rule: `OR` between two terms becomes `|`, a bare
     `AND` is dropped because every word must occur anyway, and `NOT x` becomes `-x`. An
-    `OR` or `NOT` with no term on the needed side is dropped. Only the upper-case words
+    `OR` or `NOT` with no term on the needed side is dropped. A `from:` or `to:` prefix of
+    a word is dropped and the word stays. Only the upper-case words
     are operators, and nothing inside double quotes changes. Each operator token is
     replaced in place and the rest of the text is kept as it is, so `"a b"~3` and an
     unbalanced quote reach the later passes unchanged.
@@ -181,7 +182,7 @@ def _rewrite_boolean_words(query: str) -> tuple[str, list[str]]:
     """
     tokens = _boolean_word_tokens(query)
     words = [query[start:end] for start, end in tokens]
-    or_read = and_dropped = not_read = stray = 0
+    or_read = and_dropped = not_read = stray = prefix_dropped = 0
     out: list[str] = []
     # The last token written to the output, for the left side of an `OR`.
     last_written: str | None = None
@@ -216,6 +217,10 @@ def _rewrite_boolean_words(query: str) -> tuple[str, list[str]]:
                 written = None
         else:
             written = word
+            stripped = _without_address_prefix(word)
+            if stripped is not None:
+                prefix_dropped += 1
+                written = stripped
         if written is not None:
             out.append(written)
             if written != "-":
@@ -231,7 +236,28 @@ def _rewrite_boolean_words(query: str) -> tuple[str, list[str]]:
         repairs.append(f"read {not_read} NOT x as -x, because NOT is an ordinary word in a search")
     if stray:
         repairs.append(f"dropped {stray} OR or NOT with no word on one side")
+    if prefix_dropped:
+        repairs.append(
+            f"dropped {prefix_dropped} from: or to: and kept the word after it, because a "
+            "search has no from or to field"
+        )
     return "".join(out), repairs
+
+
+#: The prefixes of a word that a model writes for the sender or the recipient of an email.
+#: A search has no such field, so the prefix goes and the word stays.
+ADDRESS_PREFIXES = ("from:", "to:")
+
+
+def _without_address_prefix(word: str) -> str | None:
+    """The word after a `from:` or `to:` prefix, in any case, or None when the word has no
+    such prefix or nothing after it. The Rust copy is `without_address_prefix` in
+    `website/backend/src/db_utils/manticore_match.rs`."""
+    lowered = word.lower()
+    for prefix in ADDRESS_PREFIXES:
+        if lowered.startswith(prefix) and len(word) > len(prefix):
+            return word[len(prefix):]
+    return None
 
 
 def _rewrite_field_operators(query: str) -> tuple[str, list[str]]:

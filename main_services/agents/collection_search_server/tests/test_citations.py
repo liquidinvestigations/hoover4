@@ -305,3 +305,85 @@ class TestFindPhrase:
 
     def test_an_empty_quote_and_find_give_no_query(self):
         assert citation_find_query("", "") == ""
+
+
+class TestHashStart:
+    """A file hash start of at least 12 characters names its document, in
+    `cite_documents` and in `read_documents`."""
+
+    FULL = "3f9a0c1b2d4e" + "5" * 52
+
+    def _stub(self, monkeypatch, hashes, quote="the cited sentence of the memo"):
+        import collection_search_server.server as srv
+
+        asked = []
+
+        def fake_query(sql, database, params=None):
+            params = params or {}
+            if "startsWith" in sql:
+                asked.append(params["prefix"])
+                return [{"hash": h} for h in hashes if h.startswith(params["prefix"])]
+            if "text_content" in sql:
+                after = (params["after_source"], int(params["after_page"]))
+                if ("raw_text", 1) <= after:
+                    return []
+                return [{"extracted_by": "raw_text", "page_id": 1, "text": quote}]
+            if "vfs_files" in sql:
+                return [{"path": "/memo.txt", "collection_dataset": "testdata_ds"}]
+            raise AssertionError(sql)
+
+        monkeypatch.setattr(srv, "clickhouse_query", fake_query)
+        return asked
+
+    def test_a_unique_start_cites_the_whole_hash(self, monkeypatch):
+        asked = self._stub(monkeypatch, [self.FULL, "b" * 64])
+        result = _cite_one(_acl(), "s-start", Citation(
+            collectionname="testdata", file_hash=self.FULL[:12],
+            quote="the cited sentence of the memo"))
+        assert asked == [self.FULL[:12]]
+        assert (result.error, result.file_hash, result.handle) == (None, self.FULL, "[D1]")
+
+    def test_an_ambiguous_start_is_refused_with_the_candidates(self, monkeypatch):
+        other = self.FULL[:12] + "6" * 52
+        self._stub(monkeypatch, [self.FULL, other])
+        result = _cite_one(_acl(), "s-start", Citation(
+            collectionname="testdata", file_hash=self.FULL[:12], quote="the cited sentence"))
+        assert result.handle == ""
+        assert self.FULL in result.error and other in result.error
+        assert "start of more than one document" in result.error
+
+    def test_a_start_shorter_than_12_is_not_looked_up(self, monkeypatch):
+        asked = self._stub(monkeypatch, [self.FULL])
+        result = _cite_one(_acl(), "s-start", Citation(
+            collectionname="testdata", file_hash=self.FULL[:11], quote="the cited sentence"))
+        assert asked == []
+        assert result.error == "file_hash must be a content hash from search_collections"
+
+    def test_read_documents_reads_the_whole_hash_of_a_start(self, monkeypatch):
+        import json
+
+        import collection_search_server.server as srv
+        from collection_search_server import tools_document
+
+        self._stub(monkeypatch, [self.FULL])
+        monkeypatch.setattr(srv, "_caller", _acl)
+        sent = []
+        monkeypatch.setattr(tools_document, "_render",
+                            lambda tool, values: sent.append(values) or "{}")
+        tools_document.read_documents.fn(collectionname="testdata",
+                                         file_hash=[self.FULL[:12], "c" * 64])
+        assert sent[0]["file_hash"] == [self.FULL, "c" * 64]
+        other = self.FULL[:12] + "6" * 52
+        self._stub(monkeypatch, [self.FULL, other])
+        refused = json.loads(tools_document.read_documents.fn(
+            collectionname="testdata", file_hash=[self.FULL[:12]]))
+        assert refused["error"] == "invalid_argument" and other in refused["message"]
+
+    def test_read_documents_looks_up_no_start_in_a_collection_the_caller_cannot_read(
+            self, monkeypatch):
+        import collection_search_server.server as srv
+
+        asked = self._stub(monkeypatch, [self.FULL])
+        monkeypatch.setattr(srv, "_caller", _acl)
+        assert srv.full_hashes("secret", [self.FULL[:12]]) == [self.FULL[:12]]
+        assert asked == []

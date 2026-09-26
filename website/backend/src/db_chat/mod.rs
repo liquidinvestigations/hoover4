@@ -975,6 +975,24 @@ pub async fn thread_message_tails(
     Ok(rows)
 }
 
+/// The text of every finished `cite_documents` result of a session, from every run
+/// thread at every depth. A sub-agent writes no transcript row, so this table is the only
+/// record of the handles its citations issued.
+pub async fn session_citation_outputs(username: &str, session_id: &str) -> anyhow::Result<Vec<String>> {
+    let rows = get_global_client()
+        .query(
+            "SELECT content FROM agent_run_messages FINAL \
+             WHERE username = ? AND session_id = ? AND role = 'tool' \
+               AND tool_name = 'cite_documents' AND is_final = 1 \
+             ORDER BY thread_id, idx",
+        )
+        .bind(username)
+        .bind(session_id)
+        .fetch_all::<String>()
+        .await?;
+    Ok(rows)
+}
+
 /// The count of tool results in each named thread, as `(thread, count)`.
 pub async fn thread_tool_counts(
     username: &str,

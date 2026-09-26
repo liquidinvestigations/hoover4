@@ -394,6 +394,34 @@ async def test_arguments_that_do_not_match_the_schema_are_refused_before_the_cal
     assert result["error_class"] == "invalid_arguments" and seen == []
 
 
+MARK_SCHEMA = {
+    "type": "object",
+    "properties": {"ids": {"type": "array", "items": {"type": "string"}},
+                   "status": {"type": "string", "enum": ["done", "in_progress"]}},
+    "required": ["ids", "status"],
+}
+
+
+async def test_the_quote_token_and_a_stray_quote_layer_are_repaired_and_measured():
+    """The `mark_todo` arguments of a demo story, as the tool call parser gave them."""
+    seen: List[Any] = []
+    agent = FakeAgent([dict_tool("mark_todo", MARK_SCHEMA, seen)], {"mark_todo"})
+    result = await steps.run_tool_call(agent, tool_request(
+        "mark_todo", {"ids": ['"1"', '"2"'], "status": '"done"<|"|>'}))
+    assert result["status"] == "ok"
+    assert seen[0][1] == {"ids": ["1", "2"], "status": "done"}
+    assert result["measure"][steps.ARGUMENT_REPAIRS_KEY] == [
+        "value ids[0] lost one layer of quotes", "value ids[1] lost one layer of quotes",
+        "value status lost the quote token", "value status lost one layer of quotes"]
+
+
+async def test_a_call_with_no_repair_keeps_its_measure():
+    agent = FakeAgent([dict_tool("mark_todo", MARK_SCHEMA, [])], {"mark_todo"})
+    result = await steps.run_tool_call(
+        agent, tool_request("mark_todo", {"ids": ["1"], "status": "done"}))
+    assert result["measure"] is None
+
+
 async def test_an_exhausted_budget_runs_no_call():
     seen: List[Any] = []
     agent = FakeAgent([dict_tool("read_plan", EMPTY_SCHEMA, seen)], {"read_plan"}, kind="planner")

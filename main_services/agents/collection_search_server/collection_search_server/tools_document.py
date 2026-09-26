@@ -59,6 +59,12 @@ def _render(tool: PagedTool | LocalPagedTool, values: dict[str, Any]) -> str:
 
 @mcp.tool(name="read_documents", description="Read one text page of each of up to 20 documents in one collection. Use it after a search returns document hashes. With a query and no page, it opens the page with the most hits. Give page to read another page id, and use min_page, max_page and hit_pages to choose it.")
 def read_documents(collectionname: str, file_hash: list[str], source: str | None = None, query: str | None = None, page: int | None = None) -> str:
+    try:
+        file_hash = server.full_hashes(collectionname, file_hash)
+    except server.HashPrefixError as exc:
+        return canonical_json({"success": False, "error": "invalid_argument", "message": str(exc)})
+    except Exception:  # noqa: BLE001, a failed lookup leaves the hashes to the route
+        server.log.warning("the file_hash starts of read_documents were not looked up", exc_info=True)
     return _render(READ_DOCUMENTS, {"collectionname": collectionname, "file_hash": file_hash, "source": source, "query": query, "page": page})
 
 

@@ -18,6 +18,7 @@ Query rules:
 - -word excludes a word: water -draft
 - Double quotes find a phrase or a name: "Joe Wilkinson"
 - OR, AND and NOT are ordinary words. Use | and -word. The search reads OR as | and NOT x as -x, and says so in query_notes.
+- from: and to: are not fields. The search drops them, keeps the word after them, and says so in query_notes.
 - An email address works as typed.
 
 Each row gives file_hash, path and collectionname. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has a continuation, call read_more to get the other rows.

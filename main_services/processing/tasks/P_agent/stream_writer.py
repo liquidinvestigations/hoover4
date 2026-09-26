@@ -471,22 +471,25 @@ class ToolCallWriter(ResearchStreamWriter):
 def round_view(messages) -> tuple[str, str, bool]:
     """The plan-first prose, the reasoning and the opening state of the current round.
 
-    The round starts after the last `human` message of the thread. No step keeps state, so
-    each step derives these from the stored `ai` messages of the round:
+    The round starts after the last `human` message of the thread that is not the human
+    message of a `final` step. No step keeps state, so each step derives these from the
+    stored `ai` messages of the round:
 
-    * the opening holds while every call so far is in `PLAN_FIRST_TOOLS`. The text of an
-      `ai` message whose first call is inside the opening is plan prose, which the answer
-      shows (`ResearchStreamWriter._keeps_preamble` gives the rule).
+    * the opening holds while every call so far is in `PLAN_FIRST_TOOLS`, and only in the
+      round that the first `human` message of the thread opens. A nag round has no
+      opening. The text of an `ai` message whose first call is inside the opening is plan
+      prose, which the answer shows (`ResearchStreamWriter._keeps_preamble` gives the rule).
     * the text of any other `ai` message with calls is narration, which moves to the
       reasoning. The reasoning of every `ai` message of the round is kept too.
 
     Returns `(plan_prose, reasoning, in_opening)`.
     """
-    start = 0
-    for i, message in enumerate(messages):
-        if message.role == "human":
-            start = i + 1
-    plan, reasoning, in_opening = [], [], True
+    from tasks.P_agent.steps import FINAL_TEXT
+
+    notes = set(FINAL_TEXT.values())
+    humans = [i for i, m in enumerate(messages) if m.role == "human" and m.content not in notes]
+    start = humans[-1] + 1 if humans else 0
+    plan, reasoning, in_opening = [], [], len(humans) <= 1
     for message in messages[start:]:
         if message.role != "ai":
             continue

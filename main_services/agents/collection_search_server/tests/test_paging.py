@@ -765,3 +765,42 @@ def test_one_query_without_the_list_is_one_route_search(monkeypatch):
     assert asked == ["a OR b"]
     assert "matched_queries" not in page["items"][0]
     assert page["fields"]["query_notes"] == ["read 1 OR as |, because OR is an ordinary word in a search"]
+
+
+def dataset_backend(monkeypatch):
+    """A route that lists the collection `consulate` with the dataset `files`, and answers
+    each search with one row. Returns the collection names each search was asked for."""
+    asked = []
+
+    def post(self, route, request, response_model, expected_source=None):
+        if route == "collections/list":
+            return response_model.model_validate({"source": "c", "collections": [
+                {"collectionname": "consulate", "document_count": 3,
+                 "datasets": [{"name": "files", "document_count": 3}]}]})
+        asked.append(list(request.collectionname))
+        document = {**SAMPLES["search_collections"]["documents"][0], "file_hash": "1", "path": "/1"}
+        return response_model.model_validate({
+            **SAMPLES["search_collections"], "documents": [document], "total_count": 1,
+            "has_more": False, "total": 1, "source": "s", "query_notes": []})
+
+    monkeypatch.setattr("collection_search_server.backend_client.BackendClient.post", post)
+    return asked
+
+
+@pytest.mark.parametrize("name", ["consulate_files", "consulate/files", "files"])
+def test_a_dataset_name_in_collectionname_searches_its_collection_and_says_so(monkeypatch, name):
+    Store(monkeypatch)
+    asked = dataset_backend(monkeypatch)
+    page = json.loads(tools_search.search_collections.fn(collectionname=[name], query="budget"))
+    assert asked == [["consulate"]]
+    assert [row["file_hash"] for row in page["items"]] == ["1"]
+    assert page["fields"]["query_notes"][0] == (
+        f"{name!r} is a dataset of the collection 'consulate', not a collection, so this "
+        "search covers the collection 'consulate'. Give collectionname 'consulate'.")
+
+
+def test_a_collection_name_and_an_unknown_name_are_not_mapped(monkeypatch):
+    dataset_backend(monkeypatch)
+    assert tools_search.collections_for(["consulate", "enron_kean_s"]) == (
+        ["consulate", "enron_kean_s"], [])
+    assert tools_search.collections_for(None) == (None, [])

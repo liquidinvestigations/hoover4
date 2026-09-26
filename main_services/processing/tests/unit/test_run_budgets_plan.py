@@ -60,7 +60,8 @@ def test_a_refused_node_names_the_sections_of_the_approved_tree():
     [refusal] = decision.refused
     assert refusal["reason"] == rb.PLAN_NODE_NOT_ALLOWED
     assert refusal["message"] == (
-        f"The sections are: {SECTION} (Who signed the lease?), s2 (Who controls the landlord?).")
+        f"The sections are: {SECTION} (Who signed the lease?), s2 (Who controls the landlord?). "
+        + rb.SECTION_NOT_TASK)
 
 
 def test_a_refusal_with_no_section_has_no_message():
@@ -68,3 +69,26 @@ def test_a_refusal_with_no_section_has_no_message():
     [refusal] = decision.refused
     assert refusal["reason"] == rb.PLAN_NODE_NOT_ALLOWED
     assert "message" not in refusal
+
+
+def test_a_flat_plan_lets_the_organizer_brief_the_root():
+    """The tree of a planner that put every node under the root: the root is the only
+    section. The briefing rule reads the same sections as the approval rule, so a
+    briefing of the root runs, and a briefing of one of its tasks is refused with the root
+    named."""
+    from database import agent_plans as ap
+
+    snap = ap.initial_snapshot("0b8e6f8a-3f52-4a55-9d6c-6f6a1c1f2e10", "Where does D. I. appear?")
+    for text in ("Survey across collections", "Roles and counts", "Examples", "Final report"):
+        snap = ap.apply(snap, "append_node", text=text)
+    sections = {node.node_id: node.text for node, _ in ap.sections(snap)}
+    assert set(sections) == ap.section_ids(snap) == {snap.root_id}
+    task = ap.children_of(snap, snap.root_id)[0].node_id
+    decision = rb.decide([("c1", [_b("execute", node=snap.root_id, objective="survey"),
+                                  _b("execute", node=task, objective="task")])],
+                         depth=0, used=0, limit=300, own_share=0, kind="organizer",
+                         sections=sections, corrections={})
+    assert [a.briefing["objective"] for a in decision.accepted] == ["survey"]
+    [refusal] = decision.refused
+    assert refusal["reason"] == rb.PLAN_NODE_NOT_ALLOWED
+    assert snap.root_id in refusal["message"] and rb.SECTION_NOT_TASK in refusal["message"]

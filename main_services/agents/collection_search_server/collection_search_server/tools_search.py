@@ -12,7 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from agent_common import batching
 from agent_common.result_pages import canonical_json
 from collection_search_server.backend_client import (
-    AgentError, AgentSort, BackendClient, CollectionsListRequest, SearchDateHistogramRequest,
+    AgentError, AgentSort, BackendClient, CollectionsListRequest, CollectionsListResponse,
+    SearchDateHistogramRequest,
     SearchEntityExplainerRequest, SearchFacetValuesRequest, SearchResultsRequest,
     SearchResultsResponse,
 )
@@ -76,12 +77,51 @@ class SearchCollectionsRequest(SearchResultsRequest):
     forms. With `queries` empty the call is one route search, paged by the route's pages."""
 
     queries: list[str] = Field(default_factory=list, max_length=server.MAX_QUERIES_PER_CALL)
+    #: The notes of `collections_for`, for `query_notes`. Not a route argument.
+    collection_notes: list[str] = Field(default_factory=list)
+
+
+def collections_for(names: list[str] | None) -> tuple[list[str] | None, list[str]]:
+    """The collections that `names` mean, and a note for each name that was mapped.
+
+    A model gives a dataset name (`files`), a `collection_dataset` value (`consulate_files`)
+    or the display form (`consulate/files`) where a collection name belongs. Each such name
+    becomes the collection that holds the dataset, from `collections/list`. A collection
+    name and a name that matches nothing stay as they are, so the route still refuses a
+    collection that the user cannot read.
+    """
+    if not names:
+        return names, []
+    listing = BackendClient().post("collections/list", CollectionsListRequest(), CollectionsListResponse)
+    if isinstance(listing, AgentError) or not isinstance(listing, CollectionsListResponse):
+        return names, []
+    known = {c.collectionname for c in listing.collections}
+    owner: dict[str, str] = {}
+    for collection in listing.collections:
+        for dataset in collection.datasets:
+            for alias in (f"{collection.collectionname}_{dataset.name}",
+                          f"{collection.collectionname}/{dataset.name}", dataset.name):
+                owner.setdefault(alias, collection.collectionname)
+    resolved: list[str] = []
+    notes: list[str] = []
+    for name in names:
+        target = name
+        if name not in known and name in owner:
+            target = owner[name]
+            notes.append(
+                f"{name!r} is a dataset of the collection {target!r}, not a collection, so this "
+                f"search covers the collection {target!r}. Give collectionname {target!r}."
+            )
+        if target not in resolved:
+            resolved.append(target)
+    return resolved, notes
 
 
 def _route_request(request: SearchResultsRequest, query: str | None = None) -> SearchResultsRequest:
-    """The route request of `request`, without its `queries`, for the query `query` when
-    it is given."""
-    values = request.model_dump(mode="json", exclude={"queries"}, exclude_none=True, by_alias=True)
+    """The route request of `request`, without its `queries` and its `collection_notes`,
+    for the query `query` when it is given."""
+    values = request.model_dump(mode="json", exclude={"queries", "collection_notes"},
+                                exclude_none=True, by_alias=True)
     if query is not None:
         values["query"] = query
     return SearchResultsRequest.model_validate(values)
@@ -93,9 +133,13 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
     Rows merge by `(collectionname, file_hash)`, first seen first, and each row gets
     `matched_queries`, the forms that found it, in the order of the list. A form that
     fails adds its error to `query_notes`, and the other forms still run. Each form
-    returns the first route page of its rows."""
+    returns the first route page of its rows. The notes of `collections_for` come first
+    in `query_notes`."""
     forms, repeats = batching.dedupe(([request.query] if request.query.strip() else []) + list(request.queries))
-    notes: list[str] = []
+    notes: list[str] = list(getattr(request, "collection_notes", []))
+    if not forms and notes:
+        # A browse whose collection was mapped runs here too, so the result keeps the note.
+        forms = [request.query]
     if repeats:
         notes.append(batching.repeats_note(repeats, "query"))
     rows: dict[tuple[str, str], dict[str, Any]] = {}
@@ -128,12 +172,12 @@ SEARCH_FORMS = LocalPagedTool(SearchCollectionsRequest, "search_collections", "d
 
 @dataclass(frozen=True)
 class SearchCollectionsTool(PagedTool):
-    """`search_collections`. A request with `queries` is the merged search of
-    `_search_forms`, and a request without is one route search. A continuation of either
+    """`search_collections`. A request with `queries` or `collection_notes` is the merged
+    search of `_search_forms`, and a request without is one route search. A continuation of either
     carries its own input, so `read_more` reaches the same path again."""
 
     def render(self, request: BaseModel, position: dict[str, Any], source: str) -> str:
-        if getattr(request, "queries", None):
+        if getattr(request, "queries", None) or getattr(request, "collection_notes", None):
             return SEARCH_FORMS.render(request, position, source)
         return super().render(_route_request(request), position, source)
 
@@ -175,6 +219,7 @@ Query rules:
 - -word excludes a word: water -draft
 - Double quotes find a phrase or a name: "Joe Wilkinson"
 - OR, AND and NOT are ordinary words. Use | and -word. The search reads OR as | and NOT x as -x, and says so in query_notes.
+- from: and to: are not fields. The search drops them, keeps the word after them, and says so in query_notes.
 - An email address works as typed.
 
 Each row gives file_hash, path and collectionname. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has a continuation, call read_more to get the other rows.
@@ -201,7 +246,8 @@ def _filters(values: dict[str, Any]) -> dict[str, Any]:
 
 @mcp.tool(name="search_collections", description=SEARCH_COLLECTIONS_TEXT)
 def search_collections(collectionname: list[str] | None = None, queries: Annotated[list[str] | None, Field(max_length=server.MAX_QUERIES_PER_CALL)] = None, query: str = "", sort: AgentSort | None = None, date_after: int | None = None, date_before: int | None = None, date_unknown_only: bool | None = None, mentioned_date_after: int | None = None, mentioned_date_before: int | None = None, size_min: int | None = None, size_max: int | None = None, folder_term_id: int | None = None, filename_only: bool | None = None, facet_filters: dict[str, list[str]] | None = None) -> str:
-    return _render(SEARCH_COLLECTIONS, _filters({"collectionname": collectionname, "queries": queries or [], "query": query, "sort": sort, "date_after": date_after, "date_before": date_before, "date_unknown_only": date_unknown_only, "mentioned_date_after": mentioned_date_after, "mentioned_date_before": mentioned_date_before, "size_min": size_min, "size_max": size_max, "folder_term_id": folder_term_id, "filename_only": filename_only, "facet_filters": facet_filters}))
+    collectionname, collection_notes = collections_for(collectionname)
+    return _render(SEARCH_COLLECTIONS, _filters({"collectionname": collectionname, "collection_notes": collection_notes, "queries": queries or [], "query": query, "sort": sort, "date_after": date_after, "date_before": date_before, "date_unknown_only": date_unknown_only, "mentioned_date_after": mentioned_date_after, "mentioned_date_before": mentioned_date_before, "size_min": size_min, "size_max": size_max, "folder_term_id": folder_term_id, "filename_only": filename_only, "facet_filters": facet_filters}))
 
 
 @mcp.tool(name="search_facet_values", description="Find facet values in permitted collections. Use it to choose values for a collection search filter.")

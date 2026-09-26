@@ -17,6 +17,8 @@ OR_LINE = "read 1 OR as |, because OR is an ordinary word in a search"
 AND_LINE = "dropped 1 AND, because every word of a query must occur anyway"
 NOT_LINE = "read 1 NOT x as -x, because NOT is an ordinary word in a search"
 STRAY_LINE = "dropped 1 OR or NOT with no word on one side"
+PREFIX_LINE = "dropped 1 from: or to: and kept the word after it, because a search has no from or to field"
+PREFIX_2_LINE = "dropped 2 from: or to: and kept the word after it, because a search has no from or to field"
 
 REWRITE_TABLE = [
     ('JoeBWilkinson@cs.com OR "Joe B Wilkinson"', 'JoeBWilkinson@cs.com | "Joe B Wilkinson"', [OR_LINE]),
@@ -29,6 +31,9 @@ REWRITE_TABLE = [
     ("a OR OR b", "a | b", [OR_LINE, STRAY_LINE]),
     ('"a b"~3 OR c', '"a b"~3 | c', [OR_LINE]),
     ('a OR "b', 'a | "b', [OR_LINE]),
+    ("from:jeff.dasovich@enron.com talking", "jeff.dasovich@enron.com talking", [PREFIX_LINE]),
+    ('To:"Joe Wilkinson" OR from:kean', '"Joe Wilkinson" | kean', [OR_LINE, PREFIX_2_LINE]),
+    ('"from:x" to: from', '"from:x" to: from', []),
 ]
 
 

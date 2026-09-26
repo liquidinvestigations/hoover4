@@ -235,6 +235,13 @@ class TestRefusalsReachTheModel:
         assert result.success is False
         assert result.error == "No plan exists yet. Call write_todo first."
 
+    def test_editing_before_any_plan_exists_is_a_tool_error_and_writes_nothing(self, store):
+        with pytest.raises(ToolError) as refused:
+            getattr(server.edit_todo, "fn", server.edit_todo)(steps=["a"])
+        result = server.TodoResponse.model_validate_json(str(refused.value))
+        assert result.error == server.NO_PLAN_ERROR
+        assert store == {}
+
     def test_marking_before_any_plan_exists_is_refused(self):
         result = call(server.mark_todo, ids=["1"], status="done")
         assert result.success is False
@@ -304,3 +311,16 @@ def test_no_todo_tool_text_holds_a_json_example():
     for name in ("write_todo", "edit_todo", "mark_todo"):
         assert "{" not in tools[name].description, name
         assert "[" not in tools[name].description, name
+
+
+def test_edit_todo_and_mark_todo_name_their_own_arguments_and_leave_goal_to_write_todo():
+    """The model sent `goal` to `edit_todo` and `steps` to `mark_todo`, with the shape of
+    `write_todo`. Each text names its own arguments and says that `goal` is not one."""
+    tools = __import__("asyncio").run(server.mcp.get_tools())
+    edit, mark = tools["edit_todo"].description, tools["mark_todo"].description
+    assert "one argument, steps" in edit and "takes no goal" in edit
+    for argument in ("ids is", "status is", "note is"):
+        assert argument in mark, argument
+    assert "takes no goal and no steps" in mark
+    for text in (edit, mark):
+        assert "Only write_todo takes a goal" in text

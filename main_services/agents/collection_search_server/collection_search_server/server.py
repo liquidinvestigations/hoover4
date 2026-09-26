@@ -314,6 +314,66 @@ def _is_hash(value: str) -> bool:
     return bool(_HASH_RE.match(value or ""))
 
 
+#: The shortest start of a file hash that `read_documents` and `cite_documents` accept in
+#: place of the whole hash. A model copies a 64-character hash one token at a time and can
+#: change a character, so a shorter start that names one document is enough.
+MIN_HASH_PREFIX = 12
+
+#: The start of a file hash: hex, from `MIN_HASH_PREFIX` to 63 characters.
+_HASH_PREFIX_RE = re.compile(r"^[0-9a-f]{%d,63}$" % MIN_HASH_PREFIX)
+
+#: The count of candidates that the refusal of an ambiguous start names.
+MAX_PREFIX_CANDIDATES = 5
+
+
+class HashPrefixError(ValueError):
+    """A file hash start that names more than one document."""
+
+
+def full_hash(collectionname: str, value: str) -> str:
+    """The whole file hash of the one document in `collectionname` whose hash starts with
+    `value`. A value that is not a hash start, and a start that names no document, come
+    back unchanged, so the caller's own check refuses them. A start that names more than
+    one document raises `HashPrefixError` with the candidates. The caller checks the
+    ACL of `collectionname` first."""
+    prefix = (value or "").strip().lower()
+    if not _HASH_PREFIX_RE.match(prefix):
+        return value
+    rows = clickhouse_query(
+        "SELECT DISTINCT hash FROM vfs_files WHERE startsWith(hash, {prefix:String}) "
+        "AND is_deleted = 0 ORDER BY hash LIMIT {limit:UInt32}",
+        database=collection_db(collectionname),
+        params={"prefix": prefix, "limit": MAX_PREFIX_CANDIDATES + 1},
+    )
+    hashes = [str(row.get("hash") or "") for row in rows if row.get("hash")]
+    if len(hashes) == 1:
+        return hashes[0]
+    if not hashes:
+        return value
+    listed = ", ".join(hashes[:MAX_PREFIX_CANDIDATES])
+    more = " and more" if len(hashes) > MAX_PREFIX_CANDIDATES else ""
+    raise HashPrefixError(
+        f"the file_hash {value!r} is the start of more than one document in "
+        f"{collectionname!r}: {listed}{more}. Copy the whole file_hash of the document "
+        "you mean from a tool result."
+    )
+
+
+def full_hashes(collectionname: str, values: Any) -> Any:
+    """`full_hash` for each value of a list or for one string, for a collection that the
+    caller can read. For any other collection the values come back unchanged, and the
+    route refuses the call."""
+    try:
+        _caller().check([collectionname])
+    except AccessDenied:
+        return values
+    if isinstance(values, str):
+        return full_hash(collectionname, values)
+    if isinstance(values, list):
+        return [full_hash(collectionname, v) if isinstance(v, str) else v for v in values]
+    return values
+
+
 def _caller() -> CallerAcl:
     """The ACL of the in-flight request."""
     return parse_acl(dict(get_http_headers()))
@@ -1356,7 +1416,10 @@ def _session_id() -> str:
 @mcp.tool(
     name="cite_documents",
     description=(
-        "Put documents forward as the evidence for your answer. Each citation names a "
+        "Put documents forward as the evidence for your answer. Call this before you "
+        "write the answer, with each document that the answer names, quotes or relies "
+        "on. An answer that names a document with no handle shows the reader no "
+        "document. Each citation names a "
         "document, a quote copied verbatim from it, an optional find phrase (the "
         "shortest exact part of the quote the reader must see, where the card opens the "
         "document), and why it matters. You get back a "
@@ -1542,6 +1605,17 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
     except AccessDenied as exc:
         result.error = str(exc)
         return result
+    try:
+        whole = full_hash(citation.collectionname, citation.file_hash)
+    except HashPrefixError as exc:
+        result.error = str(exc)
+        return result
+    except Exception as exc:  # noqa: BLE001
+        log.warning("the file_hash start %r was not looked up: %s", citation.file_hash, exc)
+        whole = citation.file_hash
+    if whole != citation.file_hash:
+        citation = citation.model_copy(update={"file_hash": whole})
+        result.file_hash = whole
     if not _is_hash(citation.file_hash):
         result.error = "file_hash must be a content hash from search_collections"
         return result

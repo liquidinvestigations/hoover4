@@ -131,8 +131,12 @@ A turn with a stop row in `agent_turn_stops` closes in `open_run`.
 "The model queue wait passed ... s.", and a tool call that fails after its last attempt gets
 a stored `tool_unavailable` result, which the model reads. After 600 model steps one
 `final` step binds no tool, and the run ends `completed` with `end_reason` `step_budget`.
-A reply that repeats an earlier call also gets one `final` step (`repeated_call`). The reply
-of a `final` step is the answer, and each call in it gets a `not_run` result. The first turn
+A call that repeats an earlier call, with the same name and arguments, does not run when
+the earlier result is not an error. It gets a `repeated_call` result that names the earlier
+call, and the other calls of its reply run. After 3 model steps in a row that hold only
+repeated calls, the run gets one `final` step (`repeated_call`). The reply of a `final`
+step is the answer, and each call in it gets a `not_run` result. The calls of one reply to
+the plan tree and todo tools run one after the other, in the order of the reply. The first turn
 of an ordinary chat starts with one `plan` step, which writes the plan through `write_todo`,
 and one more when the todo server refuses it. A `plan` step has one attempt of
 `plan_request_timeout_seconds` (60 s). The workflow continues as new every 250 model steps, or past 30,000 history events. A planner
@@ -201,8 +205,15 @@ call, and a delegated turn takes one slot for each running sub-agent.
 `nagging.py` is why a chat turn is a loop rather than one call. An agent stops when the
 model stops calling tools, which is not the same as the work being done, so `AgentRun` reads
 the session's todo afterwards and runs the agent again (under its own `nag` role in the
-transcript) while items are still open. `append_nag` writes the nag row, the nag text into
-the thread and the counters into the run row. **The counters live in the run row, not in the
+transcript) while items are still open. Before the first nag, a chat answer that names a
+document (a `[Dn]` handle, a file hash, or a path or file name that a tool of the turn
+returned) in a turn with no `cite_documents` call gets one citation round. Its note asks for
+the citations and then the answer again, and the reply of that round replaces the answer
+when it has text (`steps.needs_citations`, `nagging.needs_citation_round`). The nag follows
+the answer, so it asks only for the todo marks. The reply of a nag round writes no answer row when the turn has an answer,
+and the reason the nags stop goes to the worker log only. The answer row never holds the
+model's reasoning. `append_nag` writes the nag row, the nag text into the thread and the
+counters into the run row. **The counters live in the run row, not in the
 agent**, because they have to outlive an agent process that restarts mid-turn. Two nags
 while the plan is not moving, five in the whole turn, and each buys a fixed extra tool
 budget rather than resetting it. What counts as the plan moving is
@@ -416,7 +427,7 @@ Workers are split into dedicated queues to control throughput and resource usage
   rows that are older than its own start. Two runs at once can delete each other's rows.
 - `chat-queue`, `AgentRun` plus `open_run`, `append_nag`, `write_ending`, `fan_in`,
   `continue_run`, `delegate_step`, `prepare_continuation`, `record_step_failure`,
-  `plan_has_sections`, todo reads and session titles (`main.py worker chat`, concurrency
+  `plan_has_sections`, `needs_citations`, todo reads and session titles (`main.py worker chat`, concurrency
   from `chat_low_latency_concurrency`).
 - `chat-model-queue`, `model_step` for those chat turns and their sub-agents
   (`chat_model_concurrency`, 3 slots). A slot is one model call in flight.

@@ -55,12 +55,12 @@ def test_a_failed_tool_row_is_rebuilt_as_an_error_result():
 
 def test_the_safe_budget_reserves_every_empty_page_first():
     names = ["a", "table_search_cells", "c"]
-    budget = execution.safe_budget(names, request_bytes=0, window=0, reserve=8192)
+    budget = execution.safe_budget(names, request_tokens=0, window=0, reserve=8192)
     empty = [len(execution.empty_page_text(n).encode("utf-8")) for n in names]
     assert sum(budget.shares) <= SAFE_MODE_BATCH_BYTES
     assert all(share > e for share, e in zip(budget.shares, empty))
     assert len({share - e for share, e in zip(budget.shares, empty)}) == 1
-    # The design's safe-mode case: 110,000 request bytes leave more than the batch bytes.
+    # The design's safe-mode case: 110,000 request tokens leave more than the batch bytes.
     assert execution.safe_budget(names, 110_000, 262_144, 8192).total == SAFE_MODE_BATCH_BYTES
     # A nearly full window cuts the batch.
     assert execution.safe_budget(names, 250_000, 262_144, 8192).total == 262_144 - 8192 - 250_000
@@ -71,6 +71,43 @@ class CharCounter:
 
     def count(self, text: str) -> int:
         return len(text.encode("utf-8")) // 4
+
+
+def _long_thread(prompt_tokens: int) -> list:
+    """A thread of `prompt_tokens` billed tokens that holds four bytes of text per token,
+    so its byte count is larger than a 262,144-token window."""
+    return [
+        HumanMessage(content="x" * (4 * prompt_tokens)),
+        AIMessage(content="", usage_metadata={
+            "input_tokens": prompt_tokens, "output_tokens": 0, "total_tokens": prompt_tokens,
+        }),
+    ]
+
+
+@pytest.mark.parametrize("mode", ["bytes", "tokens"])
+def test_a_thread_of_109000_tokens_still_gets_a_full_page(monkeypatch, mode):
+    """A request of 109,000 tokens holds about 436,000 bytes. The budget subtracts the
+    request in tokens from the window in tokens, so a single call still gets a full page."""
+    monkeypatch.setenv("LLM_MODEL", "served-model")
+    monkeypatch.setattr(execution.compaction, "context_window", lambda model: 262_144)
+    monkeypatch.setattr(execution, "COMPLETION_RESERVE_TOKENS", 8192 if mode == "tokens" else None)
+    monkeypatch.setattr(execution, "MAX_PAGE_TOKENS", 30_000 if mode == "tokens" else None)
+    monkeypatch.setattr(execution, "TokenCounter", lambda *args: CharCounter())
+    names = ["read_documents"]
+    budget = execution.batch_budget(names, _long_thread(109_000))
+    empty = len(execution.empty_page_text(names[0]).encode("utf-8"))
+    assert budget.mode == mode and not budget.exhausted
+    # The minimum page of a tool is its empty page plus one byte of content.
+    assert budget.shares[0] >= empty + 1
+    if mode == "bytes":
+        assert budget.shares[0] == SAFE_MODE_BATCH_BYTES
+
+
+def test_the_safe_budget_counts_the_bytes_after_the_last_billed_reply():
+    """Text that the model has not been billed for yet counts one token per byte."""
+    thread = _long_thread(100_000) + [HumanMessage(content="y" * 1000)]
+    assert execution.request_tokens(thread) == 100_000 + 1000
+    assert execution.request_tokens([HumanMessage(content="z" * 500)]) == 500
 
 
 def test_the_token_budget_applies_the_allocation():
@@ -111,3 +148,12 @@ def test_the_measure_is_taken_out_of_the_artifact():
     assert execution.split_measure([other, measure]) == ({"page_bytes": 3}, [other])
     assert execution.split_measure([measure]) == ({"page_bytes": 3}, None)
     assert execution.split_measure(None) == (None, None)
+
+
+def test_the_ordered_tools_are_the_plan_tools_and_the_todo_tools():
+    """The worker runs `STATE_TOOLS` of `processing/tasks/P_agent/steps.py` in reply order.
+    This list is the same set, so the stored kind says what the worker does."""
+    assert execution.ORDERED_TOOLS == frozenset({
+        "append_node", "append_child", "move_node", "edit_node", "remove_node", "read_plan",
+        "write_todo", "edit_todo", "mark_todo", "read_todo",
+    })

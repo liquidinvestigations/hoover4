@@ -728,6 +728,7 @@ async def run_chat_worker():
   from .P_agent.steps import (
       delegate_step,
       model_step,
+      needs_citations,
       plan_has_sections,
       prepare_continuation,
       record_step_failure,
@@ -764,7 +765,7 @@ async def run_chat_worker():
         activities=[
             open_run, append_nag, write_ending, summarize_if_first_turn, fan_in,
             continue_run, read_chat_todo, delegate_step, prepare_continuation,
-            record_step_failure, plan_has_sections,
+            record_step_failure, plan_has_sections, needs_citations,
         ],
         activity_executor=activity_executor,
         max_concurrent_activities=low_latency_slots,

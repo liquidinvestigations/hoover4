@@ -7,8 +7,10 @@
    the reader.
 #}
 {% if has('cite_documents') %}
-The person sees a document only when you cite it. Before you finish your {{ citation_artefact }}, call
-{{ tool('cite_documents') }} one time with each {% if web_enabled %}internal {% endif %}document that your {{ citation_artefact }} names, quotes or relies on.
+The person sees a document only when you cite it. Call {{ tool('cite_documents') }} before you write your {{ citation_artefact }}.
+Give it each {% if web_enabled %}internal {% endif %}document that your {{ citation_artefact }} names, quotes or relies on.
+Then write the {{ citation_artefact }} with the handles that the call returned.
+Do not name a document, a file hash or a file path in the {{ citation_artefact }} without its handle.
 One call takes at most 12 citations. Cite what you used, not everything a search returned.
 
 For each citation give:

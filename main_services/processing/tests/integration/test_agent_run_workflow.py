@@ -239,7 +239,7 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
     acts = [activities.open_run, activities.append_nag, activities.write_ending,
             activities.summarize_if_first_turn, activities.read_chat_todo, activities.fan_in,
             activities.continue_run, steps.delegate_step, steps.prepare_continuation,
-            steps.record_step_failure, steps.plan_has_sections]
+            steps.record_step_failure, steps.plan_has_sections, steps.needs_citations]
     try:
         client = await Client.connect("temporal:7233")
         with ThreadPoolExecutor(max_workers=32) as executor:
@@ -463,14 +463,60 @@ def test_the_repeated_call_guard_forces_one_answer(monkeypatch):
 
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
-        assert stub.modes() == ["tools", "tools", "final"]
+        # The first call runs. Three replies of repeats in a row then force the answer.
+        assert stub.modes() == ["tools"] * (1 + steps.REPEAT_STEP_LIMIT) + ["final"]
         assert len(stub.tool_requests) == 1
         tools = [m for m in case.messages() if m.role == "tool"]
-        assert json.loads(tools[-1].content)["error"] == "not_run"
+        assert [json.loads(t.content).get("error") for t in tools[1:]] == [
+            steps.REPEATED_CALL_CLASS] * steps.REPEAT_STEP_LIMIT
         row = case.run_row()
         assert (row.state, row.end_reason, row.result) == ("completed", "repeated_call", "Forced.")
 
     asyncio.run(_run_case(monkeypatch, script, body))
+
+
+def test_a_repeated_call_runs_the_other_calls_of_its_reply(monkeypatch):
+    def script(request, n):
+        if n == 1:
+            return _reply(request, calls=[_call("search_collections", {"query": "a"})])
+        if n == 2:
+            return _reply(request, calls=[_call("search_collections", {"query": "a"}),
+                                          _call("search_collections", {"query": "b"})])
+        return _reply(request, "Answer.")
+
+    async def body(client, case, stub, queue, titled):
+        assert await (await _start(client, case, queue)).result() == "completed"
+        assert stub.modes() == ["tools", "tools", "tools"]
+        assert [r["call"]["args"] for r in stub.tool_requests] == [{"query": "a"},
+                                                                  {"query": "b"}]
+        assert case.run_row().end_reason == ""
+
+    asyncio.run(_run_case(monkeypatch, script, body))
+
+
+def test_todo_calls_of_one_reply_run_in_the_order_of_the_reply(monkeypatch):
+    def script(request, n):
+        if n == 1:
+            return _reply(request, calls=[_call("mark_todo", {"ids": ["1"], "status": "done"}),
+                                          _call("mark_todo", {"ids": ["2"], "status": "done"}),
+                                          _call("read_todo", {})])
+        return _reply(request, "done")
+
+    def tool(request, n):
+        # The first call is the slowest, so a parallel run would end it last.
+        time.sleep(1.5 if request["call"]["args"].get("ids") == ["1"] else 0.1)
+        return _ok_tool(request, n)
+
+    async def body(client, case, stub, queue, titled):
+        assert await (await _start(client, case, queue)).result() == "completed"
+        spans = [(name, json.dumps(args), s, e) for name, args, s, e in stub.tool_log]
+        assert [(n, a) for n, a, _, _ in spans] == [
+            ("mark_todo", '{"ids": ["1"], "status": "done"}'),
+            ("mark_todo", '{"ids": ["2"], "status": "done"}'), ("read_todo", "{}")]
+        for (_, _, _, end), (_, _, start, _) in zip(spans, spans[1:]):
+            assert end <= start, spans
+
+    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
 def test_read_todo_twice_forces_no_answer(monkeypatch):
@@ -684,13 +730,44 @@ def test_an_open_todo_nags_twice_then_stops(monkeypatch):
                               [{"id": "1", "text": "read report one", "status": "pending"}])
         handle = await _start(client, case, queue)
         assert await handle.result() == "completed"
+        # The replies of the nag rounds and the stop reason write no row, so the answer
+        # of the first round stays the answer of the turn.
         roles = [(r[0], r[1]) for r in case.chat_rows()]
-        assert roles == [(1, "user"), (2, "assistant"), (3, "nag"), (4, "assistant"),
-                         (5, "nag"), (6, "assistant"), (7, "nag")]
+        assert roles == [(1, "user"), (2, "assistant"), (3, "nag"), (4, "nag")]
+        assert case.chat_rows()[1][2] == "Answer 1."
         assert len(stub.requests) == 3
         assert [m["role"] for m in stub.requests[1]["messages"]] == ["human", "ai", "human"]
+        assert "mark_todo" in stub.requests[1]["messages"][-1]["content"]
         row = case.run_row()
-        assert (row.nags_this_turn, row.state, row.next_seq) == (2, "completed", 8)
+        assert (row.nags_this_turn, row.state, row.next_seq) == (2, "completed", 5)
+        assert row.result == "Answer 1."
+
+    asyncio.run(_run_case(monkeypatch, script, body))
+
+
+def test_an_uncited_answer_that_names_a_document_gets_one_citation_round(monkeypatch):
+    from tasks.P_agent import nagging
+
+    def script(request, n):
+        if n == 1:
+            return _reply(request, "The memo sets the budget [D1].")
+        if n == 2:
+            return _reply(request, calls=[_call("cite_documents", {"citations": [
+                {"collectionname": "testdata", "file_hash": "a" * 64, "quote": "q"}]})])
+        return _reply(request, "The memo sets the budget [D1], cited.")
+
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        assert await handle.result() == "completed"
+        assert len(stub.requests) == 3
+        assert stub.requests[1]["messages"][-1]["content"] == nagging.CITATION_NOTE
+        rows = [(r[1], r[2], r[3]) for r in case.chat_rows()]
+        assert [r[0] for r in rows] == ["user", "assistant", "nag", "tool", "assistant"]
+        assert rows[2][1] == nagging.CITATION_NOTE and rows[3][2] == "cite_documents"
+        assert rows[4][1] == "The memo sets the budget [D1], cited."
+        row = case.run_row()
+        assert (row.state, row.nags_this_turn) == ("completed", 0)
+        assert row.result == "The memo sets the budget [D1], cited."
 
     asyncio.run(_run_case(monkeypatch, script, body))
 

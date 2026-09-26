@@ -60,12 +60,15 @@ with workflow.unsafe.imports_passed_through():
         ModelStepResult,
         StepFailure,
         StepRef,
+        REPEAT_STEP_LIMIT,
         ToolCallParams,
         delegate_step,
         model_step,
+        needs_citations,
         plan_has_sections,
         prepare_continuation,
         record_step_failure,
+        runs_in_order,
         tool_call,
     )
 
@@ -166,10 +169,13 @@ class AgentRun:
 
     **The loop.** A round runs the unanswered calls of the thread, then one `model_step`.
     A reply with calls gives the next calls. A reply with no call ends the round. The
-    `ordered` calls (plan tree changes) run one after the other, the `parallel` calls run
-    at once beside them, and a `delegation` runs after both. After `RUN_MODEL_STEPS` model
-    steps, one `final` step binds no tool and the run ends. A reply whose call repeats an
-    earlier call also gets one `final` step. The workflow continues as new every
+    `ordered` calls and the calls to the plan tree and todo tools (`steps.runs_in_order`)
+    run one after the other in the order of the reply, the other calls run at once beside
+    them, and a `delegation` runs after both. After `RUN_MODEL_STEPS` model steps, one
+    `final` step binds no tool and the run ends. A call that repeats an earlier call gets
+    a stored result and does not run, and the other calls of its reply run. When
+    `REPEAT_STEP_LIMIT` model steps in a row hold only repeated calls, the run gets one
+    `final` step. The workflow continues as new every
     `CONTINUE_AS_NEW_STEPS` model steps, or when its history passes
     `HISTORY_EVENTS_PER_RUN` events, and the new run resumes from the thread.
 
@@ -186,7 +192,12 @@ class AgentRun:
     starts after a stop closes in `open_run`.
 
     **The nag loop runs here** for a chat lead, with the rules of `tasks.P_agent.nagging`.
-    The two counters are row columns, so they outlive a worker restart. **A planner that
+    The two counters are row columns, so they outlive a worker restart. A nag asks only for
+    the todo marks, so the reply of a nag round does not replace the answer row
+    (`steps.keeps_answer`). A stop of the nag loop writes no transcript row. Before the
+    first nag, a chat answer that names a document in a turn with no `cite_documents`
+    call gets one citation round (`steps.needs_citations`), whose reply replaces the
+    answer. **A planner that
     answers with no plan section** gets one extra round with `PLANNER_NO_SECTION_NOTE`, and
     then fails.
 
@@ -334,7 +345,7 @@ class AgentRun:
                 return RunSummary(outcome="answered", next_seq=result.next_seq,
                                   next_idx=result.next_idx,
                                   end_reason="step_budget" if final else "")
-            if result.repeated:
+            if result.repeat_streak >= REPEAT_STEP_LIMIT:
                 result = await self._model_step(inp, opened, "final", "repeated_call")
                 if result.outcome == "closed":
                     return RunSummary(outcome="closed", next_seq=result.next_seq)
@@ -393,12 +404,12 @@ class AgentRun:
 
     async def _run_calls(self, inp: AgentRunInput, pending: list[CallRef]) -> RunSummary | None:
         """Run the calls of one reply. Returns the delegation summary, or None."""
-        ordered = [c for c in pending if c.kind == "ordered"]
-        parallel = [c for c in pending if c.kind == "parallel"]
+        ordered = sorted((c for c in pending if runs_in_order(c)), key=lambda c: c.position)
+        parallel = [c for c in pending if c.kind != "delegation" and not runs_in_order(c)]
         delegations = [c for c in pending if c.kind == "delegation"]
 
         async def in_order() -> None:
-            # The plan tree changes keep their order.
+            # The plan tree and todo calls keep the order of the reply.
             for call in ordered:
                 await self._tool_call(inp, call)
 
@@ -494,6 +505,19 @@ class AgentRun:
             # A forced answer binds no tool, so a nag after it cannot change the todo.
             if summary.end_reason == "step_budget" or not opened.is_chat_lead:
                 break
+            # An answer that names a document in a turn with no citation gets one round
+            # that asks for the citations and the answer again, before any todo nag.
+            if not summary.end_reason and await workflow.execute_activity(
+                needs_citations, self._ref(inp),
+                start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                task_queue=CHAT_TASK_QUEUE,
+            ):
+                await self._append_nag(inp, summary, nagging.CITATION_NOTE, starts_round=True,
+                                       nags_this_turn=nags_this_turn,
+                                       nags_without_progress=nags_without_progress)
+                summary = await self._agent_loop(inp, opened, first=False)
+                continue
             todo = await self._read_todo(inp)
             # Progress is the store's question, asked of the two snapshots either side of
             # the last nag. A run with no earlier snapshot resets no counter.
@@ -503,8 +527,10 @@ class AgentRun:
                 nags_without_progress = 0
             stop = nagging.stop_reason(todo, nags_without_progress, nags_this_turn)
             if stop:
+                # The stop reason goes to the log only. A transcript row after the answer
+                # would take the place of the answer as the last row of the turn.
                 if stop != "resolved":
-                    await self._append_nag(inp, summary, stop, starts_round=False)
+                    workflow.logger.info("run %s ends its nag rounds: %s", inp.run_id, stop)
                 break
             nags_this_turn += 1
             nags_without_progress += 1

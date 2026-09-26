@@ -11,6 +11,7 @@ the prose the protocol exists to produce.
 import json
 
 from database import agent_runs
+from tasks.P_agent.steps import FINAL_TEXT
 from tasks.P_agent.stream_writer import round_view
 
 
@@ -59,11 +60,27 @@ def test_a_call_with_no_prose_still_closes_the_opening():
     assert "Marking the first item done." in reasoning
 
 
-def test_a_nag_starts_a_new_round():
+def test_a_nag_starts_a_new_round_with_no_opening():
+    """Narration of a nag round is not plan prose, because a nag round has no plan-first
+    opening. In the thread below the model calls `mark_todo` twice, then writes narration
+    beside a third `mark_todo`."""
     messages = _thread(("Let me search.", ["search_collections"]))
     messages.append(agent_runs.RunMessageRow(idx=len(messages), role="human", content="nag"))
-    messages.append(agent_runs.RunMessageRow(
-        idx=len(messages), role="ai", content="Plan: A.",
-        tool_calls_json=json.dumps([{"id": "x", "name": "read_todo", "args": {}}])))
+    for text in ("", "_todo` for everything. Wait, I should check the list."):
+        messages.append(agent_runs.RunMessageRow(
+            idx=len(messages), role="ai", content=text,
+            tool_calls_json=json.dumps([{"id": f"m{len(messages)}", "name": "mark_todo",
+                                         "args": {}}])))
     prose, reasoning, in_opening = round_view(messages)
-    assert (prose, reasoning, in_opening) == ("Plan: A.", "", True)
+    assert prose == "" and in_opening is False
+    assert "I should check the list" in reasoning and "Let me search" not in reasoning
+
+
+def test_the_human_message_of_a_final_step_does_not_start_a_round():
+    messages = _thread(("I understand the task as X.", ["read_todo"]),
+                       ("Let me search.", ["search_collections"]))
+    messages.append(agent_runs.RunMessageRow(idx=len(messages), role="human",
+                                             content=FINAL_TEXT["repeated_call"]))
+    prose, reasoning, _ = round_view(messages)
+    assert prose == "I understand the task as X."
+    assert "Let me search." in reasoning

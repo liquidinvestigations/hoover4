@@ -211,14 +211,34 @@ def section_ids(snapshot: PlanSnapshot) -> set[str]:
     return {node.node_id for node, _ in sections(snapshot)}
 
 
+#: The number path of the root in `render_tree` and in a parent argument.
+ROOT_PATH = "root"
+
+#: The most nodes that the refusal of an unknown parent lists.
+MAX_LISTED_NODES = 40
+
+
+def node_paths(snapshot: PlanSnapshot) -> dict[str, str]:
+    """The number path of each node id, in tree order. The root is `ROOT_PATH`, a child
+    of the root is its ordinal (`2`), and a deeper node adds its ordinal (`2.1`)."""
+    paths: dict[str, str] = {}
+    for node in _ordered(snapshot.nodes):
+        if node.parent_id is None:
+            paths[node.node_id] = ROOT_PATH
+            continue
+        parent = paths.get(node.parent_id, ROOT_PATH)
+        paths[node.node_id] = str(node.ordinal) if parent == ROOT_PATH else f"{parent}.{node.ordinal}"
+    return paths
+
+
 def render_tree(snapshot: PlanSnapshot) -> str:
-    """The tree as indented lines, one node a line, with each node id."""
-    depth = {snapshot.root_id: 0}
+    """The tree as indented lines, one node a line, with its number path and its id."""
+    paths = node_paths(snapshot)
     lines = []
     for node in _ordered(snapshot.nodes):
-        level = 0 if node.parent_id is None else depth.get(node.parent_id, 0) + 1
-        depth[node.node_id] = level
-        lines.append(f"{'  ' * level}{node.ordinal}. {node.text} [{node.node_id}]")
+        path = paths[node.node_id]
+        level = 0 if path == ROOT_PATH else path.count(".") + 1
+        lines.append(f"{'  ' * level}{path}. {node.text} [{node.node_id}]")
     return "\n".join(lines)
 
 
@@ -250,6 +270,36 @@ def _find(snapshot: PlanSnapshot, node_id: Any) -> PlanNode:
     raise PlanError(f"no node has the id {wanted!r}. Call read_plan to see the ids.")
 
 
+def _find_parent(snapshot: PlanSnapshot, parent: Any) -> PlanNode:
+    """The node that a parent argument names: a node id, or a number path of
+    `render_tree` (`root`, `1`, `1.2`, a last dot allowed). A value that names no node is
+    refused with the path, id and text of the nodes, so the next call can name one."""
+    wanted = _clean_text(parent)
+    by_path = {path: node_id for node_id, path in node_paths(snapshot).items()}
+    path = wanted.rstrip(".").lower()
+    for node in snapshot.nodes:
+        if node.node_id == wanted or by_path.get(path) == node.node_id:
+            return node
+    listed = [f"{node_path} {node_id} ({_short(text)})"
+              for node_path, node_id, text in _listing(snapshot)[:MAX_LISTED_NODES]]
+    more = len(snapshot.nodes) - len(listed)
+    tail = f", and {more} more. Call read_plan to see them all." if more > 0 else "."
+    raise PlanError(
+        f"no node has the id {wanted!r}, and no node has that number path. Give the id or "
+        f"the number path of a node. The nodes are: {', '.join(listed)}{tail}"
+    )
+
+
+def _short(text: str, limit: int = 60) -> str:
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _listing(snapshot: PlanSnapshot) -> list[tuple[str, str, str]]:
+    """`(path, node_id, text)` of each node, in tree order."""
+    paths = node_paths(snapshot)
+    return [(paths[n.node_id], n.node_id, n.text) for n in _ordered(snapshot.nodes)]
+
+
 def _subtree(snapshot: PlanSnapshot, node_id: str) -> set[str]:
     out = {node_id}
     changed = True
@@ -275,8 +325,8 @@ def apply(snapshot: PlanSnapshot, operation: str, **args: Any) -> PlanSnapshot:
     | operation | arguments | rule |
     |---|---|---|
     | `append_node` | `text` | a new child of the root, last |
-    | `append_child` | `parent_id`, `text` | a new child of the parent, last |
-    | `move_node` | `node_id`, `new_parent_id`, `position` | refuses the root and a move under its own subtree |
+    | `append_child` | `parent_id`, `text` | a new child of the parent, last. The parent is an id or a number path |
+    | `move_node` | `node_id`, `new_parent_id`, `position` | refuses the root and a move under its own subtree. The parent is an id or a number path |
     | `edit_node` | `node_id`, `text` | accepts the root |
     | `remove_node` | `node_id` | removes the subtree, refuses the root |
     """
@@ -284,7 +334,8 @@ def apply(snapshot: PlanSnapshot, operation: str, **args: Any) -> PlanSnapshot:
     nodes = list(snapshot.nodes)
     root_id = snapshot.root_id
     if operation in ("append_node", "append_child"):
-        parent = root_id if operation == "append_node" else _find(snapshot, args.get("parent_id")).node_id
+        parent = (root_id if operation == "append_node"
+                  else _find_parent(snapshot, args.get("parent_id")).node_id)
         siblings = children_of(snapshot, parent)
         nodes.append(PlanNode(_new_node_id(snapshot.plan_id, version), parent,
                               len(siblings) + 1, _clean_text(args.get("text"))))
@@ -302,7 +353,7 @@ def apply(snapshot: PlanSnapshot, operation: str, **args: Any) -> PlanSnapshot:
         node = _find(snapshot, args.get("node_id"))
         if node.node_id == root_id:
             raise PlanError("the root node cannot be moved")
-        target = _find(snapshot, args.get("new_parent_id") or root_id).node_id
+        target = _find_parent(snapshot, args.get("new_parent_id") or root_id).node_id
         if target in _subtree(snapshot, node.node_id):
             raise PlanError("a node cannot move under itself or its own subtree")
         try:
@@ -663,6 +714,6 @@ __all__ = [
     "apply", "children_of", "create_plan", "create_plan_run", "document_id",
     "failed_sections_table", "initial_snapshot", "is_terminal", "mutate", "nodes_json",
     "parse_verdict", "read_decision", "read_documents", "read_plan_run", "read_snapshot",
-    "render_tree", "root_node_id", "section_ids", "section_states", "sections", "validate",
+    "node_paths", "render_tree", "root_node_id", "section_ids", "section_states", "sections", "validate",
     "write_document", "write_plan_run", "write_snapshot",
 ]

@@ -22,9 +22,22 @@ use dioxus::prelude::*;
 /// Body size for assistant prose. Heading sizes are derived from it.
 const BODY_PX: f32 = 15.0;
 
+/// The text of a handle that no citation of the conversation gave.
+const UNCITED_LABEL: &str = "not cited";
+
 #[component]
-pub fn MarkdownishText(text: String) -> Element {
-    let blocks = parse_blocks(&text);
+pub fn MarkdownishText(
+    text: String,
+    /// The handles that the `cite_documents` results of the conversation gave. `None`
+    /// renders every handle as a chip. With a list, a handle that is not in it renders
+    /// as plain text marked "not cited", because no document stands behind it.
+    #[props(default)]
+    cited_handles: Option<Vec<String>>,
+) -> Element {
+    let blocks = match &cited_handles {
+        Some(issued) => mark_uncited_handles(parse_blocks(&text), issued),
+        None => parse_blocks(&text),
+    };
     rsx! {
         div {
             style: "font-size: {BODY_PX}px; line-height: 1.65; color: #0F172A; \
@@ -186,6 +199,15 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                             "{handle}"
                         }
                     },
+                    Span::UncitedHandle(handle) => rsx! {
+                        span {
+                            key: "{i}",
+                            style: "color: #64748B;",
+                            title: "No citation of this conversation gave this handle, so \
+                                    no document stands behind it.",
+                            "{handle} ({UNCITED_LABEL})"
+                        }
+                    },
                     Span::Link { text, href } => rsx! {
                         a {
                             key: "{i}",
@@ -217,6 +239,9 @@ pub enum Span {
     /// highlights it. Recognised before the link syntax so `[D3](http://…)` is still a
     /// link. A handle is `[D` followed by digits and a `]` and nothing else.
     Handle(String),
+    /// A handle that no `cite_documents` result of the conversation gave. Rendered as
+    /// plain text marked "not cited", with no chip.
+    UncitedHandle(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -229,6 +254,35 @@ pub enum Block {
     Quote(Vec<Span>),
     Table { header: Vec<Vec<Span>>, rows: Vec<Vec<Vec<Span>>> },
     Rule,
+}
+
+/// Turn each `Span::Handle` that is not in `issued` into a `Span::UncitedHandle`.
+pub fn mark_uncited_handles(blocks: Vec<Block>, issued: &[String]) -> Vec<Block> {
+    let mark = |spans: Vec<Span>| -> Vec<Span> {
+        spans
+            .into_iter()
+            .map(|span| match span {
+                Span::Handle(h) if !issued.contains(&h) => Span::UncitedHandle(h),
+                other => other,
+            })
+            .collect()
+    };
+    let mark_all = |lists: Vec<Vec<Span>>| -> Vec<Vec<Span>> { lists.into_iter().map(mark).collect() };
+    blocks
+        .into_iter()
+        .map(|block| match block {
+            Block::Heading { level, spans } => Block::Heading { level, spans: mark(spans) },
+            Block::Paragraph(spans) => Block::Paragraph(mark(spans)),
+            Block::Bullets(items) => Block::Bullets(mark_all(items)),
+            Block::Numbers(items) => Block::Numbers(mark_all(items)),
+            Block::Quote(spans) => Block::Quote(mark(spans)),
+            Block::Table { header, rows } => Block::Table {
+                header: mark_all(header),
+                rows: rows.into_iter().map(mark_all).collect(),
+            },
+            other => other,
+        })
+        .collect()
 }
 
 pub fn parse_blocks(text: &str) -> Vec<Block> {
@@ -630,6 +684,34 @@ mod tests {
         assert_eq!(parse_inline("[Dog]"), vec![Span::Text("[Dog]".into())]);
         assert_eq!(parse_inline("[D]"), vec![Span::Text("[D]".into())]);
         assert_eq!(parse_inline("[12]"), vec![Span::Text("[12]".into())]);
+    }
+
+    /// A handle that no citation gave renders as plain text, and a given one stays a chip,
+    /// in every block kind that holds spans.
+    #[test]
+    fn a_handle_that_no_citation_gave_is_marked_not_cited() {
+        let blocks = parse_blocks("see [D1] and [D2]\n\n- item [D2]\n\n| a |\n|---|\n| [D2] |");
+        let marked = mark_uncited_handles(blocks, &["[D1]".to_string()]);
+        assert_eq!(
+            marked[0],
+            Block::Paragraph(vec![
+                Span::Text("see ".into()),
+                Span::Handle("[D1]".into()),
+                Span::Text(" and ".into()),
+                Span::UncitedHandle("[D2]".into()),
+            ])
+        );
+        assert_eq!(
+            marked[1],
+            Block::Bullets(vec![vec![
+                Span::Text("item ".into()),
+                Span::UncitedHandle("[D2]".into()),
+            ]])
+        );
+        let Block::Table { rows, .. } = &marked[2] else {
+            panic!("a table: {:?}", marked[2]);
+        };
+        assert_eq!(rows[0][0], vec![Span::UncitedHandle("[D2]".into())]);
     }
 
     /// A link is still a link. The handle arm only fires when no `(` follows the `]`.

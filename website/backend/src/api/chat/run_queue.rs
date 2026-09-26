@@ -101,7 +101,9 @@ fn is_started(state: &serde_json::Value) -> bool {
 ///
 /// `advancing` means a row of the turn moved within the stall window, or a step of the
 /// turn runs on a worker. `has_rows` means the turn wrote a row at all. `queued_step`
-/// means a step of the turn waits for a slot on a queue that a worker polls.
+/// means a step of the turn waits for a slot on a queue that a worker polls. An open plan
+/// (`plan_pending`) is never interrupted, because a plan that waits for review writes no
+/// row. A step of a plan run that runs or waits for a slot still makes the turn active.
 pub fn turn_verdict(
     turn_open: bool,
     advancing: bool,
@@ -109,7 +111,7 @@ pub fn turn_verdict(
     has_rows: bool,
     queued_step: bool,
 ) -> (bool, bool, bool) {
-    let queued = turn_open && !plan_pending && queued_step;
+    let queued = turn_open && queued_step;
     let active = turn_open && (advancing || queued);
     let interrupted = turn_open && has_rows && !advancing && !queued && !plan_pending;
     (active, queued, interrupted)
@@ -305,7 +307,14 @@ mod tests {
     #[test]
     fn run_queue_open_plan_is_never_interrupted() {
         assert_eq!(turn_verdict(true, false, true, true, false), (false, false, false));
-        assert_eq!(turn_verdict(true, false, true, true, true), (false, false, false));
+    }
+
+    #[test]
+    fn run_queue_open_plan_with_a_live_subagent_step_is_active() {
+        // An organizer waits for its children and a sub-agent step runs on a worker.
+        assert_eq!(turn_verdict(true, true, true, true, false), (true, false, false));
+        // A sub-agent step waits for a model slot.
+        assert_eq!(turn_verdict(true, false, true, true, true), (true, true, false));
     }
 
     #[test]

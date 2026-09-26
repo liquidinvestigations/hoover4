@@ -60,7 +60,8 @@ def test_agent_run_and_its_activities_are_registered_on_their_queues():
     assert chat_workflows == ["AgentRun"]
     for name in ("open_run", "append_nag", "write_ending", "summarize_if_first_turn",
                  "read_chat_todo", "delegate_step", "prepare_continuation",
-                 "record_step_failure", "plan_has_sections"):
+                 "record_step_failure", "plan_has_sections",
+                     "needs_citations"):
         assert name in chat_acts, name
     assert workers["CHAT_MODEL_TASK_QUEUE"][1] == ["model_step"]
     assert workers["RESEARCH_TASK_QUEUE"][1] == ["model_step"]
@@ -218,8 +219,9 @@ def _entry(call_id, name, args, kind="parallel", retry=True):
             "args_digest": steps.args_digest(name, args)}
 
 
-def _frames(text="", entries=(), usage=None):
-    turn = {"type": "model_turn", "text": text, "reasoning": "", "tool_calls": list(entries),
+def _frames(text="", entries=(), usage=None, reasoning=""):
+    turn = {"type": "model_turn", "text": text, "reasoning": reasoning,
+            "tool_calls": list(entries),
             "bound_names": ["search_collections"],
             "usage": usage or {"input_tokens": 7, "output_tokens": 3, "total_tokens": 10},
             "summarised": False}
@@ -274,7 +276,7 @@ def test_a_reply_with_calls_takes_seqs_in_call_order_with_delegations_last(store
                _entry(LONG_ID_B, "append_node", {"text": "b"}, kind="ordered")]
     _serve(monkeypatch, store, _frames(entries=entries))
     result = _step()
-    assert result.outcome == "calls" and result.repeated is False
+    assert result.outcome == "calls" and result.repeat_streak == 0
     assert [(c.call_id, c.kind, c.seq, c.position) for c in result.calls] == [
         (LONG_ID_A, "parallel", 5, 0), ("d1", "delegation", 7, 1),
         (LONG_ID_B, "ordered", 6, 2)]
@@ -320,17 +322,201 @@ def test_a_retry_after_the_write_makes_no_second_model_call(store, monkeypatch):
     assert store["run"][-1]["next_seq"] == 6 and "prompt_tokens" not in store["run"][-1]
 
 
-def test_a_repeated_call_is_found_and_a_repeated_read_is_not(store, monkeypatch):
+def _answered_reply(store, idx, step_no, entries, status="ok"):
+    """An earlier `ai` message of the thread at `idx`, with one result for each call."""
     store["messages"].append(agent_runs.RunMessageRow(
-        idx=1, role="ai", run_id=RUN_ID, tool_calls_json=json.dumps([
-            _entry("a", "search_collections", {"query": "a"}), _entry("t", "read_todo", {})])))
-    store["messages"].append(agent_runs.RunMessageRow(idx=2, role="tool", tool_call_id="a"))
-    store["messages"].append(agent_runs.RunMessageRow(idx=3, role="tool", tool_call_id="t"))
+        idx=idx, role="ai", run_id=RUN_ID, usage_json=json.dumps({"step_no": step_no}),
+        tool_calls_json=json.dumps([dict(e, position=p, seq=5 + p)
+                                    for p, e in enumerate(entries)])))
+    for p, e in enumerate(entries):
+        store["messages"].append(agent_runs.RunMessageRow(
+            idx=idx + 1 + p, role="tool", tool_call_id=e["id"], tool_name=e["name"],
+            usage_json=json.dumps({"status": status})))
+
+
+def test_a_repeated_call_is_found_and_a_repeated_read_is_not(store, monkeypatch):
+    _answered_reply(store, 1, 1, [_entry("a", "search_collections", {"query": "a"}),
+                                  _entry("t", "read_todo", {})])
     _serve(monkeypatch, store, _frames(entries=[_entry("t2", "read_todo", {})]))
-    assert _step(step_no=2).repeated is False
+    result = _step(step_no=2)
+    assert result.repeat_streak == 0 and [c.call_id for c in result.calls] == ["t2"]
     _serve(monkeypatch, store, _frames(entries=[_entry("b", "search_collections",
                                                        {"query": "a"})]))
-    assert _step(step_no=3).repeated is True
+    result = _step(step_no=3)
+    assert result.repeat_streak == 1 and result.calls == []
+
+
+def test_a_repeated_call_gets_its_own_result_and_the_other_calls_run(store, monkeypatch):
+    """A reply of a repeat and a new search: the repeat is answered at once and names the
+    earlier call, and the new search is the one call the loop runs."""
+    _answered_reply(store, 1, 1, [_entry("a", "search_collections", {"query": "a"})])
+    _serve(monkeypatch, store, _frames(entries=[
+        _entry("r", "search_collections", {"query": "a"}),
+        _entry("n", "search_collections", {"query": "new"})]))
+    result = _step(step_no=2)
+    assert [c.call_id for c in result.calls] == ["n"] and result.repeat_streak == 0
+    [repeat] = [m for m in store["messages"] if m.role == "tool" and m.tool_call_id == "r"]
+    reply = next(m for m in store["messages"] if m.role == "ai" and m.idx == 3)
+    assert repeat.idx == steps.tool_idx(reply, 0) == 4
+    body = json.loads(repeat.content)
+    assert body["error"] == steps.REPEATED_CALL_CLASS
+    assert "call a of step 1" in body["message"]
+    assert json.loads(repeat.usage_json)["status"] == "error"
+    assert [r["tool_name"] for r in store["chat"] if r["role"] == "tool"] == [
+        "search_collections"]
+    assert _answer_of_calls(store, "n") is None
+
+
+def _answer_of_calls(store, call_id):
+    return steps._answer_of(store["messages"], call_id)
+
+
+def test_a_retry_of_a_call_that_failed_is_not_a_repeat(store, monkeypatch):
+    """A todo call that validation refused is not a repeat, so the same call again runs."""
+    _answered_reply(store, 1, 1, [_entry("e", "edit_todo", {"goal": "g", "steps": ["a"]})],
+                    status="error")
+    _serve(monkeypatch, store, _frames(entries=[
+        _entry("e2", "edit_todo", {"goal": "g", "steps": ["a"]}),
+        _entry("s", "search_collections", {"query": "x"})]))
+    result = _step(step_no=2)
+    assert [c.call_id for c in result.calls] == ["e2", "s"] and result.repeat_streak == 0
+    assert not [m for m in store["messages"] if m.role == "tool" and m.tool_call_id == "e2"]
+
+
+def test_the_repeat_streak_counts_replies_of_repeats_in_a_row(store, monkeypatch):
+    _answered_reply(store, 1, 1, [_entry("a", "search_collections", {"query": "a"})])
+    for step_no in (2, 3, 4):
+        _serve(monkeypatch, store, _frames(entries=[
+            _entry(f"r{step_no}", "search_collections", {"query": "a"})]))
+        assert _step(step_no=step_no).repeat_streak == step_no - 1
+    # A human message ends the streak.
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=max(m.idx for m in store["messages"]) + 1, role="human", content="nag"))
+    _serve(monkeypatch, store, _frames(entries=[_entry("r5", "search_collections",
+                                                       {"query": "a"})]))
+    assert _step(step_no=5).repeat_streak == 1
+    assert steps.REPEAT_STEP_LIMIT == 3
+
+
+# ------------------------------------------------------- the answer row of a nag round
+
+
+def _thread_of_forced_answer_and_nag(store):
+    """The thread of a turn whose answer came from a forced final step, then one nag round
+    of `read_todo` and `mark_todo`."""
+    _answered_reply(store, 1, 1, [_entry("w", "write_todo", {"goal": "g", "steps": ["a"]})])
+    msgs = store["messages"]
+    msgs.append(agent_runs.RunMessageRow(idx=3, role="human",
+                                         content=steps.FINAL_TEXT["repeated_call"]))
+    msgs.append(agent_runs.RunMessageRow(
+        idx=4, role="ai", run_id=RUN_ID, content="Based on the documents, the dates are X.",
+        reasoning="The user wants the letters.", usage_json=json.dumps({"step_no": 2})))
+    msgs.append(agent_runs.RunMessageRow(idx=5, role="human", content="nag"))
+    _answered_reply(store, 6, 3, [_entry("t", "read_todo", {})])
+    _answered_reply(store, 8, 4, [_entry("m", "mark_todo", {"ids": ["1"], "status": "done"})])
+
+
+def test_a_nag_round_reply_keeps_the_answer_row(store, monkeypatch):
+    _thread_of_forced_answer_and_nag(store)
+    store["row"] = _row(next_seq=14, start_seq=5, model_steps=4, nags_this_turn=1,
+                        result="Based on the documents, the dates are X.")
+    _serve(monkeypatch, store, _frames(
+        text="The todo list has been updated and completed.",
+        reasoning="The user is pointing out that I stopped without marking the list."))
+    result = _step(step_no=5)
+    assert result.outcome == "answered" and result.next_seq == 14
+    assert [r for r in store["chat"] if r["role"] == "assistant"] == []
+    assert "result" not in store["run"][-1] and store["run"][-1]["next_seq"] == 14
+
+
+def _citation_round(store):
+    """A turn whose answer named `[D1]` with no citation, and the citation note after it."""
+    from tasks.P_agent import nagging
+
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=1, role="ai", run_id=RUN_ID, content="The memo sets the budget [D1].",
+        usage_json=json.dumps({"step_no": 1})))
+    store["messages"].append(agent_runs.RunMessageRow(idx=2, role="human",
+                                                      content=nagging.CITATION_NOTE))
+    store["row"] = _row(next_seq=8, model_steps=1, result="The memo sets the budget [D1].")
+
+
+def test_the_reply_of_the_citation_round_replaces_the_answer(store, monkeypatch):
+    _citation_round(store)
+    _serve(monkeypatch, store, _frames(text="The memo sets the budget [D2]."))
+    _step(step_no=2)
+    assert [r["content"] for r in store["chat"] if r["role"] == "assistant"] == [
+        "The memo sets the budget [D2]."]
+    assert store["run"][-1]["result"] == "The memo sets the budget [D2]."
+
+
+def test_a_citation_round_reply_with_no_text_keeps_the_answer(store, monkeypatch):
+    _citation_round(store)
+    _serve(monkeypatch, store, _frames(reasoning="The citations are done."))
+    _step(step_no=2)
+    assert [r for r in store["chat"] if r["role"] == "assistant"] == []
+    assert "result" not in store["run"][-1]
+
+
+@pytest.mark.parametrize("changes, expected", [
+    ({}, True),
+    ({"nags_this_turn": 1}, False),
+    ({"end_reason": "step_budget"}, False),
+    ({"state": "completed"}, False),
+    ({"result": "No document names a budget."}, False),
+])
+def test_needs_citations_asks_only_for_an_uncited_answer_that_names_a_document(
+        store, changes, expected):
+    store["row"] = _row(**{"result": "The memo sets the budget [D1].", **changes})
+    params = StepRef(run_id=RUN_ID, username="u", session_id="s")
+    assert ActivityEnvironment().run(steps.needs_citations, params) is expected
+
+
+def test_the_first_reply_of_a_turn_still_writes_the_answer_row(store, monkeypatch):
+    store["row"] = _row(next_seq=6, nags_this_turn=1, result="")
+    _serve(monkeypatch, store, _frames(text="The answer."))
+    _step(step_no=1)
+    assert [r["content"] for r in store["chat"] if r["role"] == "assistant"] == [
+        "The answer."]
+
+
+def test_a_reply_with_reasoning_and_no_text_does_not_move_the_reasoning_to_the_answer(
+        store, monkeypatch):
+    _answered_reply(store, 1, 1, [_entry("s", "search_collections", {"query": "q"})])
+    store["messages"][1].reasoning = "Let me look for the letters."
+    store["row"] = _row(next_seq=6, model_steps=1)
+    _serve(monkeypatch, store, _frames(reasoning="The letters are dated 2018."))
+    _step(step_no=2)
+    [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
+    assert answer["content"] == "(the assistant returned an empty answer)"
+    assert "dated 2018" in answer["reasoning"] and "look for the letters" in answer["reasoning"]
+
+
+def test_the_answer_row_never_holds_reasoning(store, monkeypatch):
+    """The answer row holds no reasoning when the last reply of the round has reasoning and
+    no text, and the earlier replies of the round have reasoning and narration."""
+    store["messages"].append(agent_runs.RunMessageRow(idx=1, role="human", content="nag"))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=2, role="ai", run_id=RUN_ID, reasoning="The user is pointing out that I stopped.",
+        usage_json=json.dumps({"step_no": 1}), tool_calls_json=json.dumps([
+            dict(_entry("t", "read_todo", {}), position=0, seq=5)])))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=3, role="tool", tool_call_id="t", usage_json=json.dumps({"status": "ok"})))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=4, role="ai", run_id=RUN_ID, content="Wait, I should mark the items.",
+        reasoning="I need to mark the list.", usage_json=json.dumps({"step_no": 2}),
+        tool_calls_json=json.dumps([dict(_entry("m", "mark_todo", {"ids": ["1"],
+                                                                    "status": "done"}),
+                                         position=0, seq=6)])))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=5, role="tool", tool_call_id="m", usage_json=json.dumps({"status": "ok"})))
+    store["row"] = _row(next_seq=7, model_steps=2)
+    _serve(monkeypatch, store, _frames(reasoning="The final thoughts."))
+    _step(step_no=3)
+    [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
+    assert answer["content"] == "(the assistant returned an empty answer)"
+    for text in ("pointing out", "mark the list", "should mark the items", "final thoughts"):
+        assert text in answer["reasoning"]
 
 
 def test_a_final_step_stores_not_run_results_and_one_human_message(store, monkeypatch):

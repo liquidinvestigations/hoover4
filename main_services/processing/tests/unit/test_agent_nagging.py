@@ -9,6 +9,8 @@ in_progress reset the counter, a model could keep a turn alive for ever by toggl
 and both caps would be decorative.
 """
 
+import pytest
+
 from database import chat_todos as todos
 from tasks.P_agent import nagging
 
@@ -110,20 +112,26 @@ def test_cancelling_an_item_is_progress_because_the_note_is_new_text():
 # ------------------------------------------------------------------ what a nag says
 
 
-def test_the_first_nag_asks_for_the_plan_to_be_revised():
-    todo = _todo("g", _item("1", "read them", "done"), _item("2", "summarise them"))
+def test_the_nag_asks_only_for_the_todo_marks():
+    """A nag follows the answer. It asks for `done` or `cancelled` on each open item, and
+    for no second answer and no new work."""
+    todo = _todo("g", _item("1", "read them", "done"), _item("2", "summarise them"),
+                 _item("3", "grade them", "in_progress"))
     message = nagging.nag_message(todo, 1)
-    assert "write_todo" in message and "cancel" in message
-    # It points at the item actually left, not at the finished one.
-    assert "summarise them" in message
-    assert "1/2 items resolved" in message
+    assert "mark_todo" in message and "`done`" in message and "`cancelled`" in message
+    assert "write_todo" not in message and "read_todo" not in message
+    assert "Do not write the answer again" in message
+    # It names each open item with its id, and not the finished one.
+    assert "- 2. summarise them" in message and "- 3. grade them" in message
+    assert "read them" not in message
+    assert "1/3 items resolved" in message
 
 
-def test_the_second_nag_only_asks_for_the_work():
+def test_the_second_nag_says_the_list_is_still_open():
     todo = _todo("g", _item("1", "read them"))
     message = nagging.nag_message(todo, 2)
-    assert "write_todo" not in message
-    assert "Finish the remaining items" in message
+    assert message.startswith("Your todo list is still not finished")
+    assert "mark_todo" in message and "write_todo" not in message
 
 
 def test_open_items_are_the_unresolved_ones_in_plan_order():
@@ -135,3 +143,66 @@ def test_open_items_are_the_unresolved_ones_in_plan_order():
         _item("4", "fourth", "in_progress"),
     )
     assert [i["id"] for i in nagging.open_items(todo)] == ["2", "4"]
+
+
+# ------------------------------------------------------------------ the citation round
+
+HASH = "3f9a" + "0" * 56 + "c0de"
+
+
+def _msg(role, content="", tool_name="", calls=()):
+    import json
+
+    from database import agent_runs
+
+    return agent_runs.RunMessageRow(idx=0, role=role, content=content, tool_name=tool_name,
+                                    tool_calls_json=json.dumps([{"name": n} for n in calls]))
+
+
+def _search_result(path="/mail/kean-s/sent/budget-memo.eml"):
+    import json
+
+    return _msg("tool", tool_name="search_collections", content=json.dumps({
+        "results": [{"file_hash": HASH, "collectionname": "enron", "path": path}]}))
+
+
+def _thread(*extra):
+    return [_msg("human", "What is in the budget memo?"),
+            _msg("ai", calls=["search_collections"]), _search_result(), *extra]
+
+
+@pytest.mark.parametrize("answer", [
+    "The memo sets the budget [D1].",
+    f"The memo {HASH} sets the budget.",
+    f"The memo {HASH[:12]} sets the budget.",
+    "The file budget-memo.eml sets the budget.",
+    "See /mail/kean-s/sent/budget-memo.eml for the budget.",
+])
+def test_an_answer_that_names_a_document_with_no_citation_gets_the_round(answer):
+    assert nagging.needs_citation_round(answer, _thread())
+
+
+@pytest.mark.parametrize("answer", [
+    "No document in the collection names a budget.",
+    "",
+    "The answer is 12. and nothing else.",
+])
+def test_an_answer_that_names_no_document_gets_no_round(answer):
+    assert not nagging.needs_citation_round(answer, _thread())
+
+
+def test_a_turn_with_a_citation_call_gets_no_round():
+    thread = _thread(_msg("ai", calls=["cite_documents"]),
+                     _msg("tool", tool_name="cite_documents", content="{}"))
+    assert not nagging.needs_citation_round("The memo sets the budget [D1].", thread)
+
+
+def test_a_turn_gets_one_citation_round_at_most():
+    thread = _thread(_msg("ai", "The memo sets the budget [D1]."),
+                     _msg("human", nagging.CITATION_NOTE))
+    assert not nagging.needs_citation_round("The memo sets the budget [D1].", thread)
+
+
+def test_a_tool_result_that_is_not_json_names_no_document():
+    thread = [_msg("tool", tool_name="search_collections", content="not json")]
+    assert not nagging.names_documents("A plain sentence.", thread)

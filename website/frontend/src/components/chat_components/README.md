@@ -44,6 +44,14 @@ source. Any HTML in the source shows as the text it is, and `[x](javascript:…)
 literal text rather than becoming an anchor. The cost is nested lists and quotes-inside-
 lists, which a full CommonMark renderer would handle; the trade is deliberate.
 
+A `[Dn]` handle in a finished answer is a chip only when a `cite_documents` result of the
+conversation gave it, at any run depth. The page takes the union of two lists. One comes
+from the citation rows of the transcript. The other is `run_cited_handles`, which the
+server reads from every run thread of the session on each load and each poll. A sub-agent writes no transcript row, so its handles
+come only from that list. Any other handle renders as plain text marked "not cited", because
+no document stands behind it. The live answer of a turn keeps every handle a chip, because its
+citation rows can still be in the stream.
+
 The heading scale tops out at **body + 3px** (18px against 15px). Chat headings are labels
 inside a message, not page titles. A browser-default `h1` at 2em towers over the
 conversation. Weight and colour carry the hierarchy instead. A test pins this.

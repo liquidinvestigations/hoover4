@@ -15,6 +15,7 @@ and result hold ids, counts and tool names.
 * `prepare_continuation` adds the children's reports to the thread of a continuation.
 * `record_step_failure` stores a `tool_unavailable` result for a tool step that failed.
 * `plan_has_sections` answers whether the planner wrote a plan section.
+* `needs_citations` answers whether a chat answer gets the citation round.
 
 A stored write has a fixed key (`(thread_id, idx)`, `(username, session_id, seq)`), so a
 retry writes the same rows. The `ai` message of a step carries `step_no` in its usage, and a
@@ -54,6 +55,10 @@ TOOL_READ_SECONDS = 310
 #: The connect timeout of both step requests. A dead agent host fails the step in seconds.
 CONNECT_SECONDS = 10
 
+#: The count of model steps in a row whose every call repeats an earlier call. The step
+#: that reaches it gets one `final` step, which binds no tool.
+REPEAT_STEP_LIMIT = 3
+
 #: The human message of a `final` step, for each reason.
 FINAL_TEXT = {
     "step_budget": (
@@ -61,21 +66,45 @@ FINAL_TEXT = {
         "what the results above contain. Name the documents you rely on. If they contain "
         "nothing relevant, say so."),
     "repeated_call": (
-        "Your last call repeats an earlier call with the same arguments, so it was not run. "
-        "Stop now and write the final answer from what the results above contain. Name the "
-        "documents you rely on. If they contain nothing relevant, say so."),
+        f"Your last {REPEAT_STEP_LIMIT} replies only repeated earlier calls, so none of "
+        "them ran. Stop now and write the final answer from what the results above "
+        "contain. Name the documents you rely on. If they contain nothing relevant, say "
+        "so."),
 }
 
 #: The stored result of a call that a `final` step did not run: the first sentence of the
 #: human message of that step.
 NOT_RUN_TEXT = {
     "step_budget": "This run has used all its model steps.",
-    "repeated_call": ("Your last call repeats an earlier call with the same arguments, so "
-                      "it was not run."),
+    "repeated_call": (f"Your last {REPEAT_STEP_LIMIT} replies only repeated earlier calls, "
+                      "so none of them ran."),
 }
 
-#: Reads that a model repeats on purpose. A repeat of one of them does not end the run.
+#: Reads that a model repeats on purpose. A repeat of one of them runs.
 REPEAT_EXEMPT = ("read_todo", "read_plan")
+
+#: The stored result of a call that repeats an earlier call. The call does not run. The
+#: other calls of its reply run.
+REPEATED_CALL_TEXT = ("This call has the same name and arguments as call {call_id} of "
+                      "step {step_no}, so it was not run. Use the result of that call, or "
+                      "change the arguments.")
+
+#: The error class of the stored result of a repeated call.
+REPEATED_CALL_CLASS = "repeated_call"
+
+#: The tools that read or change the plan tree or the todo list. The calls of one reply to
+#: these tools run one after the other, in the order of the reply, because each one reads
+#: the state that the call before it wrote.
+STATE_TOOLS = frozenset({
+    "append_node", "append_child", "move_node", "edit_node", "remove_node", "read_plan",
+    "write_todo", "edit_todo", "mark_todo", "read_todo",
+})
+
+
+def runs_in_order(call) -> bool:
+    """Whether a call of a reply runs in the ordered chain of its reply: a call that the
+    agent service classed `ordered`, or a call to one of `STATE_TOOLS`."""
+    return call.kind == "ordered" or (call.kind != "delegation" and call.name in STATE_TOOLS)
 
 #: The stored result of a tool step that did not finish after its last attempt.
 TOOL_UNAVAILABLE_TEXT = ("The tool call did not finish ({error_class}). Try it again, or use "
@@ -125,9 +154,12 @@ class ModelStepResult:
     #: `answered`, `calls` or `closed`. A `plan` step whose reply has no call gives
     #: `no_plan`, and writes no answer.
     outcome: str
+    #: The calls of the reply that the loop runs. A repeated call has its result already,
+    #: and is not in the list.
     calls: list[CallRef] = field(default_factory=list)
-    #: A call of this reply repeats an earlier call of the thread.
-    repeated: bool = False
+    #: The count of model steps in a row, this one included, whose every call repeats an
+    #: earlier call. 0 when a call of this reply is not a repeat.
+    repeat_streak: int = 0
     next_seq: int = 0
     #: The thread index after the last row of the reply (`reply_end_idx`). A `closed` or
     #: `no_plan` result gives the index of its `ai` message.
@@ -443,15 +475,73 @@ def _step_event(row, step: str, name: str, mode: str = "",
 # --------------------------------------------------------------------------- model_step
 
 
-def _repeated(earlier, ai_entries: list[dict]) -> bool:
-    """A call of this reply has the name and arguments of a call of an earlier `ai` message.
-    `read_todo` and `read_plan` are left out."""
-    seen = {(str(e.get("name") or ""), args_digest(str(e.get("name") or ""), e.get("args") or {}))
-            for m in earlier if m.role == "ai" for e in m.tool_calls}
-    return any(
-        (str(e.get("name") or ""), args_digest(str(e.get("name") or ""), e.get("args") or {}))
-        in seen
-        for e in ai_entries if str(e.get("name") or "") not in REPEAT_EXEMPT)
+def _call_key(entry: dict) -> tuple[str, str]:
+    name = str(entry.get("name") or "")
+    return name, args_digest(name, entry.get("args") or {})
+
+
+def repeat_sources(earlier, ai_entries: list[dict]) -> dict[int, tuple[str, int]]:
+    """The calls of this reply that repeat an earlier call, as `{position: (earlier call
+    id, earlier step_no)}`.
+
+    A call repeats an earlier call of an earlier `ai` message when both have the same name
+    and arguments, and the earlier call has a result whose status is not `error`. A retry
+    of a call that failed is therefore not a repeat. `read_todo` and `read_plan` are left
+    out, because a model reads them again on purpose.
+    """
+    results = {m.tool_call_id: m for m in earlier if m.role == "tool"}
+    seen: dict[tuple[str, str], tuple[str, int]] = {}
+    for m in earlier:
+        if m.role != "ai":
+            continue
+        for e in m.tool_calls:
+            result = results.get(str(e.get("id") or ""))
+            if result is None or result.usage.get("status") == "error":
+                continue
+            seen.setdefault(_call_key(e), (str(e.get("id") or ""),
+                                           int(m.usage.get("step_no") or 0)))
+    out: dict[int, tuple[str, int]] = {}
+    for position, e in enumerate(ai_entries):
+        if str(e.get("name") or "") in REPEAT_EXEMPT:
+            continue
+        source = seen.get(_call_key(e))
+        if source is not None:
+            out[int(e.get("position", position))] = source
+    return out
+
+
+def repeat_streak(earlier, ai, repeats: dict) -> int:
+    """The count of model steps in a row, `ai` included, whose every call repeats an
+    earlier call. A `human` message ends the count."""
+    if not ai.tool_calls or len(repeats) < len(ai.tool_calls):
+        return 0
+    results = {m.tool_call_id: m for m in earlier if m.role == "tool"}
+    streak = 1
+    for m in reversed(earlier):
+        if m.role == "human":
+            break
+        if m.role != "ai":
+            continue
+        classes = [results[c].usage.get("error_class") if c in results else ""
+                   for c in (str(e.get("id") or "") for e in m.tool_calls)]
+        if not classes or any(k != REPEATED_CALL_CLASS for k in classes):
+            break
+        streak += 1
+    return streak
+
+
+def _write_repeats(row, params: StepRef, ai, repeats: dict) -> None:
+    """The result of each repeated call of a reply. The call does not run. A retry writes
+    the same rows at the same keys."""
+    for call in call_refs(ai):
+        source = repeats.get(call.position)
+        if source is None:
+            continue
+        content = json.dumps({"success": False, "error": REPEATED_CALL_CLASS,
+                              "message": REPEATED_CALL_TEXT.format(call_id=source[0],
+                                                                   step_no=source[1])})
+        _write_tool_result(row, params.turn_uuid, ai, call, content, "error",
+                           error_class=REPEATED_CALL_CLASS)
 
 
 def _close_for_final(row, params: ModelStepParams, messages) -> list:
@@ -492,16 +582,39 @@ def _step_tokens(row, step_no: int, usage: dict) -> dict[str, int]:
 
 
 def _write_calls(row, params: ModelStepParams, earlier, ai, writer, stream) -> ModelStepResult:
-    """Step 8 of `model_step`: the live tool rows and the run row of a reply with calls."""
+    """Step 8 of `model_step`: the live tool rows, the result of each repeated call, and the
+    run row of a reply with calls. The result lists the calls that the loop runs."""
     entries = ai.tool_calls
     if stream is not None:
         stream.tool_rows(entries)
+    repeats = repeat_sources(earlier, entries)
+    _write_repeats(row, params, ai, repeats)
     next_seq = max([row.next_seq] + [int(e.get("seq") or 0) + 1 for e in entries])
     writer.write(next_seq=next_seq, model_steps=max(row.model_steps, params.step_no),
                  **_step_tokens(row, params.step_no, ai.usage))
-    return ModelStepResult(outcome="calls", calls=call_refs(ai),
-                           repeated=_repeated(earlier, entries), next_seq=next_seq,
-                           next_idx=reply_end_idx(ai))
+    return ModelStepResult(outcome="calls",
+                           calls=[c for c in call_refs(ai) if c.position not in repeats],
+                           repeat_streak=repeat_streak(earlier, ai, repeats),
+                           next_seq=next_seq, next_idx=reply_end_idx(ai))
+
+
+def keeps_answer(row, reply: str = "", earlier=()) -> bool:
+    """Whether a reply with no call keeps the answer row of the turn. An earlier reply of
+    the turn wrote an answer with text, and one of these is true.
+
+    - The run is in a nag round. A nag asks for the todo marks only, so the reply that
+      follows it does not answer the user.
+    - The run is in the citation round (`nagging.CITATION_NOTE` in `earlier`), and the
+      reply has no text. The reply of that round replaces the answer only when it writes
+      one.
+    """
+    from tasks.P_agent import nagging
+
+    if not (row.result or "").strip():
+        return False
+    if row.nags_this_turn > 0:
+        return True
+    return not reply.strip() and any(nagging.is_citation_note(m) for m in earlier)
 
 
 def _write_answer(row, params: ModelStepParams, earlier, ai, writer) -> ModelStepResult:
@@ -511,6 +624,12 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer) -> ModelSte
     `model_steps` at this step, and writes the answer row again at the same seq. The
     result's `next_idx` is the index after the last row of the reply, so a nag written
     there replaces no `compaction` row and no `not_run` result.
+
+    The answer row holds the text of the reply and the plan prose of the round, and never
+    the reasoning. A reply with no text gets the empty-answer row, and its reasoning stays
+    in the reasoning column. The answer of a turn is the last reply that answered the user,
+    so a reply of a nag round writes no answer row when the turn has an answer already
+    (`keeps_answer`).
     """
     from database import agent_runs
     from tasks.P_agent.stream_writer import context_window_for, round_view
@@ -518,8 +637,20 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer) -> ModelSte
     plan_prose, round_reasoning, _ = round_view(earlier)
     answer = "\n\n".join(p for p in (plan_prose, (ai.content or "").strip()) if p)
     reasoning = "\n\n".join(p for p in (round_reasoning, (ai.reasoning or "").strip()) if p)
-    if not answer and reasoning:
-        answer, reasoning = reasoning, ""
+    if keeps_answer(row, ai.content or "", earlier):
+        transcript = agent_runs.writes_transcript(row)
+        if transcript:
+            _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid,
+                                     row.start_seq)
+        writer.write(next_seq=row.next_seq, model_steps=max(row.model_steps, params.step_no),
+                     end_reason=params.final_reason,
+                     **_step_tokens(row, params.step_no, ai.usage))
+        # `keeps_answer` is true in a nag round, or else in the citation round.
+        round_kind = "nag" if row.nags_this_turn > 0 else "citation"
+        log.info("[P_agent] run %s: the %s round reply at step %d keeps the answer row",
+                 row.run_id, round_kind, params.step_no)
+        return ModelStepResult(outcome="answered", next_seq=row.next_seq,
+                               next_idx=reply_end_idx(ai))
     start = 0
     for i, m in enumerate(earlier):
         if m.role == "human":
@@ -631,8 +762,8 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
     5. `POST /model_step` streams the reply, with the earlier turns of the chat for a run
        that writes the transcript. The partial rows are written as it arrives.
     6. A reply with calls gets its seqs (delegations last), the `ai` message, the
-       `compaction` row when the service sent one, one live tool row for each call and the
-       run row. A reply with no call gets the `ai` message, the answer row and the run row
+       `compaction` row when the service sent one, one live tool row for each call, the
+       result of each repeated call (`repeat_sources`), and the run row. A reply with no call gets the `ai` message, the answer row and the run row
        with the result. The reply of a `final` step is always the answer: its calls get a
        `not_run` result. A `plan` reply with no call writes no answer.
     """
@@ -933,9 +1064,24 @@ def plan_has_sections(params: StepRef) -> bool:
     return bool(snapshot is not None and agent_plans.sections(snapshot))
 
 
+@activity.defn
+@with_heartbeat
+def needs_citations(params: StepRef) -> bool:
+    """Whether the chat answer of the run gets the citation round, by the rule of
+    `nagging.needs_citation_round`. A run in a nag round, a forced answer and a terminal
+    run get none."""
+    from database import agent_runs
+    from tasks.P_agent import nagging
+
+    row = _read_row(params)
+    if agent_runs.is_terminal(row) or row.nags_this_turn > 0 or row.end_reason:
+        return False
+    return nagging.needs_citation_round(row.result or "", _read_thread(row))
+
+
 __all__ = [
     "FINAL_TEXT", "ModelRequestRejected", "ModelStepParams", "ModelStepResult",
     "NOT_RUN_TEXT", "StepFailure", "StepRef", "ToolCallParams", "ToolCallResult",
-    "args_digest", "canonical_json", "delegate_step", "model_step", "plan_has_sections",
+    "args_digest", "canonical_json", "delegate_step", "model_step", "needs_citations", "plan_has_sections",
     "prepare_continuation", "record_step_failure", "tool_call", "tool_idx",
 ]
