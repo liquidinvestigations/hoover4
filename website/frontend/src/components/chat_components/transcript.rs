@@ -24,6 +24,10 @@ pub fn ChatTranscript(
     /// False when `stream` is the leftovers of an interrupted turn rather than one that
     /// is still being produced. The content is the same; the promise it makes is not.
     stream_live: Option<bool>,
+    /// A run of the in-flight turn waits for a free model slot. The placeholder of a turn
+    /// with no content and no tool rows then says that the turn waits.
+    #[props(default)]
+    queued: bool,
     /// The plan run id of a deep-research request that has no planner answer row yet. The
     /// transcript shows its card at the end while the planner writes the plan.
     #[props(default)]
@@ -170,7 +174,11 @@ pub fn ChatTranscript(
                 } else if turn.tool_rows.is_empty() && stream_live {
                     div {
                         style: "color: #64748B; font-size: 13px; font-style: italic;",
-                        "The assistant is working\u{2026}"
+                        if queued {
+                            "The turn waits for a free model slot."
+                        } else {
+                            "The assistant is working\u{2026}"
+                        }
                     }
                 }
             }

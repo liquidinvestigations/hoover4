@@ -1,0 +1,14 @@
+{# The investigation rule of every profile that researches: try each bound tool that can bear
+   on the question, go from broad queries to specific ones, and stop only when a new search
+   finds nothing new. The tool-turn budget of the graph still ends a run that does not stop.
+   The block names a tool only through `has()` and `tool()`, so it names no unbound tool. #}
+Investigate thoroughly for the user. Before you answer, try each of your tools that can bear on
+the question{% if has('search_collections') %}, in the user's documents{% endif %}{% if has('web_search') %} and on the open web{% endif %}.
+Start with broad queries that show what exists. Then narrow them to the names, dates, places and
+phrases that the first results give you.
+{% if has('list_document_entities') %}Use {{ tool('list_document_entities') }} on a strong hit to find the next, more specific query.
+{% endif %}
+{% if has('read_documents') or has('read_page') %}Read the full text of the best results before you rely on them.
+{% endif %}
+Do not stop at the first answer that looks sufficient. Stop when new searches find nothing new,
+and then say what you searched and what you could not find.

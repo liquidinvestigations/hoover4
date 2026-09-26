@@ -54,6 +54,8 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
+from research_agent import model_params
+
 log = logging.getLogger(__name__)
 
 GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE", "Hoover4_Processing")
@@ -121,10 +123,22 @@ HANDOFF_HEADER = (
     "full below.]"
 )
 
-#: How long the summariser model is given. A compaction that hangs costs the turn it was
-#: meant to save, so this is bounded and a timeout means no summarisation rather than no
-#: answer.
+#: How long the summariser model is given when `LLM_REQUEST_TIMEOUT_SECONDS` is unset. A
+#: compaction that hangs costs the turn it was meant to save, so this is bounded and a
+#: timeout means no summarisation rather than no answer. When the variable is set, the
+#: summariser gets the same read timeout as the agent's own model calls, because both wait
+#: in the same model server queue.
 _SUMMARISER_TIMEOUT = (5.0, 180.0)
+
+
+def summariser_timeout() -> tuple[float, float]:
+    """The (connect, read) timeout of the summariser request."""
+    return model_params.request_timeout() or _SUMMARISER_TIMEOUT
+
+
+def _without_cap(params: dict) -> dict:
+    """`params` without `max_tokens`."""
+    return {key: value for key, value in params.items() if key != "max_tokens"}
 
 #: How much unprotected material has to be there before a summariser call is worth making.
 #: Below this the handoff document would be about as long as what it replaces -- the
@@ -616,13 +630,15 @@ def summarise_with_model(prompt: str, *, model_id: str) -> str:
                 api_key = handle.read().strip()
     model = (os.getenv("LLM_MODEL_COMPACTION") or "").strip() or model_id
     try:
-        with httpx.Client(timeout=_SUMMARISER_TIMEOUT) as client:
+        with httpx.Client(timeout=summariser_timeout()) as client:
             response = client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
                 json={
                     "model": model,
-                    "temperature": 0,
+                    # `temperature` only when the provider accepts it. The output cap of
+                    # `sampling_params` is left out, because this body sets its own.
+                    **_without_cap(model_params.sampling_params(0)),
                     "messages": [{"role": "user", "content": prompt}],
                     # Thinking off, and a hard ceiling on the completion.
                     #

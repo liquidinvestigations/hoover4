@@ -25,7 +25,7 @@ Every service is an optional overlay under `compose/`, selected by `hoover4.ini`
 | Overlay | Service | Port (ini key) | Enabled by | Purpose |
 |---|---|---|---|---|
 | `compose/ai-server.yaml` | `hoover4-ai-server` | 21961 (`ai_server_port`) | `ai_server_enabled` | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
-| `compose/vllm.yaml` | `hoover4-vllm` | 21960 (`vllm_port`) | `llm_selfhosted` | The agent model (**Qwen3.5-35B-A3B**), OpenAI-compatible. Off by default; a cloud provider serves the stack until it is turned on. |
+| `compose/vllm.yaml` | `hoover4-vllm` | 21960 (`vllm_port`), 21963 (`vllm_structured_port`) | `llm_selfhosted` | The agent model (**DiffusionGemma 26B-A4B**, NVFP4), OpenAI-compatible, and its structured server. Off by default; a cloud provider serves the stack until it is turned on. |
 | `compose/easyocr.yaml` | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP ([`easyocr_server/`](easyocr_server/README.md)). Speaks the same request contract as the CPU twin `main_services/ocr_tesseract`, so `tasks/ocr_client.py` posts one request shape to either. |
 
 ## Deploy
@@ -58,9 +58,9 @@ mattering on plain docker.
 
 ### Model caches
 
-The folders `ai_models_cache` (~6 GB), `vllm_huggingface_cache` (~16 GB) and
-`easyocr_models_cache` (~100 MB) under `[storage] volumes_path` are preserved across
-`./deploy --ai-services --reset`. Pass `--reset-caches` to empty them too.
+The cache folders under `[storage] volumes_path` are `ai_models_cache` (~6 GB),
+`dgemma_model` (~19 GB), `dgemma_cache` and `easyocr_models_cache` (~100 MB).
+`./deploy --ai-services --reset` keeps them. Pass `--reset-caches` to empty them too.
 EasyOCR keeps its own folder rather than sharing the ai-server's: the two hold
 different model layouts, and overlaying EasyOCR's flat `*.pth` files on a HuggingFace
 `hub/` tree works only for as long as the two never pick the same name.
@@ -86,7 +86,7 @@ by one minor, so it is torchvision that decides which triple is available, not t
   ignored** by podman-compose. Services appeared to start and then ran on CPU.
 * `HEALTHCHECK` in a Dockerfile is dropped for OCI images, so healthchecks are declared
   in the compose overlays.
-* The GPU services share one device. `vllm_gpu_fraction` (default `0.50`) is the setting to
+* The GPU services share one device. `vllm_gpu_fraction` (default `0.60`) is the setting to
   turn down first if any of them OOMs, and it is a fraction of the **whole** device,
   which on unified-memory hardware means total system memory, not a card's own.
 
@@ -107,97 +107,113 @@ so the suite is mounted in rather than run with `docker exec`. `AI_SERVER_TEST_U
 defaults to `http://localhost:21961`; point it at a container name on the `ai_services`
 network as above, or at a remote GPU host.
 
-## The local LLM: Qwen3.5-35B-A3B
+## The local LLM: DiffusionGemma 26B-A4B
 
-`vllm/vllm-openai:v0.17.1` serving `Qwen/Qwen3.5-35B-A3B` at bf16, `--max-model-len
-262144`, `--max-num-seqs 16`. vLLM 0.17 is the first release with native `qwen3_5`
-support.
+`hoover4-vllm` serves `nvidia/diffusiongemma-26B-A4B-it-NVFP4` under the model name
+`dgemma`. The checkpoint is a mixture of experts with 26B parameters, of which 4B are
+active for each token, at NVFP4. The server takes text, image input, thinking and tool
+calls. It serves a context of 262,144 tokens.
 
-35B total with 3B active per token, a mixture of experts, which is what makes it usable
-on memory-bandwidth-bound hardware where a dense 30B is not. It has the four capabilities
-the agents assume: tool calling, parallel tool calls, thinking, and vision.
+### The image
 
-### `max-num-seqs` is a correctness setting, not a tuning one
+Docker BuildKit builds the image from the Git repository in `vllm_build_repo` at the
+commit in `vllm_build_ref`. The build context is the Git URL with `#<commit>`, so no file
+of that repository is in this one. The image tag is `hoover4-vllm-dgemma:<commit>`. To
+move the build, change `vllm_build_ref` and run `./deploy --ai-services --build`.
 
-A server with one slot serialises every caller head-of-line. A chat turn queued behind a
-benchmark then looks like a sixteen-minute model when most of it was a sixteen-minute
-queue, a misdiagnosis that costs a full debugging session and reaches the wrong
-conclusion about the model. One research agent is already several concurrent streams, and
-there is more than one conversation.
+The entrypoint of the image composes the `vllm serve` arguments from the container
+environment. `deploy.py` renders that environment from `[ai_services]`. The entrypoint
+starts vLLM on container port 8000, and then the structured server on container port
+8011. `vllm_port` publishes the first and `vllm_structured_port` publishes the second.
+Both bind to `bind_ip`, which must be a private-network address.
 
-The startup log reports what the KV cache can actually hold:
+### The weights
+
+The weights are the folder `dgemma_model` under `[storage] volumes_path`. Before the first
+start, `./deploy --ai-services` runs the built image once and downloads `vllm_model` into
+that folder. The download of about 19 GB runs for minutes, and it continues a partial folder. A
+folder is complete when it holds `config.json` and every shard that
+`model.safetensors.index.json` names, each above zero bytes. A later deploy does not
+download a complete folder again. `deploy.py` stops with an error when the folder is still
+incomplete after the download.
+
+The checkpoint is not gated, so `hf_token_file` can stay empty. The server itself runs
+with `HF_HUB_OFFLINE=1`. The folder `dgemma_cache` holds the compile and JIT cache at
+`/root/.cache`. A first start compiles the FlashInfer kernels before the weights load, so
+the health check allows 1,800 s for the start.
+
+### The API key
+
+vLLM asks for `Authorization: Bearer <key>` on `/v1` when the key file in
+`vllm_api_key_file` holds a key. The structured server asks for the same key on every
+POST. The compose wrapper reads the key file, exports the key for both servers, and then
+runs the entrypoint of the image unchanged.
+
+The structured server calls vLLM with no key. `dgemma/sitecustomize.py` adds the key to
+each call from inside the container to the local vLLM port, and changes no other call.
+The wrapper puts `/opt/hoover4`, where that folder is mounted, first on `PYTHONPATH`, so
+Python loads the module in every process of the container. The module then runs a
+`sitecustomize` of the image, if the image has one. An empty key file turns the key off
+on both servers.
+
+### Memory
+
+The server shares the unified memory of the GPU box with the other model servers.
+
+| key | default | what it sets |
+|---|---|---|
+| `vllm_gpu_fraction` | `0.60` | the fraction of the whole device that vLLM takes |
+| `vllm_kv_cache_gb` | `28` | the KV cache in GiB |
+| `vllm_headroom_gb` | `4` | the memory in GiB that the start-up check keeps free |
+| `vllm_transient_copies` | `2` | the sampler copies that the start-up check budgets for |
+| `vllm_torch_mem_fraction` | `0.85` | the fraction of memory that PyTorch can allocate |
+| `vllm_mem_limit` | `97g` | the memory limit of the container |
+
+The entrypoint prints a `memory:` line with the memory available and the memory it needs.
+The memory it needs is the sum of the weights, the KV cache, the start-up transient and
+the headroom. The entrypoint refuses to start when the memory available is less. The KV cache must hold `vllm_max_num_seqs`
+sequences at the full context. Read both from the log:
 
 ```
-$ docker logs hoover4-vllm 2>&1 | grep -E "GPU KV cache size|Maximum concurrency"
-GPU KV cache size: 500,544 tokens
-Maximum concurrency for 262,144 tokens per request: 7.53x
+docker logs hoover4-vllm 2>&1 | grep -E "memory:|refusing|GPU KV cache size|Maximum concurrency"
 ```
 
-That figure is concurrency at the **full** context. Real turns are far shorter, so the
-slot count is the binding limit rather than the cache.
+The line `Maximum concurrency for 262,144 tokens per request` must read at least
+`vllm_max_num_seqs`. When it reads less, increase `vllm_kv_cache_gb` by one.
 
-### FP8 does not run on GB10
+### Request parameters that the server rejects
 
-The FP8 checkpoint loads and then fails during warmup with `RuntimeError: Error Internal`
-out of `torch.ops._C.cutlass_scaled_mm`. The cause is above it in the same log: this
-build's PyTorch supports compute capability 8.0 through 12.0, and GB10 is **12.1**. The
-CUTLASS FP8 kernels are compiled for architectures the device is not, and the error names
-the operator rather than the architecture.
+vLLM answers a request with a 400 error when it carries `temperature`, `min_p`, `seed`,
+`min_tokens`, `logit_bias`, `bad_words` or `allowed_token_ids`. A client of this server
+must leave them out. It can send `chat_template_kwargs` with `enable_thinking`, which
+wins over `vllm_default_thinking`.
 
-bf16 avoids that path entirely. It costs memory (roughly 70 GB of weights against FP8's
-35) which on the unified-memory box means nothing else large can be resident beside it.
-`vllm_gpu_fraction` is a fraction of **total system memory** there, not of a discrete
-card, so a value tuned for a 24 GB card overcommits badly.
+### Differences from the vLLM recipe
 
-Measured on the box, single stream, 256 tokens at temperature 0: **30.4 tok/s** warm.
-That matches the published bf16 figure for this model on this hardware.
+The vLLM recipe for this checkpoint, section "Full-Featured Server", with the NVFP4 variant
+on DGX Spark GB10, is the reference for the served features. This deployment differs from
+it in these arguments.
 
-### Reasoning must be parsed out
+| argument | recipe | here | why |
+|---|---|---|---|
+| image | `vllm/vllm-openai:gemma` | the build of `vllm_build_ref` | the build adds the adaptive canvas schedule and the structured server |
+| `--served-model-name` | not set | `dgemma` (`vllm_served_name`) | a short name for the clients |
+| `--gpu-memory-utilization` | 0.8 | 0.60 (`vllm_gpu_fraction`) | the box runs other model servers |
+| `--kv-cache-memory` | not set | 28 GiB (`vllm_kv_cache_gb`) | a fixed KV cache for 8 sequences at the full context |
+| `--diffusion-config` | canvas 256 | canvas 256, 32 samples, and a canvas schedule by batch size (`vllm_canvas`, `vllm_max_samples`, `vllm_canvas_schedule`) | the schedule makes a smaller canvas at a larger batch |
+| `--exclude-tools-when-tool-choice-none`, `--trust-remote-code`, `--async-scheduling`, `--max-logprobs 128`, `VLLM_USE_V2_MODEL_RUNNER=1` | not set | set by the entrypoint | the entrypoint of the build sets them, and the vLLM patches of the build need `--async-scheduling` |
+| `--chat-template` | the recipe names a tool chat template | not set (`vllm_chat_template`) | the model's own template is used until a measurement shows that tool calls need the other |
 
-Qwen3.5 runs with its thinking mode on by default, so `--reasoning-parser qwen3` is not
-optional here: without it vLLM leaves the `<think>…</think>` block inside `content` and
-every answer arrives with the model's working prepended, visible to the user, counted
-against the payload budget, and parsed by nothing. See
-[`../main_services/agents/research_agent/README.md`](../main_services/agents/research_agent/README.md)
-for the measured cost of thinking (~4x completion tokens).
+Every other argument of the recipe is set to the recipe's value. `--mm-processor-kwargs`,
+`--limit-mm-per-prompt`, `--default-chat-template-kwargs` and `--load-format` come from
+`vllm_image_input`, `vllm_mm_max_soft_tokens`, `vllm_mm_image_limit`,
+`vllm_default_thinking` and `vllm_load_format`. `deploy.py` joins them into
+`VLLM_EXTRA_ARGS`, which the entrypoint adds to `vllm serve`. The entrypoint splits that
+value on spaces, so no JSON value in it holds a space.
 
-### Tool calling: `hermes` is wrong for this model
+### Token streaming
 
-`--tool-call-parser hermes` was correct for Qwen3-4B and **silently breaks Qwen3.5**.
-Qwen3.5 emits XML-style blocks:
-
-```
-<tool_call>
-<function=list_collections>
-</function>
-</tool_call>
-```
-
-`hermes` does not match that, so every tool call arrives as ordinary assistant text, the
-agent makes **zero** tool calls, and answers from nothing. That is the same symptom as the streaming interop bug below,
-from a different cause. The right parser is **`qwen3_xml`** (note the underscore: the
-registered name differs from its `qwen3xml_tool_parser.py` filename, and the wrong
-spelling is a startup crash-loop rather than a clear error).
-
-Two consequences of the XML format are handled in code, because both presented as
-infinite loops rather than as errors:
-
-* **Array arguments arrive as strings.** `collections` comes across as the literal
-  `'["testdata"]'`, pydantic rejects it, and the model retries the identical call until
-  the recursion budget is gone, without ever running a search. The collection server
-  coerces it (`_as_collection_list`).
-* **The model does not reliably stop.** Given good results it will still re-issue a
-  search it has already run. The agent now detects a repeated call, and enforces a
-  12-turn tool budget, and in either case forces a final answer instead of letting
-  langgraph raise `GraphRecursionError`, which surfaced as an HTTP 500 with no answer at
-  all. See
-  [`../main_services/agents/research_agent/README.md`](../main_services/agents/research_agent/README.md).
-
-### Token streaming is back on
-
-`LLM_STREAMING=true` is the default. The hazard it guards against is a vLLM/langchain interop bug where
-streamed tool-call deltas arrived with `arguments` absent and never accumulated, so the
-agent silently made zero tool calls. Re-tested on 0.17.1 with a real agent run: **4 tool
-calls and a correctly cited answer with streaming on.** The `disable_streaming` workaround
-and its comment are left in `research_agent/agent.py`. Set `LLM_STREAMING=false` if it
-ever regresses. The symptom to watch for is an agent that answers with no tool calls.
+`LLM_STREAMING=true` is the default of the research agents. An earlier vLLM sent streamed
+tool-call deltas with no `arguments`, and the agent then made no tool call.
+`research_agent/agent.py` keeps the `disable_streaming` workaround and its comment. The
+symptom to look for is an agent that answers with no tool calls.

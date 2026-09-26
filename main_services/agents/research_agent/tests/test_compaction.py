@@ -467,3 +467,72 @@ def test_eviction_runs_first_and_summarisation_only_on_what_it_leaves(monkeypatc
     assert EVICTION_PLACEHOLDER in seen["prompt"]
     assert issued_citations(out) == ["[D1]", "[D2]"]
     assert report.chars_after < report.chars_before
+
+
+# ---------------------------------------------------------------- the summariser request
+
+
+class _RecordingClient:
+    """A stand-in for `httpx.Client` that records the timeout and the request body."""
+
+    seen: dict = {}
+
+    def __init__(self, *, timeout):
+        _RecordingClient.seen = {"timeout": timeout}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def post(self, url, headers, json):
+        _RecordingClient.seen["body"] = json
+
+        class _Response:
+            status_code = 200
+            text = ""
+
+            @staticmethod
+            def json():
+                return {"choices": [{"message": {"content": "summary"}}]}
+
+        return _Response()
+
+
+def _summariser_request(monkeypatch, **env):
+    from research_agent import compaction
+
+    for name in ("LLM_SEND_TEMPERATURE", "LLM_REQUEST_TIMEOUT_SECONDS",
+                 "AGENT_MAX_OUTPUT_TOKENS"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("LLM_BASE_URL", "http://model.invalid/v1")
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setattr(compaction.httpx, "Client", _RecordingClient)
+    assert compaction.summarise_with_model("prompt", model_id="m") == "summary"
+    return _RecordingClient.seen
+
+
+def test_the_summariser_sends_temperature_by_default(monkeypatch):
+    seen = _summariser_request(monkeypatch)
+    assert seen["body"]["temperature"] == 0
+    assert seen["timeout"] == (5.0, 180.0)
+
+
+def test_the_summariser_leaves_temperature_out_when_the_provider_refuses_it(monkeypatch):
+    seen = _summariser_request(monkeypatch, LLM_SEND_TEMPERATURE="false")
+    assert "temperature" not in seen["body"]
+
+
+def test_the_summariser_keeps_its_own_output_ceiling_under_the_agent_cap(monkeypatch):
+    from research_agent.compaction import SUMMARY_TOKEN_CEILING
+
+    seen = _summariser_request(monkeypatch, AGENT_MAX_OUTPUT_TOKENS="32768")
+    assert seen["body"]["max_tokens"] == SUMMARY_TOKEN_CEILING
+
+
+def test_the_summariser_timeout_follows_the_request_timeout(monkeypatch):
+    seen = _summariser_request(monkeypatch, LLM_REQUEST_TIMEOUT_SECONDS="3600")
+    assert seen["timeout"] == (10.0, 3600.0)

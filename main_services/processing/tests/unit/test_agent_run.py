@@ -365,3 +365,52 @@ def test_append_nag_writes_the_round_and_resets_the_tool_turns(monkeypatch, stor
     assert [(m.idx, m.role) for m in store["messages"]] == [(6, "human")]
     assert run_writes == [{"next_seq": 10, "nags_this_turn": 1, "nags_without_progress": 1,
                            "extra_tool_turns": 6, "tool_turns_used": 0}]
+
+
+# ---------------------------------------------------------------- the agent keepalive
+
+
+def _run_frames_with(store, monkeypatch, lines):
+    """Run `run_agent` over a stream whose raw lines are `lines`, and return what it wrote."""
+    store["messages"].clear()
+    store["chat"].clear()
+    store["stream"].clear()
+
+    class _RawResponse(_FakeResponse):
+        def __init__(self):
+            self._lines = list(lines)
+
+    row = _row()
+    monkeypatch.setattr(agent_runs, "read_run", lambda *a: row)
+    monkeypatch.setattr(agent_runs, "read_messages", lambda *a: [
+        agent_runs.RunMessageRow(idx=0, role="human", content="question")])
+    monkeypatch.setattr(agent_runs, "RunRowWriter", lambda *a, **k: _FakeWriter())
+    monkeypatch.setattr(stream_writer, "_chat_history", lambda *a: [])
+    monkeypatch.setattr(stream_writer, "release_browser", lambda run_id: None)
+    monkeypatch.setattr(stream_writer.requests, "post", lambda *a, **k: _RawResponse())
+    monkeypatch.setattr(stream_writer.ResearchStreamWriter, "_finish_stream_rows",
+                        lambda self: None)
+    monkeypatch.setattr(activities, "_insert_chat_row",
+                        lambda u, s, seq, role, **f: store["chat"].append(
+                            {"seq": seq, "role": role, **f}))
+    summary = ActivityEnvironment().run(
+        activities.run_agent, RunAgentParams(run_id=RUN_ID, username="u", session_id="s"))
+    return summary, list(store["messages"]), list(store["chat"])
+
+
+def test_a_keepalive_comment_line_changes_nothing(store, monkeypatch):
+    """The agent sends `: keepalive` while a model call waits. The reader skips it."""
+    frames = [
+        {"type": "model_turn", "content": {"index": 1, "text": "done", "reasoning": "",
+                                           "tool_calls": [], "usage": {}}},
+        {"type": "response", "content": "done"},
+        {"type": "end", "content": "done", "model": "m",
+         "usage": {"prompt_tokens": 7, "completion_tokens": 3}},
+    ]
+    data = [f"data: {json.dumps(f)}" for f in frames]
+    plain = _run_frames_with(store, monkeypatch, data)
+    with_keepalive = _run_frames_with(
+        store, monkeypatch, [": keepalive", "", data[0], ": keepalive", "", *data[1:]])
+
+    assert plain[0].outcome == "answered"
+    assert with_keepalive == plain

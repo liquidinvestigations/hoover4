@@ -24,6 +24,7 @@ from research_agent.thinking import (
 def _clean_env(monkeypatch):
     monkeypatch.delenv("AGENT_THINKING", raising=False)
     monkeypatch.delenv("AGENT_THINKING_BUDGET_TOKENS", raising=False)
+    monkeypatch.delenv("AGENT_TOOL_TURN_THINKING", raising=False)
 
 
 def test_the_default_is_off_which_is_what_the_stack_did_before():
@@ -31,7 +32,7 @@ def test_the_default_is_off_which_is_what_the_stack_did_before():
     assert thinking_kwargs() == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
-def test_tool_turns_never_think_whatever_the_mode(monkeypatch):
+def test_tool_turns_do_not_think_by_default_whatever_the_mode(monkeypatch):
     # Choosing a tool is routing, and letting this model reason about it produces the
     # repeated-call loop the agent has a guard for.
     for mode in (MODE_OFF, MODE_ON, MODE_BUDGETED):
@@ -90,3 +91,14 @@ def test_describe_names_the_budget_only_when_one_applies(monkeypatch):
     monkeypatch.setenv("AGENT_THINKING", "budgeted")
     monkeypatch.setenv("AGENT_THINKING_BUDGET_TOKENS", "400")
     assert describe() == "thinking=budgeted budget=400 tokens"
+
+
+@pytest.mark.parametrize("value, thinks", [
+    (None, False), ("", False), ("false", False), ("true", True), ("1", True),
+])
+def test_the_tool_turn_switch_turns_thinking_on(monkeypatch, value, thinks):
+    if value is None:
+        monkeypatch.delenv("AGENT_TOOL_TURN_THINKING", raising=False)
+    else:
+        monkeypatch.setenv("AGENT_TOOL_TURN_THINKING", value)
+    assert tool_turn_kwargs() == {"chat_template_kwargs": {"enable_thinking": thinks}}

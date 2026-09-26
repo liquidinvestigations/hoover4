@@ -17,7 +17,8 @@
 //! What follows from that, and is the whole reason for the shape of this module:
 //!
 //! * liveness is read from the transcript and the stream table, not from a registry in
-//!   this process, see [`stream_state`];
+//!   this process, and a stale turn asks Temporal whether a run of it waits for a model
+//!   slot, see [`stream_state`];
 //! * stopping a turn is a Temporal cancellation, not a flag another task polls;
 //! * the admin live-run list is a Temporal visibility query, so it cannot show a run
 //!   this process forgot about or hide one it never knew about;
@@ -28,6 +29,7 @@
 pub mod gate;
 pub mod llm_events;
 pub mod plans;
+pub mod run_queue;
 
 use std::time::{Duration, Instant};
 
@@ -96,6 +98,7 @@ pub async fn get_chat_session(
         stream: tail.stream,
         active: tail.active,
         interrupted: tail.interrupted,
+        queued: tail.queued,
     })
 }
 
@@ -444,7 +447,14 @@ impl Drop for HeldPollGuard {
 /// assistant or error row after it, or when a run of that turn is `running` or
 /// `waiting_for_children`. The second test holds a nag round and a delegation open,
 /// because both follow an assistant or tool row. The stream rows and the run rows say
-/// how recently something happened. Deriving `active`
+/// how recently something happened.
+///
+/// A run that waits in its Temporal task queue for a free model slot writes no row, so
+/// its turn stops advancing. When the rows of an open turn are older than the stall
+/// window, this function asks Temporal whether a `running` run of the turn has its
+/// `run_agent` activity still scheduled, and whether another run on the same queue has a
+/// fresh row. Both true make the turn `queued`: it stays `active` and is not
+/// `interrupted`. See [`run_queue`]. Deriving `active`
 /// from "a non-final stream row exists right now" looked equivalent and was not: the
 /// writer finalises one row and opens the next as two separate inserts, and a poll
 /// landing in that gap reported the turn as over.
@@ -492,8 +502,20 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
     // A plan that waits for review or runs a long execution writes no stream rows for a
     // while, so its turn is never reported as interrupted (the pending plan rule).
     let plan_pending = db_chat::plans::session_has_open_plan(username, session_id).await?;
-    let interrupted = turn_open && newest_ms.is_some() && !advancing && !plan_pending;
-    let active = turn_open && advancing;
+    // A run that waits for a model slot writes no row. Temporal says whether it waits,
+    // and a fresh row on its queue says that a live worker holds the slots it waits for.
+    let queued_run = if turn_open && !advancing && !plan_pending {
+        run_waits_in_queue(&runs, now_ms - stall_ms).await
+    } else {
+        false
+    };
+    let (active, queued, interrupted) = run_queue::turn_verdict(
+        turn_open,
+        advancing,
+        plan_pending,
+        newest_ms.is_some(),
+        queued_run,
+    );
 
     // A tool row stays live past `is_final`: the writer marks it final at `tool_result`,
     // well before the durable `chat_messages` row exists, which the workflow only
@@ -511,6 +533,7 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
         return Ok(TurnTail {
             stream: waiting_turn(subagent_runs, last_user_seq),
             active,
+            queued,
             interrupted,
         });
     }
@@ -528,6 +551,7 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
         return Ok(TurnTail {
             stream: waiting_turn(subagent_runs, last_user_seq),
             active,
+            queued,
             interrupted,
         });
     }
@@ -576,8 +600,29 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
     Ok(TurnTail {
         stream: Some(turn),
         active,
+        queued,
         interrupted,
     })
+}
+
+/// Whether a `running` run of the turn has its `run_agent` activity scheduled in its task
+/// queue, while another run on that queue has a row written at or after `since_ms`. A
+/// failed read counts as false.
+async fn run_waits_in_queue(runs: &[db_chat::AgentRunRow], since_ms: i64) -> bool {
+    for run in runs
+        .iter()
+        .filter(|r| r.state == "running" && !r.workflow_id.is_empty())
+    {
+        if !run_queue::run_waits_for_slot(&run.workflow_id).await {
+            continue;
+        }
+        match db_chat::queue_has_live_run(&run.queue, since_ms).await {
+            Ok(true) => return true,
+            Ok(false) => {}
+            Err(e) => tracing::warn!("live runs on {}: {e}", run.queue),
+        }
+    }
+    false
 }
 
 /// A turn is open when its user row has no assistant or error row after it, or when a
@@ -778,6 +823,8 @@ const SUBAGENT_ENTRIES_CAP: usize = 30;
 struct TurnTail {
     stream: Option<StreamTurn>,
     active: bool,
+    /// A run of the turn waits for a free model slot. `active` is true with it.
+    queued: bool,
     interrupted: bool,
 }
 
@@ -788,7 +835,7 @@ struct TurnTail {
 fn poll_sig(finished_max_seq: Option<u32>, tail: &TurnTail) -> String {
     use std::hash::{Hash, Hasher};
     format!(
-        "{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}",
         finished_max_seq.map(|s| s.to_string()).unwrap_or_default(),
         tail.stream
             .as_ref()
@@ -808,6 +855,7 @@ fn poll_sig(finished_max_seq: Option<u32>, tail: &TurnTail) -> String {
             .unwrap_or_default(),
         tail.active,
         tail.interrupted,
+        tail.queued,
     )
 }
 
@@ -871,6 +919,7 @@ pub async fn poll_chat(
                 stream: tail.stream,
                 active: tail.active,
                 interrupted: tail.interrupted,
+                queued: tail.queued,
                 sig: current_sig,
             });
         }
@@ -1512,6 +1561,7 @@ mod tests {
             kind: if depth == 0 { "chat".into() } else { "subagent".into() },
             state: state.into(),
             workflow_id: format!("run-{rid}"),
+            queue: "chat-model-queue".into(),
             briefing: String::new(),
             tool_call_id: String::new(),
             result_head: String::new(),

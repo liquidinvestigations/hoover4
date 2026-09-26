@@ -363,7 +363,10 @@ class ResearchStreamWriter:
 
 #: An attempt that receives no agent event for this long fails. The heartbeat keeps a
 #: silent attempt alive, so without this bound a wedged agent holds the slot for the whole
-#: start-to-close timeout. It is the read timeout of the stream request.
+#: start-to-close timeout. It is the read timeout of the stream request. The agent service
+#: sends an SSE comment line (`: keepalive`) every 30 s while a model call waits, and each
+#: line restarts this timeout, so 300 s of silence means the agent service is gone or wedged.
+#: The value stays fixed when the model is slow.
 RUN_STREAM_IDLE_SECONDS = 300
 
 #: The browser server, which keeps one browser for each run until the run releases it.

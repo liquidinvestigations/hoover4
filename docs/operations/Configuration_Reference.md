@@ -59,13 +59,13 @@ flags empty folders. They never remove a folder.
 
 ## `[ai_services]`
 
-Thirty-one keys. Read by `deploy.py`, by the tier's compose overlays, and by the model
+Forty-eight keys. Read by `deploy.py`, by the tier's compose overlays, and by the model
 server itself.
 
 | group | keys | decides |
 |---|---|---|
 | tier | `enabled`, `host`, `bind_ip` | whether the tier exists, where the main stack reaches it, and which interface it binds |
-| local model server | `llm_selfhosted`, `vllm_*` | whether a self-hosted chat model runs, and its image, model, served name, context length, concurrent sequences, memory fraction, and the parsers for its tool and reasoning output |
+| local model server | `llm_selfhosted`, `vllm_*` | whether a self-hosted chat model runs, the Git repository and commit its image is built from, its model, served name, the port of its structured server, context length, concurrent sequences, memory fraction, KV cache, memory headroom and limit, attention backend, diffusion canvas, image input, default thinking, load format, chat template, and the parsers for its tool and reasoning output |
 | model server | `ai_server_enabled`, `ai_server_port`, `*_concurrency` | the embeddings, reranking and entity service, and how many of each it will do at once |
 | models | `ner_enabled`, `embeddings_enabled`, `embeddings_model`, `embeddings_dim`, `reranker_enabled`, `reranker_model`, `half_precision`, `torch_compile` | which capabilities load, and at what precision |
 | OCR | `easyocr_enabled`, `easyocr_port`, `easyocr_languages` | the accelerated OCR service |
@@ -80,7 +80,7 @@ the model without it produces vectors the store rejects or silently truncates.
 
 ## `[main_services]`
 
-Seventy-eight keys plus the six chat and agent cap keys. Read by `deploy.py`, the main compose files, the worker and the website.
+`deploy.py` defines 123 keys. Read by `deploy.py`, the main compose files, the worker and the website.
 
 ### Which provider serves what
 
@@ -141,7 +141,10 @@ user an administrator.
 (`common_concurrency`, `tika_concurrency`, `ocr_concurrency`, `nlp_concurrency`,
 `embed_concurrency`, `indexing_concurrency`, `chat_model_concurrency`,
 `chat_low_latency_concurrency`, `research_concurrency`). Empty means the default, except
-the three chat keys, which are set: a slot is one turn in flight, not one model call.
+the three chat keys, which are set: a slot is one agent run in flight, not one model call.
+A lead run and each of its sub-agents take one slot each. The templates set 4, 4 and 4.
+An empty key gives 4 for `chat_model_concurrency` and `research_concurrency`, and 8 for
+`chat_low_latency_concurrency`.
 
 `common_max_cached_workflows` (default `100`) is the number of workflow runs that each
 common-worker process keeps in memory. The SDK default is 1000.
@@ -165,6 +168,28 @@ bytes. `agent_catalogue_match_count` is how many tools one `search_agent_tools` 
 and one run keeps bound, from 6 to 12. Empty means 6. `./deploy` refuses a value that is not a
 whole number in range. The tool limit probe selects these three values.
 `full_research_agent_workers` is uvicorn worker processes on `hoover4-full-research-agent`.
+
+Five keys set the budget timeouts of an agent run, in whole seconds. Each follows the measured speed of
+the model server, and an empty key keeps the code default. `agent_queue_wait_seconds` is
+how long a run may wait for a free model slot, and empty sets no limit.
+`chat_run_timeout_seconds` (empty: 900) and `plan_run_timeout_seconds` (empty: 2400) bound
+one attempt of a chat run and of a deep-research run. `title_request_timeout_seconds`
+(empty: 30) is the read timeout of the conversation title request, and the title activity
+allows two requests and 30 s more. The worker reads these four.
+`llm_request_timeout_seconds` is the read timeout of one agent model call and of the
+compaction summary. When it is set, the model client does not retry. Empty keeps the client
+default of 600 s and 2 retries, and 180 s for the summary. `./deploy` refuses a value that
+is not a whole number of at least 1. It warns, and does not refuse, when a run timeout is
+under `llm_request_timeout_seconds`. The liveness bounds do not have keys: the heartbeats,
+the agent's keepalive line every 30 s, the worker's 300 s read of the agent stream and the
+website's 180 s stall window.
+
+`agent_max_output_tokens` is the `max_tokens` of every agent model request. Empty sends no
+cap, and the templates set 32768. `agent_thinking` is the thinking mode of the answer turn,
+`off`, `on` or `budgeted`. Empty renders `off`, and another value renders with a warning,
+after which the agent services use `off`. `agent_tool_turn_thinking` turns thinking on for
+the turns that may call a tool, and empty is `false`. `llm_streaming` is token streaming of
+the agent's model calls, and empty is `true`.
 
 `internet_tools_enabled` starts `hoover4-mcp-browser`, `hoover4-mcp-metasearch` and
 `hoover4-mcp-whois`. Default off: an absent or empty key does not start them. Turning it
@@ -256,9 +281,14 @@ tooling and is published on loopback only.
 
 ## `[llm_provider.*]`
 
-One section per provider, each with the same four keys: `enabled`, `base_url`, `model`, and
-`api_key_file`. Exactly the shape of a provider entry, repeated, so adding one is a section
+One section per provider, each with the same five keys: `enabled`, `base_url`, `model`,
+`api_key_file` and `send_temperature`. Exactly the shape of a provider entry, repeated, so adding one is a section
 rather than a code change.
+
+`send_temperature = false` leaves `temperature` out of every model request to that
+provider: the agent turns, the compaction summary and the conversation title. The
+self-hosted provider defaults to `false`, because its server rejects the parameter. The
+cloud providers default to `true`.
 
 `api_key_file` is a **path**, and the file lives outside the repository, chmod-600,
 bind-mounted read-only. A key value never appears in this file.
@@ -290,9 +320,15 @@ is the map back to the group above that explains it.
 ### `[ai_services]`: the accelerated tier
 
 - `enabled`, `host`, `bind_ip`, `llm_selfhosted`
-- `vllm_port`, `vllm_image`, `vllm_model`, `vllm_served_name`
-- `vllm_gpu_fraction`, `vllm_max_model_len`, `vllm_max_num_seqs`, `vllm_tool_parser`
-- `vllm_reasoning_parser`, `vllm_api_key_file`, `ai_server_enabled`, `ai_server_port`
+- `vllm_port`, `vllm_structured_port`, `vllm_build_repo`, `vllm_build_ref`
+- `vllm_model`, `vllm_served_name`, `vllm_gpu_fraction`, `vllm_max_model_len`
+- `vllm_max_num_seqs`, `vllm_kv_cache_gb`, `vllm_headroom_gb`, `vllm_transient_copies`
+- `vllm_torch_mem_fraction`, `vllm_mem_limit`, `vllm_attention_backend`
+- `vllm_canvas`, `vllm_canvas_schedule`, `vllm_max_samples`
+- `vllm_tool_parser`, `vllm_reasoning_parser`, `vllm_image_input`
+- `vllm_mm_max_soft_tokens`, `vllm_mm_image_limit`, `vllm_default_thinking`
+- `vllm_load_format`, `vllm_chat_template`, `vllm_api_key_file`
+- `ai_server_enabled`, `ai_server_port`
 - `ner_enabled`, `embeddings_enabled`, `embeddings_model`, `embeddings_dim`
 - `reranker_enabled`, `reranker_model`, `half_precision`, `torch_compile`
 - `ai_server_ner_concurrency`, `ai_server_embed_concurrency`, `ai_server_rerank_concurrency`, `hf_token_file`
@@ -312,6 +348,9 @@ is the map back to the group above that explains it.
 - `agent_subagent_max_per_turn`, `agent_plan_run_budget`
 - `agent_packs_chat`, `agent_packs_subagent`, `agent_packs_planner`, `agent_packs_organizer`
 - `agent_max_page_tokens`, `agent_completion_reserve_tokens`, `agent_catalogue_match_count`
+- `agent_queue_wait_seconds`, `chat_run_timeout_seconds`, `plan_run_timeout_seconds`
+- `title_request_timeout_seconds`, `llm_request_timeout_seconds`, `agent_max_output_tokens`
+- `agent_thinking`, `agent_tool_turn_thinking`, `llm_streaming`
 - `internet_tools_enabled`
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
 - `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`
@@ -335,12 +374,12 @@ is the map back to the group above that explains it.
 
 ### `[llm_provider.selfhosted]`
 
-- `enabled`, `base_url`, `model`, `api_key_file`
+- `enabled`, `base_url`, `model`, `api_key_file`, `send_temperature`
 
 ### `[llm_provider.nvidia]`
 
-- `enabled`, `base_url`, `model`, `api_key_file`
+- `enabled`, `base_url`, `model`, `api_key_file`, `send_temperature`
 
 ### `[llm_provider.moonshot]`
 
-- `enabled`, `base_url`, `model`, `api_key_file`
+- `enabled`, `base_url`, `model`, `api_key_file`, `send_temperature`

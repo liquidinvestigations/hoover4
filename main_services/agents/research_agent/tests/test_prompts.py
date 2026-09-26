@@ -251,3 +251,35 @@ def test_the_plan_profiles_render_strictly_with_the_plan_tools(profile):
     assert "`read_plan`" in text
     if profile == "organizer":
         assert "`plan_node_id`" in text and "`correct`" in text
+
+
+THOROUGH = "Investigate thoroughly for the user"
+
+
+@pytest.mark.parametrize("profile", ["internal_search", "full_research", "research_subagent"])
+def test_every_researching_profile_asks_for_a_thorough_investigation(profile):
+    assert THOROUGH in rendered(profile)
+
+
+def test_the_thorough_block_names_the_web_only_where_it_is_bound():
+    assert "open web" in rendered("full_research")
+    narrow = rendered("internal_search")
+    assert THOROUGH in narrow
+    assert "open web" not in narrow
+
+
+def test_the_narrow_profile_no_longer_stops_after_two_or_three_searches():
+    text = rendered("internal_search")
+    assert "Search two or three" not in text
+    assert "Never repeat a search you have already run." in text
+
+
+def test_the_planner_plans_a_thorough_investigation():
+    tools = sorted(FULL_RESEARCH_TOOLS | PACKS["plan"])
+    assert "Plan for a thorough investigation" in prompts.render(
+        "planner", tools=tools, strict=True)
+
+
+def test_the_organizer_tells_each_researcher_to_try_every_tool():
+    tools = sorted(FULL_RESEARCH_TOOLS | PACKS["plan"] | {"run_subagent"})
+    assert "try every tool" in prompts.render("organizer", tools=tools, strict=True)

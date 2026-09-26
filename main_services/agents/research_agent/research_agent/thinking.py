@@ -125,8 +125,14 @@ def thinking_kwargs(mode: str | None = None, budget: int | None = None) -> Dict[
 
 
 def tool_turn_kwargs() -> Dict[str, Any]:
-    """Extra request body for a turn that may call a tool: thinking always off."""
-    return {"chat_template_kwargs": {"enable_thinking": False}}
+    """Extra request body for a turn that may call a tool.
+
+    Thinking is off unless `AGENT_TOOL_TURN_THINKING` is true (`[main_services]
+    agent_tool_turn_thinking`). Some models call tools more reliably in thinking mode, and
+    may answer directly instead of calling a tool when thinking is off.
+    """
+    on = os.getenv("AGENT_TOOL_TURN_THINKING", "false").strip().lower() in ("1", "true", "yes")
+    return {"chat_template_kwargs": {"enable_thinking": on}}
 
 
 def describe() -> str:

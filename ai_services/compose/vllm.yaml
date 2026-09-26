@@ -15,65 +15,108 @@ x-logging: &logging
 
 services:
   # ---------------------------------------------------------------- GPU: local LLM
-  # vllm_gpu_fraction is a fraction of the WHOLE device, shared with hoover4-ai-server
-  # (~2.9 GB of embedding/reranker/NER weights), GPU EasyOCR, and any other model
-  # server resident on the box. It is the setting to lower first if a neighbour OOMs.
-  # On unified-memory hardware (GB10) the fraction is taken against total system
-  # memory, so a value tuned for a discrete card overcommits badly here.
+  # DiffusionGemma 26B-A4B at NVFP4, served by the djev-spark build of vLLM. The image
+  # is built from the upstream Git repository at the commit in vllm_build_ref, and no
+  # upstream file is copied into this repository. The image's own entrypoint composes
+  # the `vllm serve` arguments from the environment below, starts vLLM on port 8000,
+  # and then starts the structured server on port 8011.
   #
-  # max-num-seqs is the concurrency bound, and it is a correctness knob rather than a
-  # tuning one: a server with one slot serialises every caller head-of-line, so a UI
-  # turn queues behind a benchmark and the model looks orders of magnitude slower than
-  # it is. One research agent fans out to several concurrent sub-agent streams, and
-  # there is more than one conversation, so the floor is well above one.
+  # The weights are a local folder, dgemma_model, which deploy.py downloads once before
+  # the first start. HF_HUB_OFFLINE is therefore 1 here.
   #
-  # The reasoning parser is what moves a thinking block out of `content` and into
-  # `reasoning_content`. Qwen3.5 runs with its thinking mode on by default, so without it
-  # every answer arrives with the model's working prepended to it, visible to the user,
-  # counted against the payload budget, and parsed by nothing.
+  # vllm_gpu_fraction is a fraction of the WHOLE device, shared with hoover4-ai-server,
+  # GPU EasyOCR and any other model server on the box. On unified-memory hardware (GB10)
+  # it is taken against total system memory. The entrypoint also refuses to start when
+  # MemAvailable is below the sum of the weights, the KV cache, the start-up transient
+  # and the headroom, and it prints that sum on its `memory:` line.
   #
-  # vLLM 0.17 is the first release with native Qwen3.5 (qwen3_5) support.
+  # vllm_max_num_seqs is the number of sequences vLLM runs at once. More requests wait
+  # in vLLM's own queue.
+  #
+  # The wrapper below reads the API key file and gives the key to vLLM, to the
+  # structured server, and to ai_services/dgemma/sitecustomize.py, which adds the key to
+  # the structured server's own calls to vLLM. Then it runs the image's entrypoint
+  # unchanged. An empty key file turns the key off on both servers.
   #
   # SECURITY: bind_ip comes from hoover4.ini and MUST be a private-network address in
-  # any real deployment. An exposed vLLM is a free GPU for the internet.
+  # any real deployment. Both published ports, the vLLM API and the structured server,
+  # bind to it. An exposed vLLM is a free GPU for the internet.
   hoover4-vllm:
     logging: *logging
-    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.17.1}
+    build:
+      context: ${VLLM_BUILD_REPO}#${VLLM_BUILD_REF}
+    image: hoover4-vllm-dgemma:${VLLM_BUILD_REF}
     container_name: hoover4-vllm
+    restart: unless-stopped
+    mem_limit: ${VLLM_MEM_LIMIT}
+    ipc: host
+    ulimits:
+      core: 0
     ports:
       - "${AI_BIND_IP:-0.0.0.0}:${VLLM_PORT}:8000"
-    ipc: host
+      - "${AI_BIND_IP:-0.0.0.0}:${VLLM_STRUCTURED_PORT}:8011"
     # The API key is a bind-mounted file, never an env value: hoover4.ini stores the
-    # host path (vllm_api_key_file), deploy.py mounts it at /run/secrets/vllm_api_key,
-    # and this wrapper exports it before exec'ing the image's own `vllm serve`.
-    entrypoint: ["/bin/sh", "-c", "export VLLM_API_KEY=\"$$(cat /run/secrets/vllm_api_key 2>/dev/null || true)\"; export HUGGING_FACE_HUB_TOKEN=\"$$(cat /run/secrets/hf_token 2>/dev/null || true)\"; exec vllm serve \"$$@\"", "--"]
-    command: >
-      --model ${LLM_MODEL_NAME:-Qwen/Qwen3.5-35B-A3B}
-      --served-model-name ${LLM_SERVED_NAME:-qwen3.5-35b-a3b}
-      --gpu-memory-utilization ${VLLM_GPU_FRACTION:-0.50}
-      --max-model-len ${VLLM_MAX_MODEL_LEN:-262144}
-      --max-num-seqs ${VLLM_MAX_NUM_SEQS:-16}
-      --enable-auto-tool-choice
-      --tool-call-parser ${VLLM_TOOL_PARSER:-qwen3_xml}
-      --reasoning-parser ${VLLM_REASONING_PARSER:-qwen3}
+    # host path (vllm_api_key_file), and deploy.py mounts it at /run/secrets/vllm_api_key.
+    # The wrapper keeps a PYTHONPATH of the image after /opt/hoover4.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        key="$$(cat /run/secrets/vllm_api_key 2>/dev/null || true)";
+        export VLLM_API_KEY="$$key";
+        export API_KEY="$$key";
+        export HOOVER4_UPSTREAM_KEY="$$key";
+        export PYTHONPATH="/opt/hoover4$${PYTHONPATH:+:$$PYTHONPATH}";
+        exec /entrypoint.sh
     environment:
-      - DO_NOT_TRACK=1
-      - VLLM_NO_USAGE_STATS=1
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      MODEL: /models/dgemma
+      SERVED_NAME: ${LLM_SERVED_NAME}
+      PORT: "8000"
+      STRUCTURED_PORT: "8011"
+      MAX_SEQS: ${VLLM_MAX_NUM_SEQS}
+      MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN}
+      GPU_UTIL: ${VLLM_GPU_FRACTION}
+      KV_CACHE_GB: ${VLLM_KV_CACHE_GB}
+      HEADROOM_GB: ${VLLM_HEADROOM_GB}
+      TRANSIENT_COPIES: ${VLLM_TRANSIENT_COPIES}
+      TORCH_MEM_FRACTION: ${VLLM_TORCH_MEM_FRACTION}
+      ATTN: ${VLLM_ATTENTION_BACKEND}
+      CANVAS: ${VLLM_CANVAS}
+      CANVAS_SCHEDULE: ${VLLM_CANVAS_SCHEDULE}
+      MAX_SAMPLES: ${VLLM_MAX_SAMPLES}
+      REASONING_PARSER: ${VLLM_REASONING_PARSER}
+      TOOL_CALL_PARSER: ${VLLM_TOOL_PARSER}
+      # Arguments added to `vllm serve`. deploy.py builds them from the image input,
+      # thinking, load format and chat template keys. The entrypoint splits them on
+      # spaces, so no JSON value in them holds a space.
+      EXTRA_ARGS: ${VLLM_EXTRA_ARGS}
+      TLS_PORT: ${VLLM_TLS_PORT}
+      TEST_PAGE: ${VLLM_TEST_PAGE}
+      CONSTRAINED: ${VLLM_CONSTRAINED}
+      ENGINE_SAMPLES: ${VLLM_ENGINE_SAMPLES}
+      VLLM_USE_V2_MODEL_RUNNER: ${VLLM_USE_V2_MODEL_RUNNER}
+      HF_HUB_OFFLINE: "1"
+      MAX_JOBS: ${VLLM_MAX_JOBS}
+      FLASHINFER_NVCC_THREADS: ${VLLM_FLASHINFER_NVCC_THREADS}
+      DO_NOT_TRACK: "1"
+      VLLM_NO_USAGE_STATS: "1"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
-      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/vllm_huggingface_cache:/root/.cache/huggingface
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/dgemma_model:/models/dgemma:ro
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/dgemma_cache:/root/.cache
+      - ${HOOVER4_REPO_ROOT}/ai_services/dgemma:/opt/hoover4:ro
       - ${VLLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/vllm_api_key:ro
-      - ${HF_TOKEN_FILE_HOST:-/dev/null}:/run/secrets/hf_token:ro
     devices:
       - nvidia.com/gpu=all
-    restart: unless-stopped
+    # start_period is the entrypoint's own wait for vLLM. A first start compiles the
+    # FlashInfer kernels before the weights load.
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
       interval: 30s
       timeout: 15s
       retries: 10
-      start_period: 900s
+      start_period: 1800s
     networks:
       - ai_services
 

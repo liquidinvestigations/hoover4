@@ -70,3 +70,41 @@ def test_a_long_title_is_cut_and_the_summary_with_it():
     title, summary = parse_reply("x" * 200 + "\n" + "y" * 900)
     assert len(title) == 80
     assert len(summary) == 400
+
+
+# ---------------------------------------------------------------- the request body
+
+
+class _Reply:
+    status_code = 200
+    text = ""
+
+    def json(self):
+        return {"choices": [{"message": {"content": "A title\nA summary."},
+                             "finish_reason": "stop"}]}
+
+
+def _title_body(monkeypatch, send_temperature):
+    from tasks.P_agent import summarize
+
+    bodies = []
+    monkeypatch.setattr(summarize, "_model", lambda: "m")
+    monkeypatch.setattr(summarize, "_api_key", lambda: "k")
+    monkeypatch.setenv("LLM_BASE_URL", "http://model.invalid/v1")
+    if send_temperature is None:
+        monkeypatch.delenv("LLM_SEND_TEMPERATURE", raising=False)
+    else:
+        monkeypatch.setenv("LLM_SEND_TEMPERATURE", send_temperature)
+    monkeypatch.setattr(summarize, "_post", lambda url, body: bodies.append(body) or _Reply())
+    summarize.title_and_summary("question", "answer")
+    assert len(bodies) == 1
+    return bodies[0]
+
+
+def test_the_title_body_has_no_temperature_when_the_provider_refuses_it(monkeypatch):
+    assert "temperature" not in _title_body(monkeypatch, "false")
+
+
+def test_the_title_body_keeps_its_temperature_by_default(monkeypatch):
+    assert _title_body(monkeypatch, None)["temperature"] == 0.2
+    assert _title_body(monkeypatch, "true")["temperature"] == 0.2

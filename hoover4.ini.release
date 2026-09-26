@@ -67,26 +67,55 @@ bind_ip            = 0.0.0.0
 # the stack until this is turned on.
 llm_selfhosted     = false
 vllm_port          = 21960
-vllm_image         = vllm/vllm-openai:v0.17.1
-; bf16 weights. The FP8 checkpoint of the same model loads and then dies during warmup
-; inside a CUTLASS kernel on any device whose compute capability is outside the range
-; this vLLM image's PyTorch was compiled for — the error names the operator, never the
-; architecture. bf16 costs about twice the weight memory and is the path that runs.
-vllm_model         = Qwen/Qwen3.5-35B-A3B
-vllm_served_name   = qwen3.5-35b-a3b
+; The structured server of the same container. It is published on bind_ip, and it asks
+; for the same API key as vllm_port.
+vllm_structured_port = 21963
+; The image is built from this Git repository at this commit, with no copy of its files
+; in this repository. Change the commit to move the build.
+vllm_build_repo    = https://github.com/mmastrac/djev-spark.git
+vllm_build_ref     = 08b708e51bb8d9f4eba0e85b61dab0be7093d20e
+; The checkpoint. deploy.py downloads it once into the dgemma_model folder under
+; [storage] volumes_path before the first start. The checkpoint is not gated.
+vllm_model         = nvidia/diffusiongemma-26B-A4B-it-NVFP4
+; The model name that clients send. [llm_provider.selfhosted] model defaults to it.
+vllm_served_name   = dgemma
 ; A fraction of the WHOLE device, shared with every other model server on the box.
 ; On unified-memory hardware it is taken against total system memory, so a value
 ; tuned for a discrete card overcommits.
-vllm_gpu_fraction  = 0.50
+vllm_gpu_fraction  = 0.60
 vllm_max_model_len = 262144
-; Concurrency bound. A one-slot server serialises every caller head-of-line, so a UI
-; turn queues behind a benchmark and the model reads as far slower than it is. One
-; research agent is already several concurrent streams.
-vllm_max_num_seqs  = 16
-vllm_tool_parser   = qwen3_xml
-; Splits a thinking block out of `content` into `reasoning_content`. The model thinks by
-; default, so without this every answer arrives with the model's working prepended.
-vllm_reasoning_parser = qwen3
+; The sequences vLLM runs at once. More requests wait in vLLM's own queue.
+vllm_max_num_seqs  = 8
+; The KV cache in GiB. The start-up log line "Maximum concurrency for 262,144 tokens
+; per request" must read at least vllm_max_num_seqs.
+vllm_kv_cache_gb   = 28
+; The entrypoint refuses to start when MemAvailable is below the weights, the KV cache,
+; the start-up transient and this headroom, all in GiB.
+vllm_headroom_gb   = 4
+; The sampler copies that the start-up transient budgets for.
+vllm_transient_copies = 2
+vllm_torch_mem_fraction = 0.85
+; The container's memory limit.
+vllm_mem_limit     = 97g
+vllm_attention_backend = TRITON_ATTN
+; The diffusion canvas in tokens, its schedule by batch size, and the samples of the
+; structured server.
+vllm_canvas        = 256
+vllm_canvas_schedule = [[1, 2, 256], [3, 6, 128], [7, 32, 64]]
+vllm_max_samples   = 32
+vllm_tool_parser   = gemma4
+; Moves the thinking text out of `content` into its own field.
+vllm_reasoning_parser = gemma4
+; Image input, with the soft tokens of one image and the images of one prompt.
+vllm_image_input   = true
+vllm_mm_max_soft_tokens = 1120
+vllm_mm_image_limit = 7
+; Thinking is on when a request does not say. The agents send their own value.
+vllm_default_thinking = true
+; Empty omits --load-format.
+vllm_load_format   = fastsafetensors
+; A chat template path inside the container. Empty keeps the model's own template.
+vllm_chat_template =
 ; host path to a file containing ONLY the vLLM API key (chmod 600, outside the repo)
 vllm_api_key_file  =
 
@@ -183,11 +212,17 @@ ocr_concurrency       =            ; default 4
 nlp_concurrency       =            ; default 4, matching ai_server_ner_concurrency
 embed_concurrency     =            ; default 6, under ai_server_embed_concurrency
 indexing_concurrency  =            ; default 1
-; Activity slots for chat model turns. One slot is one turn in flight, not one model call.
-chat_model_concurrency = 12
-; Activity slots for chat writes, todo reads and session titles.
+; Activity slots for chat model turns, the fast track. One slot is one agent run in flight:
+; the lead run of a chat and each of its sub-agents take one slot each, so one chat that
+; delegates can fill all four. With research_concurrency it bounds the agent runs that this
+; deployment sends to the model server at 8.
+chat_model_concurrency = 4
+; Activity slots for chat writes, todo reads and session titles. A title is one short model
+; request outside the two tracks, because it is not a chat. The model server queues it with
+; the other requests.
 chat_low_latency_concurrency = 4
-; Activity slots for deep-research turns. These sit outside the chat model slots.
+; Activity slots for deep-research runs and their sub-agents, the slow track. They sit
+; outside the chat model slots.
 research_concurrency = 4
 ; Concurrently-held chat polls per user. A held poll waits up to 15 s. Past this
 ; cap a poll returns immediately and the client asks again after 500 ms. Eight
@@ -223,6 +258,35 @@ agent_packs_organizer = all
 agent_max_page_tokens =
 agent_completion_reserve_tokens =
 agent_catalogue_match_count =
+; The budget timeouts of an agent run, in whole seconds. They follow the measured
+; speed of the model server. Empty keeps the code defaults.
+; agent_queue_wait_seconds: the wait of a run for a free model slot. Empty is no limit.
+; chat_run_timeout_seconds: one attempt of a chat run. Empty is 900.
+; plan_run_timeout_seconds: one attempt of a deep-research run. Empty is 2400.
+; title_request_timeout_seconds: the title request. Empty is 30. The title activity
+;   allows two requests and 30 s more.
+; llm_request_timeout_seconds: the read timeout of one model call of the agent and of
+;   its compaction summary. When set, the model client does not retry. Empty keeps the
+;   client default (600 s and 2 retries) and 180 s for the summary.
+; Keep chat_run_timeout_seconds and plan_run_timeout_seconds at or above
+; llm_request_timeout_seconds. deploy.py warns when they are under it.
+agent_queue_wait_seconds =
+chat_run_timeout_seconds =
+plan_run_timeout_seconds =
+title_request_timeout_seconds =
+llm_request_timeout_seconds =
+; The output cap of one agent model request, in tokens. Without a cap a request can
+; decode to the end of the context window, which no timeout above bounds. Empty sends
+; no cap.
+agent_max_output_tokens = 32768
+; Thinking of the answer turn: off, on or budgeted. Empty is off. deploy.py warns on
+; another value, and the agent services then use off.
+agent_thinking =
+; Thinking of the turns that may call a tool: true or false. Empty is false. Some
+; models call tools more reliably with thinking on.
+agent_tool_turn_thinking =
+; Token streaming of the agent's model calls: true or false. Empty is true.
+llm_streaming =
 ; Uvicorn worker processes on hoover4-full-research-agent. Each worker holds
 ; its own graph cache and MCP connections. The citation handle table lives in
 ; the collections MCP server, so these workers do not split it.
@@ -462,6 +526,8 @@ enabled      = false
 base_url     =           ; empty = http://<ai_services.host>:<vllm_port>/v1
 model        =           ; empty = vllm_served_name
 api_key_file =
+; false: every model request leaves `temperature` out, because the server rejects it.
+send_temperature = false
 
 [llm_provider.nvidia]
 ; The only LLM provider the live tests exercise — vLLM is parked.
@@ -469,12 +535,14 @@ enabled      = true
 base_url     = https://integrate.api.nvidia.com/v1
 model        = nvidia/nemotron-3-super-120b-a12b
 api_key_file =           ; e.g. /root/secrets/nvidia-nim.txt
+send_temperature = true
 
 [llm_provider.moonshot]
 enabled      = false
 base_url     = https://api.moonshot.ai/v1
 model        =
 api_key_file =
+send_temperature = true
 
 # ---- the local Nomad cluster's image registry ------------------------------------
 # Pass 6 pushes hoover4's built images here, and a Nomad docker job pulls from

@@ -39,11 +39,23 @@ services:
       - LLM_API_KEY_FILE=/run/secrets/llm_api_key
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
-      # Token streaming. It must stay off on vLLM 0.11, where streamed tool-call deltas
-      # arrive without `arguments` and never accumulate, so the agent silently makes zero
-      # tool calls. Verified safe on vLLM 0.17.1 + Qwen3.5. Flip to false if that ever
-      # regresses. The symptom is an agent that answers from nothing with no tool calls.
+      # false when the active provider's section sets `send_temperature = false`: every
+      # model request of the agent then leaves `temperature` out.
+      - LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}
+      # Token streaming, from `[main_services] llm_streaming` (empty renders true). It must
+      # stay off on vLLM 0.11, where streamed tool-call deltas arrive without `arguments`
+      # and never accumulate, so the agent silently makes zero tool calls. Verified safe on
+      # vLLM 0.17.1 + Qwen3.5. Set the key to false if that ever regresses. The symptom is
+      # an agent that answers from nothing with no tool calls.
       - LLM_STREAMING=${LLM_STREAMING:-true}
+      # Thinking of the prose turn (off, on or budgeted), and of the turns that may call a
+      # tool, from `agent_thinking` and `agent_tool_turn_thinking`.
+      - AGENT_THINKING=${AGENT_THINKING:-off}
+      - AGENT_TOOL_TURN_THINKING=${AGENT_TOOL_TURN_THINKING:-false}
+      # The read timeout of one model call, which also turns off the client retries, and
+      # the output cap of one model request. Empty keeps the client defaults and no cap.
+      - LLM_REQUEST_TIMEOUT_SECONDS=${LLM_REQUEST_TIMEOUT_SECONDS:-}
+      - AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
@@ -134,11 +146,23 @@ services:
       - LLM_API_KEY_FILE=/run/secrets/llm_api_key
       - LLM_MODEL=${LLM_MODEL:-}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.0}
-      # Token streaming. It must stay off on vLLM 0.11, where streamed tool-call deltas
-      # arrive without `arguments` and never accumulate, so the agent silently makes zero
-      # tool calls. Verified safe on vLLM 0.17.1 + Qwen3.5. Flip to false if that ever
-      # regresses. The symptom is an agent that answers from nothing with no tool calls.
+      # false when the active provider's section sets `send_temperature = false`: every
+      # model request of the agent then leaves `temperature` out.
+      - LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}
+      # Token streaming, from `[main_services] llm_streaming` (empty renders true). It must
+      # stay off on vLLM 0.11, where streamed tool-call deltas arrive without `arguments`
+      # and never accumulate, so the agent silently makes zero tool calls. Verified safe on
+      # vLLM 0.17.1 + Qwen3.5. Set the key to false if that ever regresses. The symptom is
+      # an agent that answers from nothing with no tool calls.
       - LLM_STREAMING=${LLM_STREAMING:-true}
+      # Thinking of the prose turn (off, on or budgeted), and of the turns that may call a
+      # tool, from `agent_thinking` and `agent_tool_turn_thinking`.
+      - AGENT_THINKING=${AGENT_THINKING:-off}
+      - AGENT_TOOL_TURN_THINKING=${AGENT_TOOL_TURN_THINKING:-false}
+      # The read timeout of one model call, which also turns off the client retries, and
+      # the output cap of one model request. Empty keeps the client defaults and no cap.
+      - LLM_REQUEST_TIMEOUT_SECONDS=${LLM_REQUEST_TIMEOUT_SECONDS:-}
+      - AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}

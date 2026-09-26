@@ -487,8 +487,9 @@ pub struct SubagentMessage {
 /// One poll of the tail of a transcript.
 ///
 /// `messages` are finished rows with `seq > after_seq`. `stream` is the in-flight
-/// turn, if any. `interrupted` means a stream row has stopped advancing with no live
-/// run owning it (the website restarted mid-turn): render a marker, never a spinner.
+/// turn, if any. `interrupted` means the rows of an open turn stopped advancing a stall
+/// window ago, and no run of the turn waits for a model slot: render a marker, never a
+/// spinner.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChatPollResult {
     pub messages: Vec<ChatMessageItem>,
@@ -502,8 +503,15 @@ pub struct ChatPollResult {
     /// every turn in exactly that window.
     #[serde(default)]
     pub active: bool,
+    /// The rows of the turn stopped advancing a stall window ago, and no run of the turn
+    /// waits for a model slot. Never true together with `active`.
     #[serde(default)]
     pub interrupted: bool,
+    /// The turn is active because a run of it waits in its Temporal task queue for a free
+    /// model slot, while another run on that queue holds a slot. The page shows a waiting
+    /// line. `active` is true whenever this is true.
+    #[serde(default)]
+    pub queued: bool,
     /// Opaque change-detection token: the client echoes it back on the next poll, and
     /// the server returns early when the current state produces a different one.
     pub sig: String,
@@ -540,9 +548,12 @@ pub struct ChatSessionDetail {
     /// [`ChatPollResult::active`] for why this is separate from `stream`.
     #[serde(default)]
     pub active: bool,
-    /// A stale stream row with no live run behind it (the website restarted mid-turn).
+    /// See [`ChatPollResult::interrupted`].
     #[serde(default)]
     pub interrupted: bool,
+    /// A run of the turn waits for a free model slot. See [`ChatPollResult::queued`].
+    #[serde(default)]
+    pub queued: bool,
 }
 
 /// Maximum length of one user message. Guards the agent's context window and keeps a

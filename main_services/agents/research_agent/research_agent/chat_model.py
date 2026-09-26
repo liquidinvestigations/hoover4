@@ -132,8 +132,10 @@ def _convert_delta_to_message_chunk(
             ]
         except KeyError:
             pass
-    if reasoning_content := _dict.get("reasoning_content"):
-        additional_kwargs["reasoning_content"] = reasoning_content
+    # vLLM returns the thinking text in `reasoning`, and older servers and other providers
+    # in `reasoning_content`. The agent reads `reasoning_content` only.
+    if reasoning := _dict.get("reasoning") or _dict.get("reasoning_content"):
+        additional_kwargs["reasoning_content"] = reasoning
 
     if role == "user" or default_class == HumanMessageChunk:
         return HumanMessageChunk(content=content, id=id_)

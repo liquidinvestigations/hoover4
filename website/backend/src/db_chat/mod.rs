@@ -868,6 +868,8 @@ pub struct AgentRunRow {
     pub kind: String,
     pub state: String,
     pub workflow_id: String,
+    /// The Temporal task queue of the run's agent activity.
+    pub queue: String,
     pub briefing: String,
     pub tool_call_id: String,
     /// The result, cut to the poll's text limit.
@@ -893,7 +895,7 @@ const RUN_SELECT: &str = "SELECT toString(run_id) AS rid, username AS owner, ses
      ifNull(toString(batch_id), '') AS batch, \
      ifNull(toString(continues_run_id), '') AS continues, \
      ifNull(toString(delegated_batch_id), '') AS delegated_batch, \
-     depth, kind, state, workflow_id, briefing, tool_call_id, \
+     depth, kind, state, workflow_id, queue, briefing, tool_call_id, \
      substringUTF8(result, 1, 2000) AS result_head, \
      substringUTF8(error, 1, 2000) AS error_head, \
      toUnixTimestamp64Milli(started_at) AS started_ms, \
@@ -917,6 +919,24 @@ pub async fn turn_runs(
         .fetch_all::<AgentRunRow>()
         .await?;
     Ok(rows)
+}
+
+/// Whether a `running` run on `queue`, of any owner, has a row written at or after
+/// `since_ms`. The keepalive of a run in progress moves its row every 30 s, so a queue
+/// whose slots are held by live runs answers true. A queue that no worker polls answers
+/// false, because no row on it moves.
+pub async fn queue_has_live_run(queue: &str, since_ms: i64) -> anyhow::Result<bool> {
+    let count = get_global_client()
+        .query(
+            "SELECT count() FROM agent_runs FINAL \
+             WHERE queue = ? AND state = 'running' \
+             AND updated_at >= fromUnixTimestamp64Milli(?)",
+        )
+        .bind(queue)
+        .bind(since_ms)
+        .fetch_one::<u64>()
+        .await?;
+    Ok(count > 0)
 }
 
 /// The run rows of the named workflows, for every owner. Only the admin live-runs list

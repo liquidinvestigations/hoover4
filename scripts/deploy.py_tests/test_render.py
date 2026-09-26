@@ -603,7 +603,7 @@ def _class_before_folders(name):
     """The class each volume had under the volume-removing reset code."""
     if name == "serena_state":
         return "protected"
-    if name in ("ai_models_cache", "vllm_huggingface_cache", "easyocr_models_cache"):
+    if name in ("ai_models_cache", "dgemma_model", "dgemma_cache", "easyocr_models_cache"):
         return "cache"
     if name in ("temporal_cassandra", "temporal_elasticsearch"):
         return "temporal"
@@ -816,3 +816,297 @@ def test_both_research_agents_receive_the_probe_keys():
         environment = agents[name]["environment"]
         for key in PROBE_KEYS:
             assert f"{key}=${{{key}:-}}" in environment, (name, key)
+
+
+# ---- the agent model calls ------------------------------------------------------------
+
+#: The worker's timeout variables and the agent services' model variables.
+WORKER_TIMEOUT_VARS = ("HOOVER4_AGENT_QUEUE_WAIT_SECONDS", "HOOVER4_CHAT_RUN_TIMEOUT_SECONDS",
+                       "HOOVER4_PLAN_RUN_TIMEOUT_SECONDS",
+                       "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS")
+AGENT_MODEL_VARS = ("LLM_REQUEST_TIMEOUT_SECONDS", "AGENT_MAX_OUTPUT_TOKENS",
+                    "AGENT_THINKING", "AGENT_TOOL_TURN_THINKING", "LLM_STREAMING",
+                    "LLM_SEND_TEMPERATURE")
+
+
+def _model_env(fixture_name="settings-defaults.ini", section="main_services", **values):
+    cfg = _config(fixture_name)
+    cfg.values[section].update(values)
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        return deploy.render_main_env(cfg), deploy.agent_model_warnings(cfg)
+
+
+def test_empty_agent_model_keys_keep_the_code_defaults():
+    env, warnings = _model_env()
+    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["", "", "", ""]
+    assert env["LLM_REQUEST_TIMEOUT_SECONDS"] == ""
+    assert env["AGENT_MAX_OUTPUT_TOKENS"] == ""
+    assert env["AGENT_THINKING"] == "off"
+    assert env["AGENT_TOOL_TURN_THINKING"] == "false"
+    assert env["LLM_STREAMING"] == "true"
+    assert warnings == []
+
+
+def test_set_timeout_keys_land_in_their_variables():
+    env, warnings = _model_env(
+        agent_queue_wait_seconds="36120", chat_run_timeout_seconds="18060",
+        plan_run_timeout_seconds="18060", title_request_timeout_seconds="120",
+        llm_request_timeout_seconds="15480", agent_max_output_tokens="32768")
+    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["36120", "18060", "18060", "120"]
+    assert env["LLM_REQUEST_TIMEOUT_SECONDS"] == "15480"
+    assert env["AGENT_MAX_OUTPUT_TOKENS"] == "32768"
+    assert warnings == []
+
+
+@pytest.mark.parametrize("key, value", [
+    ("chat_run_timeout_seconds", "0"),
+    ("agent_queue_wait_seconds", "an hour"),
+    ("llm_request_timeout_seconds", "1.5"),
+    ("agent_max_output_tokens", "-1"),
+])
+def test_a_bad_agent_model_number_is_refused(key, value):
+    with pytest.raises(deploy.DeployError) as refused:
+        _model_env(**{key: value})
+    assert key in str(refused.value)
+
+
+def test_a_run_timeout_under_the_request_timeout_warns():
+    _, warnings = _model_env(llm_request_timeout_seconds="3600",
+                             chat_run_timeout_seconds="1800",
+                             plan_run_timeout_seconds="7200")
+    assert len(warnings) == 1
+    assert "chat_run_timeout_seconds = 1800" in warnings[0]
+
+
+@pytest.mark.parametrize("value, rendered, warns", [
+    ("", "off", False), ("on", "on", False), ("budgeted", "budgeted", False),
+    ("maybe", "maybe", True),
+])
+def test_agent_thinking_renders_as_written(value, rendered, warns):
+    env, warnings = _model_env(agent_thinking=value)
+    assert env["AGENT_THINKING"] == rendered
+    assert bool(warnings) is warns
+    if warns:
+        assert "agent_thinking = maybe" in warnings[0]
+
+
+@pytest.mark.parametrize("value, rendered", [("", "true"), ("true", "true"), ("false", "false")])
+def test_llm_streaming_renders_true_unless_turned_off(value, rendered):
+    env, _ = _model_env(llm_streaming=value)
+    assert env["LLM_STREAMING"] == rendered
+
+
+@pytest.mark.parametrize("value, rendered", [("", "false"), ("false", "false"), ("true", "true")])
+def test_tool_turn_thinking_renders_false_unless_turned_on(value, rendered):
+    env, _ = _model_env(agent_tool_turn_thinking=value)
+    assert env["AGENT_TOOL_TURN_THINKING"] == rendered
+
+
+def test_the_selfhosted_provider_sends_no_temperature():
+    cfg = _config("llm-selfhosted.ini")
+    cfg.values["ai_services"]["enabled"] = "true"
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        env = deploy.render_main_env(cfg)
+    assert env["LLM_PROVIDER_NAME"] == "selfhosted"
+    assert env["LLM_SEND_TEMPERATURE"] == "false"
+
+
+def test_a_cloud_provider_sends_temperature():
+    env = _env("llm-cloud.ini")
+    assert env["LLM_PROVIDER_NAME"] == "nvidia"
+    assert env["LLM_SEND_TEMPERATURE"] == "true"
+
+
+@pytest.mark.parametrize("template_name", ["hoover4.ini.development", "hoover4.ini.release"])
+def test_the_templates_carry_the_slots_and_the_provider_temperature_rule(template_name):
+    cfg = deploy.Config(REPO_ROOT / template_name)
+    main = cfg.values["main_services"]
+    assert [main[f"{tier}_concurrency"] for tier in
+            ("chat_model", "chat_low_latency", "research")] == ["4", "4", "4"]
+    assert main["agent_max_output_tokens"] == "32768"
+    assert cfg.values["llm_provider.selfhosted"]["send_temperature"] == "false"
+    assert cfg.values["llm_provider.nvidia"]["send_temperature"] == "true"
+    assert cfg.values["llm_provider.moonshot"]["send_temperature"] == "true"
+
+
+def test_the_worker_and_both_agents_receive_the_model_variables():
+    documents = dict(_compose_documents())
+    worker = documents["docker-compose.yaml"]["services"]["hoover4-worker"]["environment"]
+    for name in WORKER_TIMEOUT_VARS:
+        assert f"{name}=${{{name}:-}}" in worker, name
+    assert "LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}" in worker
+    agents = documents["research-agents.yaml"]["services"]
+    defaults = {"AGENT_THINKING": "off", "AGENT_TOOL_TURN_THINKING": "false",
+                "LLM_STREAMING": "true", "LLM_SEND_TEMPERATURE": "true"}
+    for service in ("hoover4-internal-search-agent", "hoover4-full-research-agent"):
+        environment = agents[service]["environment"]
+        for name in AGENT_MODEL_VARS:
+            assert f"{name}=${{{name}:-{defaults.get(name, '')}}}" in environment, (
+                service, name)
+
+
+# ---- the model server ---------------------------------------------------------------
+
+VLLM_DEFAULT_ENV = {
+    "LLM_MODEL_NAME": "nvidia/diffusiongemma-26B-A4B-it-NVFP4",
+    "LLM_SERVED_NAME": "dgemma",
+    "VLLM_PORT": "21960",
+    "VLLM_STRUCTURED_PORT": "21963",
+    "VLLM_BUILD_REPO": "https://github.com/mmastrac/djev-spark.git",
+    "VLLM_BUILD_REF": "08b708e51bb8d9f4eba0e85b61dab0be7093d20e",
+    "VLLM_GPU_FRACTION": "0.60",
+    "VLLM_MAX_MODEL_LEN": "262144",
+    "VLLM_MAX_NUM_SEQS": "8",
+    "VLLM_KV_CACHE_GB": "28",
+    "VLLM_HEADROOM_GB": "4",
+    "VLLM_TRANSIENT_COPIES": "2",
+    "VLLM_TORCH_MEM_FRACTION": "0.85",
+    "VLLM_MEM_LIMIT": "97g",
+    "VLLM_ATTENTION_BACKEND": "TRITON_ATTN",
+    "VLLM_CANVAS": "256",
+    "VLLM_CANVAS_SCHEDULE": "[[1, 2, 256], [3, 6, 128], [7, 32, 64]]",
+    "VLLM_MAX_SAMPLES": "32",
+    "VLLM_TOOL_PARSER": "gemma4",
+    "VLLM_REASONING_PARSER": "gemma4",
+    "VLLM_TLS_PORT": "0",
+    "VLLM_TEST_PAGE": "1",
+    "VLLM_CONSTRAINED": "1",
+    "VLLM_ENGINE_SAMPLES": "1",
+    "VLLM_USE_V2_MODEL_RUNNER": "1",
+    "VLLM_MAX_JOBS": "4",
+    "VLLM_FLASHINFER_NVCC_THREADS": "2",
+}
+
+VLLM_DEFAULT_EXTRA_ARGS = (
+    '--no-language-model-only --mm-processor-kwargs {"max_soft_tokens":1120} '
+    '--limit-mm-per-prompt {"image":7} '
+    '--default-chat-template-kwargs {"enable_thinking":true} '
+    '--load-format fastsafetensors'
+)
+
+
+@pytest.mark.parametrize("source", ["settings-defaults.ini", "hoover4.ini.development",
+                                    "hoover4.ini.release"])
+def test_the_model_server_keys_render_their_defaults(source):
+    path = FIXTURES / source if source == "settings-defaults.ini" else REPO_ROOT / source
+    env = deploy.render_ai_env(deploy.Config(path))
+
+    assert {key: env[key] for key in VLLM_DEFAULT_ENV} == VLLM_DEFAULT_ENV
+    assert env["VLLM_EXTRA_ARGS"] == VLLM_DEFAULT_EXTRA_ARGS
+    assert "VLLM_IMAGE" not in env
+
+
+def test_the_extra_args_are_empty_with_every_feature_off():
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"].update(vllm_image_input="false", vllm_default_thinking="false",
+                                     vllm_load_format="")
+    assert deploy.vllm_extra_args(cfg) == ""
+
+
+def test_a_chat_template_is_added_to_the_extra_args():
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"]["vllm_chat_template"] = "/opt/t/tool_chat.jinja"
+    assert deploy.vllm_extra_args(cfg).endswith(
+        "--load-format fastsafetensors --chat-template /opt/t/tool_chat.jinja")
+
+
+def test_an_image_limit_that_is_not_a_number_is_refused():
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"]["vllm_mm_image_limit"] = "seven"
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.vllm_extra_args(cfg)
+    assert "[ai_services] vllm_mm_image_limit" in str(refused.value)
+
+
+def test_the_model_server_folders_replace_the_huggingface_cache():
+    rows = {row.name: row for row in deploy.VOLUMES if row.image_service == "hoover4-vllm"}
+    assert sorted(rows) == ["dgemma_cache", "dgemma_model"]
+    assert all(row.reset_class == "cache" for row in rows.values())
+    assert "vllm_huggingface_cache" not in {row.name for row in deploy.VOLUMES}
+
+
+def test_the_model_server_publishes_both_ports():
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"].update(enabled="true", llm_selfhosted="true")
+    ports = [port for svc, port in deploy.expected_ports(cfg, "ai") if svc == "hoover4-vllm"]
+    assert ports == [21960, 21963]
+
+
+def test_the_model_server_service_reads_the_rendered_names():
+    service = dict(_ai_compose_documents())["ai_services/vllm.yaml"]["services"]["hoover4-vllm"]
+    env = deploy.render_ai_env(_config("settings-defaults.ini"))
+    import re
+    # `$${NAME}` is the shell's own variable, which compose does not interpolate.
+    used = set(re.findall(r"(?<!\$)\$\{([A-Z0-9_]+)", str(service)))
+    optional = {"AI_BIND_IP", "VLLM_API_KEY_FILE_HOST"}
+    assert used - optional <= set(env), sorted(used - optional - set(env))
+    assert service["image"] == "hoover4-vllm-dgemma:${VLLM_BUILD_REF}"
+    assert service["build"]["context"] == "${VLLM_BUILD_REPO}#${VLLM_BUILD_REF}"
+    assert service["ulimits"] == {"core": 0}
+
+
+def _weights(folder, shards, index=True):
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "config.json").write_text("{}")
+    if index:
+        weight_map = {"w%d" % i: name for i, name in enumerate(shards)}
+        (folder / "model.safetensors.index.json").write_text(
+            deploy.json.dumps({"weight_map": weight_map}))
+    for name in shards:
+        (folder / name).write_bytes(b"x")
+
+
+def test_complete_weights_are_found(tmp_path):
+    _weights(tmp_path, ["a.safetensors", "b.safetensors"])
+    assert deploy.weights_complete(tmp_path)
+
+
+def test_weights_without_config_are_incomplete(tmp_path):
+    _weights(tmp_path, ["a.safetensors"])
+    (tmp_path / "config.json").unlink()
+    assert not deploy.weights_complete(tmp_path)
+
+
+def test_weights_with_a_missing_shard_are_incomplete(tmp_path):
+    _weights(tmp_path, ["a.safetensors", "b.safetensors"])
+    (tmp_path / "b.safetensors").unlink()
+    assert not deploy.weights_complete(tmp_path)
+
+
+def test_weights_with_an_empty_shard_are_incomplete(tmp_path):
+    _weights(tmp_path, ["a.safetensors"])
+    (tmp_path / "a.safetensors").write_bytes(b"")
+    assert not deploy.weights_complete(tmp_path)
+
+
+def test_an_empty_folder_has_no_weights(tmp_path):
+    assert not deploy.weights_complete(tmp_path / "missing")
+
+
+def test_the_download_runs_in_the_built_image():
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"]["hf_token_file"] = ""
+    cmd = deploy.dgemma_download_command(cfg, "/v/dgemma_model")
+    assert cmd[:3] == ["run", "--rm", "--entrypoint"]
+    assert "/v/dgemma_model:/models/dgemma" in cmd
+    assert "/dev/null:/run/secrets/hf_token:ro" in cmd
+    assert "M=nvidia/diffusiongemma-26B-A4B-it-NVFP4" in cmd
+    assert "hoover4-vllm-dgemma:08b708e51bb8d9f4eba0e85b61dab0be7093d20e" in cmd
+
+
+def test_complete_weights_start_no_download(tmp_path):
+    cfg = _storage(tmp_path)
+    _weights(tmp_path / "dgemma_model", ["a.safetensors"])
+    rt = mock.Mock()
+    deploy.ensure_dgemma_weights(cfg, rt)
+    rt.run.assert_not_called()
+
+
+def test_a_download_that_leaves_the_folder_incomplete_halts(tmp_path):
+    cfg = _storage(tmp_path)
+    rt = mock.Mock()
+    rt.run.return_value = subprocess.CompletedProcess([], 0)
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.ensure_dgemma_weights(cfg, rt)
+    assert "incomplete" in str(refused.value)
+    rt.run.assert_called_once()

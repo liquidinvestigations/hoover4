@@ -89,3 +89,29 @@ def test_short_agent_activities_go_to_the_low_latency_queue():
         ]
         assert queues, f"{activity} is not scheduled"
         assert all(q == "CHAT_TASK_QUEUE" for q in queues), (activity, queues)
+
+
+RUN_WORKER_PATH = WORKFLOWS_PATH.resolve().parent.parent / "run_worker.py"
+
+
+def _chat_worker_slot_defaults() -> dict[str, int]:
+    """The code default of each `worker_concurrency` call in `run_chat_worker`."""
+    tree = ast.parse(RUN_WORKER_PATH.read_text(), filename=str(RUN_WORKER_PATH))
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.AsyncFunctionDef) and n.name == "run_chat_worker")
+    defaults = {}
+    for node in ast.walk(fn):
+        if (isinstance(node, ast.Call) and _name(node.func) == "worker_concurrency"
+                and len(node.args) == 2):
+            defaults[node.args[0].value] = node.args[1].value
+    return defaults
+
+
+def test_an_empty_slot_key_gives_four_model_slots_and_four_research_slots(monkeypatch):
+    from tasks.run_worker import worker_concurrency
+
+    defaults = _chat_worker_slot_defaults()
+    assert defaults == {"chat_model": 4, "chat_low_latency": 8, "research": 4}
+    for name in ("chat_model", "research"):
+        monkeypatch.setenv(f"HOOVER4_{name.upper()}_CONCURRENCY", "")
+        assert worker_concurrency(name, defaults[name]) == 4

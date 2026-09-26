@@ -180,6 +180,11 @@ The stream sends `data: {json}` frames with these events:
 | `tool_result` | `index`, `tool_call_id`, `name`, `content`, `measure` (the call measure, or `null`), `status` (`ok` or `error`) |
 | `delegate` | `index`, `tool_call_id`, `briefings` (each `objective`, `known`, `bring_back`) |
 
+While no event is ready, the stream sends the SSE comment line `: keepalive` every 30 s
+(`KEEPALIVE_SECONDS` in `api.py`). One model call can wait longer than the worker's 300 s
+read timeout of the stream, and each comment line restarts that timeout. A reader of
+`data: ` frames skips the comment lines, so the frames and their order do not change.
+
 `index` is the message position in the run's thread. A call that raised sends a
 `tool_result` with `status` `error`, and `content` is the error text the model receives. The
 graph cache key holds the run id, and the run's graph is released when its stream ends.
@@ -237,7 +242,9 @@ accepted and silently ignored in the request body (verified against the running 
 That is why the budget here is enforced as a `max_tokens` ceiling on the whole
 completion.
 
-`research_agent/thinking.py` adds the control:
+`research_agent/thinking.py` adds the control. `deploy.py` renders `AGENT_THINKING` from
+`[main_services] agent_thinking`, and an empty key renders `off`. The agent service uses `off`
+with a warning for a value outside the three modes.
 
 | `AGENT_THINKING` | behaviour |
 |---|---|
@@ -248,10 +255,16 @@ completion.
 `AGENT_THINKING_BUDGET_TOKENS` defaults to **750**, half a measured unbudgeted thought,
 which is the "half the thinking" setting.
 
-**Tool-calling turns keep thinking off, whatever the mode.** Choosing a tool is routing, not
-reasoning, and letting this model reason about it is what produces the repeated-call loop
-the `agent` node has a guard for. The budget applies to the `finalize` node, which writes
-prose and cannot call a tool, which is the turn where thinking changes the answer.
+**Tool-calling turns keep thinking off by default, whatever the mode.** Choosing a tool is
+routing, and letting Qwen3.5 reason about it produced the repeated-call loop the `agent`
+node has a guard for. Some models call tools more reliably with thinking on, and may answer
+directly instead of calling a tool with it off. `AGENT_TOOL_TURN_THINKING=true`, rendered
+from `[main_services] agent_tool_turn_thinking`, turns thinking on for the tool-calling
+turns. The budget applies to the `finalize` node, which writes prose and cannot call a tool.
+
+The thinking text arrives in the delta field `reasoning` from vLLM, and in
+`reasoning_content` from older servers and other providers. `chat_model.py` reads either
+field and gives the agent `reasoning_content`.
 
 **Two things to fix before shipping `on` or `budgeted` to real users:**
 
@@ -399,6 +412,8 @@ decodes strings only for the event stream, and does not change what a tool recei
 ## `LLM_STREAMING` and `disable_streaming`
 
 **Streaming is back on** (`LLM_STREAMING=true`), and the workaround is retained.
+`deploy.py` renders `LLM_STREAMING` from `[main_services] llm_streaming`, and an empty key
+renders `true`.
 
 Under **vLLM 0.11**, streamed tool-call deltas arrived with the function name but
 `arguments` absent. langchain turned those into `tool_call_chunk`s with `args=None`, which
@@ -455,6 +470,18 @@ The application is configured entirely via environment variables (rendered from
 - `LLM_BASE_URL`: Base URL for your LLM service
 - `LLM_MODEL`: Model name to use
 - `LLM_TEMPERATURE`: Temperature setting (default: 0.0)
+- `LLM_SEND_TEMPERATURE`: `false` leaves `temperature` out of every model request: the agent
+  turns and the compaction summary. `deploy.py` renders it from the active provider's
+  `send_temperature` key. Empty or unset is `true`. `research_agent/model_params.py` owns
+  the rule, and the worker's title request mirrors it.
+- `AGENT_MAX_OUTPUT_TOKENS`: the `max_tokens` of every agent model request. Empty sends no
+  cap. The compaction summary keeps its own ceiling, and the `budgeted` thinking mode sends
+  its own `max_tokens`, which takes precedence.
+- `LLM_REQUEST_TIMEOUT_SECONDS`: the read timeout of one agent model call, with a 10 s
+  connect timeout. When set, the model client does not retry, so a call that receives no
+  data for this long fails once and is not sent again. It is also the read timeout of the compaction summary. Empty keeps the client
+  default (600 s and 2 retries) and 180 s for the summary.
+- `AGENT_THINKING`, `AGENT_TOOL_TURN_THINKING`, `LLM_STREAMING`: see the sections above.
 - `AGENT_NAME`: Name of the agent
 - `SYSTEM_PROMPT`: overrides the rendered prompt; empty means render this profile's templates
 - `HOST`: Host to bind to (default: 0.0.0.0)

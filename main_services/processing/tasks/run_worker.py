@@ -648,7 +648,7 @@ async def run_chat_worker():
   """Serve the three agent queues from one process.
 
   One process rather than three because the slot counts, not the process boundary, are
-  what bounds the load: twenty slots of mostly-waiting work do not need three interpreters,
+  what bounds the load: twelve slots of mostly-waiting work do not need three interpreters,
   and one process means one place for the container's memory budget to apply. The queues
   stay separate so a long model turn cannot hold a write slot, and a research turn cannot
   take a chat-model slot.
@@ -687,10 +687,10 @@ async def run_chat_worker():
   client = await Client.connect("temporal:7233")
   attach_temporal_client(client)
   await ensure_search_attributes(client)
-  # An empty key yields 8 slots. The ini sets 12, 4 and 4.
-  model_slots = worker_concurrency("chat_model", 8)
+  # An empty key yields 4, 8 and 4. The ini sets 4, 4 and 4.
+  model_slots = worker_concurrency("chat_model", 4)
   low_latency_slots = worker_concurrency("chat_low_latency", 8)
-  research_slots = worker_concurrency("research", 8)
+  research_slots = worker_concurrency("research", 4)
   thread_count = model_slots + low_latency_slots + research_slots
   with concurrent.futures.ThreadPoolExecutor(max_workers=thread_count) as activity_executor:
     workers = [

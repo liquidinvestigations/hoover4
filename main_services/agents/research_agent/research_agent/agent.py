@@ -13,7 +13,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from agent_common import tool_packs
 from research_agent.chat_model import ThinkingChatOpenAI
-from research_agent import compaction, llm_events, prompts, subagents
+from research_agent import compaction, llm_events, model_params, prompts, subagents
 from research_agent.execution import (
     DELEGATE, MODEL_TURN, TOOL_RESULT, TOOL_START, make_execution_node, model_turn_event,
     page_share_client, pending_calls,
@@ -405,20 +405,25 @@ class MCPGatewayAgent:
         llm_kwargs = {
             "api_key": llm_api_key,
             "model": llm_model_env,
-            "temperature": llm_temperature,
             "streaming": streaming,
             "disable_streaming": not streaming,
             "stream_usage": True,
         }
+        # `temperature` only when the provider accepts it, and `max_tokens` when an output
+        # cap is set. When `LLM_REQUEST_TIMEOUT_SECONDS` is set, the client also gets that
+        # read timeout and no retries, so one model call stays inside it.
+        llm_kwargs.update(model_params.sampling_params(llm_temperature))
+        llm_kwargs.update(model_params.client_kwargs())
         if llm_base_url:
             llm_kwargs["base_url"] = llm_base_url
             
         # Thinking is configured per node, not globally, because the two nodes want
         # opposite things. See research_agent/thinking.py for the measurements.
         #
-        #  * `agent` may call a tool. Choosing a tool is routing, not reasoning, and
-        #    Qwen3.5-2B reasons its way into repeated identical calls when allowed to,
-        #    so thinking is always off here.
+        #  * `agent` may call a tool. Thinking is off here by default, because Qwen3.5-2B
+        #    reasoned its way into repeated identical calls when allowed to. Some models
+        #    call tools more reliably with thinking on, so AGENT_TOOL_TURN_THINKING=true
+        #    (`[main_services] agent_tool_turn_thinking`) turns it on for this node.
         #  * `finalize` writes prose and cannot call a tool. This is where thinking
         #    buys anything, so it gets AGENT_THINKING.
         log.info("LLM thinking configuration: %s", describe_thinking())

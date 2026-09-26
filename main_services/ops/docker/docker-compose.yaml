@@ -543,6 +543,15 @@ services:
       - "LLM_BASE_URL=${LLM_BASE_URL:-}"
       - "LLM_MODEL=${LLM_MODEL:-}"
       - "LLM_API_KEY_FILE=/run/secrets/llm_api_key"
+      # false when the active provider rejects `temperature`: the title request leaves it out.
+      - "LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}"
+      # The agent-run timeouts of tasks/P_agent/model_timeouts.py. Empty keeps the code
+      # defaults: no queue-wait limit, 900 s for a chat run, 2400 s for a plan run, and a
+      # 30 s title request.
+      - "HOOVER4_AGENT_QUEUE_WAIT_SECONDS=${HOOVER4_AGENT_QUEUE_WAIT_SECONDS:-}"
+      - "HOOVER4_CHAT_RUN_TIMEOUT_SECONDS=${HOOVER4_CHAT_RUN_TIMEOUT_SECONDS:-}"
+      - "HOOVER4_PLAN_RUN_TIMEOUT_SECONDS=${HOOVER4_PLAN_RUN_TIMEOUT_SECONDS:-}"
+      - "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS=${HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS:-}"
       # Read by tests/unit/test_temporal_readiness.py. See the mount above.
       - "HOOVER4_TEMPORAL_READY_RS=/mirror/website-backend-src/temporal_ready.rs"
 

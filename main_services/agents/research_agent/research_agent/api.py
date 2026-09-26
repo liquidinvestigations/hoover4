@@ -173,6 +173,13 @@ async def health_check():
         )
 
 
+#: How long the run stream may send nothing before it sends a keepalive line. It must stay
+#: well under the worker's read timeout of the stream (300 s).
+KEEPALIVE_SECONDS = 30.0
+#: An SSE comment: a line that starts with ":", which a reader of `data: ` frames skips.
+KEEPALIVE_LINE = ": keepalive\n\n"
+
+
 @app.post("/run/stream")
 async def run_stream(request: RunRequest):
     """Stream one agent run.
@@ -181,6 +188,11 @@ async def run_stream(request: RunRequest):
     stored messages. The stream sends `model_turn`, `tool_start` and `tool_result` events,
     and one `end` event, as `data: {json}` frames. The run's graph is released when the
     stream ends.
+
+    While no event is ready, the stream sends the SSE comment line `: keepalive` every
+    `KEEPALIVE_SECONDS`. One model call can wait far longer than the worker's read timeout
+    of the stream, and each line restarts that timeout. A reader that takes only `data: `
+    lines skips the comment lines.
     """
     if not hasattr(app.state, "agent") or app.state.agent is None:
         raise HTTPException(status_code=500, detail="Agent not initialized")
@@ -190,7 +202,7 @@ async def run_stream(request: RunRequest):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    async def generate():
+    async def produce(events: asyncio.Queue):
         try:
             async for chunk in agent.stream(
                 chat_history=[msg.model_dump() for msg in request.history],
@@ -207,14 +219,38 @@ async def run_stream(request: RunRequest):
                 tool_turns_used=request.tool_turns_used,
                 purpose=request.purpose,
             ):
-                yield f"data: {json.dumps(chunk, default=str)}\n\n"
+                await events.put(("data", chunk))
         except Exception as e:  # noqa: BLE001 - the caller reads the error frame
-            error_chunk = {
-                "is_task_complete": True,
-                "type": "error",
-                "content": f"Error during streaming: {str(e)}",
-            }
-            yield f"data: {json.dumps(error_chunk)}\n\n"
+            await events.put(("error", e))
+        finally:
+            await events.put(("done", None))
+
+    async def generate():
+        events: asyncio.Queue = asyncio.Queue()
+        task = asyncio.create_task(produce(events))
+        try:
+            while True:
+                try:
+                    # A cancelled get() removes no item, so a timeout loses no event.
+                    kind, item = await asyncio.wait_for(events.get(), KEEPALIVE_SECONDS)
+                except asyncio.TimeoutError:
+                    yield KEEPALIVE_LINE
+                    continue
+                if kind == "data":
+                    yield f"data: {json.dumps(item, default=str)}\n\n"
+                elif kind == "error":
+                    error_chunk = {
+                        "is_task_complete": True,
+                        "type": "error",
+                        "content": f"Error during streaming: {str(item)}",
+                    }
+                    yield f"data: {json.dumps(error_chunk)}\n\n"
+                    break
+                else:
+                    break
+        finally:
+            # A client that disconnects stops the run.
+            task.cancel()
 
     return StreamingResponse(
         generate(),

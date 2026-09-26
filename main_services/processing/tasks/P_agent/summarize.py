@@ -20,6 +20,8 @@ import os
 import time
 from dataclasses import dataclass
 
+from tasks.P_agent.model_timeouts import TIMEOUTS
+
 log = logging.getLogger(__name__)
 
 #: Budget for a *reasoning* model, not for two lines of output. At 120 a configured
@@ -42,8 +44,23 @@ MAX_TOKENS = 512
 NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}}
 
 #: A summariser that has not answered in this long has cost the conversation nothing but
-#: a title, so it is given far less rope than the turn itself.
-REQUEST_TIMEOUT = (10, 30)
+#: a title, so it is given far less time than the turn itself. The read timeout comes from
+#: `title_request_timeout_seconds` (30 s when the key is empty). It is a fixed value and does
+#: not follow the model's measured speed, because the title activity holds a `chat-queue`
+#: slot that every turn needs.
+REQUEST_TIMEOUT = (10, TIMEOUTS.title_request_seconds)
+
+
+def _send_temperature() -> bool:
+    """`LLM_SEND_TEMPERATURE`. Empty or unset is true.
+
+    `deploy.py` renders it from the active provider's `send_temperature` key. A provider that
+    rejects `temperature` gets a request without it. **Mirrored in
+    `main_services/agents/research_agent/research_agent/model_params.py`**, which reads the
+    same variable with the same rule for the agent's own requests.
+    """
+    raw = (os.getenv("LLM_SEND_TEMPERATURE") or "").strip().lower()
+    return raw not in ("0", "false", "no", "off")
 
 #: Labels the model prefixes its lines with however firmly the prompt asks for bare ones.
 _LABELS = ("title", "summary", "line 1", "line 2")
@@ -194,9 +211,10 @@ def title_and_summary(user_message: str, answer: str) -> TitleSummary:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.2,
         "max_tokens": MAX_TOKENS,
     }
+    if _send_temperature():
+        body["temperature"] = 0.2
     try:
         response = _post(base_url, {**body, **NO_THINKING})
         if 400 <= response.status_code < 500:

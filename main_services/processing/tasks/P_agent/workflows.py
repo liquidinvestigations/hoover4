@@ -25,6 +25,7 @@ with workflow.unsafe.imports_passed_through():
     from database import chat_todos
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P_agent import nagging
+    from tasks.P_agent.model_timeouts import TIMEOUTS
     from tasks.P_agent.activities import (
         AgentRunInput,
         AppendNagParams,
@@ -62,7 +63,7 @@ CHAT_TASK_QUEUE = "chat-queue"
 CHAT_MODEL_TASK_QUEUE = "chat-model-queue"
 
 #: The queue of the agent activity of a plan run: its planner and organizer runs and their
-#: sub-agents. Four slots, outside the twelve chat-model slots, so a research run cannot
+#: sub-agents. Its own slots, outside the chat-model slots, so a research run cannot
 #: take a chat turn's slot and an ingestion backlog cannot sit in front of it.
 RESEARCH_TASK_QUEUE = "research-queue"
 
@@ -100,13 +101,16 @@ def _was_cancelled(exc: BaseException) -> bool:
     return False
 
 
-#: The start-to-close timeout of `run_agent` for a run with no plan. A chat turn a person is
-#: watching that has produced nothing for a quarter of an hour is wedged, and failing it
-#: returns the answer slot to them.
-RUN_AGENT_TIMEOUT = timedelta(seconds=900)
+#: The start-to-close timeout of `run_agent` for a run with no plan, from
+#: `chat_run_timeout_seconds` (900 s when the key is empty). It is a budget bound: it follows
+#: the measured speed of the model server, so a slow model call that is alive is not failed.
+#: A dead worker is found by the heartbeat, which stays fixed.
+RUN_AGENT_TIMEOUT = TIMEOUTS.chat_run
 #: The start-to-close and heartbeat timeouts of `run_agent` for a run of a plan, of any
-#: kind. A research round runs longer than a chat turn and nobody waits at the screen.
-PLAN_RUN_AGENT_TIMEOUT = timedelta(seconds=2400)
+#: kind. A research round runs longer than a chat turn and nobody waits at the screen. The
+#: start-to-close timeout comes from `plan_run_timeout_seconds` (2,400 s when the key is
+#: empty).
+PLAN_RUN_AGENT_TIMEOUT = TIMEOUTS.plan_run
 PLAN_RUN_AGENT_HEARTBEAT_TIMEOUT = timedelta(minutes=10)
 
 #: Nothing in an `AgentRun` input or result is text. The largest result, a `run_agent`
@@ -236,6 +240,10 @@ class AgentRun:
                                     else RUN_AGENT_TIMEOUT),
             heartbeat_timeout=(PLAN_RUN_AGENT_HEARTBEAT_TIMEOUT if opened.plan
                                else CHAT_AGENT_HEARTBEAT_TIMEOUT),
+            # The wait for a free slot on the model queue, from `agent_queue_wait_seconds`.
+            # None sets no limit. Temporal does not retry this timeout, so a run that waits
+            # past it fails and `write_ending` records the failure.
+            schedule_to_start_timeout=TIMEOUTS.queue_wait,
             retry_policy=RetryPolicy(maximum_attempts=2),
             task_queue=opened.queue,
             cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
@@ -355,7 +363,7 @@ class AgentRun:
             await workflow.execute_activity(
                 summarize_if_first_turn,
                 RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
-                start_to_close_timeout=timedelta(seconds=90),
+                start_to_close_timeout=TIMEOUTS.title_activity,
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=1),
                 task_queue=CHAT_TASK_QUEUE,

@@ -93,8 +93,12 @@ VOLUMES = (
     Volume("serena_state", "serena", "serena", 0, 0, "hoover4-serena:local", "protected"),
     Volume("ai_models_cache", "ai", "hoover4-ai-server", 0, 0,
            "hoover4-ai-server:local", "cache"),
-    Volume("vllm_huggingface_cache", "ai", "hoover4-vllm", 0, 0,
-           "${VLLM_IMAGE:-vllm/vllm-openai:v0.17.1}", "cache"),
+    # The model server's weights, downloaded once by ensure_dgemma_weights, and its
+    # compile and JIT cache.
+    Volume("dgemma_model", "ai", "hoover4-vllm", 0, 0,
+           "hoover4-vllm-dgemma:${VLLM_BUILD_REF}", "cache"),
+    Volume("dgemma_cache", "ai", "hoover4-vllm", 0, 0,
+           "hoover4-vllm-dgemma:${VLLM_BUILD_REF}", "cache"),
     Volume("easyocr_models_cache", "ai", "hoover4-easyocr-gpu", 0, 0,
            "hoover4-easyocr:local", "cache"),
 )
@@ -126,14 +130,37 @@ DEFAULTS = {
         # local LLM: the agent model, served OpenAI-compatible.
         "llm_selfhosted": "false",
         "vllm_port": "21960",
-        "vllm_image": "vllm/vllm-openai:v0.17.1",
-        "vllm_model": "Qwen/Qwen3.5-35B-A3B",
-        "vllm_served_name": "qwen3.5-35b-a3b",
-        "vllm_gpu_fraction": "0.50",
+        # The structured server of the same container, published on bind_ip.
+        "vllm_structured_port": "21963",
+        # The image is built from this Git repository at this commit.
+        "vllm_build_repo": "https://github.com/mmastrac/djev-spark.git",
+        "vllm_build_ref": "08b708e51bb8d9f4eba0e85b61dab0be7093d20e",
+        # The checkpoint that deploy.py downloads once into the dgemma_model folder.
+        "vllm_model": "nvidia/diffusiongemma-26B-A4B-it-NVFP4",
+        "vllm_served_name": "dgemma",
+        "vllm_gpu_fraction": "0.60",
         "vllm_max_model_len": "262144",
-        "vllm_max_num_seqs": "16",
-        "vllm_tool_parser": "qwen3_xml",
-        "vllm_reasoning_parser": "qwen3",
+        "vllm_max_num_seqs": "8",
+        "vllm_kv_cache_gb": "28",
+        "vllm_headroom_gb": "4",
+        "vllm_transient_copies": "2",
+        "vllm_torch_mem_fraction": "0.85",
+        "vllm_mem_limit": "97g",
+        "vllm_attention_backend": "TRITON_ATTN",
+        "vllm_canvas": "256",
+        "vllm_canvas_schedule": "[[1, 2, 256], [3, 6, 128], [7, 32, 64]]",
+        "vllm_max_samples": "32",
+        "vllm_tool_parser": "gemma4",
+        "vllm_reasoning_parser": "gemma4",
+        # The four keys below become VLLM_EXTRA_ARGS (vllm_extra_args).
+        "vllm_image_input": "true",
+        "vllm_mm_max_soft_tokens": "1120",
+        "vllm_mm_image_limit": "7",
+        "vllm_default_thinking": "true",
+        # Empty omits --load-format.
+        "vllm_load_format": "fastsafetensors",
+        # A chat template path inside the container. Empty keeps the model's own template.
+        "vllm_chat_template": "",
         "vllm_api_key_file": "",
         # GPU NER + embeddings
         "ai_server_enabled": "true",
@@ -215,6 +242,22 @@ DEFAULTS = {
         "agent_max_page_tokens": "",
         "agent_completion_reserve_tokens": "",
         "agent_catalogue_match_count": "",
+        # The budget timeouts of an agent run, in whole seconds. Empty keeps the code
+        # defaults: no queue-wait limit, 900 s for a chat run, 2400 s for a plan run, a
+        # 30 s title request, and the model client's own timeout and 2 retries.
+        "agent_queue_wait_seconds": "",
+        "chat_run_timeout_seconds": "",
+        "plan_run_timeout_seconds": "",
+        "title_request_timeout_seconds": "",
+        "llm_request_timeout_seconds": "",
+        # The output cap of one agent model request, in tokens. Empty sends no cap.
+        "agent_max_output_tokens": "",
+        # Thinking of the turns that may call a tool. Empty is false.
+        "agent_tool_turn_thinking": "",
+        # Thinking of the prose turn: off, on or budgeted. Empty is off.
+        "agent_thinking": "",
+        # Token streaming of the agent's model calls. Empty is true.
+        "llm_streaming": "",
         "mcp_browser_mem_limit": "24G",
         "full_research_agent_workers": "4",
         # Three internet-facing MCP servers: browser, metasearch, whois. Off means
@@ -378,18 +421,22 @@ DEFAULTS = {
         "base_url": "",  # empty = derived: http://<ai_services.host>:<vllm_port>/v1
         "model": "",     # empty = vllm_served_name
         "api_key_file": "",
+        # false: every model request leaves `temperature` out, because the server rejects it.
+        "send_temperature": "false",
     },
     "llm_provider.nvidia": {
         "enabled": "true",
         "base_url": "https://integrate.api.nvidia.com/v1",
         "model": "",
         "api_key_file": "",
+        "send_temperature": "true",
     },
     "llm_provider.moonshot": {
         "enabled": "false",
         "base_url": "https://api.moonshot.ai/v1",
         "model": "",
         "api_key_file": "",
+        "send_temperature": "true",
     },
 }
 
@@ -697,6 +744,69 @@ def agent_probe_env(cfg):
     return env
 
 
+#: The whole-number keys of the agent model calls and their environment names. Empty
+#: renders empty, which keeps the code default of the reader.
+AGENT_MODEL_NUMBER_KEYS = (
+    ("agent_queue_wait_seconds", "HOOVER4_AGENT_QUEUE_WAIT_SECONDS"),
+    ("chat_run_timeout_seconds", "HOOVER4_CHAT_RUN_TIMEOUT_SECONDS"),
+    ("plan_run_timeout_seconds", "HOOVER4_PLAN_RUN_TIMEOUT_SECONDS"),
+    ("title_request_timeout_seconds", "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS"),
+    ("llm_request_timeout_seconds", "LLM_REQUEST_TIMEOUT_SECONDS"),
+    ("agent_max_output_tokens", "AGENT_MAX_OUTPUT_TOKENS"),
+)
+
+#: The thinking modes of `research_agent/thinking.py`.
+AGENT_THINKING_MODES = ("off", "on", "budgeted")
+
+
+def agent_model_env(cfg):
+    """The timeouts, the output cap and the thinking and streaming switches of the agent
+    model calls. The worker reads the four `HOOVER4_*` timeouts, and both agent services
+    read the rest.
+
+    A number key must be a whole number of at least 1 when it is set. `agent_thinking`
+    renders as written, and an empty value renders `off`. A value outside the three modes
+    gets a warning from `agent_model_warnings`, and the agent service then uses `off`.
+    """
+    m = "main_services"
+    env = {}
+    for key, name in AGENT_MODEL_NUMBER_KEYS:
+        env[name] = str(whole_number(cfg, key)) if cfg.get(m, key).strip() else ""
+    env["AGENT_TOOL_TURN_THINKING"] = (
+        "true" if cfg.get(m, "agent_tool_turn_thinking").strip()
+        and cfg.get_bool(m, "agent_tool_turn_thinking") else "false")
+    env["AGENT_THINKING"] = cfg.get(m, "agent_thinking").strip() or "off"
+    env["LLM_STREAMING"] = (
+        "false" if cfg.get(m, "llm_streaming").strip()
+        and not cfg.get_bool(m, "llm_streaming") else "true")
+    return env
+
+
+def agent_model_warnings(cfg):
+    """Warnings for agent model keys that render, and that likely do not do what was meant.
+
+    Warnings only: a refusal here would be a new mechanism, which a person decides.
+    """
+    m = "main_services"
+    out = []
+    thinking = cfg.get(m, "agent_thinking").strip()
+    if thinking and thinking.lower() not in AGENT_THINKING_MODES:
+        out.append("warning: [main_services] agent_thinking = %s is not one of %s, so the "
+                   "agent services use off" % (thinking, ", ".join(AGENT_THINKING_MODES)))
+    request = cfg.get(m, "llm_request_timeout_seconds").strip()
+    if request:
+        request_seconds = whole_number(cfg, "llm_request_timeout_seconds")
+        for key in ("chat_run_timeout_seconds", "plan_run_timeout_seconds"):
+            raw = cfg.get(m, key).strip()
+            run_seconds = whole_number(cfg, key) if raw else (
+                900 if key == "chat_run_timeout_seconds" else 2400)
+            if run_seconds < request_seconds:
+                out.append("warning: [main_services] %s = %d is under "
+                           "llm_request_timeout_seconds = %d, so one model call can "
+                           "outlast its run attempt" % (key, run_seconds, request_seconds))
+    return out
+
+
 _SIZE_UNITS = {"": 1, "K": 1024, "M": 1024 ** 2, "G": 1024 ** 3, "T": 1024 ** 4}
 
 
@@ -709,14 +819,14 @@ def size_bytes(cfg, key):
     return int(match.group(1)) * _SIZE_UNITS[match.group(2).upper()]
 
 
-def whole_number(cfg, key, minimum=1):
-    raw = cfg.get("main_services", key).strip()
+def whole_number(cfg, key, minimum=1, section="main_services"):
+    raw = cfg.get(section, key).strip()
     try:
         value = int(raw)
     except ValueError:
-        fail("[main_services] %s is not a whole number: %r" % (key, raw))
+        fail("[%s] %s is not a whole number: %r" % (section, key, raw))
     if value < minimum:
-        fail("[main_services] %s must be at least %d, got %d" % (key, minimum, value))
+        fail("[%s] %s must be at least %d, got %d" % (section, key, minimum, value))
     return value
 
 
@@ -853,6 +963,82 @@ def set_volume_owners(cfg, side, rt, env):
         if result.returncode != 0:
             fail("could not set the owner of %s: %s"
                  % (folder, (result.stderr or "").strip()))
+
+
+#: The script the one-time weight download runs inside the model server's image. It
+#: reads the repository id from M and an optional token from the mounted token file.
+DGEMMA_DOWNLOAD_SCRIPT = (
+    "import os; from huggingface_hub import snapshot_download; "
+    "t = open('/run/secrets/hf_token').read().strip() or None; "
+    "snapshot_download(repo_id=os.environ['M'], local_dir='/models/dgemma', token=t)"
+)
+
+
+def dgemma_image(cfg):
+    """The image tag of hoover4-vllm, as ai_services/compose/vllm.yaml writes it."""
+    return "hoover4-vllm-dgemma:%s" % cfg.get("ai_services", "vllm_build_ref").strip()
+
+
+def weights_complete(folder):
+    """Whether folder holds config.json and every shard that the safetensors index names,
+    each with a size above zero. A folder with no index needs config.json and one
+    non-empty *.safetensors file."""
+    folder = Path(folder)
+    if not (folder / "config.json").is_file():
+        return False
+    index = folder / "model.safetensors.index.json"
+    if not index.is_file():
+        return any(p.stat().st_size > 0 for p in folder.glob("*.safetensors"))
+    try:
+        weight_map = json.loads(index.read_text()).get("weight_map") or {}
+    except (OSError, ValueError):
+        return False
+    for shard in set(weight_map.values()):
+        path = folder / shard
+        if not path.is_file() or path.stat().st_size == 0:
+            return False
+    return bool(weight_map)
+
+
+def dgemma_download_command(cfg, folder):
+    """The one-shot container that downloads the weights into folder."""
+    token = cfg.get("ai_services", "hf_token_file").strip() or "/dev/null"
+    return ["run", "--rm", "--entrypoint", "python3",
+            "-v", "%s:/models/dgemma" % folder,
+            "-v", "%s:/run/secrets/hf_token:ro" % token,
+            "-e", "HF_HUB_OFFLINE=0",
+            "-e", "M=%s" % cfg.get("ai_services", "vllm_model").strip(),
+            dgemma_image(cfg), "-c", DGEMMA_DOWNLOAD_SCRIPT]
+
+
+def ensure_dgemma_weights(cfg, rt):
+    """Download the model server's weights once into the dgemma_model folder.
+
+    Runs on the ai side after the image exists and before `up`, only when
+    llm_selfhosted is true. A complete folder is kept. The download resumes a partial
+    folder, and deploy.py fails when the folder is still incomplete after it.
+    """
+    row = [r for r in VOLUMES if r.name == "dgemma_model"][0]
+    folder = volume_folder(volumes_path(cfg), row)
+    if weights_complete(folder):
+        return
+    model = cfg.get("ai_services", "vllm_model").strip()
+    print("weights: downloading %s into %s. This runs for several minutes."
+          % (model, folder))
+    result = rt.run(dgemma_download_command(cfg, folder))
+    if result.returncode != 0 or not weights_complete(folder):
+        fail("the weights of %s are incomplete in %s" % (model, folder))
+
+
+def ensure_dgemma_image(cfg, rt):
+    """Build the model server's image when it does not exist yet. The weight download
+    runs in this image, so it has to exist before `up` builds it."""
+    found = rt.run(["image", "inspect", dgemma_image(cfg)],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if found.returncode == 0:
+        return
+    print("build: %s does not exist yet, so it is built first" % dgemma_image(cfg))
+    run_or_fail(compose_command(cfg, "ai", rt, ["build", "hoover4-vllm"]))
 
 
 def _folder_is_empty(folder):
@@ -1135,6 +1321,9 @@ def render_main_env(cfg):
         env["LLM_BASE_URL"] = cfg.llm_base_url(provider)
         env["LLM_MODEL"] = cfg.llm_model(provider)
         env["LLM_PROVIDER_NAME"] = provider
+        env["LLM_SEND_TEMPERATURE"] = (
+            "true" if cfg.get_bool("llm_provider." + provider, "send_temperature")
+            else "false")
         key_file = cfg.llm_api_key_file(provider)
         if key_file:
             # Bind-mount source only; the container reads /run/secrets/llm_api_key.
@@ -1143,6 +1332,7 @@ def render_main_env(cfg):
         env["LLM_BASE_URL"] = ""
         env["LLM_MODEL"] = ""
         env["LLM_PROVIDER_NAME"] = ""
+        env["LLM_SEND_TEMPERATURE"] = "true"
 
     env["TEMPORAL_UI_URL"] = "http://localhost:%s" % cfg.get(m, "temporal_ui_port")
     env["EXTERNAL_CLICKHOUSE_URL"] = "http://localhost:%s" % cfg.get(m, "clickhouse_http_port")
@@ -1271,6 +1461,7 @@ def render_main_env(cfg):
     for kind in ("chat", "subagent", "planner", "organizer"):
         env[f"AGENT_PACKS_{kind.upper()}"] = cfg.get(m, f"agent_packs_{kind}") or "all"
     env.update(agent_probe_env(cfg))
+    env.update(agent_model_env(cfg))
     env["HOOVER4_MCP_BROWSER_MEM_LIMIT"] = cfg.get(m, "mcp_browser_mem_limit")
     env["FULL_RESEARCH_AGENT_WORKERS"] = cfg.get(m, "full_research_agent_workers")
     env["FULL_RESEARCH_MCP_SERVERS"] = (
@@ -1279,6 +1470,66 @@ def render_main_env(cfg):
     )
 
     return env
+
+
+#: `[ai_services]` keys of the model server that render unchanged, with their env names.
+VLLM_KEY_ENV = (
+    ("vllm_structured_port", "VLLM_STRUCTURED_PORT"),
+    ("vllm_build_repo", "VLLM_BUILD_REPO"),
+    ("vllm_build_ref", "VLLM_BUILD_REF"),
+    ("vllm_gpu_fraction", "VLLM_GPU_FRACTION"),
+    ("vllm_max_model_len", "VLLM_MAX_MODEL_LEN"),
+    ("vllm_max_num_seqs", "VLLM_MAX_NUM_SEQS"),
+    ("vllm_kv_cache_gb", "VLLM_KV_CACHE_GB"),
+    ("vllm_headroom_gb", "VLLM_HEADROOM_GB"),
+    ("vllm_transient_copies", "VLLM_TRANSIENT_COPIES"),
+    ("vllm_torch_mem_fraction", "VLLM_TORCH_MEM_FRACTION"),
+    ("vllm_mem_limit", "VLLM_MEM_LIMIT"),
+    ("vllm_attention_backend", "VLLM_ATTENTION_BACKEND"),
+    ("vllm_canvas", "VLLM_CANVAS"),
+    ("vllm_canvas_schedule", "VLLM_CANVAS_SCHEDULE"),
+    ("vllm_max_samples", "VLLM_MAX_SAMPLES"),
+    ("vllm_tool_parser", "VLLM_TOOL_PARSER"),
+    ("vllm_reasoning_parser", "VLLM_REASONING_PARSER"),
+)
+
+#: Values of the djev-spark image that hoover4 does not tune. They are the values of the
+#: upstream compose file, and no ini key carries them.
+DGEMMA_FIXED_ENV = {
+    "VLLM_TLS_PORT": "0",
+    "VLLM_TEST_PAGE": "1",
+    "VLLM_CONSTRAINED": "1",
+    "VLLM_ENGINE_SAMPLES": "1",
+    "VLLM_USE_V2_MODEL_RUNNER": "1",
+    "VLLM_MAX_JOBS": "4",
+    "VLLM_FLASHINFER_NVCC_THREADS": "2",
+}
+
+
+def vllm_extra_args(cfg):
+    """The arguments the image's entrypoint adds to `vllm serve`, as one string.
+
+    The entrypoint splits the string on spaces, so each JSON value is written without a
+    space.
+    """
+    a = "ai_services"
+    parts = []
+    if cfg.get_bool(a, "vllm_image_input"):
+        parts += ["--no-language-model-only",
+                  "--mm-processor-kwargs",
+                  '{"max_soft_tokens":%d}' % whole_number(
+                      cfg, "vllm_mm_max_soft_tokens", section=a),
+                  "--limit-mm-per-prompt",
+                  '{"image":%d}' % whole_number(cfg, "vllm_mm_image_limit", section=a)]
+    if cfg.get_bool(a, "vllm_default_thinking"):
+        parts += ["--default-chat-template-kwargs", '{"enable_thinking":true}']
+    load_format = cfg.get(a, "vllm_load_format").strip()
+    if load_format:
+        parts += ["--load-format", load_format]
+    chat_template = cfg.get(a, "vllm_chat_template").strip()
+    if chat_template:
+        parts += ["--chat-template", chat_template]
+    return " ".join(parts)
 
 
 def render_ai_env(cfg):
@@ -1294,18 +1545,15 @@ def render_ai_env(cfg):
     for key in ("vllm_port", "ai_server_port", "easyocr_port"):
         env[key.upper()] = cfg.get(a, key)
 
-    env["VLLM_IMAGE"] = cfg.get(a, "vllm_image")
     env["LLM_MODEL_NAME"] = cfg.get(a, "vllm_model")
     env["LLM_SERVED_NAME"] = cfg.get(a, "vllm_served_name")
-    env["VLLM_GPU_FRACTION"] = cfg.get(a, "vllm_gpu_fraction")
-    env["VLLM_MAX_MODEL_LEN"] = cfg.get(a, "vllm_max_model_len")
-    env["VLLM_MAX_NUM_SEQS"] = cfg.get(a, "vllm_max_num_seqs")
-    env["VLLM_TOOL_PARSER"] = cfg.get(a, "vllm_tool_parser")
-    env["VLLM_REASONING_PARSER"] = cfg.get(a, "vllm_reasoning_parser")
+    for key, name in VLLM_KEY_ENV:
+        env[name] = cfg.get(a, key)
+    env["VLLM_EXTRA_ARGS"] = vllm_extra_args(cfg)
+    env.update(DGEMMA_FIXED_ENV)
     if cfg.get(a, "vllm_api_key_file"):
         env["VLLM_API_KEY_FILE_HOST"] = cfg.get(a, "vllm_api_key_file")
-    if cfg.get(a, "hf_token_file"):
-        env["HF_TOKEN_FILE_HOST"] = cfg.get(a, "hf_token_file")
+    # hf_token_file is read by ensure_dgemma_weights only, so it renders no variable.
 
     env["AI_SERVER_ENABLE_HALF_PRECISION"] = cfg.get(a, "half_precision")
     env["AI_SERVER_ENABLE_TORCH_COMPILE"] = cfg.get(a, "torch_compile")
@@ -1686,6 +1934,9 @@ def expected_ports(cfg, side):
             if rel in selected_overlays(cfg, "ai"):
                 entries.append((svc, "ai_services", flag.replace("_enabled", "_port")
                                 if flag != "llm_selfhosted" else "vllm_port"))
+                if flag == "llm_selfhosted":
+                    # The structured server of the same container has its own port.
+                    entries.append((svc, "ai_services", "vllm_structured_port"))
         return [(svc, int(cfg.get(sec, key))) for svc, sec, key in entries]
     backdoor_on = cfg.get_bool("main_services", "development_auth_backdoor_enabled")
     checks = []
@@ -2029,6 +2280,9 @@ def compose_up(cfg, side, rt, build):
         up_args = ["up", "-d", "--force-recreate"]
     else:
         up_args = ["up", "-d"]
+    if side == "ai" and "compose/vllm.yaml" in selected_overlays(cfg, "ai"):
+        ensure_dgemma_image(cfg, rt)
+        ensure_dgemma_weights(cfg, rt)
     run_or_fail(compose_command(cfg, side, rt, up_args))
     if side == "main":
         stop_disabled_internet_tools(cfg, rt)
@@ -2373,6 +2627,9 @@ def main(argv=None):
         # Each refusal of a start is a warning here, and the env still prints.
         for problem in start_refusals(cfg, side):
             print("warning: %s" % problem, file=sys.stderr)
+        if side == "main":
+            for warning in agent_model_warnings(cfg):
+                print(warning, file=sys.stderr)
         env = render_ai_env(cfg) if side == "ai" else render_main_env(cfg)
         path = AI_COMPOSE_DIR / ".env" if side == "ai" else MAIN_COMPOSE_DIR / ".env"
         print("# would write %s:" % path)
@@ -2433,6 +2690,8 @@ def main(argv=None):
                                  " (changed)" if dc_changed else " (unchanged)"))
         warning = ocr_concurrency_warning(cfg)
         if warning:
+            print(warning)
+        for warning in agent_model_warnings(cfg):
             print(warning)
 
     if args.down:
