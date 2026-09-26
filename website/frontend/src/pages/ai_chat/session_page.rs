@@ -15,6 +15,7 @@ use crate::api::chat_api::{
 use crate::components::chat_components::{
     ChatComposer, ChatGateOverlay, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
 };
+use crate::components::chat_components::doc_ref_card::ChatDocOpen;
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
 use crate::components::suspend_boundary::SuspendWrapper;
@@ -110,6 +111,18 @@ fn AiChatSessionRoot(
             move |(id, _page): (Option<DocumentIdentifier>, u64)| {
                 set_selected.call(id);
             }
+        }),
+    });
+
+    // A document card opens its document at its own find query, so the find query of
+    // an earlier card does not stay in the viewer.
+    use_context_provider(move || ChatDocOpen {
+        open: Callback::new(move |(id, find_query): (DocumentIdentifier, String)| {
+            navigator().push(Route::ai_chat_session(
+                session_id.read().clone(),
+                Some(id),
+                Some(DocViewerState::from_find_query(find_query)),
+            ));
         }),
     });
 

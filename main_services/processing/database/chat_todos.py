@@ -375,12 +375,15 @@ def edit_steps(username: str, session_id: str, steps) -> dict:
 
     A current step whose text equals a new step, with whitespace folded, keeps its id,
     status and note. A new step gets the next free number as its id. A current step that
-    is not in `steps` is removed.
+    is not in `steps` is removed. A session with no plan, or a plan with an empty goal, is
+    refused with the error of `write_steps`, because this call keeps the goal.
     """
     texts = _step_texts(steps)
     if not texts:
         raise TodoError("steps is empty. Give at least one step.")
     current = read_todo(username, session_id)
+    if not normalise_goal(current["goal"]):
+        raise TodoError("the goal is empty. Write one or two sentences.")
     unused = list(current["items"])
     numbers = [int(item["id"]) for item in current["items"] if item["id"].isdigit()]
     next_id = max(numbers, default=0) + 1

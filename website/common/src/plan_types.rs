@@ -95,11 +95,36 @@ pub struct PlanView {
     /// For each section of the approved tree: `node_id`, `title`, `tasks`, `state`,
     /// `corrections`, `defect_classes` and `failed`. Empty before execution.
     pub sections_json: String,
+    /// The `end_reason` of the newest agent run of a terminal plan run that has one:
+    /// `step_budget` or `repeated_call`. Empty for a live plan run.
+    #[serde(default)]
+    pub end_reason: String,
 }
 
 impl PlanView {
     pub fn is_terminal(&self) -> bool {
         PLAN_TERMINAL_STATES.contains(&self.state.as_str())
+    }
+
+    /// Why a terminal research run stopped short, as the transcript says it, or `None`.
+    ///
+    /// A cancelled plan run has none, because a person stopped it. "no section ran" means
+    /// an approved plan whose sections recorded no run, which is what a run whose
+    /// briefings were all refused leaves.
+    pub fn stop_reason(&self) -> Option<&'static str> {
+        if !self.is_terminal() || self.state == "cancelled" {
+            return None;
+        }
+        match self.end_reason.as_str() {
+            "step_budget" => return Some("the step budget ran out"),
+            "repeated_call" => return Some("a repeated call"),
+            _ => {}
+        }
+        let ran = serde_json::from_str::<Vec<serde_json::Value>>(&self.sections_json)
+            .unwrap_or_default()
+            .iter()
+            .any(|s| s.get("state").and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()));
+        (self.approved_version > 0 && !ran).then_some("no section ran")
     }
 }
 
@@ -174,5 +199,34 @@ mod tests {
     fn an_empty_tree_has_no_section_and_no_root() {
         assert!(!has_section(&[]));
         assert_eq!(root_node_id(&[]), "");
+    }
+
+    fn view(state: &str, approved_version: u64, sections_json: &str, end_reason: &str) -> PlanView {
+        PlanView {
+            run_id: "r".into(),
+            plan_id: "p".into(),
+            state: state.into(),
+            reviewed_version: 1,
+            approved_version,
+            review_round: 1,
+            version: 1,
+            nodes: Vec::new(),
+            sections_json: sections_json.into(),
+            end_reason: end_reason.into(),
+        }
+    }
+
+    #[test]
+    fn a_stopped_research_run_names_its_reason() {
+        let none_ran = r#"[{"node_id":"a","state":""}]"#;
+        let one_ran = r#"[{"node_id":"a","state":"completed"}]"#;
+        assert_eq!(view("completed", 1, none_ran, "").stop_reason(), Some("no section ran"));
+        assert_eq!(view("completed", 1, "[]", "").stop_reason(), Some("no section ran"));
+        assert_eq!(view("completed", 1, one_ran, "step_budget").stop_reason(), Some("the step budget ran out"));
+        assert_eq!(view("failed", 1, one_ran, "repeated_call").stop_reason(), Some("a repeated call"));
+        assert_eq!(view("completed", 1, one_ran, "").stop_reason(), None);
+        assert_eq!(view("cancelled", 1, none_ran, "").stop_reason(), None, "a person stopped it");
+        assert_eq!(view("executing", 1, none_ran, "").stop_reason(), None, "the run is live");
+        assert_eq!(view("completed", 0, "[]", "").stop_reason(), None, "no plan was approved");
     }
 }

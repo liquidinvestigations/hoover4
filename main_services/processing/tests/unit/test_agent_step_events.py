@@ -84,6 +84,39 @@ def test_error_class_of_an_attempt_cancelled_at_its_limit(monkeypatch):
     assert events.error_class_of(ValueError("interrupted")) == "start_to_close_timeout"
 
 
+def _attempt_info(monkeypatch, elapsed_seconds, limit_seconds):
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    from temporalio import activity
+
+    started = datetime.now(timezone.utc) - timedelta(seconds=elapsed_seconds)
+    limit = None if limit_seconds is None else timedelta(seconds=limit_seconds)
+    monkeypatch.setattr(activity, "info", lambda: SimpleNamespace(
+        started_time=started, start_to_close_timeout=limit))
+
+
+def test_an_attempt_cancelled_at_its_start_to_close_limit_is_that_timeout(monkeypatch):
+    _in_an_attempt(monkeypatch, timed_out=True)
+    _attempt_info(monkeypatch, elapsed_seconds=600, limit_seconds=600)
+    assert events.error_class_of(CancelledError()) == "start_to_close_timeout"
+    assert "start_to_close_timeout" not in events.ATTEMPT_WRITES_NO_ROW
+
+
+def test_an_attempt_cancelled_before_its_limit_lost_its_heartbeat(monkeypatch):
+    # The workflow writes the row of this failure, so the attempt writes none.
+    _in_an_attempt(monkeypatch, timed_out=True)
+    _attempt_info(monkeypatch, elapsed_seconds=45, limit_seconds=600)
+    assert events.error_class_of(CancelledError()) == "heartbeat_timeout"
+    assert "heartbeat_timeout" in events.ATTEMPT_WRITES_NO_ROW
+
+
+def test_an_attempt_with_no_start_to_close_limit_lost_its_heartbeat(monkeypatch):
+    _in_an_attempt(monkeypatch, timed_out=True)
+    _attempt_info(monkeypatch, elapsed_seconds=45, limit_seconds=None)
+    assert events.error_class_of(CancelledError()) == "heartbeat_timeout"
+
+
 def test_error_class_of_an_attempt_cancelled_by_a_stop(monkeypatch):
     _in_an_attempt(monkeypatch, cancel_requested=True)
     assert events.error_class_of(CancelledError()) == "cancelled"

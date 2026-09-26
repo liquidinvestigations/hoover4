@@ -200,8 +200,9 @@ def store(monkeypatch):
     )
     monkeypatch.setattr(stream_writer, "context_window_for", lambda model: 0)
     monkeypatch.setattr(stream_writer, "_chat_model", lambda: "test-model")
-    monkeypatch.setattr(stream_writer, "_chat_history", lambda *a: [])
+    monkeypatch.setattr(agent_runs, "read_earlier_threads", lambda *a: [])
     monkeypatch.setattr(steps, "_finish_stream_rows_from", lambda *a: None)
+    monkeypatch.setattr(steps, "thinking_setting", lambda: True)
     monkeypatch.setattr(activities, "_insert_chat_row",
                         lambda u, s, seq, role, **f: written["chat"].append(
                             {"seq": seq, "role": role, **f}))
@@ -243,6 +244,30 @@ def _step(step_no=1, mode="tools", reason=""):
 # ---------------------------------------------------------------- model_step
 
 
+@pytest.mark.parametrize("stored, on", [
+    (None, True), ("", True), ("on", True), ("off", False), (" off ", False)])
+def test_the_thinking_switch_is_on_unless_the_setting_says_off(monkeypatch, stored, on):
+    import database.clickhouse as ch
+    monkeypatch.setattr(ch, "get_server_setting", lambda key: stored)
+    assert steps.thinking_setting() is on
+
+
+def test_a_failed_read_of_the_thinking_switch_sends_on(monkeypatch):
+    import database.clickhouse as ch
+
+    def fail(key):
+        raise ConnectionError("no database")
+    monkeypatch.setattr(ch, "get_server_setting", fail)
+    assert steps.thinking_setting() is True
+
+
+def test_each_model_call_sends_the_thinking_switch_it_reads(store, monkeypatch):
+    monkeypatch.setattr(steps, "thinking_setting", lambda: False)
+    _serve(monkeypatch, store, _frames(text="first"))
+    _step(step_no=1)
+    assert store["requests"][0]["thinking"] is False
+
+
 def test_a_reply_with_calls_takes_seqs_in_call_order_with_delegations_last(store, monkeypatch):
     entries = [_entry(LONG_ID_A, "search_collections", {"query": "alpha"}),
                _entry("d1", "run_subagent", {"tasks": []}, kind="delegation"),
@@ -261,7 +286,8 @@ def test_a_reply_with_calls_takes_seqs_in_call_order_with_delegations_last(store
     tool_rows = [a for a, k in store["stream"] if a[1] == "tool"]
     assert [r[0] for r in tool_rows] == [5, 7, 6]
     # The request sends the stored call entries as `id`, `name` and `args` only.
-    assert store["requests"][0]["messages"] == [{"role": "human", "content": "q"}]
+    assert store["requests"][0]["messages"] == [
+        {"role": "human", "content": "q", "thread_id": RUN_ID, "idx": 0}]
     assert _payload_bytes(result) < agent_workflows.AGENT_RUN_PAYLOAD_BYTES
 
 
@@ -449,6 +475,29 @@ def test_a_step_no_attempt_could_record_gets_one_workflow_row(store, step_events
         0, False, error_class, "tool", "a")
 
 
+def test_the_workflow_row_of_a_timed_out_model_step_keeps_its_mode(store, step_events):
+    ActivityEnvironment().run(steps.record_step_failure, StepFailure(
+        run_id=RUN_ID, username="u", session_id="s", step="model", mode="final",
+        name="m", task_queue="chat-model-queue", error_class="heartbeat_timeout"))
+    [event] = step_events
+    assert (event.step, event.mode, event.attempt, event.error_class) == (
+        "model", "final", 0, "heartbeat_timeout")
+
+
+def test_an_attempt_that_lost_its_heartbeat_writes_no_row(store, step_events, monkeypatch):
+    from database import agent_step_events as events
+
+    monkeypatch.setattr(events, "error_class_of", lambda exc: "heartbeat_timeout")
+
+    def lost(url, body, read_seconds):
+        raise RuntimeError("cancelled before the start-to-close limit")
+        yield  # a generator, as `_lines` is
+    monkeypatch.setattr(steps, "_lines", lost)
+    with pytest.raises(RuntimeError):
+        _step()
+    assert step_events == []
+
+
 def test_the_tool_index_puts_delegations_after_the_other_calls():
     ai = agent_runs.RunMessageRow(idx=4, role="ai", tool_calls_json=json.dumps([
         {"kind": "delegation"}, {"kind": "parallel"}, {"kind": "ordered"}]))
@@ -460,9 +509,9 @@ def test_run_message_sends_the_call_fields_and_the_tool_status():
         dict(_entry("a", "t", {"x": 1}), position=0, seq=5)]))
     tool = agent_runs.RunMessageRow(idx=2, role="tool", tool_call_id="a", tool_name="t",
                                     usage_json=json.dumps({"status": "error"}))
-    assert stream_writer.run_message(ai)["tool_calls"] == [
+    assert stream_writer.run_message(ai, RUN_ID)["tool_calls"] == [
         {"id": "a", "name": "t", "args": {"x": 1}}]
-    assert stream_writer.run_message(tool)["status"] == "error"
+    assert stream_writer.run_message(tool, RUN_ID)["status"] == "error"
 
 
 # ---------------------------------------------------------------- open_run

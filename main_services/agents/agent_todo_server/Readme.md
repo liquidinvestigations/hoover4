@@ -18,7 +18,10 @@ different, and a typed schema is what makes a model call it correctly the first 
 `mark_todo` takes `ids`, a list of step ids, one `status` and an optional `note`. No
 argument is a JSON object: the store gives each step its id, `1`, `2`, `3` in order, and a
 step that `edit_todo` keeps by its text keeps its id and status. An empty goal or an empty
-step list is refused.
+step list is refused, and `edit_todo` in a conversation with no plan is refused with "No
+plan exists yet. Call write_todo first." A refusal is a tool error whose text is the
+response: the error and the plan as it still stands. The agent keeps a tool error as a
+failed result.
 
 ## The caller
 

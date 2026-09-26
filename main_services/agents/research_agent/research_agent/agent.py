@@ -23,7 +23,6 @@ from langfuse.langchain import CallbackHandler
 from agent_common import tool_packs
 from research_agent import compaction, model_params, prompts, subagents
 from research_agent.execution import page_share_client
-from research_agent.thinking import describe as describe_thinking
 from research_agent.tool_args import decode_string_arguments
 from research_agent.tool_catalogue import DELEGATION_TOOL, CatalogueSnapshot, build_snapshot
 
@@ -336,7 +335,6 @@ class MCPGatewayAgent:
         if llm_base_url:
             llm_kwargs["base_url"] = llm_base_url
 
-        log.info("LLM thinking configuration: %s", describe_thinking())
         log.info("%s", compaction.describe())
 
         # The tool packs of this run kind decide what the context binds, runs and lists in

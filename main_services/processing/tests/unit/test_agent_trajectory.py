@@ -189,3 +189,54 @@ def test_a_string_result_that_is_a_canonical_page_is_stored_unchanged():
 def test_an_ordinary_result_is_unaffected_by_the_page_guard():
     paired = [_row("web_search", {"n": 1}, query="x")]
     assert paired[0].tool_output == '{"n": 1}'
+
+
+def _search_page(items):
+    """A broker result page as the broker serialises it: canonical JSON text."""
+    return _canonical_json({"kind": "result_page", "items": items, "success": True,
+                            "tool_name": "search_collections", "total_units": len(items)})
+
+
+def test_a_canonical_search_page_becomes_doc_refs_and_keeps_its_bytes():
+    page = _search_page([
+        {"collectionname": "enron", "collection_dataset": "enron_maildir", "dataset": "maildir",
+         "file_hash": "aaa", "path": "/a.eml", "snippet": "s"},
+        {"collectionname": "enron", "collection_dataset": "enron_maildir", "dataset": "maildir",
+         "file_hash": "bbb", "path": "/b.eml", "snippet": "t",
+         "matched_queries": ["talking points"]},
+    ])
+    assert is_canonical_page(page)
+    row = _row("search_collections", page, query="hearings")
+    assert row.tool_output == page
+    refs = json.loads(row.doc_refs)
+    assert [r["collection_dataset"] for r in refs] == ["enron_maildir", "enron_maildir"]
+    # The first query that matched the document, else the query of the call.
+    assert [r["find_query"] for r in refs] == ["hearings", "talking points"]
+
+
+def test_a_search_card_takes_the_first_of_queries():
+    page = _search_page([{"collection_dataset": "d", "file_hash": "aaa"}])
+    refs = json.loads(_row("search_passages", page, queries=["one", "two"]).doc_refs)
+    assert refs[0]["find_query"] == "one"
+
+
+def test_a_read_documents_page_yields_its_items():
+    page = _canonical_json({"kind": "result_page", "items": [
+        {"collectionname": "enron", "collection_dataset": "enron_maildir", "file_hash": "aaa"}]})
+    refs = json.loads(_row("read_documents", page).doc_refs)
+    assert [(r["file_hash"], r["collection_dataset"], r["find_query"]) for r in refs] == [
+        ("aaa", "enron_maildir", "")]
+
+
+def test_a_citation_carries_its_find_query():
+    refs = extract_doc_refs("cite_documents", {"citations": [{
+        "collectionname": "enron", "collection_dataset": "enron_maildir", "file_hash": "aaa",
+        "quote": "Your notes look great. Best of luck today with the Hearings.",
+        "find_query": '"Your notes look great"', "quote_verified": True}]})
+    assert refs[0]["find_query"] == '"Your notes look great"'
+
+
+def test_a_stored_search_row_with_only_the_short_dataset_gets_the_composed_key():
+    refs = extract_doc_refs("search_collections", {"kind": "result_page", "items": [
+        {"collectionname": "enron", "dataset": "maildir", "file_hash": "aaa"}]})
+    assert refs[0]["collection_dataset"] == "enron_maildir"

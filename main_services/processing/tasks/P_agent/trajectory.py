@@ -186,15 +186,53 @@ _SINGLE_DOCUMENT_TOOLS = {"get_document_text", "show_document"}
 _DOCUMENT_LIST_TOOLS = {"read_documents": "documents", "list_document_entities": "documents"}
 
 
-def extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:
+def extract_doc_refs(tool_name: str, result: Any, query: str = "") -> list[dict[str, Any]]:
     """Pull document references out of a tool result, for the result cards.
 
-    Mirrors `extract_doc_refs` in `website/common/src/chat_types.rs`, including the
-    rule that a document with no `collection_dataset` is still recorded -- the card
-    renders, it just is not clickable.
+    Mirrors `extract_doc_refs_with_query` in `website/common/src/chat_types.rs`, including
+    the rule that a document with no `collection_dataset` is still recorded -- the card
+    renders, it just is not clickable. `result` is the parsed result, and `query` is the
+    query of the call. A search card opens its document at the first query that matched
+    the document, else at `query`.
     """
+    refs = _extract_doc_refs(tool_name, result)
+    if query and tool_name in _SEARCH_TOOLS:
+        for ref in refs:
+            if not ref["find_query"]:
+                ref["find_query"] = query
+    return refs
+
+
+#: Tools whose cards open the document at the query of the call.
+_SEARCH_TOOLS = {"search_collections", "search_passages"}
+
+
+def call_query(args: Any) -> str:
+    """The query of a search call: `query`, else the first of `queries`, else ""."""
+    args = _as_dict(args)
+    query = args.get("query")
+    if isinstance(query, str) and query.strip():
+        return query.strip()
+    queries = args.get("queries")
+    if isinstance(queries, list):
+        for one in queries:
+            if isinstance(one, str) and one.strip():
+                return one.strip()
+    return ""
+
+
+def _result_rows(result: Any, key: str) -> Any:
+    """The rows of a result: `items` of a broker result page, else the list under `key`,
+    which a row stored before the page broker holds."""
+    value = _as_dict(result)
+    if value.get("kind") == "result_page" and isinstance(value.get("items"), list):
+        return value["items"]
+    return value.get(key)
+
+
+def _extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:
     if tool_name == "search_collections":
-        results = _as_dict(result).get("results")
+        results = _result_rows(result, "results")
         if not isinstance(results, list):
             return []
         return [d for d in (_doc_ref(item) for item in results) if d]
@@ -215,6 +253,7 @@ def extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:
             one["why"] = str(item.get("why") or "")
             one["quote_verified"] = bool(item.get("quote_verified"))
             one["quote_reason"] = str(item.get("quote_reason") or "")
+            one["find_query"] = str(item.get("find_query") or "")
             # The snippet slot carries the quote, so the card shows what was cited
             # rather than an unrelated passage of the same file.
             if not one["snippet"]:
@@ -224,7 +263,7 @@ def extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:
 
     key = _DOCUMENT_LIST_TOOLS.get(tool_name)
     if key is not None:
-        entries = _as_dict(result).get(key)
+        entries = _result_rows(result, key)
         if not isinstance(entries, list):
             one = _doc_ref(result)
             return [one] if one else []
@@ -247,14 +286,23 @@ def _doc_ref(value: Any) -> dict[str, Any] | None:
         return None
     page_id = value.get("page_id")
     score = value.get("score")
+    matched = value.get("matched_queries")
+    first_match = matched[0] if isinstance(matched, list) and matched else ""
+    # `collection_dataset`, else the key composed from `collectionname` and the short
+    # `dataset` name of a search row stored before the rows named the key. The rule of
+    # `compose_collection_dataset` in `website/common/src/storage_tree.rs`.
+    dataset = str(value.get("collection_dataset") or "")
+    if not dataset and value.get("collectionname") and value.get("dataset"):
+        dataset = f"{value['collectionname']}_{value['dataset']}"
     return {
-        "collection_dataset": str(value.get("collection_dataset") or ""),
+        "collection_dataset": dataset,
         "file_hash": file_hash,
         "collectionname": str(value.get("collectionname") or ""),
         "path": str(value.get("path") or ""),
         "page_id": page_id if isinstance(page_id, int) else None,
         "score": score if isinstance(score, (int, float)) else None,
         "snippet": str(value.get("snippet") or ""),
+        "find_query": first_match if isinstance(first_match, str) else "",
     }
 
 

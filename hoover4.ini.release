@@ -270,23 +270,20 @@ agent_catalogue_match_count =
 ;   A model step that waits longer fails the run. Empty is no limit.
 ; title_request_timeout_seconds: the title request. Empty is 30. The title activity
 ;   allows two requests and 30 s more.
+; plan_request_timeout_seconds: one first-turn planning call. It gets one attempt, and
+;   one more when the todo server refuses its plan. Empty is 60.
 ; llm_request_timeout_seconds: the read timeout of one model call of the agent and of
 ;   its compaction summary, and the limit of one model step in the worker. When set, the
 ;   model client does not retry. Empty keeps the client default (600 s and 2 retries),
 ;   180 s for the summary and 3,600 s for the model step.
 agent_queue_wait_seconds = 5400
 title_request_timeout_seconds = 120
+plan_request_timeout_seconds = 60
 llm_request_timeout_seconds = 3600
 ; The output cap of one agent model request, in tokens. Without a cap a request can
 ; decode to the end of the context window, which no timeout above bounds. Empty sends
 ; no cap.
 agent_max_output_tokens = 32768
-; Thinking of the answer turn: off, on or budgeted. Empty is off. deploy.py warns on
-; another value, and the agent services then use off.
-agent_thinking =
-; Thinking of the turns that may call a tool: true or false. Empty is false. Some
-; models call tools more reliably with thinking on.
-agent_tool_turn_thinking =
 ; Token streaming of the agent's model calls: true or false. Empty is true.
 llm_streaming =
 ; Uvicorn worker processes on hoover4-full-research-agent. Each worker holds
@@ -353,11 +350,10 @@ gpu_circuit_break_seconds = 60     ; after N consecutive failures, skip straight
 ; window the provider never states is never compacted, because there is no
 ; denominator and guessing one loses evidence silently.
 ;
-; 0.6 is the specified figure and it does NOT fire on the traffic this stack produces
-; today: the widest measured turn used a tenth of the window. It is here so the
-; trigger is a setting rather than a constant, and because the window is a property
-; of the model in use, which changes.
-agent_compaction_fraction   = 0.6
+; 0.65 is the specified figure. The earlier turns of a chat reach the model with their
+; tool calls and results, so a long conversation reaches it. The compacted list is kept
+; for the later calls of the conversation.
+agent_compaction_fraction   = 0.65
 ; How many of the most recent tool results survive intact. The model is usually still
 ; working with what it just read.
 agent_compaction_keep_recent = 3

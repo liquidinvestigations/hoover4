@@ -493,6 +493,10 @@ class OpenedRun:
     continues: bool = False
     #: The unanswered calls of the thread, which the loop runs before its next model step.
     pending: list[CallRef] = field(default_factory=list)
+    #: The run opens the first turn of an ordinary chat, so the loop starts with the
+    #: planning call: a chat lead, no user row before its turn, and a thread that holds
+    #: only its opening message.
+    first_turn_plan: bool = False
 
 
 @dataclass
@@ -577,18 +581,36 @@ def _user_row_text(username: str, session_id: str, seq: int) -> str:
     return str(rows[0][0])
 
 
+def _earlier_user_rows(username: str, session_id: str, turn_seq: int) -> int:
+    """The count of user rows of the session before `turn_seq`."""
+    from database.clickhouse import get_global_client
+
+    with get_global_client() as client:
+        rows = client.query(
+            "SELECT count() FROM chat_messages FINAL WHERE username = {u:String} "
+            "AND session_id = {s:String} AND seq < {q:UInt32} AND role = 'user'",
+            parameters={"u": username, "s": session_id, "q": turn_seq},
+        ).result_rows
+    return int(rows[0][0]) if rows else 0
+
+
 def _opened(row) -> OpenedRun:
     from database import agent_runs
     from tasks.P_agent.stream_writer import prepare_thread
 
     messages = prepare_thread(
         agent_runs.read_messages(row.username, row.session_id, row.thread_id))
+    first_turn_plan = (
+        agent_runs.is_chat_lead(row) and row.model_steps == 0
+        and [m.role for m in messages] == ["human"]
+        and _earlier_user_rows(row.username, row.session_id, row.turn_seq) == 0
+    )
     return OpenedRun(
         state=row.state, queue=row.queue, kind=row.kind, depth=row.depth,
         is_chat_lead=agent_runs.is_chat_lead(row), plan=bool(row.plan_run_id),
         nags_this_turn=row.nags_this_turn, nags_without_progress=row.nags_without_progress,
         model_steps=row.model_steps, continues=bool(row.continues_run_id),
-        pending=pending_calls(row, messages),
+        pending=pending_calls(row, messages), first_turn_plan=first_turn_plan,
     )
 
 
@@ -1112,19 +1134,12 @@ def summarize_if_first_turn(ref: RunRef) -> str:
     payload. **Never raises**, like `title_session`.
     """
     from database import agent_runs
-    from database.clickhouse import get_global_client
 
     try:
         row = agent_runs.read_run(ref.username, ref.session_id, ref.run_id)
         if row is None or not agent_runs.is_chat_lead(row):
             return ""
-        with get_global_client() as client:
-            earlier = client.query(
-                "SELECT count() FROM chat_messages FINAL WHERE username = {u:String} "
-                "AND session_id = {s:String} AND seq < {q:UInt32} AND role = 'user'",
-                parameters={"u": row.username, "s": row.session_id, "q": row.turn_seq},
-            ).result_rows
-        if earlier and int(earlier[0][0]):
+        if _earlier_user_rows(row.username, row.session_id, row.turn_seq):
             return ""
         question = _user_row_text(row.username, row.session_id, row.turn_seq)
     except Exception:  # noqa: BLE001 - a title is never worth a turn

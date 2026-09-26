@@ -173,6 +173,13 @@ class AgentRun:
     `CONTINUE_AS_NEW_STEPS` model steps, or when its history passes
     `HISTORY_EVENTS_PER_RUN` events, and the new run resumes from the thread.
 
+    **The planning call.** The first turn of an ordinary chat (`OpenedRun.first_turn_plan`)
+    starts with one `plan` step, which binds `write_todo` only. The loop runs its call
+    through `tool_call`, so the todo server writes the plan and the page shows it as the
+    first tool card. When the server refuses the call, one more `plan` step reads the
+    refusal from the thread. A `plan` step gets one attempt of
+    `TIMEOUTS.plan_request`. Any other outcome, a timeout included, goes on to the loop.
+
     The run uses no Signal and no Update, and it never waits for a person. A stop cancels
     the workflow. The cancellation reaches the workflow as a `CancelledError`, or as an
     `ActivityError` that wraps it, and both write the `cancelled` ending. A workflow that
@@ -293,6 +300,8 @@ class AgentRun:
         after a nag, with no call left.
         """
         pending: list[CallRef] = []
+        if first and opened.first_turn_plan and self._steps == 0:
+            await self._plan(inp, opened)
         if first:
             if opened.continues:
                 await workflow.execute_activity(
@@ -333,21 +342,40 @@ class AgentRun:
                                   next_idx=result.next_idx, end_reason="repeated_call")
             pending = result.calls
 
+    async def _plan(self, inp: AgentRunInput, opened: OpenedRun) -> None:
+        """The first-turn planning call, and one retry when the todo server refuses it.
+        A failed `plan` step has its `agent_step_events` row, and the turn goes on."""
+        for reason in ("", "retry"):
+            try:
+                result = await self._model_step(inp, opened, "plan", reason)
+            except ActivityError as exc:
+                if _was_cancelled(exc):
+                    raise
+                return
+            if result.outcome != "calls":
+                return
+            statuses = [await self._tool_call(inp, call) for call in result.calls]
+            if all(status == "ok" for status in statuses):
+                return
+
     async def _model_step(self, inp: AgentRunInput, opened: OpenedRun, mode: str,
                           reason: str) -> ModelStepResult:
         self._steps += 1
         self._steps_here += 1
+        plan = mode == "plan"
         try:
             result = await workflow.execute_activity(
                 model_step,
                 ModelStepParams(**self._ref_fields(inp), step_no=self._steps, mode=mode,
                                 final_reason=reason),
-                start_to_close_timeout=TIMEOUTS.model_call,
+                start_to_close_timeout=TIMEOUTS.plan_request if plan else TIMEOUTS.model_call,
                 heartbeat_timeout=STEP_HEARTBEAT_TIMEOUT,
                 # The wait for a free model slot. None sets no limit. Temporal does not
                 # retry this timeout, so a step that waits past it fails the run.
                 schedule_to_start_timeout=TIMEOUTS.queue_wait,
-                retry_policy=RetryPolicy(maximum_attempts=3,
+                # A `plan` step gets one attempt, so two of them stay under the page's
+                # stall window.
+                retry_policy=RetryPolicy(maximum_attempts=1 if plan else 3,
                                          initial_interval=timedelta(seconds=5),
                                          backoff_coefficient=2.0,
                                          maximum_interval=timedelta(seconds=60),
@@ -358,7 +386,7 @@ class AgentRun:
         except ActivityError as exc:
             if not _was_cancelled(exc):
                 await self._record_failure(inp, "model", opened.queue, exc,
-                                           name=inp.llm_model)
+                                           name=inp.llm_model, mode=mode)
             raise
         self._raise_if_stopped()
         return result
@@ -389,11 +417,13 @@ class AgentRun:
             return summary
         return None
 
-    async def _tool_call(self, inp: AgentRunInput, call: CallRef) -> None:
-        """One tool call. A failure after the last attempt stores a `tool_unavailable`
-        result, and the loop goes on. Only a stop ends the run here."""
+    async def _tool_call(self, inp: AgentRunInput, call: CallRef) -> str:
+        """One tool call, and the status of its result. A failure after the last attempt
+        stores a `tool_unavailable` result, gives `error`, and the loop goes on. Only a stop
+        ends the run here."""
+        status = "error"
         try:
-            await workflow.execute_activity(
+            result = await workflow.execute_activity(
                 tool_call,
                 ToolCallParams(**self._ref_fields(inp), call=call),
                 start_to_close_timeout=TOOL_CALL_TIMEOUT,
@@ -405,19 +435,21 @@ class AgentRun:
                 task_queue=AGENT_TOOL_TASK_QUEUE,
                 cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
             )
+            status = result.status
         except ActivityError as exc:
             if _was_cancelled(exc):
                 raise
             await self._record_failure(inp, "tool", AGENT_TOOL_TASK_QUEUE, exc, call=call,
                                        name=call.name)
         self._raise_if_stopped()
+        return status
 
     async def _record_failure(self, inp: AgentRunInput, step: str, queue: str,
                               exc: BaseException, call: CallRef | None = None,
-                              name: str = "") -> None:
+                              name: str = "", mode: str = "") -> None:
         await workflow.execute_activity(
             record_step_failure,
-            StepFailure(**self._ref_fields(inp), step=step, name=name,
+            StepFailure(**self._ref_fields(inp), step=step, mode=mode, name=name,
                         error_class=_error_class(exc), task_queue=queue, call=call),
             start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),

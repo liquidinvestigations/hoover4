@@ -11,6 +11,7 @@ pub mod failures;
 pub mod group_detail;
 pub mod groups_list;
 pub mod llm_config;
+pub mod llm_reports;
 pub mod metrics;
 pub mod operation_detail;
 pub mod operations;

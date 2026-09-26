@@ -39,7 +39,7 @@ call no route. The page share is the `X-Hoover4-Page-Share` header of the call, 
 agent sets from its batch result budget, or 24,000 bytes when the header is absent. Every
 page, a later page of a stored window included, is at most the share of its own call. A
 page keeps the window fields when one unit fits with them, and leaves them out otherwise.
-A `search_collections` row does not include a facet whose count list is empty.
+A `search_collections` result does not include a facet whose count list is empty.
 `search_passages` and `list_document_entities` compute their whole
 result in this server, and page it as one window in the same way. Every paged tool result
 also carries the `build_page` measure of its page as an embedded resource with the URI

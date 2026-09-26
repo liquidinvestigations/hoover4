@@ -38,6 +38,8 @@ pub fn ToolCallDisclosure(
     let label = collapsed_label(&tool_name, &tool_input, &content_summary);
     let chip = tool_chip(&tool_name);
     let search_route = search_route_from_tool_input(&tool_name, &tool_input);
+    // The same query over every collection, shown only when the call named a collection.
+    let search_all_route = search_all_route_from_tool_input(&tool_name, &tool_input);
     // The collapsed label is built from the *arguments*, so on its own it describes what
     // was asked for and never whether it happened. Any tool can fail; the ones without a
     // card of their own must say so here or nowhere.
@@ -90,6 +92,14 @@ pub fn ToolCallDisclosure(
                         style: "color: #4F46E5; text-decoration: underline; font-size: 12px; \
                                 white-space: nowrap;",
                         "Search this"
+                    }
+                }
+                if let Some(route) = search_all_route {
+                    Link {
+                        to: route,
+                        style: "color: #4F46E5; text-decoration: underline; font-size: 12px; \
+                                white-space: nowrap;",
+                        "Search every collection"
                     }
                 }
                 if !running {
@@ -413,7 +423,7 @@ fn search_route_from_tool_input(tool_name: &str, tool_input: &str) -> Option<Rou
         return None;
     }
     let query_string = json_str_field(tool_input, "query")?;
-    let collections = json_string_array(tool_input, "collections");
+    let collections = call_collections(tool_input);
     // MCP takes collection *names*; the search page wants collection_dataset ids.
     // Passing names into collection_datasets still lets the user land on /search with
     // the same query text; facet filters are empty (not recorded on the tool input).
@@ -422,6 +432,26 @@ fn search_route_from_tool_input(tool_name: &str, tool_input: &str) -> Option<Rou
         collection_datasets: collections,
         ..Default::default()
     }))
+}
+
+/// The search page route of a `search_collections` call with no collection, or `None` when
+/// the call named no collection, because "Search this" already searches every collection.
+fn search_all_route_from_tool_input(tool_name: &str, tool_input: &str) -> Option<Route> {
+    if tool_name != "search_collections" || call_collections(tool_input).is_empty() {
+        return None;
+    }
+    let query_string = json_str_field(tool_input, "query")?;
+    Some(Route::search_page_from_query(SearchQuery { query_string, ..Default::default() }))
+}
+
+/// The collections a search call named: `collectionname` as one name or a list, or the
+/// older `collections` list.
+fn call_collections(tool_input: &str) -> Vec<String> {
+    if let Some(one) = json_str_field(tool_input, "collectionname").filter(|c| !c.is_empty()) {
+        return vec![one];
+    }
+    let named = json_string_array(tool_input, "collectionname");
+    if named.is_empty() { json_string_array(tool_input, "collections") } else { named }
 }
 
 fn json_str_field(raw: &str, key: &str) -> Option<String> {
@@ -593,5 +623,15 @@ mod tests {
         );
         // No query means no reproducible search.
         assert!(search_route_from_tool_input("search_collections", "{}").is_none());
+    }
+
+    #[test]
+    fn search_every_collection_appears_only_when_the_call_named_a_collection() {
+        let named = r#"{"query":"x","collectionname":"enron"}"#;
+        assert_eq!(call_collections(named), vec!["enron".to_string()]);
+        assert!(search_all_route_from_tool_input("search_collections", named).is_some());
+        assert!(search_all_route_from_tool_input("search_collections", r#"{"query":"x"}"#).is_none());
+        let listed = r#"{"query":"x","collectionname":["enron","consulate"]}"#;
+        assert_eq!(call_collections(listed).len(), 2);
     }
 }

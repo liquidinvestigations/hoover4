@@ -1,22 +1,55 @@
 //! Inline document card for a [`ChatDocRef`], reusing the search result card.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use common::chat_types::ChatDocRef;
-use common::search_result::SearchResultDocumentItem;
+use common::search_result::{DocumentIdentifier, SearchResultDocumentItem};
 use common::text_highlight::HighlightTextSpan;
 use dioxus::prelude::*;
 
+use crate::components::search_components::search_panel_left_view::SearchResultsState;
 use crate::components::search_components::search_result_item_card::SearchResultItemCard;
+
+/// Opens one document in the chat page's side pane at a find query. The chat page
+/// provides it. A card with no provider opens the document the way a search result does.
+#[derive(Clone, Copy)]
+pub struct ChatDocOpen {
+    pub open: Callback<(DocumentIdentifier, String)>,
+}
 
 #[component]
 pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
+    // The click reads the document and its find query of the latest render, because a
+    // card instance can receive another document while it stays mounted.
+    let target = use_hook(|| Rc::new(RefCell::new((doc.document_identifier(), String::new()))));
+    *target.borrow_mut() = (doc.document_identifier(), doc.find_query.clone());
+    let chat_open = try_use_context::<ChatDocOpen>();
+    let parent = use_context::<SearchResultsState>();
+    use_context_provider({
+        let target = target.clone();
+        move || SearchResultsState {
+            set_selected_result_hash: Callback::new(move |id: Option<DocumentIdentifier>| {
+                match (chat_open, id) {
+                    // The card's own identifier, never the one the result card builds,
+                    // because that one joins every dataset of a collapsed document.
+                    (Some(chat_open), Some(_)) => chat_open.open.call(target.borrow().clone()),
+                    (_, id) => parent.set_selected_result_hash.call(id),
+                }
+            }),
+            ..parent
+        }
+    });
+
     if doc.collection_dataset.is_empty() || doc.file_hash.is_empty() {
         // A card needs the dataset as well as the hash to open the document, so without
         // one it renders as a non-clickable stub rather than as a broken link.
         //
-        // Every document tool returns `collection_dataset`, so this branch should be
-        // unreachable. It stays as a defence and it names its own cause, because the
-        // failure it guards against is a card that says nothing about why it is thin,
-        // which is diagnosable only by finding the tool that produced it.
+        // `search_collections` rows, `read_documents` entries and `cite_documents`
+        // results name `collection_dataset`. A row stored before a tool named it, and a
+        // tool result that holds a document with no dataset, reach this branch. It names
+        // its own cause, because a card that says nothing about why it is thin is
+        // diagnosable only by finding the tool that produced it.
         let reason = if doc.file_hash.is_empty() {
             "no document id"
         } else {
@@ -84,6 +117,42 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
         SearchResultItemCard {
             result,
             onmounted: |_| {},
+        }
+    }
+}
+
+/// One document of a search row as a line: path, collection and an "Open" action. The
+/// action opens the document in the side pane at the query that matched it.
+#[component]
+pub fn ChatDocRefRow(doc: ChatDocRef) -> Element {
+    let chat_open = try_use_context::<ChatDocOpen>();
+    let openable = !doc.collection_dataset.is_empty() && !doc.file_hash.is_empty();
+    let label = if doc.path.is_empty() { doc.display_title() } else { doc.path.clone() };
+    let target = (doc.document_identifier(), doc.find_query.clone());
+    rsx! {
+        div {
+            class: "x-chat-docref-row",
+            style: "display: flex; align-items: baseline; gap: 10px; font-size: 13px; \
+                    padding: 4px 8px; background: white; border: 1px solid #E5E7EB; \
+                    border-radius: 6px;",
+            span { style: "flex: 1; min-width: 0; word-break: break-all; color: #1E293B;", "{label}" }
+            if !doc.collectionname.is_empty() {
+                span { style: "flex-shrink: 0; font-style: italic; color: #64748B;", "{doc.collectionname}" }
+            }
+            match (openable, chat_open) {
+                (true, Some(chat_open)) => rsx! {
+                    button {
+                        style: "flex-shrink: 0; background: none; border: none; padding: 0; \
+                                cursor: pointer; color: #4F46E5; text-decoration: underline; \
+                                font-size: 12px;",
+                        onclick: move |_| chat_open.open.call(target.clone()),
+                        "Open"
+                    }
+                },
+                _ => rsx! {
+                    span { style: "flex-shrink: 0; font-size: 12px; color: #94A3B8;", "Not openable" }
+                },
+            }
         }
     }
 }

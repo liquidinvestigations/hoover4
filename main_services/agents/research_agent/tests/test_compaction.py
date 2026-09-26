@@ -73,8 +73,8 @@ def _conversation(n, *, tokens=None):
 # --------------------------------------------------------------- the trigger
 
 
-def test_the_shipped_fraction_is_the_specified_sixty_percent():
-    assert compaction_fraction() == DEFAULT_COMPACTION_FRACTION == 0.6
+def test_the_shipped_fraction_is_the_specified_sixty_five_percent():
+    assert compaction_fraction() == DEFAULT_COMPACTION_FRACTION == 0.65
 
 
 def test_the_fraction_is_configuration_not_a_constant(monkeypatch):
@@ -204,7 +204,7 @@ def test_the_record_carries_what_it_takes_to_debug_a_compaction():
     assert report.compaction_id
     assert report.model_id == "qwen"
     assert report.context_window == 262144
-    assert report.threshold_tokens == 157286
+    assert report.threshold_tokens == 170393
     assert report.tokens_before == 200_100
     # Filled in one model call later, once the shortened list has been billed.
     assert report.tokens_after == 0

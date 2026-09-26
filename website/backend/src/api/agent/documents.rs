@@ -316,6 +316,7 @@ async fn documents_read_body(
                 partial = true;
                 documents.push(AgentDocumentText {
                     collectionname: body.collectionname.clone(),
+                    collection_dataset: plan.identifier.collection_dataset.clone(),
                     file_hash: plan.file_hash.clone(),
                     path: String::new(),
                     title: String::new(),
@@ -358,6 +359,7 @@ async fn read_one_document(
         return Ok((
             AgentDocumentText {
                 collectionname: collectionname.to_string(),
+                collection_dataset: plan.identifier.collection_dataset.clone(),
                 file_hash: plan.file_hash.clone(),
                 path,
                 title,
@@ -384,6 +386,7 @@ async fn read_one_document(
     Ok((
         AgentDocumentText {
             collectionname: collectionname.to_string(),
+            collection_dataset: plan.identifier.collection_dataset.clone(),
             file_hash: plan.file_hash.clone(),
             path,
             title,

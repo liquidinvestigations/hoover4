@@ -14,6 +14,7 @@ the real one.
 from __future__ import annotations
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from agent_todo_server import server
 from agent_todo_server.identity import CallerUnknown, parse_caller
@@ -28,8 +29,13 @@ HEADERS = {
 
 
 def call(tool, **kwargs):
-    """Invoke a registered tool's body. FastMCP rebinds the name to a Tool object."""
-    return getattr(tool, "fn", tool)(**kwargs)
+    """Invoke a registered tool's body. FastMCP rebinds the name to a Tool object.
+
+    A refusal is a tool error whose text is the response, so it is read back as one."""
+    try:
+        return getattr(tool, "fn", tool)(**kwargs)
+    except ToolError as exc:
+        return server.TodoResponse.model_validate_json(str(exc))
 
 
 @pytest.fixture(autouse=True)
@@ -110,7 +116,7 @@ class TestIdentity:
         monkeypatch.delenv("MCP_SHARED_SECRET")
         assert parse_caller({"X-Hoover4-Chat-Session": "s1"}).username == "unknown"
 
-    def test_the_tools_refuse_it_in_words_rather_than_raising(self, monkeypatch):
+    def test_the_tools_refuse_it_in_words(self, monkeypatch):
         authenticated_but_sessionless = {"Authorization": f"Bearer {SECRET}"}
         monkeypatch.setattr(
             server, "get_http_headers", lambda: authenticated_but_sessionless
@@ -218,6 +224,16 @@ class TestRefusalsReachTheModel:
         result = call(server.mark_todo, ids=["9"], status="done")
         assert result.success is False
         assert result.error == "step '9' does not exist. The steps are 1, 2."
+
+    def test_a_refusal_is_a_tool_error(self):
+        with pytest.raises(ToolError) as refused:
+            getattr(server.write_todo, "fn", server.write_todo)(goal="  ", steps=["a"])
+        assert server.TodoResponse.model_validate_json(str(refused.value)).success is False
+
+    def test_editing_before_any_plan_exists_names_write_todo(self):
+        result = call(server.edit_todo, steps=["a"])
+        assert result.success is False
+        assert result.error == "No plan exists yet. Call write_todo first."
 
     def test_marking_before_any_plan_exists_is_refused(self):
         result = call(server.mark_todo, ids=["1"], status="done")

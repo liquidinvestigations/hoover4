@@ -6,7 +6,8 @@ which buffers the row on the timing daemon of `tasks/task_timing.py`. Each attem
 starts writes one row. An attempt that passes its start-to-close limit on a live worker is
 cancelled with the reason `timed_out`, and writes its own row with `start_to_close_timeout`.
 The workflow writes the row of a step that never started or lost its heartbeat, with
-`attempt` 0, because no attempt can write that row. Nothing here raises into an activity:
+`attempt` 0. An attempt that the worker cancels before its start-to-close limit lost its
+heartbeat, so it writes no row of its own (see `ATTEMPT_WRITES_NO_ROW`). Nothing here raises into an activity:
 a lost row costs a report, not a turn.
 """
 
@@ -15,7 +16,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -120,8 +121,9 @@ def error_class_of(exc: Optional[BaseException]) -> str:
 
     A Temporal timeout gives `schedule_to_start_timeout`, `heartbeat_timeout` or
     `start_to_close_timeout`. An exception in an attempt that the worker cancelled because
-    it timed out also gives `start_to_close_timeout`. The worker keeps beating, so the
-    limit that passed is the start-to-close limit. A cancellation gives `cancelled`. An exception with an
+    it timed out gives `start_to_close_timeout` when the attempt ran for its start-to-close
+    limit, and `heartbeat_timeout` when it ended before that limit. A cancellation gives
+    `cancelled`. An exception with an
     `error_class` attribute, which the agent service's error frame sets, gives that class.
     A refused model request with no class gives `model_request_rejected`. A read timeout
     of the agent service gives `read_timeout`. Anything else gives `other`.
@@ -140,8 +142,9 @@ def error_class_of(exc: Optional[BaseException]) -> str:
     while seen is not None:
         if isinstance(seen, TimeoutError) and seen.type in timeouts:
             return timeouts[seen.type]
-        if _attempt_timed_out():
-            return "start_to_close_timeout"
+        timed_out = _attempt_timeout_class()
+        if timed_out:
+            return timed_out
         if isinstance(seen, (CancelledError, asyncio.CancelledError)):
             return "cancelled"
         named = getattr(seen, "error_class", None)
@@ -155,18 +158,52 @@ def error_class_of(exc: Optional[BaseException]) -> str:
     return "other"
 
 
-def _attempt_timed_out() -> bool:
-    """The running activity attempt was cancelled because it timed out. False outside an
-    activity."""
+#: The error classes of an attempt that the workflow writes the row of, so the attempt
+#: writes none. A second row would count the one failure twice.
+ATTEMPT_WRITES_NO_ROW = ("heartbeat_timeout",)
+
+#: Clock and timer slack. A cancellation that arrives this close to the start-to-close
+#: limit counts as that limit.
+_LIMIT_SLACK = timedelta(seconds=1)
+
+
+def timeout_class_of(elapsed: timedelta, start_to_close: Optional[timedelta]) -> str:
+    """The limit that passed for an attempt cancelled because it timed out.
+
+    The cancellation details do not say which limit passed. An attempt that ran for its
+    start-to-close limit passed that limit. One that ended earlier lost its heartbeat.
+    With no start-to-close limit, the heartbeat limit is the only one that can pass.
+    """
+    if start_to_close is None:
+        return "heartbeat_timeout"
+    if elapsed + _LIMIT_SLACK >= start_to_close:
+        return "start_to_close_timeout"
+    return "heartbeat_timeout"
+
+
+def _attempt_timeout_class() -> str:
+    """The timeout class of the running activity attempt when the worker cancelled it
+    because it timed out, and "" otherwise or outside an activity. When the attempt start
+    cannot be read, the class is `start_to_close_timeout`."""
     try:
         from temporalio import activity
 
         if not activity.in_activity():
-            return False
+            return ""
         details = activity.cancellation_details()
-        return details is not None and bool(details.timed_out)
+        if details is None or not details.timed_out:
+            return ""
     except Exception:  # noqa: BLE001 - a class is never worth a failed step
-        return False
+        return ""
+    try:
+        info = activity.info()
+        started = info.started_time
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        elapsed = datetime.now(timezone.utc) - started
+        return timeout_class_of(elapsed, info.start_to_close_timeout)
+    except Exception:  # noqa: BLE001 - a class is never worth a failed step
+        return "start_to_close_timeout"
 
 
 def attempt_fields() -> tuple[int, str, int]:

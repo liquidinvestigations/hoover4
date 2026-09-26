@@ -336,6 +336,7 @@ class SearchDocument(AgentModel):
     size: int | None
     document_date: int | None
     dataset: str
+    collection_dataset: str = ""
 
 
 class FacetCount(AgentModel):
@@ -385,6 +386,7 @@ class EntityDocument(AgentModel):
 
 class DocumentText(AgentModel):
     collectionname: str
+    collection_dataset: str = ""
     file_hash: str
     path: str
     title: str

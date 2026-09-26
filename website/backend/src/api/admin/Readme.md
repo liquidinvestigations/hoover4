@@ -35,8 +35,12 @@ the actual gate.
   stay raw.
 - `metrics.rs`, aggregates for `/admin/metrics` and `/admin/users/:username/llm`, and
   `admin_get_manticore_load`, which reads Manticore's `SHOW STATUS` and the status of each
-  table for the load panel of `/admin/metrics`.
-- `llm.rs`, the model catalog, the defaults and the allowlist. See below.
+  table for the load panel of `/admin/metrics`. The model and tool time of a user comes
+  from `agent_step_events`. See below.
+- `llm.rs`, the model catalog, the defaults, the allowlist and the thinking switch
+  (`server_settings.llm_thinking`, on when the row is absent). The `p50` and `Calls 14d`
+  columns count `kind = 'chat'` rows of `llm_call_events` only. See below.
+- `llm_reports.rs`, the four reports of `/admin/llm`. See below.
 
 ## `llm_models` is a ReplacingMergeTree, and both rules that follow from that
 
@@ -58,6 +62,34 @@ The table is `ReplacingMergeTree(updated_at, is_deleted)` and every read takes
 Tombstones are written by the refresh: a model the provider has stopped listing gets one
 `is_deleted = 1` version, keeping its admin state so it comes back intact if the provider
 lists it again.
+
+## `agent_step_events` and the reports of `/admin/llm`
+
+`agent_step_events` holds one row for each attempt of an agent model call, tool call and
+title call, for 90 days. The worker's step activities write it, and the `AgentRun` workflow
+writes the row of a step that never started or lost its heartbeat, with `attempt` 0.
+`llm_reports.rs` reads it for four reports. Each runs only when an admin clicks its "Run
+report" button, so a page load runs no report query.
+
+| report | rows |
+|---|---|
+| Errors | failed attempts by step and error class, and agent runs that failed or ended early by `end_reason`, in 24 h, 7 d and 30 d |
+| Recent errors | the newest 100 failed attempts of 7 days, with the first 500 characters of the error |
+| Tool calls | one row for each tool: calls, error percent and average time in 24 h, 7 d and 30 d |
+| Top users | the 30 users with the most model time (model and title steps) in 1, 7 or 30 days |
+
+The step budget and the repeated call guard end a run as `completed`, with an
+`end_reason`. The error report shows it as its own class, and it is not a failure. A tool
+result with an error code in its text is a result, so only a failed call counts as an
+error. An average over a window with no row is NaN in ClickHouse, and JSON has no NaN, so
+the tool report wraps each average in `ifNotFinite(..., 0)`. In ClickHouse an `ORDER BY`
+after `UNION ALL` applies to the last `SELECT` only, so the error report orders a
+subquery.
+
+The model and tool time on `/admin/users/:username/llm` is
+`sumIf(duration_ms, step IN ('model', 'tool'))` of the session's rows. Parallel tool calls
+count in full, so the sum can exceed the wall time of the turn.
+`chat_messages.agent_duration_ms` is not written and not read.
 
 ## Failure lists and `toUnixTimestamp`
 

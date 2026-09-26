@@ -213,10 +213,15 @@ class _Case:
 
 
 async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
-                    model_worker=True):
+                    model_worker=True, plan=False):
     """Run `body(client, case, stub, queue, titled)` with a worker on each queue of the
-    loop, all of them the case's own."""
+    loop, all of them the case's own. The first-turn planning call runs only when `plan`
+    is true, so the other cases script the loop alone."""
     stub = _Stub(script, tool)
+    if not plan:
+        opened = activities._opened
+        monkeypatch.setattr(activities, "_opened",
+                            lambda row: replace(opened(row), first_turn_plan=False))
     case = _Case()
     suffix = uuid.uuid4().hex[:8]
     chat_queue, model_queue = f"w19-chat-{suffix}", f"w19-model-{suffix}"
@@ -1349,3 +1354,124 @@ def test_a_planner_with_no_section_gets_one_more_round_then_fails(monkeypatch):
         assert plan_run.state == "failed"
 
     asyncio.run(_run_case(monkeypatch, script, body))
+
+
+# ------------------------------------------------------------------- the planning call
+
+PLAN = {"goal": "Find what the reports say.", "steps": ["Search", "Read", "Cite", "Answer"]}
+
+
+def _plan_tool(statuses):
+    """The todo server of the case: each `write_todo` call gets the next status."""
+    left = list(statuses)
+
+    def tool(request, n):
+        call = request["call"]
+        status = left.pop(0) if call["name"] == "write_todo" and left else "ok"
+        content = ("the goal is empty. Write one or two sentences." if status == "error"
+                   else json.dumps({"goal": PLAN["goal"], "items": PLAN["steps"]}))
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": status,
+                     "content": content, "measure": None,
+                     "error_class": "tool_error" if status == "error" else ""}
+    return tool
+
+
+def _plan_script(plans):
+    """`plans` replies to the `plan` steps, then the answer."""
+    def script(request, n):
+        if request["mode"] == "plan":
+            args = plans[min(n, len(plans)) - 1]
+            return _reply(request, calls=[_call("write_todo", args)])
+        return _reply(request, "done")
+    return script
+
+
+def test_a_valid_plan_is_the_first_tool_card_of_the_first_turn(monkeypatch):
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        assert await handle.result() == "completed"
+        assert stub.modes() == ["plan", "tools"]
+        assert stub.requests[0]["thinking"] is False and stub.requests[0]["earlier"] == []
+        assert [t["call"]["name"] for t in stub.tool_requests] == ["write_todo"]
+        assert case.run_row().model_steps == 2
+        rows = case.chat_rows()
+        assert [(r[1], r[3]) for r in rows[1:]] == [("tool", "write_todo"), ("assistant", "")]
+        # The first tools step reads its own call and the stored result.
+        roles = [m["role"] for m in stub.requests[1]["messages"]]
+        assert roles == ["human", "ai", "tool"]
+
+    asyncio.run(_run_case(monkeypatch, _plan_script([PLAN]), body,
+                          tool=_plan_tool(["ok"]), plan=True))
+
+
+def test_a_refused_plan_is_retried_once_with_the_refusal(monkeypatch):
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        assert await handle.result() == "completed"
+        assert stub.modes() == ["plan", "plan", "tools"]
+        second = stub.requests[1]["messages"]
+        assert [m["role"] for m in second] == ["human", "ai", "tool"]
+        assert second[2]["status"] == "error" and "goal is empty" in second[2]["content"]
+        assert [t["call"]["args"] for t in stub.tool_requests] == [
+            {"goal": "", "steps": []}, PLAN]
+
+    asyncio.run(_run_case(monkeypatch, _plan_script([{"goal": "", "steps": []}, PLAN]), body,
+                          tool=_plan_tool(["error", "ok"]), plan=True))
+
+
+def test_two_refused_plans_go_on_to_the_loop(monkeypatch):
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        assert await handle.result() == "completed"
+        assert stub.modes() == ["plan", "plan", "tools"]
+        assert case.run_row().state == "completed"
+
+    empty = {"goal": "", "steps": []}
+    asyncio.run(_run_case(monkeypatch, _plan_script([empty, empty]), body,
+                          tool=_plan_tool(["error", "error"]), plan=True))
+
+
+def test_a_plan_step_past_its_limit_is_recorded_once_and_the_loop_goes_on(monkeypatch):
+    from database import agent_step_events
+
+    monkeypatch.setattr(workflows, "TIMEOUTS",
+                        replace(workflows.TIMEOUTS, plan_request=timedelta(seconds=4)))
+    recorded = []
+    monkeypatch.setattr(agent_step_events, "record", recorded.append)
+
+    def script(request, n):
+        if request["mode"] == "plan":
+            time.sleep(7)
+            return _reply(request, calls=[_call("write_todo", PLAN)])
+        return _reply(request, "done")
+
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        assert await handle.result() == "completed"
+        assert stub.modes() == ["plan", "tools"]
+        assert [m.role for m in case.messages() if m.is_final] == ["human", "ai"]
+        # The timed-out attempt writes its row when its reply arrives.
+        for _ in range(40):
+            plan_rows = [e for e in recorded if e.step == "model" and e.mode == "plan"]
+            if plan_rows:
+                break
+            await asyncio.sleep(0.5)
+        await asyncio.sleep(2)
+        assert [m.role for m in case.messages() if m.is_final] == ["human", "ai"]
+        plan_rows = [e for e in recorded if e.step == "model" and e.mode == "plan"]
+        assert [(e.ok, e.error_class) for e in plan_rows] == [
+            (False, "start_to_close_timeout")]
+
+    asyncio.run(_run_case(monkeypatch, script, body, tool=_plan_tool([]), plan=True))
+
+
+def test_a_second_turn_gets_no_planning_call(monkeypatch):
+    async def body(client, case, stub, queue, titled):
+        activities._insert_chat_row(case.username, case.session_id, 0, "user",
+                                    content="An earlier question.")
+        handle = await _start(client, case, queue)
+        assert await handle.result() == "completed"
+        assert stub.modes() == ["tools"]
+
+    asyncio.run(_run_case(monkeypatch, _plan_script([PLAN]), body, tool=_plan_tool([]),
+                          plan=True))

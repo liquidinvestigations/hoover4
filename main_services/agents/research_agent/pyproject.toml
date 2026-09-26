@@ -13,7 +13,6 @@ include = [{path = "research_agent/prompts/**/*.md.j2", format = ["sdist", "whee
 [tool.poetry.dependencies]
 python = ">=3.11,<4.0"
 langchain = ">=0.3.25,<0.4.0"
-langgraph = ">=0.4.8,<0.5.0"
 langchain-openai = ">=0.3.22,<0.4.0"
 protobuf = "^6.31.1"
 click = "^8.1.0"

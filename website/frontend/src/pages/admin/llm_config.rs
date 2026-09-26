@@ -1,19 +1,20 @@
-//! Admin page: `/admin/llm`, provider health, catalog, defaults, allowlist.
+//! Admin page: `/admin/llm`, provider health, catalog, defaults, the thinking switch,
+//! allowlist and reports.
 
 use common::llm_types::{AdminLlmPage as LlmPageData, LlmModelItem};
 use dioxus::prelude::*;
 
 use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
-    admin_get_llm, admin_refresh_catalog, admin_set_default_chat_model, admin_set_model_allowed,
-    admin_set_profile_model,
-    admin_set_summarization_model,
+    admin_get_llm, admin_refresh_catalog, admin_set_default_chat_model, admin_set_llm_thinking,
+    admin_set_model_allowed, admin_set_profile_model, admin_set_summarization_model,
 };
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN, BTN_PRIMARY, BTN_SMALL, HELP_TEXT, INPUT,
     LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
+use crate::pages::admin::llm_reports::LlmReports;
 use crate::routes::Route;
 
 #[component]
@@ -88,6 +89,7 @@ fn LlmContent() -> Element {
                     flash,
                     reload,
                 }
+                LlmReports {}
             },
         }
     }
@@ -165,6 +167,30 @@ fn DefaultsPanel(
         div { style: MODULE,
             h2 { style: MODULE_CAPTION, "Default models" }
             div { style: MODULE_BODY,
+                label { style: "display: flex; gap: 8px; align-items: center; font-weight: 600; margin-bottom: 4px;",
+                    input {
+                        r#type: "checkbox",
+                        checked: page.thinking,
+                        onchange: move |e| {
+                            let on = e.checked();
+                            spawn(async move {
+                                match admin_set_llm_thinking(on).await {
+                                    Ok(()) => {
+                                        let msg = if on { "Thinking is on" } else { "Thinking is off" };
+                                        flash.set(Some(Ok(msg.to_string())));
+                                        let next = *reload.peek() + 1;
+                                        reload.set(next);
+                                    }
+                                    Err(e) => flash.set(Some(Err(user_facing_message(&e)))),
+                                }
+                            });
+                        },
+                    }
+                    "Thinking"
+                }
+                p { style: "{HELP_TEXT} margin: 0 0 14px;",
+                    "The model reasons before each tool call and each answer. Titles, compaction summaries and the planning call never reason."
+                }
                 div { style: "display: flex; flex-wrap: wrap; gap: 16px; align-items: end;",
                     label { style: LABEL,
                         "Chat"

@@ -11,6 +11,7 @@ capture report.
 - [Browser test cases](Browser_Test_Cases.md), one row per numbered scenario in `website/browser-tests/`
 - [Capture report format](Capture_Report_Format.md), the four verdict words, the report columns, and where the artefacts land
 - [Legacy data processing tests](Legacy_Data_Processing_Tests.md), the older system's tests and fixtures, for feature and test parity
+- [Chat acceptance stories](chat-acceptance/Readme.md), thirteen chat and deep research stories with their facts and a report template
 
 `docs/development/Known_Defects.md` is the defect register. It is not a suite list.
 

@@ -827,44 +827,52 @@ def test_both_research_agents_receive_the_probe_keys():
 
 #: The worker's timeout variables and the agent services' model variables.
 WORKER_TIMEOUT_VARS = ("HOOVER4_AGENT_QUEUE_WAIT_SECONDS",
-                       "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS")
-AGENT_MODEL_VARS = ("LLM_REQUEST_TIMEOUT_SECONDS", "AGENT_MAX_OUTPUT_TOKENS",
-                    "AGENT_THINKING", "AGENT_TOOL_TURN_THINKING", "LLM_STREAMING",
+                       "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS",
+                       "HOOVER4_PLAN_REQUEST_TIMEOUT_SECONDS")
+AGENT_MODEL_VARS = ("LLM_REQUEST_TIMEOUT_SECONDS", "AGENT_MAX_OUTPUT_TOKENS", "LLM_STREAMING",
                     "LLM_SEND_TEMPERATURE")
+#: The thinking switch is the `server_settings` row `llm_thinking`, so no key renders it.
+REMOVED_THINKING_VARS = ("AGENT_THINKING", "AGENT_TOOL_TURN_THINKING")
 
 
 def _model_env(fixture_name="settings-defaults.ini", section="main_services", **values):
     cfg = _config(fixture_name)
     cfg.values[section].update(values)
     with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
-        return deploy.render_main_env(cfg), deploy.agent_model_warnings(cfg)
+        return deploy.render_main_env(cfg)
 
 
 def test_empty_agent_model_keys_keep_the_code_defaults():
-    env, warnings = _model_env()
-    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["", ""]
+    env = _model_env()
+    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["", "", ""]
     assert "HOOVER4_CHAT_RUN_TIMEOUT_SECONDS" not in env
     assert "HOOVER4_PLAN_RUN_TIMEOUT_SECONDS" not in env
     assert env["LLM_REQUEST_TIMEOUT_SECONDS"] == ""
     assert env["AGENT_MAX_OUTPUT_TOKENS"] == ""
-    assert env["AGENT_THINKING"] == "off"
-    assert env["AGENT_TOOL_TURN_THINKING"] == "false"
     assert env["LLM_STREAMING"] == "true"
-    assert warnings == []
 
 
 def test_set_timeout_keys_land_in_their_variables():
-    env, warnings = _model_env(
+    env = _model_env(
         agent_queue_wait_seconds="5400", title_request_timeout_seconds="120",
-        llm_request_timeout_seconds="3600", agent_max_output_tokens="32768")
-    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["5400", "120"]
+        plan_request_timeout_seconds="60", llm_request_timeout_seconds="3600",
+        agent_max_output_tokens="32768")
+    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["5400", "120", "60"]
     assert env["LLM_REQUEST_TIMEOUT_SECONDS"] == "3600"
     assert env["AGENT_MAX_OUTPUT_TOKENS"] == "32768"
-    assert warnings == []
+
+
+@pytest.mark.parametrize("values", [
+    {}, {"agent_thinking": "on", "agent_tool_turn_thinking": "true"}])
+def test_no_thinking_variable_renders(values):
+    env = _model_env(**values)
+    for name in REMOVED_THINKING_VARS:
+        assert name not in env, name
 
 
 @pytest.mark.parametrize("key, value", [
     ("title_request_timeout_seconds", "0"),
+    ("plan_request_timeout_seconds", "0"),
     ("agent_queue_wait_seconds", "an hour"),
     ("llm_request_timeout_seconds", "1.5"),
     ("agent_max_output_tokens", "-1"),
@@ -876,34 +884,16 @@ def test_a_bad_agent_model_number_is_refused(key, value):
 
 
 def test_the_agent_tool_slots_render_when_set():
-    env, _ = _model_env(agent_tool_concurrency="16")
+    env = _model_env(agent_tool_concurrency="16")
     assert env["HOOVER4_AGENT_TOOL_CONCURRENCY"] == "16"
-    env, _ = _model_env()
+    env = _model_env()
     assert "HOOVER4_AGENT_TOOL_CONCURRENCY" not in env
-
-
-@pytest.mark.parametrize("value, rendered, warns", [
-    ("", "off", False), ("on", "on", False), ("budgeted", "budgeted", False),
-    ("maybe", "maybe", True),
-])
-def test_agent_thinking_renders_as_written(value, rendered, warns):
-    env, warnings = _model_env(agent_thinking=value)
-    assert env["AGENT_THINKING"] == rendered
-    assert bool(warnings) is warns
-    if warns:
-        assert "agent_thinking = maybe" in warnings[0]
 
 
 @pytest.mark.parametrize("value, rendered", [("", "true"), ("true", "true"), ("false", "false")])
 def test_llm_streaming_renders_true_unless_turned_off(value, rendered):
-    env, _ = _model_env(llm_streaming=value)
+    env = _model_env(llm_streaming=value)
     assert env["LLM_STREAMING"] == rendered
-
-
-@pytest.mark.parametrize("value, rendered", [("", "false"), ("false", "false"), ("true", "true")])
-def test_tool_turn_thinking_renders_false_unless_turned_on(value, rendered):
-    env, _ = _model_env(agent_tool_turn_thinking=value)
-    assert env["AGENT_TOOL_TURN_THINKING"] == rendered
 
 
 def test_the_selfhosted_provider_sends_no_temperature():
@@ -944,12 +934,14 @@ def test_the_worker_and_both_agents_receive_the_model_variables():
         assert f"{name}=${{{name}:-}}" in worker, name
     assert "LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}" in worker
     agents = documents["research-agents.yaml"]["services"]
-    defaults = {"AGENT_THINKING": "off", "AGENT_TOOL_TURN_THINKING": "false",
-                "LLM_STREAMING": "true", "LLM_SEND_TEMPERATURE": "true"}
+    defaults = {"LLM_STREAMING": "true", "LLM_SEND_TEMPERATURE": "true"}
     for service in ("hoover4-internal-search-agent", "hoover4-full-research-agent"):
         environment = agents[service]["environment"]
         for name in AGENT_MODEL_VARS:
             assert f"{name}=${{{name}:-{defaults.get(name, '')}}}" in environment, (
+                service, name)
+        for name in REMOVED_THINKING_VARS:
+            assert not any(line.startswith(f"{name}=") for line in environment), (
                 service, name)
 
 

@@ -7,7 +7,8 @@ and result hold ids, counts and tool names.
 
 * `model_step` sends `POST /model_step` to the agent service and writes the reply. A reply
   with calls writes the `ai` message and one live tool row for each call. A reply with no
-  call writes the `ai` message and the answer row.
+  call writes the `ai` message and the answer row. When the service compacted the input of
+  the call, a `compaction` row follows the `ai` message.
 * `tool_call` sends `POST /tool_call` for one stored call and writes its `tool` message and
   its finished tool row.
 * `delegate_step` writes the children of the `run_subagent` calls of the last reply.
@@ -112,7 +113,8 @@ class StepRef:
 class ModelStepParams(StepRef):
     #: 1 for the first model call of the run thread.
     step_no: int = 1
-    #: `tools`, or `final` for an answer with no tool bound.
+    #: `tools`, `final` for an answer with no tool bound, or `plan` for the first-turn
+    #: planning call, which binds `write_todo` only.
     mode: str = "tools"
     #: `step_budget` or `repeated_call`, for mode `final`.
     final_reason: str = ""
@@ -120,12 +122,15 @@ class ModelStepParams(StepRef):
 
 @dataclass
 class ModelStepResult:
-    #: `answered`, `calls` or `closed`.
+    #: `answered`, `calls` or `closed`. A `plan` step whose reply has no call gives
+    #: `no_plan`, and writes no answer.
     outcome: str
     calls: list[CallRef] = field(default_factory=list)
     #: A call of this reply repeats an earlier call of the thread.
     repeated: bool = False
     next_seq: int = 0
+    #: The thread index after the last row of the reply (`reply_end_idx`). A `closed` or
+    #: `no_plan` result gives the index of its `ai` message.
     next_idx: int = 0
 
 
@@ -145,6 +150,8 @@ class ToolCallResult:
 class StepFailure(StepRef):
     #: `model` or `tool`.
     step: str = ""
+    #: `tools`, `final` or `plan` for a model step, empty for a tool step.
+    mode: str = ""
     #: The model id or the tool name.
     name: str = ""
     #: `schedule_to_start_timeout`, `heartbeat_timeout`, `start_to_close_timeout` or
@@ -169,14 +176,22 @@ def tool_idx(ai, position: int) -> int:
     """The thread index of the `tool` message of call `position` of the `ai` message.
 
     The calls that are not delegations take the indexes after the `ai` message in reply
-    order, and the delegations follow them.
+    order, and the delegations follow them. When the reply has a `compaction` row, the row
+    takes the index after the `ai` message, and the results start one index later.
     """
     entries = ai.tool_calls
+    first = ai.idx + 1 + (1 if ai.usage.get("compaction") else 0)
     plain = [i for i, e in enumerate(entries) if e.get("kind") != "delegation"]
     if position in plain:
-        return ai.idx + 1 + plain.index(position)
+        return first + plain.index(position)
     delegations = [i for i, e in enumerate(entries) if e.get("kind") == "delegation"]
-    return ai.idx + 1 + len(plain) + delegations.index(position)
+    return first + len(plain) + delegations.index(position)
+
+
+def reply_end_idx(ai) -> int:
+    """The thread index after the last row of a reply: the `ai` message, its `compaction`
+    row, and one `tool` result for each call."""
+    return ai.idx + 1 + (1 if ai.usage.get("compaction") else 0) + len(ai.tool_calls)
 
 
 def _answer_of(messages, call_id: str):
@@ -312,11 +327,76 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
         ToolCallWriter(row, turn_uuid, call.seq, call.name, entry.get("args")).finish()
 
 
+class PastLimit(Exception):
+    """A `plan` attempt got its reply after its start-to-close limit."""
+
+    error_class = "start_to_close_timeout"
+
+
+def _raise_if_past_limit(started: float) -> None:
+    """Refuse the reply of a `plan` attempt that passed its start-to-close limit.
+
+    A `plan` step gets one attempt, and the workflow goes on to the loop when it times out.
+    A reply that arrives later must not be written, because the next step writes at the
+    same thread index. The cancellation of a timed-out attempt arrives only with a
+    heartbeat, so this check reads the clock.
+    """
+    if not activity.in_activity():
+        return
+    limit = activity.info().start_to_close_timeout
+    if limit is not None and time.monotonic() - started >= limit.total_seconds():
+        raise PastLimit("the reply arrived after the start-to-close limit, and is not written")
+
+
 def _read_thread(row):
     from database import agent_runs
     from tasks.P_agent.stream_writer import prepare_thread
 
     return prepare_thread(agent_runs.read_messages(row.username, row.session_id, row.thread_id))
+
+
+def _earlier_turns(row) -> list[dict[str, Any]]:
+    """The stored threads of the earlier chat turns of the session, in turn order, as
+    `RunMessage` rows. Each thread is sent whole, with its tool calls and results. A
+    sub-agent thread is not sent, because its report is a result of the lead's thread."""
+    from database import agent_runs
+    from tasks.P_agent.stream_writer import prepare_thread, run_message
+
+    out: list[dict[str, Any]] = []
+    for thread_id in agent_runs.read_earlier_threads(row.username, row.session_id,
+                                                     row.turn_seq):
+        messages = prepare_thread(agent_runs.read_messages(row.username, row.session_id,
+                                                           thread_id))
+        out.extend(run_message(m, thread_id) for m in messages)
+    return out
+
+
+def _write_compaction(row, ai, record: dict) -> None:
+    """The `compaction` row of a reply, at the index after its `ai` message."""
+    from database import agent_runs
+
+    agent_runs.write_message(
+        row.username, row.session_id, row.thread_id, row.run_id,
+        agent_runs.RunMessageRow(idx=ai.idx + 1, role="compaction",
+                                 content=json.dumps(record, sort_keys=True), run_id=row.run_id))
+
+
+def _close_final_calls(row, params: ModelStepParams, messages, ai) -> None:
+    """A `final` step binds no tool, so its reply is the answer. Each call of the reply gets
+    a `not_run` result in the thread, and no tool row, so the loop ends."""
+    from database import agent_runs
+
+    for call in call_refs(ai):
+        if _answer_of(messages, call.call_id) is not None:
+            continue
+        content = json.dumps({"success": False, "error": "not_run",
+                              "message": NOT_RUN_TEXT.get(params.final_reason, "")})
+        agent_runs.write_message(
+            row.username, row.session_id, row.thread_id, row.run_id,
+            agent_runs.RunMessageRow(
+                idx=tool_idx(ai, call.position), role="tool", content=content,
+                tool_call_id=call.call_id, tool_name=call.name, run_id=row.run_id,
+                usage_json=json.dumps({"status": "error", "error_class": "not_run"})))
 
 
 def _read_row(params: StepRef):
@@ -334,7 +414,8 @@ def _step_event(row, step: str, name: str, mode: str = "",
     """The `agent_step_events` row of this attempt, written when the block ends.
 
     The block sets `ok`, the tokens and the error class of a result. An exception sets
-    `ok` 0 and its class, and is raised again.
+    `ok` 0 and its class, and is raised again. An attempt that lost its heartbeat writes
+    no row, because the workflow writes the row of that failure.
     """
     from database import agent_step_events as events
 
@@ -353,9 +434,10 @@ def _step_event(row, step: str, name: str, mode: str = "",
         raise
     finally:
         event.duration_ms = int((time.monotonic() - started) * 1000)
-        with (activity.shield_thread_cancel_exception() if activity.in_activity()
-              else contextlib.nullcontext()):
-            events.record(event)
+        if event.error_class not in events.ATTEMPT_WRITES_NO_ROW:
+            with (activity.shield_thread_cancel_exception() if activity.in_activity()
+                  else contextlib.nullcontext()):
+                events.record(event)
 
 
 # --------------------------------------------------------------------------- model_step
@@ -419,14 +501,16 @@ def _write_calls(row, params: ModelStepParams, earlier, ai, writer, stream) -> M
                  **_step_tokens(row, params.step_no, ai.usage))
     return ModelStepResult(outcome="calls", calls=call_refs(ai),
                            repeated=_repeated(earlier, entries), next_seq=next_seq,
-                           next_idx=ai.idx + 1)
+                           next_idx=reply_end_idx(ai))
 
 
 def _write_answer(row, params: ModelStepParams, earlier, ai, writer) -> ModelStepResult:
     """Step 9 of `model_step`: the answer row and the run row of a reply with no call.
 
     `earlier` is the thread before the `ai` message. A retry after the run row write finds
-    `model_steps` at this step, and writes the answer row again at the same seq.
+    `model_steps` at this step, and writes the answer row again at the same seq. The
+    result's `next_idx` is the index after the last row of the reply, so a nag written
+    there replaces no `compaction` row and no `not_run` result.
     """
     from database import agent_runs
     from tasks.P_agent.stream_writer import context_window_for, round_view
@@ -474,7 +558,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer) -> ModelSte
                  end_reason=params.final_reason, **_step_tokens(row, params.step_no, ai.usage))
     log.info("[P_agent] run %s answered at step %d: %d chars, next seq %d",
              row.run_id, params.step_no, len(answer), seq)
-    return ModelStepResult(outcome="answered", next_seq=seq, next_idx=ai.idx + 1)
+    return ModelStepResult(outcome="answered", next_seq=seq, next_idx=reply_end_idx(ai))
 
 
 def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str):
@@ -499,13 +583,37 @@ def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str)
     usage = dict(turn.get("usage") or {})
     usage.update(step_no=params.step_no, mode=params.mode,
                  bound_names=list(turn.get("bound_names") or []),
-                 summarised=bool(turn.get("summarised")), model=model)
+                 summarised=bool(turn.get("summarised")), model=model,
+                 compaction=bool(turn.get("compaction")))
+    # A `plan` reply with no call is kept as a partial, which no request sends, so the
+    # thread holds no plan text that the page does not show.
+    final = 0 if params.mode == "plan" and not entries else 1
     ai = agent_runs.RunMessageRow(
         idx=idx, role="ai", content=str(turn.get("text") or ""),
         reasoning=str(turn.get("reasoning") or ""), tool_calls_json=json.dumps(entries),
-        usage_json=json.dumps(usage), is_final=1, run_id=row.run_id)
+        usage_json=json.dumps(usage), is_final=final, run_id=row.run_id)
     agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
     return ai
+
+
+#: The `server_settings` key of the thinking switch on `/admin/llm`.
+THINKING_SETTING_KEY = "llm_thinking"
+
+
+def thinking_setting() -> bool:
+    """The thinking switch, read for each model call so a change applies to the next one.
+
+    Only the stored value `off` turns thinking off. An absent row and a failed read mean
+    on, which is the default of the switch.
+    """
+    from database.clickhouse import get_server_setting
+
+    try:
+        value = get_server_setting(THINKING_SETTING_KEY)
+    except Exception as exc:  # noqa: BLE001, a failed read keeps the default
+        log.warning("[P_agent] the thinking setting was not read, sending on: %s", exc)
+        return True
+    return (value or "").strip() != "off"
 
 
 @activity.defn
@@ -520,17 +628,20 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
     3. A retry marks final the stream rows that the failed attempt left open.
     4. Mode `final` stores a `not_run` result for each unanswered call, then the human
        message of the reason.
-    5. `POST /model_step` streams the reply. The partial rows are written as it arrives.
-    6. A reply with calls gets its seqs (delegations last), the `ai` message, one live
-       tool row for each call and the run row. A reply with no call gets the `ai` message,
-       the answer row and the run row with the result.
+    5. `POST /model_step` streams the reply, with the earlier turns of the chat for a run
+       that writes the transcript. The partial rows are written as it arrives.
+    6. A reply with calls gets its seqs (delegations last), the `ai` message, the
+       `compaction` row when the service sent one, one live tool row for each call and the
+       run row. A reply with no call gets the `ai` message, the answer row and the run row
+       with the result. The reply of a `final` step is always the answer: its calls get a
+       `not_run` result. A `plan` reply with no call writes no answer.
     """
     from database import agent_runs
     from tasks.P_agent.stream_writer import (
-        KEEPALIVE_SECONDS, RUN_STREAM_IDLE_SECONDS, ModelStepWriter, _chat_history,
-        round_view, run_message,
+        KEEPALIVE_SECONDS, RUN_STREAM_IDLE_SECONDS, ModelStepWriter, round_view, run_message,
     )
 
+    started = time.monotonic()
     row = _read_row(params)
     if agent_runs.is_terminal(row):
         return ModelStepResult(outcome="closed", next_seq=row.next_seq)
@@ -540,8 +651,10 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
     if (last_ai is not None and last_ai.run_id == row.run_id
             and last_ai.usage.get("step_no") == params.step_no):
         earlier = [m for m in messages if m.idx < last_ai.idx]
-        if last_ai.tool_calls:
+        if last_ai.tool_calls and params.mode != "final":
             return _write_calls(row, params, earlier, last_ai, writer, None)
+        if last_ai.tool_calls:
+            _close_final_calls(row, params, messages, last_ai)
         return _write_answer(row, params, earlier, last_ai, writer)
 
     # A step that returned its stored result above writes no row: the earlier attempt
@@ -555,15 +668,14 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
             messages = _close_for_final(row, params, messages)
         next_idx = max(m.idx for m in messages) + 1 if messages else 0
         plan_prose, round_reasoning, in_opening = round_view(messages)
-        earlier_turns = [
-            {"role": h["type"], "content": h["content"]}
-            for h in _chat_history(row.username, row.session_id, row.turn_seq)
-        ] if transcript else []
+        earlier_turns = _earlier_turns(row) if transcript and params.mode != "plan" else []
         body = {
             **_step_run(row, params),
             "step_no": params.step_no,
             "mode": params.mode,
-            "messages": [run_message(m) for m in messages],
+            # The planning call runs with thinking off, and the service sends it off.
+            "thinking": thinking_setting() if params.mode != "plan" else False,
+            "messages": [run_message(m, row.thread_id) for m in messages],
             "earlier": earlier_turns,
         }
         stream = ModelStepWriter(row, params.turn_uuid, row.next_seq, next_idx, plan_prose,
@@ -586,8 +698,12 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
                 if kind in ("reasoning", "response"):
                     stream.add(kind, str(frame.get("content") or ""))
                 elif kind == "model_turn" and ai is None:
+                    if params.mode == "plan":
+                        _raise_if_past_limit(started)
                     # Written at once, so a retry after a later failure finds the reply.
                     ai = _store_reply(row, params, frame, next_idx, body["llm_model"])
+                    if frame.get("compaction"):
+                        _write_compaction(row, ai, frame["compaction"])
                 elif kind == "end":
                     ended = True
                     usage = frame.get("usage") or {}
@@ -605,9 +721,18 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
                 raise RuntimeError("the agent stream ended without a model_turn frame")
             if not ended:
                 raise RuntimeError("the agent stream ended without an end frame")
-            if ai.tool_calls:
+            if params.mode == "plan" and not ai.tool_calls:
+                writer.write(model_steps=max(row.model_steps, params.step_no),
+                             **_step_tokens(row, params.step_no, ai.usage))
+                event.ok = False
+                event.error_class = "no_plan"
+                return ModelStepResult(outcome="no_plan", next_seq=row.next_seq,
+                                       next_idx=ai.idx)
+            if ai.tool_calls and params.mode != "final":
                 result = _write_calls(row, params, messages, ai, writer, stream)
             else:
+                if ai.tool_calls:
+                    _close_final_calls(row, params, messages, ai)
                 result = _write_answer(row, params, messages, ai, writer)
             event.ok = result.outcome in ("answered", "calls")
             return result
@@ -709,8 +834,8 @@ def _record_timeout_row(row, params: StepFailure) -> None:
         name = _step_run(row, params)["llm_model"]
     events.record(events.StepEvent(
         username=row.username, session_id=row.session_id, run_id=row.run_id,
-        run_kind=row.kind, step=params.step, name=name, task_queue=params.task_queue,
-        attempt=0, ok=False,
+        run_kind=row.kind, step=params.step, mode=params.mode, name=name,
+        task_queue=params.task_queue, attempt=0, ok=False,
         tool_call_id=params.call.call_id if params.call is not None else "",
         error_class=params.error_class))
 

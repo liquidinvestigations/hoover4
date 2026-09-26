@@ -156,6 +156,12 @@ pub struct ChatDocRef {
     /// These strings are written by `collection_search_server.citations`.
     #[serde(default)]
     pub quote_reason: String,
+    /// The find query the card opens the document with. A citation card holds the
+    /// `find_query` of its citation result. A search card holds the first query that
+    /// matched the document, else the query of the call. Empty opens the document with
+    /// no find query.
+    #[serde(default)]
+    pub find_query: String,
 }
 
 impl ChatDocRef {
@@ -814,7 +820,8 @@ fn shrink_to_fit(value: &mut serde_json::Value, target: usize, marked: &mut Vec<
 /// - start: `{"input": {…}}`
 /// - end:   `{"output": {"content": …, "type": "tool", "name": "…", "tool_call_id": "…"}, …}`
 ///
-/// `search_collections` content is `{"results":[{collection_dataset,file_hash,path,…}]}`.
+/// `search_collections` content is a result page whose `items` are the search rows, or
+/// `{"results":[…]}` in a transcript written before the page broker.
 /// `read_documents` and `list_document_entities` content is a result page whose `items`
 /// are the document objects, or `{"documents":[…]}` in a transcript written before the
 /// page broker. `get_document_text` / `show_document` content is a single
@@ -825,6 +832,23 @@ fn shrink_to_fit(value: &mut serde_json::Value, target: usize, marked: &mut Vec<
 /// their rows, and a card that cannot render an old row destroys the record this whole
 /// design was reasoned from.
 pub fn extract_doc_refs(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocRef> {
+    extract_doc_refs_with_query(tool_name, tool_output_json, "")
+}
+
+/// [`extract_doc_refs`] with the query of the call. A search card with no matched query
+/// of its own opens its document at `query`. Mirrors `extract_doc_refs` in
+/// `main_services/processing/tasks/P_agent/trajectory.py`.
+pub fn extract_doc_refs_with_query(tool_name: &str, tool_output_json: &str, query: &str) -> Vec<ChatDocRef> {
+    let mut refs = extract_doc_refs_from_output(tool_name, tool_output_json);
+    if !query.is_empty() && matches!(tool_name, "search_collections" | "search_passages") {
+        for doc in refs.iter_mut().filter(|doc| doc.find_query.is_empty()) {
+            doc.find_query = query.to_string();
+        }
+    }
+    refs
+}
+
+fn extract_doc_refs_from_output(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocRef> {
     let Ok(root) = serde_json::from_str::<serde_json::Value>(tool_output_json) else {
         return Vec::new();
     };
@@ -877,6 +901,7 @@ fn extract_from_citations(content: &serde_json::Value) -> Vec<ChatDocRef> {
             value.get("quote_verified").and_then(|v| v.as_bool()).unwrap_or(false);
         doc.quote_reason =
             value.get("quote_reason").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        doc.find_query = value.get("find_query").and_then(|v| v.as_str()).unwrap_or("").to_string();
         // The snippet slot carries the quote, so the card shows what was cited rather
         // than an unrelated passage of the same file.
         if doc.snippet.is_empty() {
@@ -953,9 +978,8 @@ pub fn result_page_items(content: &serde_json::Value) -> Option<&Vec<serde_json:
 }
 
 fn extract_from_search_results(content: &serde_json::Value) -> Vec<ChatDocRef> {
-    let results = content
-        .get("results")
-        .and_then(|v| v.as_array())
+    let results = result_page_items(content)
+        .or_else(|| content.get("results").and_then(|v| v.as_array()))
         .cloned()
         .unwrap_or_default();
     collapse_by_document(results.iter().filter_map(doc_ref_from_value).collect())
@@ -1017,17 +1041,18 @@ fn doc_ref_from_value(v: &serde_json::Value) -> Option<ChatDocRef> {
     if file_hash.is_empty() {
         return None;
     }
-    // Prefer collection_dataset (DocumentIdentifier key). Fall back to nothing rather
-    // than inventing one from collectionname, a wrong dataset id opens the wrong doc.
-    let collection_dataset = v
-        .get("collection_dataset")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
-    if collection_dataset.is_empty() {
-        // Still record path/hash so the disclosure UI can show something; the preview
-        // card is only clickable when collection_dataset is set (frontend checks).
-    }
+    // `collection_dataset` (the DocumentIdentifier key), else the key composed from
+    // `collectionname` and the short `dataset` name of a search row stored before the
+    // rows named the key. Nothing is invented from `collectionname` alone, because a
+    // wrong dataset id opens the wrong document. A document with no key is still
+    // recorded, and the card renders it as not openable.
+    let text = |key: &str| v.get(key).and_then(|x| x.as_str()).unwrap_or("");
+    let collection_dataset = match (text("collection_dataset"), text("collectionname"), text("dataset")) {
+        ("", collection, dataset) if !collection.is_empty() && !dataset.is_empty() => {
+            crate::storage_tree::compose_collection_dataset(collection, dataset)
+        }
+        (key, _, _) => key.to_string(),
+    };
     Some(ChatDocRef {
         collection_dataset,
         file_hash,
@@ -1050,6 +1075,12 @@ fn doc_ref_from_value(v: &serde_json::Value) -> Option<ChatDocRef> {
         why: String::new(),
         quote_verified: false,
         quote_reason: String::new(),
+        find_query: v
+            .get("matched_queries")
+            .and_then(|x| x.get(0))
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string(),
     })
 }
 
@@ -1185,7 +1216,43 @@ mod tests {
             why: String::new(),
             quote_verified: false,
             quote_reason: String::new(),
+            find_query: String::new(),
         }
+    }
+
+    #[test]
+    fn extract_doc_refs_from_a_search_result_page() {
+        // A broker page stored as its own bytes, with the rows under `items`.
+        let page = r#"{"kind":"result_page","items":[{"collectionname":"enron","collection_dataset":"enron_maildir","dataset":"maildir","file_hash":"aaa","path":"/a.eml","snippet":"s"},{"collectionname":"enron","collection_dataset":"enron_maildir","dataset":"maildir","file_hash":"bbb","path":"/b.eml","snippet":"t","matched_queries":["talking points"]}]}"#;
+        let output = serde_json::json!({"output": {"content": page}}).to_string();
+        let refs = extract_doc_refs_with_query("search_collections", &output, "hearings");
+        assert_eq!(refs.len(), 2);
+        assert!(refs.iter().all(|doc| doc.collection_dataset == "enron_maildir"));
+        assert_eq!(refs[0].find_query, "hearings", "the call's query when no query matched");
+        assert_eq!(refs[1].find_query, "talking points", "the first matched query");
+    }
+
+    #[test]
+    fn extract_doc_refs_copies_the_citation_find_query() {
+        let output = citation_output(
+            r#"[{"handle":"[D1]","collectionname":"enron","collection_dataset":"enron_maildir","file_hash":"aaa","quote":"Your notes look great. Best of luck today.","find_query":"\"Your notes look great\"","quote_verified":true}]"#,
+        );
+        let refs = extract_doc_refs("cite_documents", &output);
+        assert_eq!(refs[0].find_query, "\"Your notes look great\"");
+    }
+
+    #[test]
+    fn a_search_row_with_only_the_short_dataset_gets_the_composed_key() {
+        let page = r#"{"kind":"result_page","items":[{"collectionname":"enron","dataset":"maildir","file_hash":"aaa"}]}"#;
+        let refs = extract_doc_refs("search_collections", page);
+        assert_eq!(refs[0].collection_dataset, "enron_maildir");
+    }
+
+    #[test]
+    fn a_stored_doc_ref_without_a_find_query_reads() {
+        let stored = r#"[{"collection_dataset":"c_d","file_hash":"aaa"}]"#;
+        let refs: Vec<ChatDocRef> = serde_json::from_str(stored).unwrap();
+        assert_eq!(refs[0].find_query, "");
     }
 
     fn citation_output(citations: &str) -> String {

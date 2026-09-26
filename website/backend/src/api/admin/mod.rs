@@ -7,6 +7,7 @@ pub mod datasets;
 pub mod failures;
 pub mod groups;
 pub mod llm;
+pub mod llm_reports;
 pub mod metrics;
 pub mod operations;
 pub mod processing;

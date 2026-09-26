@@ -65,7 +65,7 @@ pub struct UserLlmSession {
     pub created_at: String,
     pub message_count: u64,
     pub tool_calls: u64,
-    /// Wall time the agent spent on this session. The GPU cost of it.
+    /// Model and tool time of this session, summed over its `agent_step_events` rows.
     pub agent_duration_ms: u64,
 }
 
@@ -84,8 +84,8 @@ pub struct AdminUserLlmMetrics {
     pub username: String,
     pub chat_messages: u64,
     pub tool_calls: u64,
-    /// Summed `agent_duration_ms` over all sessions: how much agent (GPU) time
-    /// this person consumed. What the chat rate limit exists to bound.
+    /// Summed `agent_duration_ms` over all sessions: the model and tool time that
+    /// this person used. The chat rate limit bounds it.
     pub agent_duration_ms_total: u64,
     pub sessions: Vec<UserLlmSession>,
     pub chat_limit: Vec<RateWindowUsage>,

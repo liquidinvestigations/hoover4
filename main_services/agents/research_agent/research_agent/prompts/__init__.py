@@ -279,6 +279,18 @@ def render(
     return _environment().get_template(template_name).render(**context).strip()
 
 
+#: The template of the first-turn planning call. It is not a profile: it has no tool
+#: section, and it binds `write_todo` only.
+PLANNING_CALL_TEMPLATE = "planning_call.md.j2"
+
+
+def planning_call(*, collections: Sequence[str], web_enabled: bool) -> str:
+    """The system text of the first-turn planning call."""
+    return _environment().get_template(PLANNING_CALL_TEMPLATE).render(
+        collections=[str(c) for c in collections or []], web_enabled=bool(web_enabled),
+    ).strip()
+
+
 def active_profile() -> str:
     """The profile this container runs, normalised.
 
@@ -323,7 +335,9 @@ __all__ = [
     "TOOL_GROUPS",
     "ToolGroup",
     "UnboundToolError",
+    "PLANNING_CALL_TEMPLATE",
     "active_profile",
+    "planning_call",
     "render",
     "system_prompt",
     "system_prompt_override",

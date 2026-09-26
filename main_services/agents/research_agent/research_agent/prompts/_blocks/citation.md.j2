@@ -7,12 +7,27 @@
    the reader.
 #}
 {% if has('cite_documents') %}
-When you have the answer, call {{ tool('cite_documents') }} once with the {% if web_enabled %}internal {% endif %}documents you
-actually relied on, each with a quote copied exactly from the document and one line saying
-what it supports. Write the handles it gives you — `[D1]`, `[D2]` — into your {{ citation_artefact }}
-at the point each claim is made. Cite what you used, not everything a search returned.
+The person sees a document only when you cite it. Before you finish your {{ citation_artefact }}, call
+{{ tool('cite_documents') }} one time with each {% if web_enabled %}internal {% endif %}document that your {{ citation_artefact }} names, quotes or relies on.
+One call takes at most 12 citations. Cite what you used, not everything a search returned.
+
+For each citation give:
+- collectionname and file_hash, copied from a tool result. Never make up a file_hash.
+- quote: one sentence copied exactly from the document text you read.
+- find: optional. The shortest exact phrase of the quote that the person must see. The card
+  opens the document at this phrase.
+- why: one line that says what the document supports.
+
+Write the handle that you get back, for example `[D1]`, in your {{ citation_artefact }} where you make the claim.
+
+Example. {{ tool('read_documents') if has('read_documents') else 'A tool' }} returned the email "Re: DRAFT talking points" in the collection enron.
+Its text says "Your notes look great. Best of luck today with the Hearings." Your {{ citation_artefact }} says
+that Jim Steffes approved the draft. Call {{ tool('cite_documents') }} with collectionname enron, the
+file_hash from the result, the quote "Your notes look great. Best of luck today with the
+Hearings.", find "Your notes look great", and why "Steffes approves the draft of 27 December".
+Then write "Steffes approved the draft [D1]."
 {% if web_enabled %}
-Web sources keep their URLs; the handles are for the user's own documents.
+Web sources keep their URLs. The handles are for the user's own documents.
 {% endif %}
 {% if citation_resolver == "lead" %}
 The lead researcher resolves them, so a handle you never allocated is no use to anyone.

@@ -151,9 +151,16 @@ def _build(p: PageInput, limit: ByteLimit) -> tuple[str, PageMeasure]:
 
 
 def _build_fitting(make: Callable[[dict[str, Any] | None], PageInput], fields: dict[str, Any] | None) -> str | None:
-    """The page of `make(fields)` within the current share, or the page of `make(None)`
-    when not one unit fits with `fields`. `None` when not one unit fits either way."""
-    for page_fields in ([fields, None] if fields else [fields]):
+    """The page of `make(fields)` within the current share. When not one unit fits with
+    `fields`, the page without `facet_counts`, and then the page with no fields. `None`
+    when not one unit fits in any of them. The facets are the large field, so the rewrite
+    note and the `partial` flag stay on a page that cannot also hold the facets."""
+    candidates: list[dict[str, Any] | None] = [fields]
+    if fields and "facet_counts" in fields and len(fields) > 1:
+        candidates.append({key: value for key, value in fields.items() if key != "facet_counts"})
+    if fields:
+        candidates.append(None)
+    for page_fields in candidates:
         text, measure = _build(make(page_fields), _page_limit())
         if measure.returned_units > 0:
             return text

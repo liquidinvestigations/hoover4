@@ -26,9 +26,10 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Literal, Optional
+from typing import Any, Literal, NoReturn, Optional
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field
 
@@ -70,9 +71,9 @@ class TodoItem(BaseModel):
 class TodoResponse(BaseModel):
     """The whole list after the call, whether the call changed it or not.
 
-    A refusal returns the *unchanged* list alongside its `error` rather than an error
-    on its own: the model has just been told its write did not happen and the next
-    thing it needs is what the plan actually says.
+    A refusal is a tool error whose text is this response, with the *unchanged* list
+    beside its `error`: the model has just been told its write did not happen and the
+    next thing it needs is what the plan actually says.
     """
 
     success: bool = Field(description="Whether the call was accepted")
@@ -120,17 +121,22 @@ def _response(todo: dict, error: str | None = None) -> TodoResponse:
 # sends a list as a string still reaches the store.
 
 
-def _refused(caller: Caller | None, message: str) -> TodoResponse:
-    """A refusal carrying the plan as it still stands.
+#: The refusal of `edit_todo` in a conversation that has no plan yet.
+NO_PLAN_ERROR = "No plan exists yet. Call write_todo first."
 
-    With no identified caller there is no list to read, so the refusal goes out on the
-    empty one -- an unauthenticated call must not be answered with someone's plan.
+
+def _refused(caller: Caller | None, message: str) -> NoReturn:
+    """Refuse the call as a tool error whose text is the plan as it still stands.
+
+    A tool error marks the result as failed, so the agent keeps the refusal as a failed
+    result. With no identified caller there is no list to read, so the refusal goes out
+    on the empty one -- an unauthenticated call must not be answered with someone's plan.
     """
     if caller is None:
-        return _response(chat_todos.empty_todo(), error=message)
-    return _response(
-        chat_todos.read_todo(caller.username, caller.session_id), error=message
-    )
+        todo = chat_todos.empty_todo()
+    else:
+        todo = chat_todos.read_todo(caller.username, caller.session_id)
+    raise ToolError(_response(todo, error=message).model_dump_json())
 
 
 @mcp.tool(
@@ -197,6 +203,8 @@ def edit_todo(steps: list[str]) -> TodoResponse:
         caller = _caller()
     except CallerUnknown as exc:
         return _refused(None, str(exc))
+    if not chat_todos.read_todo(caller.username, caller.session_id).get("version"):
+        _refused(caller, NO_PLAN_ERROR)
     try:
         todo = chat_todos.edit_steps(caller.username, caller.session_id, steps)
     except chat_todos.TodoError as exc:

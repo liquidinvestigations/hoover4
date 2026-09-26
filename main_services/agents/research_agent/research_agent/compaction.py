@@ -10,9 +10,13 @@ searched for.
 Three properties hold, and dropping any one of them loses a citation.
 
 **Nothing is edited.** This transformation is applied to the list on its way to the model
-and never written back into the graph state or into `chat_messages`. The transcript a user
+and never written back into a stored message or into `chat_messages`. The transcript a user
 scrolls back through holds every result in full, which is the only reason a compaction
-error can be debugged afterwards.
+error can be debugged afterwards. The worker stores a `compaction` row in the run thread
+that names the evicted and summarised messages (`CompactionReport.evicted_positions` and
+`summarised_positions`), and the next model call applies it
+(`run_messages.apply_compactions`). The next call therefore sends the compacted list, and
+measures the usage of the call that was made on it.
 
 **A tool result is shortened, not removed.** An OpenAI-shaped request carrying an
 assistant message whose `tool_calls` have no matching tool result is rejected outright, so
@@ -62,18 +66,11 @@ GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE", "Hoover4_Processing")
 
 #: Fraction of the model's context window at which compaction fires.
 #:
-#: 0.6 is the specified figure. It is configuration rather than a constant so the gap
-#: between it and the published 70-75% practice is a setting to tune with evidence, and so
-#: a demonstration can lower it without shipping the lower number.
-#:
-#: **It does not fire on this stack's ordinary traffic.** The widest turn measured here --
-#: the full research profile, sixteen tool calls, three web pages read and cited -- peaked
-#: at a tenth of the window. That is a property of the model's window and of how much a
-#: turn currently collects, both of which move: a larger corpus, a model with a smaller
-#: window, or replaying tool results across turns all bring this into range. Lowering the
-#: fraction to make it fire today would discard results the model still needs in exchange
-#: for nothing.
-DEFAULT_COMPACTION_FRACTION = 0.6
+#: 0.65 is the specified figure. It is configuration rather than a constant so it can be
+#: tuned with evidence, and so a demonstration can lower it without shipping the lower
+#: number. The earlier turns of a chat reach the model with their tool calls and results,
+#: so a long conversation reaches this fraction.
+DEFAULT_COMPACTION_FRACTION = 0.65
 
 #: How many of the most recent tool results survive a compaction intact. The model is
 #: usually still working with what it just read, and evicting the result of the call it
@@ -360,6 +357,10 @@ class CompactionReport:
     #: a compaction asks first is what the model could still see.
     list_before: str = ""
     list_after: str = ""
+    #: The positions, in the input list, of the tool results that eviction replaced, and
+    #: of the messages that summarisation replaced. The worker stores them as keys.
+    evicted_positions: list[int] = field(default_factory=list)
+    summarised_positions: list[int] = field(default_factory=list)
 
     @property
     def chars_freed(self) -> int:
@@ -386,7 +387,8 @@ def evict_tool_results(
     A `cite_documents` or todo result is left alone too, for the reason `protected_indexes`
     gives: the `cite_documents` result is the model's only copy of which document `[D3]`
     means, and evicting it while the model's own prose still says `[D3]` is how a cited
-    answer becomes an unsourced one. Both layers honour the same never-compacted set.
+    answer becomes an unsourced one. A failed tool result is left alone, so the model keeps
+    the error it has to correct. Both layers honour the same never-compacted set.
     """
     out = list(messages)
     tool_indexes = [i for i, m in enumerate(out) if isinstance(m, ToolMessage)]
@@ -406,14 +408,21 @@ def evict_tool_results(
         if _content_length(message) <= MIN_EVICTABLE_CHARS:
             report.kept_count += 1
             continue
-        if _tool_name(message) in CITATION_TOOLS or _tool_name(message) in TODO_TOOLS:
+        if (_tool_name(message) in CITATION_TOOLS or _tool_name(message) in TODO_TOOLS
+                or _failed(message)):
             report.kept_count += 1
             continue
         report.evicted.append(str(getattr(message, "name", "") or "tool"))
+        report.evicted_positions.append(i)
         report.evicted_count += 1
         out[i] = message.model_copy(update={"content": EVICTION_PLACEHOLDER})
     report.chars_after = sum(_content_length(out[i]) for i in tool_indexes)
     return out, report
+
+
+def _failed(message: BaseMessage) -> bool:
+    """A tool result whose call failed."""
+    return isinstance(message, ToolMessage) and getattr(message, "status", "") == "error"
 
 
 def _call_groups(messages: Sequence[BaseMessage]) -> list[list[int]]:
@@ -460,7 +469,7 @@ def protected_indexes(
     This is where the never-summarised set is enforced. It is a selection made in code
     over the list itself, not an instruction in the summariser's prompt: the summariser
     never sees these messages and cannot rewrite, shorten or drop them, whatever it is
-    asked to do. Four things are protected.
+    asked to do. Five things are protected.
 
     * **The user's own messages**, and any system message that reached the list.
     * **The todo**, every call and result of it. The todo is the turn's plan and what the
@@ -470,6 +479,8 @@ def protected_indexes(
       message whose text carries `[D3]` -- which is the assistant's own prose. Losing
       either turns a cited answer into an unsourced one, and that is a correctness bug
       rather than a compression trade-off.
+    * **Every failed tool result**, because the model has to read the error to correct the
+      call.
     * **The most recent `keep_recent_messages`**, because the model is mid-turn and those
       are what it is reasoning about right now.
 
@@ -488,7 +499,8 @@ def protected_indexes(
             protected.add(i)
             continue
         if isinstance(message, ToolMessage):
-            if _tool_name(message) in CITATION_TOOLS or _tool_name(message) in TODO_TOOLS:
+            if (_tool_name(message) in CITATION_TOOLS or _tool_name(message) in TODO_TOOLS
+                    or _failed(message)):
                 protected.add(i)
         if CITATION_HANDLE.search(_content_text(message)):
             protected.add(i)
@@ -781,6 +793,7 @@ def summarise_messages(
         return messages, report
     report.summary = handoff
     report.summarised_count = len(dropped)
+    report.summarised_positions = list(droppable)
     report.messages_after = len(out)
     report.chars_after = chars_after
     report.list_after = summarise_list(out)
@@ -900,6 +913,7 @@ def compact_messages(
     second.context_window = resolved_window
     second.threshold_tokens = threshold
     second.evicted = list(report.evicted)
+    second.evicted_positions = list(report.evicted_positions)
     second.evicted_count = report.evicted_count
     second.kept_count = report.kept_count
     second.messages_before = len(messages)

@@ -250,13 +250,10 @@ DEFAULTS = {
         # worker, and the model client's own timeout and 2 retries in the agent services.
         "agent_queue_wait_seconds": "",
         "title_request_timeout_seconds": "",
+        "plan_request_timeout_seconds": "",
         "llm_request_timeout_seconds": "",
         # The output cap of one agent model request, in tokens. Empty sends no cap.
         "agent_max_output_tokens": "",
-        # Thinking of the turns that may call a tool. Empty is false.
-        "agent_tool_turn_thinking": "",
-        # Thinking of the prose turn: off, on or budgeted. Empty is off.
-        "agent_thinking": "",
         # Token streaming of the agent's model calls. Empty is true.
         "llm_streaming": "",
         "mcp_browser_mem_limit": "24G",
@@ -772,49 +769,27 @@ def agent_probe_env(cfg):
 AGENT_MODEL_NUMBER_KEYS = (
     ("agent_queue_wait_seconds", "HOOVER4_AGENT_QUEUE_WAIT_SECONDS"),
     ("title_request_timeout_seconds", "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS"),
+    ("plan_request_timeout_seconds", "HOOVER4_PLAN_REQUEST_TIMEOUT_SECONDS"),
     ("llm_request_timeout_seconds", "LLM_REQUEST_TIMEOUT_SECONDS"),
     ("agent_max_output_tokens", "AGENT_MAX_OUTPUT_TOKENS"),
 )
 
-#: The thinking modes of `research_agent/thinking.py`.
-AGENT_THINKING_MODES = ("off", "on", "budgeted")
-
-
 def agent_model_env(cfg):
-    """The timeouts, the output cap and the thinking and streaming switches of the agent
-    model calls. The worker reads the two `HOOVER4_*` timeouts and
-    `LLM_REQUEST_TIMEOUT_SECONDS`, and both agent services read the rest.
+    """The timeouts, the output cap and the streaming switch of the agent model calls.
+    The worker reads the three `HOOVER4_*` timeouts and `LLM_REQUEST_TIMEOUT_SECONDS`, and
+    both agent services read the rest. The thinking switch is not a key: it is the
+    `server_settings` row `llm_thinking`, set on `/admin/llm`.
 
-    A number key must be a whole number of at least 1 when it is set. `agent_thinking`
-    renders as written, and an empty value renders `off`. A value outside the three modes
-    gets a warning from `agent_model_warnings`, and the agent service then uses `off`.
+    A number key must be a whole number of at least 1 when it is set.
     """
     m = "main_services"
     env = {}
     for key, name in AGENT_MODEL_NUMBER_KEYS:
         env[name] = str(whole_number(cfg, key)) if cfg.get(m, key).strip() else ""
-    env["AGENT_TOOL_TURN_THINKING"] = (
-        "true" if cfg.get(m, "agent_tool_turn_thinking").strip()
-        and cfg.get_bool(m, "agent_tool_turn_thinking") else "false")
-    env["AGENT_THINKING"] = cfg.get(m, "agent_thinking").strip() or "off"
     env["LLM_STREAMING"] = (
         "false" if cfg.get(m, "llm_streaming").strip()
         and not cfg.get_bool(m, "llm_streaming") else "true")
     return env
-
-
-def agent_model_warnings(cfg):
-    """Warnings for agent model keys that render, and that likely do not do what was meant.
-
-    Warnings only: a refusal here would be a new mechanism, which a person decides.
-    """
-    m = "main_services"
-    out = []
-    thinking = cfg.get(m, "agent_thinking").strip()
-    if thinking and thinking.lower() not in AGENT_THINKING_MODES:
-        out.append("warning: [main_services] agent_thinking = %s is not one of %s, so the "
-                   "agent services use off" % (thinking, ", ".join(AGENT_THINKING_MODES)))
-    return out
 
 
 _SIZE_UNITS = {"": 1, "K": 1024, "M": 1024 ** 2, "G": 1024 ** 3, "T": 1024 ** 4}
@@ -2654,9 +2629,6 @@ def main(argv=None):
         # Each refusal of a start is a warning here, and the env still prints.
         for problem in start_refusals(cfg, side):
             print("warning: %s" % problem, file=sys.stderr)
-        if side == "main":
-            for warning in agent_model_warnings(cfg):
-                print(warning, file=sys.stderr)
         env = render_ai_env(cfg) if side == "ai" else render_main_env(cfg)
         path = AI_COMPOSE_DIR / ".env" if side == "ai" else MAIN_COMPOSE_DIR / ".env"
         print("# would write %s:" % path)
@@ -2717,8 +2689,6 @@ def main(argv=None):
                                  " (changed)" if dc_changed else " (unchanged)"))
         warning = ocr_concurrency_warning(cfg)
         if warning:
-            print(warning)
-        for warning in agent_model_warnings(cfg):
             print(warning)
 
     if args.down:

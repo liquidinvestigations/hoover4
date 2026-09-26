@@ -6,7 +6,12 @@ requests. Each request carries the run fields (`StepRun`), and the stored thread
 state of a run.
 
 `/model_step` streams `data: {json}` frames: `reasoning` and `response` deltas, then one
-`model_turn` with the classified calls of the reply (`CallEntry`), then one `end`. A failed
+`model_turn` with the classified calls of the reply (`CallEntry`), then one `end`. When the
+call compacted its input, `model_turn` carries `compaction`, the record that the worker stores
+as a `compaction` row of the run thread (`run_messages.apply_compactions`).
+
+Mode `plan` is the first-turn planning call. Its system text is `prompts/planning_call.md.j2`,
+it binds `write_todo` only, thinking is off, and a call to any other name is dropped. A failed
 call sends one `error` frame in place of `model_turn` and `end`. While no frame is ready,
 the stream sends the SSE comment line `KEEPALIVE_LINE` every `KEEPALIVE_SECONDS`.
 
@@ -29,15 +34,17 @@ import openai
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field, model_validator
 
-from research_agent import compaction, llm_events
+from research_agent import compaction, llm_events, prompts
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.execution import (
     DELEGATION_TOOL, PLAN_MUTATIONS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
     batch_budget, empty_page_text, split_measure, validation_error,
 )
-from research_agent.run_messages import RunMessage, ToolCallRecord, to_langchain
+from research_agent.run_messages import (
+    RunMessage, ToolCallRecord, apply_compactions, close_unanswered, to_langchain,
+)
 from research_agent.subagents import briefings_of
-from research_agent.thinking import thinking_kwargs, tool_turn_kwargs
+from research_agent import thinking
 from research_agent.tool_args import decode_string_arguments
 from research_agent.tool_catalogue import SEARCH_TOOL, bound_names_from_thread, matched_names, tool_schema
 
@@ -87,9 +94,9 @@ class StepRun(BaseModel):
 
 class ModelStepRequest(StepRun):
     step_no: int = Field(description="1 for the first model call of the run thread")
-    mode: Literal["tools", "final"] = "tools"
-    thinking: Optional[bool] = Field(
-        default=None, description="None sends the service default of the mode"
+    mode: Literal["tools", "final", "plan"] = "tools"
+    thinking: bool = Field(
+        description="The admin thinking switch, read by the worker before this call"
     )
     messages: List[RunMessage] = Field(description="The run thread. messages[0] is human")
     earlier: List[RunMessage] = Field(
@@ -132,9 +139,7 @@ class CallEntry(BaseModel):
 
 def thinking_body(request: ModelStepRequest) -> Dict[str, Any]:
     """The request body of the thinking switch for one model step."""
-    if request.thinking is None:
-        return tool_turn_kwargs() if request.mode == "tools" else thinking_kwargs()
-    return {"chat_template_kwargs": {"enable_thinking": bool(request.thinking)}}
+    return thinking.thinking_body(request.thinking)
 
 
 def args_digest(name: str, args: Any) -> str:
@@ -258,34 +263,93 @@ async def run_model_step(agent: Any, request: ModelStepRequest) -> AsyncIterator
                "content": f"{type(exc).__name__}: {exc}"}
 
 
+PLAN_TOOL = "write_todo"
+
+
+def build_model_input(
+    earlier: Sequence[RunMessage], messages: Sequence[RunMessage], model_id: str,
+) -> Tuple[List[RunMessage], List[BaseMessage], Optional[compaction.CompactionReport]]:
+    """The input of one model call: the earlier turns and the run thread, with a `not_run`
+    result for each unanswered call of an earlier turn, every stored compaction applied,
+    and then the compaction of this call.
+
+    Returns the applied rows, the list to send and the report of this call's compaction.
+    """
+    rows = close_unanswered(list(earlier)) + list(messages)
+    applied = apply_compactions(rows)
+    compacted, report = compaction.compact_messages(to_langchain(applied), model_id=model_id)
+    return applied, compacted, report
+
+
+def compaction_record(report: compaction.CompactionReport,
+                      applied: Sequence[RunMessage]) -> Dict[str, Any]:
+    """The content of the `compaction` row of one report: each replaced message by its
+    stored key. A message with no key, such as a `not_run` result, is left out."""
+    def keys(positions: Sequence[int]) -> List[List[Any]]:
+        out = []
+        for i in positions:
+            if 0 <= i < len(applied):
+                message = applied[i]
+                if message.thread_id is not None and message.idx is not None:
+                    out.append([message.thread_id, int(message.idx)])
+        return out
+
+    summarised = report.layer == "summarisation"
+    return {
+        "layer": report.layer,
+        "evicted": keys(report.evicted_positions),
+        "summarised": keys(report.summarised_positions) if summarised else [],
+        "handoff": report.summary if summarised else "",
+        "tokens_before": int(report.tokens_before),
+        "threshold": int(report.threshold_tokens),
+    }
+
+
+def _web_enabled(snapshot: Any) -> bool:
+    return "web_search" in getattr(snapshot, "tools_by_name", {})
+
+
 async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIterator[Dict[str, Any]]:
     context = await _context(agent, request)
     snapshot = context.snapshot
-    thread = list(request.earlier) + list(request.messages)
+    # The bind step and the call ids read the stored messages in full, because an evicted
+    # search result still bound the names that it matched.
+    thread = [m for m in list(request.earlier) + list(request.messages)
+              if m.role != "compaction"]
     bound = bound_names_from_thread(snapshot, thread)
     names = snapshot.callable_names(bound)
-    history = to_langchain(thread)
 
-    # The per-call compaction. What it returns goes to the model only. The stored thread
-    # keeps every tool result in full.
-    compacted, report = await asyncio.to_thread(
-        compaction.compact_messages, history, model_id=context.model_id
+    # What the compaction returns goes to the model only. The stored thread keeps every
+    # tool result in full, and the `compaction` row of the reply records what was replaced.
+    applied, compacted, report = await asyncio.to_thread(
+        build_model_input, request.earlier, request.messages, context.model_id
     )
+    history = to_langchain(applied)
+    record = compaction_record(report, applied) if report is not None else None
     if report is not None:
         await asyncio.to_thread(
             compaction.record_compaction, report,
             username=request.username, session_id=request.session_id,
         )
-    model_input = [SystemMessage(content=context.system_text_for(names))] + list(compacted)
+    plan = request.mode == "plan"
+    if plan:
+        system_text = prompts.planning_call(
+            collections=request.allowed_collections, web_enabled=_web_enabled(snapshot))
+    else:
+        system_text = context.system_text_for(names)
+    model_input = [SystemMessage(content=system_text)] + list(compacted)
 
     llm: Any = ThinkingChatOpenAI(
         **context.llm_kwargs,
         streaming=llm_streaming_enabled(),
         disable_streaming=not llm_streaming_enabled(),
-        extra_body=thinking_body(request),
+        # The planning call runs with thinking off, whatever the switch says.
+        extra_body=thinking.thinking_body(False) if plan else thinking_body(request),
     )
     if request.mode == "tools":
         llm = llm.bind_tools(snapshot.tools_for(bound))
+    elif plan:
+        llm = llm.bind_tools([snapshot.tools_by_name[PLAN_TOOL]], tool_choice="auto")
     config = _callbacks_config(agent, request)
 
     timer = llm_events.CallTimer()
@@ -317,6 +381,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     calls = [
         {"id": c.get("id"), "name": c.get("name"), "args": c.get("args")}
         for c in (getattr(message, "tool_calls", None) or [])
+        if not plan or c.get("name") == PLAN_TOOL
     ]
     budget_messages = history + [message]
     entries = await asyncio.to_thread(
@@ -327,7 +392,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     try:
         stats = llm_events.stats_from_message(
             message, model_id=context.model_id, provider=provider, latency_ms=latency_ms,
-            kind="chat",
+            kind="plan" if plan else "chat",
         )
     except Exception as exc:  # noqa: BLE001 - a lost number never loses the answer
         log.warning("could not read usage off a model step: %s", exc)
@@ -366,6 +431,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
             "reasoning_tokens": int(stats.reasoning_tokens or 0),
         },
         "summarised": bool(report is not None and report.layer == "summarisation"),
+        "compaction": record,
     }
     yield {
         "type": "end",
@@ -492,7 +558,8 @@ async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
 
 __all__ = [
     "BROWSER_ACTIONS", "CallEntry", "KEEPALIVE_LINE", "KEEPALIVE_SECONDS", "ModelStepRequest",
-    "StepRun", "ToolCallRequest", "args_digest", "call_ids", "classify_calls",
+    "PLAN_TOOL", "StepRun", "ToolCallRequest", "args_digest", "build_model_input", "call_ids",
+    "classify_calls", "compaction_record",
     "classify_error", "llm_streaming_enabled", "run_model_step", "run_tool_call",
     "stream_frames", "thinking_body",
 ]

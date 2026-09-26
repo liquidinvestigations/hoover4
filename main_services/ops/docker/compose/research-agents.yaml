@@ -48,10 +48,6 @@ services:
       # vLLM 0.17.1 + Qwen3.5. Set the key to false if that ever regresses. The symptom is
       # an agent that answers from nothing with no tool calls.
       - LLM_STREAMING=${LLM_STREAMING:-true}
-      # Thinking of the prose turn (off, on or budgeted), and of the turns that may call a
-      # tool, from `agent_thinking` and `agent_tool_turn_thinking`.
-      - AGENT_THINKING=${AGENT_THINKING:-off}
-      - AGENT_TOOL_TURN_THINKING=${AGENT_TOOL_TURN_THINKING:-false}
       # The read timeout of one model call, which also turns off the client retries, and
       # the output cap of one model request. Empty keeps the client defaults and no cap.
       - LLM_REQUEST_TIMEOUT_SECONDS=${LLM_REQUEST_TIMEOUT_SECONDS:-}
@@ -155,10 +151,6 @@ services:
       # vLLM 0.17.1 + Qwen3.5. Set the key to false if that ever regresses. The symptom is
       # an agent that answers from nothing with no tool calls.
       - LLM_STREAMING=${LLM_STREAMING:-true}
-      # Thinking of the prose turn (off, on or budgeted), and of the turns that may call a
-      # tool, from `agent_thinking` and `agent_tool_turn_thinking`.
-      - AGENT_THINKING=${AGENT_THINKING:-off}
-      - AGENT_TOOL_TURN_THINKING=${AGENT_TOOL_TURN_THINKING:-false}
       # The read timeout of one model call, which also turns off the client retries, and
       # the output cap of one model request. Empty keeps the client defaults and no cap.
       - LLM_REQUEST_TIMEOUT_SECONDS=${LLM_REQUEST_TIMEOUT_SECONDS:-}

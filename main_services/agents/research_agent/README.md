@@ -178,11 +178,21 @@ collections, `llm_model` and `can_delegate`.
 ### `POST /model_step`
 
 The request adds `step_no` (1 for the first model call of the run thread), `mode` (`tools`,
-or `final` with no tool bound), `thinking` (a bool, or empty for the default of the mode),
-the run's thread as `messages`, and the earlier turns of the chat as `earlier` (depth 0
-only). `messages[0]` is the opening human message. `run_messages.py` rebuilds the stored
-messages into langchain messages, with the tool calls and the stored usage, so compaction
-can measure the thread before the model call.
+`final` with no tool bound, or `plan`), `thinking` (a required bool, the admin thinking
+switch), the run's thread as `messages`, and the earlier turns of the chat as `earlier`
+(depth 0 only). `messages[0]` is the opening human message. Each message carries its stored
+key, `thread_id` and `idx`. `earlier` holds the stored threads of the earlier chat turns in
+full, with their tool calls and results. A call of an earlier turn that has no result, which
+a stopped turn leaves, gets a `not_run` result in the request only. `run_messages.py` applies
+the stored `compaction` rows and rebuilds the messages into langchain messages, with the tool
+calls and the stored usage, so compaction can measure the thread before the model call.
+
+Mode `plan` is the first-turn planning call of a chat. Its system text is
+`prompts/planning_call.md.j2`, with the collections the run can read and one line on the
+web tools. It binds `write_todo` only with `tool_choice` `auto`, it sends thinking off
+whatever the request says, a call to any other name is dropped from the reply, and its
+`llm_call_events` row has `kind` `plan`. The worker runs the `write_todo` call through
+`/tool_call`, so the todo server writes the plan.
 
 The response is a stream of `data: {json}` frames, in this order:
 
@@ -190,7 +200,7 @@ The response is a stream of `data: {json}` frames, in this order:
 |---|---|---|
 | `reasoning` | `content` | each reasoning delta |
 | `response` | `content` | each text delta |
-| `model_turn` | `text`, `reasoning`, `tool_calls` (a list of call entries), `bound_names`, `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`), `summarised` | once, after the reply ends |
+| `model_turn` | `text`, `reasoning`, `tool_calls` (a list of call entries), `bound_names`, `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`), `summarised`, `compaction` (the record of this call's compaction, or null) | once, after the reply ends |
 | `end` | `model`, `latency_ms`, `usage` (`prompt_tokens`, `completion_tokens`, `reasoning_tokens`) | once, last |
 | `error` | `error_class`, `retryable`, `content` | in place of `model_turn` and `end` |
 
@@ -245,78 +255,28 @@ key for citations, artifacts and the todo list. Sessions are dropped when the ch
 `BROWSER_SESSION_IDLE_SECONDS` (1 h) idle. See
 [`../browser_use_server/README.md`](../browser_use_server/README.md).
 
-## Thinking budget: `AGENT_THINKING`
+## Thinking: the `thinking` value of a model step
 
-Qwen3.5's chat template decides thinking in the **prompt**, not the sampler. With
+A Qwen-family chat template decides thinking in the **prompt**. The sampler has no part in it. With
 `enable_thinking` unset or false it emits `<think>\n\n</think>` *before* generation, so
-the default is not a small thinking budget. It is **no thinking at all**.
+the model does not reason at all. With it true the model reasons, then answers.
 
 Measured on this host, Qwen3.5-2B, simple question ("what is 17x23, reason it out"):
 
 | setting | completion tokens | notes |
 |---|---|---|
-| thinking off (**default**) | 441 | `<think></think>` prefilled by the template |
+| thinking off | 441 | `<think></think>` prefilled by the template |
 | thinking on | 1,735 | closes `</think>` after ~1,300 tokens, then answers |
 
-Roughly **4x** on a simple question. On a *hard* one (a two-trains-and-a-bird puzzle) the
-picture is much worse. Unbounded thinking does not converge at all. These runs sent no
-`AGENT_MAX_OUTPUT_TOKENS` cap:
-
-| mode | wall time | completion tokens | finish reason |
-|---|---|---|---|
-| off (**default**) | 19.0 s | 594 | `stop` |
-| on (unbounded) | **563.5 s** | 16,000 | `length`, never terminated |
-| budgeted 750 (half) | 56.9 s | 1,774 | `length` |
-| budgeted 375 (quarter) | 49.8 s | 1,399 | `length` |
-
-**Unbounded thinking is not a safe setting on this model.** It ran to a 16 K-token cap
-and nine and a half minutes without closing `</think>`. With no output cap, the budget
-turned a non-terminating run into a ~1-minute one. The budget bounds a request only when
-`[main_services] agent_max_output_tokens` is empty. Both templates set that cap to 32768.
-
-There is no half-way setting inside the model, and vLLM 0.17.1 has no thinking-budget
-flag: `max_thinking_tokens`, `thinking_budget` and `reasoning_max_tokens` are all
-accepted and silently ignored in the request body (verified against the running server).
-The `budgeted` mode therefore sends its budget as `max_tokens` in the request body. When
-`AGENT_MAX_OUTPUT_TOKENS` is set, the client sends that cap as `max_completion_tokens`.
-vLLM applies `max_completion_tokens` when a request carries both keys, so the budget has no
-effect.
-
-`research_agent/thinking.py` adds the control. `deploy.py` renders `AGENT_THINKING` from
-`[main_services] agent_thinking`, and an empty key renders `off`. The agent service uses `off`
-with a warning for a value outside the three modes.
-
-| `AGENT_THINKING` | behaviour |
-|---|---|
-| `off` (default) | template prefills `<think></think>`. Fastest. |
-| `on` | unbounded reasoning. Slowest, best on multi-step questions. |
-| `budgeted` | reasoning on, sends `max_tokens` of `AGENT_THINKING_BUDGET_TOKENS` + answer allowance. This caps the completion only when `AGENT_MAX_OUTPUT_TOKENS` is empty. |
-
-`AGENT_THINKING_BUDGET_TOKENS` defaults to **750**, half a measured unbudgeted thought,
-which is the "half the thinking" setting.
-
-**Tool-calling turns keep thinking off by default, whatever the mode.** Choosing a tool is
-routing, and letting Qwen3.5 reason about it produced the repeated-call loop that the
-worker's agent loop stops. Some models call tools more reliably with thinking on, and may answer
-directly instead of calling a tool with it off. `AGENT_TOOL_TURN_THINKING=true`, rendered
-from `[main_services] agent_tool_turn_thinking`, turns thinking on for the tool-calling
-turns. Only a `final` model step sends the budget, because it writes prose and cannot call
-a tool.
+The admin switch "Thinking" on `/admin/llm` decides the value. It is the `server_settings`
+row `llm_thinking`, and an absent row is on. The worker reads the row before each model
+call and sends `thinking`, a required boolean of `POST /model_step`. The service sends it as
+`chat_template_kwargs.enable_thinking` in the request body, in both modes (`thinking.py`).
+The title call and the compaction summary send `enable_thinking: false` of their own. The output cap `AGENT_MAX_OUTPUT_TOKENS` bounds a request with thinking on.
 
 The thinking text arrives in the delta field `reasoning` from vLLM, and in
 `reasoning_content` from older servers and other providers. `chat_model.py` reads either
 field and gives the agent `reasoning_content`.
-
-**Two things to fix before shipping `on` or `budgeted` to real users:**
-
-1. vLLM is not started with `--reasoning-parser qwen3`, so `reasoning_content` is never
-   separated out and the `<think>` block lands in the answer the user reads. In the runs
-   above the budgeted modes returned *only* reasoning (the budget was spent before the
-   model closed the block), so without the parser the chat would show a chain of thought
-   and no answer.
-2. A budget that truncates mid-thought yields no answer at all. If thinking is wanted,
-   pair it with a larger `ANSWER_TOKEN_ALLOWANCE`, or accept `off` for the chat path and
-   reserve thinking for the Temporal research task where minutes are affordable.
 
 ## Stopping the model looping
 
@@ -339,23 +299,28 @@ model is usually still working with what it just read.
 
 | variable | default | meaning |
 |---|---|---|
-| `AGENT_COMPACTION_FRACTION` | `0.6` | fraction of the stated window at which compaction fires. Out of range, or unparseable, turns compaction off rather than clamping |
+| `AGENT_COMPACTION_FRACTION` | `0.65` | fraction of the stated window at which compaction fires. Out of range, or unparseable, turns compaction off rather than clamping |
 | `AGENT_COMPACTION_KEEP_RECENT` | `3` | most recent tool results left intact by eviction |
 | `AGENT_COMPACTION_KEEP_RECENT_MESSAGES` | `6` | trailing messages summarisation leaves alone, on top of what it may never touch |
 | `LLM_MODEL_COMPACTION` | the answering model | model that writes the handoff document |
 
-**It does not fire on the traffic this stack produces.** The widest turn measured here
-(the full research profile, sixteen tool calls, three web pages read and cited) peaked at
-about a tenth of the window, and an ordinary corpus question at half that. The trigger is
-sized against the window rather than against those measurements because the window is a
-property of the model in use: a smaller-window model, a larger corpus, sub-agents, or tool
-results replayed across turns all bring it into range.
+The earlier turns of a chat reach the model as their stored threads, with every tool call
+and result (`POST /model_step` above), so a long conversation reaches the threshold.
+
+**The compacted list is kept.** When a call compacts its input, the `model_turn` frame
+carries `compaction`, a record that names each evicted and each summarised message by its
+stored key `[thread_id, idx]`, and the handoff document of a summarisation. The worker
+stores it as a `compaction` row after the `ai` message of that call. Each later call applies
+every stored row first (`run_messages.apply_compactions`), and then measures the usage of the
+last call, which was billed on the compacted list. The calls above the threshold therefore do
+not alternate between a short list and the full list. A stored row is applied in the request
+only: the thread keeps every message in full.
 
 Three properties decide whether a citation still resolves:
 
-* **Nothing is edited.** The transformation applies to the messages of one model call
-  only, so the stored thread, the trajectory the website renders and the transcript rows
-  all keep every result in full. Only the model sees less.
+* **Nothing is edited.** The transformation applies to the messages of a model call only,
+  so the stored messages, the trajectory the website renders and the transcript rows all
+  keep every result in full. Only the model sees less.
 * **A result is shortened, never removed.** An assistant message whose `tool_calls` have no
   matching tool result is rejected by an OpenAI-shaped API outright (the same constraint
   a `final` step works around), so the placeholder is what "dropped" has to mean here.
@@ -393,7 +358,8 @@ minutes.
 **Some messages are never summarised, and that is enforced by selecting them in code, not
 by asking the summariser to spare them.** `protected_indexes` picks out the user's own
 messages, every todo call and result, the `cite_documents` result that says which document
-`[D3]` means, any message whose text carries a handle, and the most recent exchanges;
+`[D3]` means, any message whose text carries a handle, every failed tool result, and the
+most recent exchanges;
 those are copied into the outgoing list unchanged and the summariser never sees them. A
 model asked politely to preserve a citation will eventually not, and **a compaction that
 loses a citation the answer already made is a correctness bug, not a compression
@@ -502,14 +468,12 @@ The application is configured entirely via environment variables (rendered from
   the rule, and the worker's title request mirrors it.
 - `AGENT_MAX_OUTPUT_TOKENS`: the output cap of every agent model request, which the model
   client sends as `max_completion_tokens`. Empty sends no cap. The compaction summary keeps
-  its own ceiling. The `budgeted` thinking mode adds its own `max_tokens`. When a request
-  carries both keys, vLLM applies `max_completion_tokens`, so the thinking budget has no
-  effect while this cap is set.
+  its own ceiling.
 - `LLM_REQUEST_TIMEOUT_SECONDS`: the read timeout of one agent model call, with a 10 s
   connect timeout. When set, the model client does not retry, so a call that receives no
   data for this long fails once and is not sent again. It is also the read timeout of the compaction summary. Empty keeps the client
   default (600 s and 2 retries) and 180 s for the summary.
-- `AGENT_THINKING`, `AGENT_TOOL_TURN_THINKING`, `LLM_STREAMING`: see the sections above.
+- `LLM_STREAMING`: see the sections above.
 - `AGENT_NAME`: Name of the agent
 - `SYSTEM_PROMPT`: overrides the rendered prompt; empty means render this profile's templates
 - `HOST`: Host to bind to (default: 0.0.0.0)

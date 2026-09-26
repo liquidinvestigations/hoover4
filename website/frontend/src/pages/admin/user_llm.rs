@@ -1,5 +1,5 @@
 //! Admin page: `/admin/users/:username/llm`, per-user LLM usage: chat
-//! sessions, message and tool-call counts, agent (GPU) time, and current
+//! sessions, message and tool-call counts, model and tool time, and current
 //! rate-limit usage.
 
 use common::metrics_types::{AdminUserLlmMetrics, RateWindowUsage};
@@ -84,10 +84,10 @@ fn SummaryPanel(metrics: AdminUserLlmMetrics) -> Element {
                             td { style: TD, "{metrics.tool_calls}" }
                         }
                         tr {
-                            td { style: "{TD} font-weight: 600;", "Agent time" }
+                            td { style: "{TD} font-weight: 600;", "Model and tool time" }
                             td { style: TD,
                                 "{humanize_ms(metrics.agent_duration_ms_total)} "
-                                span { style: HELP_TEXT, "wall time the agent spent on this user's turns, which is what the chat rate limit exists to bound" }
+                                span { style: HELP_TEXT, "model and tool time of this user's agent steps. Parallel tool calls count in full" }
                             }
                         }
                     }
@@ -164,7 +164,7 @@ fn SessionsPanel(metrics: AdminUserLlmMetrics) -> Element {
                                 th { style: TH, "Created" }
                                 th { style: TH, "Messages" }
                                 th { style: TH, "Tool calls" }
-                                th { style: TH, "Agent time" }
+                                th { style: TH, "Model and tool time" }
                             }
                         }
                         tbody {

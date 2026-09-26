@@ -93,6 +93,34 @@ def quote_occurs_in(quote: str, document_text: str) -> bool:
     return quote_match_in_pages(quote, [document_text]) == QUOTE_MATCH_VERIFIED
 
 
+def find_in_quote(find: str, quote: str) -> bool:
+    """Whether a find phrase is part of its quote, after the quote's folding.
+
+    The quote is checked against the document, so a phrase inside the quote is in the
+    document too. A phrase shorter than `MIN_QUOTE_CHARS` fails, because it marks too many
+    places in the document.
+    """
+    needle = normalise_for_match(find)
+    return len(needle) >= MIN_QUOTE_CHARS and needle in normalise_for_match(quote)
+
+
+def phrase_query(text: str) -> str:
+    """A document find query that matches `text` as one phrase, or "" for empty text.
+
+    Double quotes inside the text become spaces, because the find query uses them to
+    mark the phrase.
+    """
+    words = " ".join(text.replace('"', " ").split())
+    return f'"{words}"' if words else ""
+
+
+def citation_find_query(find: str, quote: str) -> str:
+    """The find query of one citation card: the find phrase when it checks, else the quote."""
+    if find.strip() and find_in_quote(find, quote):
+        return phrase_query(find)
+    return phrase_query(quote)
+
+
 def quote_match_in_pages(quote: str, pages) -> str:
     """Match a quote against extracted pages joined the same way as a full-document read.
 

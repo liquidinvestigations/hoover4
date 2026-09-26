@@ -549,10 +549,12 @@ services:
       # false when the active provider rejects `temperature`: the title request leaves it out.
       - "LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}"
       # The agent step limits of tasks/P_agent/model_timeouts.py. Empty keeps the code
-      # defaults: no queue-wait limit, a 3,600 s model step, and a 30 s title request.
+      # defaults: no queue-wait limit, a 3,600 s model step, a 30 s title request and a
+      # 60 s planning call.
       - "HOOVER4_AGENT_QUEUE_WAIT_SECONDS=${HOOVER4_AGENT_QUEUE_WAIT_SECONDS:-}"
       - "LLM_REQUEST_TIMEOUT_SECONDS=${LLM_REQUEST_TIMEOUT_SECONDS:-}"
       - "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS=${HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS:-}"
+      - "HOOVER4_PLAN_REQUEST_TIMEOUT_SECONDS=${HOOVER4_PLAN_REQUEST_TIMEOUT_SECONDS:-}"
       # Read by tests/unit/test_temporal_readiness.py. See the mount above.
       - "HOOVER4_TEMPORAL_READY_RS=/mirror/website-backend-src/temporal_ready.rs"
 

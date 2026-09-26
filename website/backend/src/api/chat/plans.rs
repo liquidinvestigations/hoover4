@@ -396,6 +396,12 @@ pub async fn get_plan_view(
         return Ok(None);
     };
     let nodes: Vec<PlanNodeView> = serde_json::from_str(&nodes_json).unwrap_or_default();
+    // Only a terminal plan run shows why it stopped, so a live one skips the query.
+    let end_reason = if run.is_terminal() {
+        lead_end_reason(&db_plans::plan_agent_runs(username, &session_id, &run.rid).await?)
+    } else {
+        String::new()
+    };
     Ok(Some(PlanView {
         run_id: run.rid,
         plan_id: run.pid,
@@ -406,7 +412,19 @@ pub async fn get_plan_view(
         version,
         nodes,
         sections_json: run.sections_json,
+        end_reason,
     }))
+}
+
+/// The end reason of the newest lead run (`depth == 0`) in `runs`, oldest first. A
+/// sub-agent that stopped at its step budget does not stop the research, so its end reason
+/// is not read.
+fn lead_end_reason(runs: &[db_plans::PlanAgentRun]) -> String {
+    runs.iter()
+        .rev()
+        .find(|r| r.depth == 0)
+        .map(|r| r.end_reason.clone())
+        .unwrap_or_default()
 }
 
 /// The input of the planner run that a deep-research request starts.
@@ -477,7 +495,27 @@ mod tests {
             depth: 0,
             turn_seq,
             started_ms: 0,
+            end_reason: String::new(),
         }
+    }
+
+    fn ended(depth: u8, end_reason: &str) -> db_plans::PlanAgentRun {
+        db_plans::PlanAgentRun { depth, end_reason: end_reason.into(), ..agent_run(1) }
+    }
+
+    #[test]
+    fn the_end_reason_is_read_from_the_newest_lead_run() {
+        // A sub-agent at its step budget under an organizer that answered.
+        assert_eq!(lead_end_reason(&[ended(0, ""), ended(1, "step_budget")]), "");
+        assert_eq!(lead_end_reason(&[ended(1, "step_budget"), ended(0, "")]), "");
+        // A lead organizer forced to answer on a repeated call.
+        assert_eq!(
+            lead_end_reason(&[ended(0, "repeated_call"), ended(1, "step_budget")]),
+            "repeated_call"
+        );
+        // A planner at its step budget, then an organizer that answered.
+        assert_eq!(lead_end_reason(&[ended(0, "step_budget"), ended(0, "")]), "");
+        assert_eq!(lead_end_reason(&[]), "");
     }
 
     #[test]

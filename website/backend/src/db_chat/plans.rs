@@ -177,6 +177,9 @@ pub struct PlanAgentRun {
     pub depth: u8,
     pub turn_seq: u32,
     pub started_ms: i64,
+    /// Empty for a run that answered. `step_budget` or `repeated_call` for a run that
+    /// was forced to a final answer.
+    pub end_reason: String,
 }
 
 /// Every agent run of a plan run, oldest first.
@@ -188,7 +191,8 @@ pub async fn plan_agent_runs(
     let rows = get_global_client()
         .query(
             "SELECT workflow_id, state, depth, turn_seq, \
-             toUnixTimestamp64Milli(started_at) AS started_ms FROM agent_runs FINAL \
+             toUnixTimestamp64Milli(started_at) AS started_ms, \
+             toString(end_reason) AS end_reason FROM agent_runs FINAL \
              WHERE username = ? AND session_id = ? AND plan_run_id = toUUID(?) \
              ORDER BY started_at, run_id",
         )

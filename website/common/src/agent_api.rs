@@ -186,6 +186,9 @@ pub struct AgentSearchDocument {
     pub document_date: Option<i64>,
     /// Holds the short dataset name that `collections/list` returns.
     pub dataset: String,
+    /// Holds the full dataset key that a document card opens the document with.
+    #[serde(default)]
+    pub collection_dataset: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -379,6 +382,9 @@ pub struct DocumentsReadRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentDocumentText {
     pub collectionname: String,
+    /// Holds the full dataset key that a document card opens the document with.
+    #[serde(default)]
+    pub collection_dataset: String,
     pub file_hash: String,
     pub path: String,
     pub title: String,

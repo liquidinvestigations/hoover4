@@ -1,144 +1,21 @@
-"""Thinking-budget control for Qwen3.5 under vLLM.
+"""The request body of the thinking switch.
 
-## What the model actually does
+A Qwen-family chat template decides thinking in the prompt. With `enable_thinking` true
+the template opens a `<think>` block and the model reasons before it answers. With it
+false or unset the template opens and closes the block before generation, so the model
+does not reason at all. The value goes in `chat_template_kwargs` of the request body.
 
-Qwen3.5's chat template decides thinking in the *prompt*, not in the sampler:
-
-    {%- if enable_thinking is defined and enable_thinking is true %}
-        {{- '<think>\\n' }}          # opened, model reasons, model closes it
-    {%- else %}
-        {{- '<think>\\n\\n</think>\\n\\n' }}   # opened AND closed before generation
-    {%- endif %}
-
-So the default, with `enable_thinking` unset, gives **no thinking at all** rather than a
-small thinking budget: the block is closed before the model emits its first token.
-Measured on this host with Qwen3.5-2B, "what is 17*23, reason it out":
-
-    thinking off (default)   441 completion tokens
-    thinking on            1,735 completion tokens, closes </think> after ~1,300
-
-That is the time/quality lever, and it is roughly 4x on a simple question. On a hard one
-(a two-trains-and-a-bird puzzle) unbounded thinking does not converge at all:
-
-    off (default)          19.0 s      594 tokens   finish=stop
-    on (unbounded)        563.5 s   16,000 tokens   finish=length  <- never terminated
-    budgeted 750           56.9 s    1,774 tokens   finish=length
-    budgeted 375           49.8 s    1,399 tokens   finish=length
-
-**`on` is not a safe production setting on this model** -- nine and a half minutes
-without closing `</think>`. With no output cap, the budget bounded that run.
-
-There is no half-way setting built into the model, and vLLM 0.17.1 has no
-thinking-budget flag -- `max_thinking_tokens`, `thinking_budget` and
-`reasoning_max_tokens` are all silently ignored in the request body (verified against
-the running server, they change nothing).
-
-## What this module adds
-
-A budget in tokens. `AGENT_THINKING=budgeted` sends `max_tokens` of the budget plus
-`ANSWER_TOKEN_ALLOWANCE` in the request body. When `AGENT_MAX_OUTPUT_TOKENS` is set, the
-client sends that cap as `max_completion_tokens`. vLLM applies the cap, so the budget has
-no effect. The budget bounds the completion only when `agent_max_output_tokens` is empty.
-Both templates set that cap to 32768. The measurements above sent no cap.
-
-Three modes:
-
-* `off`     -- template prefills `<think></think>`. Fastest. **The current default.**
-* `on`      -- unbounded reasoning. Slowest, best on multi-step questions.
-* `budgeted`-- reasoning on, sends the `AGENT_THINKING_BUDGET_TOKENS` budget, see above.
-
-Tool-calling turns always run with thinking off regardless of mode. A tool call is a
-routing decision, not a reasoning problem, and Qwen3.5-2B already reasons past the point
-of usefulness into repeated calls (see `agent.py`'s `_repeated_call` guard). Only the
-turn that writes prose sends the budget, which is where thinking changes the answer.
+The admin switch `server_settings.llm_thinking` (on `/admin/llm`) decides the value for
+each agent model step. The worker reads the setting before each model call and sends
+`thinking` in the step request. The title call and the compaction summary send
+`enable_thinking: false` of their own.
 """
 
 from __future__ import annotations
 
-import logging
-import os
 from typing import Any, Dict
 
-log = logging.getLogger(__name__)
 
-#: Modes, in increasing order of cost.
-MODE_OFF = "off"
-MODE_ON = "on"
-MODE_BUDGETED = "budgeted"
-VALID_MODES = (MODE_OFF, MODE_ON, MODE_BUDGETED)
-
-#: Measured ceiling for an unbudgeted thought on Qwen3.5-2B (~1,300 tokens for a
-#: trivial arithmetic question). The default budget is half of the round number above
-#: it, which is the "half the thinking" setting.
-UNBUDGETED_THINKING_TOKENS = 1_500
-DEFAULT_BUDGET_TOKENS = UNBUDGETED_THINKING_TOKENS // 2
-
-#: Room reserved for the answer itself once the thinking budget is spent. Without it a
-#: budget equal to max_tokens leaves nothing to answer with.
-ANSWER_TOKEN_ALLOWANCE = 1_024
-
-
-def thinking_mode() -> str:
-    """Configured mode, defaulting to `off` -- the behaviour before this existed."""
-    raw = os.getenv("AGENT_THINKING", MODE_OFF).strip().lower()
-    if raw in VALID_MODES:
-        return raw
-    # A typo must not silently buy 4x the latency in either direction.
-    log.warning("AGENT_THINKING=%r is not one of %s; using %s", raw, VALID_MODES, MODE_OFF)
-    return MODE_OFF
-
-
-def thinking_budget_tokens() -> int:
-    """Token budget for the reasoning block in `budgeted` mode."""
-    raw = os.getenv("AGENT_THINKING_BUDGET_TOKENS", str(DEFAULT_BUDGET_TOKENS))
-    try:
-        value = int(raw)
-    except ValueError:
-        log.warning("AGENT_THINKING_BUDGET_TOKENS=%r is not a number; using %d", raw, DEFAULT_BUDGET_TOKENS)
-        return DEFAULT_BUDGET_TOKENS
-    # Below ~64 tokens the model cannot finish a thought and the truncation costs
-    # quality with no latency saving worth having.
-    return max(64, min(value, 32_768))
-
-
-def thinking_kwargs(mode: str | None = None, budget: int | None = None) -> Dict[str, Any]:
-    """Extra request body for a *prose-producing* LLM call.
-
-    Returns `extra_body` content for langchain-openai: `chat_template_kwargs` selects
-    the template branch. In `budgeted` mode it also sends the budget as `max_tokens`.
-    When `AGENT_MAX_OUTPUT_TOKENS` is set, the client sends that cap as
-    `max_completion_tokens`. vLLM applies the cap, so the budget has no effect. The
-    budget bounds the completion only when `agent_max_output_tokens` is empty.
-    """
-    mode = mode or thinking_mode()
-
-    if mode == MODE_OFF:
-        return {"chat_template_kwargs": {"enable_thinking": False}}
-
-    if mode == MODE_ON:
-        return {"chat_template_kwargs": {"enable_thinking": True}}
-
-    budget = budget if budget is not None else thinking_budget_tokens()
-    return {
-        "chat_template_kwargs": {"enable_thinking": True},
-        "max_tokens": budget + ANSWER_TOKEN_ALLOWANCE,
-    }
-
-
-def tool_turn_kwargs() -> Dict[str, Any]:
-    """Extra request body for a turn that may call a tool.
-
-    Thinking is off unless `AGENT_TOOL_TURN_THINKING` is true (`[main_services]
-    agent_tool_turn_thinking`). Some models call tools more reliably in thinking mode, and
-    may answer directly instead of calling a tool when thinking is off.
-    """
-    on = os.getenv("AGENT_TOOL_TURN_THINKING", "false").strip().lower() in ("1", "true", "yes")
-    return {"chat_template_kwargs": {"enable_thinking": on}}
-
-
-def describe() -> str:
-    """One line for the startup log, so the mode is visible without reading env."""
-    mode = thinking_mode()
-    if mode == MODE_BUDGETED:
-        return f"thinking={mode} budget={thinking_budget_tokens()} tokens"
-    return f"thinking={mode}"
+def thinking_body(on: bool) -> Dict[str, Any]:
+    """The `extra_body` of one model call, with thinking on or off."""
+    return {"chat_template_kwargs": {"enable_thinking": bool(on)}}

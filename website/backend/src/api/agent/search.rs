@@ -328,6 +328,7 @@ async fn search_results_body(
             size: item.file_size_bytes,
             document_date: item.document_date,
             dataset,
+            collection_dataset: item.collection_dataset.clone(),
         });
     }
 

@@ -9,6 +9,8 @@ from collection_search_server.citations import (
     QUOTE_REASON_ABSENT,
     QUOTE_REASON_LOOKUP_FAILED,
     QUOTE_REASON_SHORT,
+    citation_find_query,
+    find_in_quote,
     normalise_for_match,
     quote_match_in_pages,
     quote_occurs_in,
@@ -143,6 +145,29 @@ class TestCiteOne:
         assert result.handle == "[D1]"
         assert result.path == "/doc.txt"
 
+    def test_a_find_phrase_of_the_quote_becomes_the_find_query(self, monkeypatch):
+        quote = "Your notes look great.  Best of luck today with the Hearings."
+        self._stub_pages(monkeypatch, [quote])
+        result = _cite_one(_acl(), "s1", Citation(
+            collectionname="testdata", file_hash=HASH, quote=quote, find="Your notes look great"))
+        assert result.quote_verified
+        assert result.find_query == '"Your notes look great"'
+
+    def test_a_find_phrase_outside_the_quote_falls_back_to_the_quote(self, monkeypatch):
+        quote = "Your notes look great. Best of luck today."
+        self._stub_pages(monkeypatch, [quote])
+        result = _cite_one(_acl(), "s1", Citation(
+            collectionname="testdata", file_hash=HASH, quote=quote, find="Something else entirely"))
+        assert result.find_query == '"Your notes look great. Best of luck today."'
+
+    def test_no_find_phrase_opens_at_the_quote(self, monkeypatch):
+        quote = 'He wrote "approved" on the draft of the talking points.'
+        self._stub_pages(monkeypatch, [quote])
+        result = _cite_one(_acl(), "s1", Citation(
+            collectionname="testdata", file_hash=HASH, quote=quote))
+        # A double quote inside the text would end the phrase early.
+        assert result.find_query == '"He wrote approved on the draft of the talking points."'
+
     def test_a_short_quote_is_named(self, monkeypatch):
         self._stub_pages(monkeypatch, ["The board approved the transfer on 3 March."])
         result = _cite_one(
@@ -269,3 +294,14 @@ class TestHandleTable:
         table.handle_for("s3", "c", "h1")
         assert table.session_count() == 2
         assert table.handle_for("s1", "c", "h1") == "[D1]"
+
+
+class TestFindPhrase:
+    def test_a_phrase_of_the_quote_checks_after_folding(self):
+        assert find_in_quote("YOUR NOTES  look great", "Your notes look great. Best of luck.")
+
+    def test_a_short_phrase_fails(self):
+        assert not find_in_quote("notes", "Your notes look great. Best of luck.")
+
+    def test_an_empty_quote_and_find_give_no_query(self):
+        assert citation_find_query("", "") == ""

@@ -29,6 +29,9 @@ struct ModelRow {
     fetched_at: i64,
 }
 
+/// The median latency and call count of one model over 14 days of `llm_call_events`.
+/// Only `kind = 'chat'` rows count, so a title call or a planning call does not move
+/// the median of a chat model.
 #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
 struct LatencyRow {
     model_id: String,
@@ -208,7 +211,7 @@ pub async fn admin_get_llm(user: &CurrentUser) -> anyhow::Result<AdminLlmPage> {
         .query(
             "SELECT model_id, quantile(0.5)(latency_ms) AS median_ms, count() AS calls \
              FROM llm_call_events \
-             WHERE event_time >= now() - INTERVAL 14 DAY \
+             WHERE event_time >= now() - INTERVAL 14 DAY AND kind = 'chat' \
              GROUP BY model_id",
         )
         .fetch_all::<LatencyRow>()
@@ -304,7 +307,33 @@ pub async fn admin_get_llm(user: &CurrentUser) -> anyhow::Result<AdminLlmPage> {
         profile_models,
         refresh_in_flight: REFRESH_IN_FLIGHT.load(Ordering::Relaxed),
         llm_configured: llm_configured() || !default_chat_model().await.is_empty(),
+        thinking: llm_thinking().await,
     })
+}
+
+/// The `server_settings` key of the thinking switch. The worker reads the same key
+/// before each agent model call.
+pub const LLM_THINKING_KEY: &str = "llm_thinking";
+
+/// Parse a stored `llm_thinking` value. Only `off` turns thinking off. An absent row,
+/// an empty value and every other value mean on.
+pub fn thinking_from_setting(value: Option<&str>) -> bool {
+    !matches!(value.map(str::trim), Some("off"))
+}
+
+/// The thinking switch as stored. A failed read returns on, as the worker does.
+pub async fn llm_thinking() -> bool {
+    match settings::get_setting(LLM_THINKING_KEY).await {
+        Ok(v) => thinking_from_setting(v.as_deref()),
+        Err(_) => true,
+    }
+}
+
+/// Turn the thinking of agent model calls on or off. The next model call of every run
+/// reads the new value.
+pub async fn admin_set_llm_thinking(user: &CurrentUser, on: bool) -> anyhow::Result<()> {
+    guard::require_admin(user)?;
+    settings::set_setting(LLM_THINKING_KEY, if on { "on" } else { "off" }).await
 }
 
 pub async fn admin_set_default_chat_model(
@@ -876,7 +905,7 @@ pub async fn list_chat_model_choices(
         .query(
             "SELECT model_id, quantile(0.5)(latency_ms) AS median_ms, count() AS calls \
              FROM llm_call_events \
-             WHERE event_time >= now() - INTERVAL 14 DAY \
+             WHERE event_time >= now() - INTERVAL 14 DAY AND kind = 'chat' \
              GROUP BY model_id",
         )
         .fetch_all::<LatencyRow>()
@@ -919,6 +948,16 @@ pub async fn list_chat_model_choices(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Thinking is on by default. Only the stored value `off` turns it off.
+    #[test]
+    fn thinking_is_on_unless_the_setting_says_off() {
+        assert!(thinking_from_setting(None));
+        assert!(thinking_from_setting(Some("")));
+        assert!(thinking_from_setting(Some("on")));
+        assert!(!thinking_from_setting(Some("off")));
+        assert!(!thinking_from_setting(Some(" off ")));
+    }
 
     /// An endpoint reached by IP must not be named after one of its octets, and the
     /// placeholder row for an empty catalog must spell the provider the same way the

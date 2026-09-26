@@ -153,14 +153,21 @@ struct SessionStatsRow {
     session_id: String,
     message_count: u64,
     tool_calls: u64,
+}
+
+#[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
+struct SessionAgentTimeRow {
+    session_id: String,
     agent_duration_ms: u64,
 }
 
 /// Per-user LLM usage for `/admin/users/:username/llm`: chat sessions, message
 /// and tool-call counts, summed agent time, and current rate-limit usage.
 ///
-/// Reads `chat_messages` / `chat_sessions` only. They are owned by the chat
-/// feature and are never modified here.
+/// Reads `chat_messages`, `chat_sessions` and `agent_step_events` only. The chat
+/// feature owns them, and this function never modifies them. The agent time of a
+/// session is the sum of `duration_ms` over its model and tool step rows. Parallel
+/// tool calls count in full, so the sum can exceed the wall time of the turn.
 pub async fn admin_get_user_llm(
     user: &CurrentUser,
     username: String,
@@ -180,24 +187,34 @@ pub async fn admin_get_user_llm(
 
     let stats = client
         .query(
-            "SELECT session_id, count() AS message_count, countIf(role = 'tool') AS tool_calls, \
-                    sum(agent_duration_ms) AS agent_duration_ms \
+            "SELECT session_id, count() AS message_count, countIf(role = 'tool') AS tool_calls \
              FROM chat_messages FINAL WHERE username = ? GROUP BY session_id",
         )
         .bind(&username)
         .fetch_all::<SessionStatsRow>()
         .await?;
 
+    let agent_time = client
+        .query(
+            "SELECT session_id, \
+                    toUInt64(sumIf(duration_ms, step IN ('model', 'tool'))) AS agent_duration_ms \
+             FROM agent_step_events WHERE username = ? GROUP BY session_id",
+        )
+        .bind(&username)
+        .fetch_all::<SessionAgentTimeRow>()
+        .await?;
+
     let mut session_list: Vec<UserLlmSession> = Vec::with_capacity(sessions.len());
     for s in sessions {
         let st = stats.iter().find(|st| st.session_id == s.session_id);
+        let at = agent_time.iter().find(|a| a.session_id == s.session_id);
         session_list.push(UserLlmSession {
             session_id: s.session_id,
             title: s.title,
             created_at: format_ts(s.created),
             message_count: st.map(|s| s.message_count).unwrap_or(0),
             tool_calls: st.map(|s| s.tool_calls).unwrap_or(0),
-            agent_duration_ms: st.map(|s| s.agent_duration_ms).unwrap_or(0),
+            agent_duration_ms: at.map(|a| a.agent_duration_ms).unwrap_or(0),
         });
     }
 

@@ -131,18 +131,27 @@ A turn with a stop row in `agent_turn_stops` closes in `open_run`.
 "The model queue wait passed ... s.", and a tool call that fails after its last attempt gets
 a stored `tool_unavailable` result, which the model reads. After 600 model steps one
 `final` step binds no tool, and the run ends `completed` with `end_reason` `step_budget`.
-A reply that repeats an earlier call also gets one `final` step (`repeated_call`). The
-workflow continues as new every 250 model steps, or past 30,000 history events. A planner
+A reply that repeats an earlier call also gets one `final` step (`repeated_call`). The reply
+of a `final` step is the answer, and each call in it gets a `not_run` result. The first turn
+of an ordinary chat starts with one `plan` step, which writes the plan through `write_todo`,
+and one more when the todo server refuses it. A `plan` step has one attempt of
+`plan_request_timeout_seconds` (60 s). The workflow continues as new every 250 model steps, or past 30,000 history events. A planner
 that answers with no plan section gets one more round with a note, and then fails.
 
 **Each attempt of a model step, a tool step and a title call writes one row of
 `agent_step_events`** (`database/agent_step_events.py`). The row holds the queue wait, the
 duration, the status, the error class and the tokens. The step activities write it from a `finally`
 block through the buffer of `task_timing.py`. A step that returns a stored result writes no
-row. Each attempt that starts writes one row. An attempt that passes its start-to-close
-limit on a live worker is cancelled with the reason `timed_out`, and its row has the class
-`start_to_close_timeout`. `record_step_failure` writes the row of a step that never started
-or lost its heartbeat, with `attempt` 0. The table keeps 90 days.
+row. Each attempt that starts writes one row, except an attempt that lost its heartbeat.
+An attempt that the worker cancels with the reason `timed_out` compares its elapsed time
+with its start-to-close limit. At the limit its row has the class `start_to_close_timeout`.
+Before the limit it lost its heartbeat and writes no row. `record_step_failure` writes the
+row of a step that never started or lost its heartbeat, with `attempt` 0 and the `mode` of a
+model step. The table keeps 90 days.
+
+**Thinking.** `model_step` reads `server_settings.llm_thinking` before each model call and
+sends `thinking` in the request. Only the value `off` turns it off, and a failed read sends
+on. The admin sets it on `/admin/llm`.
 
 **A change to `AgentRun` needs the drain.** A running `AgentRun` replays its history on the
 new code, and a history that does not match fails as nondeterministic, so the turn never

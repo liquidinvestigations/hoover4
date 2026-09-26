@@ -115,50 +115,6 @@ def context_window_for(model_id: str) -> int:
     return int(rows[0][0]) if rows else 0
 
 
-#: How many prior turns of the conversation the agent is given.
-#:
-#: A durable research turn sent an EMPTY history answers a follow-up question in an open
-#: thread with no idea what "it" refers to, and the answer reads as a non-sequitur.
-#: Bounded rather than whole: the transcript grows without limit and the oldest turns are
-#: the least relevant to the question just asked.
-CHAT_HISTORY_TURNS = int(os.getenv("RESEARCH_CHAT_HISTORY_TURNS", "20"))
-
-#: Per message, so one enormous pasted document in the history cannot crowd out the
-#: question itself.
-CHAT_HISTORY_MESSAGE_CHARS = 4000
-
-
-def _chat_history(username: str, session_id: str, before_seq: int) -> list[dict]:
-    """The conversation so far, in the agent service's own vocabulary.
-
-    Read from `chat_messages` here rather than serialised by the caller: a durable task
-    can start minutes after it was submitted and is retried independently, so the history
-    it needs is whatever the transcript says at the moment it runs.
-    """
-    from database.clickhouse import get_global_client
-
-    try:
-        with get_global_client() as client:
-            rows = client.query(
-                "SELECT role, content FROM chat_messages FINAL "
-                "WHERE username = {u:String} AND session_id = {s:String} "
-                "AND seq < {seq:UInt32} AND role IN ('user', 'assistant') "
-                "AND content != '' "
-                "ORDER BY seq DESC LIMIT {limit:UInt32}",
-                parameters={"u": username, "s": session_id, "seq": before_seq,
-                            "limit": CHAT_HISTORY_TURNS},
-            ).result_rows
-    except Exception as exc:  # noqa: BLE001
-        # A turn with no history is a worse answer, not a failed one.
-        log.warning("[P_agent] could not read chat history: %s", exc)
-        return []
-    return [
-        {"type": "human" if role == "user" else "ai",
-         "content": str(content)[:CHAT_HISTORY_MESSAGE_CHARS]}
-        for role, content in reversed(rows)
-    ]
-
-
 #: Minimum interval between rewrites of the growing assistant partial. Each rewrite is
 #: a ClickHouse insert; 300 ms reads as live without hammering the table.
 STREAM_WRITE_MIN_INTERVAL = 0.3
@@ -372,21 +328,22 @@ def tool_row_fields(name: str, args: Any, content: str) -> dict[str, str]:
     JSON, and the summary is the start of the arguments.
     """
     from tasks.P_agent.trajectory import (
-        TOOL_SUMMARY_CHARS, _dumps, extract_doc_refs, is_canonical_page, truncate,
-        truncate_json,
+        TOOL_SUMMARY_CHARS, _dumps, call_query, extract_doc_refs, is_canonical_page,
+        truncate, truncate_json,
     )
 
     tool_input = _dumps(args if args is not None else {})
     if is_canonical_page(content):
+        # The row keeps the page's own bytes. The extractor reads the parsed page.
         tool_output = content
-        result: Any = content
+        result: Any = json.loads(content)
     else:
         try:
             result = json.loads(content)
         except (TypeError, ValueError):
             result = content
         tool_output = truncate_json(_dumps(result))
-    refs = extract_doc_refs(name, result)
+    refs = extract_doc_refs(name, result, call_query(args))
     return {
         "tool_name": name,
         "tool_input": truncate_json(tool_input),
@@ -546,13 +503,15 @@ def round_view(messages) -> tuple[str, str, bool]:
     return "\n\n".join(plan), "\n\n".join(reasoning), in_opening
 
 
-def run_message(message) -> dict[str, Any]:
+def run_message(message, thread_id: str) -> dict[str, Any]:
     """One stored thread message in the `RunMessage` shape of a step request.
 
     A call entry sends its `id`, `name` and `args` only. A `tool` message carries the
-    `status` of its stored usage, so the service rebuilds a failed call as an error.
+    `status` of its stored usage, so the service rebuilds a failed call as an error. Every
+    message carries its key, `thread_id` and `idx`, which a `compaction` row names.
     """
-    out: dict[str, Any] = {"role": message.role, "content": message.content}
+    out: dict[str, Any] = {"role": message.role, "content": message.content,
+                           "thread_id": str(thread_id), "idx": int(message.idx)}
     if message.role == "ai":
         out["tool_calls"] = [
             {"id": str(c.get("id") or ""), "name": str(c.get("name") or ""),

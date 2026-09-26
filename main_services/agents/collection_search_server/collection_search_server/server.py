@@ -41,6 +41,8 @@ from collection_search_server.acl import AccessDenied, CallerAcl, parse_acl
 from collection_search_server.citations import (
     HandleTable,
     MIN_QUOTE_CHARS,
+    citation_find_query,
+    find_in_quote,
     QUOTE_MATCH_VERIFIED,
     QUOTE_REASON_ABSENT,
     QUOTE_REASON_LOOKUP_FAILED,
@@ -1294,6 +1296,9 @@ class Citation(BaseModel):
     #: issued. Not a paraphrase: the check is what makes the difference between a
     #: citation and a claim.
     quote: str = ""
+    #: A short exact phrase of the quote. The card opens the document at this phrase.
+    #: Empty means the whole quote.
+    find: str = ""
     #: What this document supports, in the agent's own words. Shown on the card.
     why: str = ""
 
@@ -1313,6 +1318,9 @@ class CitationResult(BaseModel):
     #: `lookup_failed`. Empty when the quote verified, and empty on stored results
     #: that never recorded a reason, so a later reader does not invent one.
     quote_reason: str = ""
+    #: The find query the card opens the document with: the `find` phrase in double
+    #: quotes, or the quote in double quotes when `find` is empty or fails its check.
+    find_query: str = ""
     error: str | None = None
 
 
@@ -1349,7 +1357,9 @@ def _session_id() -> str:
     name="cite_documents",
     description=(
         "Put documents forward as the evidence for your answer. Each citation names a "
-        "document, a quote copied verbatim from it, and why it matters. You get back a "
+        "document, a quote copied verbatim from it, an optional find phrase (the "
+        "shortest exact part of the quote the reader must see, where the card opens the "
+        "document), and why it matters. You get back a "
         "handle like [D1] for each; write those handles into your prose where the claim "
         "is made, and the reader sees the document beside it. The quote is checked "
         "against the document's extracted pages, and one that does not check out comes "
@@ -1368,7 +1378,7 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
     if parsed is None:
         return CitationsResponse(
             success=False,
-            error="citations must be a list of {collectionname, file_hash, quote, why}",
+            error="citations must be a list of {collectionname, file_hash, quote, find, why}",
         )
     if not parsed:
         return CitationsResponse(success=False, error="no citations were given")
@@ -1413,6 +1423,15 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
         note_parts.append(
             f"{lookup_failed} of {len(results)} documents could not be read for "
             "quote verification. Those citations are shown marked."
+        )
+    find_fallbacks = sum(
+        1 for c in parsed if c.find.strip() and not find_in_quote(c.find, c.quote)
+    )
+    if find_fallbacks:
+        note_parts.append(
+            f"{find_fallbacks} of {len(results)} find phrases were not an exact part of "
+            f"their quote, or were shorter than {MIN_QUOTE_CHARS} characters. Those "
+            "cards open the document at the whole quote."
         )
     if any(r.error is None and not r.handle for r in results):
         note_parts.append(
@@ -1516,6 +1535,7 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
         file_hash=citation.file_hash,
         quote=citation.quote,
         why=citation.why,
+        find_query=citation_find_query(citation.find, citation.quote),
     )
     try:
         acl.check([citation.collectionname])

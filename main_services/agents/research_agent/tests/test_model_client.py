@@ -13,13 +13,13 @@ import pytest
 
 from research_agent import model_params
 from research_agent.chat_model import ThinkingChatOpenAI
-from research_agent.thinking import tool_turn_kwargs
+from research_agent.thinking import thinking_body
 
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     for name in ("LLM_SEND_TEMPERATURE", "AGENT_MAX_OUTPUT_TOKENS",
-                 "LLM_REQUEST_TIMEOUT_SECONDS", "AGENT_TOOL_TURN_THINKING"):
+                 "LLM_REQUEST_TIMEOUT_SECONDS"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -35,7 +35,7 @@ def _agent_client(base_url: str) -> ThinkingChatOpenAI:
     llm_kwargs.update(model_params.sampling_params(0.3))
     llm_kwargs.update(model_params.client_kwargs())
     llm_kwargs["base_url"] = base_url
-    return ThinkingChatOpenAI(**llm_kwargs, extra_body=tool_turn_kwargs())
+    return ThinkingChatOpenAI(**llm_kwargs, extra_body=thinking_body(False))
 
 
 def test_the_client_is_built_with_the_request_timeout(monkeypatch):

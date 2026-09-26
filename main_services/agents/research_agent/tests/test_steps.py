@@ -116,6 +116,7 @@ RUN = {"run_id": "r1", "kind": "chat", "depth": 0, "username": "alice", "session
 
 
 def step_request(messages=None, step_no=1, **extra):
+    extra.setdefault("thinking", False)
     return steps.ModelStepRequest(
         **RUN, step_no=step_no,
         messages=messages or [{"role": "human", "content": "Find the lease."}], **extra,
@@ -251,14 +252,23 @@ async def test_mode_final_binds_no_tool(model):
     assert turn_of(frames)["text"] == "The answer."
 
 
-async def test_the_thinking_value_follows_the_mode_or_the_request(model):
+async def test_the_thinking_value_follows_the_request_in_each_mode(model):
     agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, [])], {"search_collections"})
-    model.replies.extend([AIMessage(content="a"), AIMessage(content="b")])
-    await frames_of(agent, step_request(thinking=True))
-    await frames_of(agent, step_request())
+    model.replies.extend([AIMessage(content=str(i)) for i in range(4)])
+    for mode in ("tools", "final"):
+        await frames_of(agent, step_request(mode=mode, thinking=True))
+        await frames_of(agent, step_request(mode=mode, thinking=False))
     bodies = [k["extra_body"] for k in model.kwargs_log]
-    assert bodies[0] == {"chat_template_kwargs": {"enable_thinking": True}}
-    assert bodies[1] == steps.tool_turn_kwargs()
+    on = {"chat_template_kwargs": {"enable_thinking": True}}
+    off = {"chat_template_kwargs": {"enable_thinking": False}}
+    assert bodies == [on, off, on, off]
+
+
+def test_a_model_step_request_without_the_thinking_value_is_refused():
+    with pytest.raises(ValueError):
+        steps.ModelStepRequest(
+            **RUN, step_no=1, messages=[{"role": "human", "content": "Find the lease."}]
+        )
 
 
 async def test_a_browser_action_gets_one_attempt(model):

@@ -7,9 +7,9 @@ use common::storage_tree::compose_collection_dataset;
 use dioxus::prelude::*;
 
 use crate::components::chat_components::{
-    doc_ref_card::ChatDocRefCard,
+    doc_ref_card::{ChatDocRefCard, ChatDocRefRow},
     markdown_text::{MarkdownishText, source_anchor_id},
-    plan_card::PlanCard,
+    plan_card::{PlanCard, PlanCardContext},
     tool_cards::ToolCard,
 };
 
@@ -68,6 +68,13 @@ pub fn ChatTranscript(
         .as_ref()
         .map(|t| t.subagent_runs.clone())
         .unwrap_or_default();
+    // The newest plan run of the transcript and the seq of the last row. The line that
+    // says why a research run stopped goes under the last row.
+    let last_plan_run = messages
+        .iter()
+        .rev()
+        .find_map(|m| m.plan_reference())
+        .map(|r| (r.run_id, messages.last().map(|m| m.seq).unwrap_or_default()));
     // The pending card goes once a planner answer row names the same plan run.
     let pending_card = pending_plan.filter(|run_id| {
         !messages
@@ -125,6 +132,9 @@ pub fn ChatTranscript(
                         }
                     }
                 }
+            }
+            if let (Some((run_id, last_seq)), None) = (last_plan_run.clone(), stream.as_ref()) {
+                ResearchEndLine { run_id, last_seq }
             }
             if let Some(run_id) = pending_card {
                 PlanCard {
@@ -393,14 +403,19 @@ fn MessageEntry(
         // user bubble, because the user did not write it, and not the red error card,
         // because nothing has gone wrong. A narrow inset note, aligned with the
         // assistant's own column, reads as the turn talking to itself.
+        // Collapsed: the text is an instruction the system gave the agent, which a person
+        // reads only to see why the agent went on.
         ChatRole::Nag => rsx! {
-            div {
+            details {
+                class: "x-chat-nag",
                 style: "align-self: flex-start; max-width: 88%; background: #F5F3FF; \
-                        color: #5B21B6; border-left: 3px solid #A78BFA; padding: 8px 12px; \
-                        border-radius: 0 8px 8px 0; font-size: 0.9em; \
-                        white-space: pre-wrap; word-break: break-word; {ring}",
-                div { style: "font-weight: 600; margin-bottom: 2px;", "Nudged to continue" }
-                div { "{message.content}" }
+                        color: #5B21B6; border-left: 3px solid #A78BFA; padding: 6px 12px; \
+                        border-radius: 0 8px 8px 0; font-size: 0.9em; {ring}",
+                summary { style: "cursor: pointer; font-weight: 600;", "Instruction to the agent" }
+                div {
+                    style: "margin-top: 4px; white-space: pre-wrap; word-break: break-word;",
+                    "{message.content}"
+                }
             }
         },
         ChatRole::Error => {
@@ -428,6 +443,29 @@ fn MessageEntry(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// "Research stopped: <reason>." under the last row, for a terminal plan run that stopped
+/// short. Read again when a row is added, because the last rows of a run arrive as it ends.
+#[component]
+fn ResearchEndLine(run_id: String, last_seq: u32) -> Element {
+    let session_id = try_consume_context::<PlanCardContext>().map(|c| c.session_id);
+    let view = use_resource(use_reactive!(|(run_id, last_seq)| async move {
+        let _ = last_seq;
+        let session_id = session_id?;
+        let sid = session_id.peek().clone();
+        crate::api::chat_api::chat_plan_view(sid, run_id, 0).await.ok().flatten()
+    }));
+    let reason = view.read().as_ref().and_then(|v| v.as_ref()).and_then(|v| v.stop_reason());
+    rsx! {
+        if let Some(reason) = reason {
+            div {
+                class: "x-chat-research-stopped",
+                style: "align-self: flex-start; color: #92400E; font-size: 13px;",
+                "Research stopped: {reason}."
             }
         }
     }
@@ -497,7 +535,13 @@ fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {
                     "{count} {noun} from {tool} \u{2014} show"
                 }
             }
-            if *open.read() {
+            if *open.read() && matches!(tool.as_str(), "search_collections" | "search_passages") {
+                // A search row lists its documents as lines, each with an action that
+                // opens the document at the query that matched it.
+                for doc in refs.into_iter() {
+                    ChatDocRefRow { key: "{doc.file_hash}", doc }
+                }
+            } else if *open.read() {
                 // Keyed on the hash alone. Appending the loop index made two rows for the
                 // same document distinct nodes, so any duplicate that reached here was
                 // guaranteed to render twice; `extract_doc_refs` now collapses them, and

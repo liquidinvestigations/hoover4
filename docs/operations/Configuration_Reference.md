@@ -178,12 +178,15 @@ and one run keeps bound, from 6 to 12. Empty means 6. `./deploy` refuses a value
 whole number in range. The tool limit probe selects these three values.
 `full_research_agent_workers` is uvicorn worker processes on `hoover4-full-research-agent`.
 
-Three keys set the step limits of an agent run, in whole seconds, and an empty key keeps the
+Four keys set the step limits of an agent run, in whole seconds, and an empty key keeps the
 code default. An agent run has no time limit of its own: 600 model steps bound it.
 `agent_queue_wait_seconds` is how long one model step or one tool call may wait for a free
 slot. A model step that waits longer fails the run, and empty sets no limit. The templates
 set 5400. `title_request_timeout_seconds` (empty: 30) is the read timeout of the
 conversation title request, and the title activity allows two requests and 30 s more.
+`plan_request_timeout_seconds` (empty: 60) is the limit of one first-turn planning call. The
+call gets one attempt, and one more when the todo server refuses its plan, so two calls stay
+under the website's 180 s stall window. The templates set 60.
 `llm_request_timeout_seconds` is the read timeout of one agent model call and of the
 compaction summary, and the worker's limit of one model step. When it is set, the model
 client does not retry. Empty keeps the client default of 600 s and 2 retries, 180 s for the
@@ -194,14 +197,17 @@ step, 600 model steps, and a continue-as-new every 250 model steps. The other li
 bounds do not have keys either: the agent's keepalive line every 30 s, the worker's 300 s
 read of the agent stream and the website's 180 s stall window.
 
+`agent_compaction_fraction` is the fraction of the model's stated context window at which
+the agent compacts the context of a model call. The templates and the code default set 0.65.
+An empty key keeps the code default. The compacted list is kept for the later calls of the
+conversation.
+
 `agent_max_output_tokens` is the output cap of every agent model request, sent as
-`max_completion_tokens`. Empty sends no cap, and the templates set 32768. The `budgeted`
-thinking mode adds its own `max_tokens`. vLLM applies `max_completion_tokens` when a request
-carries both keys, so the thinking budget has no effect while this cap is set.
-`agent_thinking` is the thinking mode of the answer turn, `off`, `on` or `budgeted`. Empty renders `off`, and another value renders with a warning,
-after which the agent services use `off`. `agent_tool_turn_thinking` turns thinking on for
-the turns that may call a tool, and empty is `false`. `llm_streaming` is token streaming of
-the agent's model calls, and empty is `true`.
+`max_completion_tokens`. Empty sends no cap, and the templates set 32768.
+`llm_streaming` is token streaming of the agent's model calls, and empty is `true`.
+Thinking has no key. The "Thinking" checkbox on `/admin/llm` sets it in the
+`server_settings` row `llm_thinking`, and an absent row is on. The worker reads the row
+before each agent model call. The title call and the compaction summary always send thinking off.
 
 `internet_tools_enabled` starts `hoover4-mcp-browser`, `hoover4-mcp-metasearch` and
 `hoover4-mcp-whois`. Default off: an absent or empty key does not start them. Turning it
@@ -374,9 +380,10 @@ is the map back to the group above that explains it.
 - `agent_subagent_max_per_turn`, `agent_plan_run_budget`
 - `agent_packs_chat`, `agent_packs_subagent`, `agent_packs_planner`, `agent_packs_organizer`
 - `agent_max_page_tokens`, `agent_completion_reserve_tokens`, `agent_catalogue_match_count`
-- `agent_queue_wait_seconds`, `title_request_timeout_seconds`, `llm_request_timeout_seconds`
+- `agent_queue_wait_seconds`, `title_request_timeout_seconds`, `plan_request_timeout_seconds`
+- `llm_request_timeout_seconds`
 - `agent_max_output_tokens`
-- `agent_thinking`, `agent_tool_turn_thinking`, `llm_streaming`
+- `llm_streaming`
 - `internet_tools_enabled`
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
 - `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`

@@ -309,7 +309,13 @@ MESSAGE_COLUMNS = [
 
 @dataclass
 class RunMessageRow:
-    """One `agent_run_messages` row."""
+    """One `agent_run_messages` row.
+
+    `role` is `human`, `ai`, `tool` or `compaction`. A `compaction` row follows the `ai`
+    message of the model call whose input the agent service compacted. Its content is JSON
+    that names the evicted and summarised messages by `[thread_id, idx]`, and the next model
+    call applies it. The column comment of the table names the first three roles only.
+    """
 
     idx: int
     role: str
@@ -368,6 +374,26 @@ def read_messages(username: str, session_id: str, thread_id: str) -> list[RunMes
     ]
 
 
+def read_earlier_threads(username: str, session_id: str, turn_seq: int) -> list[str]:
+    """The thread ids of the chat turns of the session before `turn_seq`, in turn order.
+
+    A turn is a lead chat run (`kind = 'chat'`, `depth = 0`) in a terminal state. A
+    continuation keeps the thread of the run it continues, so a thread appears once.
+    """
+    with _client() as client:
+        rows = client.query(
+            "SELECT thread_id, min(turn_seq) AS first_turn, min(started_at) AS first_start "
+            "FROM agent_runs FINAL "
+            "WHERE username = {u:String} AND session_id = {s:String} "
+            "AND kind = 'chat' AND depth = 0 AND turn_seq < {t:UInt32} "
+            "AND state IN {states:Array(String)} "
+            "GROUP BY thread_id ORDER BY first_turn, first_start",
+            parameters={"u": username, "s": session_id, "t": int(turn_seq),
+                        "states": list(TERMINAL_STATES)},
+        ).result_rows
+    return [str(r[0]) for r in rows]
+
+
 # -------------------------------------------------------------------- agent_turn_stops
 
 
@@ -403,7 +429,8 @@ __all__ = [
     "CANCELLED", "COMPLETED", "FAILED", "LEAD_QUEUES", "RUNNING", "RUN_COLUMNS",
     "RUN_ID_NAMESPACE", "RunMessageRow", "RunRow", "RunRowWriter", "TERMINAL_STATES",
     "WAITING_FOR_CHILDREN", "batch_id_for", "child_run_id", "continuation_run_id",
-    "create_run", "is_chat_lead", "is_terminal", "iter_thread_tool_seqs", "read_messages",
+    "create_run", "is_chat_lead", "is_terminal", "iter_thread_tool_seqs",
+    "read_earlier_threads", "read_messages",
     "read_run", "read_turn_runs", "turn_is_stopped", "write_message", "write_run",
     "write_run_terminal", "write_turn_stop", "writes_transcript",
 ]
