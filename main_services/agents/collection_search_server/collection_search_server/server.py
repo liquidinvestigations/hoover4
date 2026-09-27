@@ -418,11 +418,11 @@ def _near_match(collectionname: str, value: str) -> str | None:
 def resolve_hashes(collectionname: str, values: Any) -> tuple[Any, list[str]]:
     """The hashes of `values` that `read_documents` sends, and a note for each change.
 
-    A hash start becomes its whole hash (`full_hash`). A whole or longer hex value that no
-    document has becomes the one document whose hash has the same first
-    `NEAR_MATCH_PREFIX` characters, because the served model changes a character in the
-    middle of a hash it copies. A value that matches no document is left out, so the other
-    documents of the call are still read. For a collection that the caller cannot read the
+    A hash start becomes its whole hash (`full_hash`). A hex value that no document has,
+    as a whole hash or as a start, becomes the one document whose hash has the same first
+    `NEAR_MATCH_PREFIX` characters, because the served model changes, adds or drops a
+    character in the middle of a hash it copies. A value that matches no document is left
+    out, so the other documents of the call are still read. For a collection that the caller cannot read the
     values come back unchanged, and the route refuses the call."""
     try:
         _caller().check([collectionname])
@@ -438,13 +438,16 @@ def resolve_hashes(collectionname: str, values: Any) -> tuple[Any, list[str]]:
     notes: list[str] = []
     for value in items:
         text = value.strip().lower() if isinstance(value, str) else ""
-        if not _WHOLE_OR_LONGER_RE.match(text):
-            out.append(full_hash(collectionname, value) if isinstance(value, str) else value)
-            continue
         if text in existing:
             out.append(text)
             continue
-        near = _near_match(collectionname, text)
+        if not _WHOLE_OR_LONGER_RE.match(text):
+            found = full_hash(collectionname, value) if isinstance(value, str) else value
+            if found != value or not _HASH_PREFIX_RE.match(text):
+                out.append(found)
+                continue
+            # A hash start that no document has: a hash with a character dropped.
+        near = _near_match(collectionname, text) if len(text) >= NEAR_MATCH_PREFIX else None
         if near is not None:
             out.append(near)
             notes.append(f"no document in {collectionname!r} has the file_hash {value!r}. The one "

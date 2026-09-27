@@ -236,3 +236,17 @@ def test_read_documents_with_only_unknown_hashes_is_refused_with_the_notes(monke
     body = json.loads(tools_document.read_documents.fn(collectionname="epstein", file_hash=["f" * 64]))
     assert body["error"] == "not_found" and "leaves it out" in body["message"]
     assert sent == []
+
+
+def test_a_hash_with_a_dropped_character_reads_the_document_it_starts_like(monkeypatch):
+    _collection_of(monkeypatch, [GOOD, MEANT])
+    dropped = MEANT[:40] + MEANT[41:]
+    hashes, notes = server.resolve_hashes("epstein", [dropped, GOOD[:12]])
+    assert hashes == [MEANT, GOOD]
+    assert len(notes) == 1 and MEANT in notes[0]
+
+
+def test_a_short_start_that_matches_nothing_is_left_out(monkeypatch):
+    _collection_of(monkeypatch, [GOOD])
+    hashes, notes = server.resolve_hashes("epstein", ["abcdefabcdef", GOOD])
+    assert hashes == [GOOD] and "leaves it out" in notes[0]
