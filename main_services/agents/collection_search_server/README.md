@@ -126,8 +126,9 @@ check refuses it.
 
 **`read_documents` reads the documents it can find** (`server.resolve_hashes`). The served
 model copies a hash with one character changed, added or dropped. A hash or a hash start
-that no document has becomes the one document whose hash has the same first 16 characters,
-and a value that matches nothing is left out. Each change is a line of `file_hash_notes` in the
+that no document has becomes the one document whose hash has the same first 16 characters.
+A file name, such as `HOUSE_OVERSIGHT_031227.txt`, becomes the one document whose path ends
+with that name. A value that matches nothing is left out. Each change is a line of `file_hash_notes` in the
 result, and the other documents of the call are read. A call whose every hash matches
 nothing is refused with those lines.
 

@@ -198,8 +198,9 @@ GOOD = "1c34013565c314e2fcf93953929f2d10e622558009112e9495be315efcd7f92c"
 MEANT = "b0df945ee5dfa8180541b6f7a496d0a96c3dd97ecc80fa5a4a5d9680552ac0d0"
 
 
-def _collection_of(monkeypatch, hashes):
-    """A readable collection `epstein` whose `vfs_files` holds `hashes`."""
+def _collection_of(monkeypatch, hashes, paths=None):
+    """A readable collection `epstein` whose `vfs_files` holds `hashes`, and `paths`, a
+    map of path to hash."""
     from collection_search_server.acl import CallerAcl
 
     monkeypatch.setattr(server, "_caller", lambda: CallerAcl(username="u", collections=("epstein",)))
@@ -211,6 +212,9 @@ def _collection_of(monkeypatch, hashes):
             return [{"hash": h} for h in hashes if h in wanted]
         if "startsWith" in sql:
             return [{"hash": h} for h in hashes if h.startswith(params["prefix"])][:2]
+        if "endsWith" in sql:
+            return [{"hash": h} for p, h in (paths or {}).items()
+                    if p == params["name"] or p.endswith(params["tail"])][:2]
         raise AssertionError(sql)
 
     monkeypatch.setattr(server, "clickhouse_query", fake_query)
@@ -250,3 +254,12 @@ def test_a_short_start_that_matches_nothing_is_left_out(monkeypatch):
     _collection_of(monkeypatch, [GOOD])
     hashes, notes = server.resolve_hashes("epstein", ["abcdefabcdef", GOOD])
     assert hashes == [GOOD] and "leaves it out" in notes[0]
+
+
+def test_a_file_name_in_file_hash_reads_the_one_document_with_that_name(monkeypatch):
+    _collection_of(monkeypatch, [GOOD, MEANT], {"/oversight/HOUSE_OVERSIGHT_031227.txt": GOOD,
+                                               "/a/copy.txt": MEANT, "/b/copy.txt": GOOD})
+    hashes, notes = server.resolve_hashes(
+        "epstein", ["HOUSE_OVERSIGHT_031227.txt", "copy.txt", MEANT])
+    assert hashes == [GOOD, MEANT]
+    assert "is a file name" in notes[0] and "no single document" in notes[1]

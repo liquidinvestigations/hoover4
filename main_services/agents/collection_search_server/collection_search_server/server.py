@@ -415,14 +415,32 @@ def _near_match(collectionname: str, value: str) -> str | None:
     return hashes[0] if len(hashes) == 1 else None
 
 
+#: A value made of hex characters only.
+_HEX_RE = re.compile(r"^[0-9a-f]+$")
+
+
+def _hash_of_name(collectionname: str, name: str) -> str | None:
+    """The hash of the one document whose path is `name` or ends with `/name`, or `None`
+    when no document or more than one has that name."""
+    rows = clickhouse_query(
+        "SELECT DISTINCT hash FROM vfs_files WHERE (path = {name:String} OR "
+        "endsWith(path, {tail:String})) AND is_deleted = 0 AND hash != '' LIMIT 2",
+        database=collection_db(collectionname),
+        params={"name": name, "tail": "/" + name.lstrip("/")},
+    )
+    hashes = [str(row.get("hash") or "") for row in rows if row.get("hash")]
+    return hashes[0] if len(hashes) == 1 else None
+
+
 def resolve_hashes(collectionname: str, values: Any) -> tuple[Any, list[str]]:
     """The hashes of `values` that `read_documents` sends, and a note for each change.
 
     A hash start becomes its whole hash (`full_hash`). A hex value that no document has,
     as a whole hash or as a start, becomes the one document whose hash has the same first
     `NEAR_MATCH_PREFIX` characters, because the served model changes, adds or drops a
-    character in the middle of a hash it copies. A value that matches no document is left
-    out, so the other documents of the call are still read. For a collection that the caller cannot read the
+    character in the middle of a hash it copies. A file name becomes the one document with
+    that name. A value that matches no document is left out, so the other documents of the
+    call are still read. For a collection that the caller cannot read the
     values come back unchanged, and the route refuses the call."""
     try:
         _caller().check([collectionname])
@@ -440,6 +458,17 @@ def resolve_hashes(collectionname: str, values: Any) -> tuple[Any, list[str]]:
         text = value.strip().lower() if isinstance(value, str) else ""
         if text in existing:
             out.append(text)
+            continue
+        if isinstance(value, str) and value.strip() and not _HEX_RE.match(text):
+            named = _hash_of_name(collectionname, value.strip())
+            if named is not None:
+                out.append(named)
+                notes.append(f"{value!r} is a file name, not a file_hash. The one document with "
+                             f"that name is read: {named}.")
+            else:
+                notes.append(f"{value!r} is not a file_hash, and no single document in "
+                             f"{collectionname!r} has that file name, so this call leaves it "
+                             "out. Copy the whole file_hash from a tool result.")
             continue
         if not _WHOLE_OR_LONGER_RE.match(text):
             found = full_hash(collectionname, value) if isinstance(value, str) else value
