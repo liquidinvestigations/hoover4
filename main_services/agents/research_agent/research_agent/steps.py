@@ -45,7 +45,7 @@ from research_agent.run_messages import (
 )
 from research_agent.subagents import briefings_of
 from research_agent import thinking
-from research_agent.tool_args import decode_string_arguments, repair_arguments
+from research_agent.tool_args import decode_string_arguments, rename_aliases, repair_arguments
 from research_agent.tool_catalogue import SEARCH_TOOL, bound_names_from_thread, matched_names, tool_schema
 
 log = logging.getLogger(__name__)
@@ -522,6 +522,8 @@ async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
     tool = snapshot.tools_by_name[name]
     schema = tool_schema(tool)
     repaired, repairs = repair_arguments(dict(request.call.args))
+    repaired, renames = rename_aliases(repaired, schema)
+    repairs += renames
     if repairs:
         log.info("tool %s: %d argument repairs: %s", name, len(repairs), "; ".join(repairs))
     args = decode_string_arguments(repaired, schema)

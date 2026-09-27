@@ -15,6 +15,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `tool_cards/subagent_card.rs` | `run_subagent`: each sub-agent's state, live tool calls and partial text from the poll's `subagent_runs` while the batch is open, a depth 2 sub-agent under its parent, then the reports from the tool row's `tool_output`. |
 | `tool_cards/entities_card.rs` | `list_document_entities`: the two tiers apart, each rule-validated value a link to its explainer card in the document viewer. |
 | `plan_card.rs` | The plan card of a deep-research request, under the planner's answer row. It reads the plan run and the tree through `chat_plan_view`, sends approve, ask for changes and stop through `chat_decide_plan`, and reads the plan again every 3 s until the plan ends. While the plan runs it lists the sections from `sections_json` and the live sub-agent runs from the poll. A request that has no planner answer yet shows its card from the plan run that this tab started. |
+| `tool_run_summary.rs` | The summary line of a run of consecutive tool rows, see below. |
 | `tool_disclosure.rs` | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
 | `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet, see below. |
 | `conversation_find.rs` | "Search in conversation" bar (0/N + up/down), mirroring the document find box chrome. |
@@ -55,6 +56,20 @@ citation rows can still be in the stream.
 The heading scale tops out at **body + 3px** (18px against 15px). Chat headings are labels
 inside a message, not page titles. A browser-default `h1` at 2em towers over the
 conversation. Weight and colour carry the hierarchy instead. A test pins this.
+
+## A run of tool rows is one line
+
+`transcript.rs` puts each run of consecutive finished tool rows behind one button, and the
+button opens the cards of the run. `tool_run_summary` writes the line from rules, for
+example `Searched 20 terms, read 8 documents, 2 failed, took 8m12s`. The kinds of call
+always appear in one order: corpus search, document reads, web search, web page reads,
+browser actions, entities, citations, sub-agents, plan calls, todo calls, other calls. The
+unit of each kind comes from the arguments, such as the queries of a search or the hashes of
+a read. The time runs from the row before the run to the last row of the run, so it holds
+the model time between the calls. The line always shows the time, and says
+`time not recorded` when a row has no time. The live calls of a turn in flight stay as
+cards, because a running card shows its own counter. The conversation search opens a run
+that holds its current match.
 
 ## Tool cards: a registry, not a growing `match`
 

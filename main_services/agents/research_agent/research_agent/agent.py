@@ -23,7 +23,7 @@ from langfuse.langchain import CallbackHandler
 from agent_common import tool_packs
 from research_agent import compaction, model_params, prompts, subagents
 from research_agent.execution import page_share_client
-from research_agent.tool_args import decode_string_arguments, repair_arguments
+from research_agent.tool_args import decode_string_arguments, rename_aliases, repair_arguments
 from research_agent.tool_catalogue import DELEGATION_TOOL, CatalogueSnapshot, build_snapshot
 
 
@@ -64,6 +64,7 @@ def with_decoded_arguments(tool: Any) -> Any:
 
     async def call_with_decoded_arguments(**arguments: Any) -> Any:
         repaired, _ = repair_arguments(arguments)
+        repaired, _ = rename_aliases(repaired, schema)
         return await original(**decode_string_arguments(repaired, schema))
 
     return tool.model_copy(update={"coroutine": call_with_decoded_arguments})

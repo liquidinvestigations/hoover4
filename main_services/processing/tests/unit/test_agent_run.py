@@ -383,6 +383,19 @@ def test_a_retry_of_a_call_that_failed_is_not_a_repeat(store, monkeypatch):
     assert not [m for m in store["messages"] if m.role == "tool" and m.tool_call_id == "e2"]
 
 
+def test_a_retry_of_a_call_the_tool_refused_is_not_a_repeat(store, monkeypatch):
+    """A plan call that the tool server refused with `"success": false` has status `ok`.
+    The same call again runs, because the parent it named can exist now."""
+    args = {"parent_id": "3", "text": "Grade each source and its information."}
+    _answered_reply(store, 1, 1, [_entry("c", "append_child", args)])
+    [refused] = [m for m in store["messages"] if m.tool_call_id == "c"]
+    refused.content = json.dumps({"success": False, "plan_state": "planning",
+                                  "error": "no node has the id '3'"})
+    _serve(monkeypatch, store, _frames(entries=[_entry("c2", "append_child", args)]))
+    result = _step(step_no=2)
+    assert [c.call_id for c in result.calls] == ["c2"] and result.repeat_streak == 0
+
+
 def test_the_repeat_streak_counts_replies_of_repeats_in_a_row(store, monkeypatch):
     _answered_reply(store, 1, 1, [_entry("a", "search_collections", {"query": "a"})])
     for step_no in (2, 3, 4):

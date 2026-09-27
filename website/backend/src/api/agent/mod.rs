@@ -265,7 +265,8 @@ fn require_collection(permitted: &PermissionSet, collectionname: &str) -> Result
         Ok(())
     } else {
         Err(AgentError::permission_denied(format!(
-            "{collectionname:?} is outside the permitted collection set"
+            "{collectionname:?} is not a collection that this chat can read. list_collections \
+             names each collection and its datasets. Give the collection name, not a dataset name"
         )))
     }
 }

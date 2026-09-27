@@ -3,19 +3,21 @@ this server reads from ClickHouse and pages through the same broker."""
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from agent_common.result_pages import canonical_json
 from collection_search_server import server
+from collection_search_server.acl import AccessDenied
 from collection_search_server.backend_client import (
     DocumentsDiffSourcesRequest, DocumentsEmailRequest, DocumentsMetadataRequest,
     DocumentsPdfSearchRequest, DocumentsReadRequest, DocumentsSearchTextRequest, DocumentsSourcesRequest,
 )
 from collection_search_server.paging import PagedTool
 from collection_search_server.server import mcp
-from collection_search_server.tools_search import LocalPagedTool
+from collection_search_server.tools_search import LocalPagedTool, collections_for
 
 
 class DocumentEntitiesRequest(BaseModel):
@@ -50,22 +52,77 @@ PAGED_TOOLS = {
 }
 
 
-def _render(tool: PagedTool | LocalPagedTool, values: dict[str, Any]) -> str:
+def _readable(names: list[str]) -> bool:
+    """False only when the caller's ACL was read and refuses a name. The check reads the
+    request headers only, so the common call costs no backend request. A request with no
+    readable ACL is left to the route, which refuses it."""
     try:
-        return tool.render(tool.model.model_validate(values), {}, "")
+        acl = server._caller()
+    except AccessDenied:
+        return True
+    try:
+        acl.check(names)
+    except AccessDenied:
+        return False
+    return True
+
+
+def _map_collections(values: dict[str, Any]) -> list[str]:
+    """Replace a dataset name in `values["collectionname"]` with its collection, by the rule
+    of `collections_for`, and return a note for each name that was mapped. A name that the
+    caller can read stays as it is."""
+    name = values.get("collectionname")
+    if isinstance(name, str) and name and _readable([name]):
+        return []
+    if isinstance(name, list) and name and _readable([str(n) for n in name]):
+        return []
+    if isinstance(name, str) and name:
+        mapped, notes = collections_for([name])
+        if mapped:
+            values["collectionname"] = mapped[0]
+        return notes
+    if isinstance(name, list) and name:
+        mapped, notes = collections_for([str(n) for n in name])
+        values["collectionname"] = mapped
+        return notes
+    return []
+
+
+def _with_notes(text: str, notes: list[str]) -> str:
+    """The result `text` with `collection_notes` added, when it is a JSON object."""
+    if not notes:
+        return text
+    try:
+        body = json.loads(text)
+    except ValueError:
+        return text
+    if not isinstance(body, dict):
+        return text
+    body["collection_notes"] = notes
+    return canonical_json(body)
+
+
+def _render(tool: PagedTool | LocalPagedTool, values: dict[str, Any]) -> str:
+    """The first page of `tool` for `values`. A dataset name in `collectionname` becomes its
+    collection first. A name that is already readable costs nothing."""
+    notes = _map_collections(values)
+    try:
+        return _with_notes(tool.render(tool.model.model_validate(values), {}, ""), notes)
     except ValidationError as exc:
         return canonical_json({"success": False, "error": "invalid_argument", "message": str(exc)})
 
 
 @mcp.tool(name="read_documents", description="Read one text page of each of up to 20 documents in one collection. Use it after a search returns document hashes. With a query and no page, it opens the page with the most hits. Give page to read another page id, and use min_page, max_page and hit_pages to choose it.")
 def read_documents(collectionname: str, file_hash: list[str], source: str | None = None, query: str | None = None, page: int | None = None) -> str:
+    values: dict[str, Any] = {"collectionname": collectionname, "file_hash": file_hash, "source": source, "query": query, "page": page}
+    notes = _map_collections(values)
     try:
-        file_hash = server.full_hashes(collectionname, file_hash)
+        values["file_hash"] = server.full_hashes(values["collectionname"], file_hash)
     except server.HashPrefixError as exc:
         return canonical_json({"success": False, "error": "invalid_argument", "message": str(exc)})
     except Exception:  # noqa: BLE001, a failed lookup leaves the hashes to the route
         server.log.warning("the file_hash starts of read_documents were not looked up", exc_info=True)
-    return _render(READ_DOCUMENTS, {"collectionname": collectionname, "file_hash": file_hash, "source": source, "query": query, "page": page})
+    return _with_notes(_render(READ_DOCUMENTS, values), notes)
 
 
 @mcp.tool(name="doc_search_text", description="List the hits of a query in one document text source, in page order, with the page, the offsets and a snippet of each hit. Use it to find the pages of a long document to read.")

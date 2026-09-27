@@ -167,7 +167,8 @@ def validate(snapshot: PlanSnapshot) -> None:
             raise PlanError("a node text must be one line")
         if len(text) > MAX_NODE_TEXT:
             raise PlanError(
-                f"a node text has {len(text)} characters and the limit is {MAX_NODE_TEXT}"
+                f"a node text has {len(text)} characters and the limit is {MAX_NODE_TEXT}, "
+                "so the change was not made. Send it again with a shorter text."
             )
         if node.ordinal < 1:
             raise PlanError("a node ordinal starts at 1")

@@ -480,14 +480,31 @@ def _call_key(entry: dict) -> tuple[str, str]:
     return name, args_digest(name, entry.get("args") or {})
 
 
+def _result_failed(result) -> bool:
+    """True when a tool result is an error: its status is `error`, or the tool's own JSON
+    object says `"success": false` or carries a non-empty `error`. A tool server answers a
+    refusal with a normal result, so the status alone misses it."""
+    if result.usage.get("status") == "error":
+        return True
+    text = (result.content or "").lstrip()
+    if not text.startswith("{"):
+        return False
+    try:
+        body = json.loads(text)
+    except ValueError:
+        return False
+    return isinstance(body, dict) and (body.get("success") is False or bool(body.get("error")))
+
+
 def repeat_sources(earlier, ai_entries: list[dict]) -> dict[int, tuple[str, int]]:
     """The calls of this reply that repeat an earlier call, as `{position: (earlier call
     id, earlier step_no)}`.
 
     A call repeats an earlier call of an earlier `ai` message when both have the same name
-    and arguments, and the earlier call has a result whose status is not `error`. A retry
-    of a call that failed is therefore not a repeat. `read_todo` and `read_plan` are left
-    out, because a model reads them again on purpose.
+    and arguments, and the earlier call has a result that did not fail (`_result_failed`).
+    A retry of a call that failed is therefore not a repeat, because the state that made it
+    fail can change. `read_todo` and `read_plan` are left out, because a model reads them
+    again on purpose.
     """
     results = {m.tool_call_id: m for m in earlier if m.role == "tool"}
     seen: dict[tuple[str, str], tuple[str, int]] = {}
@@ -496,7 +513,7 @@ def repeat_sources(earlier, ai_entries: list[dict]) -> dict[int, tuple[str, int]
             continue
         for e in m.tool_calls:
             result = results.get(str(e.get("id") or ""))
-            if result is None or result.usage.get("status") == "error":
+            if result is None or _result_failed(result):
                 continue
             seen.setdefault(_call_key(e), (str(e.get("id") or ""),
                                            int(m.usage.get("step_no") or 0)))

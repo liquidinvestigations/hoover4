@@ -16,6 +16,7 @@ pub mod plan_card;
 pub mod session_card;
 pub mod tool_cards;
 pub mod tool_disclosure;
+pub mod tool_run_summary;
 pub mod transcript;
 
 pub use composer::ChatComposer;

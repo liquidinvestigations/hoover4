@@ -11,6 +11,7 @@ use crate::components::chat_components::{
     markdown_text::{MarkdownishText, source_anchor_id},
     plan_card::{PlanCard, PlanCardContext},
     tool_cards::ToolCard,
+    tool_run_summary::{run_duration_ms, tool_run_summary},
 };
 
 #[component]
@@ -91,6 +92,50 @@ pub fn ChatTranscript(
             .any(|r| &r.run_id == run_id)
     });
 
+    // One row as `MessageEntry`. A run of tool rows renders the same entries inside its
+    // group when the group is open.
+    let entry = |i: usize| -> Element {
+        let m = messages[i].clone();
+        let highlight = active_msg == Some(i);
+        // The strip belongs to the ANSWER, and the citations arrive on the tool rows before
+        // it. Collected here rather than inside `MessageEntry`, which sees one message and
+        // cannot know which turn it closes.
+        let sources = if m.role == ChatRole::Assistant {
+            citations_for_answer(&messages, i)
+        } else {
+            Vec::new()
+        };
+        // A planner answer that a later answer of the same plan run follows shows its card
+        // as an earlier version, with no action.
+        let plan_superseded = m.plan_reference().is_some_and(|r| {
+            messages[i + 1..]
+                .iter()
+                .filter_map(|later| later.plan_reference())
+                .any(|later| later.run_id == r.run_id)
+        });
+        // Only a delegation row reads the entries. The others get an empty list, so a poll
+        // that moves a sub-agent re-renders that row alone.
+        let runs = if m.tool_name == "run_subagent" || !m.plan_reference_json.is_empty() {
+            subagent_runs.clone()
+        } else {
+            Vec::new()
+        };
+        rsx! {
+            MessageEntry {
+                key: "{m.seq}",
+                message: m,
+                highlight,
+                sources,
+                cited_handles: cited_handles.clone(),
+                datasets: datasets.clone(),
+                subagent_runs: runs,
+                plan_superseded,
+            }
+        }
+    };
+    // Runs of consecutive tool rows, and every other row on its own, as index ranges.
+    let segments = tool_run_segments(&messages);
+
     rsx! {
         div {
             id: "x-chat-transcript",
@@ -101,43 +146,19 @@ pub fn ChatTranscript(
                     "Ask a question about the documents in your collections."
                 }
             }
-            for (i, m) in messages.iter().cloned().enumerate() {
-                {
-                    let highlight = active_msg == Some(i);
-                    // The strip belongs to the ANSWER, and the citations arrive on the
-                    // tool rows before it. Collected here rather than inside
-                    // `MessageEntry`, which sees one message and cannot know which turn
-                    // it closes.
-                    let sources = if m.role == ChatRole::Assistant {
-                        citations_for_answer(&messages, i)
-                    } else {
-                        Vec::new()
-                    };
-                    // Only a delegation row reads the entries. The others get an empty
-                    // list, so a poll that moves a sub-agent re-renders that row alone.
-                    // A planner answer that a later answer of the same plan run follows
-                    // shows its card as an earlier version, with no action.
-                    let plan_superseded = m.plan_reference().is_some_and(|r| {
-                        messages[i + 1..]
-                            .iter()
-                            .filter_map(|later| later.plan_reference())
-                            .any(|later| later.run_id == r.run_id)
-                    });
-                    let runs = if m.tool_name == "run_subagent" || !m.plan_reference_json.is_empty() {
-                        subagent_runs.clone()
-                    } else {
-                        Vec::new()
-                    };
-                    rsx! {
-                        MessageEntry {
-                            key: "{m.seq}",
-                            message: m,
-                            highlight,
-                            sources,
-                            cited_handles: cited_handles.clone(),
-                            datasets: datasets.clone(),
-                            subagent_runs: runs,
-                            plan_superseded,
+            for (start, end) in segments.iter().copied() {
+                if end - start == 1 && messages[start].role != ChatRole::Tool {
+                    {entry(start)}
+                } else {
+                    ToolRunGroup {
+                        key: "tools-{messages[start].seq}",
+                        summary: tool_run_summary(
+                            &messages[start..end],
+                            run_duration_ms(start.checked_sub(1).map(|b| &messages[b]), &messages[start..end]),
+                        ),
+                        force_open: active_msg.is_some_and(|a| (start..end).contains(&a)),
+                        for i in start..end {
+                            {entry(i)}
                         }
                     }
                 }
@@ -209,6 +230,59 @@ pub fn ChatTranscript(
                         style: "color: #64748B; font-size: 13px; font-style: italic;",
                         "The assistant is working\u{2026}"
                     }
+                }
+            }
+        }
+    }
+}
+
+/// The rows of `messages` as index ranges: each run of consecutive tool rows is one range,
+/// and each other row is a range of its own.
+fn tool_run_segments(messages: &[ChatMessageItem]) -> Vec<(usize, usize)> {
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    for (i, m) in messages.iter().enumerate() {
+        match out.last_mut() {
+            Some((start, end))
+                if m.role == ChatRole::Tool && messages[*start].role == ChatRole::Tool =>
+            {
+                *end = i + 1;
+            }
+            _ => out.push((i, i + 1)),
+        }
+    }
+    out
+}
+
+/// A run of tool rows, collapsed behind its summary line. The line expands to the cards.
+/// `force_open` holds it open while the conversation search points at a row inside it.
+#[component]
+fn ToolRunGroup(summary: String, force_open: bool, children: Element) -> Element {
+    let mut open = use_signal(|| false);
+    let shown = *open.read() || force_open;
+    let action = if shown { "Hide" } else { "Show" };
+    rsx! {
+        div {
+            class: "x-chat-tool-run",
+            style: "display: flex; flex-direction: column; gap: 8px;",
+            button {
+                class: "x-chat-tool-run-toggle",
+                "aria-expanded": "{shown}",
+                style: "align-self: flex-start; display: flex; gap: 8px; align-items: baseline; \
+                        background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; \
+                        padding: 5px 10px; cursor: pointer; font-size: 13px; color: #334155; \
+                        text-align: left;",
+                onclick: move |_| {
+                    let next = !*open.peek();
+                    open.set(next);
+                },
+                span { "{summary}" }
+                span { style: "font-size: 12px; color: #4F46E5; text-decoration: underline;", "{action}" }
+            }
+            if shown {
+                div {
+                    style: "display: flex; flex-direction: column; gap: 12px; padding-left: 10px; \
+                            border-left: 2px solid #E2E8F0;",
+                    {children}
                 }
             }
         }

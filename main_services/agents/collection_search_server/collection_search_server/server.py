@@ -322,6 +322,9 @@ MIN_HASH_PREFIX = 12
 #: The start of a file hash: hex, from `MIN_HASH_PREFIX` to 63 characters.
 _HASH_PREFIX_RE = re.compile(r"^[0-9a-f]{%d,63}$" % MIN_HASH_PREFIX)
 
+#: A hex value longer than a file hash: a hash that the model copied with extra characters.
+_TOO_LONG_HASH_RE = re.compile(r"^[0-9a-f]{65,}$")
+
 #: The count of candidates that the refusal of an ambiguous start names.
 MAX_PREFIX_CANDIDATES = 5
 
@@ -334,9 +337,14 @@ def full_hash(collectionname: str, value: str) -> str:
     """The whole file hash of the one document in `collectionname` whose hash starts with
     `value`. A value that is not a hash start, and a start that names no document, come
     back unchanged, so the caller's own check refuses them. A start that names more than
-    one document raises `HashPrefixError` with the candidates. The caller checks the
-    ACL of `collectionname` first."""
+    one document, and a hex value longer than 64 characters, raise `HashPrefixError`. The
+    caller checks the ACL of `collectionname` first."""
     prefix = (value or "").strip().lower()
+    if _TOO_LONG_HASH_RE.match(prefix):
+        raise HashPrefixError(
+            f"the file_hash {value!r} has {len(prefix)} characters, and a file hash has 64. "
+            "Copy the whole file_hash of the document you mean from a tool result."
+        )
     if not _HASH_PREFIX_RE.match(prefix):
         return value
     rows = clickhouse_query(

@@ -132,8 +132,10 @@ A turn with a stop row in `agent_turn_stops` closes in `open_run`.
 a stored `tool_unavailable` result, which the model reads. After 600 model steps one
 `final` step binds no tool, and the run ends `completed` with `end_reason` `step_budget`.
 A call that repeats an earlier call, with the same name and arguments, does not run when
-the earlier result is not an error. It gets a `repeated_call` result that names the earlier
-call, and the other calls of its reply run. After 3 model steps in a row that hold only
+the earlier result is not an error. A result whose JSON object says `"success": false` or
+names an `error` is an error too, because a tool server sends a refusal as a normal result.
+The repeated call gets a `repeated_call` result that names the earlier call, and the other
+calls of its reply run. After 3 model steps in a row that hold only
 repeated calls, the run gets one `final` step (`repeated_call`). The reply of a `final`
 step is the answer, and each call in it gets a `not_run` result. The calls of one reply to
 the plan tree and todo tools run one after the other, in the order of the reply. The first turn

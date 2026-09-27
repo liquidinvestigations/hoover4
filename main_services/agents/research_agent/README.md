@@ -248,7 +248,9 @@ response is JSON:
 can leave the model's string token `<|"|>` in a key or a value, a quote on a key (`id"`),
 or one layer of quotes around a one-word value. `tool_args.repair_arguments` removes the
 token, the quotes of a key and that one layer, and keeps the quotes of `query`, `queries`,
-`quote` and `find`, because a phrase search needs them. Each repair is one line of the
+`quote` and `find`, because a phrase search needs them. `tool_args.rename_aliases` then
+renames a key that the model wrote under another name, such as `collection` for
+`collectionname`, when the tool's schema has that name. Each repair is one line of the
 `argument_repairs` list in the measure of the call.
 
 ## Per-chat and per-run browser sessions

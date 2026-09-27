@@ -3,7 +3,7 @@
 from langchain_core.tools import StructuredTool
 
 from research_agent.agent import with_decoded_arguments
-from research_agent.tool_args import decode_string_arguments, repair_arguments
+from research_agent.tool_args import decode_string_arguments, rename_aliases, repair_arguments
 
 # Parameters in the shape the MCP server publishes, taken from the `search_collections`
 # input schema, with `anything` added for a parameter that accepts any type.
@@ -214,3 +214,19 @@ def test_a_repaired_key_that_is_already_set_is_dropped_and_named():
     fixed, repairs = repair_arguments({"id": "1", 'id"': "2"})
     assert fixed == {"id": "1"}
     assert repairs[-1] == "key 'id\"' was dropped, because 'id' is set"
+
+
+def test_an_alias_key_becomes_the_schema_name():
+    schema = {"properties": {"collectionname": {"type": "string"}, "file_hash": {"type": "array"}}}
+    fixed, repairs = rename_aliases({"collection": "testdata", "file_hash": ["h"]}, schema)
+    assert fixed == {"collectionname": "testdata", "file_hash": ["h"]}
+    assert repairs == ["key 'collection' became 'collectionname'"]
+
+
+def test_an_alias_stays_when_the_schema_has_it_or_the_name_is_set():
+    schema = {"properties": {"collection": {"type": "string"}, "collectionname": {"type": "string"}}}
+    args = {"collection": "a"}
+    assert rename_aliases(args, schema) == (args, [])
+    schema = {"properties": {"collectionname": {"type": "string"}}}
+    args = {"collection": "a", "collectionname": "b"}
+    assert rename_aliases(args, schema) == (args, [])

@@ -120,8 +120,8 @@ prose; the reader sees the handle as a chip and the document beneath the answer.
 **A file hash start names its document.** `read_documents` and `cite_documents` accept the
 first 12 or more characters of a file hash in place of the whole hash, in a collection that
 the caller can read (`server.full_hash`). A start that more than one document shares is
-refused with up to 5 candidates. A start that no document has goes on unchanged, and the
-usual check refuses it.
+refused with up to 5 candidates. A hex value longer than 64 characters is refused with its
+length. A start that no document has goes on unchanged, and the usual check refuses it.
 
 **The quote is checked** against the document's extracted pages before a handle is issued,
 after folding whitespace, case and typographic punctuation. Verification reads every
@@ -191,7 +191,10 @@ it cannot correct.
 name, a `collection_dataset` value or the `collection/dataset` form in `collectionname`
 becomes the collection that holds the dataset (`tools_search.collections_for`), and the
 first line of `query_notes` says so. A name that matches no dataset reaches the route
-unchanged, so the route still refuses a collection that the user cannot read. With a
+unchanged, so the route still refuses a collection that the user cannot read. The document
+tools apply the same rule (`tools_document._map_collections`) to a name that the caller's
+ACL does not hold, and put the note in `collection_notes` of the result. A name that the ACL
+holds costs no `collections/list` call. With a
 `queries` list, and `query` as its first form when both are given, each form is one route
 search. The rows merge by `(collectionname, file_hash)` in the order they are first found,
 and each row gets `matched_queries`, the forms that found it. A form that fails adds its

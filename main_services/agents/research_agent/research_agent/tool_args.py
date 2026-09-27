@@ -10,7 +10,9 @@ The served model writes the token `<|"|>` around a string. The tool call parser 
 model server does not always remove it. A value or a key can then hold the token, a key
 can keep a quote (`id"`), and a value can keep one layer of quotes. `repair_arguments`
 removes the token and that one layer. It returns one line for each repair, and
-`/tool_call` puts the lines in the measure of the call.
+`/tool_call` puts the lines in the measure of the call. The model also writes some
+arguments under another name, such as `collection` for `collectionname`. `rename_aliases`
+renames such a key when the tool's schema has the other name.
 
 `decode_string_arguments` converts such a string to the value the schema asks for, before
 the arguments leave the agent. It changes a value only when the parameter's schema does not
@@ -231,3 +233,28 @@ def repair_arguments(args: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     repairs: List[str] = []
     fixed = _repair_value(args, "", "", repairs)
     return fixed, repairs
+
+
+#: Argument names that the served model writes in place of the name in the tool's schema.
+KEY_ALIASES = {
+    "collection": "collectionname",
+    "collection_name": "collectionname",
+    "file_hashes": "file_hash",
+    "hash": "file_hash",
+}
+
+
+def rename_aliases(args: Dict[str, Any], schema: Optional[dict]) -> Tuple[Dict[str, Any], List[str]]:
+    """Return `args` with each top-level key of `KEY_ALIASES` renamed to its schema name,
+    when the schema has that name and not the alias, and the arguments do not set it. The
+    second item names each rename, and is empty when nothing changed."""
+    properties = (schema or {}).get("properties") if isinstance(schema, dict) else None
+    if not isinstance(args, dict) or not isinstance(properties, dict):
+        return args, []
+    out = dict(args)
+    repairs: List[str] = []
+    for alias, name in KEY_ALIASES.items():
+        if alias in out and alias not in properties and name in properties and name not in out:
+            out[name] = out.pop(alias)
+            repairs.append(f"key {alias!r} became {name!r}")
+    return out, repairs

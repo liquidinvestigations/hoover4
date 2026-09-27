@@ -141,3 +141,54 @@ def test_a_failed_entity_listing_is_returned_as_is(monkeypatch):
     )
     page = json.loads(tools_document.list_document_entities.fn(documents=[]))
     assert page["success"] is False and page["error"] == "no document was named"
+
+
+
+def _listing(monkeypatch):
+    """A caller who reads `consulate` only, and a website whose `collections/list` gives the
+    `consulate` collection with the dataset `files`. Returns the routes called, with the
+    `collectionname` each document route received."""
+    from collection_search_server.acl import CallerAcl
+    from collection_search_server.backend_client import AgentError, CollectionsListResponse
+
+    monkeypatch.setattr(server, "_caller", lambda: CallerAcl(username="u", collections=("consulate",)))
+    monkeypatch.setattr(server, "full_hashes", lambda c, v: v)
+    listing = CollectionsListResponse.model_validate({"collections": [
+        {"collectionname": "consulate", "document_count": 1,
+         "datasets": [{"name": "files", "document_count": 1}]}], "source": "s"})
+    calls = []
+
+    def fake_post(self, route, request, response_model=None, expected_source=None):
+        if route == "collections/list":
+            calls.append((route, None))
+            return listing
+        calls.append((route, request.model_dump(mode="json", exclude_none=True).get("collectionname")))
+        return AgentError(error="not_found", message="recorded")
+
+    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", fake_post)
+    return calls
+
+
+def test_a_dataset_name_in_a_document_tool_reads_its_collection(monkeypatch):
+    calls = _listing(monkeypatch)
+    for name in ("consulate_files", "files", "consulate/files"):
+        calls.clear()
+        tools_document.read_documents.fn(collectionname=name, file_hash=["h"])
+        assert calls == [("collections/list", None), ("documents/read", "consulate")], name
+
+
+def test_a_readable_collection_costs_no_listing(monkeypatch):
+    calls = _listing(monkeypatch)
+    tools_document.doc_metadata.fn(collectionname="consulate", file_hash="h")
+    assert calls == [("documents/metadata", "consulate")]
+
+
+def test_a_mapped_collection_is_named_in_the_result():
+    body = json.loads(tools_document._with_notes('{"rows": []}', ["'files' is a dataset"]))
+    assert body["collection_notes"] == ["'files' is a dataset"]
+    assert tools_document._with_notes("plain", ["n"]) == "plain"
+
+
+def test_a_hash_one_character_too_long_is_refused_with_its_length():
+    with pytest.raises(server.HashPrefixError, match="has 65 characters, and a file hash has 64"):
+        server.full_hash("testdata", "a" * 65)
