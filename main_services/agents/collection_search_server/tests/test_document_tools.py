@@ -192,3 +192,47 @@ def test_a_mapped_collection_is_named_in_the_result():
 def test_a_hash_one_character_too_long_is_refused_with_its_length():
     with pytest.raises(server.HashPrefixError, match="has 65 characters, and a file hash has 64"):
         server.full_hash("testdata", "a" * 65)
+
+
+GOOD = "1c34013565c314e2fcf93953929f2d10e622558009112e9495be315efcd7f92c"
+MEANT = "b0df945ee5dfa8180541b6f7a496d0a96c3dd97ecc80fa5a4a5d9680552ac0d0"
+
+
+def _collection_of(monkeypatch, hashes):
+    """A readable collection `epstein` whose `vfs_files` holds `hashes`."""
+    from collection_search_server.acl import CallerAcl
+
+    monkeypatch.setattr(server, "_caller", lambda: CallerAcl(username="u", collections=("epstein",)))
+
+    def fake_query(sql, database, params=None):
+        params = params or {}
+        if "hash IN" in sql:
+            wanted = params["hashes"].strip("[]").replace("'", "").split(",")
+            return [{"hash": h} for h in hashes if h in wanted]
+        if "startsWith" in sql:
+            return [{"hash": h} for h in hashes if h.startswith(params["prefix"])][:2]
+        raise AssertionError(sql)
+
+    monkeypatch.setattr(server, "clickhouse_query", fake_query)
+
+
+def test_a_hash_with_one_changed_character_reads_the_document_it_starts_like(monkeypatch):
+    _collection_of(monkeypatch, [GOOD, MEANT])
+    changed = MEANT[:41] + "e" + MEANT[41:]
+    hashes, notes = server.resolve_hashes("epstein", [GOOD, changed])
+    assert hashes == [GOOD, MEANT]
+    assert len(notes) == 1 and MEANT[:16] in notes[0] and MEANT in notes[0]
+
+
+def test_a_hash_that_matches_nothing_is_left_out_and_the_others_are_read(monkeypatch):
+    _collection_of(monkeypatch, [GOOD])
+    hashes, notes = server.resolve_hashes("epstein", [GOOD, "f" * 64])
+    assert hashes == [GOOD]
+    assert "leaves it out" in notes[0]
+
+
+def test_read_documents_with_only_unknown_hashes_is_refused_with_the_notes(monkeypatch, sent):
+    _collection_of(monkeypatch, [GOOD])
+    body = json.loads(tools_document.read_documents.fn(collectionname="epstein", file_hash=["f" * 64]))
+    assert body["error"] == "not_found" and "leaves it out" in body["message"]
+    assert sent == []

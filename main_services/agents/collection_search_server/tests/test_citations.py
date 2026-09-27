@@ -370,9 +370,11 @@ class TestHashStart:
         sent = []
         monkeypatch.setattr(tools_document, "_render",
                             lambda tool, values: sent.append(values) or "{}")
-        tools_document.read_documents.fn(collectionname="testdata",
-                                         file_hash=[self.FULL[:12], "c" * 64])
-        assert sent[0]["file_hash"] == [self.FULL, "c" * 64]
+        result = json.loads(tools_document.read_documents.fn(
+            collectionname="testdata", file_hash=[self.FULL[:12], "c" * 64]))
+        # A whole hash that no document has is left out, and the result says so.
+        assert sent[0]["file_hash"] == [self.FULL]
+        assert "c" * 64 in result["file_hash_notes"][0]
         other = self.FULL[:12] + "6" * 52
         self._stub(monkeypatch, [self.FULL, other])
         refused = json.loads(tools_document.read_documents.fn(

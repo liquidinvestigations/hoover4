@@ -120,8 +120,16 @@ prose; the reader sees the handle as a chip and the document beneath the answer.
 **A file hash start names its document.** `read_documents` and `cite_documents` accept the
 first 12 or more characters of a file hash in place of the whole hash, in a collection that
 the caller can read (`server.full_hash`). A start that more than one document shares is
-refused with up to 5 candidates. A hex value longer than 64 characters is refused with its
-length. A start that no document has goes on unchanged, and the usual check refuses it.
+refused with up to 5 candidates. `cite_documents` refuses a hex value longer than 64
+characters with its length. A start that no document has goes on unchanged, and the usual
+check refuses it.
+
+**`read_documents` reads the documents it can find** (`server.resolve_hashes`). The served
+model copies a hash with one character changed or added. A whole or longer hash that no
+document has becomes the one document whose hash has the same first 16 characters, and a
+hash that matches nothing is left out. Each change is a line of `file_hash_notes` in the
+result, and the other documents of the call are read. A call whose every hash matches
+nothing is refused with those lines.
 
 **The quote is checked** against the document's extracted pages before a handle is issued,
 after folding whitespace, case and typographic punctuation. Verification reads every

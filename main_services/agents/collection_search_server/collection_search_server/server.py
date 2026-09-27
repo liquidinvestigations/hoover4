@@ -382,6 +382,80 @@ def full_hashes(collectionname: str, values: Any) -> Any:
     return values
 
 
+#: The start length that finds the document a model meant when it changed a later
+#: character of a whole hash. 16 hex characters name one document in any real collection.
+NEAR_MATCH_PREFIX = 16
+
+#: A whole file hash, or a hex value longer than one.
+_WHOLE_OR_LONGER_RE = re.compile(r"^[0-9a-f]{64,}$")
+
+
+def _existing_hashes(collectionname: str, hashes: list[str]) -> set[str]:
+    if not hashes:
+        return set()
+    rows = clickhouse_query(
+        "SELECT DISTINCT hash FROM vfs_files WHERE hash IN {hashes:Array(String)} "
+        "AND is_deleted = 0",
+        database=collection_db(collectionname),
+        params={"hashes": "['" + "','".join(hashes) + "']"},
+    )
+    return {str(row.get("hash") or "") for row in rows}
+
+
+def _near_match(collectionname: str, value: str) -> str | None:
+    """The one document whose hash starts with the first `NEAR_MATCH_PREFIX` characters of
+    `value`, or `None` when no document or more than one has that start."""
+    rows = clickhouse_query(
+        "SELECT DISTINCT hash FROM vfs_files WHERE startsWith(hash, {prefix:String}) "
+        "AND is_deleted = 0 ORDER BY hash LIMIT 2",
+        database=collection_db(collectionname),
+        params={"prefix": value[:NEAR_MATCH_PREFIX]},
+    )
+    hashes = [str(row.get("hash") or "") for row in rows if row.get("hash")]
+    return hashes[0] if len(hashes) == 1 else None
+
+
+def resolve_hashes(collectionname: str, values: Any) -> tuple[Any, list[str]]:
+    """The hashes of `values` that `read_documents` sends, and a note for each change.
+
+    A hash start becomes its whole hash (`full_hash`). A whole or longer hex value that no
+    document has becomes the one document whose hash has the same first
+    `NEAR_MATCH_PREFIX` characters, because the served model changes a character in the
+    middle of a hash it copies. A value that matches no document is left out, so the other
+    documents of the call are still read. For a collection that the caller cannot read the
+    values come back unchanged, and the route refuses the call."""
+    try:
+        _caller().check([collectionname])
+    except AccessDenied:
+        return values, []
+    items = [values] if isinstance(values, str) else values
+    if not isinstance(items, list):
+        return values, []
+    whole = sorted({v.strip().lower() for v in items
+                    if isinstance(v, str) and _WHOLE_OR_LONGER_RE.match(v.strip().lower())})
+    existing = _existing_hashes(collectionname, [h for h in whole if len(h) == 64])
+    out: list[Any] = []
+    notes: list[str] = []
+    for value in items:
+        text = value.strip().lower() if isinstance(value, str) else ""
+        if not _WHOLE_OR_LONGER_RE.match(text):
+            out.append(full_hash(collectionname, value) if isinstance(value, str) else value)
+            continue
+        if text in existing:
+            out.append(text)
+            continue
+        near = _near_match(collectionname, text)
+        if near is not None:
+            out.append(near)
+            notes.append(f"no document in {collectionname!r} has the file_hash {value!r}. The one "
+                         f"document whose file_hash starts with {text[:NEAR_MATCH_PREFIX]!r} is "
+                         f"read in its place: {near}.")
+        else:
+            notes.append(f"no document in {collectionname!r} has the file_hash {value!r}, so this "
+                         "call leaves it out. Copy the whole file_hash from a tool result.")
+    return out, notes
+
+
 def _caller() -> CallerAcl:
     """The ACL of the in-flight request."""
     return parse_acl(dict(get_http_headers()))

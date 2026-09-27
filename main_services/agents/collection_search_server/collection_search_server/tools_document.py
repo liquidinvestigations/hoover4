@@ -88,9 +88,10 @@ def _map_collections(values: dict[str, Any]) -> list[str]:
     return []
 
 
-def _with_notes(text: str, notes: list[str]) -> str:
-    """The result `text` with `collection_notes` added, when it is a JSON object."""
-    if not notes:
+def _with_notes(text: str, notes: list[str], hash_notes: list[str] | None = None) -> str:
+    """The result `text` with `collection_notes` and `file_hash_notes` added, when it is a
+    JSON object."""
+    if not notes and not hash_notes:
         return text
     try:
         body = json.loads(text)
@@ -98,7 +99,10 @@ def _with_notes(text: str, notes: list[str]) -> str:
         return text
     if not isinstance(body, dict):
         return text
-    body["collection_notes"] = notes
+    if notes:
+        body["collection_notes"] = notes
+    if hash_notes:
+        body["file_hash_notes"] = hash_notes
     return canonical_json(body)
 
 
@@ -116,13 +120,16 @@ def _render(tool: PagedTool | LocalPagedTool, values: dict[str, Any]) -> str:
 def read_documents(collectionname: str, file_hash: list[str], source: str | None = None, query: str | None = None, page: int | None = None) -> str:
     values: dict[str, Any] = {"collectionname": collectionname, "file_hash": file_hash, "source": source, "query": query, "page": page}
     notes = _map_collections(values)
+    hash_notes: list[str] = []
     try:
-        values["file_hash"] = server.full_hashes(values["collectionname"], file_hash)
+        values["file_hash"], hash_notes = server.resolve_hashes(values["collectionname"], file_hash)
     except server.HashPrefixError as exc:
         return canonical_json({"success": False, "error": "invalid_argument", "message": str(exc)})
     except Exception:  # noqa: BLE001, a failed lookup leaves the hashes to the route
-        server.log.warning("the file_hash starts of read_documents were not looked up", exc_info=True)
-    return _with_notes(_render(READ_DOCUMENTS, values), notes)
+        server.log.warning("the file_hashes of read_documents were not looked up", exc_info=True)
+    if not values["file_hash"] and hash_notes:
+        return canonical_json({"success": False, "error": "not_found", "message": " ".join(hash_notes)})
+    return _with_notes(_render(READ_DOCUMENTS, values), notes, hash_notes)
 
 
 @mcp.tool(name="doc_search_text", description="List the hits of a query in one document text source, in page order, with the page, the offsets and a snippet of each hit. Use it to find the pages of a long document to read.")
