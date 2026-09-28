@@ -1,7 +1,7 @@
 ---
 name: todo_upkeep
 group: stumble
-description: how to change a todo list that exists: plain item ids, one status for each item, and each item done or cancelled before the answer
+description: how to change a todo list with item ids and statuses
 tools: read_todo, write_todo, edit_todo, mark_todo
 ---
 {# How to keep a todo list that exists correct. The failed todo calls give an id or a status
@@ -12,11 +12,11 @@ Keeping the todo list
 
 1. Give each id as the number that {{ tool('read_todo') }} shows, with no quotes inside the value. Write ids ["1", "2"]. Do not write ids ["\"1\""].
 2. Give one status in each {{ tool('mark_todo') }} call: pending, in_progress, done or cancelled. Write status done. Do not write status "\"done\"". To give two items two statuses, make two calls.
-3. When you start an item, mark it in_progress. When you finish it, mark it done in the same reply as your next call.
+3. Change an item's status when its work changes.
 4. When you stop an item, mark it cancelled and give a note with the reason. A cancelled item with no note is refused.
 5. To change the steps and keep the goal, call {{ tool('edit_todo') }} with the full list of steps as plain sentences, with no id and no status. A step that you leave out is removed.
-6. Call {{ tool('write_todo') }} only for a new goal. Each step needs text.
+6. {{ tool('write_todo') }} starts a list with text for each step.
 
 This is an example. Items 1 and 2 are pending. The search for item 1 found what you need. Your next reply calls {{ tool('mark_todo') }} with ids ["1"] and status done, and the search for item 2 in the same reply.
 
-Before you write your answer, make sure that no item is pending or in_progress.
+Keep the list current when it helps the person follow the work.

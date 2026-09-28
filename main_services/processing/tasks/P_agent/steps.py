@@ -85,14 +85,16 @@ NOT_RUN_TEXT = {
 }
 
 #: A call runs this many times with the same key before the next one is refused. A todo
-#: or plan write, a delegation, and a call whose first run was a run-start read keep 1 run
+#: or plan write and a delegation keep 1 run
 #: (`runs_allowed`).
 REPEAT_RUNS_ALLOWED = 3
 
 #: Reads of state that changes while the run waits. They never repeat.
 REPEAT_EXEMPT = ("read_todo", "read_plan",
                  "browser_snapshot", "browser_take_screenshot", "browser_wait_for",
-                 "browser_tabs", "browser_console_messages", "browser_network_requests")
+                 "browser_tabs", "browser_console_messages", "browser_network_requests",
+                 "browser_navigate", "browser_click", "browser_type",
+                 "browser_select_option", "browser_press_key")
 
 #: The writes of the todo list and of the plan tree. Their key holds the store version, so
 #: a write repeats only when no write of its store succeeded after the earlier one.
@@ -128,11 +130,11 @@ REPEAT_SKILLS = {"empty": "no_results", "result": "after_a_result", "start": "af
 REPEAT_SKILL_KINDS = ("chat", "subagent")
 
 #: Mirrors `research_agent/stumbles.py` SKILL_LINE. The two images share no module.
-SKILL_LINE = "Before you call this tool again, read the skill `{skill}` with `read_skill`."
+SKILL_LINE = "The skill `{skill}` shows how to fix this."
 
 #: The first words of the repeat note. They differ from FINAL_TEXT["repeated_call"], so a
 #: count of the human rows that start with them finds notes only.
-REPEAT_NOTE_HEAD = "Repeat note. Your last 3 replies only repeated earlier calls"
+REPEAT_NOTE_HEAD = f"Repeat note. Your last {REPEAT_STEP_LIMIT} replies only repeated earlier calls"
 
 #: The most lines of one list of the repeat note, the newest.
 REPEAT_NOTE_LINES = 20
@@ -182,9 +184,7 @@ SUMMARY_NOTICE = (
 #: module, so a test compares the two strings.
 NOTE_WARNING_TEXT = (
     "Your context is at {pct} percent of its limit. The older steps of this run will soon "
-    "be replaced by a record. Save each fact that you need later with `write_note` now. "
-    "When `write_note` is not ready, call `read_tool` with the name `write_note` first. "
-    "Then call `write_note` in your next reply."
+    "be replaced by a record. Save each fact that you need later with `write_note` now."
 )
 #: The chat role of the compaction line: one row for each compaction of a run that writes
 #: the transcript, at the first seq of its step.
@@ -213,8 +213,7 @@ class StepRef:
 class ModelStepParams(StepRef):
     #: 1 for the first model call of the run thread.
     step_no: int = 1
-    #: `tools`, `final` for an answer with no tool bound, or `plan` for the first-turn
-    #: planning call, which binds `write_todo` only.
+    #: `tools` or `final` for an answer with no tool.
     mode: str = "tools"
     #: `step_budget` or `repeated_call`, for mode `final`.
     final_reason: str = ""
@@ -256,6 +255,11 @@ class ToolCallResult:
     #: `ok`, `error` or `closed`.
     status: str
     error_class: str = ""
+
+
+@dataclass
+class AskedAnswerParams(StepRef):
+    call: Optional[CallRef] = None
 
 
 @dataclass
@@ -335,8 +339,7 @@ def _step_run(row, params: StepRef) -> dict[str, Any]:
         "session_id": row.session_id,
         "allowed_collections": list(params.allowed_collections or []),
         "llm_model": params.llm_model or _chat_model(),
-        # A sub-agent of a plan does not delegate. Any other run delegates under depth 2.
-        "can_delegate": row.depth < 2 and not (row.plan_run_id and row.depth >= 1),
+        "can_delegate": row.kind == "organizer" and row.depth == 0,
     }
 
 
@@ -694,9 +697,8 @@ def _step_versions(ai, results: dict) -> dict:
 
 def runs_allowed(name: str, source: RepeatSource) -> int:
     """The successful runs of one key before the next call with it is refused. A todo or
-    plan write adds the same change again, a delegation starts the same sub-agents again,
-    and a run-start read returns the text that the run holds already, so each keeps 1."""
-    if name in TODO_WRITES | PLAN_WRITES or source.kind in ("delegation", "start"):
+    plan write adds the same change again, and a delegation starts the same sub-agents again."""
+    if name in TODO_WRITES | PLAN_WRITES or source.kind == "delegation":
         return 1
     return REPEAT_RUNS_ALLOWED
 
@@ -1071,17 +1073,13 @@ def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str,
         seq += 1
     usage = dict(turn.get("usage") or {})
     usage.update(step_no=params.step_no, mode=params.mode,
-                 bound_names=list(turn.get("bound_names") or []),
                  summarised=bool(turn.get("summarised")), model=model,
                  compaction=bool(turn.get("compaction")),
                  note_warning=bool(turn.get("note_warning")))
-    # A `plan` reply with no call is kept as a partial, which no request sends, so the
-    # thread holds no plan text that the page does not show.
-    final = 0 if params.mode == "plan" and not entries else 1
     ai = agent_runs.RunMessageRow(
         idx=idx, role="ai", content=str(turn.get("text") or ""),
         reasoning=str(turn.get("reasoning") or ""), tool_calls_json=json.dumps(entries),
-        usage_json=json.dumps(usage), is_final=final, run_id=row.run_id)
+        usage_json=json.dumps(usage), is_final=1, run_id=row.run_id)
     agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
     return ai
 
@@ -1174,13 +1172,12 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
             messages = _close_for_final(row, params, messages)
         next_idx = max(m.idx for m in messages) + 1 if messages else 0
         plan_prose, round_reasoning, in_opening = round_view(messages)
-        earlier_turns = _earlier_turns(row) if transcript and params.mode != "plan" else []
+        earlier_turns = _earlier_turns(row) if transcript else []
         body = {
             **_step_run(row, params),
             "step_no": params.step_no,
             "mode": params.mode,
-            # The planning call runs with thinking off, and the service sends it off.
-            "thinking": thinking_setting() if params.mode != "plan" else False,
+            "thinking": thinking_setting(),
             "messages": [run_message(m, row.thread_id) for m in messages],
             "earlier": earlier_turns,
         }
@@ -1218,8 +1215,6 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
                     shift = 1
                     stream.shift_seq(1, COMPACTION_ROLE, content)
                 elif kind == "model_turn" and ai is None:
-                    if params.mode == "plan":
-                        _raise_if_past_limit(started)
                     # Written at once, so a retry after a later failure finds the reply.
                     ai = _store_reply(row, params, frame, next_idx, body["llm_model"],
                                       seq0=row.next_seq + shift)
@@ -1248,13 +1243,6 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
                 _chat_row(row)(row.next_seq, COMPACTION_ROLE, content=json.dumps(
                     compaction_line(record, prompt_tokens or ai.usage.get("input_tokens") or 0,
                                     running.get("parts", 0))))
-            if params.mode == "plan" and not ai.tool_calls:
-                writer.write(model_steps=max(row.model_steps, params.step_no),
-                             **_step_tokens(row, params.step_no, ai.usage))
-                event.ok = False
-                event.error_class = "no_plan"
-                return ModelStepResult(outcome="no_plan", next_seq=row.next_seq,
-                                       next_idx=ai.idx)
             if ai.tool_calls and params.mode != "final":
                 result = _write_calls(row, params, messages, ai, writer, stream)
             else:
@@ -1307,7 +1295,6 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
         **_step_run(row, params),
         "call": {"id": call.call_id, "name": call.name,
                  "args": entry.get("args") if isinstance(entry.get("args"), dict) else {}},
-        "bound_names": list(ai.usage.get("bound_names") or []),
         "page_share": entry.get("page_share"),
         "budget_exhausted": bool(entry.get("budget_exhausted")),
         "idempotency_key": key,
@@ -1339,6 +1326,39 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
             with (activity.shield_thread_cancel_exception() if activity.in_activity()
                   else contextlib.nullcontext()):
                 live.close()
+
+
+@activity.defn
+@with_heartbeat
+def write_asked_answer(params: AskedAnswerParams) -> int:
+    """Write the question as the turn answer after all calls of its step have run."""
+    from database import agent_runs
+
+    row = _read_row(params)
+    if agent_runs.is_terminal(row):
+        return row.next_seq
+    messages = _read_thread(row)
+    ai = next((m for m in messages if m.role == "ai" and m.idx == params.call.ai_idx), None)
+    if ai is None or params.call.position >= len(ai.tool_calls):
+        raise RuntimeError(f"run {row.run_id} has no question call")
+    entry = ai.tool_calls[params.call.position]
+    result = _answer_of(messages, params.call.call_id)
+    if result is None or result.usage.get("status") != "ok":
+        raise RuntimeError(f"run {row.run_id} has no successful question result")
+    question = str((entry.get("args") or {}).get("question") or "")
+    if not question:
+        raise RuntimeError(f"run {row.run_id} has an empty question")
+    if agent_runs.writes_transcript(row):
+        from tasks.P_agent import plan_runs
+        reference = plan_runs.plan_reference(row) if row.kind == "planner" else ""
+        _chat_row(row)(row.next_seq, "assistant", content=question,
+                       plan_reference_json=reference)
+        _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid, row.start_seq)
+        next_seq = row.next_seq + 1
+    else:
+        next_seq = row.next_seq
+    agent_runs.write_run(row, result=question, next_seq=next_seq)
+    return next_seq
 
 
 # ------------------------------------------------------------------ the short activities
@@ -1507,8 +1527,7 @@ def write_repeat_note(params: RepeatNoteParams) -> int:
     if params.empty_reply:
         text = EMPTY_REPLY_TEXT
     else:
-        todo = (chat_todos.read_todo(row.username, row.session_id)
-                if agent_runs.is_chat_lead(row) else None)
+        todo = chat_todos.read_todo(row.username, chat_todos.key_for_run(row))
         text = repeat_note_text(_read_thread(row), todo)
     agent_runs.write_message(
         row.username, row.session_id, row.thread_id, row.run_id,
@@ -1553,5 +1572,5 @@ __all__ = [
     "ToolCallParams", "ToolCallResult", "args_digest", "canonical_json", "delegate_step",
     "model_step", "needs_citations", "plan_has_sections", "prepare_continuation",
     "record_step_failure", "repeat_sources", "repeat_streak", "tool_call", "tool_idx",
-    "write_found_documents", "write_repeat_note",
+    "write_asked_answer", "write_found_documents", "write_repeat_note",
 ]

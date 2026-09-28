@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any, Dict, List, Literal, Optional
 
 from langchain_core.tools import StructuredTool
@@ -32,25 +31,6 @@ log = logging.getLogger(__name__)
 
 #: The name the lead agent calls to delegate.
 DELEGATION_TOOL = "run_subagent"
-
-
-def _cap(name: str, default: int) -> int:
-    """A cap from the environment, falling back to its default.
-
-    Tolerant of an unset variable AND of one set to the empty string, because compose
-    renders every optional setting as `NAME=${NAME:-}` and an empty value there means "use
-    the default". Read at import: a cap that changed mid-process would apply to some
-    conversations and not others.
-    """
-    try:
-        return max(1, int(os.getenv(name) or default))
-    except ValueError:
-        return default
-
-
-#: Tasks one `run_subagent` call may carry. The published upper end of "3-5 per wave";
-#: beyond it a model is fanning out instead of decomposing.
-MAX_TASKS_PER_CALL = _cap("AGENT_SUBAGENT_MAX_TASKS", 5)
 
 
 class Briefing(BaseModel):
@@ -82,7 +62,7 @@ class Briefing(BaseModel):
         default=None,
         description=(
             "Organizer only: the number of the plan section this briefing works on. "
-            "Leave it out in every other run."
+            "Leave it out for research outside a section."
         ),
     )
     purpose: Optional[Literal["execute", "correct"]] = Field(
@@ -176,7 +156,7 @@ def make_delegation_tool() -> StructuredTool:
         description=(
             "Delegate independent parts of a hard question to several researchers at "
             "once, each starting fresh and working only on what you give it. Send "
-            f"between two and {MAX_TASKS_PER_CALL} tasks in one call; each is a briefing "
+            "one or more tasks in one call; each is a briefing "
             "with an `objective` (the one question it answers), `known` (what you have "
             "already established, so it does not repeat your work) and `bring_back` "
             "(what its report must contain). They run in parallel and cannot see each "

@@ -27,7 +27,6 @@ LEAF_CAP = 10
 #: The most sections of a plan, one sub-agent each.
 MAX_SECTIONS = 4
 #: The most correction sub-agents of a plan.
-MAX_CORRECTION_RUNS = 1
 #: The window that packing uses when the catalogue states none.
 DEFAULT_WINDOW = 262_144
 #: Packed cost of one leaf task at the median, at 60 percent of the window, by request class.
@@ -72,6 +71,6 @@ def sections_for(leaves: int, k: int) -> List[int]:
 
 __all__ = [
     "ALL_LEAF_TOKENS", "CLASS_LEAF_TOKENS", "DEFAULT_WINDOW", "FIXED_TOKENS", "LEAF_CAP",
-    "MAX_CORRECTION_RUNS", "MAX_SECTIONS", "PACKING_FRACTION", "Packing", "leaf_tokens",
+    "MAX_SECTIONS", "PACKING_FRACTION", "Packing", "leaf_tokens",
     "packing_for", "sections_for",
 ]

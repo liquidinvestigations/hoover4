@@ -9,7 +9,7 @@ This directory centralizes database utilities and schema definitions used by the
 - `clickhouse.py` - ClickHouse client configuration and migration runner.
 - `manticore.py` - Manticore index maintenance and search configuration utilities.
 - `s3.py` - S3 client helpers and bucket naming for the Garage blob store.
-- `chat_todos.py` - the agent's per-chat-session todo list: validation, storage, and the two
+- `chat_todos.py` - chat and agent-run todo lists: validation, storage, and the two
   questions that decide whether the agent gets nagged. A `cancelled` item needs a note, and a
   bare status flip is not a change - see the module docstring for why both matter.
 - `agent_runs.py` - every read and write of `agent_runs`, `agent_run_messages` and

@@ -14,6 +14,7 @@ the real one.
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
 from fastmcp.exceptions import ToolError
 
 from agent_todo_server import server
@@ -87,6 +88,20 @@ class TestIdentity:
     def test_the_session_comes_from_the_header_not_an_argument(self):
         caller = parse_caller(HEADERS)
         assert (caller.username, caller.session_id) == ("ann", "s1")
+
+    def test_a_subagent_write_keeps_the_lead_list(self, monkeypatch, store):
+        runs = {
+            "child-1": SimpleNamespace(kind="subagent", run_id="child-1", session_id="s1"),
+            "child-2": SimpleNamespace(kind="subagent", run_id="child-2", session_id="s1"),
+        }
+        monkeypatch.setattr(server.agent_runs, "read_run", lambda u, s, r: runs.get(r))
+        call(server.write_todo, goal="Lead", steps=["lead step"])
+        monkeypatch.setattr(server, "get_http_headers",
+                            lambda: {**HEADERS, "X-Hoover4-Agent-Run": "child-1"})
+        call(server.write_todo, goal="Child", steps=["child step"])
+        assert store[("ann", "s1")]["goal"] == "Lead"
+        assert store[("ann", "child-1")]["goal"] == "Child"
+        assert ("ann", "child-2") not in store
 
     def test_header_casing_does_not_matter(self):
         caller = parse_caller(

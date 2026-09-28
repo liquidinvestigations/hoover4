@@ -225,6 +225,9 @@ Three rules make it worth the second reading.
   with no row was never agreed; a row with no code is false.
 - **The `Readme.md` beside the code is true again**, and the patch to it is as small as the
   code patch that prompted it.
+- **Model instructions match the task and tool contracts.** Run
+  `.agents/check-prompt-restrictions.py` and review each sentence it prints. The script
+  reports possible restrictions and always exits 0.
 - **No private infrastructure detail** anywhere in the diff, no hostname, address, port
   identifying a real host, credential, or description of an authentication boundary. Those
   live only in the gitignored `INFRASTRUCTURE_INVENTORY.md`.

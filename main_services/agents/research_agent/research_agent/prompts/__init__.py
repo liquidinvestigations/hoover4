@@ -2,8 +2,7 @@
 
 One template, `agent.md.j2`, renders for every profile. It holds the role line of the
 profile, the listed skills by name and description, and the tools of the run's snapshot by
-name and summary in two lists: the tools that every model call binds, and the deferred
-tools that the model binds with `read_tool`. The method text is in the skill store
+name and summary in one list. The method text is in the skill store
 (`research_agent.skill_store`), which the model reads with `read_skill`.
 
 The prompt depends on the profile, the purpose, `collections_hint` and the snapshot. None of
@@ -11,7 +10,7 @@ these changes during a run, so the step context renders it once, and the prompt 
 system text holds for the whole run.
 
 `SYSTEM_PROMPT` overrides the rendered text outright, which is what an experiment wants. It
-does not change the tool binding, which the tool packs of the run kind decide
+does not change the tool list, which the tool packs of the run kind decide
 (`agent_common.tool_packs`). See `active_profile`.
 
 The Manticore match syntax reaches the model through the skill `search` and through the
@@ -59,19 +58,16 @@ PROFILE_KINDS: Dict[str, str] = {
 #: `collections_hint`.
 ROLE_LINES: Dict[str, str] = {
     "internal_search": (
-        "You are Hoover4's document research assistant. Answer only from the user's own document\n"
-        "collections, never from your general knowledge and never from the web.\n"
+        "You are Hoover4's assistant. You can read the user's document collections.\n"
         "{% if not collections_hint %}\n\n"
-        "This conversation can read no collections at all, so every search will come back empty.\n"
-        "Say that plainly instead of searching again in different words.\n"
+        "This conversation can read no document collections.\n"
         "{% endif %}"
     ),
     "full_research": (
         "You are a research assistant. You can read the user's own document\n"
         "collections{% if web_enabled %} and search the open web{% endif %}.\n"
         "{% if not collections_hint %}\n\n"
-        "This conversation can read no document collections at all, so every collection search will\n"
-        "come back empty. Say so plainly, and answer from the open web if the question allows it.\n"
+        "This conversation can read no document collections.\n"
         "{% endif %}"
     ),
     "research_subagent": (
@@ -91,7 +87,7 @@ ROLE_LINES: Dict[str, str] = {
 #: The longest summary of one tool in the tool lists.
 SUMMARY_MAX_CHARS = 160
 
-#: The todo tools. The todo rule renders only when every model call binds all four.
+#: The todo tools. The todo rule renders when the run has all four.
 TODO_TOOLS = ("read_todo", "write_todo", "edit_todo", "mark_todo")
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")
@@ -162,27 +158,14 @@ def render(
     role_line = environment().from_string(ROLE_LINES[name]).render(
         web_enabled="web_search" in tool_names, collections_hint=bool(collections_hint),
     ).strip()
-    core = set(snapshot.core_names)
     return _environment().get_template(AGENT_TEMPLATE).render(
         role_line=role_line,
         skills=list(skills),
-        bound=_pairs(snapshot, snapshot.core_names),
-        deferred=_pairs(snapshot, snapshot.deferred_names),
+        tools=_pairs(snapshot, snapshot.callable_names()),
         catalogue_search="search_agent_tools" in tool_names,
-        todo_rule=all(t in core for t in TODO_TOOLS),
+        chat_lead=name in {"internal_search", "full_research"},
+        todo_rule=all(t in tool_names for t in TODO_TOOLS),
         purpose=(purpose or "").strip().lower(),
-    ).strip()
-
-
-#: The template of the first-turn planning call. It is not a profile: it has no tool
-#: section, and it binds `write_todo` only.
-PLANNING_CALL_TEMPLATE = "planning_call.md.j2"
-
-
-def planning_call(*, collections: Sequence[str], web_enabled: bool) -> str:
-    """The system text of the first-turn planning call."""
-    return _environment().get_template(PLANNING_CALL_TEMPLATE).render(
-        collections=[str(c) for c in collections or []], web_enabled=bool(web_enabled),
     ).strip()
 
 
@@ -221,14 +204,12 @@ def system_prompt(profile: Optional[str] = None, **kwargs) -> str:
 __all__ = [
     "AGENT_TEMPLATE",
     "DEFAULT_PROFILE",
-    "PLANNING_CALL_TEMPLATE",
     "PROFILE_KINDS",
     "ROLE_LINES",
     "SUMMARY_MAX_CHARS",
     "TEMPLATE_DIR",
     "UnboundToolError",
     "active_profile",
-    "planning_call",
     "render",
     "system_prompt",
     "system_prompt_override",

@@ -219,10 +219,36 @@ def _entry(call_id, name, args, kind="parallel", retry=True):
             "args_digest": steps.args_digest(name, args)}
 
 
+@pytest.mark.parametrize("kind,reference", [("chat", ""), ("planner", '{"plan_id":"p"}')])
+def test_a_successful_question_writes_the_turn_answer(monkeypatch, store, kind, reference):
+    from tasks.P_agent import plan_runs
+    monkeypatch.setattr(plan_runs, "plan_reference", lambda row: reference)
+    question = "Bigger or smaller than 50?"
+    call = activities.CallRef(ai_idx=1, position=0, call_id="ask-1", name="ask_user",
+                              kind="parallel", seq=5)
+    store["row"] = _row(next_seq=6, kind=kind)
+    store["messages"].extend([
+        agent_runs.RunMessageRow(idx=1, role="ai", content="", run_id=RUN_ID,
+                                 tool_calls_json=json.dumps([_entry("ask-1", "ask_user",
+                                                                       {"question": question})])),
+        agent_runs.RunMessageRow(idx=2, role="tool", content=json.dumps({"asked": True}),
+                                 run_id=RUN_ID, tool_call_id="ask-1", tool_name="ask_user",
+                                 usage_json=json.dumps({"status": "ok"})),
+    ])
+    monkeypatch.setattr(agent_runs, "write_run",
+                        lambda row, **changes: store["run"].append(changes))
+    result = ActivityEnvironment().run(steps.write_asked_answer,
+                                       steps.AskedAnswerParams(run_id=RUN_ID, username="u",
+                                                              session_id="s", call=call))
+    assert result == 7
+    assert store["chat"][-1] == {"seq": 6, "role": "assistant", "content": question,
+                                  "plan_reference_json": reference}
+    assert store["run"][-1] == {"result": question, "next_seq": 7}
+
+
 def _frames(text="", entries=(), usage=None, reasoning=""):
     turn = {"type": "model_turn", "text": text, "reasoning": reasoning,
             "tool_calls": list(entries),
-            "bound_names": ["search_collections"],
             "usage": usage or {"input_tokens": 7, "output_tokens": 3, "total_tokens": 10},
             "summarised": False}
     lines = [f"data: {json.dumps({'type': 'response', 'content': text})}"] if text else []
@@ -609,7 +635,7 @@ def _with_calls(store, entries):
         entry.update(position=position, seq=5 + position)
     store["messages"].append(agent_runs.RunMessageRow(
         idx=1, role="ai", run_id=RUN_ID, tool_calls_json=json.dumps(entries),
-        usage_json=json.dumps({"bound_names": ["search_collections"], "step_no": 1})))
+        usage_json=json.dumps({"step_no": 1})))
     return activities.call_refs(store["messages"][-1])
 
 
@@ -638,7 +664,7 @@ def test_two_parallel_calls_keep_their_own_arguments_results_and_indexes(store, 
     tools = {m.idx: m for m in store["messages"] if m.role == "tool"}
     assert tools[2].tool_call_id == LONG_ID_A and tools[3].tool_call_id == LONG_ID_B
     assert json.loads(tools[2].usage_json)["chat_seq"] == 5
-    assert bodies[0]["bound_names"] == ["search_collections"]
+    assert "bound_names" not in bodies[0]
     assert bodies[0]["page_share"] == 24000
     # The key comes from the thread, the reply and the place of the call.
     assert bodies[1]["idempotency_key"] != bodies[0]["idempotency_key"]

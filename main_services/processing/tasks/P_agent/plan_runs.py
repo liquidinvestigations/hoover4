@@ -39,6 +39,7 @@ log = logging.getLogger(__name__)
 
 #: The opening message of a planner round after a rejection. The comment follows it.
 REJECTED_TEXT = "The person rejected plan version {version}. Their comment:"
+ANSWERED_QUESTION_TEXT = "The person answered your question: {comment}"
 #: The opening message of organizer step 1.
 APPROVED_TEXT = "Run the approved plan, version {version}."
 
@@ -81,6 +82,8 @@ def open_plan_run(inp, question: str) -> str:
         if current.state == agent_plans.AWAITING_REVIEW:
             agent_plans.write_plan_run(user, session, plan_run_id, state=agent_plans.REVISING,
                                        review_round=current.review_round + 1)
+        if _last_planner_asked(user, session, plan_run_id, inp.run_id):
+            return ANSWERED_QUESTION_TEXT.format(comment=decision.comment)
         return f"{REJECTED_TEXT.format(version=decision.reviewed_version)}\n\n{decision.comment}"
     if current.state == agent_plans.AWAITING_REVIEW:
         agent_plans.write_plan_run(user, session, plan_run_id, state=agent_plans.EXECUTING,
@@ -93,6 +96,20 @@ def _plan_rows(username: str, session_id: str, plan_run_id: str):
 
     return _read_rows("plan_run_id = {p:UUID}",
                       {"u": username, "s": session_id, "p": plan_run_id})
+
+
+def _last_planner_asked(username: str, session_id: str, plan_run_id: str,
+                        current_run_id: str) -> bool:
+    """Return whether the preceding planner round ended with a question call."""
+    from database import agent_runs
+
+    prior = [row for row in _plan_rows(username, session_id, plan_run_id)
+             if row.kind == "planner" and row.run_id != current_run_id]
+    if not prior:
+        return False
+    messages = agent_runs.read_messages(username, session_id, prior[-1].thread_id)
+    return any(message.role == "tool" and message.tool_name == "ask_user"
+               and message.usage.get("status") == "ok" for message in messages)
 
 
 def section_entries(username: str, session_id: str, plan_run_id: str) -> list[dict]:
@@ -122,7 +139,23 @@ def section_entries(username: str, session_id: str, plan_run_id: str) -> list[di
                     node, row.purpose, newest.state, row.started_at,
                     run_id=row.run_id, report_node=row.plan_node_id))
     documents = agent_plans.read_documents(username, session_id, plan_run_id)
-    return agent_plans.section_states(snapshot, runs, documents)
+    entries = agent_plans.section_states(snapshot, runs, documents)
+    off_tree = [row for row in rows if row.depth >= 1 and not row.plan_node_id
+                and not row.continues_run_id]
+    if off_tree:
+        reports = {document.document_id for document in documents if document.kind == "report"}
+        root = snapshot.root_id
+        root_entry = next((entry for entry in entries if entry["node_id"] == root), None)
+        if root_entry is None:
+            title = next(node.text for node in snapshot.nodes if node.node_id == root)
+            root_entry = {"node_id": root, "title": title, "tasks": 0, "state": "",
+                          "corrections": 0, "review": "", "defect_classes": [], "failed": False}
+            entries.insert(0, root_entry)
+        root_entry["off_tree_reports"] = [
+            {"run_id": row.run_id, "state": by_thread.get(row.thread_id, [row])[-1].state,
+             "report": agent_plans.document_id(row.run_id, "report") in reports}
+            for row in off_tree]
+    return entries
 
 
 def briefing_sections(row) -> list[str]:
@@ -197,7 +230,7 @@ def write_prompt_document(child, briefing_text: str) -> None:
 
 
 def write_plan_ending(x, state: str, chain: list) -> None:
-    """Design section 7.6 step 5, and the section document of a sub-agent thread.
+    """Write the plan state or report when an agent run ends.
 
     `x` is the run that ends and `chain` the earlier runs of its thread, newest first.
     """
@@ -208,9 +241,13 @@ def write_plan_ending(x, state: str, chain: list) -> None:
     user, session, plan_run_id = x.username, x.session_id, x.plan_run_id
     first = chain[-1] if chain else x
     if x.depth >= 1:
-        if state == agent_runs.COMPLETED and first.plan_node_id:
+        if state == agent_runs.COMPLETED:
+            node = first.plan_node_id
+            if not node:
+                plan_run = agent_plans.read_plan_run(user, session, plan_run_id)
+                node = agent_plans.root_node_id(plan_run.plan_id) if plan_run else plan_run_id
             agent_plans.write_document(user, session, plan_run_id, first.run_id,
-                                       first.plan_node_id, "executor", "report",
+                                       node, "executor", "report",
                                        x.result, attempt=1 if first.purpose == "correct" else 0)
         return
     if x.kind == "planner":

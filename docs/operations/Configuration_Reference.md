@@ -158,39 +158,35 @@ slots, 1 by default. The email graph runs in one more process of its own, on
 
 `browser_max_contexts` is live Chromium processes on `hoover4-mcp-browser`, one per chat.
 `mcp_browser_mem_limit` is that container's memory ceiling.
-`agent_subagent_max_per_turn` (default `6`) is how many sub-agent runs one chat turn may
-start, at every depth. `agent_plan_run_budget` (default `5`) is how many sub-agent runs
-one research plan may start: one for each of at most 4 sections, and 1 correction. The worker
-uses at most 5, even when the key is larger. A turn that runs a plan counts against the plan
-budget only.
+`agent_plan_run_budget` (default `5`) is how many sub-agent runs one research plan may
+start. The organizer can use them for sections, corrections and off-tree briefings.
 The worker refuses the briefings past a budget by name, and the model reads the refusals.
-`agent_packs_chat`, `agent_packs_subagent`, `agent_packs_planner` and
-`agent_packs_organizer` give the tool packs of each kind of agent run, as a comma list of
-pack names or `all`. The default is `all`, except for `agent_packs_planner`, whose default
-is `collections,web,plan`, so that the planner writes the tree with the plan tools and has no
-todo tool. The packs are `catalogue`, `skills`, `collections`,
-`conversation`, `plan`, `delegation`, `web` and `browser`. Every run kind gets the `skills`
-pack (`search_skills`, `read_skill` and `read_tool`), also when its setting leaves it out,
-because every run reads its role skill with `read_skill`. A run binds and calls only the
-tools of its packs, and the agent service refuses to start on an unknown pack name.
+`agent_packs_chat`, `agent_packs_planner` and `agent_packs_organizer` give the tool packs
+of the chat lead, the planner and the organizer, as a comma list of pack names or `all`.
+The default is `all` for each of them. A sub-agent has no key of its own. It gets the packs
+of `agent_packs_organizer`, because only the organizer starts sub-agents. `deploy.py` prints a
+warning for an `agent_packs_subagent` key and ignores it. The packs are
+`catalogue`, `skills`, `collections`, `conversation`, `plan`, `delegation`, `web` and
+`browser`. Every run kind gets the `skills` pack (`search_skills`, `read_skill`,
+`read_tool`, `ask_user` and `write_note`), also when its setting leaves it out, because
+every run reads its role skill with `read_skill`. Only the organizer receives the
+`delegation` pack. A sub-agent cannot call `ask_user`. The agent service sends all
+available tools with each model call and refuses an unknown pack name.
 `agent_max_page_tokens` and `agent_completion_reserve_tokens` switch the agents' result
 pages to token mode: each page takes at most `agent_max_page_tokens` tokens of content, and
 the allocation keeps `agent_completion_reserve_tokens` free for the answer. Token mode needs
 both keys. Empty keeps byte-safe mode, in which the results of one model step share 24,000
-bytes. `agent_catalogue_match_count` is how many tools one `search_agent_tools` call returns
-and one run keeps bound, from 6 to 12. Empty means 6. `./deploy` refuses a value that is not a
+bytes. `agent_catalogue_match_count` is how many names one `search_agent_tools` call returns,
+from 6 to 12. Empty means 6. `./deploy` refuses a value that is not a
 whole number in range. The tool limit probe selects these three values.
 `full_research_agent_workers` is uvicorn worker processes on `hoover4-full-research-agent`.
 
-Four keys set the step limits of an agent run, in whole seconds, and an empty key keeps the
+The timeout keys set the step limits of an agent run, in whole seconds. An empty key keeps the
 code default. An agent run has no time limit of its own: 600 model steps bound it.
 `agent_queue_wait_seconds` is how long one model step or one tool call may wait for a free
 slot. A model step that waits longer fails the run, and empty sets no limit. The templates
 set 5400. `title_request_timeout_seconds` (empty: 30) is the read timeout of the
 conversation title request, and the title activity allows two requests and 30 s more.
-`plan_request_timeout_seconds` (empty: 60) is the limit of one first-turn planning call. The
-call gets one attempt, and one more when the todo server refuses its plan, so two calls stay
-under the website's 180 s stall window. The templates set 60.
 `llm_request_timeout_seconds` is the read timeout of one agent model call and of the
 compaction summary, and the worker's limit of one model step. When it is set, the model
 client does not retry. Empty keeps the client default of 600 s and 2 retries, 180 s for the
@@ -217,7 +213,7 @@ before each agent model call. The title call and the compaction summary always s
 `internet_tools_enabled` starts `hoover4-mcp-browser`, `hoover4-mcp-metasearch` and
 `hoover4-mcp-whois`. Default off: an absent or empty key does not start them. Turning it
 off on a workstation also removes the developer harness tools those containers publish.
-`hoover4-full-research-agent` then binds only collections and todo. Capture wrappers
+`hoover4-full-research-agent` then receives the tools of its available packs. Capture wrappers
 refuse when the key is off.
 
 `hoover4-internal-search-agent` and `hoover4-full-research-agent` start only when an LLM
@@ -382,10 +378,10 @@ is the map back to the group above that explains it.
 - `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`, `agent_tool_concurrency`
 - `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
 - `mcp_browser_mem_limit`, `full_research_agent_workers`
-- `agent_subagent_max_per_turn`, `agent_plan_run_budget`
-- `agent_packs_chat`, `agent_packs_subagent`, `agent_packs_planner`, `agent_packs_organizer`
+- `agent_plan_run_budget`
+- `agent_packs_chat`, `agent_packs_planner`, `agent_packs_organizer`
 - `agent_max_page_tokens`, `agent_completion_reserve_tokens`, `agent_catalogue_match_count`
-- `agent_queue_wait_seconds`, `title_request_timeout_seconds`, `plan_request_timeout_seconds`
+- `agent_queue_wait_seconds`, `title_request_timeout_seconds`
 - `llm_request_timeout_seconds`
 - `agent_max_output_tokens`
 - `llm_streaming`

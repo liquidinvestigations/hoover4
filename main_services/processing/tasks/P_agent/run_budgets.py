@@ -6,13 +6,8 @@ run's `refused_json`, and the continuation gives them to the model beside the re
 
 | rule | caller | count | limit |
 |---|---|---|---|
-| depth | depth 2, or depth 1 in a plan | none | the step request sends `can_delegate` false, so the run binds no `run_subagent`. A call that reaches here is refused `depth_limit` |
-| briefings a call | every caller | the briefings of one call | `MAX_BRIEFINGS_PER_CALL` |
-| turn budget | depth 0 with no plan run | sub-agent rows of the turn | `AGENT_SUBAGENT_MAX_PER_TURN` |
 | plan budget | depth 0 with a plan run | sub-agent rows of the plan run | `AGENT_PLAN_RUN_BUDGET`, at most `MAX_PLAN_SUBAGENTS` |
-| share | depth 1 | none | its own `subagent_share`. A child of an organizer gets 0 |
 | plan section | every caller | none | a briefing with `plan_node_id` is valid only in an `organizer` run, for a section of the approved tree, with a `purpose` of `PURPOSES` |
-| section node | organizer in a plan | none | a briefing with no `plan_node_id` is refused `plan_node_required` |
 | review | organizer | none | the purpose `review` is refused `review_not_allowed` |
 | one run a section | organizer | `execute` sub-agent rows of the section | 1, then `section_already_run` |
 | corrections | organizer | `correct` sub-agent rows of the plan run | `MAX_PLAN_CORRECTIONS`, then `correction_limit` |
@@ -27,13 +22,8 @@ A sub-agent row is a row with `depth >= 1` and no `continues_run_id`, because a
 continuation takes the place of a run and is not a new sub-agent. The counts exclude the rows
 of the caller's own batch, so a retry of the same delegation counts what it counted first.
 
-**The share rule.** The allowance `a` is the limit minus the count for a depth 0 caller, and
-its `subagent_share` for a depth 1 caller. The caller accepts `k = min(briefings, a)`
-briefings in call order. The remainder `r = a - k` is divided among the children of a depth 0
-caller: child `i` gets `r // k`, plus one when `i < r % k`. The children of an organizer and
-of a depth 1 caller get 0, and the caller's own share becomes `a - k`. A depth 0 thread and a
-depth 1 thread each run one run at a time, so no other run inserts a row between the count
-and the insert, and `k` plus the shares never passes `a`.
+The organizer accepts briefings in call order until the plan budget is spent. Its children
+receive no delegation share.
 """
 
 from __future__ import annotations
@@ -43,14 +33,8 @@ from dataclasses import dataclass, field
 from collections.abc import Mapping
 from typing import Any
 
-#: The most briefings one `run_subagent` call runs. The agent's tool schema says the same.
-MAX_BRIEFINGS_PER_CALL = 5
-#: The deepest run. A run at this depth binds no `run_subagent`.
-MAX_DEPTH = 2
-
-DEFAULT_TURN_LIMIT = 6
-#: The most sub-agent runs of one plan: 4 sections and 1 correction. `AGENT_PLAN_RUN_BUDGET`
-#: can lower it and never raise it.
+#: The most sub-agent runs of one plan. Section, correction and off-tree work share it.
+#: `AGENT_PLAN_RUN_BUDGET` can lower it and never raise it.
 MAX_PLAN_SUBAGENTS = 5
 DEFAULT_PLAN_LIMIT = MAX_PLAN_SUBAGENTS
 #: The most sections of a plan. Mirrors `MAX_SECTIONS` in `database/agent_plans.py` and in
@@ -58,14 +42,11 @@ DEFAULT_PLAN_LIMIT = MAX_PLAN_SUBAGENTS
 MAX_PLAN_SECTIONS = 4
 
 #: The refusal reasons, as the model reads them in the continuation's tool result.
-TOO_MANY_BRIEFINGS = "too_many_briefings"
 BUDGET_SPENT = "subagent_budget_spent"
-DEPTH_LIMIT = "depth_limit"
 PLAN_NODE_NOT_ALLOWED = "plan_node_not_allowed"
 CORRECTION_LIMIT = "correction_limit"
 REVIEW_NOT_ALLOWED = "review_not_allowed"
 SECTION_ALREADY_RUN = "section_already_run"
-PLAN_NODE_REQUIRED = "plan_node_required"
 
 #: The last sentence of a refusal by the plan section rule.
 SECTION_NOT_TASK = ("A briefing names a section in plan_node_id, and never one of its tasks. "
@@ -85,11 +66,6 @@ def _positive(name: str, default: int) -> int:
     if value < 0:
         raise ValueError(f"{name} is {value}, and it must be 0 or more")
     return value
-
-
-def turn_limit() -> int:
-    """`AGENT_SUBAGENT_MAX_PER_TURN`: the sub-agent runs of one chat turn with no plan."""
-    return _positive("AGENT_SUBAGENT_MAX_PER_TURN", DEFAULT_TURN_LIMIT)
 
 
 def plan_limit() -> int:
@@ -153,8 +129,6 @@ def _plan_refusal(briefing: dict[str, Any], kind: str,
     node = str(briefing.get("plan_node_id") or "").strip()
     purpose = str(briefing.get("purpose") or "").strip()
     if not node:
-        if kind == "organizer" and in_plan:
-            return PLAN_NODE_REQUIRED
         briefing.pop("purpose", None)
         briefing.pop("plan_node_id", None)
         briefing.pop("sections", None)
@@ -184,16 +158,14 @@ def _plan_refusal(briefing: dict[str, Any], kind: str,
 def decide(calls: list[tuple[str, list[dict[str, Any]]]], *, depth: int, used: int,
            limit: int, own_share: int, kind: str = "chat",
            sections: Mapping[str, str] | set[str] | None = None,
-           section_runs: dict[str, int] | None = None, max_depth: int = MAX_DEPTH,
+           section_runs: dict[str, int] | None = None,
            in_plan: bool = False) -> Decision:
     """Apply the rules to the briefings of one delegation.
 
     `calls` holds `(tool_call_id, briefings)` for each `run_subagent` call, in call order.
-    `used` is the count of the turn or plan budget, and `limit` its limit. Both are ignored
-    for a depth 1 caller, which reads `own_share`. `kind` is the caller's run kind,
+    `used` is the count of the plan budget, and `limit` its limit. `kind` is the caller's run kind,
     `sections` the sections of the approved tree for an organizer, as `{node_id: title}` or
-    as a set of node ids, and `section_runs` the counts of `count_section_runs`. A caller at
-    `max_depth` or deeper has every briefing refused, and a plan run passes 1. `in_plan` is
+    as a set of node ids, and `section_runs` the counts of `count_section_runs`. `in_plan` is
     true for a run of a plan. A refusal for a node that is not a section names the sections
     in its `message`.
     """
@@ -201,28 +173,18 @@ def decide(calls: list[tuple[str, list[dict[str, Any]]]], *, depth: int, used: i
     runs = dict(section_runs or {})
     wanted: list[tuple[str, dict[str, Any]]] = []
     for call_id, briefings in calls:
-        for position, briefing in enumerate(briefings):
-            if depth >= max_depth:
-                decision.refused.append(_refusal(call_id, briefing, DEPTH_LIMIT))
-            elif position >= MAX_BRIEFINGS_PER_CALL:
-                decision.refused.append(_refusal(call_id, briefing, TOO_MANY_BRIEFINGS))
-            elif reason := _plan_refusal(briefing, kind, sections, runs, in_plan):
-                message = (_sections_text(sections)
-                           if reason in (PLAN_NODE_NOT_ALLOWED, PLAN_NODE_REQUIRED) else "")
+        for briefing in briefings:
+            if reason := _plan_refusal(briefing, kind, sections, runs, in_plan):
+                message = _sections_text(sections) if reason == PLAN_NODE_NOT_ALLOWED else ""
                 decision.refused.append(_refusal(call_id, briefing, reason, message))
             else:
                 wanted.append((call_id, briefing))
-    allowance = max(0, own_share if depth >= 1 else limit - used)
+    allowance = max(0, limit - used)
     k = min(len(wanted), allowance)
     for call_id, briefing in wanted[k:]:
         decision.refused.append(_refusal(call_id, briefing, BUDGET_SPENT))
-    remainder = allowance - k
-    for i, (call_id, briefing) in enumerate(wanted[:k]):
-        no_share = depth >= 1 or kind == "organizer"
-        share = 0 if no_share else remainder // k + (1 if i < remainder % k else 0)
-        decision.accepted.append(Accepted(call_id, briefing, share))
-    if depth >= 1:
-        decision.caller_share = remainder
+    for call_id, briefing in wanted[:k]:
+        decision.accepted.append(Accepted(call_id, briefing, 0))
     return decision
 
 
@@ -230,8 +192,8 @@ def count_used(username: str, session_id: str, *, turn_seq: int, plan_run_id: st
                own_batch_id: str) -> int:
     """The sub-agent rows that count against a depth 0 caller's budget.
 
-    The plan budget counts the rows of the plan run, and the turn budget the rows of the
-    turn. Both exclude continuations and the rows of the caller's own batch.
+    The plan budget counts the rows of the plan run. It excludes continuations and the
+    rows of the caller's own batch.
     """
     from database.agent_runs import _client
 
@@ -273,13 +235,13 @@ def count_section_runs(username: str, session_id: str, *, plan_run_id: str,
 
 
 def limit_for(plan_run_id: str | None) -> int:
-    return plan_limit() if plan_run_id else turn_limit()
+    return plan_limit()
 
 
 __all__ = [
-    "Accepted", "BUDGET_SPENT", "CORRECTION_LIMIT", "DEPTH_LIMIT", "Decision",
-    "MAX_BRIEFINGS_PER_CALL", "MAX_DEPTH", "MAX_PLAN_CORRECTIONS", "MAX_PLAN_SECTIONS",
-    "MAX_PLAN_SUBAGENTS", "PLAN_NODE_NOT_ALLOWED", "PLAN_NODE_REQUIRED", "PURPOSES",
-    "REVIEW_NOT_ALLOWED", "SECTION_ALREADY_RUN", "TOO_MANY_BRIEFINGS", "count_section_runs",
-    "count_used", "decide", "limit_for", "plan_limit", "turn_limit",
+    "Accepted", "BUDGET_SPENT", "CORRECTION_LIMIT", "Decision",
+    "MAX_PLAN_CORRECTIONS", "MAX_PLAN_SECTIONS",
+    "MAX_PLAN_SUBAGENTS", "PLAN_NODE_NOT_ALLOWED", "PURPOSES",
+    "REVIEW_NOT_ALLOWED", "SECTION_ALREADY_RUN", "count_section_runs",
+    "count_used", "decide", "limit_for", "plan_limit",
 ]

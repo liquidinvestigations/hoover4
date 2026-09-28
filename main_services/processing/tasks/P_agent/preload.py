@@ -1,14 +1,12 @@
 """The run-start reads of `AgentRun`: the activity `preload_reads`.
 
 A run that starts a thread reads its role and general skills before its first model call.
-The first turn of a chat also classifies its request, reads the picked skills and tools,
-and marks the first todo item done. A planner run classifies the request type only.
+The first turn of a chat also classifies its request and reads the picked skills.
+A planner run classifies the request type only.
 
 The activity asks the agent service for the reads (`POST /preload`) and writes them into
 the thread as one synthetic `ai` message with a `tool` result for each read. The model then
-sees the reads as calls of its own. The mark of the todo item goes through
-`POST /tool_call`, so the todo server writes it with the session's identity, as every model
-call does, and it is a second synthetic `ai` message with its result.
+sees the reads as calls of its own.
 
 Every row of the thread goes in one insert (`agent_runs.write_messages`), so the thread
 never holds a read call with no result. A synthetic `ai` message has empty text, `step_no`
@@ -23,12 +21,10 @@ from __future__ import annotations
 import json
 import logging
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any, Iterable, Optional
 
-import requests
 from temporalio import activity
 
 from tasks.heartbeat import with_heartbeat
@@ -42,13 +38,10 @@ from tasks.P_agent.steps import (
 
 log = logging.getLogger(__name__)
 
-#: The start-to-close limit of one attempt. The two request limits below add up to it, so
-#: a slow classifier and a slow mark together end the attempt at its limit.
+#: The start-to-close limit of one attempt.
 PRELOAD_TIMEOUT = timedelta(seconds=30)
 #: The read timeout of `POST /preload`.
 PRELOAD_READ_SECONDS = 20
-#: The read timeout of `POST /tool_call` for the mark of the todo item.
-MARK_READ_SECONDS = 10
 
 #: The values of `PreloadParams.classify`.
 CLASSIFY_VALUES = ("none", "types", "all")
@@ -56,10 +49,8 @@ CLASSIFY_VALUES = ("none", "types", "all")
 
 @dataclass
 class PreloadParams(StepRef):
-    #: `none`, `types` for the request type only, or `all` for types, tools and skills.
+    #: `none`, `types` for the request type only, or `all` for types and skills.
     classify: str = "none"
-    #: Mark the todo item of the reads done: the first turn of a chat, after its plan.
-    mark_item: bool = False
 
 
 @dataclass
@@ -111,23 +102,6 @@ def request_text(row, messages) -> str:
     return text
 
 
-def open_item_with_text(todo: dict, text: str) -> Optional[dict]:
-    """The first item of the list with this text and an open status, or None."""
-    wanted = (text or "").strip().lower()
-    for item in todo.get("items") or []:
-        if (str(item.get("text") or "").strip().lower() == wanted
-                and item.get("status") in ("pending", "in_progress")):
-            return item
-    return None
-
-
-def mark_key(row, idx: int) -> str:
-    """The idempotency key of the mark, in the scheme of `tool_call`."""
-    from database import agent_runs
-
-    return str(uuid.uuid5(agent_runs.RUN_ID_NAMESPACE, f"tool:{row.thread_id}:{idx}:0"))
-
-
 def synthetic_ai(row, idx: int, calls: list[dict], seq: int, mode: str, usage: dict):
     """One synthetic `ai` message: empty text, one call entry for each read, in the shape
     that `_store_reply` writes, with seqs from `seq`."""
@@ -141,7 +115,7 @@ def synthetic_ai(row, idx: int, calls: list[dict], seq: int, mode: str, usage: d
             "args_digest": args_digest(call["name"], call["args"]), "position": position,
             "seq": seq + position,
         })
-    full = {"mode": mode, "synthetic": True, "step_no": 0, "bound_names": [], **usage}
+    full = {"mode": mode, "synthetic": True, "step_no": 0, **usage}
     return agent_runs.RunMessageRow(
         idx=idx, role="ai", tool_calls_json=json.dumps(entries),
         usage_json=json.dumps(full, default=str), run_id=row.run_id)
@@ -170,31 +144,6 @@ def page_rows(ai, calls: list[dict]) -> list[tuple[int, dict]]:
             for entry, call in zip(ai.tool_calls, calls)]
 
 
-def _mark(row, params: "PreloadParams", text: str, idx: int) -> Optional[dict]:
-    """Mark the open item with `text` done through `POST /tool_call`, and return the call
-    with its result. None when the list holds no such open item, or the request failed."""
-    from database import chat_todos
-
-    item = open_item_with_text(chat_todos.read_todo(row.username, row.session_id), text)
-    if item is None:
-        return None
-    call = {"id": f"preload-mark-{idx}", "name": "mark_todo",
-            "args": {"ids": [str(item["id"])], "status": "done"}}
-    body = {**_step_run(row, params), "call": call, "bound_names": [], "page_share": None,
-            "budget_exhausted": False, "idempotency_key": mark_key(row, idx)}
-    try:
-        result = _post_json(f"{agent_url_for(params.internet_tools)}/tool_call", body,
-                            MARK_READ_SECONDS)
-    except (requests.RequestException, RuntimeError) as exc:
-        # The reads are still written. The model marks the item itself.
-        log.warning("[P_agent] run %s: the preload mark failed: %s", row.run_id, exc)
-        return None
-    content = result.get("content")
-    return {**call, "content": content if isinstance(content, str) else json.dumps(content),
-            "status": "error" if result.get("status") == "error" else "ok",
-            "error_class": str(result.get("error_class") or "")}
-
-
 # ------------------------------------------------------------------------ the activity
 
 
@@ -205,11 +154,10 @@ def preload_reads(params: PreloadParams) -> PreloadResult:
 
     1. A terminal row returns `closed`. A thread that holds a preload message already
        returns `written`.
-    2. `POST /preload` gives the reads, the request classes and the text of the todo item.
+    2. `POST /preload` gives the reads and the request classes.
        A chat turn after the first sends the skills that the earlier turns read, and the
        service leaves them out.
-    3. The reads become one synthetic `ai` message and its results. With `mark_item`, the
-       open item with the text of the reads is marked done, as a second synthetic message.
+    3. The reads become one synthetic `ai` message and its results.
     4. The late-write guard runs, then one insert writes every thread row. A run that
        writes the transcript gets a finished tool row for each call. The run row gets its
        next seq.
@@ -250,13 +198,6 @@ def preload_reads(params: PreloadParams) -> PreloadResult:
             rows += [ai] + tool_rows(row, ai, calls)
             page += page_rows(ai, calls)
             idx, seq = reply_end_idx(ai), seq + len(calls)
-        if params.mark_item:
-            marked = _mark(row, params, str(picks.get("todo_item_text") or ""), idx)
-            if marked is not None:
-                ai = synthetic_ai(row, idx, [marked], seq, "preload_mark", {})
-                rows += [ai] + tool_rows(row, ai, [marked])
-                page += page_rows(ai, [marked])
-                seq += 1
         event.ok = True
         if not rows:
             return PreloadResult("nothing", request_classes=classes)
@@ -275,7 +216,7 @@ def preload_reads(params: PreloadParams) -> PreloadResult:
 
 
 __all__ = [
-    "MARK_READ_SECONDS", "PRELOAD_READ_SECONDS", "PRELOAD_TIMEOUT", "PreloadParams",
-    "PreloadResult", "mark_key", "open_item_with_text", "page_rows", "preload_reads",
+    "PRELOAD_READ_SECONDS", "PRELOAD_TIMEOUT", "PreloadParams",
+    "PreloadResult", "page_rows", "preload_reads",
     "request_text", "skills_read_in", "synthetic_ai", "tool_rows",
 ]

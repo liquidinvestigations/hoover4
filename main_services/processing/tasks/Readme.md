@@ -161,24 +161,20 @@ the agent service's text) as a `human` row after its calls, and as a `nag` chat 
 
 The reply of a `final`
 step is the answer, and each call in it gets a `not_run` result. The calls of one reply to
-the plan tree and todo tools run one after the other, in the order of the reply. The first turn
-of an ordinary chat starts with one `plan` step, which writes the plan through `write_todo`,
-and one more when the todo server refuses it. A `plan` step has one attempt of
-`plan_request_timeout_seconds` (60 s). The workflow continues as new every 250 model steps, or past 30,000 history events. A planner
+the plan tree and todo tools run one after the other, in the order of the reply. Every run
+starts with a normal model step. The workflow continues as new every 250 model steps, or past 30,000 history events. A planner
 that answers with no plan section gets one more round with a note, and then fails.
 
 **The run-start reads** (`P_agent/preload.py`). A run that starts a thread runs one
-`preload_reads` activity on `chat-queue` after the planning call and before its first model
+`preload_reads` activity on `chat-queue` before its first model
 step: no model step yet, a thread that holds only its opening message, and a row that
 continues no other run. The activity sends `POST /preload` to the agent service and writes
-the reads as one synthetic `ai` message with a `tool` result for each read. The first turn
-of a chat also classifies the request (`classify` `all`), and then marks the open todo item
-"Read relevant tools and skills" done through `POST /tool_call`, as a second synthetic
-message. A planner classifies the request type only. A chat turn after the first sends the
-skills that the earlier turns read, and the agent leaves them out. Every thread row goes in
+the reads as one synthetic `ai` message with a `tool` result for each read. A chat turn
+after the first sends the skills that earlier turns read, and the agent leaves them out.
+Every thread row goes in
 one insert (`agent_runs.write_messages`), after the late-write guard. A synthetic `ai`
 message has empty text, and `synthetic` true and `step_no` 0 in its usage. The activity has
-one attempt of 30 s: 20 s for `POST /preload` and 10 s for the mark. A failure writes its
+one attempt of 30 s. A failure writes its
 `agent_step_events` row with step `preload`, and the turn goes on without the reads.
 
 **Each attempt of a model step, a tool step, a preload and a title call writes one row of
@@ -216,22 +212,15 @@ call and rewrites its transcript row. The result gives each accepted task's repo
 It gives refusal reasons without call ids. An organizer also receives section states by outline number.
 `write_ending` of a continuation writes its state into every run it continues. Child and
 continuation ids are `uuid5` values, so a retry and a second writer write the same rows, and
-a refused duplicate workflow start counts as started. A child at depth 2 cannot delegate, and
-a sub-agent of a plan run cannot delegate (`_step_run` sends `can_delegate` false).
+a refused duplicate workflow start counts as started. Only the organizer can delegate.
 
-The budgets: at most 5 briefings a call, `AGENT_SUBAGENT_MAX_PER_TURN` sub-agent runs a chat
-turn (default 6), `AGENT_PLAN_RUN_BUDGET` a plan run (default 5, and never more than 5), and
-a depth 1 run spends only the share its parent gave it. The surplus is refused by name in the
-continuation's result. The counts leave out the caller's own batch, so a retry counts what it
-counted first.
+`AGENT_PLAN_RUN_BUDGET` limits the sub-agent runs of a plan (default 5). The worker refuses
+surplus briefings by name in the continuation's result. A retry keeps the original count.
 
-The plan caps (`run_budgets.py`): an organizer runs one `execute` sub-agent for each section,
-and at most 4 sections exist, because `agent_plans.apply` refuses a tree change that makes
-more. It then runs at most one `correct` sub-agent, whose briefing names every section it
-corrects in `sections`. A `review` briefing, a second run of a section, a second correction
-and a briefing with no section are refused by name. A section fails when its newest run did
-not complete or wrote no report, and a correction's one report, under its first section,
-counts for every section it names.
+An organizer can run an `execute` sub-agent for each section and one `correct` sub-agent.
+A correction briefing names every section it corrects in `sections`. A briefing without
+a section writes its report under the root and appears in `sections_json` there. A section
+fails when its newest run did not complete or wrote no report.
 
 **The agent run sweep** (`supervise.py`) runs on `operations-queue` after the operation sweep
 of each `CollectEtaSamples` pass. It ends a running row whose workflow closed or does not

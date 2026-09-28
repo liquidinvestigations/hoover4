@@ -33,12 +33,12 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field, PrivateAttr, model_serializer
 
-from agent_todo_server.identity import Caller, CallerUnknown, parse_caller
+from agent_todo_server.identity import Caller, CallerUnknown, agent_run_id, parse_caller
 
 # The store, imported from the pipeline package rather than copied: the chat workflow
 # reads the same module, and two copies of the cancellation rule would eventually
 # disagree about whether a plan was abandoned or finished.
-from database import chat_todos
+from database import agent_runs, chat_todos
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -122,7 +122,16 @@ mcp = FastMCP(
 
 def _caller() -> Caller:
     """Whose plan the in-flight request is about."""
-    return parse_caller(dict(get_http_headers()))
+    headers = dict(get_http_headers())
+    caller = parse_caller(headers)
+    try:
+        run_id = agent_run_id(headers)
+    except CallerUnknown:
+        return caller
+    run = agent_runs.read_run(caller.username, caller.session_id, run_id)
+    if run is None:
+        return caller
+    return Caller(caller.username, chat_todos.key_for_run(run))
 
 
 def _response(todo: dict, error: str | None = None, kind: str = "read") -> TodoResponse:

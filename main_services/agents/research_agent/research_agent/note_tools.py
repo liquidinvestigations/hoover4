@@ -7,8 +7,7 @@ result of each `write_note` call stays in the list through a compaction, in the 
 model to save its notes now.
 
 The tool is local to the agent service, like the skill tools, and
-`tool_catalogue.build_snapshot` builds it for each step context. It is in the `skills` pack,
-and it is not always bound. A run binds it with `read_tool`.
+`tool_catalogue.build_snapshot` builds it for each step context. It is in the `skills` pack.
 
 A refusal raises `ToolException`, so the result of the call has status `error` and its text
 is the JSON refusal.

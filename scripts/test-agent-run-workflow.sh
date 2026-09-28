@@ -9,13 +9,13 @@
 #
 # The cases: a turn with two parallel calls and its rows, a duplicate start, a stopped turn
 # that closes in open_run, an agent error that ends the run as failed, the nag rounds, and
-# delegation: fan-in once, a depth 1 delegation to depth 2, the run budget, a retry of the
-# delegation, a duplicate child start, a child started after a stop, and the agent run sweep.
+# delegation storage: a duplicate child start, a child started after a stop, and the run sweep.
 # Two cases cover the lifecycle: a stop during the stream writes nothing after the ending,
 # and the sweep ends the children of a failed parent. Two cases cover the plan layer: a flat plan
 # through review, a rejection, an approval and completion, with no workflow open during review,
-# and the refusal of a third correction of one section. Each case terminates the workflows it
-# started before it deletes its rows.
+# and the refusal of a third correction of one section. The first turn, failed preload,
+# stopped preload and ask_user cases verify the opening and question flow. Each case
+# terminates its workflows before it deletes its rows.
 #
 # Arguments: optional pytest arguments, for example -k stopped. Settings: AGENT_RUN_CONTAINER
 # (default hoover4-worker). Exit status 0 when every case passes, else the pytest status.

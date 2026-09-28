@@ -1,25 +1,15 @@
-"""The first-turn planning call, the earlier turns of a chat, the stored compaction rows,
-and the `final` step that ends the loop.
+"""The first model step, earlier chat turns, compaction rows and the final step.
 
 The database writers are the lists of `test_agent_run.store`, and the agent stream is a
-list of frames. The planning loop of `AgentRun._plan` runs over stub steps, so no Temporal
-server is needed.
+list of frames. No Temporal server is needed.
 """
 
-import asyncio
 import json
 
 import pytest
-from temporalio.exceptions import (
-    ActivityError, CancelledError, RetryState, TimeoutError as TemporalTimeoutError,
-    TimeoutType,
-)
 
-import tasks.P_agent.workflows as agent_workflows
 from database import agent_runs, chat_todos
 from tasks.P_agent import activities, steps
-from tasks.P_agent.activities import CallRef, OpenedRun
-from tasks.P_agent.steps import ModelStepResult
 
 from test_agent_run import (  # noqa: F401 - `store` and `step_events` are fixtures
     RUN_ID, _entry, _frames, _row, _serve, _step, step_events, store,
@@ -32,136 +22,14 @@ def _plan_frames(entries):
     return _frames(entries=entries)
 
 
-# ---------------------------------------------------------------- when the call runs
+# ---------------------------------------------------------------- the first step
 
-
-@pytest.mark.parametrize("kind, depth, messages, earlier_users, expected", [
-    ("chat", 0, ["human"], 0, True),
-    ("chat", 0, ["human"], 1, False),           # a second turn
-    ("planner", 0, ["human"], 0, False),        # a deep research turn
-    ("chat", 1, ["human"], 0, False),           # a sub-agent
-    ("chat", 0, ["human", "ai"], 0, False),     # a resumed thread
-])
-def test_the_planning_call_runs_on_the_first_turn_of_an_ordinary_chat_only(
-        monkeypatch, kind, depth, messages, earlier_users, expected):
-    rows = [agent_runs.RunMessageRow(idx=i, role=r, run_id=RUN_ID)
-            for i, r in enumerate(messages)]
-    monkeypatch.setattr(agent_runs, "read_messages", lambda *a: rows)
-    monkeypatch.setattr(activities, "_earlier_user_rows", lambda *a: earlier_users)
-    opened = activities._opened(_row(kind=kind, depth=depth))
-    assert opened.first_turn_plan is expected
-
-
-# ---------------------------------------------------------------- the plan step
-
-
-def test_a_plan_step_sends_thinking_off_and_no_earlier_turns(store, monkeypatch):
-    monkeypatch.setattr(agent_runs, "read_earlier_threads",
-                        lambda *a: (_ for _ in ()).throw(AssertionError("no earlier read")))
-    _serve(monkeypatch, store, _plan_frames(
-        [_entry("p", "write_todo", {"goal": "g", "steps": ["a", "b", "c", "d"]})]))
-    result = _step(mode="plan")
-    body = store["requests"][0]
-    assert (body["mode"], body["thinking"], body["earlier"]) == ("plan", False, [])
-    assert result.outcome == "calls"
-    assert [c.name for c in result.calls] == ["write_todo"]
-    tool_rows = [a for a, k in store["stream"] if a[1] == "tool"]
-    assert [r[0] for r in tool_rows] == [5]
-
-
-def test_a_plan_step_with_no_call_writes_no_answer(store, monkeypatch):
-    _serve(monkeypatch, store, _plan_frames([]))
-    result = _step(mode="plan")
-    assert result.outcome == "no_plan"
-    assert store["chat"] == []
-    ai = store["messages"][-1]
-    assert (ai.role, ai.is_final) == ("ai", 0)
-    assert store["run"][-1]["model_steps"] == 1
-
-
-# ---------------------------------------------------------------- the planning loop
-
-
-class _Loop(agent_workflows.AgentRun):
-    """`AgentRun._plan` over scripted model and tool steps."""
-
-    def __init__(self, replies, statuses):
-        super().__init__()
-        self.replies = list(replies)
-        self.statuses = list(statuses)
-        self.modes = []
-        self.tools = []
-
-    async def _model_step(self, inp, opened, mode, reason):
-        self.modes.append((mode, reason))
-        reply = self.replies.pop(0)
-        if isinstance(reply, BaseException):
-            raise reply
-        return reply
-
-    async def _tool_call(self, inp, call):
-        self.tools.append(call.name)
-        return self.statuses.pop(0)
-
-
-def _calls():
-    return ModelStepResult(outcome="calls", calls=[CallRef(
-        ai_idx=1, position=0, call_id="p", name="write_todo", kind="parallel", seq=5)])
-
-
-def _activity_error(cause):
-    error = ActivityError("activity failed", scheduled_event_id=1, started_event_id=2,
-                          identity="w", activity_type="model_step", activity_id="1",
-                          retry_state=RetryState.TIMEOUT)
-    error.__cause__ = cause
-    return error
-
-
-def _run(loop):
-    asyncio.run(loop._plan(None, OpenedRun(state="running")))
-    return loop
-
-
-def test_a_valid_plan_takes_one_plan_step():
-    loop = _run(_Loop([_calls()], ["ok"]))
-    assert loop.modes == [("plan", "")]
-    assert loop.tools == ["write_todo"]
-
-
-def test_a_refused_plan_gets_one_retry():
-    loop = _run(_Loop([_calls(), _calls()], ["error", "ok"]))
-    assert loop.modes == [("plan", ""), ("plan", "retry")]
-    assert loop.tools == ["write_todo", "write_todo"]
-
-
-def test_two_refusals_go_on_to_the_loop():
-    loop = _run(_Loop([_calls(), _calls()], ["error", "error"]))
-    assert loop.modes == [("plan", ""), ("plan", "retry")]
-
-
-def test_a_plan_step_with_no_call_goes_on_to_the_loop():
-    loop = _run(_Loop([ModelStepResult(outcome="no_plan")], []))
-    assert loop.modes == [("plan", "")] and loop.tools == []
-
-
-def test_a_timed_out_plan_step_goes_on_to_the_loop():
-    timeout = TemporalTimeoutError("timed out", type=TimeoutType.START_TO_CLOSE,
-                                   last_heartbeat_details=[])
-    loop = _run(_Loop([_activity_error(timeout)], []))
-    assert loop.modes == [("plan", "")] and loop.tools == []
-
-
-def test_a_stop_during_the_plan_step_ends_the_run():
-    with pytest.raises(ActivityError):
-        _run(_Loop([_activity_error(CancelledError("stopped"))], []))
-
-
-def test_the_plan_request_limit_is_60_s_unless_the_variable_sets_it():
-    from tasks.P_agent import model_timeouts
-
-    assert model_timeouts.load({}).plan_request.total_seconds() == 60
-    loaded = model_timeouts.load({"HOOVER4_PLAN_REQUEST_TIMEOUT_SECONDS": "45"})
-    assert loaded.plan_request.total_seconds() == 45
+def test_the_first_turn_sends_a_normal_model_step(store, monkeypatch):
+    _serve(monkeypatch, store, _frames(text="The answer."))
+    result = _step()
+    assert store["requests"][0]["mode"] == "tools"
+    assert result.outcome == "answered"
+    assert store["messages"][-1].is_final == 1
 
 
 # ---------------------------------------------------------------- the earlier turns

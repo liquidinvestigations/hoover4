@@ -48,16 +48,17 @@ def agent_url_for(internet_tools: bool) -> str:
 
 @dataclass
 class ReadTodoParams:
-    """Whose todo list to read. One list per `(username, session_id)`."""
+    """Whose todo list to read."""
 
     username: str
     session_id: str
+    run_id: str = ""
 
 
 @activity.defn
 @with_heartbeat
 def read_chat_todo(params: ReadTodoParams) -> str:
-    """The chat session's todo list as JSON, for the workflow's nag loop.
+    """The run's todo list as JSON, for the workflow's nag loop.
 
     An activity because the workflow cannot touch ClickHouse, and JSON because the
     snapshot crosses a Temporal payload. `updated_at` is dropped: the loop asks whether
@@ -68,13 +69,18 @@ def read_chat_todo(params: ReadTodoParams) -> str:
     makes the loop stop nagging -- the alternative is failing a turn whose answer is
     already written over a list that is only advisory.
     """
-    from database import chat_todos
+    from database import agent_runs, chat_todos
 
+    key = params.session_id
     try:
-        todo = chat_todos.read_todo(params.username, params.session_id)
+        if params.run_id:
+            run = agent_runs.read_run(params.username, params.session_id, params.run_id)
+            if run is not None:
+                key = chat_todos.key_for_run(run)
+        todo = chat_todos.read_todo(params.username, key)
     except Exception:  # noqa: BLE001 - see the docstring: never worth the turn
         log.warning("[P_agent] could not read the todo for %s", params.session_id, exc_info=True)
-        todo = chat_todos.empty_todo(params.session_id, params.username)
+        todo = chat_todos.empty_todo(key, params.username)
     return json.dumps({
         "version": int(todo["version"]),
         "goal": todo["goal"],
@@ -493,10 +499,6 @@ class OpenedRun:
     continues: bool = False
     #: The unanswered calls of the thread, which the loop runs before its next model step.
     pending: list[CallRef] = field(default_factory=list)
-    #: The run opens the first turn of an ordinary chat, so the loop starts with the
-    #: planning call: a chat lead, no user row before its turn, and a thread that holds
-    #: only its opening message.
-    first_turn_plan: bool = False
     #: The run starts a thread, so the loop writes its run-start reads before the first
     #: model step (`preload.preload_reads`): no model step yet, a thread that holds only
     #: its opening message, and a row that continues no other run.
@@ -520,6 +522,7 @@ class RunSummary:
     completion_tokens: int = 0
     #: Empty for an answer. `step_budget` or `repeated_call` for a forced final answer.
     end_reason: str = ""
+    asked: bool = False
 
 
 @dataclass
@@ -609,17 +612,17 @@ def _opened(row) -> OpenedRun:
         agent_runs.read_messages(row.username, row.session_id, row.thread_id))
     starts_thread = (row.model_steps == 0 and [m.role for m in messages] == ["human"]
                      and not row.continues_run_id)
-    first_turn_plan = (
+    first_chat_turn = (
         agent_runs.is_chat_lead(row) and starts_thread
         and _earlier_user_rows(row.username, row.session_id, row.turn_seq) == 0
     )
-    classify = "all" if first_turn_plan else "types" if row.kind == "planner" else "none"
+    classify = "all" if first_chat_turn else "types" if row.kind == "planner" else "none"
     return OpenedRun(
         state=row.state, queue=row.queue, kind=row.kind, depth=row.depth,
         is_chat_lead=agent_runs.is_chat_lead(row), plan=bool(row.plan_run_id),
         nags_this_turn=row.nags_this_turn, nags_without_progress=row.nags_without_progress,
         model_steps=row.model_steps, continues=bool(row.continues_run_id),
-        pending=pending_calls(row, messages), first_turn_plan=first_turn_plan,
+        pending=pending_calls(row, messages),
         preload=starts_thread, preload_classify=classify if starts_thread else "none",
     )
 
@@ -924,7 +927,6 @@ def _delegate(row, calls, seqs, writer, chat_row) -> "RunSummary":
     decision = run_budgets.decide(calls, depth=row.depth, used=used, limit=limit,
                                   own_share=row.subagent_share, kind=row.kind,
                                   sections=sections, section_runs=section_runs,
-                                  max_depth=1 if row.plan_run_id else run_budgets.MAX_DEPTH,
                                   in_plan=bool(row.plan_run_id))
 
     children = []
@@ -1074,9 +1076,11 @@ def append_nag(params: AppendNagParams) -> int:
     row = agent_runs.read_run(params.username, params.session_id, params.run_id)
     if row is None or agent_runs.is_terminal(row):
         return params.seq
-    _insert_chat_row(row.username, row.session_id, params.seq, nagging.NAG_ROLE,
-                     content=params.message)
-    changes: dict = {"next_seq": params.seq + 1}
+    transcript = agent_runs.writes_transcript(row)
+    if transcript:
+        _insert_chat_row(row.username, row.session_id, params.seq, nagging.NAG_ROLE,
+                         content=params.message)
+    changes: dict = {"next_seq": params.seq + int(transcript)}
     if params.starts_round:
         agent_runs.write_message(
             row.username, row.session_id, row.thread_id, row.run_id,
@@ -1088,7 +1092,7 @@ def append_nag(params: AppendNagParams) -> int:
             nags_without_progress=params.nags_without_progress,
         )
     agent_runs.write_run(row, **changes)
-    return params.seq + 1
+    return params.seq + int(transcript)
 
 
 #: The ending rows of a run that did not complete. The website shows them as they are.

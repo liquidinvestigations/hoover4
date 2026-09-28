@@ -20,7 +20,7 @@ from typing import Any, Dict, FrozenSet, Optional
 from agent_common.result_pages import is_canonical_page
 
 #: The sentence that a stumble adds to an error.
-SKILL_LINE = "Before you call this tool again, read the skill `{skill}` with `read_skill`."
+SKILL_LINE = "The skill `{skill}` shows how to fix this."
 
 #: The key of a JSON error that gets the sentence when it has no `message` or `error` text.
 NEXT_KEY = "next"
@@ -91,7 +91,7 @@ def _cause(name: str, content: str, args: Dict[str, Any]) -> Optional[str]:
     low = (error + " " + message).lower()
     if error in ("repeated_call", "not_run"):
         return None
-    if "is not ready. Call read_tool" in message or "No tool of this run is named" in message:
+    if "No tool of this run is named" in message:
         return None
     if "transport failure" in message or error in ("tool_unavailable", "backend_unavailable"):
         return None

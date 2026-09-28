@@ -49,8 +49,8 @@ class FakeAgent:
 class Classifier:
     """A stub of the `systemone` route. It answers each form from a table of scores."""
 
-    def __init__(self, types=None, tools=None, skills=None, fail=()):
-        self.scores = {"types": types or {}, "tools": tools or {}, "skills": skills or {}}
+    def __init__(self, types=None, skills=None, fail=()):
+        self.scores = {"types": types or {}, "skills": skills or {}}
         self.fail = dict.fromkeys(fail, 422) if not isinstance(fail, dict) else fail
         self.bodies = []
 
@@ -59,8 +59,6 @@ class Classifier:
         ids = set(body["questions"])
         if "topic=" in ids:
             return "types"
-        if "search_passages=" in ids or "doc_email=" in ids:
-            return "tools"
         return "skills"
 
     def handler(self, request):
@@ -119,21 +117,6 @@ def test_a_class_tie_goes_to_the_order_of_the_form():
     assert preload.request_classes({"person": 0.8, "topic": 0.8}) == ["topic", "person"]
 
 
-def test_a_plan_tool_and_a_bound_tool_are_not_picked():
-    snap = FakeAgent().context.snapshot
-    picks = preload.tool_picks({"doc_email": 0.97, "append_node": 0.98,
-                                "search_passages": 0.95}, snap.deferred_names)
-    assert [n for n, _ in picks] == ["doc_email"]
-
-
-def test_eight_tools_above_the_limit_give_six_and_a_tie_goes_by_name():
-    snap = FakeAgent().context.snapshot
-    names = ["doc_email", "doc_metadata", "doc_sources", "folder_list", "table_page",
-             "web_search", "whois_lookup", "read_more"]
-    picks = preload.tool_picks(dict.fromkeys(names, 0.5), snap.deferred_names)
-    assert [n for n, _ in picks] == sorted(names)[:6]
-
-
 def test_four_technique_skills_give_three_and_three_stumble_skills_give_two():
     ctx = FakeAgent().context.skill_context
     technique = preload.skill_picks({"emails": 0.9, "passages": 0.8, "entities": 0.75,
@@ -152,45 +135,38 @@ def test_a_general_skill_score_is_not_a_technique_pick():
 # ------------------------------------------------------------------------ the forms
 
 
-def test_the_three_forms_hold_the_calibrated_questions():
-    snap = FakeAgent().context.snapshot
+def test_the_two_forms_hold_the_calibrated_questions():
     types = preload.types_body("x" * 2000, "m")
-    tools = preload.tools_body("q", "m", dict(snap.summaries))
     skills = preload.skills_body("q", "m", skill_store.SKILLS)
     assert len(types["state"]["request"]) == 1500
     assert list(types["questions"]) == [f"{c}=" for c in preload.CLASS_ORDER]
     assert types["questions"]["topic="]["instructions"].startswith(
         "Is this request of the kind 'topic': find documents")
-    assert len(tools["questions"]) == 39 and all(q.endswith("=") for q in tools["questions"])
-    assert tools["questions"]["doc_email="]["instructions"] == (
-        "Will the agent call the tool `doc_email`? The tool: Do the work of doc email.")
     assert len(skills["questions"]) == 20
     assert skills["questions"]["emails="]["instructions"] == (
         "Should the agent read the skill `emails`? It teaches: "
         + skill_store.SKILLS["emails"].description)
-    assert all(len(b["questions"]) <= 64 for b in (types, tools, skills))
+    assert all(len(b["questions"]) <= 64 for b in (types, skills))
 
 
 # ------------------------------------------------------------------------ the route
 
 
-async def test_a_first_chat_turn_reads_the_general_skills_the_picks_and_the_tools(classifier):
+async def test_a_first_chat_turn_reads_the_general_skills_and_the_picks(classifier):
     stub = classifier(Classifier(
         types={"topic": 0.93, "person": 0.61},
-        tools={"doc_email": 0.97, "append_node": 0.98, "search_passages": 0.95},
         skills={"emails": 0.91, "search": 0.99, "document_ids": 0.94}))
     result = await preload.run_preload(FakeAgent(), request())
     assert result["request_classes"] == ["topic", "person"]
     assert names_of(result) == ["search", "thorough", "method_chat_full", "citation",
                                 "plan_first", "emails", "document_ids"]
-    assert names_of(result, "read_tool") == ["doc_email"]
-    assert json.loads(result["reads"][-1]["content"])["ready"] == "next call"
+    assert names_of(result, "read_tool") == []
     assert result["reads"][0]["content"].startswith("Skill `search`.")
     assert all(r["status"] == "ok" and r["id"] == "" for r in result["reads"])
-    assert result["picks"]["tools"] == [["doc_email", 0.97]]
-    assert result["todo_item_text"] == "Read relevant tools and skills"
+    assert "tools" not in result["picks"]
+    assert "todo_item_text" not in result
     assert result["classifier"]["state"] == "ok"
-    assert len(stub.bodies) == 3
+    assert len(stub.bodies) == 2
     assert all(r.headers["authorization"] == "Bearer test-key" for r, _ in stub.bodies)
 
 
@@ -201,18 +177,18 @@ async def test_a_skill_that_an_earlier_turn_read_is_not_read_again(classifier):
     assert names_of(result) == ["thorough", "method_chat_full", "plan_first"]
 
 
-async def test_a_refused_tools_request_gives_partial_and_no_tool_pick(classifier):
-    classifier(Classifier(tools={"doc_email": 0.97}, skills={"emails": 0.91}, fail=("tools",)))
+async def test_a_refused_skills_request_gives_partial_and_no_skill_pick(classifier):
+    classifier(Classifier(skills={"emails": 0.91}, fail=("skills",)))
     result = await preload.run_preload(FakeAgent(), request())
     assert result["classifier"]["state"] == "partial"
-    assert "tools" in result["classifier"]["error"]
-    assert result["picks"]["tools"] == [] and names_of(result, "read_tool") == []
+    assert "skills" in result["classifier"]["error"]
+    assert result["picks"]["technique"] == []
     assert names_of(result)[:5] == ["search", "thorough", "method_chat_full", "citation",
                                     "plan_first"]
 
 
 async def test_every_request_refused_gives_failed_and_the_always_read_skills(classifier):
-    classifier(Classifier(fail={"types": 500, "tools": 422, "skills": 502}))
+    classifier(Classifier(fail={"types": 500, "skills": 502}))
     result = await preload.run_preload(FakeAgent(), request())
     assert result["classifier"]["state"] == "failed"
     assert result["request_classes"] == []
@@ -293,11 +269,11 @@ async def test_a_planner_preload_renders_the_packing_of_its_classes(classifier, 
     agent = FakeAgent("planner", "collections,web,plan")
     result = await preload.run_preload(agent, request("planner", "types"))
     read = next(r for r in result["reads"] if r["args"]["name"] == "method_planner")
-    assert "of the kind person and topic" in read["content"]
+    assert "class person and topic" in read["content"]
     assert "about 6 tasks" in read["content"]
     cached = agent.context.skill_context
     later = read_skill_result("method_planner", cached)
-    assert "of the kind unknown" in later and "about 6 tasks" in later
+    assert "class unknown" in later and "about 6 tasks" in later
     differ = [(a, b) for a, b in zip(read["content"].splitlines(), later.splitlines()) if a != b]
-    assert len(differ) == 1 and "of the kind" in differ[0][0]
+    assert len(differ) == 1 and "class" in differ[0][0]
     assert (cached.request_classes, cached.model_id) == ((), "")

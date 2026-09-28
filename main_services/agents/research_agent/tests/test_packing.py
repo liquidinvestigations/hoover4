@@ -43,11 +43,11 @@ def _planner(**extra):
 
 def test_the_planner_skill_renders_the_numbers_of_its_classes():
     text = render_skill("method_planner", _planner(request_classes=("person", "topic")))
-    assert "of the kind person and topic" in text
-    assert "about 6 tasks" in text and "more than 24 tasks" in text
-    assert "The plan tools refuse a fifth section." in text
+    assert "class person and topic" in text
+    assert "about 6 tasks" in text
+    assert "at most four sections" in text
     unknown = read_skill_result("method_planner", _planner())
-    assert "of the kind unknown" in unknown and "about 6 tasks" in unknown
+    assert "class unknown" in unknown and "about 6 tasks" in unknown
 
 
 def test_a_model_id_reads_the_stated_window(monkeypatch):
@@ -68,13 +68,11 @@ def test_the_plan_skills_name_the_caps(name):
     text = render_skill(name, _planner() if name == "method_planner" else SkillContext(
         profile="organizer", tool_names=frozenset(allowed_tools("organizer", "all"))))
     assert "review" not in text.split("Research method")[0].lower()
-    assert "4 sections" in text
+    assert "four sections" in text
 
 
 def test_the_note_warning_matches_the_worker_copy():
     """The worker writes the warning from its own copy, whose test holds this literal."""
     assert compaction.NOTE_WARNING_TEXT.format(pct=90) == (
         "Your context is at 90 percent of its limit. The older steps of this run will soon be "
-        "replaced by a record. Save each fact that you need later with `write_note` now. When "
-        "`write_note` is not ready, call `read_tool` with the name `write_note` first. Then call "
-        "`write_note` in your next reply.")
+        "replaced by a record. Save each fact that you need later with `write_note` now.")

@@ -33,7 +33,7 @@ BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
 NOT_TOOLS = frozenset({"in_progress", "done", "cancelled", "pending"})
 
 EVERY_TOOL = frozenset().union(*PACKS.values())
-LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool", "write_note"}
+LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool", "ask_user", "write_note"}
 
 
 class FakeTool:
@@ -51,6 +51,8 @@ def fake_tools(names):
 def snapshot_for(profile, packs="all", tools=None):
     kind = prompts.PROFILE_KINDS[profile]
     allowed = allowed_tools(kind, packs)
+    if kind == "subagent":
+        allowed = allowed - {"ask_user"}
     return build_snapshot(
         fake_tools(tools if tools is not None else allowed), allowed, kind,
         SkillContext(profile=profile, tool_names=frozenset()),
@@ -83,7 +85,7 @@ def test_the_full_chat_lead_lists_every_tool_and_every_skill():
     text = rendered("full_research", skills=skills)
     names = listed_lines(text)
     tools = [n for n in names if n in EVERY_TOOL]
-    assert sorted(tools) == sorted(EVERY_TOOL)
+    assert sorted(tools) == sorted(EVERY_TOOL - PACKS["delegation"])
     assert len(tools) == 51
     assert [n for n in names if n not in EVERY_TOOL] == [s.name for s in skills]
 
@@ -93,7 +95,7 @@ def test_the_internal_chat_lists_no_web_tool():
     for name in PACKS["web"] | PACKS["browser"]:
         assert f"`{name}`" not in text
     assert "open web" not in text
-    assert "Hoover4's document research assistant" in text
+    assert "Hoover4's assistant" in text
 
 
 @pytest.mark.parametrize("profile", sorted(prompts.PROFILE_KINDS))
@@ -108,14 +110,28 @@ def test_every_profile_renders_strictly_and_names_only_its_tools(profile):
     assert skills <= named
 
 
-def test_the_bound_tools_come_first_and_the_deferred_tools_second():
+@pytest.mark.parametrize("profile", sorted(prompts.PROFILE_KINDS))
+@pytest.mark.parametrize("web", [False, True])
+@pytest.mark.parametrize("collections", [False, True])
+def test_each_role_prompt_renders_for_web_and_collection_state(profile, web, collections):
+    packs = "all" if web else "catalogue,skills,collections,conversation,plan"
+    snap = snapshot_for(profile, packs=packs)
+    prompt = prompts.render(profile, snapshot=snap,
+                            skills=listed_skills(snap.skill_context),
+                            collections_hint=collections, strict=True)
+    if profile in {"internal_search", "full_research"}:
+        assert bool("no document collections" in prompt) is not collections
+    assert bool("`web_search`" in prompt) is web
+    assert bool("`ask_user`" in prompt) is not (profile == "research_subagent")
+
+
+def test_every_run_tool_has_one_prompt_line():
     snap = snapshot_for("full_research")
     text = prompts.render("full_research", snapshot=snap, skills=[])
     tools_part = text.split("\nTools\n", 1)[1]
     names = listed_lines(tools_part)
-    assert names[:len(snap.core_names)] == list(snap.core_names)
-    assert names[len(snap.core_names):] == list(snap.deferred_names)
-    assert "Find more tools by a few words with `search_agent_tools`." in text
+    assert names == list(snap.callable_names())
+    assert "Find a tool by a few words with `search_agent_tools`." in text
 
 
 def test_a_summary_is_the_first_sentence_cut_at_a_word_boundary():
@@ -149,7 +165,7 @@ def test_no_purpose_renders_a_verdict_block():
 def test_no_readable_collection_is_said_plainly():
     snap = snapshot_for("internal_search")
     text = prompts.render("internal_search", snapshot=snap, skills=[], collections_hint=False)
-    assert "no collections at all" in text
+    assert "no document collections" in text
     assert "no collections at all" not in rendered("internal_search")
 
 
@@ -172,7 +188,7 @@ def test_an_unknown_profile_falls_back_to_the_narrow_prompt(monkeypatch):
     monkeypatch.delenv("SYSTEM_PROMPT", raising=False)
     text = prompts.system_prompt("typo_profile", snapshot=snapshot_for("internal_search"),
                                  skills=[])
-    assert "Hoover4's document research assistant" in text
+    assert "Hoover4's assistant" in text
 
 
 def test_the_environment_override_is_returned_unchanged(monkeypatch):
@@ -193,7 +209,7 @@ def test_a_skill_that_names_a_tool_outside_every_pack_fails_strict_rendering():
 # ----------------------------------------------------------------------- stability
 
 
-async def test_the_system_text_is_the_same_for_every_list_of_bound_names(monkeypatch):
+async def test_the_system_text_is_the_same_for_each_model_step(monkeypatch):
     from research_agent import agent as agent_module
 
     class FakeClient:

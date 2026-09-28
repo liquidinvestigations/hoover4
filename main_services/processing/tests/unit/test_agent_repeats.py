@@ -7,6 +7,7 @@ others, and records the streak of the reply. No database and no service runs.
 """
 
 import json
+import pytest
 
 from database import agent_runs
 from tasks.P_agent import steps, thread_facts
@@ -105,6 +106,15 @@ def test_a_browser_snapshot_never_repeats():
     sim = Sim()
     for _ in range(5):
         repeats, streak = sim.step(("browser_snapshot", {}, ok(snapshot="")))
+        assert repeats == {} and streak == 0
+
+
+@pytest.mark.parametrize("name", ["browser_navigate", "browser_click", "browser_type",
+                                   "browser_select_option", "browser_press_key"])
+def test_a_browser_action_never_repeats(name):
+    sim = Sim()
+    for _ in range(5):
+        repeats, streak = sim.step((name, {"target": "same"}, ok()))
         assert repeats == {} and streak == 0
 
 
@@ -262,16 +272,6 @@ def test_a_cut_source_is_not_a_repeat():
     sim.compaction(version=2, summarised=[], cuts=[[THREAD, sim.results["s2c0"].idx, 100]])
     repeats, _ = sim.step(search("x"))
     assert repeats == {}
-
-
-def test_a_synthetic_source_gets_the_start_text():
-    sim = Sim()
-    sim.step(("read_skill", {"name": "search"}, "Skill `search`."), synthetic=True)
-    repeats, _ = sim.step(("read_skill", {"name": "search"}, "Skill `search`."))
-    assert repeats[0].kind == "start"
-    message = json.loads(sim.results["s1c0"].content)["message"]
-    assert message.startswith("This call has the same name and arguments as call s0c0, "
-                              "which this run made at its start")
 
 
 def test_the_second_limit_counts_the_note():

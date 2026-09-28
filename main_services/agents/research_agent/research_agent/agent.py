@@ -226,7 +226,7 @@ class MCPGatewayAgent:
         # Sorted so that ["a","b"] and ["b","a"] share one cached context.
         #
         # `run_id` is part of the key because the MCP headers carry it, and `kind` and
-        # `can_delegate` because they decide which tools the context binds.
+        # `can_delegate` because they decide which tools the context holds.
         #
         # `session_id` is part of the key because the MCP connection headers carry it,
         # and those headers are fixed when the context is built. Two chats by the same
@@ -338,22 +338,24 @@ class MCPGatewayAgent:
 
         log.info("%s", compaction.describe())
 
-        # The tool packs of this run kind decide what the context binds, runs and lists in
+        # The tool packs of this run kind decide what the context runs and lists in
         # its catalogue. `run_subagent` is a pack tool like the others, so the packs
         # decide whether this run delegates. A run that may not delegate loses it here.
+        # A sub-agent reads the organizer's setting, so it gets its parent's packs.
         configured = tool_packs.configured_packs(kind)
         allowed = tool_packs.allowed_tools(kind, configured)
-        if not can_delegate:
+        if kind == "subagent":
+            allowed = allowed - {"ask_user"}
+        if kind != "organizer" or not can_delegate:
             allowed = allowed - {DELEGATION_TOOL}
 
-        # `run_subagent` is bound for its schema. Its body never runs, because the worker
+        # `run_subagent` is sent for its schema. Its body never runs, because the worker
         # delegates a readable call and `/tool_call` refuses the others.
         if DELEGATION_TOOL in allowed:
             tools = list(tools) + [subagents.make_delegation_tool()]
 
-        # One snapshot for this context. `/model_step` binds from it and `/tool_call` runs
-        # from it, with the names that the thread bound, so the model never receives a
-        # tool that `/tool_call` refuses. The run kind selects the profile, and a chat lead
+        # One snapshot for this context. `/model_step` and `/tool_call` use its tools.
+        # The run kind selects the profile, and a chat lead
         # keeps the container's profile. `collections_hint` is the caller's ACL: an empty
         # one means every collection search will come back empty, which the model should
         # be told rather than left to discover.
@@ -367,15 +369,13 @@ class MCPGatewayAgent:
         )
         skill_context = snapshot.skill_context
         log.info(
-            "catalogue %s for kind %s: %d core tools, %d deferred",
+            "catalogue %s for kind %s: %d tools",
             snapshot.version[:12],
             kind,
-            len(snapshot.core_names),
-            len(snapshot.deferred_names),
+            len(snapshot.tools_by_name),
         )
 
-        # The prompt lists the run's skills and every tool of the snapshot, bound or
-        # deferred, so it does not change when a tool is bound. It is rendered once here.
+        # The prompt lists the run's skills and every tool of the snapshot.
         system_text = self.system_prompt_override or prompts.system_prompt(
             profile,
             snapshot=snapshot,
@@ -389,7 +389,7 @@ class MCPGatewayAgent:
             tools=tools,
             llm_kwargs=llm_kwargs,
             model_id=model_id,
-            system_text_for=lambda names: system_text,
+            system_text_for=lambda _names: system_text,
             skill_context=skill_context,
         )
 

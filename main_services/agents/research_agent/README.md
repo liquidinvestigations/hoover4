@@ -20,7 +20,7 @@ Each process holds its own cache of step contexts. Citation `[Dn]` handles
 are allocated in the collections MCP server, so the worker processes do not split them.
 
 The profile selects the role line of the prompt and the role skill. The tool packs of the
-run kind select the tools. See "Tool packs and deferred binding" below.
+run kind select the tools. See "Tool packs and the catalogue" below.
 
 **The internal-search agent has no web tools on purpose.** A chat about the user's own
 documents must not quietly become a web search. The user cannot tell from the answer
@@ -59,12 +59,9 @@ renders the system prompt of every profile (`research_agent/prompts/__init__.py`
 
 **The prompt lists, and the skills teach.** The prompt holds four parts. The role line of the
 profile, the run's skills by name and description, and the run's tools by name and summary
-come first. The first tool list holds the tools that every model call binds, and the second
-holds the deferred tools. The todo rule follows when every model call binds the four todo
-tools. The summary of a tool
+come first. The todo rule follows when the run has the four todo tools. The summary of a tool
 is the first sentence of its description, at most 160 characters. `_create_context` renders
-the prompt once for each step context, from the snapshot, so it does not change when a tool
-is bound, and the prompt cache holds the system text for the whole run.
+the prompt once for each step context. The prompt cache holds the system text for the run.
 
 The method text is in the skill store, `research_agent/skills/` (`skill_store.py`). Each
 skill is one `.md.j2` file with front matter (`name`, `group`, `description`, `tools`) and a
@@ -79,10 +76,8 @@ The technique skills (`browser_use`, `web_research`, `spreadsheets`, `emails`,
 of one group of tools. The stumble skills (`after_a_result`, `todo_upkeep`, `document_ids`,
 `call_arguments`, `collection_names`, `no_results`, `reviewing_a_report`) teach the fix of
 one kind of failed call. A technique or stumble skill stays under 2,600 characters. The
-`description` of these 16 skills and of the general skills is the text that the classifier
-forms were calibrated on, so a change of one moves what the classifier picks.
 A body names a tool only through `tool()`, and a sentence that names a tool renders only when
-`has()` finds that tool in the run, bound or deferred. `tests/test_skill_store.py` fails when
+`has()` finds that tool in the run. `tests/test_skill_store.py` fails when
 a skill names a tool that no pack holds.
 
 The model finds a skill with `search_skills` and reads one with `read_skill`. The result of a
@@ -92,81 +87,56 @@ read starts with the line ``Skill `name`.``. A skill of another profile is refus
 has its tools. The worker writes these reads into the thread before the first model call
 (`POST /preload` below).
 
-**Keep the tool notes short.** Qwen3.5-2B follows a long, numbered, multi-clause prompt by
-doing all of it forever: an earlier five-step draft made the model search, search again,
-then re-run a query it had already run until the request died with no answer. The role
-skills are long, about 3,000 tokens each, and they are written for the served model. Detail
-on one tool belongs in its description, which the model reads with `read_tool` or in the
-bound schema. The Manticore match syntax reaches the model through the skill `search` and
+The model receives each tool's schema with each call. It can read a fuller description
+with `read_tool`. The Manticore match syntax reaches the model through the skill `search` and
 the descriptions of the search tools. The collection MCP server also renders it into its
 `instructions`, which this agent does not pass to the model.
 
 ## Delegation
 
-A lead has `run_subagent` when the `delegation` pack is in its run kind's packs, which
-is the default for both agents. The tool is deferred, so the model binds it with `read_tool`
-first. The role skill of the lead holds the text on when to delegate. The tool splits a question into one to five briefings.
+The organizer has `run_subagent` when its packs include `delegation`. Chat, planner and
+sub-agent runs do not receive that pack. The organizer sends each briefing to a fresh run.
 `/model_step` gives a `run_subagent` call whose briefings can be read the kind
 `delegation`, with its briefings (`steps.py`). The worker runs every other call of that
 reply, and then writes one sub-agent run for each accepted briefing, and each runs as an `AgentRun` of its own, with the
 `research_subagent` profile. When the last one ends, a continuation of the delegating run
 sends the thread back with one `tool` result for each call, and the model continues. A
-sub-agent at depth 1 of a chat turn can delegate again, a run at depth 2 cannot, and a
-sub-agent of a plan cannot delegate. The worker applies the
-budgets. See `processing/tasks/Readme.md` for the runs, the fan-in and the budgets.
+sub-agent cannot delegate. The worker applies the plan budget. See
+`processing/tasks/Readme.md` for the runs and the budget.
 
-**Depth is enforced by what is bound.** A step request with `can_delegate` false does not
-bind `run_subagent`, so a call to it is a `parallel` call, and `/tool_call` answers it with
-`tool_unavailable`. A prompt asking a model not to recurse eventually meets a model that does.
+The agent service excludes `run_subagent` when the run cannot delegate. It returns
+`tool_unavailable` if the run calls that name.
 
 **A plan briefing names its section.** An organizer's briefing carries `plan_node_id`, a
 section of the approved tree, and `purpose`: `execute` or `correct`. A `correct` briefing
 also carries `sections`, every section it corrects, and `plan_node_id` is the first of them.
-The worker refuses a section briefing from any other run kind, a second run of a section, a
-second correction of a plan, a `review` briefing, and an organizer's briefing with no
-section.
+The worker refuses a section briefing from another run kind, a second run of a section,
+a second correction, and a `review` briefing. An organizer can send a briefing without
+a section. Its report is stored under the plan root.
 
 **Sub-agents share the conversation's session header, and that is the citation contract.**
 Citation handles are allocated per chat session by the collection-search server, keyed by
 the session header. Every run of a turn sends the conversation's session id, so a sub-agent's
 `[D1]` resolves in the lead's answer.
 
-## Tool packs and deferred binding
+## Tool packs and the catalogue
 
 A tool pack is a named set of tools (`agent_common/tool_packs.py`): `catalogue`,
-`skills`, `collections`, `conversation`, `plan`, `delegation`, `web` and `browser`. Each kind
-of run (`chat`, `subagent`, `planner`, `organizer`) gets the packs that `AGENT_PACKS_CHAT`,
-`AGENT_PACKS_SUBAGENT`, `AGENT_PACKS_PLANNER` and `AGENT_PACKS_ORGANIZER` name, as a comma
-list or `all`. Every run kind also gets the `skills` pack (`search_skills`, `read_skill`,
-`read_tool`, `write_note`), whatever its setting says. `deploy.py` renders them from `hoover4.ini`. The
+`skills`, `collections`, `conversation`, `plan`, `delegation`, `web` and `browser`. The
+`chat`, `planner` and `organizer` runs get the packs that `AGENT_PACKS_CHAT`,
+`AGENT_PACKS_PLANNER` and `AGENT_PACKS_ORGANIZER` name, as a comma list or `all`. A
+`subagent` run reads `AGENT_PACKS_ORGANIZER`, so it gets its parent's packs. Every run kind
+also gets the `skills` pack (`search_skills`, `read_skill`, `read_tool`, `ask_user`,
+`write_note`), whatever its setting says. `deploy.py` renders them from `hoover4.ini`. The
 service refuses to start on an unknown pack name. A tool that an MCP server lists and no pack
 names is refused for every run.
 
-Each step context builds one `CatalogueSnapshot` (`tool_catalogue.py`) from the tools of its packs.
-The snapshot splits them into core tools, which every model call binds, and deferred tools.
-The core tools are the tools of `ALWAYS_BOUND` that the snapshot holds, the same set for every
-run kind: `search_agent_tools`, `search_skills`, `read_skill`, `read_tool`, the four todo
-tools, `list_collections`, `search_collections`, `search_passages`, `read_documents` and
-`cite_documents`. Every other tool is deferred, the plan tools, `run_subagent` and the web
-and browser tools included.
-
-The model binds a deferred tool in two ways. `read_tool` gives the full description and the
-arguments of one tool, and binds it for the next call. `search_agent_tools` finds tools by a
-few words. It ranks an exact name, then the
-request as words of a tool's summary, then a name prefix, then the count of shared words. It
-returns at most `AGENT_CATALOGUE_MATCH_COUNT` matches (6 to 12, default 6), and
-`No available tool matches this request.` when nothing matches.
-
-The bound names are not stored. `/model_step` derives them from the thread with
-`bound_names_from_thread` (`tool_catalogue.py`): for each reply of the thread, the bind step
-puts the matches of its successful `search_agent_tools` results first, then the names of its
-successful `read_tool` results, then the earlier names, and keeps `AGENT_CATALOGUE_MATCH_COUNT`.
-A plan tool or `run_subagent` stays bound for the rest of the run and does not count against
-that number. The model call binds the core tools and the
-bound names, and the `model_turn` frame returns the bound names. `/tool_call` receives them
-back, refuses any other name with a `tool_unavailable` error, decodes and validates the
-arguments, and runs the call. The worker runs plan mutations one after the other in call
-order, and the other calls in parallel.
+Each step builds a `CatalogueSnapshot` (`tool_catalogue.py`) from the run's packs. Every
+model call receives all callable tools in that snapshot. `read_tool` returns one tool's
+description and schema. `search_agent_tools` finds tool names from words in a request.
+Both tools provide information and do not change which tools the model can call. The
+service returns `tool_unavailable` for a name outside the run's callable tools. The
+worker runs plan mutations in call order and other calls in parallel.
 
 ### The batch result budget and the call measure
 
@@ -206,8 +176,8 @@ collections, `llm_model` and `can_delegate`.
 
 ### `POST /model_step`
 
-The request adds `step_no` (1 for the first model call of the run thread), `mode` (`tools`,
-`final` with no tool bound, or `plan`), `thinking` (a required bool, the admin thinking
+The request adds `step_no` (1 for the first model call of the run thread), `mode` (`tools`
+or `final`), `thinking` (a required bool, the admin thinking
 switch), the run's thread as `messages`, and the earlier turns of the chat as `earlier`
 (depth 0 only). `messages[0]` is the opening human message. Each message carries its stored
 key, `thread_id` and `idx`. `earlier` holds the stored threads of the earlier chat turns in
@@ -216,17 +186,6 @@ a stopped turn leaves, gets a `not_run` result in the request only. `run_message
 the stored `compaction` rows and rebuilds the messages into langchain messages, with the tool
 calls and the stored usage, so compaction can measure the thread before the model call.
 
-Mode `plan` is the first-turn planning call of a chat. Its system text is
-`prompts/planning_call.md.j2`, with the collections the run can read and one line on the
-web tools. It binds `write_todo` only with `tool_choice` `auto`, it sends thinking off
-whatever the request says, a call to any other name is dropped from the reply, and its
-`llm_call_events` row has `kind` `plan`. Before the service classifies the call, it puts
-`PRELOAD_ITEM` ("Read relevant tools and skills") first in its `steps`, once, and keeps at
-most `TODO_MAX_ITEMS` (40, the `MAX_ITEMS` of the todo store) steps by dropping the model's
-last steps. The stored call, its digest, the todo server and the page then hold the same
-list. The worker runs the `write_todo` call through `/tool_call`, so the todo server writes
-the plan.
-
 The response is a stream of `data: {json}` frames, in this order:
 
 | `type` | fields | when |
@@ -234,7 +193,7 @@ The response is a stream of `data: {json}` frames, in this order:
 | `reasoning` | `content` | each reasoning delta |
 | `response` | `content` | each text delta |
 | `compaction` | `state` (`running`), `tokens_before`, `target`, `parts` (1 or 3) | once, before the summary requests, when this call compacts its input |
-| `model_turn` | `text`, `reasoning`, `tool_calls` (a list of call entries), `bound_names`, `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`), `summarised`, `compaction` (the version 2 record of this call's compaction, or null), `note_warning` | once, after the reply ends |
+| `model_turn` | `text`, `reasoning`, `tool_calls` (a list of call entries), `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`), `summarised`, `compaction` (the version 2 record of this call's compaction, or null), `note_warning` | once, after the reply ends |
 | `end` | `model`, `latency_ms`, `usage` (`prompt_tokens`, `completion_tokens`, `reasoning_tokens`) | once, last |
 | `error` | `error_class`, `retryable`, `content` | in place of `model_turn` and `end` |
 
@@ -265,7 +224,7 @@ call.
 ### `POST /tool_call`
 
 The request adds `call` (the `id`, `name` and `args` of one stored call entry),
-`bound_names` (from the `model_turn` that made the call), `page_share`,
+`page_share`,
 `budget_exhausted` and `idempotency_key`. The service sends the key to the MCP server as
 `X-Hoover4-Idempotency-Key`, so a retried plan mutation changes the plan tree once. The
 response is JSON:
@@ -275,14 +234,12 @@ response is JSON:
 | `tool_call_id`, `name` | the call |
 | `content` | the result text that the model reads |
 | `status` | `ok` or `error` |
-| `error_class` | empty for `ok`. For `error`: `tool_error` (the tool raised or marked its result as an error), `tool_unavailable` (a name that this step did not bind), `invalid_arguments` (arguments that do not match the schema, or a `run_subagent` call) or `budget_exhausted` |
+| `error_class` | empty for `ok`. For `error`: `tool_error` (the tool raised or marked its result as an error), `tool_unavailable` (a name outside the run's tools), `invalid_arguments` (arguments that do not match the schema) or `budget_exhausted` |
 | `measure` | the call measure of a broker tool, or `null`. When the agent repaired the arguments, `argument_repairs` lists each repair |
-| `matched_names` | the names that a `search_agent_tools` result matched, or the name that a `read_tool` result binds. A `read_tool` of a tool in `bound_names` answers `ready` "now" and binds nothing new |
+| `matched_names` | the names that a `search_agent_tools` result matched, or the name that a `read_tool` result described |
 
-A `tool_unavailable` refusal of a tool that the run has and the step did not bind says "The
-tool 'x' is not ready. Call read_tool with the name 'x' first, and then call the tool in your
-next reply." A `tool_unavailable` refusal of any other name says "No tool of this run is
-named 'x'.", and adds " Find tools with search_agent_tools." when the run has that tool.
+A `tool_unavailable` result names the unavailable tool. `search_agent_tools` can list
+available names.
 
 **A failed result names the skill of its fix.** `stumbles.with_skill_line` reads each result
 before the service returns it. When the result shows a known stumble, and the run lists the
@@ -306,36 +263,10 @@ renames a key that the model wrote under another name, such as `collection` for
 
 ### `POST /preload`
 
-The request adds `request_text` (the opening request of the run), `classify` (`none`,
-`types` or `all`) and `already_read` (the skills that earlier turns of the chat read). The
-response gives the reads of the run start, in this order, with no name twice and no name of
-`already_read`:
-
-1. the skills of `always_read`,
-2. the technique skills that the classifier picked, at most 3 with a score of 0.7 or more,
-3. the stumble skills that it picked, at most 2 with a score of 0.9 or more,
-4. one `read_tool` read for each deferred tool that it picked, at most 6 with a score of 0.3
-   or more. A plan tool is never picked.
-
-Each read holds `name`, `args`, `content`, `status` and `error_class`, and an empty `id` that
-the worker sets. A `read_tool` read runs the tool object that `/tool_call` runs. The response
-also holds `request_classes` (the top class, and the second when it scores 0.5 or more),
-`class_scores`, `picks`, `todo_item_text` (`PRELOAD_ITEM`) and `classifier`, whose `state` is
-`off`, `ok`, `partial` or `failed`.
-
-The classifier is the `systemone` route of the structured model server, at
-`LLM_CLASSIFIER_URL`, with the bearer token of `LLM_API_KEY`. `classify` `all` sends three
-requests at the same time: the 12 request types, the calibrated tools that the run holds,
-and the 20 classifier skills. `types` sends the first only. Each request has a 5 s limit and
-a 2 s connect limit. `preload_forms.json` holds the calibrated bytes of each form, so a
-change to a form, to a skill description or to the first line of a tool description moves
-the answers with no error. A failed request gives no picks for its part, and the route
-still answers with the always-read skills. The route fails only when the step context cannot
-be built.
-
-A planner renders its skill reads with the request classes (the variable `request_classes`).
-Every other run kind renders them with none, so a synthetic read is the same text as a later
-`read_skill` call of the model. A later read of a planner renders no classes.
+The request includes the opening request and the skills read in earlier chat turns. The
+response gives synthetic reads of the role and general skills. Each read holds `name`,
+`args`, `content`, `status` and `error_class`. The worker assigns its call id. A preload
+failure leaves the run active.
 
 ## Per-chat and per-run browser sessions
 
@@ -344,7 +275,8 @@ no authority. It is an **isolation key**. `hoover4-mcp-browser` uses it to give 
 conversation its own Chromium browser context, so cookies and storage from one chat do not
 follow the next one. A step request also sends `X-Hoover4-Agent-Run` with the run
 id, and the browser server then keys the browser by the run. The chat session stays the
-key for citations, artifacts and the todo list. Sessions are dropped when the chat ends, or after
+key for citations and artifacts. The todo server keys chat and organizer lists by session,
+and planner and sub-agent lists by run id. Sessions are dropped when the chat ends, or after
 `BROWSER_SESSION_IDLE_SECONDS` (1 h) idle. See
 [`../browser_use_server/README.md`](../browser_use_server/README.md).
 
@@ -375,9 +307,9 @@ field and gives the agent `reasoning_content`.
 
 Small models are bad at deciding they are finished. Given results that fully answer the
 question, Qwen3.5-2B will still re-issue a search it has already run. The worker's agent
-loop stops such a run. It sends a `final` model step, with no tool bound, when the model
+loop stops such a run. It sends a `final` model step when the model
 repeats a call (the `args_digest` of a call entry makes the repeat visible) or when the run
-reaches its step budget. A model that cannot call a tool has to answer. See
+reaches its step budget. See
 `processing/tasks/Readme.md` for the loop.
 
 ## Context compaction: `AGENT_COMPACTION_FRACTION`
@@ -424,7 +356,7 @@ plan, up to 3 of the newest `read_documents` results of the record come back, ea
 
 **The token estimate.** The sizes are estimates. `Estimator.calibrate` divides the billed
 prompt of the newest billed call by the characters of the list that it sent, the system text
-and the bound tool schemas included, and clamps the ratio to 1/6 to 1/1.5 tokens a character.
+and the tool schemas included, and clamps the ratio to 1/6 to 1/1.5 tokens a character.
 Each size gets a margin of 5 percent.
 
 **The record.** It starts with `RECORD_HEADER`. Code writes the lists next
@@ -468,8 +400,8 @@ what the agent read, so the worker adds one line to the answer (`summarised` of
 
 **The notes tool.** `note_tools.py` gives the tool `write_note` (`text`, 1 to 2,000
 characters). It returns `{"saved": n, "note": text}`, where `n` counts the notes that the
-step context of the run saved. It is in the `skills` pack and it is deferred, so a run binds
-it with `read_tool`. Its results stay in the keep set. `model_turn` sets `note_warning` when
+step context of the run saved. It is in the `skills` pack. Its results stay in the keep set.
+`model_turn` sets `note_warning` when
 the reply's input plus output tokens reach 90 percent of the trigger, the reply has calls,
 and no warning row (`NOTE_WARNING_TEXT`) follows the newest `compaction` row. The worker
 then writes the warning row.

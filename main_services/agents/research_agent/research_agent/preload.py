@@ -2,11 +2,11 @@
 
 A run that starts a thread reads its role skill and its general skills before its first
 model call (`skill_store.always_read`). The worker writes these reads into the thread as
-synthetic `read_skill` and `read_tool` calls, so the model sees them as calls of its own.
+synthetic `read_skill` calls, so the model sees them as calls of its own.
 
 The first turn of a chat also asks the classifier three things about the request, at the
-same time: the request type, the deferred tools that the run will call, and the technique
-and stumble skills that the run should read. A planner run asks the request type only. The
+same time: the request type and the technique and stumble skills that the run should read.
+A planner run asks the request type only. The
 classifier is the `systemone` route of the structured model server, at
 `LLM_CLASSIFIER_URL`. Each form holds the bytes that were calibrated
 (`preload_forms.json`), so a change to a form text or a threshold moves the answers.
@@ -29,16 +29,15 @@ from typing import Any, Dict, Iterable, List, Literal, Optional, Sequence, Tuple
 import httpx
 from pydantic import Field
 
-from agent_common.tool_packs import PACKS
 from research_agent import skill_store
 from research_agent.skill_store import SkillContext, always_read, listed_skills
-from research_agent.skill_tools import READ_SKILL, READ_TOOL, read_skill_result
-from research_agent.steps import PRELOAD_ITEM, StepRun, _context
+from research_agent.skill_tools import READ_SKILL, read_skill_result
+from research_agent.steps import StepRun, _context
 
 log = logging.getLogger(__name__)
 
 #: The classifier forms, with the bytes of the calibration: the instructions, the question
-#: template, and the classes, tool candidates and skill names of each form.
+#: template, and the classes and skill names of each form.
 FORMS: Dict[str, Any] = json.loads(
     (Path(__file__).parent / "preload_forms.json").read_text(encoding="utf-8"))
 
@@ -53,9 +52,6 @@ CLASSIFIER_CONNECT_SECONDS = 2.0
 
 #: A second class is kept when its score is at least this.
 SECOND_CLASS_MIN = 0.5
-#: A deferred tool is read when its score is at least this, at most `TOOL_CAP` of them.
-TOOL_MIN = 0.3
-TOOL_CAP = 6
 #: A technique skill is read when its score is at least this, at most `TECHNIQUE_CAP`.
 TECHNIQUE_MIN = 0.7
 TECHNIQUE_CAP = 3
@@ -64,7 +60,7 @@ STUMBLE_MIN = 0.9
 STUMBLE_CAP = 2
 
 #: The parts of the classifier that each value of `classify` asks.
-PARTS = {"none": (), "types": ("types",), "all": ("types", "tools", "skills")}
+PARTS = {"none": (), "types": ("types",), "all": ("types", "skills")}
 
 
 class PreloadRequest(StepRun):
@@ -99,21 +95,6 @@ def types_body(text: str, model: str) -> Dict[str, Any]:
         f"{name}=": {"type": "noul",
                      "instructions": form["question"].format(name=name, definition=definition)}
         for name, definition in form["classes"].items()
-    }
-    return _body(form["instructions"], text, questions, model)
-
-
-def tool_candidates(summaries: Dict[str, str]) -> List[str]:
-    """The calibrated tool names that the run's snapshot holds, sorted by name."""
-    return sorted(n for n in FORMS["tools"]["candidates"] if n in summaries)
-
-
-def tools_body(text: str, model: str, summaries: Dict[str, str]) -> Dict[str, Any]:
-    form = FORMS["tools"]
-    questions = {
-        f"{name}=": {"type": "noul",
-                     "instructions": form["question"].format(name=name, summary=summaries[name])}
-        for name in tool_candidates(summaries)
     }
     return _body(form["instructions"], text, questions, model)
 
@@ -162,13 +143,6 @@ def _ranked(pairs: Iterable[Tuple[float, str]], cap: int) -> List[Tuple[str, flo
     return [(n, p) for p, n in sorted(pairs, key=lambda x: (-x[0], x[1]))][:cap]
 
 
-def tool_picks(scores: Dict[str, float], deferred_names: Sequence[str]) -> List[Tuple[str, float]]:
-    """The deferred tools to read, best first. A plan tool and a bound tool are dropped."""
-    deferred = set(deferred_names)
-    return _ranked(((p, n) for n, p in scores.items()
-                    if p >= TOOL_MIN and n in deferred and n not in PACKS["plan"]), TOOL_CAP)
-
-
 def skill_picks(scores: Dict[str, float], ctx: SkillContext, group: str, threshold: float,
                 cap: int) -> List[Tuple[str, float]]:
     """The listed skills of one group to read, best first."""
@@ -204,7 +178,6 @@ async def classify(text: str, parts: Sequence[str], summaries: Dict[str, str],
     model = os.getenv("LLM_MODEL", "")
     skills = skill_store.SKILLS if skills is None else skills
     bodies = {"types": lambda: types_body(text, model),
-              "tools": lambda: tools_body(text, model, summaries),
               "skills": lambda: skills_body(text, model, skills)}
     started = time.monotonic()
     async with _client() as client:
@@ -232,16 +205,6 @@ def _read(name: str, args: Dict[str, Any], content: str, status: str) -> Dict[st
             "error_class": "tool_error" if status == "error" else ""}
 
 
-async def _read_tool(snapshot: Any, name: str) -> Dict[str, Any]:
-    """One `read_tool` read through the tool object that `/tool_call` runs."""
-    tool = snapshot.tools_by_name[READ_TOOL]
-    message = await tool.ainvoke({"type": "tool_call", "id": "preload", "name": READ_TOOL,
-                                  "args": {"name": name}})
-    content = message.content if isinstance(message.content, str) else json.dumps(message.content)
-    status = "error" if getattr(message, "status", "success") == "error" else "ok"
-    return _read(READ_TOOL, {"name": name}, content, status)
-
-
 async def run_preload(agent: Any, request: PreloadRequest) -> Dict[str, Any]:
     """The reads of one run start, and the answers of the classifier."""
     context = await _context(agent, request)
@@ -261,8 +224,6 @@ async def run_preload(agent: Any, request: PreloadRequest) -> Dict[str, Any]:
     skill_scores = found.scores.get("skills", {})
     technique = skill_picks(skill_scores, ctx, "technique", TECHNIQUE_MIN, TECHNIQUE_CAP)
     stumble = skill_picks(skill_scores, ctx, "stumble", STUMBLE_MIN, STUMBLE_CAP)
-    tools = (tool_picks(found.scores.get("tools", {}), snapshot.deferred_names)
-             if READ_TOOL in snapshot.tools_by_name else [])
 
     seen = set(request.already_read)
     reads: List[Dict[str, Any]] = []
@@ -273,19 +234,12 @@ async def run_preload(agent: Any, request: PreloadRequest) -> Dict[str, Any]:
             continue
         seen.add(name)
         reads.append(_read(READ_SKILL, {"name": name}, read_skill_result(name, read_ctx), "ok"))
-    for name, _ in tools:
-        if name in seen:
-            continue
-        seen.add(name)
-        reads.append(await _read_tool(snapshot, name))
-
     return {
         "request_classes": classes,
         "class_scores": type_scores,
-        "picks": {"tools": [list(p) for p in tools], "technique": [list(p) for p in technique],
+        "picks": {"technique": [list(p) for p in technique],
                   "stumble": [list(p) for p in stumble]},
         "reads": reads,
-        "todo_item_text": PRELOAD_ITEM,
         "classifier": {"state": found.state, "error": found.error, "ms": found.ms},
     }
 
@@ -293,5 +247,5 @@ async def run_preload(agent: Any, request: PreloadRequest) -> Dict[str, Any]:
 __all__ = [
     "CLASS_ORDER", "Classification", "FORMS", "PreloadRequest", "REQUEST_MAX_CHARS",
     "classifier_url", "classify", "request_classes", "run_preload", "scores_of",
-    "skill_picks", "skills_body", "tool_candidates", "tool_picks", "tools_body", "types_body",
+    "skill_picks", "skills_body", "types_body",
 ]

@@ -15,7 +15,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_common.tool_packs import ALL, PACKS, RUN_KINDS, allowed_tools, pack_of, packs_for
+from agent_common.tool_packs import (
+    ALL, PACKS, RUN_KINDS, allowed_tools, configured_packs, env_name, pack_of, packs_for,
+)
 
 # The image's own server sources are in the working directory, and some images import
 # them from there rather than from an installed package.
@@ -36,10 +38,21 @@ def test_each_tool_name_is_in_exactly_one_pack():
     assert len(names) == len(set(names))
 
 
-def test_every_run_kind_gets_every_pack_by_default():
+def test_every_run_kind_gets_every_pack_by_default_and_only_the_organizer_delegates():
     for kind in RUN_KINDS:
-        assert packs_for(kind, ALL) == frozenset(PACKS)
-        assert packs_for(kind, "") == frozenset(PACKS)
+        expected = frozenset(PACKS) - (set() if kind == "organizer" else {"delegation"})
+        assert packs_for(kind, ALL) == expected
+        assert packs_for(kind, "") == expected
+    assert "delegation" not in packs_for("subagent", "collections,delegation")
+
+
+def test_a_subagent_reads_the_organizer_setting(monkeypatch):
+    monkeypatch.setenv("AGENT_PACKS_ORGANIZER", "collections,web,delegation")
+    monkeypatch.setenv("AGENT_PACKS_SUBAGENT", "browser")
+    assert env_name("subagent") == "AGENT_PACKS_ORGANIZER"
+    assert packs_for("subagent", configured_packs("subagent")) == (
+        packs_for("organizer", configured_packs("organizer")) - {"delegation"}
+    )
 
 
 def test_a_narrowed_setting_gives_only_its_packs_and_the_skill_tools():

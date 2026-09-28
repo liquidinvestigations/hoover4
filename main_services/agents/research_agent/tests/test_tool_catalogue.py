@@ -1,5 +1,4 @@
-"""The catalogue snapshot, the core and deferred split, the bind step, and
-`search_agent_tools`."""
+"""The catalogue snapshot and `search_agent_tools`."""
 
 import json
 
@@ -11,7 +10,6 @@ from research_agent.tool_catalogue import (
     CATALOGUE_MATCH_COUNT,
     NO_MATCH_TEXT,
     SEARCH_QUERY_MAX_CHARS,
-    bind_names,
     build_snapshot,
     search_result,
 )
@@ -41,24 +39,23 @@ def snapshot(kind="chat", allowed=EVERY_PACK, tools=None):
     return build_snapshot(tools or COLLECTION_TOOLS + OTHER_TOOLS, allowed, kind)
 
 
-# --------------------------------------------------------------- core and deferred
+# --------------------------------------------------------------- run tools
 
 
-def test_the_core_set_is_the_always_bound_set_that_the_run_holds():
+def test_every_snapshot_tool_is_callable():
     snap = snapshot()
-    assert set(snap.core_names) == {
+    assert {
         "list_collections", "search_collections", "search_passages", "read_documents",
         "cite_documents", "search_agent_tools", "search_skills", "read_skill", "read_tool",
         "read_todo",
-    }
-    assert "doc_search_text" in snap.deferred_names
-    assert "table_cell" in snap.deferred_names
-    assert {"read_plan", "append_node", "web_search"} <= set(snap.deferred_names)
+        "doc_search_text", "table_cell", "read_plan", "append_node", "web_search",
+    } <= set(snap.callable_names())
+    assert {tool.name for tool in snap.tools_for()} == set(snap.callable_names())
 
 
 @pytest.mark.parametrize("kind", ["chat", "subagent", "planner", "organizer"])
-def test_the_plan_tools_are_deferred_for_every_run_kind(kind):
-    assert {"read_plan", "append_node"} <= set(snapshot(kind).deferred_names)
+def test_the_plan_tools_are_callable_when_the_pack_holds_them(kind):
+    assert {"read_plan", "append_node"} <= set(snapshot(kind).callable_names())
 
 
 def test_a_tool_outside_the_packs_is_not_in_the_snapshot():
@@ -78,7 +75,7 @@ def test_an_unknown_pack_name_raises():
         packs_for("chat", "collections,webb")
     with pytest.raises(ValueError):
         packs_for("reviewer", "all")
-    assert packs_for("chat", "") == frozenset(PACKS)
+    assert packs_for("chat", "") == frozenset(PACKS) - {"delegation"}
 
 
 # ------------------------------------------------------------------------ ranking
@@ -127,16 +124,6 @@ def test_the_search_never_lists_itself():
 def test_a_search_returns_at_most_the_match_count():
     assert CATALOGUE_MATCH_COUNT == 6
     assert len(snapshot().search("table folder doc search")) == CATALOGUE_MATCH_COUNT
-
-
-def test_the_bind_step_keeps_the_newest_matches_first_and_at_most_the_match_count():
-    snap = snapshot()
-    earlier = ("table_page", "table_cell")
-    newest = ["doc_email", "table_page", "search_collections", "pdf_search"]
-    bound = bind_names(snap, earlier, newest)
-    assert bound == ("doc_email", "table_page", "pdf_search", "table_cell")
-    many = [n for n in snap.deferred_names if n not in tool_catalogue.STICKY][:10]
-    assert len(bind_names(snap, (), many)) == CATALOGUE_MATCH_COUNT
 
 
 @pytest.mark.parametrize("value, expected", [("", 6), ("6", 6), ("12", 12)])

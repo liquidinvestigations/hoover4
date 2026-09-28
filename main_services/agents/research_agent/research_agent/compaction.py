@@ -100,9 +100,7 @@ NOTE_WARNING_SHARE = 0.90
 NOTE_WARNING_HEAD = "Your context is at"
 NOTE_WARNING_TEXT = (
     NOTE_WARNING_HEAD + " {pct} percent of its limit. The older steps of this run will soon "
-    "be replaced by a record. Save each fact that you need later with `write_note` now. "
-    "When `write_note` is not ready, call `read_tool` with the name `write_note` first. "
-    "Then call `write_note` in your next reply."
+    "be replaced by a record. Save each fact that you need later with `write_note` now."
 )
 #: The margin of the token estimate.
 MARGIN = 1.05

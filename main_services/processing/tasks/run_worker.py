@@ -736,6 +736,7 @@ async def run_chat_worker():
       tool_call,
       write_found_documents,
       write_repeat_note,
+      write_asked_answer,
   )
   from .P_agent.workflows import (
       AGENT_TOOL_TASK_QUEUE,
@@ -769,7 +770,7 @@ async def run_chat_worker():
             open_run, append_nag, write_ending, summarize_if_first_turn, fan_in,
             continue_run, read_chat_todo, delegate_step, prepare_continuation,
             record_step_failure, plan_has_sections, needs_citations, preload_reads,
-            write_repeat_note, write_found_documents,
+            write_repeat_note, write_asked_answer, write_found_documents,
         ],
         activity_executor=activity_executor,
         max_concurrent_activities=low_latency_slots,

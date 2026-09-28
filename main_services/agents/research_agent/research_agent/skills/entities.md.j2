@@ -9,7 +9,7 @@ tools: list_document_entities, search_entity_explainer, search_facet_values
 Listing what documents name
 
 {% if has('list_document_entities') %}
-1. Call {{ tool('list_document_entities') }} once for every promising document of a search. Give each document as its collectionname and the file_hash that the search returned.
+1. {{ tool('list_document_entities') }} lists extracted names for a document. Give its collection name and file hash.
 2. The result has two tiers. entities is a language model's reading of the prose: people, organisations and places. It can be wrong, so check a name in the text before you rely on it. structured holds the values that a rule validated, such as identifiers with a valid check digit, dates and amounts of money with a currency code.
 3. Search for the new names, addresses and identifiers with {{ tool('search_collections') }}. Put every form of one name into one call.
 {% endif %}

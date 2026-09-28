@@ -8,9 +8,7 @@ from tasks.P_agent import steps
 #: renders it. Its test holds the same literal, so a change of one copy fails one test.
 NOTE_WARNING_AT_90 = (
     "Your context is at 90 percent of its limit. The older steps of this run will soon be "
-    "replaced by a record. Save each fact that you need later with `write_note` now. When "
-    "`write_note` is not ready, call `read_tool` with the name `write_note` first. Then call "
-    "`write_note` in your next reply."
+    "replaced by a record. Save each fact that you need later with `write_note` now."
 )
 
 

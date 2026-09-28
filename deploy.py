@@ -233,12 +233,11 @@ DEFAULTS = {
         "rate_chat_poll_per_minute": "1800",
         "browser_max_contexts": "16",
         # The sub-agent budgets of a chat turn and of a research plan run.
-        "agent_subagent_max_per_turn": "6",
         "agent_plan_run_budget": "5",
         # Tool packs for each kind of agent run: a comma list of pack names, or `all`.
+        # A sub-agent gets the organizer's packs.
         "agent_packs_chat": "all",
-        "agent_packs_subagent": "all",
-        "agent_packs_planner": "collections,web,plan",
+        "agent_packs_planner": "all",
         "agent_packs_organizer": "all",
         # The result page limits and the catalogue match count that the probe selects.
         # Empty keeps byte-safe mode and six matches.
@@ -250,7 +249,6 @@ DEFAULTS = {
         # worker, and the model client's own timeout and 2 retries in the agent services.
         "agent_queue_wait_seconds": "",
         "title_request_timeout_seconds": "",
-        "plan_request_timeout_seconds": "",
         "llm_request_timeout_seconds": "",
         # The output cap of one agent model request, in tokens. Empty sends no cap.
         "agent_max_output_tokens": "",
@@ -769,7 +767,6 @@ def agent_probe_env(cfg):
 AGENT_MODEL_NUMBER_KEYS = (
     ("agent_queue_wait_seconds", "HOOVER4_AGENT_QUEUE_WAIT_SECONDS"),
     ("title_request_timeout_seconds", "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS"),
-    ("plan_request_timeout_seconds", "HOOVER4_PLAN_REQUEST_TIMEOUT_SECONDS"),
     ("llm_request_timeout_seconds", "LLM_REQUEST_TIMEOUT_SECONDS"),
     ("agent_max_output_tokens", "AGENT_MAX_OUTPUT_TOKENS"),
 )
@@ -1460,11 +1457,13 @@ def render_main_env(cfg):
     env["HOOVER4_MAX_HELD_POLLS_PER_USER"] = cfg.get(m, "max_held_polls_per_user")
     env["HOOVER4_RATE_CHAT_POLL_PER_MINUTE"] = cfg.get(m, "rate_chat_poll_per_minute")
     env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")
-    # The sub-agent budgets of the worker's delegate_step. Empty keeps 6 and 300.
-    env["AGENT_SUBAGENT_MAX_PER_TURN"] = cfg.get(m, "agent_subagent_max_per_turn") or "6"
+    # The plan budget applies to the organizer's briefings.
     env["AGENT_PLAN_RUN_BUDGET"] = cfg.get(m, "agent_plan_run_budget") or "5"
-    for kind in ("chat", "subagent", "planner", "organizer"):
+    for kind in ("chat", "planner", "organizer"):
         env[f"AGENT_PACKS_{kind.upper()}"] = cfg.get(m, f"agent_packs_{kind}") or "all"
+    if "agent_packs_subagent" in cfg.extra.get(m, []):
+        print("warning: [main_services] agent_packs_subagent is ignored. A sub-agent "
+              "gets the packs of agent_packs_organizer", file=sys.stderr)
     env.update(agent_probe_env(cfg))
     env.update(agent_model_env(cfg))
     env["HOOVER4_MCP_BROWSER_MEM_LIMIT"] = cfg.get(m, "mcp_browser_mem_limit")

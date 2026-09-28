@@ -23,7 +23,8 @@ To search one long document, use these tools.
 
 {% endif %}
 {% if has('read_documents') %}
-Then read the page of the best hit with {{ tool('read_documents') }}. Give its page, or give the query and no page, and the read opens the page with the most hits.
+Read a page with {{ tool('read_documents') }} when the passage does not show enough text
+to support the claim. Give its page, or give the query to open the page with the most hits.
 {% endif %}
 
-Quote the passage that answers the question, and give its document and page.
+Give the document and page when a passage supports the answer.

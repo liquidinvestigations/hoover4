@@ -65,6 +65,7 @@ with workflow.unsafe.imports_passed_through():
         StepRef,
         REPEAT_STEP_LIMIT,
         ToolCallParams,
+        AskedAnswerParams,
         delegate_step,
         model_step,
         needs_citations,
@@ -73,6 +74,7 @@ with workflow.unsafe.imports_passed_through():
         record_step_failure,
         runs_in_order,
         tool_call,
+        write_asked_answer,
         write_found_documents,
         write_repeat_note,
     )
@@ -190,17 +192,10 @@ class AgentRun:
     `HISTORY_EVENTS_PER_RUN` events, and the new run resumes from the thread.
 
     **The run-start reads.** A run that starts a thread (`OpenedRun.preload`) writes its
-    role and general skill reads as synthetic calls before its first model step, after
-    the planning call (`preload.preload_reads`). The first turn of a chat also classifies
-    its request, reads the picked skills and tools, and marks the first todo item done. The
+    role and general skill reads as synthetic calls before its first model step
+    (`preload.preload_reads`). The first turn of a chat also classifies
+    its request and reads the picked skills. The
     step gets one attempt, and a failure leaves the turn going on without the reads.
-
-    **The planning call.** The first turn of an ordinary chat (`OpenedRun.first_turn_plan`)
-    starts with one `plan` step, which binds `write_todo` only. The loop runs its call
-    through `tool_call`, so the todo server writes the plan and the page shows it as the
-    first tool card. When the server refuses the call, one more `plan` step reads the
-    refusal from the thread. A `plan` step gets one attempt of
-    `TIMEOUTS.plan_request`. Any other outcome, a timeout included, goes on to the loop.
 
     The run uses no Signal and no Update, and it never waits for a person. A stop cancels
     the workflow. The cancellation reaches the workflow as a `CancelledError`, or as an
@@ -333,8 +328,6 @@ class AgentRun:
         after a nag, with no call left.
         """
         pending: list[CallRef] = []
-        if first and opened.first_turn_plan and self._steps == 0:
-            await self._plan(inp, opened)
         if first and opened.preload:
             await self._preload(inp, opened)
         if first:
@@ -436,22 +429,6 @@ class AgentRun:
         )
         self._raise_if_stopped()
 
-    async def _plan(self, inp: AgentRunInput, opened: OpenedRun) -> None:
-        """The first-turn planning call, and one retry when the todo server refuses it.
-        A failed `plan` step has its `agent_step_events` row, and the turn goes on."""
-        for reason in ("", "retry"):
-            try:
-                result = await self._model_step(inp, opened, "plan", reason)
-            except ActivityError as exc:
-                if _was_cancelled(exc):
-                    raise
-                return
-            if result.outcome != "calls":
-                return
-            statuses = [await self._tool_call(inp, call) for call in result.calls]
-            if all(status == "ok" for status in statuses):
-                return
-
     async def _preload(self, inp: AgentRunInput, opened: OpenedRun) -> None:
         """The run-start reads of a run that starts a thread. One attempt. A failure has
         its `agent_step_events` row with step `preload`, and the turn goes on without the
@@ -459,8 +436,7 @@ class AgentRun:
         try:
             await workflow.execute_activity(
                 preload_reads,
-                PreloadParams(**self._ref_fields(inp), classify=opened.preload_classify,
-                              mark_item=opened.first_turn_plan),
+                PreloadParams(**self._ref_fields(inp), classify=opened.preload_classify),
                 start_to_close_timeout=PRELOAD_TIMEOUT,
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=1),
@@ -477,20 +453,17 @@ class AgentRun:
                           reason: str, empty_retry: bool = False) -> ModelStepResult:
         self._steps += 1
         self._steps_here += 1
-        plan = mode == "plan"
         try:
             result = await workflow.execute_activity(
                 model_step,
                 ModelStepParams(**self._ref_fields(inp), step_no=self._steps, mode=mode,
                                 final_reason=reason, empty_retry=empty_retry),
-                start_to_close_timeout=TIMEOUTS.plan_request if plan else TIMEOUTS.model_call,
+                start_to_close_timeout=TIMEOUTS.model_call,
                 heartbeat_timeout=STEP_HEARTBEAT_TIMEOUT,
                 # The wait for a free model slot. None sets no limit. Temporal does not
                 # retry this timeout, so a step that waits past it fails the run.
                 schedule_to_start_timeout=TIMEOUTS.queue_wait,
-                # A `plan` step gets one attempt, so two of them stay under the page's
-                # stall window.
-                retry_policy=RetryPolicy(maximum_attempts=1 if plan else 3,
+                retry_policy=RetryPolicy(maximum_attempts=3,
                                          initial_interval=timedelta(seconds=5),
                                          backoff_coefficient=2.0,
                                          maximum_interval=timedelta(seconds=60),
@@ -512,12 +485,14 @@ class AgentRun:
         parallel = [c for c in pending if c.kind != "delegation" and not runs_in_order(c)]
         delegations = [c for c in pending if c.kind == "delegation"]
 
-        async def in_order() -> None:
+        async def in_order() -> list[tuple[CallRef, str]]:
             # The plan tree and todo calls keep the order of the reply.
+            statuses = []
             for call in ordered:
-                await self._tool_call(inp, call)
+                statuses.append((call, await self._tool_call(inp, call)))
+            return statuses
 
-        await asyncio.gather(in_order(), *(self._tool_call(inp, c) for c in parallel))
+        results = await asyncio.gather(in_order(), *(self._tool_call(inp, c) for c in parallel))
         if delegations:
             # A delegation takes no tool slot. A stop waits for it to end, so the
             # `cancelled` ending sees every child row it wrote, and ends each of them.
@@ -530,6 +505,18 @@ class AgentRun:
             )
             self._raise_if_stopped()
             return summary
+        statuses = results[0] + list(zip(parallel, results[1:]))
+        asked = next((call for call, status in sorted(statuses, key=lambda pair: pair[0].position)
+                      if call.name == "ask_user" and status == "ok"), None)
+        if asked is not None:
+            next_seq = await workflow.execute_activity(
+                write_asked_answer,
+                AskedAnswerParams(**self._ref_fields(inp), call=asked),
+                start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                task_queue=CHAT_TASK_QUEUE,
+            )
+            return RunSummary(outcome="answered", next_seq=next_seq, asked=True)
         return None
 
     async def _tool_call(self, inp: AgentRunInput, call: CallRef) -> str:
@@ -585,6 +572,8 @@ class AgentRun:
     async def _rounds(self, inp: AgentRunInput, opened: OpenedRun) -> RunSummary:
         summary = await self._agent_loop(inp, opened, first=True)
         while summary.outcome == "answered":
+            if summary.asked:
+                break
             if opened.kind == "planner":
                 has_sections = await workflow.execute_activity(
                     plan_has_sections, self._ref(inp),
@@ -592,23 +581,22 @@ class AgentRun:
                     retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                     task_queue=CHAT_TASK_QUEUE,
                 )
-                if has_sections:
-                    break
-                # A planner at the step budget gets no extra round, because its next round
-                # would force a second answer at once.
-                if self._planner_retry_done or summary.end_reason == "step_budget":
-                    raise ApplicationError(PLANNER_NO_SECTION_ERROR, non_retryable=True)
-                self._planner_retry_done = True
-                await self._append_nag(inp, summary, PLANNER_NO_SECTION_NOTE, starts_round=True)
-                summary = await self._agent_loop(inp, opened, first=False)
-                continue
-            # A forced answer binds no tool, so a nag after it cannot change the todo. The
+                if not has_sections:
+                    # A planner at the step budget gets no extra round.
+                    if self._planner_retry_done or summary.end_reason == "step_budget":
+                        raise ApplicationError(PLANNER_NO_SECTION_ERROR, non_retryable=True)
+                    self._planner_retry_done = True
+                    await self._append_nag(inp, summary, PLANNER_NO_SECTION_NOTE,
+                                           starts_round=True)
+                    summary = await self._agent_loop(inp, opened, first=False)
+                    continue
+            # A forced answer has no tool, so a nag after it cannot change the todo. The
             # repeat note before a `repeated_call` answer was the nag.
-            if summary.end_reason in ("step_budget", "repeated_call") or not opened.is_chat_lead:
+            if summary.end_reason in ("step_budget", "repeated_call"):
                 break
             # An answer that names a document in a turn with no citation gets one round
             # that asks for the citations and the answer again, before any todo nag.
-            if not summary.end_reason and await workflow.execute_activity(
+            if opened.is_chat_lead and not summary.end_reason and await workflow.execute_activity(
                 needs_citations, self._ref(inp),
                 start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
@@ -663,10 +651,11 @@ class AgentRun:
         )
 
     async def _read_todo(self, inp: AgentRunInput) -> dict:
-        """This session's todo list, as the nag loop's two questions need it."""
+        """The todo list owned by this run, as the nag loop needs it."""
         raw = await workflow.execute_activity(
             read_chat_todo,
-            ReadTodoParams(username=inp.username, session_id=inp.session_id),
+            ReadTodoParams(username=inp.username, session_id=inp.session_id,
+                           run_id=inp.run_id),
             start_to_close_timeout=_SHORT_TIMEOUT,
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),

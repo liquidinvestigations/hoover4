@@ -10,7 +10,7 @@ from research_agent.compaction import (
 )
 from research_agent.note_tools import REFUSAL, WRITE_NOTE, make_note_tools
 from research_agent.run_messages import RunMessage
-from research_agent.tool_catalogue import ALWAYS_BOUND, bound_names_from_thread, build_snapshot
+from research_agent.tool_catalogue import build_snapshot
 from test_thread_index import DGEMMA, EST, THREAD, Thread, chars, ok
 
 
@@ -99,22 +99,18 @@ def test_the_warning_is_due_once_at_90_percent_of_the_trigger():
     assert note_warning_due(compacted, near, True, DGEMMA)
 
 
-def test_the_warning_text_names_read_tool():
+def test_the_warning_text_names_write_note():
     text = NOTE_WARNING_TEXT.format(pct=90)
     assert text.startswith(NOTE_WARNING_HEAD + " 90 percent")
-    assert "`read_tool`" in text and "`write_note`" in text
+    assert "`write_note`" in text and "`read_tool`" not in text
 
 
-def test_write_note_is_in_every_run_and_deferred():
+def test_write_note_is_in_every_run():
     assert WRITE_NOTE in allowed_tools("planner", "collections")
-    assert WRITE_NOTE not in ALWAYS_BOUND
     snapshot = build_snapshot([], allowed_tools("chat", "all"), "chat")
-    assert WRITE_NOTE in snapshot.deferred_names
+    assert WRITE_NOTE in snapshot.callable_names()
 
 
-def test_a_successful_read_tool_of_write_note_binds_it_for_the_next_call():
+def test_write_note_is_callable_without_a_read_tool_call():
     snapshot = build_snapshot([], allowed_tools("chat", "all"), "chat")
-    t = Thread()
-    t.human("q")
-    t.step(ok("read_tool", {"name": WRITE_NOTE}, {"tool": WRITE_NOTE, "ready": "next call"}))
-    assert WRITE_NOTE in bound_names_from_thread(snapshot, t.rows)
+    assert WRITE_NOTE in snapshot.callable_names()

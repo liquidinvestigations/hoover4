@@ -196,13 +196,13 @@ async def test_a_reply_with_three_calls_is_classified(model):
 
 
 async def test_run_subagent_with_unreadable_briefings_is_a_parallel_call(model):
-    agent = FakeAgent([subagents.make_delegation_tool()], {"run_subagent"}, kind="chat")
+    agent = FakeAgent([subagents.make_delegation_tool()], {"run_subagent"}, kind="organizer")
     model.replies.append(AIMessage(content="", tool_calls=[
         {"id": "d", "name": "run_subagent", "args": {"tasks": "not json"}}]))
     entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
     assert entries[0]["kind"] == "parallel" and entries[0]["briefings"] is None
     result = await steps.run_tool_call(agent, tool_request(
-        "run_subagent", {"tasks": "not json"}, bound_names=["run_subagent"]))
+        "run_subagent", {"tasks": "not json"}))
     assert (result["status"], result["error_class"]) == ("error", "invalid_arguments")
 
 
@@ -233,11 +233,11 @@ async def test_an_id_of_an_earlier_message_gets_a_new_id(model):
     assert [e["id"] for e in entries] == ["call-2-0", "c9"]
 
 
-async def test_a_search_result_in_the_thread_binds_its_names(model):
+async def test_every_run_tool_is_available_without_a_search(model):
     seen: List[Any] = []
     tools = [dict_tool("search_collections", LIST_SCHEMA, []), dict_tool("folder_list", EMPTY_SCHEMA, seen)]
     agent = FakeAgent(tools, {"search_collections", "folder_list", "search_agent_tools"})
-    assert "folder_list" in agent.context.snapshot.deferred_names
+    assert "folder_list" in agent.context.snapshot.callable_names()
     result = json.dumps({"matches": [{"name": "folder_list"}], "text": "bound"})
     thread = [
         {"role": "human", "content": "List the folder."},
@@ -247,16 +247,16 @@ async def test_a_search_result_in_the_thread_binds_its_names(model):
     ]
     model.replies.append(AIMessage(content="done"))
     turn = turn_of(await frames_of(agent, step_request(thread, step_no=2)))
-    assert turn["bound_names"] == ["folder_list"]
+    assert "bound_names" not in turn
     assert "folder_list" in model.bound_log[-1]
 
-    ran = await steps.run_tool_call(agent, tool_request("folder_list", bound_names=turn["bound_names"]))
+    ran = await steps.run_tool_call(agent, tool_request("folder_list"))
     assert ran["status"] == "ok" and seen
 
-    # A failed search result binds nothing.
+    # A failed search does not remove a tool from the run.
     thread[2]["status"] = "error"
     model.replies.append(AIMessage(content="done"))
-    assert turn_of(await frames_of(agent, step_request(thread, step_no=2)))["bound_names"] == []
+    assert "folder_list" in model.bound_log[-1]
 
 
 async def test_mode_final_binds_no_tool(model):
@@ -373,13 +373,12 @@ def test_a_sub_agent_request_with_earlier_turns_is_refused():
 # ------------------------------------------------------------------------- tool call
 
 
-async def test_an_unbound_tool_is_refused_with_tool_unavailable():
+async def test_a_tool_of_the_run_is_callable_without_a_read():
     seen: List[Any] = []
     agent = FakeAgent([dict_tool("folder_list", EMPTY_SCHEMA, seen)], {"folder_list", "search_agent_tools"})
     result = await steps.run_tool_call(agent, tool_request("folder_list"))
-    assert (result["status"], result["error_class"]) == ("error", "tool_unavailable")
-    assert json.loads(result["content"])["error"] == "tool_unavailable"
-    assert seen == []
+    assert result["status"] == "ok"
+    assert seen
 
 
 def pack_agent(kind, packs, seen):
@@ -398,23 +397,18 @@ def refusal_of(result):
     return data["message"]
 
 
-READY_TEXT = ("The tool {0!r} is not ready. Call read_tool with the name {0!r} first, "
-              "and then call the tool in your next reply.")
-
-
-async def test_a_deferred_plan_tool_of_a_planner_is_refused_with_the_read_tool_text():
+async def test_a_plan_tool_of_a_planner_is_callable():
     seen: List[Any] = []
     agent = pack_agent("planner", "collections,web,plan", seen)
-    message = refusal_of(await steps.run_tool_call(agent, tool_request("append_node")))
-    assert message == READY_TEXT.format("append_node")
-    assert SEARCH_TOOL not in message and seen == []
+    result = await steps.run_tool_call(agent, tool_request("append_node"))
+    assert result["status"] == "ok" and seen
 
 
-async def test_a_deferred_web_tool_of_a_chat_lead_is_refused_with_the_read_tool_text():
+async def test_a_web_tool_of_a_chat_lead_is_callable():
     seen: List[Any] = []
     agent = pack_agent("chat", "all", seen)
-    message = refusal_of(await steps.run_tool_call(agent, tool_request("web_search")))
-    assert message == READY_TEXT.format("web_search") and seen == []
+    result = await steps.run_tool_call(agent, tool_request("web_search"))
+    assert result["status"] == "ok" and seen
 
 
 async def test_a_name_outside_every_pack_names_search_agent_tools_when_the_run_has_it():
@@ -423,11 +417,11 @@ async def test_a_name_outside_every_pack_names_search_agent_tools_when_the_run_h
     assert message == "No tool of this run is named 'no_such_tool'. Find tools with search_agent_tools."
     planner = pack_agent("planner", "collections,web,plan", [])
     message = refusal_of(await steps.run_tool_call(planner, tool_request("no_such_tool")))
-    assert message == "No tool of this run is named 'no_such_tool'."
+    assert message == "No tool of this run is named 'no_such_tool'. Find tools with search_agent_tools."
 
 
-def test_the_refusal_texts_of_an_unbound_tool_name_no_skill():
-    for text in (READY_TEXT.format("append_node"), "No tool of this run is named 'x'."):
+def test_the_refusal_text_of_an_unavailable_tool_names_no_skill():
+    for text in ("No tool of this run is named 'x'.",):
         content = json.dumps({"success": False, "message": text})
         assert stumbles.stumble_skill("append_node", content, "error", {}) is None, text
 
@@ -436,8 +430,7 @@ async def test_the_mcp_server_receives_the_idempotency_key_and_the_share():
     seen: List[Any] = []
     agent = FakeAgent([dict_tool("append_node", EMPTY_SCHEMA, seen)], {"append_node"}, kind="planner")
     result = await steps.run_tool_call(
-        agent, tool_request("append_node", idempotency_key="K", page_share=5000,
-                            bound_names=["append_node"]))
+        agent, tool_request("append_node", idempotency_key="K", page_share=5000))
     assert result["status"] == "ok"
     headers = seen[0][2]
     assert headers["x-hoover4-idempotency-key"] == "K"
@@ -497,11 +490,11 @@ async def test_an_exhausted_budget_runs_no_call():
     assert json.loads(result["content"])["error"] == "budget_exhausted"
 
 
-async def test_a_search_result_returns_its_matched_names():
+async def test_a_search_result_returns_its_matches():
     agent = FakeAgent([dict_tool("folder_list", EMPTY_SCHEMA, [])], {"folder_list", "search_agent_tools"})
     result = await steps.run_tool_call(
         agent, tool_request("search_agent_tools", {"query": "list a folder"}))
-    assert result["matched_names"] == ["folder_list"]
+    assert [match["name"] for match in json.loads(result["content"])["matches"]] == ["folder_list"]
 
 
 def broker_tool(name: str, rows: int, row_bytes: int = 400):
@@ -539,7 +532,7 @@ async def test_three_parallel_pages_share_one_safe_mode_budget(model):
     entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
     results = await asyncio.gather(*(
         steps.run_tool_call(agent, tool_request(
-            e["name"], page_share=e["page_share"], bound_names=names)) for e in entries
+            e["name"], page_share=e["page_share"])) for e in entries
     ))
     pages = [r["content"] for r in results]
     assert sum(len(p.encode("utf-8")) for p in pages) <= SAFE_MODE_BATCH_BYTES

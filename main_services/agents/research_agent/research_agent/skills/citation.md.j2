@@ -11,12 +11,12 @@ tools: cite_documents
    lead's chat session, so its handles are the lead's handles, and its text names the lead.
 #}
 {% if has('cite_documents') %}
-The person sees a document only when you cite it. Call {{ tool('cite_documents') }} before you write your {{ citation_artefact }}.
-Give it each {% if web_enabled %}internal {% endif %}document that your {{ citation_artefact }} names, quotes or relies on.
-Then write the {{ citation_artefact }} with the handles that the call returned.
-Do not name a document, a file hash or a file path in the {{ citation_artefact }} without its handle.
+When your {{ citation_artefact }} relies on an {% if web_enabled %}internal {% endif %}document, call {{ tool('cite_documents') }}.
+Give it each document that supports a claim or quote. Use the returned handle beside that claim.
+Use a handle beside a claim that relies on an internal document. You can also name a
+document to identify it or describe a search result.
 One call takes at most 12 citations. Cite what you used, not everything a search returned.
-When a search or a read returned documents that your {{ citation_artefact }} uses, cite them before you write it.
+When a search or read returned documents that support a claim, cite those documents.
 
 For each citation give:
 - collectionname and file_hash, copied from a tool result. Never make up a file_hash.

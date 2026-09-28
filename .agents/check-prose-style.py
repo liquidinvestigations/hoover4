@@ -746,7 +746,7 @@ def walk(roots, tracked):
                 continue
             for fn in sorted(filenames):
                 ext = os.path.splitext(fn)[1]
-                if ext != ".md" and ext not in COMMENT_MARK:
+                if ext not in (".md", ".j2") and ext not in COMMENT_MARK:
                     continue
                 if fn.endswith(EXCLUDE_SUFFIX):
                     continue
@@ -780,7 +780,7 @@ def main():
         rel = os.path.relpath(path, repo)
         exempt = rel in RULE_DOCS
         scanned += 1
-        if os.path.splitext(path)[1] == ".md":
+        if os.path.splitext(path)[1] in (".md", ".j2"):
             findings.extend(check_markdown(path, rel, exempt, want_warnings))
         else:
             findings.extend(check_source(path, rel, exempt, want_warnings, want_copy))

@@ -119,24 +119,23 @@ request is a plan run, described in the next section.
 ### The plan layer
 
 A deep research request starts a **plan run**. `start_research_task` starts a planner
-`AgentRun` with the conversation's frozen internet switch. The planner builds the plan tree
-with the plan tools of the todo server and answers with an orientation. Its answer row
-carries the plan reference that the plan card reads. The plan run then waits in
+`AgentRun` with the conversation's frozen internet switch. The planner can ask the person
+a question or build the plan tree with the plan tools. Its answer row carries the plan
+reference that the plan card reads. The plan run then waits in
 `awaiting_review`, and no workflow of the session is open.
 
-A decision starts a new run and nothing waits for a person. `decide_plan`
+A decision starts a new run. `decide_plan`
 (`api/chat/plans.rs`) holds the turn lock, checks the decision id, the version and the state,
 and returns a typed outcome. A rejection starts the next planner round with the comment as
 its opening message. An approval freezes the tree and starts the organizer. A cancel of a
 plan in review writes `cancelled`, and a cancel of a running plan writes the stop row and
 cancels its runs. While a plan waits or runs, the conversation refuses a new message.
 
-The organizer delegates the sections of the approved tree. A briefing names the section and
-a purpose: `execute` or `correct`. No sub-agent reviews a section, and the organizer checks
-each report itself. A plan has at most 4 sections and one correction, which can name more
-than one section. Every sub-agent run of the plan counts against the plan budget
-(`agent_plan_run_budget`, at most 5). Each sub-agent thread of a section writes its prompt
-and its report as plan documents. A section is failed when its newest `execute` or `correct`
+The organizer delegates work on the approved tree. A section briefing has the purpose
+`execute` or `correct`. The organizer can send an off-tree briefing, whose report goes
+under the root. A plan has at most 4 sections. Every sub-agent run counts against
+`agent_plan_run_budget`. Each sub-agent thread of a section writes its prompt and report
+as plan documents. A section is failed when its newest `execute` or `correct`
 run did not end `completed` or wrote no report. The organizer's final report ends with a
 generated table of the failed sections and the cause of each. The plan runs take their
 model steps on `research-queue`.
@@ -150,15 +149,14 @@ the reply as it streams, the messages into `agent_run_messages` and the live row
 result and its finished tool row into `chat_messages` at the seq the model step gave it.
 The answer row follows the last model step. The page follows the turn with `chat_poll`.
 
-**A turn can delegate through run rows.** When the model calls `run_subagent`, the agent
+**The organizer delegates through run rows.** When it calls `run_subagent`, the agent
 ends the run after the other calls of that model turn. The worker writes one sub-agent run
 for each accepted briefing, and each runs as an `AgentRun` of its own. A sub-agent writes no
 transcript row. The transcript shows one `run_subagent` tool row for each call, first with
 the state `delegated`. When the last sub-agent ends, a continuation of the lead reads the
 reports as the result of the call, the tool row takes the reports, and the continuation
-writes the answer. A sub-agent at depth 1 can delegate once more, and a run at depth 2
-cannot. A chat turn starts at most `agent_subagent_max_per_turn` sub-agent runs, and the
-model reads each refused briefing by name. An agent run sweep on `operations-queue` ends a
+writes the answer. A sub-agent cannot delegate. The organizer reads each refused briefing
+by name. An agent run sweep on `operations-queue` ends a
 run whose workflow closed without an ending, and continues its parent.
 
 **The `run_subagent` card shows the sub-agents.** While a batch is open, `chat_poll`

@@ -2,8 +2,7 @@
 
 `search_skills` lists the skills of a run that match a request. `read_skill` gives the text
 of one skill. `read_tool` gives the full description and the arguments of one tool of the
-run, and a tool that the call did not bind is bound for the next call
-(`tool_catalogue.bound_names_from_thread`). The tools are local to the agent service, like
+run. The tools are local to the agent service, like
 `search_agent_tools`, and `tool_catalogue.build_snapshot` builds them for each step context.
 
 A refusal raises `ToolException`, so the result of the call has status `error` and its
@@ -16,7 +15,7 @@ import json
 from typing import Any, Callable, Dict, List, Optional
 
 from langchain_core.tools import StructuredTool, ToolException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from research_agent.skill_store import (
     SkillContext,
@@ -28,7 +27,8 @@ from research_agent.skill_store import (
 SEARCH_SKILLS = "search_skills"
 READ_SKILL = "read_skill"
 READ_TOOL = "read_tool"
-SKILL_TOOLS = (SEARCH_SKILLS, READ_SKILL, READ_TOOL)
+ASK_USER = "ask_user"
+SKILL_TOOLS = (SEARCH_SKILLS, READ_SKILL, READ_TOOL, ASK_USER)
 
 #: The most characters a `search_skills` query may hold.
 QUERY_MAX_CHARS = 160
@@ -40,12 +40,13 @@ NO_SKILL_TEXT = "No skill matches this request."
 
 DESCRIPTIONS = {
     SEARCH_SKILLS: "Find skills by a few words. An empty query lists every skill of this run.",
-    READ_SKILL: (
-        "Read one skill, a short text that teaches one method. Read it before you do that work."
-    ),
+    READ_SKILL: "Read one skill, a short text that describes one method.",
     READ_TOOL: (
-        "Read the full text and the arguments of one tool. A tool that is not ready becomes "
-        "ready for your next call."
+        "Read the full text and the arguments of one tool."
+    ),
+    ASK_USER: (
+        "Ask the person one question and wait for the answer. Use this when the request "
+        "has two meanings or needs a fact that only the person knows."
     ),
 }
 
@@ -68,6 +69,19 @@ class ReadToolArgs(BaseModel):
     name: str = Field(
         min_length=1, max_length=NAME_MAX_CHARS, description="The name of one tool."
     )
+
+
+class AskUserArgs(BaseModel):
+    question: str = Field(min_length=1, max_length=500, description="One question for the person.")
+    options: List[str] = Field(default_factory=list, max_length=6,
+                               description="Up to six possible answers.")
+
+    @field_validator("options")
+    @classmethod
+    def valid_options(cls, options: List[str]) -> List[str]:
+        if any(not 1 <= len(option) <= 80 for option in options):
+            raise ValueError("Each option needs 1 to 80 characters.")
+        return options
 
 
 def _refusal(error: str, message: str) -> str:
@@ -107,7 +121,6 @@ def read_tool_result(name: str, snapshot: Any) -> Dict[str, Any]:
     schema = tool_schema(tool)
     return {
         "tool": name,
-        "ready": "now" if name in snapshot.core_names else "next call",
         "description": (getattr(tool, "description", "") or "").strip(),
         "parameters": {
             "properties": schema.get("properties") or {},
@@ -134,7 +147,7 @@ def read_tool_name(content: Any) -> Optional[str]:
 def make_skill_tools(
     snapshot_of: Callable[[], Any], context_of: Callable[[], SkillContext]
 ) -> List[StructuredTool]:
-    """Return the three tools over the snapshot and the skill context that the two
+    """Return the tools over the snapshot and the skill context that the two
     functions return when a tool runs."""
 
     async def search_skills_tool(query: str = "") -> str:
@@ -153,6 +166,10 @@ def make_skill_tools(
             raise ToolException(json.dumps(result))
         return json.dumps(result)
 
+    async def ask_user_tool(question: str, options: List[str] | None = None) -> str:
+        return json.dumps({"success": True, "asked": True, "question": question,
+                           "options": options or []})
+
     def build(name, coroutine, schema):
         return StructuredTool.from_function(
             coroutine=coroutine,
@@ -166,11 +183,12 @@ def make_skill_tools(
         build(SEARCH_SKILLS, search_skills_tool, SearchSkillsArgs),
         build(READ_SKILL, read_skill_tool, ReadSkillArgs),
         build(READ_TOOL, read_tool_tool, ReadToolArgs),
+        build(ASK_USER, ask_user_tool, AskUserArgs),
     ]
 
 
 __all__ = [
-    "DESCRIPTIONS", "NO_SKILL_TEXT", "READ_SKILL", "READ_SKILL_HINT", "READ_TOOL",
+    "ASK_USER", "DESCRIPTIONS", "NO_SKILL_TEXT", "READ_SKILL", "READ_SKILL_HINT", "READ_TOOL",
     "SEARCH_SKILLS", "SKILL_TOOLS", "make_skill_tools", "read_skill_result",
     "read_tool_name", "read_tool_result", "search_skills_result",
 ]

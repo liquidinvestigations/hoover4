@@ -183,8 +183,8 @@ class SearchHit(BaseModel):
     matched_queries: list[str] = Field(
         default_factory=list,
         description=(
-            "Which of your queries returned this passage. A hit several queries agree "
-            "on is better corroborated than one only a single query found."
+            "The queries that returned this passage. Several matching queries can "
+            "increase its search rank, but they are one source."
         ),
     )
 
@@ -1494,9 +1494,8 @@ def _session_id() -> str:
 @mcp.tool(
     name="cite_documents",
     description=(
-        "Put documents forward as the evidence for your answer. Call this before you "
-        "write the answer, with each document that the answer names, quotes or relies "
-        "on. An answer that names a document with no handle shows the reader no "
+        "Create citation handles for documents that support an answer. An answer that "
+        "names a document with no handle shows the reader no "
         "document. Each citation names a "
         "document, a quote copied verbatim from it, an optional find phrase (the "
         "shortest exact part of the quote the reader must see, where the card opens the "

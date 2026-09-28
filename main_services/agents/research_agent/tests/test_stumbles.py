@@ -126,10 +126,10 @@ class _Agent:
         return type("Context", (), {"snapshot": self.snap})()
 
 
-def _request(name, args, bound=()):
+def _request(name, args):
     return steps.ToolCallRequest(
         run_id="r", kind="chat", depth=0, username="u", session_id="s",
-        call={"id": "c", "name": name, "args": args}, bound_names=list(bound),
+        call={"id": "c", "name": name, "args": args},
         idempotency_key="k",
     )
 

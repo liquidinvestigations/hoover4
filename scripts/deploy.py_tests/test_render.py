@@ -197,25 +197,32 @@ def test_settings_defaults():
     assert env["HOOVER4_COMMON_MAX_CACHED_WORKFLOWS"] == "100"
 
 
-PACK_KEYS = ("AGENT_PACKS_CHAT", "AGENT_PACKS_SUBAGENT", "AGENT_PACKS_PLANNER",
-             "AGENT_PACKS_ORGANIZER")
+#: A sub-agent reads the organizer's key, so it has no key of its own.
+PACK_KEYS = ("AGENT_PACKS_CHAT", "AGENT_PACKS_PLANNER", "AGENT_PACKS_ORGANIZER")
 
 
-#: The default of each pack key: the planner writes the tree with the plan tools and has no
-#: todo tool, and every other kind of run binds every pack.
-PACK_DEFAULTS = ["all", "all", "collections,web,plan", "all"]
+#: The default of each run kind is every available pack.
+PACK_DEFAULTS = ["all", "all", "all"]
 
 
-def test_agent_packs_default_to_all_and_the_planner_to_its_packs():
+def test_agent_packs_default_to_all():
     env = _env("settings-defaults.ini")
     assert [env[key] for key in PACK_KEYS] == PACK_DEFAULTS
+    assert "AGENT_PACKS_SUBAGENT" not in env
 
 
-def test_a_narrowed_agent_pack_value_is_rendered_and_an_empty_one_is_all():
+def test_a_narrowed_agent_pack_value_is_rendered_and_an_empty_one_is_all(capsys):
     env = _env("agent-packs.ini")
     assert env["AGENT_PACKS_CHAT"] == "collections,catalogue,conversation"
-    assert env["AGENT_PACKS_SUBAGENT"] == "all"
-    assert env["AGENT_PACKS_PLANNER"] == "collections,web,plan"
+    assert env["AGENT_PACKS_PLANNER"] == "all"
+    assert "agent_packs_subagent" not in capsys.readouterr().err
+
+
+def test_an_old_subagent_pack_key_warns_and_is_not_rendered(capsys):
+    env = _env("agent-packs-subagent.ini")
+    assert "AGENT_PACKS_SUBAGENT" not in env
+    assert ("warning: [main_services] agent_packs_subagent is ignored"
+            in capsys.readouterr().err)
 
 
 def test_both_research_agents_receive_the_pack_keys():
@@ -224,6 +231,7 @@ def test_both_research_agents_receive_the_pack_keys():
         environment = agents[name]["environment"]
         for key in PACK_KEYS:
             assert f"{key}=${{{key}:-all}}" in environment, (name, key)
+        assert not any(line.startswith("AGENT_PACKS_SUBAGENT=") for line in environment)
 
 
 @pytest.mark.parametrize(("fixture_name", "expected"), [
@@ -250,19 +258,21 @@ def test_both_research_agents_receive_the_classifier_url():
 
 def test_the_subagent_budgets_default_to_6_and_5():
     env = _env("settings-defaults.ini")
-    assert (env["AGENT_SUBAGENT_MAX_PER_TURN"], env["AGENT_PLAN_RUN_BUDGET"]) == ("6", "5")
+    assert env["AGENT_PLAN_RUN_BUDGET"] == "5"
+    assert "AGENT_SUBAGENT_MAX_PER_TURN" not in env
 
 
 def test_a_set_subagent_budget_is_rendered_and_an_empty_one_is_the_default():
     env = _env("agent-budgets.ini")
-    assert (env["AGENT_SUBAGENT_MAX_PER_TURN"], env["AGENT_PLAN_RUN_BUDGET"]) == ("4", "5")
+    assert env["AGENT_PLAN_RUN_BUDGET"] == "5"
+    assert "AGENT_SUBAGENT_MAX_PER_TURN" not in env
 
 
 def test_the_worker_receives_the_subagent_budgets():
     main = dict(_compose_documents())["docker-compose.yaml"]["services"]
     environment = main["hoover4-worker"]["environment"]
-    for key, default in (("AGENT_SUBAGENT_MAX_PER_TURN", 6), ("AGENT_PLAN_RUN_BUDGET", 5)):
-        assert f"{key}=${{{key}:-{default}}}" in environment, key
+    assert "AGENT_PLAN_RUN_BUDGET=${AGENT_PLAN_RUN_BUDGET:-5}" in environment
+    assert not any("AGENT_SUBAGENT_MAX_PER_TURN" in value for value in environment)
 
 
 def test_cassandra_heap_new_follows_the_cpus():
@@ -849,8 +859,7 @@ def test_both_research_agents_receive_the_probe_keys():
 
 #: The worker's timeout variables and the agent services' model variables.
 WORKER_TIMEOUT_VARS = ("HOOVER4_AGENT_QUEUE_WAIT_SECONDS",
-                       "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS",
-                       "HOOVER4_PLAN_REQUEST_TIMEOUT_SECONDS")
+                       "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS")
 AGENT_MODEL_VARS = ("LLM_REQUEST_TIMEOUT_SECONDS", "AGENT_MAX_OUTPUT_TOKENS", "LLM_STREAMING",
                     "LLM_SEND_TEMPERATURE")
 #: The thinking switch is the `server_settings` row `llm_thinking`, so no key renders it.
@@ -866,7 +875,7 @@ def _model_env(fixture_name="settings-defaults.ini", section="main_services", **
 
 def test_empty_agent_model_keys_keep_the_code_defaults():
     env = _model_env()
-    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["", "", ""]
+    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["", ""]
     assert "HOOVER4_CHAT_RUN_TIMEOUT_SECONDS" not in env
     assert "HOOVER4_PLAN_RUN_TIMEOUT_SECONDS" not in env
     assert env["LLM_REQUEST_TIMEOUT_SECONDS"] == ""
@@ -877,9 +886,9 @@ def test_empty_agent_model_keys_keep_the_code_defaults():
 def test_set_timeout_keys_land_in_their_variables():
     env = _model_env(
         agent_queue_wait_seconds="5400", title_request_timeout_seconds="120",
-        plan_request_timeout_seconds="60", llm_request_timeout_seconds="3600",
+        llm_request_timeout_seconds="3600",
         agent_max_output_tokens="32768")
-    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["5400", "120", "60"]
+    assert [env[name] for name in WORKER_TIMEOUT_VARS] == ["5400", "120"]
     assert env["LLM_REQUEST_TIMEOUT_SECONDS"] == "3600"
     assert env["AGENT_MAX_OUTPUT_TOKENS"] == "32768"
 
@@ -894,7 +903,6 @@ def test_no_thinking_variable_renders(values):
 
 @pytest.mark.parametrize("key, value", [
     ("title_request_timeout_seconds", "0"),
-    ("plan_request_timeout_seconds", "0"),
     ("agent_queue_wait_seconds", "an hour"),
     ("llm_request_timeout_seconds", "1.5"),
     ("agent_max_output_tokens", "-1"),

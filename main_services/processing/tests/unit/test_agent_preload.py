@@ -1,7 +1,7 @@
 """The run-start reads: when a run gets them, and the rows that `preload_reads` writes.
 
 The database writers are the lists of `test_agent_run.store`, and the agent service is a
-function that answers `/preload` and `/tool_call`, so no service or Temporal server runs.
+function that answers `/preload`, so no service or Temporal server runs.
 """
 
 import json
@@ -17,33 +17,28 @@ from tasks.P_agent.preload import PreloadParams, PreloadResult
 
 from test_agent_run import RUN_ID, _row, step_events, store  # noqa: F401 - fixtures
 
-ITEM = "Read relevant tools and skills"
-
 
 def _read(name, tool="read_skill", status="ok"):
     return {"id": "", "name": tool, "args": {"name": name},
             "content": f"Skill `{name}`.\n\nText." if tool == "read_skill"
-            else json.dumps({"tool": name, "ready": "next call"}),
+            else json.dumps({"tool": name}),
             "status": status, "error_class": ""}
 
 
 PICKS = {
     "request_classes": ["topic", "person"],
     "class_scores": {"topic": 0.93, "person": 0.61},
-    "picks": {"tools": [["doc_email", 0.97]], "technique": [], "stumble": []},
-    "reads": [_read("search"), _read("doc_email", "read_tool")],
-    "todo_item_text": ITEM,
+    "picks": {"technique": [], "stumble": []},
+    "reads": [_read("search")],
     "classifier": {"state": "ok", "error": "", "ms": 412},
 }
 
 
 @pytest.fixture
 def service(store, monkeypatch):
-    """The agent service and the todo list. Returns the requests, by path."""
-    sent = {"preload": [], "tool_call": []}
-    state = {"picks": PICKS, "fail": None,
-             "todo": {"items": [{"id": "1", "text": ITEM, "status": "pending"},
-                                {"id": "2", "text": "Search", "status": "pending"}]}}
+    """The agent service. Returns the requests by path."""
+    sent = {"preload": []}
+    state = {"picks": PICKS, "fail": None}
 
     def post(url, body, read_seconds):
         path = url.rsplit("/", 1)[1]
@@ -52,7 +47,7 @@ def service(store, monkeypatch):
             raise requests.HTTPError("500 Server Error")
         if path == "preload":
             return state["picks"]
-        return {"content": json.dumps({"items": ["done"]}), "status": "ok", "error_class": ""}
+        raise AssertionError(path)
 
     def write_messages(username, session_id, thread_id, run_id, rows):
         store["inserts"] = store.get("inserts", 0) + 1
@@ -61,16 +56,14 @@ def service(store, monkeypatch):
 
     monkeypatch.setattr(preload, "_post_json", post)
     monkeypatch.setattr(agent_runs, "write_messages", write_messages)
-    monkeypatch.setattr(chat_todos, "read_todo", lambda u, s: state["todo"])
     monkeypatch.setattr(preload, "_earlier_turns", lambda row: state.get("earlier", []))
     sent["state"] = state
     return sent
 
 
-def _preload(classify="all", mark_item=True):
+def _preload(classify="all"):
     return ActivityEnvironment().run(preload.preload_reads, PreloadParams(
-        run_id=RUN_ID, username="u", session_id="s", classify=classify,
-        mark_item=mark_item))
+        run_id=RUN_ID, username="u", session_id="s", classify=classify))
 
 
 # ---------------------------------------------------------------- when it runs
@@ -104,32 +97,26 @@ def test_the_preload_payloads_hold_no_text():
 # ---------------------------------------------------------------- the rows
 
 
-def test_a_first_turn_writes_the_reads_then_the_mark_in_one_insert(service, store,
-                                                                  step_events):
+def test_a_first_turn_writes_the_reads_in_one_insert(service, store, step_events):
     result = _preload()
-    assert result == PreloadResult("written", reads=2, request_classes=["topic", "person"])
+    assert result == PreloadResult("written", reads=1, request_classes=["topic", "person"])
     assert store["inserts"] == 1
     rows = [(m.idx, m.role, m.tool_call_id) for m in store["messages"]]
-    assert rows == [(0, "human", ""), (1, "ai", ""), (2, "tool", "preload-1-0"),
-                    (3, "tool", "preload-1-1"), (4, "ai", ""), (5, "tool", "preload-mark-4")]
-    read_ai, mark_ai = store["messages"][1], store["messages"][4]
+    assert rows == [(0, "human", ""), (1, "ai", ""), (2, "tool", "preload-1-0")]
+    read_ai = store["messages"][1]
     assert read_ai.content == "" and read_ai.reasoning == ""
     assert [(c["id"], c["name"], c["seq"], c["kind"]) for c in read_ai.tool_calls] == [
-        ("preload-1-0", "read_skill", 5, "parallel"), ("preload-1-1", "read_tool", 6, "parallel")]
+        ("preload-1-0", "read_skill", 5, "parallel")]
     assert read_ai.usage["mode"] == "preload" and read_ai.usage["synthetic"] is True
-    assert read_ai.usage["step_no"] == 0 and read_ai.usage["bound_names"] == []
+    assert read_ai.usage["step_no"] == 0 and "bound_names" not in read_ai.usage
     assert read_ai.usage["request_classes"] == ["topic", "person"]
     assert read_ai.usage["classifier"]["state"] == "ok"
-    assert mark_ai.usage["mode"] == "preload_mark"
-    assert mark_ai.tool_calls[0]["args"] == {"ids": ["1"], "status": "done"}
     assert store["messages"][2].usage == {"chat_seq": 5, "status": "ok", "measure": None,
                                           "error_class": ""}
-    assert [(c["seq"], c["tool_name"]) for c in store["chat"]] == [
-        (5, "read_skill"), (6, "read_tool"), (7, "mark_todo")]
-    assert store["run"] == [{"next_seq": 8}]
+    assert [(c["seq"], c["tool_name"]) for c in store["chat"]] == [(5, "read_skill")]
+    assert store["run"] == [{"next_seq": 6}]
     body = service["preload"][0]
     assert (body["classify"], body["already_read"], body["request_text"]) == ("all", [], "q")
-    assert service["tool_call"][0]["call"]["name"] == "mark_todo"
     assert [(e.step, e.name, e.ok, e.mode) for e in step_events] == [
         ("preload", "systemone", True, "ok")]
 
@@ -149,33 +136,19 @@ def test_a_later_turn_sends_the_skills_that_earlier_turns_read(service, store):
         {"role": "tool", "thread_id": "t1", "tool_call_id": "b", "status": "error"},
     ]
     service["state"]["picks"] = {**PICKS, "reads": [], "request_classes": []}
-    result = _preload(classify="none", mark_item=False)
+    result = _preload(classify="none")
     assert service["preload"][0]["already_read"] == ["search"]
     assert result.outcome == "nothing" and "inserts" not in store
     assert store["run"] == []
 
 
-def test_a_list_with_no_open_item_of_the_reads_gets_no_mark(service, store):
-    service["state"]["todo"] = {"items": [{"id": "1", "text": ITEM, "status": "done"}]}
-    _preload()
-    assert [m.role for m in store["messages"]] == ["human", "ai", "tool", "tool"]
-    assert service["tool_call"] == []
-
-
-def test_a_failed_mark_keeps_the_reads(service, store):
-    service["state"]["fail"] = "tool_call"
-    assert _preload().outcome == "written"
-    assert [m.role for m in store["messages"]] == ["human", "ai", "tool", "tool"]
-    assert store["run"] == [{"next_seq": 7}]
-
-
 def test_a_subagent_writes_no_transcript_row_and_sends_no_earlier_read(service, store):
     store["row"] = _row(depth=1)
     service["state"]["earlier"] = [{"role": "tool", "status": "ok"}]
-    _preload(classify="none", mark_item=False)
+    _preload(classify="none")
     assert service["preload"][0]["already_read"] == []
     assert store["chat"] == []
-    assert [m.role for m in store["messages"]] == ["human", "ai", "tool", "tool"]
+    assert [m.role for m in store["messages"]] == ["human", "ai", "tool"]
 
 
 def test_a_failed_preload_request_writes_nothing_and_one_failed_event(service, store,

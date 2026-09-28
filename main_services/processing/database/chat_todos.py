@@ -1,4 +1,4 @@
-"""The agent's todo list for one chat session, and the rules the nag protocol reads.
+"""The agent's todo lists and the rules the nag protocol reads.
 
 The list is a goal plus items, stored as whole-list snapshots in `chat_todos` and
 versioned on an update counter. Four operations write it -- `write` replaces the plan,
@@ -27,6 +27,15 @@ from datetime import datetime, timezone
 import pyarrow as pa
 
 log = logging.getLogger(__name__)
+
+
+def key_for_run(run) -> str:
+    """Return the todo key of an agent run.
+
+    A planner and a sub-agent own separate lists. A chat lead and an organizer use the
+    conversation list that the page reads.
+    """
+    return str(run.run_id if run.kind in ("planner", "subagent") else run.session_id)
 
 #: Every status an item can hold. The last two are resolved, the first two are open.
 ITEM_STATUSES = ("pending", "in_progress", "done", "cancelled")

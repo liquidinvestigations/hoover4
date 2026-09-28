@@ -1,10 +1,12 @@
-"""The tool packs: which tools each kind of agent run may bind and call.
+"""The tool packs of each kind of agent run.
 
-A pack is a named set of tool names. Configuration gives each kind of run a set of packs
-(`AGENT_PACKS_CHAT`, `AGENT_PACKS_SUBAGENT`, `AGENT_PACKS_PLANNER`, `AGENT_PACKS_ORGANIZER`,
-rendered by `deploy.py` from `hoover4.ini`). The research agent binds, runs and lists in its
-catalogue only the tools of the run's packs. A tool that an MCP server lists and no pack
-names is refused for every run.
+A pack is a named set of tool names. Configuration gives the chat lead, the planner and the
+organizer a set of packs each (`AGENT_PACKS_CHAT`, `AGENT_PACKS_PLANNER`,
+`AGENT_PACKS_ORGANIZER`, rendered by `deploy.py` from `hoover4.ini`). A sub-agent has no
+setting of its own. Only the organizer starts sub-agents, and a sub-agent reads the
+organizer's setting, so it gets its parent's packs. The research agent sends, runs and lists
+in its catalogue only the tools of the run's packs. A tool that an MCP server lists and no
+pack names is refused for every run.
 
 The `skills` pack holds the three skill tools and the notes tool `write_note` of the research
 agent. `packs_for` adds it to every run kind, also when the configured list omits it, because
@@ -22,7 +24,7 @@ from typing import Dict, FrozenSet, Optional
 
 PACKS: Dict[str, FrozenSet[str]] = {
     "catalogue": frozenset({"search_agent_tools"}),
-    "skills": frozenset({"search_skills", "read_skill", "read_tool", "write_note"}),
+    "skills": frozenset({"search_skills", "read_skill", "read_tool", "ask_user", "write_note"}),
     "collections": frozenset({
         "list_collections", "search_collections", "search_passages", "search_facet_values",
         "search_histogram", "search_entity_explainer", "read_documents", "doc_search_text",
@@ -40,8 +42,11 @@ PACKS: Dict[str, FrozenSet[str]] = {
                           "browser_type", "browser_select_option", "browser_press_key"}),
 }
 
-#: The kinds of agent run. Each has its own pack setting.
+#: The kinds of agent run.
 RUN_KINDS = ("chat", "subagent", "planner", "organizer")
+
+#: The run kind whose pack setting each run kind reads. A sub-agent reads its parent's.
+SETTING_OF = {"subagent": "organizer"}
 
 #: The value that selects every pack.
 ALL = "all"
@@ -52,7 +57,7 @@ ALWAYS_PACK = "skills"
 
 def env_name(kind: str) -> str:
     """Return the environment variable that holds the pack setting of one run kind."""
-    return f"AGENT_PACKS_{kind.upper()}"
+    return f"AGENT_PACKS_{SETTING_OF.get(kind, kind).upper()}"
 
 
 def pack_of(tool_name: str) -> Optional[str]:
@@ -74,7 +79,8 @@ def packs_for(kind: str, configured: str) -> FrozenSet[str]:
         raise ValueError(f"unknown agent run kind {kind!r}, expected one of {RUN_KINDS}")
     value = (configured or "").strip()
     if not value or value == ALL:
-        return frozenset(PACKS)
+        names = frozenset(PACKS)
+        return names if kind == "organizer" else names - {"delegation"}
     names = frozenset(part.strip() for part in value.split(",") if part.strip())
     unknown = sorted(names - set(PACKS))
     if unknown:
@@ -82,7 +88,8 @@ def packs_for(kind: str, configured: str) -> FrozenSet[str]:
             f"{env_name(kind)} names unknown tool packs {unknown}. "
             f"The packs are {sorted(PACKS)}, or {ALL!r}."
         )
-    return names | {ALWAYS_PACK}
+    selected = names | {ALWAYS_PACK}
+    return selected if kind == "organizer" else selected - {"delegation"}
 
 
 def allowed_tools(kind: str, configured: str) -> FrozenSet[str]:

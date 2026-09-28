@@ -1,14 +1,15 @@
 ---
 name: after_a_result
 group: stumble
-description: what to do after each call returns: use its result, change the arguments or take the next step, and never send the same call again
+description: what to do after a tool result
 tools:
 ---
-{# What to do after a call returns. The workflow refuses a call whose name and arguments
-   equal an earlier call of the run, and the refusal text names this skill. #}
+{# What to do after a call returns. The repeat limit does not apply to browser actions
+   and read-only plan or todo calls. #}
 After each result
 
-A call that has the same tool and the same arguments as an earlier call of this run is not run again. The run refuses it, and after a few such replies it ends and asks for your answer.
+A fourth identical successful call is refused for tools that have a repeat limit. Browser
+actions and read-only plan or todo calls can repeat.
 
 After each result, do one of these things.
 
@@ -17,6 +18,6 @@ After each result, do one of these things.
 3. The result is an error. Read the error text, correct the argument that it names, and then send the call.
 4. You have enough to answer. Write the answer.
 
-A result that you received stays in your context. When you need it again, read it there. Do not send the call again to see it.
+A result stays in your context. Use it when it answers the current question.
 
-Keep a short record in your reply of what each search found, for example "search 3, the lease: 4 documents, 2 read". Before a call, check that record. When the call is in it, take another step.
+When a search returns no useful result, change the query or use another source.

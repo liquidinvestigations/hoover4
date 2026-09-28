@@ -11,10 +11,11 @@ Reading a spreadsheet
 
 A spreadsheet, a CSV file or a table in a document is a table document. Name it by the file_hash and the collection of a search result.
 
-1. Call {{ tool('table_overview') }} first. It lists the sheets and the columns with their ids.
+1. {{ tool('table_overview') }} lists the sheets and columns with their ids.
 2. Read rows with {{ tool('table_page') }}. One call gives 50 rows. Sort and filter the rows in the call. Give row_start to go to a row of a large sheet, and columns to read the columns after the 60th.
-3. Before you filter by a value, call {{ tool('table_column_values') }}. It gives the values of one column and their counts, so you filter by a value that exists.
-4. To find a value in a sheet, call {{ tool('table_search_cells') }}. Then read the rows around the match with {{ tool('table_page') }}.
+3. {{ tool('table_column_values') }} lists values in one column and their counts.
+4. To find a value in a sheet, call {{ tool('table_search_cells') }}. Read surrounding rows
+with {{ tool('table_page') }} when the match needs context.
 5. When {{ tool('table_page') }} cuts a long cell, read it whole with {{ tool('table_cell') }}. Give the row_id of the row and the column id.
 
-Give the sheet, the row and the column of each value in your answer, so the reader can find it.
+Give a sheet, row and column when the reader needs to find a value again.

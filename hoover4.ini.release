@@ -245,18 +245,15 @@ browser_max_contexts = 16
 ; Hard memory ceiling for hoover4-mcp-browser. Sixteen live chats at 500 MB
 ; plus the template fit in 24 GB with room.
 mcp_browser_mem_limit = 24G
-; Sub-agent runs one chat turn may start through run_subagent, at every depth.
-; A chat turn that runs a plan counts against agent_plan_run_budget instead.
-agent_subagent_max_per_turn = 6
 ; Sub-agent runs one research plan may start over all its organizer steps:
 ; 4 sections and 1 correction. The worker uses at most 5, even when this is larger.
 agent_plan_run_budget = 5
 ; Tool packs for each kind of agent run: a comma list of pack names, or all.
 ; The packs are catalogue, collections, conversation, plan, delegation, web and
-; browser. The agent service refuses to start on an unknown pack name.
+; browser. Only an organizer receives the delegation pack. A sub-agent gets the
+; organizer's packs, except delegation.
 agent_packs_chat = all
-agent_packs_subagent = all
-agent_packs_planner = collections,web,plan
+agent_packs_planner = all
 agent_packs_organizer = all
 ; Result page limits and the catalogue match count. The probe selects these values.
 ; Empty agent_max_page_tokens or agent_completion_reserve_tokens keeps byte-safe
@@ -271,15 +268,12 @@ agent_catalogue_match_count =
 ;   A model step that waits longer fails the run. Empty is no limit.
 ; title_request_timeout_seconds: the title request. Empty is 30. The title activity
 ;   allows two requests and 30 s more.
-; plan_request_timeout_seconds: one first-turn planning call. It gets one attempt, and
-;   one more when the todo server refuses its plan. Empty is 60.
 ; llm_request_timeout_seconds: the read timeout of one model call of the agent and of
 ;   its compaction summary, and the limit of one model step in the worker. When set, the
 ;   model client does not retry. Empty keeps the client default (600 s and 2 retries),
 ;   180 s for the summary and 3,600 s for the model step.
 agent_queue_wait_seconds = 5400
 title_request_timeout_seconds = 120
-plan_request_timeout_seconds = 60
 llm_request_timeout_seconds = 3600
 ; The output cap of one agent model request, in tokens. Without a cap a request can
 ; decode to the end of the context window, which no timeout above bounds. Empty sends

@@ -10,7 +10,8 @@ tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_
 Driving a web browser
 
 {% if has('read_page') %}
-To read the text of a page, call {{ tool('read_page') }} with its address. Use the browser only when you must click, type or choose on the page.
+{{ tool('read_page') }} reads the text of a page. Use a browser snapshot when page state or
+interactive elements matter.
 
 {% endif %}
 1. Open the address with {{ tool('browser_navigate') }}.
@@ -18,6 +19,6 @@ To read the text of a page, call {{ tool('read_page') }} with its address. Use t
 3. Act on one element with {{ tool('browser_click') }}, {{ tool('browser_type') }} or {{ tool('browser_select_option') }}. Give the reference from the latest snapshot and a short description of the element. Use {{ tool('browser_press_key') }} for a key such as Enter.
 4. After each action, call {{ tool('browser_snapshot') }} again. An action can change the page, and then the old references are not valid.
 
-When a result starts with "### Error", read the error text. A stale element reference means that the page changed. Take a new snapshot and use the new reference. An empty reference or selector means that you gave no element. Do not send the same action again with the same reference.
+When a result starts with "### Error", read the error text. A stale element reference means that the page changed. Take a new snapshot and use the new reference. An empty reference or selector means that you gave no element.
 
 Say in your answer which address you opened and what the page showed.

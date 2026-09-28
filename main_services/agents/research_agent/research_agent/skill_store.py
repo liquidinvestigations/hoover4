@@ -14,8 +14,7 @@ Each skill is one file, `skills/<name>.md.j2`. The file starts with front matter
 
 The role skill of a profile is listed for that profile only. `render_skill` renders a body
 with the context that its caller passes, and it keeps no state of its own. `has()` in a body
-reads every tool of the run, bound or deferred, because a model can bind a deferred tool
-with `read_tool`.
+reads every tool of the run.
 """
 
 from __future__ import annotations
@@ -107,7 +106,7 @@ class Skill:
 @dataclass(frozen=True)
 class SkillContext:
     profile: str  # one of the keys of ROLE_SKILLS
-    tool_names: FrozenSet[str]  # every tool of the run's snapshot, bound or deferred
+    tool_names: FrozenSet[str]  # every tool of the run's snapshot
     collections_hint: bool = True
     # Empty in the step context. The preload passes a copy with the classes.
     request_classes: Tuple[str, ...] = ()

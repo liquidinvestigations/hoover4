@@ -1,6 +1,6 @@
 # agent todo MCP server
 
-One todo list per chat conversation (a goal and a list of steps) exposed as four tools:
+One todo list per chat or agent run (a goal and a list of steps) is exposed as four tools:
 `read_todo`, `write_todo`, `edit_todo` and `mark_todo`.
 
 **The server holds no rules.** Every shape, limit and refusal lives in
@@ -25,11 +25,10 @@ failed result.
 
 ## The caller
 
-The list is keyed by `(username, session_id)` and **both come from request headers**,
-never from a tool argument: `X-Hoover4-User` and `X-Hoover4-Chat-Session`, the same pair
-the browser server uses for its per-chat isolation, behind the same bearer token the
-collection server checks. A session id the model could write would let it read and
-rewrite another conversation's plan.
+The list uses the user and chat session from request headers. Chat and organizer runs use
+the session id. Planner and sub-agent runs use the run id from `X-Hoover4-Agent-Run`.
+The server reads the stored run kind before it selects the key. Tool arguments cannot
+select another list.
 
 ## The plan tools
 

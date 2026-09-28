@@ -13,22 +13,23 @@ Folders and files
 
 {% endif %}
 {% if has('folder_overview') %}
-1. {{ tool('folder_overview') }} gives the storage counts of each collection and dataset.
+{{ tool('folder_overview') }} gives the storage counts of each collection and dataset.
 {% endif %}
 {% if has('folder_list') %}
-2. {{ tool('folder_list') }} gives the child folders and the files of one folder of a dataset. Go down one folder at a time.
+{{ tool('folder_list') }} gives the child folders and files of one folder of a dataset.
 {% endif %}
 {% if has('folder_search') %}
-3. To find a folder or a file by its name inside one dataset, call {{ tool('folder_search') }}.
+To find a folder or file by name inside one dataset, call {{ tool('folder_search') }}.
 {% endif %}
 {% if has('search_collections') %}
-4. To find a file by its name in every collection, call {{ tool('search_collections') }} with filename_only set to true. Give the name or a part of it as the query.
+To find a file by name in every collection, call {{ tool('search_collections') }} with
+`filename_only` set to true. Give the name or part of it as the query.
 {% endif %}
 {% if has('search_histogram') %}
-5. {{ tool('search_histogram') }} counts the documents of a search by date or by size. Use it to see which years a collection covers before you set a date filter.
+{{ tool('search_histogram') }} counts the documents of a search by date or size.
 {% endif %}
 {% if has('search_facet_values') %}
-6. {{ tool('search_facet_values') }} gives the values of a filter, for example the file types, with their counts.
+{{ tool('search_facet_values') }} gives the values of a filter, including file types, with counts.
 {% endif %}
 
-A file name or a path is not a document id. To read a file that you found by its name, copy the file_hash of its result row.
+A file name or path can identify one document. A result row's `file_hash` identifies it directly.

@@ -1,5 +1,5 @@
 """The plan rules of `run_budgets.decide`: the section rule, one run a section, one
-correction a plan, no review, no section-less briefing in a plan, and no nested sub-agent.
+correction a plan, no review, and no nested sub-agent.
 """
 
 import json
@@ -25,7 +25,7 @@ def _decide(briefings, kind="organizer", runs=None, sections=frozenset({SECTION}
             in_plan=True, depth=0):
     return rb.decide([("c1", briefings)], depth=depth, used=0, limit=rb.plan_limit(),
                      own_share=0, kind=kind, sections=set(sections), section_runs=runs or {},
-                     max_depth=1 if in_plan else rb.MAX_DEPTH, in_plan=in_plan)
+                     in_plan=in_plan)
 
 
 def test_four_sections_run_once_each_and_a_fifth_briefing_is_refused():
@@ -70,16 +70,14 @@ def test_a_review_briefing_is_refused():
     assert [r["reason"] for r in decision.refused] == [rb.REVIEW_NOT_ALLOWED]
 
 
-def test_an_organizer_briefing_with_no_node_in_a_plan_is_refused():
+def test_an_organizer_briefing_with_no_node_uses_the_plan_budget():
     decision = _decide([_b("execute", node=None)])
-    [refusal] = decision.refused
-    assert refusal["reason"] == rb.PLAN_NODE_REQUIRED
-    assert SECTION in refusal["message"]
-
-
-def test_a_plan_subagent_cannot_delegate():
-    decision = _decide([_b(None, node=None)], kind="subagent", depth=1)
-    assert [r["reason"] for r in decision.refused] == [rb.DEPTH_LIMIT]
+    [accepted] = decision.accepted
+    assert decision.refused == []
+    assert accepted.briefing == {"objective": "x", "known": "", "bring_back": ""}
+    full = rb.decide([("c1", [_b(node=None)])], depth=0, used=5, limit=5,
+                     own_share=0, kind="organizer", sections={SECTION}, in_plan=True)
+    assert full.refused[0]["reason"] == rb.BUDGET_SPENT
 
 
 def test_the_plan_budget_is_at_most_five(monkeypatch):
@@ -116,7 +114,7 @@ def test_a_refused_node_names_the_sections_of_the_approved_tree():
     sections = {SECTION: "Who signed the lease?", "s2": "Who controls the landlord?"}
     decision = rb.decide([("c1", [_b("execute", node="unknown")])], depth=0, used=0,
                          limit=5, own_share=0, kind="organizer", sections=sections,
-                         section_runs={}, max_depth=1, in_plan=True)
+                         section_runs={}, in_plan=True)
     [refusal] = decision.refused
     assert refusal["reason"] == rb.PLAN_NODE_NOT_ALLOWED
     assert refusal["message"] == (
@@ -147,7 +145,7 @@ def test_a_flat_plan_lets_the_organizer_brief_the_root():
     decision = rb.decide([("c1", [_b("execute", node=snap.root_id, objective="survey"),
                                   _b("execute", node=task, objective="task")])],
                          depth=0, used=0, limit=5, own_share=0, kind="organizer",
-                         sections=sections, section_runs={}, max_depth=1, in_plan=True)
+                         sections=sections, section_runs={}, in_plan=True)
     assert [a.briefing["objective"] for a in decision.accepted] == ["survey"]
     [refusal] = decision.refused
     assert refusal["reason"] == rb.PLAN_NODE_NOT_ALLOWED
@@ -201,6 +199,45 @@ def test_one_correction_of_two_sections_gives_an_entry_for_each(monkeypatch):
     assert [e["failed"] for e in plan_runs.section_entries("u", "s", "p")] == [True, True]
 
 
+def test_an_off_tree_briefing_writes_its_report_at_the_plan_root(monkeypatch):
+    from database import agent_plans as ap
+    from tasks.P_agent import plan_runs
+
+    plan_id = "0b8e6f8a-3f52-4a55-9d6c-6f6a1c1f2e10"
+    written = []
+    snap = ap.initial_snapshot(plan_id, "Find the lease")
+    monkeypatch.setattr(ap, "read_plan_run", lambda *args: ap.PlanRunRow(
+        "p", plan_id, "u", "s", approved_version=snap.version))
+    monkeypatch.setattr(ap, "read_snapshot", lambda *args: snap)
+    monkeypatch.setattr(ap, "write_document", lambda *args, **kw: written.append(args))
+    row = _row("off-tree", None, "")
+    plan_runs.write_plan_ending(row, "completed", [])
+    assert written[0][4] == ap.root_node_id(plan_id)
+    assert written[0][6] == "report"
+    monkeypatch.setattr(ap, "read_documents", lambda *args: [ap.PlanDocument(
+        ap.document_id(row.run_id, "report"), snap.root_id, "executor", "report",
+        0, row.result)])
+    monkeypatch.setattr(plan_runs, "_plan_rows", lambda *args: [row])
+    entries = plan_runs.section_entries("u", "s", "p")
+    assert entries[0]["node_id"] == snap.root_id
+    assert entries[0]["off_tree_reports"] == [
+        {"run_id": row.run_id, "state": "completed", "report": True}]
+    assert entries[0]["failed"] is False
+
+
+def test_the_planner_detects_a_question_in_the_previous_round(monkeypatch):
+    from database import agent_runs
+    from tasks.P_agent import plan_runs
+
+    prior = _row("prior", None, "")
+    prior.kind = "planner"
+    monkeypatch.setattr(plan_runs, "_plan_rows", lambda *args: [prior])
+    monkeypatch.setattr(agent_runs, "read_messages", lambda *args: [
+        agent_runs.RunMessageRow(idx=2, role="tool", content='{"asked":true}',
+                                 tool_name="ask_user", usage_json='{"status":"ok"}')])
+    assert plan_runs._last_planner_asked("u", "s", "p", "next") is True
+
+
 def test_a_plan_subagent_step_request_cannot_delegate():
     from types import SimpleNamespace
 
@@ -212,6 +249,7 @@ def test_a_plan_subagent_step_request_cannot_delegate():
     assert (body["can_delegate"], body["purpose"]) == (False, None)
     chat_child = _row("y", None, "", depth=1)
     chat_child.plan_run_id = None
-    assert steps._step_run(chat_child, params)["can_delegate"] is True
+    assert steps._step_run(chat_child, params)["can_delegate"] is False
     organizer = _row("z", None, "", depth=0)
+    organizer.kind = "organizer"
     assert steps._step_run(organizer, params)["can_delegate"] is True
