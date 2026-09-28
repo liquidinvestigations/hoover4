@@ -279,3 +279,25 @@ async def test_a_chat_read_renders_no_classes(classifier, class_store):
     assert result["request_classes"] == ["person", "topic"]
     read = next(r for r in result["reads"] if r["args"]["name"] == "search")
     assert read["content"].endswith("classes=")
+
+
+async def test_a_planner_preload_renders_the_packing_of_its_classes(classifier, monkeypatch):
+    """The synthetic read holds the classes and the window of the run's model. A later read
+    with the cached context holds the unknown kind at the default window."""
+    from research_agent import compaction
+    from research_agent.skill_tools import read_skill_result
+
+    monkeypatch.setattr(compaction, "context_window",
+                        lambda model: 262_144 if model == "stub-model" else 0)
+    classifier(Classifier(types={"person": 0.9, "topic": 0.8}))
+    agent = FakeAgent("planner", "collections,web,plan")
+    result = await preload.run_preload(agent, request("planner", "types"))
+    read = next(r for r in result["reads"] if r["args"]["name"] == "method_planner")
+    assert "of the kind person and topic" in read["content"]
+    assert "about 6 tasks" in read["content"]
+    cached = agent.context.skill_context
+    later = read_skill_result("method_planner", cached)
+    assert "of the kind unknown" in later and "about 6 tasks" in later
+    differ = [(a, b) for a, b in zip(read["content"].splitlines(), later.splitlines()) if a != b]
+    assert len(differ) == 1 and "of the kind" in differ[0][0]
+    assert (cached.request_classes, cached.model_id) == ((), "")

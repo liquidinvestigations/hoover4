@@ -44,8 +44,10 @@ MAX_NODES = 150
 MAX_NODE_TEXT = 120
 #: The most characters in a rejection comment.
 MAX_COMMENT_CHARS = 10_000
-#: The most corrections of one section.
-MAX_CORRECTIONS = 2
+#: The most sections of a plan. `apply` refuses a mutation that raises the count above it.
+#: Mirrors `MAX_PLAN_SECTIONS` in `tasks/P_agent/run_budgets.py` and `MAX_SECTIONS` in the
+#: research agent's `packing.py`. The images share no module.
+MAX_SECTIONS = 4
 
 #: Plan run states.
 PLANNING = "planning"
@@ -60,8 +62,9 @@ TERMINAL_STATES = (COMPLETED, FAILED, CANCELLED)
 MUTABLE_STATES = (PLANNING, REVISING)
 
 #: The briefing purposes of an organizer's sub-agent.
-PURPOSES = ("execute", "review", "correct")
-#: The defect class of a review whose report has no valid verdict block.
+PURPOSES = ("execute", "correct")
+#: The defect class of a review whose report has no valid verdict block. Plan runs from
+#: before the review purpose went can hold such reports.
 NO_VERDICT = "no-verdict"
 
 
@@ -330,6 +333,9 @@ def apply(snapshot: PlanSnapshot, operation: str, **args: Any) -> PlanSnapshot:
     | `move_node` | `node_id`, `new_parent_id`, `position` | refuses the root and a move under its own subtree. The parent is an id or a number path |
     | `edit_node` | `node_id`, `text` | accepts the root |
     | `remove_node` | `node_id` | removes the subtree, refuses the root |
+
+    A mutation that raises the section count above `MAX_SECTIONS` is refused. A tree that
+    already holds more sections accepts a mutation that keeps or lowers the count.
     """
     version = snapshot.version + 1
     nodes = list(snapshot.nodes)
@@ -373,6 +379,12 @@ def apply(snapshot: PlanSnapshot, operation: str, **args: Any) -> PlanSnapshot:
         raise PlanError(f"unknown plan operation {operation!r}")
     new = PlanSnapshot(snapshot.plan_id, version, tuple(nodes))
     validate(new)
+    before, after = len(sections(snapshot)), len(sections(new))
+    if after > MAX_SECTIONS and after > before:
+        raise PlanError(f"This change makes {after} sections, and a plan has at most "
+                        f"{MAX_SECTIONS}. A node with leaf children is a section, and the root "
+                        "counts when a leaf sits under it. Add the task to a section that "
+                        "exists, or merge two top-level nodes.")
     return new
 
 
@@ -646,52 +658,70 @@ def parse_verdict(report: str) -> tuple[str, list[str]]:
 
 @dataclass
 class SectionRun:
-    """The first run of one sub-agent thread of a plan section, as `section_states` reads it.
+    """One section's share of the first run of a sub-agent thread, as `section_states`
+    reads it.
 
-    `state` is the state of the thread's newest run.
+    `state` is the state of the thread's newest run. `run_id` is the thread's first run,
+    whose report the ending writes, and `report_node` the node the report is written under.
+    A correction gives one entry for each section it names, all with the same `run_id` and
+    `report_node`.
     """
 
     node_id: str
     purpose: str
     state: str
     started_at: datetime
+    run_id: str = ""
+    report_node: str = ""
+
+
+def _has_report(documents: list[PlanDocument], run: SectionRun) -> bool:
+    """Whether the run wrote its report. A correction's report is under its first section,
+    and counts for every section that it names."""
+    want = document_id(run.run_id, "report") if run.run_id else ""
+    return bool(want) and any(
+        d.document_id == want and d.kind == "report" and d.node_id == run.report_node
+        for d in documents)
 
 
 def section_states(snapshot: PlanSnapshot, runs: list[SectionRun],
                    documents: list[PlanDocument]) -> list[dict[str, Any]]:
     """The `sections_json` entries of an approved tree.
 
-    For each section: the state of its newest sub-agent run, the count of corrections, the
-    verdict of its newest review (empty before the first review), the open defect classes of
-    that review, and whether it failed. A section is failed
-    when it has no `review` document with verdict `accept` newer than its newest `execute`
-    or `correct` run.
+    For each section: the state of its newest `execute` or `correct` run, the count of
+    corrections, and whether it failed. A section is failed when it has no such run, when
+    that run did not end `completed`, or when that run wrote no report. `review` stays empty
+    and `defect_classes` stays empty, so old readers find the same keys.
     """
     out = []
     for node, tasks in sections(snapshot):
         mine = sorted((r for r in runs if r.node_id == node.node_id),
                       key=lambda r: r.started_at)
         work = [r for r in mine if r.purpose in ("execute", "correct")]
-        last_work = work[-1].started_at if work else None
-        reviews = [d for d in documents if d.node_id == node.node_id and d.kind == "review"]
-        reviews.sort(key=lambda d: d.created_at or datetime.min)
-        accepted = any(
-            parse_verdict(d.body)[0] == "accept"
-            and (last_work is None or (d.created_at and d.created_at >= last_work))
-            for d in reviews
-        ) and bool(work)
-        classes = parse_verdict(reviews[-1].body)[1] if reviews else []
+        newest = work[-1] if work else None
+        failed = (newest is None or newest.state != "completed"
+                  or not _has_report(documents, newest))
         out.append({
             "node_id": node.node_id,
             "title": node.text,
             "tasks": len(tasks),
-            "state": mine[-1].state if mine else "",
+            "state": newest.state if newest else "",
             "corrections": sum(1 for r in mine if r.purpose == "correct"),
-            "review": parse_verdict(reviews[-1].body)[0] if reviews else "",
-            "defect_classes": [] if accepted else classes,
-            "failed": not accepted,
+            "review": "",
+            "defect_classes": [],
+            "failed": failed,
         })
     return out
+
+
+def failure_cause(entry: dict[str, Any]) -> str:
+    """Why a failed section failed: no run, the state its run ended in, or no report."""
+    state = str(entry.get("state") or "")
+    if not state:
+        return "no run"
+    if state != "completed":
+        return f"the run ended `{state}`"
+    return "no report"
 
 
 def failed_sections_table(entries: list[dict[str, Any]]) -> str:
@@ -699,21 +729,20 @@ def failed_sections_table(entries: list[dict[str, Any]]) -> str:
     failed = [e for e in entries if e.get("failed")]
     if not failed:
         return ""
-    lines = ["## Failed sections", "", "| section | open defect classes |", "|---|---|"]
+    lines = ["## Failed sections", "", "| section | cause |", "|---|---|"]
     for entry in failed:
         title = str(entry.get("title") or "").replace("|", "/")
-        classes = ", ".join(entry.get("defect_classes") or []) or "no accepted review"
-        lines.append(f"| {title} | {classes} |")
+        lines.append(f"| {title} | {failure_cause(entry)} |")
     return "\n".join(lines)
 
 
 __all__ = [
     "AWAITING_REVIEW", "CANCELLED", "COMPLETED", "EXECUTING", "FAILED", "MAX_COMMENT_CHARS",
-    "MAX_CORRECTIONS", "MAX_NODES", "MAX_NODE_TEXT", "MUTABLE_STATES", "NO_VERDICT",
+    "MAX_NODES", "MAX_SECTIONS", "MAX_NODE_TEXT", "MUTABLE_STATES", "NO_VERDICT",
     "PLANNING", "PLAN_NAMESPACE", "PURPOSES", "PlanDecision", "PlanDocument", "PlanError",
     "PlanNode", "PlanRunRow", "PlanSnapshot", "REVISING", "SectionRun", "TERMINAL_STATES",
     "apply", "children_of", "create_plan", "create_plan_run", "document_id",
-    "failed_sections_table", "initial_snapshot", "is_terminal", "mutate", "nodes_json",
+    "failed_sections_table", "failure_cause", "initial_snapshot", "is_terminal", "mutate", "nodes_json",
     "parse_verdict", "read_decision", "read_documents", "read_plan_run", "read_snapshot",
     "node_paths", "render_tree", "root_node_id", "section_ids", "section_states", "sections", "validate",
     "write_document", "write_plan_run", "write_snapshot",

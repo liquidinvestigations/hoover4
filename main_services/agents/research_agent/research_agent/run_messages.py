@@ -9,10 +9,12 @@ The stored usage of the last `AIMessage` lets compaction measure the thread befo
 call, so a long thread is compacted on that call.
 
 A `compaction` row records one compaction that the service applied to an earlier model call.
-Its content is JSON: `layer`, `evicted` and `summarised` as lists of `[thread_id, idx]`,
-`handoff`, `tokens_before` and `threshold`. `apply_compactions` applies every such row before
-the next call measures the list, so the next call sends the compacted list again and not the
-full thread. The stored thread and the transcript keep every message in full.
+Its content is JSON. A version 1 row holds `layer`, `evicted` and `summarised` as lists of
+`[thread_id, idx]`, `handoff`, `tokens_before` and `threshold`. A version 2 row
+(`"version": 2`, written by `compaction.compact`) also holds `text_removed`, `dropped` and
+`cuts`. `apply_compactions` applies every such row before the next call measures the list, so
+the next call sends the compacted list again and not the full thread. The stored thread and
+the transcript keep every message in full.
 """
 
 from __future__ import annotations
@@ -125,13 +127,78 @@ def _drop_orphan_results(messages: List[RunMessage]) -> List[RunMessage]:
     return [m for m in messages if m.role != "tool" or m.tool_call_id in asked]
 
 
+def _drop_unanswered_calls(messages: List[RunMessage]) -> List[RunMessage]:
+    """Remove from each `ai` message the calls that have no result in the list, and remove
+    an `ai` message that is then left with no call and no text."""
+    answered = {m.tool_call_id for m in messages if m.role == "tool"}
+    out: List[RunMessage] = []
+    for m in messages:
+        if m.role == "ai" and m.tool_calls:
+            calls = [c for c in m.tool_calls if c.id in answered]
+            if len(calls) != len(m.tool_calls):
+                if not calls and not (m.content or "").strip():
+                    continue
+                m = m.model_copy(update={"tool_calls": calls})
+        out.append(m)
+    return out
+
+
+def _cuts(value: Any) -> Dict[Tuple[str, int], int]:
+    out: Dict[Tuple[str, int], int] = {}
+    for item in value or []:
+        if isinstance(item, (list, tuple)) and len(item) == 3:
+            try:
+                out[(str(item[0]), int(item[1]))] = max(0, int(item[2]))
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def apply_record(messages: Sequence[RunMessage], record: Dict[str, Any]) -> List[RunMessage]:
+    """Apply one version 2 compaction record to a list with no `compaction` row.
+
+    A `dropped` message leaves the list, and no record takes its place. The `summarised`
+    messages leave the list, and one `human` message with the handoff takes the place of
+    the first of them, with its key. A `tool` message in `cuts` keeps that many characters
+    and gets the cut mark. An `ai` message in `text_removed` keeps its calls and loses its
+    text. Then each result with no call and each call with no result leaves the list.
+    """
+    from research_agent.compaction import CUT_MARK
+
+    gone = _keys(record.get("summarised"))
+    blank = _keys(record.get("text_removed"))
+    drop = _keys(record.get("dropped"))
+    cuts = _cuts(record.get("cuts"))
+    handoff = str(record.get("handoff") or "")
+    placed = False
+    out: List[RunMessage] = []
+    for message in messages:
+        key = _key(message)
+        if key is not None and key in drop:
+            continue
+        if key is not None and key in gone:
+            if not placed and handoff:
+                out.append(RunMessage(role="human", content=handoff,
+                                      thread_id=key[0], idx=key[1]))
+                placed = True
+            continue
+        if key is not None and key in cuts and message.role == "tool" \
+                and len(message.content) > cuts[key]:
+            message = message.model_copy(
+                update={"content": message.content[:cuts[key]] + CUT_MARK})
+        if key is not None and key in blank and message.role == "ai":
+            message = message.model_copy(update={"content": ""})
+        out.append(message)
+    return _drop_unanswered_calls(_drop_orphan_results(out))
+
+
 def apply_compactions(messages: Sequence[RunMessage]) -> List[RunMessage]:
     """Apply every `compaction` row of the list, in list order, and remove the rows.
 
-    An evicted `tool` message keeps its call and gets the eviction placeholder. The
-    summarised messages leave the list, and one `human` message with the handoff takes the
-    place of the first of them. It has the key of that message, so a later compaction can
-    name it.
+    A version 2 row goes through `apply_record`. For a version 1 row, an evicted `tool`
+    message keeps its call and gets the eviction placeholder. The summarised messages leave
+    the list, and one `human` message with the handoff takes the place of the first of
+    them. It has the key of that message, so a later compaction can name it.
     """
     out = [m for m in messages if m.role != "compaction"]
     for row in (m for m in messages if m.role == "compaction"):
@@ -140,6 +207,9 @@ def apply_compactions(messages: Sequence[RunMessage]) -> List[RunMessage]:
         except ValueError:
             continue
         if not isinstance(record, dict):
+            continue
+        if record.get("version") == 2:
+            out = apply_record(out, record)
             continue
         evicted = _keys(record.get("evicted"))
         summarised = _keys(record.get("summarised"))

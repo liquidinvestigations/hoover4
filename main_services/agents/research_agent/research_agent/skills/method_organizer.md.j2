@@ -9,6 +9,8 @@ tools:
    Each tool name goes through `tool()`, and each sentence that names a tool renders only
    when `has()` finds the tool among the tools of the run.
    Keep the defect classes in step with `method_subagent.md.j2`.
+   The caps of this text are enforced by the worker: at most 4 sections, one execute run of
+   each, and one correction run of the plan.
 #}
 {% if has('read_plan') %}
 Read the approved tree with {{ tool('read_plan') }}. Its sections are the nodes with leaf
@@ -18,26 +20,20 @@ children, and each section has a `node_id`.
 Send the sections to researchers with {{ tool('run_subagent') }}. Give each briefing the
 section's `node_id` as `plan_node_id`, and a `purpose`:
 
-* `execute` does the research of a section for the first time.
-* `review` checks the report of a section and returns a verdict.
-* `correct` does the section again with the defects that a review found. A section takes at
-  most two corrections.
+* `execute` does the research of a section. Each section runs once.
+* `correct` researches again the sections whose reports lack something. Set
+  `sections` to every section it corrects, and `plan_node_id` to the first of them. A plan
+  runs one correction.
 
-Send up to five briefings in one call. When the reports arrive, review each section that
-has a new report, and correct each section whose review rejected it.
+A plan has at most 4 sections. Send up to four briefings in one call. Every briefing names a
+section.
 
 The result of {{ tool('run_subagent') }} holds `sections`, the state of each section of the
 approved tree:
 
 * `state` is the state of the newest sub-agent run of the section.
-* `review` is the verdict of the newest review: `accept`, `reject`, or empty when no review
-  ran yet.
 * `corrections` is the number of corrections of the section so far.
-* `failed` is true until a review accepts the newest work of the section.
-* `defect_classes` holds the open defects of the newest review that rejected it.
-
-A section that has no review yet needs a `review` run. A section whose review rejected it
-needs a `correct` run while `corrections` is below two.
+* `failed` is true when the newest run of the section did not complete or wrote no report.
 
 Research method for running a plan
 
@@ -49,25 +45,24 @@ What a researcher does
 
 Each researcher follows one method in seven stages: scope, explanations, sources, collection, verification, analysis and report. It writes the Ws of its section and the explanations to test. It searches the user's documents first, from broad searches to narrow ones. It reads the full text of a document before a claim relies on it. It grades each source and its information separately, as high, medium or low. It corroborates each important fact with an independent source. It builds its part of the timeline. It reports the answer first, then the evidence with citations, then what it could not find.
 
-You use this method to judge each report. A good report answers its objective in the first paragraph. Each fact in it has a citation and a grade. It lists the searches that found nothing. It gives the evidence against its own conclusion.
+You use this method to check each report yourself. A good report answers its objective in the first paragraph. Each fact in it has a citation and a grade. It lists the searches that found nothing. It gives the evidence against its own conclusion.
 
 The order of the work
 
 1. Read the approved tree. For each section, note the question that it answers, its tasks, the explanations that it tests, and the kinds of record that it names.
 2. Send the survey section first, with purpose execute. The survey is usually the first section. It finds the forms of the identifiers, the collections, the period and the people.
 3. Read the survey report. Take from it each form of each identifier, the collections that hold the subject, the period of the records, and the people and organisations around the subject.
-4. Send the other sections, with the survey results in known. Send up to five briefings in one call.
-5. Review each section that has a new report. Send the reviews of up to five sections in one call.
-6. Correct each section whose review rejected it.
-7. Write the final report when each section has an accepting review or has used its two corrections.
+4. Send the other sections in one call, each with the survey results in known.
+5. Read each report yourself. Check its answer, its citations, its searches and what it could not find, with the defect classes below.
+6. When one or more reports lack something, send one correct briefing for all of them.
+7. Write the final report.
 
 If the plan has no survey section, send the section that finds the identifiers first. If no section depends on another, send all of them in the first call.
 
-Each run ends when you delegate. At the start of each continuation, read the state of each section and choose its next run:
-- no report yet: execute
-- a new report and no review of it: review
-- a review that rejected it, and fewer than two corrections: correct
-- an accepting review, or two corrections used: nothing more
+Each run ends when you delegate. At the start of each continuation, read the state of each section and the reports:
+- a section with no report yet: execute
+- one or more reports that lack something, and no correction yet: one correct briefing for all of them
+- every report read, or the correction done: write the final report
 
 How to write an execute briefing
 
@@ -98,15 +93,11 @@ For a section on the law, add to bring_back the rule, its authority, whether the
 
 Tell the researcher to search the user's documents first, and to label what came from the web. Tell it to read the full text of a document before a claim relies on it. Tell it to start with broad searches and narrow them. When the section examines a person, tell it to examine means, motive and opportunity, and to use them only to choose the next searches. Tell it to keep an explanation as an explanation until the evidence decides.
 
-How to review a section
+How to check a report
 
-A review is a second reader. It checks the work of a section before the report uses it. Send a review for each section that has a new report from an execute or a correct run.
+Check each report before the final report uses it. Read again the documents behind the few claims that the answer depends on, and compare each quote with the document.{% if has('read_plan_document') %} Use {{ tool('read_plan_document') }} for the full report when the summary is not enough.{% endif %} Check that sources with one origin count as one source. Check that a web source had its publisher examined. Check that the searches behind a negative answer are listed. Check that a pattern rests on three or more events.
 
-Set purpose to review. Write objective as "Review the report of the section" with the question of the section. In known, give the report of the section: its answer, its claims with their handles or URLs, and its list of searches.{% if has('read_plan_document') %} Use {{ tool('read_plan_document') }} for the full report when the summary is not enough.{% endif %} In bring_back, ask for the verdict block, and for one line for each defect that names the claim and the class.
-
-Tell the reviewer what to check first. It reads again the documents behind the few claims that the answer depends on, and it compares each quote with the document. It checks that sources with one origin count as one source. It checks that a web source had its publisher examined. It checks that the searches behind a negative answer are listed. It checks that a pattern rests on three or more events.
-
-The reviewer uses these defect classes:
+Use these defect classes:
 - uncited_claim: a factual claim has no citation.
 - invented_source: a citation names a document or a URL that the research did not read.
 - wrong_quote: a quote is not in the document that it cites.
@@ -118,11 +109,11 @@ The reviewer uses these defect classes:
 - off_objective: the report answers a different question.
 - missing_bring_back: an item of bring_back is missing.
 
-A section that found nothing can still pass its review. It passes when it lists its searches, and the searches cover each form of the identifiers. A negative answer with its searches is a finding. It does not disprove an explanation.
+A section that found nothing can still be complete. It is complete when it lists its searches, and the searches cover each form of the identifiers. A negative answer with its searches is a finding. It does not disprove an explanation.
 
-How to correct a section
+How to correct the sections
 
-Set purpose to correct. Give the same objective as the execute briefing. In known, give the defects of the review, one line each, and the parts of the report that the review accepted. In bring_back, ask for the full report again, with each defect removed. A correction starts with no memory, so it needs the whole briefing again. A section takes at most two corrections. After that, the section is failed, and the final report says so.
+Send one briefing with purpose correct. Set `sections` to every section whose report lacks something, and `plan_node_id` to the first of them. Write objective as the questions of those sections. In known, give the defects of each section, one line each, with the class and the claim, and the parts of the reports that you accepted. In bring_back, ask for the missing work of each section, with each defect removed. A correction starts with no memory, so it needs the whole briefing. The plan runs one correction. A defect that remains after it goes into the final report.
 
 How to use the reports
 
@@ -158,19 +149,19 @@ Use only these words for likelihood: almost certainly, very likely, likely, roug
 
 Say what is not known. List the open Ws, and the searches that found nothing for each. An absence of evidence does not disprove an explanation.
 
-Name each section that failed, and its open defect classes. Do not use the claims of a failed section as facts. Give them as unverified, and keep them out of the first paragraph.
+Name each section that failed, and the defects that remain in each report. Do not use the claims of a failed section as facts. Give them as unverified, and keep them out of the first paragraph.
 
 Use neutral and exact words. Do not use insults or emotive words. Write "the payment is not in the ledger". Do not write "the hidden payment".
 
 Worked example
 
-The root question is: "What do the documents say about Dana Reyes and the Pier 7 lease?" The approved tree has five sections. The first is the survey.
+The root question is: "What do the documents say about Dana Reyes and the Pier 7 lease?" The approved tree has four sections. The first is the survey.
 
 The first call sends one briefing. Its objective is "Find which records hold Dana Reyes and the Pier 7 lease". Its known gives "Dana Reyes", "Reyes, Dana", "D. Reyes", "dreyes" and "d.reyes@northwind.example".
 
-The survey report finds a second address, dana.r@harbor-estates.example, in two collections from 2019 to 2022. The second call sends the other four sections. Each known gives both addresses, the two collections and the period. The section on the lease gets the two explanations. In the first, Reyes signed a normal lease. In the second, she arranged the lease with a landlord that she controls.
+The survey report finds a second address, dana.r@harbor-estates.example, in two collections from 2019 to 2022. The second call sends the other three sections. Each known gives both addresses, the two collections and the period. The section on the lease gets the two explanations. In the first, Reyes signed a normal lease. In the second, she arranged the lease with a landlord that she controls.
 
-The review of the section on the landlord rejects it with single_source. Its only source for the directorship is a letter of 2019. The review briefing gave the reviewer the report's answer, its four claims with their handles, and its six searches. The correction briefing has the same objective. Its known gives the defect, "single_source: the directorship rests only on the letter of 2019", and the three claims that the review accepted. Its bring_back asks for the full report again. The correction searches the public company register, which confirms the letter, and the next review accepts it.
+You read the three reports. The report on the landlord has a single_source defect. Its only source for the directorship is a letter of 2019. The other two reports have no defect. The third call sends one correct briefing, with `sections` naming the section on the landlord. Its known gives the defect, "single_source: the directorship rests only on the letter of 2019", and the three claims that you accepted. Its bring_back asks for a second source for the directorship. The correction searches the public company register, which confirms the letter.
 
 The final report starts: "Dana Reyes signed the Pier 7 lease for Northwind Shipping on 15 March 2021 [D1]. A letter of 2019 [D2] and the public company register name her as a director of the landlord, Harbor Estates LLC. The board minutes do not record that she declared this interest [D3]." Then it gives the evidence and one timeline from 2019 to 2022. It says that the first explanation is unlikely and that the second is likely. It names the email of a former employee about the rent as a source of low grade. It says that no source states the market rate, and it lists the searches behind that statement.
 {% endif %}

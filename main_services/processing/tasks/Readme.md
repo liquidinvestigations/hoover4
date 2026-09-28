@@ -131,12 +131,35 @@ A turn with a stop row in `agent_turn_stops` closes in `open_run`.
 "The model queue wait passed ... s.", and a tool call that fails after its last attempt gets
 a stored `tool_unavailable` result, which the model reads. After 600 model steps one
 `final` step binds no tool, and the run ends `completed` with `end_reason` `step_budget`.
-A call that repeats an earlier call, with the same name and arguments, does not run when
-the earlier result is not an error. A result whose JSON object says `"success": false` or
-names an `error` is an error too, because a tool server sends a refusal as a normal result.
-The repeated call gets a `repeated_call` result that names the earlier call, and the other
-calls of its reply run. After 3 model steps in a row that hold only
-repeated calls, the run gets one `final` step (`repeated_call`). The reply of a `final`
+**The repeat stop** (`P_agent/steps.py`, `repeat_sources`). A call runs 3 times with the
+same name and arguments, and the 4th does not run. Only a run whose result is not an error
+counts. A result whose JSON object says `"success": false` or names an `error` is an error
+too, because a tool server sends a refusal as a normal result. A run whose result a
+compaction evicted, summarised, dropped or cut does not count. A todo or plan write, a
+delegation and a run-start read keep 1 run. The key of a todo or plan write holds the
+store version, so the write runs again after another write of its store. The reads of the
+todo list, the plan tree and the page of the browser never repeat. The refused call gets a
+`repeated_call` result whose text depends on the earlier call: it found nothing, it has a
+result, it was a run-start read, or it was a delegation. A chat or sub-agent result also
+names a skill. The other calls of its reply run.
+
+After 3 model steps in a row that hold only refused calls and exempt reads, the exempt
+reads run, and the run gets one repeat note as a nag. The note lists the searches that
+found nothing, and for a chat lead the open todo items. The second time, the run gets one
+`final` step (`repeated_call`), and no todo nag follows it. A sub-agent whose forced answer
+is empty gets one more `final` step. When that answer is empty too,
+`write_found_documents` writes the documents that it read and found as its result. The first
+`tools` reply of a thread with no text and no call gets one nag, "Your last reply had no
+text and no tool call", and one more model step.
+
+A model step that compacts writes one `compaction` chat row for a run that writes the
+transcript, at the first seq of the step, and every other row of the step moves one seq on.
+The row holds the running state when the `compaction` frame arrives, and the done state
+(`steps.compaction_line`, with `part_states`) after the `end` frame. A reply whose
+`model_turn` sets `note_warning` gets the note warning (`steps.NOTE_WARNING_TEXT`, a copy of
+the agent service's text) as a `human` row after its calls, and as a `nag` chat row.
+
+The reply of a `final`
 step is the answer, and each call in it gets a `not_run` result. The calls of one reply to
 the plan tree and todo tools run one after the other, in the order of the reply. The first turn
 of an ordinary chat starts with one `plan` step, which writes the plan through `write_todo`,
@@ -193,12 +216,22 @@ call, the
 JSON `{"reports": [...], "refused": [...]}`, and rewrites the call's transcript row with it.
 `write_ending` of a continuation writes its state into every run it continues. Child and
 continuation ids are `uuid5` values, so a retry and a second writer write the same rows, and
-a refused duplicate workflow start counts as started. A child at depth 2 cannot delegate.
+a refused duplicate workflow start counts as started. A child at depth 2 cannot delegate, and
+a sub-agent of a plan run cannot delegate (`_step_run` sends `can_delegate` false).
 
 The budgets: at most 5 briefings a call, `AGENT_SUBAGENT_MAX_PER_TURN` sub-agent runs a chat
-turn (default 6), `AGENT_PLAN_RUN_BUDGET` a plan run (default 300), and a depth 1 run spends
-only the share its parent gave it. The surplus is refused by name in the continuation's
-result. The counts leave out the caller's own batch, so a retry counts what it counted first.
+turn (default 6), `AGENT_PLAN_RUN_BUDGET` a plan run (default 5, and never more than 5), and
+a depth 1 run spends only the share its parent gave it. The surplus is refused by name in the
+continuation's result. The counts leave out the caller's own batch, so a retry counts what it
+counted first.
+
+The plan caps (`run_budgets.py`): an organizer runs one `execute` sub-agent for each section,
+and at most 4 sections exist, because `agent_plans.apply` refuses a tree change that makes
+more. It then runs at most one `correct` sub-agent, whose briefing names every section it
+corrects in `sections`. A `review` briefing, a second run of a section, a second correction
+and a briefing with no section are refused by name. A section fails when its newest run did
+not complete or wrote no report, and a correction's one report, under its first section,
+counts for every section it names.
 
 **The agent run sweep** (`supervise.py`) runs on `operations-queue` after the operation sweep
 of each `CollectEtaSamples` pass. It ends a running row whose workflow closed or does not

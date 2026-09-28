@@ -6,9 +6,9 @@ rendered by `deploy.py` from `hoover4.ini`). The research agent binds, runs and 
 catalogue only the tools of the run's packs. A tool that an MCP server lists and no pack
 names is refused for every run.
 
-The `skills` pack holds the three skill tools of the research agent. `packs_for` adds it to
-every run kind, also when the configured list omits it, because every run reads its role
-skill with `read_skill` at its start.
+The `skills` pack holds the three skill tools and the notes tool `write_note` of the research
+agent. `packs_for` adds it to every run kind, also when the configured list omits it, because
+every run reads its role skill with `read_skill` at its start.
 
 Each tool name is in exactly one pack. A test in every MCP server image lists that server's
 tools with the server's own `list_tools` and checks this, so a new tool with no pack fails a
@@ -22,7 +22,7 @@ from typing import Dict, FrozenSet, Optional
 
 PACKS: Dict[str, FrozenSet[str]] = {
     "catalogue": frozenset({"search_agent_tools"}),
-    "skills": frozenset({"search_skills", "read_skill", "read_tool"}),
+    "skills": frozenset({"search_skills", "read_skill", "read_tool", "write_note"}),
     "collections": frozenset({
         "list_collections", "search_collections", "search_passages", "search_facet_values",
         "search_histogram", "search_entity_explainer", "read_documents", "doc_search_text",

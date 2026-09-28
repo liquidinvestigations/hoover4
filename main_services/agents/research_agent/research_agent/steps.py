@@ -7,8 +7,10 @@ state of a run.
 
 `/model_step` streams `data: {json}` frames: `reasoning` and `response` deltas, then one
 `model_turn` with the classified calls of the reply (`CallEntry`), then one `end`. When the
-call compacted its input, `model_turn` carries `compaction`, the record that the worker stores
-as a `compaction` row of the run thread (`run_messages.apply_compactions`).
+call compacts its input, one `compaction` frame comes first, before the summary requests, and
+`model_turn` carries `compaction`, the version 2 record that the worker stores as a
+`compaction` row of the run thread (`run_messages.apply_compactions`). `model_turn` also
+carries `note_warning`, true when the worker writes the warning to save notes.
 
 Mode `plan` is the first-turn planning call. Its system text is `prompts/planning_call.md.j2`,
 it binds `write_todo` only, thinking is off, and a call to any other name is dropped. The
@@ -87,7 +89,7 @@ class StepRun(BaseModel):
     run_id: str = Field(description="The agent run id. It keys the context and the browser.")
     kind: Literal["chat", "subagent", "planner", "organizer"]
     depth: int = Field(description="0 for a lead, 1 or 2 for a sub-agent")
-    purpose: Optional[Literal["execute", "review", "correct"]] = None
+    purpose: Optional[Literal["execute", "correct"]] = None
     username: str
     session_id: str
     allowed_collections: List[str] = Field(default_factory=list)
@@ -292,43 +294,44 @@ def with_preload_item(args: Dict[str, Any], schema: Optional[dict]) -> Dict[str,
     return args
 
 
+def model_input_rows(earlier: Sequence[RunMessage], messages: Sequence[RunMessage]
+                     ) -> Tuple[List[RunMessage], List[RunMessage]]:
+    """The stored thread of one model call, with a `not_run` result for each unanswered
+    call of an earlier turn, and the list after every stored compaction."""
+    rows = close_unanswered(list(earlier)) + list(messages)
+    return rows, apply_compactions(rows)
+
+
 def build_model_input(
-    earlier: Sequence[RunMessage], messages: Sequence[RunMessage], model_id: str,
+    earlier: Sequence[RunMessage], messages: Sequence[RunMessage], model_id: str, *,
+    system_text: str = "", schemas_json: str = "",
+    summariser: Optional[compaction.Summariser] = None,
 ) -> Tuple[List[RunMessage], List[BaseMessage], Optional[compaction.CompactionReport]]:
-    """The input of one model call: the earlier turns and the run thread, with a `not_run`
-    result for each unanswered call of an earlier turn, every stored compaction applied,
-    and then the compaction of this call.
+    """The input of one model call: the earlier turns and the run thread, with every stored
+    compaction applied, and then the compaction of this call.
 
     Returns the applied rows, the list to send and the report of this call's compaction.
+    `system_text` and `schemas_json` are the fixed part, which the token estimate counts.
     """
-    rows = close_unanswered(list(earlier)) + list(messages)
-    applied = apply_compactions(rows)
-    compacted, report = compaction.compact_messages(to_langchain(applied), model_id=model_id)
-    return applied, compacted, report
+    rows, applied = model_input_rows(earlier, messages)
+    compacted, report = compaction.compact(
+        applied, rows, system_text=system_text, schemas_json=schemas_json,
+        model_id=model_id, summariser=summariser)
+    return applied, to_langchain(compacted), report
 
 
 def compaction_record(report: compaction.CompactionReport,
-                      applied: Sequence[RunMessage]) -> Dict[str, Any]:
-    """The content of the `compaction` row of one report: each replaced message by its
-    stored key. A message with no key, such as a `not_run` result, is left out."""
-    def keys(positions: Sequence[int]) -> List[List[Any]]:
-        out = []
-        for i in positions:
-            if 0 <= i < len(applied):
-                message = applied[i]
-                if message.thread_id is not None and message.idx is not None:
-                    out.append([message.thread_id, int(message.idx)])
-        return out
+                      applied: Sequence[RunMessage] = ()) -> Dict[str, Any]:
+    """The content of the `compaction` row of one report, a version 2 record. Each message
+    is named by its stored key. A message with no key, such as a `not_run` result, is not
+    named."""
+    return dict(report.row)
 
-    summarised = report.layer == "summarisation"
-    return {
-        "layer": report.layer,
-        "evicted": keys(report.evicted_positions),
-        "summarised": keys(report.summarised_positions) if summarised else [],
-        "handoff": report.summary if summarised else "",
-        "tokens_before": int(report.tokens_before),
-        "threshold": int(report.threshold_tokens),
-    }
+
+def compaction_frame(plan: compaction.CompactionPlan) -> Dict[str, Any]:
+    """The frame that the stream sends before the summary requests of a compaction."""
+    return {"type": "compaction", "state": "running", "tokens_before": plan.billed,
+            "target": plan.target, "parts": plan.parts}
 
 
 def _web_enabled(snapshot: Any) -> bool:
@@ -345,25 +348,40 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     bound = bound_names_from_thread(snapshot, thread)
     names = snapshot.callable_names(bound)
 
+    plan = request.mode == "plan"
+    if plan:
+        system_text = prompts.planning_call(
+            collections=request.allowed_collections, web_enabled=_web_enabled(snapshot))
+        bound_tools = [snapshot.tools_by_name[PLAN_TOOL]]
+    else:
+        system_text = context.system_text_for(names)
+        bound_tools = snapshot.tools_for(bound) if request.mode == "tools" else []
+    schemas_json = json.dumps([tool_schema(t) for t in bound_tools], default=str)
+
     # What the compaction returns goes to the model only. The stored thread keeps every
     # tool result in full, and the `compaction` row of the reply records what was replaced.
-    applied, compacted, report = await asyncio.to_thread(
-        build_model_input, request.earlier, request.messages, context.model_id
-    )
+    rows, applied = model_input_rows(request.earlier, request.messages)
+    window = await asyncio.to_thread(compaction.context_window, context.model_id)
+    if request.step_no <= 1 and compaction.fixed_part_passes_target(
+            applied, system_text, schemas_json, window):
+        log.warning("the system text, the tool schemas and the user messages of run %s pass "
+                    "the compaction target", request.run_id)
+    pending = await asyncio.to_thread(
+        compaction.plan_compaction, applied, rows, system_text=system_text,
+        schemas_json=schemas_json, model_id=context.model_id, window=window)
+    report = None
+    compacted = applied
+    if pending is not None:
+        yield compaction_frame(pending)
+        compacted, report = await asyncio.to_thread(compaction.finish_compaction, pending)
     history = to_langchain(applied)
-    record = compaction_record(report, applied) if report is not None else None
+    record = compaction_record(report) if report is not None else None
     if report is not None:
         await asyncio.to_thread(
             compaction.record_compaction, report,
             username=request.username, session_id=request.session_id,
         )
-    plan = request.mode == "plan"
-    if plan:
-        system_text = prompts.planning_call(
-            collections=request.allowed_collections, web_enabled=_web_enabled(snapshot))
-    else:
-        system_text = context.system_text_for(names)
-    model_input = [SystemMessage(content=system_text)] + list(compacted)
+    model_input = [SystemMessage(content=system_text)] + to_langchain(compacted)
 
     llm: Any = ThinkingChatOpenAI(
         **context.llm_kwargs,
@@ -373,9 +391,9 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
         extra_body=thinking.thinking_body(False) if plan else thinking_body(request),
     )
     if request.mode == "tools":
-        llm = llm.bind_tools(snapshot.tools_for(bound))
+        llm = llm.bind_tools(bound_tools)
     elif plan:
-        llm = llm.bind_tools([snapshot.tools_by_name[PLAN_TOOL]], tool_choice="auto")
+        llm = llm.bind_tools(bound_tools, tool_choice="auto")
     config = _callbacks_config(agent, request)
 
     timer = llm_events.CallTimer()
@@ -462,8 +480,11 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
             "total_tokens": int(usage.get("total_tokens") or 0),
             "reasoning_tokens": int(stats.reasoning_tokens or 0),
         },
-        "summarised": bool(report is not None and report.layer == "summarisation"),
+        "summarised": report is not None,
         "compaction": record,
+        # The worker writes the warning to save notes before the next compaction.
+        "note_warning": compaction.note_warning_due(
+            rows, usage, bool(calls) and not plan, window),
     }
     yield {
         "type": "end",
@@ -654,7 +675,8 @@ def _with_repairs(measure: Optional[Dict[str, Any]], repairs: List[str]) -> Opti
 __all__ = [
     "BROWSER_ACTIONS", "CallEntry", "KEEPALIVE_LINE", "KEEPALIVE_SECONDS", "ModelStepRequest",
     "PLAN_TOOL", "PRELOAD_ITEM", "StepRun", "TODO_MAX_ITEMS", "ToolCallRequest", "args_digest",
-    "build_model_input", "call_ids", "classify_calls", "compaction_record",
+    "build_model_input", "call_ids", "classify_calls", "compaction_frame",
+    "compaction_record", "model_input_rows",
     "classify_error", "llm_streaming_enabled", "run_model_step", "run_tool_call",
     "stream_frames", "thinking_body", "with_preload_item",
 ]

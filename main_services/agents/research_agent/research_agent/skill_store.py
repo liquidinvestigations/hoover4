@@ -111,6 +111,9 @@ class SkillContext:
     collections_hint: bool = True
     # Empty in the step context. The preload passes a copy with the classes.
     request_classes: Tuple[str, ...] = ()
+    # Empty in the step context. The preload of a planner run sets it, so the packing
+    # numbers use the stated window of the run's model.
+    model_id: str = ""
 
 
 # ------------------------------------------------------------------------ loading
@@ -243,7 +246,17 @@ def skill_variables(ctx: SkillContext, strict: bool = False) -> Dict[str, object
         "collections_hint": bool(ctx.collections_hint),
         "profile": ctx.profile,
         "request_classes": list(ctx.request_classes),
+        "packing": _packing(ctx),
     }
+
+
+def _packing(ctx: SkillContext):
+    """The packing numbers of `method_planner`. With no model id the window is 0, and
+    `packing_for` uses its default window with no catalogue query."""
+    from research_agent import compaction, packing
+
+    window = compaction.context_window(ctx.model_id) if ctx.model_id else 0
+    return packing.packing_for(ctx.request_classes, window)
 
 
 def render_skill(name: str, ctx: SkillContext, *, strict: bool = False,

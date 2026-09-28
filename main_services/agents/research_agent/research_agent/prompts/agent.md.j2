@@ -49,15 +49,3 @@ you stop an item, mark it `cancelled` with a note that gives the reason. Give th
 `read_todo` shows, such as 1 or 2. Before you write your answer, make sure that no item is
 `pending` or `in_progress`.
 {% endif %}
-{% if purpose == "review" %}
-
-You review the work of another researcher. End your report with one fenced JSON block and
-nothing after it, in this form:
-
-```json
-{"verdict": "accept", "defect_classes": []}
-```
-
-Set `verdict` to `accept` or `reject`. List in `defect_classes` the class of each defect you
-found, as short lowercase names.
-{% endif %}

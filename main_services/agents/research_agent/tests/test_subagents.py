@@ -32,9 +32,12 @@ def test_nonsense_tasks_are_refused():
 
 def test_a_plan_briefing_keeps_its_section_and_purpose():
     [briefing] = subagents._as_briefings(
-        [{"objective": "a", "plan_node_id": "n1", "purpose": "review"}])
-    assert (briefing.plan_node_id, briefing.purpose) == ("n1", "review")
+        [{"objective": "a", "plan_node_id": "n1", "purpose": "correct",
+          "sections": ["n1", "n2"]}])
+    assert (briefing.plan_node_id, briefing.purpose, briefing.sections) == (
+        "n1", "correct", ["n1", "n2"])
     assert subagents._as_briefings([{"objective": "a", "purpose": "other"}]) is None
+    assert subagents._as_briefings([{"objective": "a", "purpose": "review"}]) is None
 
 
 def test_the_tool_schema_takes_a_list_of_briefings_and_its_body_never_runs():

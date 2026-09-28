@@ -251,9 +251,12 @@ async def run_preload(agent: Any, request: PreloadRequest) -> Dict[str, Any]:
     found = await classify(request.request_text, parts, dict(snapshot.summaries))
     type_scores = found.scores.get("types", {})
     classes = request_classes(type_scores)
-    # Only a planner renders its skill with the classes. For every other run kind, a
-    # synthetic read is the same text as a later read of the model.
-    read_ctx = replace(ctx, request_classes=tuple(classes)) if request.kind == "planner" else ctx
+    # Only a planner renders its skill with the classes and its model's window, which set the
+    # packing numbers of `method_planner`. For every other run kind, a synthetic read is the
+    # same text as a later read of the model. The copy is stored nowhere.
+    read_ctx = (replace(ctx, request_classes=tuple(classes),
+                        model_id=getattr(context, "model_id", "") or "")
+                if request.kind == "planner" else ctx)
 
     skill_scores = found.scores.get("skills", {})
     technique = skill_picks(skill_scores, ctx, "technique", TECHNIQUE_MIN, TECHNIQUE_CAP)

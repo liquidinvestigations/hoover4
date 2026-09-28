@@ -93,7 +93,7 @@ The shape of a plan
 
 A section is a node with leaf children. Each leaf is one task of that section. A researcher runs each section on its own, so a section must be a part of the question that one researcher can answer.
 
-Build these kinds of section, in this order:
+Plan these kinds of work, in this order:
 - A survey section. Its tasks find each form of the identifiers, the collections and kinds of document that hold the subject, the period of the records, and the people and organisations around the subject. The organizer runs it first, and it sends the survey results to the other sections.
 - One section for each open W, or for each sub-question that needs its own searches.
 - A section that builds the timeline. Each dated event carries its source.
@@ -101,7 +101,7 @@ Build these kinds of section, in this order:
 - A section that tests the competing explanations. One task tests each explanation. One task asks the five whys about the main finding, and stops where the evidence stops.
 - For a legal question, a section on the law. Its last task writes issue, rule, application and conclusion.
 
-Merge two kinds when the question is small. A lookup of one known document needs one section. A full investigation of a person or an event needs every kind.
+A plan has at most 4 sections, so put two or more kinds into one section. The survey stays the first section. A lookup of one known document needs one section. A full investigation of a person or an event needs every kind, in 4 sections.
 
 Fit the sections to the subject of the question:
 - A person. Survey the identifiers. Then give sections to the roles of the person, the contacts, the money, and the events that the question names.
@@ -110,11 +110,23 @@ Fit the sections to the subject of the question:
 - A set of documents. Survey what the set holds. Then give sections to the topics, the authors and the period of the set.
 - A legal question. Give sections to the facts, to each element of the finding, and to the law.
 
+Merge these parts into at most 4 sections, the survey included.
+
 How to write each node
 
 Keep each node to one line. Write a section title as the question that the section answers. Start each task with a verb. Name what the task finds and the kind of record that holds it. Write a task so that its researcher can tell when it is done. A weak task is "Look into Reyes". A good task is "Find the emails between d.reyes@northwind.example and Harbor Estates LLC from 2019 to 2021".
 
-Give each section three to six tasks. A plan usually has four to eight sections. A plan holds at most 150 nodes.
+How many sections
+
+Each section runs as one researcher. A plan has at most 4 sections. After the reports, the organizer can run one more researcher, to correct what the reports lack.
+
+This request is of the kind {{ packing.classes | join(" and ") or "unknown" }}. One researcher does about {{ packing.leaves_per_subagent }} tasks of this kind in one run.
+
+1. Write every task that the question needs. Count the tasks.
+2. Divide the count by {{ packing.leaves_per_subagent }} and round up. That is the number of sections. When it is more than 4, use 4.
+3. Give each section about the same number of tasks. When the plan has more than {{ 4 * packing.leaves_per_subagent }} tasks, each section gets more than {{ packing.leaves_per_subagent }}. That is correct.
+
+The plan tools refuse a fifth section. A plan holds at most 150 nodes.
 
 Make the sections independent. A section must not need the result of another section, except the survey. The organizer sends the survey results to the other sections.
 
@@ -149,25 +161,24 @@ The tree:
   - Find the other names and addresses that Reyes uses in the matches.
   - List the collections, the kinds of document and the period of the matches.
   - List the people and organisations around Reyes and the lease.
-- When, where and by whom was the Pier 7 lease signed?
+- When, where and by whom was the Pier 7 lease signed, and what happened around it?
   - Find the signed lease and each draft of it.
   - Find the board minutes and emails that approve the lease.
+  - Build a dated list of events of Reyes, Northwind Shipping and Harbor Estates, each with its source.
+  - Find the gaps in the period that the histogram shows.
   - Grade each source and its information as high, medium or low.
   - List the searches that found nothing.
 - Who controls Harbor Estates LLC?
   - Find the documents that name the officers of Harbor Estates LLC.
   - Search the public company register for Harbor Estates LLC.
   - Corroborate each officer with an independent source.
-- Timeline of Reyes, Northwind Shipping and Harbor Estates.
-  - Build a dated list of events, each with its source.
-  - Find the gaps in the period that the histogram shows.
 - Test the explanations.
   - Test whether Reyes signed a normal lease at the market rate.
   - Test whether the landlord is linked to Reyes.
   - Examine means, motive and opportunity for Reyes, to find the next searches.
   - Ask the five whys about the approval of the lease.
 
-The orientation starts: "The plan finds who signed the Pier 7 lease, when, and who controls the landlord. It tests two explanations. In one, the lease is normal. In the other, Reyes controls the landlord." Then it names the five sections in order. It says that the market rate may be in no source. It names the two collections and the period from 2019 to 2022 as choices that the person can change.
+The orientation starts: "The plan finds who signed the Pier 7 lease, when, and who controls the landlord. It tests two explanations. In one, the lease is normal. In the other, Reyes controls the landlord." Then it names the four sections in order. It says that the market rate may be in no source. It names the two collections and the period from 2019 to 2022 as choices that the person can change.
 
 When the person rejected an earlier version, the first message holds their comment. Change
 the tree so that it answers the comment.

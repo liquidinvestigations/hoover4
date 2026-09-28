@@ -102,7 +102,7 @@ def model(monkeypatch):
     monkeypatch.setattr(execution, "MAX_PAGE_TOKENS", None)
     monkeypatch.setattr(steps.llm_events, "record_llm_call", lambda *a, **k: None)
     monkeypatch.setattr(steps.compaction, "record_compaction", lambda *a, **k: None)
-    monkeypatch.setattr(steps.compaction, "compact_messages", lambda messages, **k: (list(messages), None))
+    monkeypatch.setattr(steps.compaction, "plan_compaction", lambda *a, **k: None)
     scripted = ScriptedModel(replies=[], bound_log=[], kwargs_log=[], inputs=[])
 
     def make(**kwargs):
@@ -335,7 +335,7 @@ async def test_a_whole_reply_keeps_its_reasoning(monkeypatch):
     monkeypatch.setenv("LLM_STREAMING", "false")
     monkeypatch.delenv("LLM_MODEL", raising=False)
     monkeypatch.setattr(steps.llm_events, "record_llm_call", lambda *a, **k: None)
-    monkeypatch.setattr(steps.compaction, "compact_messages", lambda messages, **k: (list(messages), None))
+    monkeypatch.setattr(steps.compaction, "plan_compaction", lambda *a, **k: None)
 
     def answer(request):
         return httpx.Response(200, json={

@@ -250,8 +250,9 @@ mcp_browser_mem_limit = 24G
 ; Sub-agent runs one chat turn may start through run_subagent, at every depth.
 ; A chat turn that runs a plan counts against agent_plan_run_budget instead.
 agent_subagent_max_per_turn = 6
-; Sub-agent runs one research plan may start over all its organizer steps.
-agent_plan_run_budget = 300
+; Sub-agent runs one research plan may start over all its organizer steps:
+; 4 sections and 1 correction. The worker uses at most 5, even when this is larger.
+agent_plan_run_budget = 5
 ; Tool packs for each kind of agent run: a comma list of pack names, or all.
 ; The packs are catalogue, collections, conversation, plan, delegation, web and
 ; browser. The agent service refuses to start on an unknown pack name.
@@ -342,30 +343,19 @@ gpu_connect_timeout_ms  = 2000     ; short: a dead host must not stall the pipel
 gpu_circuit_break_seconds = 60     ; after N consecutive failures, skip straight to CPU
 
 # ---- chat context compaction ----------------------------------------------------
-; When a chat turn's context grows past a fraction of the model's stated context
-; window, the agent stops sending the older tool results to the model and sends a
-; placeholder instead. The calls that produced them stay, so the model still sees
-; what it searched for, and the transcript is never edited -- the user scrolling back
-; sees every result in full.
+; When the last model call of a run reaches a fraction of the model's stated context
+; window, the agent replaces the older steps with a record. It plans the list to a third
+; of that size before the next call. The record starts with lists that code writes:
+; the searches, the documents read, and the skill and tool texts that left the list.
+; A model writes the rest. The user's messages, the newest todo and plan, the citations,
+; the sub-agent reports, the skills, the notes and the newest steps stay in the list. The
+; transcript is never edited, so the user scrolling back sees every result in full.
 ;
 ; The fraction is a fraction of what the provider says its window is. A model whose
 ; window the provider never states is never compacted, because there is no
 ; denominator and guessing one loses evidence silently.
-;
-; 0.65 is the specified figure. The earlier turns of a chat reach the model with their
-; tool calls and results, so a long conversation reaches it. The compacted list is kept
-; for the later calls of the conversation.
-agent_compaction_fraction   = 0.65
-; How many of the most recent tool results survive intact. The model is usually still
-; working with what it just read.
-agent_compaction_keep_recent = 3
-; When eviction is not enough, the older messages are replaced by one structured handoff
-; document. The user's own messages, the todo and every message carrying a citation
-; handle are never summarised -- they are selected in code and copied through unchanged,
-; so no summariser can lose them. This is how many trailing messages are kept on top of
-; those.
-agent_compaction_keep_recent_messages = 6
-; Model that writes the handoff document. Summarising a transcript is not the task the
+agent_compaction_fraction   = 0.80
+; Model that writes the record. Summarising a transcript is not the task the
 ; conversation model was chosen for, so it can be a cheaper or faster one. Blank means
 ; the model that is answering.
 agent_compaction_model =

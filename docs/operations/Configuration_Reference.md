@@ -159,8 +159,10 @@ slots, 1 by default. The email graph runs in one more process of its own, on
 `browser_max_contexts` is live Chromium processes on `hoover4-mcp-browser`, one per chat.
 `mcp_browser_mem_limit` is that container's memory ceiling.
 `agent_subagent_max_per_turn` (default `6`) is how many sub-agent runs one chat turn may
-start, at every depth. `agent_plan_run_budget` (default `300`) is how many sub-agent runs
-one research plan may start. A turn that runs a plan counts against the plan budget only.
+start, at every depth. `agent_plan_run_budget` (default `5`) is how many sub-agent runs
+one research plan may start: one for each of at most 4 sections, and 1 correction. The worker
+uses at most 5, even when the key is larger. A turn that runs a plan counts against the plan
+budget only.
 The worker refuses the briefings past a budget by name, and the model reads the refusals.
 `agent_packs_chat`, `agent_packs_subagent`, `agent_packs_planner` and
 `agent_packs_organizer` give the tool packs of each kind of agent run, as a comma list of
@@ -200,9 +202,10 @@ bounds do not have keys either: the agent's keepalive line every 30 s, the worke
 read of the agent stream and the website's 180 s stall window.
 
 `agent_compaction_fraction` is the fraction of the model's stated context window at which
-the agent compacts the context of a model call. The templates and the code default set 0.65.
-An empty key keeps the code default. The compacted list is kept for the later calls of the
-conversation.
+the agent compacts the context of a model call, to a third of that size. The templates and
+the code default set 0.80. An empty key keeps the code default. The compacted list is kept
+for the later calls of the conversation. `agent_compaction_model` names the model that
+writes the record, and empty is the answering model.
 
 `agent_max_output_tokens` is the output cap of every agent model request, sent as
 `max_completion_tokens`. Empty sends no cap, and the templates set 32768.

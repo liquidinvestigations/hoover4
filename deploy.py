@@ -234,7 +234,7 @@ DEFAULTS = {
         "browser_max_contexts": "16",
         # The sub-agent budgets of a chat turn and of a research plan run.
         "agent_subagent_max_per_turn": "6",
-        "agent_plan_run_budget": "300",
+        "agent_plan_run_budget": "5",
         # Tool packs for each kind of agent run: a comma list of pack names, or `all`.
         "agent_packs_chat": "all",
         "agent_packs_subagent": "all",
@@ -1384,12 +1384,6 @@ def render_main_env(cfg):
     # compaction off, which is not what leaving a key blank means anywhere else here.
     if cfg.get(m, "agent_compaction_fraction"):
         env["AGENT_COMPACTION_FRACTION"] = cfg.get(m, "agent_compaction_fraction")
-    if cfg.get(m, "agent_compaction_keep_recent"):
-        env["AGENT_COMPACTION_KEEP_RECENT"] = cfg.get(m, "agent_compaction_keep_recent")
-    if cfg.get(m, "agent_compaction_keep_recent_messages"):
-        env["AGENT_COMPACTION_KEEP_RECENT_MESSAGES"] = cfg.get(
-            m, "agent_compaction_keep_recent_messages"
-        )
     if cfg.get(m, "agent_compaction_model"):
         env["LLM_MODEL_COMPACTION"] = cfg.get(m, "agent_compaction_model")
 
@@ -1468,7 +1462,7 @@ def render_main_env(cfg):
     env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")
     # The sub-agent budgets of the worker's delegate_step. Empty keeps 6 and 300.
     env["AGENT_SUBAGENT_MAX_PER_TURN"] = cfg.get(m, "agent_subagent_max_per_turn") or "6"
-    env["AGENT_PLAN_RUN_BUDGET"] = cfg.get(m, "agent_plan_run_budget") or "300"
+    env["AGENT_PLAN_RUN_BUDGET"] = cfg.get(m, "agent_plan_run_budget") or "5"
     for kind in ("chat", "subagent", "planner", "organizer"):
         env[f"AGENT_PACKS_{kind.upper()}"] = cfg.get(m, f"agent_packs_{kind}") or "all"
     env.update(agent_probe_env(cfg))

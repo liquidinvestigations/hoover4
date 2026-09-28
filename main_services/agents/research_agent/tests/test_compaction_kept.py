@@ -2,8 +2,8 @@
 list, so the calls above the threshold do not alternate between a short and a full list.
 
 The replay uses a synthetic thread. Each reply makes two tool calls, each result has 30,000
-characters, the window is 262,144 tokens, and the prompt tokens of a call are the fit
-`4,466 + characters / 2.91` over the list that the call sends.
+characters, the window is 262,144 tokens, the fraction is 0.80, and the prompt tokens of a
+call are the fit `4,466 + characters / 2.91` over the list that the call sends.
 """
 
 import json
@@ -16,21 +16,21 @@ from research_agent.run_messages import (
 )
 
 WINDOW = 262_144
-THRESHOLD = int(WINDOW * 0.65)
+THRESHOLD = int(WINDOW * 0.80)
 THREAD = "11111111-2222-4333-8444-555555555555"
 RESULT_CHARS = 30_000
 
 
 @pytest.fixture(autouse=True)
 def _window(monkeypatch):
-    for name in ("AGENT_COMPACTION_FRACTION", "AGENT_COMPACTION_KEEP_RECENT",
-                 "AGENT_COMPACTION_KEEP_RECENT_MESSAGES", "CLICKHOUSE_URL"):
+    for name in ("AGENT_COMPACTION_FRACTION", "CLICKHOUSE_URL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(compaction, "context_window", lambda model_id: WINDOW)
+    monkeypatch.setattr(compaction, "summarise_with_model", lambda prompt, **k: "## Goal\nx")
 
 
 def _tokens(messages) -> int:
-    chars = sum(len(compaction._content_text(m)) for m in messages)
+    chars = sum(len(str(m.content)) for m in messages)
     return int(4466 + chars / 2.91)
 
 
@@ -72,9 +72,10 @@ def test_the_first_call_over_the_threshold_compacts_and_writes_a_row():
     rows = [m for m in thread if m.role == "compaction"]
     assert len(rows) == 1
     record = json.loads(rows[0].content)
-    assert record["layer"] == "eviction"
-    assert record["evicted"] and all(k[0] == THREAD for k in record["evicted"])
+    assert record["version"] == 2 and record["layer"] == "record"
+    assert record["summarised"] and all(k[0] == THREAD for k in record["summarised"])
     assert record["threshold"] == THRESHOLD
+    assert record["target"] == THRESHOLD // 3
 
 
 def test_no_call_after_a_compaction_sends_the_full_list_again():
@@ -87,15 +88,20 @@ def test_no_call_after_a_compaction_sends_the_full_list_again():
         assert sent[i] < THRESHOLD, i
 
 
-def test_a_failed_tool_result_in_the_evicted_range_is_kept_whole():
-    _, _, reports, thread = _replay(16, failed_at=2)
-    assert any(r is not None for r in reports)
-    applied = apply_compactions(thread)
-    failed = [m for m in applied if m.role == "tool" and m.status == "error"]
-    assert len(failed) == 2
-    assert all(m.content == "E" * RESULT_CHARS for m in failed)
-    ok = [m for m in applied if m.role == "tool" and m.status != "error"]
-    assert any(m.content == compaction.EVICTION_PLACEHOLDER for m in ok)
+def test_the_stored_row_gives_the_list_that_the_compacting_call_sent():
+    _, _, reports, thread = _replay(12)
+    first = next(i for i, r in enumerate(reports) if r is not None)
+    ai = [i for i, m in enumerate(thread) if m.role == "ai"][first]
+    prefix = thread[:ai]
+    _, compacted, report = steps.build_model_input([], prefix, "m")
+    assert report is not None
+    row = thread[ai + 1]
+    assert row.role == "compaction"
+    replayed = apply_compactions(prefix + [row])
+    assert [m.content for m in steps.to_langchain(replayed)] == [m.content for m in compacted]
+    asked = {c.id for m in replayed if m.role == "ai" for c in m.tool_calls}
+    answered = {m.tool_call_id for m in replayed if m.role == "tool"}
+    assert asked == answered
 
 
 def test_a_thread_under_the_threshold_is_sent_as_it_is():

@@ -16,6 +16,8 @@ and result hold ids, counts and tool names.
 * `record_step_failure` stores a `tool_unavailable` result for a tool step that failed.
 * `plan_has_sections` answers whether the planner wrote a plan section.
 * `needs_citations` answers whether a chat answer gets the citation round.
+* `write_repeat_note` writes the repeat note, or the text after an empty reply, as a nag.
+* `write_found_documents` writes the listing of a sub-agent that answered with no text.
 
 A stored write has a fixed key (`(thread_id, idx)`, `(username, session_id, seq)`), so a
 retry writes the same rows. The `ai` message of a step carries `step_no` in its usage, and a
@@ -44,6 +46,7 @@ from tasks.P_agent.activities import (
     DELEGATION_TOOL, CallRef, RunSummary, _add_continuation_results, _delegate,
     _finish_stream_rows_from, _insert_chat_row, agent_url_for, call_refs, canonical_json,
 )
+from tasks.P_agent import thread_facts
 from tasks.P_agent.model_timeouts import STEP_HEARTBEAT_SECONDS
 
 log = logging.getLogger(__name__)
@@ -55,8 +58,9 @@ TOOL_READ_SECONDS = 310
 #: The connect timeout of both step requests. A dead agent host fails the step in seconds.
 CONNECT_SECONDS = 10
 
-#: The count of model steps in a row whose every call repeats an earlier call. The step
-#: that reaches it gets one `final` step, which binds no tool.
+#: The count of model steps in a row whose calls are repeats or exempt reads. The first
+#: step that reaches it gets the repeat note, and the second gets one `final` step, which
+#: binds no tool.
 REPEAT_STEP_LIMIT = 3
 
 #: The human message of a `final` step, for each reason.
@@ -80,14 +84,66 @@ NOT_RUN_TEXT = {
                       "so none of them ran."),
 }
 
-#: Reads that a model repeats on purpose. A repeat of one of them runs.
-REPEAT_EXEMPT = ("read_todo", "read_plan")
+#: A call runs this many times with the same key before the next one is refused. A todo
+#: or plan write, a delegation, and a call whose first run was a run-start read keep 1 run
+#: (`runs_allowed`).
+REPEAT_RUNS_ALLOWED = 3
 
-#: The stored result of a call that repeats an earlier call. The call does not run. The
-#: other calls of its reply run.
-REPEATED_CALL_TEXT = ("This call has the same name and arguments as call {call_id} of "
-                      "step {step_no}, so it was not run. Use the result of that call, or "
-                      "change the arguments.")
+#: Reads of state that changes while the run waits. They never repeat.
+REPEAT_EXEMPT = ("read_todo", "read_plan",
+                 "browser_snapshot", "browser_take_screenshot", "browser_wait_for",
+                 "browser_tabs", "browser_console_messages", "browser_network_requests")
+
+#: The writes of the todo list and of the plan tree. Their key holds the store version, so
+#: a write repeats only when no write of its store succeeded after the earlier one.
+TODO_WRITES = frozenset({"write_todo", "edit_todo", "mark_todo"})
+PLAN_WRITES = frozenset({"append_node", "append_child", "move_node", "edit_node", "remove_node"})
+STORE_OF = dict([(n, "todo") for n in TODO_WRITES | {"read_todo"}]
+                + [(n, "plan") for n in PLAN_WRITES | {"read_plan"}])
+
+#: The stored results of a call that repeats an earlier call, by the kind of the earlier
+#: call. The call does not run. The other calls of its reply run.
+REPEAT_TEXT_EMPTY = ("This call has the same name and arguments as {source}, which found "
+                     "nothing, so it was not run. Send another query, remove a filter, or "
+                     "write down that the documents hold nothing on this.")
+#: The `{source}` of REPEAT_TEXT_EMPTY, for one earlier call and for more than one.
+REPEAT_SOURCE_ONE = "call {call_id} of step {step_no}"
+REPEAT_SOURCE_MANY = "{runs} earlier calls, the first being call {call_id} of step {step_no}"
+REPEAT_TEXT_RESULT = ("This call has the same name and arguments as call {call_id} of step "
+                      "{step_no}, so it was not run. Its result is above. Use it, and go on "
+                      "to your next todo item.")
+REPEAT_TEXT_START = ("This call has the same name and arguments as call {call_id}, which this "
+                     "run made at its start, so it was not run. Its result is above.")
+REPEAT_TEXT_DELEGATION = ("This call sends the same briefings as call {call_id} of step "
+                          "{step_no}, so no sub-agent was started. The reports of those "
+                          "briefings are in the result of that call above. Use them, or send "
+                          "briefings with new objectives.")
+#: The text of a source with a result when more than one earlier call ran with the key.
+REPEAT_TEXT_COUNT = ("This call has the same name and arguments as {runs} earlier calls, the "
+                     "first being call {call_id} of step {step_no}, so it was not run. Use "
+                     "those results, or change the arguments.")
+
+#: The skill that each kind of refusal names, for a run of kind `chat` or `subagent`.
+REPEAT_SKILLS = {"empty": "no_results", "result": "after_a_result", "start": "after_a_result"}
+REPEAT_SKILL_KINDS = ("chat", "subagent")
+
+#: Mirrors `research_agent/stumbles.py` SKILL_LINE. The two images share no module.
+SKILL_LINE = "Before you call this tool again, read the skill `{skill}` with `read_skill`."
+
+#: The first words of the repeat note. They differ from FINAL_TEXT["repeated_call"], so a
+#: count of the human rows that start with them finds notes only.
+REPEAT_NOTE_HEAD = "Repeat note. Your last 3 replies only repeated earlier calls"
+
+#: The most lines of one list of the repeat note, the newest.
+REPEAT_NOTE_LINES = 20
+
+#: The human message of a second `final` step of a sub-agent whose forced answer was empty.
+EMPTY_ANSWER_TEXT = ("Your reply was empty. Write your report now, from the results above. "
+                     "Name the documents you rely on. If they contain nothing relevant, say so.")
+
+#: The human message after a `tools` reply with no text and no call, once in a thread.
+EMPTY_REPLY_TEXT = ("Your last reply had no text and no tool call. Make the call you planned, "
+                    "or write your answer now from the results above.")
 
 #: The error class of the stored result of a repeated call.
 REPEATED_CALL_CLASS = "repeated_call"
@@ -120,6 +176,21 @@ SUMMARY_NOTICE = (
 )
 
 
+#: The note warning, written as a `human` row after a reply whose `model_turn` frame sets
+#: `note_warning`. Mirrors `NOTE_WARNING_TEXT` in the research agent's `compaction.py`,
+#: which decides when the warning is due and finds it by its start. The images share no
+#: module, so a test compares the two strings.
+NOTE_WARNING_TEXT = (
+    "Your context is at {pct} percent of its limit. The older steps of this run will soon "
+    "be replaced by a record. Save each fact that you need later with `write_note` now. "
+    "When `write_note` is not ready, call `read_tool` with the name `write_note` first. "
+    "Then call `write_note` in your next reply."
+)
+#: The chat role of the compaction line: one row for each compaction of a run that writes
+#: the transcript, at the first seq of its step.
+COMPACTION_ROLE = "compaction"
+
+
 class ModelRequestRejected(Exception):
     """The agent service refused the model request, and a repeat cannot fix it (an HTTP 4xx
     other than 408 and 429). The workflow does not retry this type."""
@@ -147,23 +218,32 @@ class ModelStepParams(StepRef):
     mode: str = "tools"
     #: `step_budget` or `repeated_call`, for mode `final`.
     final_reason: str = ""
+    #: A second `final` step of a sub-agent, after an empty answer. The human text is
+    #: EMPTY_ANSWER_TEXT with the "Bring back" text. `final_reason` keeps the first reason.
+    empty_retry: bool = False
 
 
 @dataclass
 class ModelStepResult:
     #: `answered`, `calls` or `closed`. A `plan` step whose reply has no call gives
-    #: `no_plan`, and writes no answer.
+    #: `no_plan`, and writes no answer. A `tools` reply with no text and no call, in a
+    #: thread with no EMPTY_REPLY_TEXT row, gives `empty`, and writes no answer.
     outcome: str
     #: The calls of the reply that the loop runs. A repeated call has its result already,
     #: and is not in the list.
     calls: list[CallRef] = field(default_factory=list)
-    #: The count of model steps in a row, this one included, whose every call repeats an
-    #: earlier call. 0 when a call of this reply is not a repeat.
+    #: The count of model steps in a row, this one included, that hold only repeated calls
+    #: and exempt reads, with one repeat at least (`repeat_streak`). 0 otherwise.
     repeat_streak: int = 0
     next_seq: int = 0
     #: The thread index after the last row of the reply (`reply_end_idx`). A `closed` or
     #: `no_plan` result gives the index of its `ai` message.
     next_idx: int = 0
+    #: The repeat notes that this run wrote in its thread: its human rows that start with
+    #: REPEAT_NOTE_HEAD.
+    repeat_notes: int = 0
+    #: A reply with no call and no text that wrote the answer row or gives `empty`.
+    empty_answer: bool = False
 
 
 @dataclass
@@ -248,13 +328,15 @@ def _step_run(row, params: StepRef) -> dict[str, Any]:
         "run_id": row.run_id,
         "kind": row.kind,
         "depth": row.depth,
-        # The purpose of a plan sub-agent. `review` adds the verdict block to its prompt.
-        "purpose": row.purpose or None,
+        # The purpose of a plan sub-agent. The agent service takes `execute` and `correct`
+        # only, so a `review` row of an older plan run sends none.
+        "purpose": row.purpose if row.purpose in ("execute", "correct") else None,
         "username": row.username,
         "session_id": row.session_id,
         "allowed_collections": list(params.allowed_collections or []),
         "llm_model": params.llm_model or _chat_model(),
-        "can_delegate": row.depth < 2,
+        # A sub-agent of a plan does not delegate. Any other run delegates under depth 2.
+        "can_delegate": row.depth < 2 and not (row.plan_run_id and row.depth >= 1),
     }
 
 
@@ -413,6 +495,59 @@ def _write_compaction(row, ai, record: dict) -> None:
                                  content=json.dumps(record, sort_keys=True), run_id=row.run_id))
 
 
+def compaction_line(record: dict, tokens_after: int, parts: int = 0) -> dict:
+    """The done content of the compaction line, from the stored record of the reply.
+
+    `parts` is the count of summary parts that the `compaction` frame gave. `part_states`
+    holds `ok` or `failed` for each part, from the record.
+    """
+    states = [str(s) for s in record.get("parts") or []]
+    return {"state": "done", "tokens_before": int(record.get("tokens_before") or 0),
+            "target": int(record.get("target") or 0), "parts": int(parts or len(states)),
+            "tokens_after": int(tokens_after or 0),
+            "steps_summarised": int(record.get("steps_summarised") or 0),
+            "target_reached": bool(record.get("target_reached")),
+            "record": str(record.get("handoff") or ""), "part_states": states}
+
+
+def _stored_compaction(messages, ai) -> Optional[dict]:
+    """The record of the `compaction` row that follows `ai`, or None."""
+    for m in messages:
+        if m.idx == ai.idx + 1 and m.role == "compaction":
+            try:
+                return json.loads(m.content or "{}")
+            except ValueError:
+                return None
+    return None
+
+
+def note_warning_text(ai) -> str:
+    """The note warning for a reply. The percent is the reply's tokens against the stated
+    window of its model, and 0 when the catalogue states none."""
+    from tasks.P_agent.stream_writer import context_window_for
+
+    used = int(ai.usage.get("input_tokens") or 0) + int(ai.usage.get("output_tokens") or 0)
+    window = context_window_for(str(ai.usage.get("model") or ""))
+    return NOTE_WARNING_TEXT.format(pct=round(100 * used / window) if window else 0)
+
+
+def _write_note_warning(row, ai, seq: int) -> int:
+    """The note warning as a `human` row at `reply_end_idx(ai)`, and for a run that writes
+    the transcript, as a `nag` chat row at `seq`. Returns the next free seq."""
+    from database import agent_runs
+    from tasks.P_agent import nagging
+
+    text = note_warning_text(ai)
+    agent_runs.write_message(
+        row.username, row.session_id, row.thread_id, row.run_id,
+        agent_runs.RunMessageRow(idx=reply_end_idx(ai), role="human", content=text,
+                                 run_id=row.run_id))
+    if not agent_runs.writes_transcript(row):
+        return seq
+    _insert_chat_row(row.username, row.session_id, seq, nagging.NAG_ROLE, content=text)
+    return seq + 1
+
+
 def _close_final_calls(row, params: ModelStepParams, messages, ai) -> None:
     """A `final` step binds no tool, so its reply is the answer. Each call of the reply gets
     a `not_run` result in the thread, and no tool row, so the loop ends."""
@@ -475,11 +610,6 @@ def _step_event(row, step: str, name: str, mode: str = "",
 # --------------------------------------------------------------------------- model_step
 
 
-def _call_key(entry: dict) -> tuple[str, str]:
-    name = str(entry.get("name") or "")
-    return name, args_digest(name, entry.get("args") or {})
-
-
 def _result_failed(result) -> bool:
     """True when a tool result is an error: its status is `error`, or the tool's own JSON
     object says `"success": false` or carries a non-empty `error`. A tool server answers a
@@ -496,41 +626,149 @@ def _result_failed(result) -> bool:
     return isinstance(body, dict) and (body.get("success") is False or bool(body.get("error")))
 
 
-def repeat_sources(earlier, ai_entries: list[dict]) -> dict[int, tuple[str, int]]:
-    """The calls of this reply that repeat an earlier call, as `{position: (earlier call
-    id, earlier step_no)}`.
+@dataclass(frozen=True)
+class RepeatSource:
+    """The earlier call that a refused call repeats."""
 
-    A call repeats an earlier call of an earlier `ai` message when both have the same name
-    and arguments, and the earlier call has a result that did not fail (`_result_failed`).
-    A retry of a call that failed is therefore not a repeat, because the state that made it
-    fail can change. `read_todo` and `read_plan` are left out, because a model reads them
-    again on purpose.
-    """
-    results = {m.tool_call_id: m for m in earlier if m.role == "tool"}
-    seen: dict[tuple[str, str], tuple[str, int]] = {}
+    call_id: str
+    step_no: int
+    #: `empty`, `result`, `delegation` or `start`.
+    kind: str
+    #: The successful runs of the key before this call.
+    runs: int = 1
+
+
+def _version(result) -> Optional[int]:
+    """The store version that a todo or plan result reports, or None."""
+    body = thread_facts.json_object(result.content)
+    value = body.get("version") if body else None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def compacted_indexes(earlier, thread_id: str) -> set[int]:
+    """The indexes of this thread that a `compaction` row evicted, summarised, dropped or
+    cut. A call whose source is one of them is not a repeat, because its result left the
+    list that the model reads."""
+    out: set[int] = set()
     for m in earlier:
-        if m.role != "ai":
+        if m.role != "compaction":
             continue
-        for e in m.tool_calls:
-            result = results.get(str(e.get("id") or ""))
-            if result is None or _result_failed(result):
-                continue
-            seen.setdefault(_call_key(e), (str(e.get("id") or ""),
-                                           int(m.usage.get("step_no") or 0)))
-    out: dict[int, tuple[str, int]] = {}
-    for position, e in enumerate(ai_entries):
-        if str(e.get("name") or "") in REPEAT_EXEMPT:
-            continue
-        source = seen.get(_call_key(e))
-        if source is not None:
-            out[int(e.get("position", position))] = source
+        record = thread_facts.json_object(m.content) or {}
+        keys = []
+        for name in ("evicted", "summarised", "dropped"):
+            keys.extend(k for k in record.get(name) or [] if isinstance(k, list))
+        keys.extend(c[:2] for c in record.get("cuts") or [] if isinstance(c, list))
+        for key in keys:
+            if len(key) >= 2 and str(key[0]) == str(thread_id):
+                with contextlib.suppress(TypeError, ValueError):
+                    out.add(int(key[1]))
     return out
 
 
+def _key(name: str, args: Any, versions: dict) -> tuple:
+    """The repeat key of a call: the name and the argument digest, and for a todo or plan
+    write, its store and the store version."""
+    digest = args_digest(name, args or {})
+    if name in TODO_WRITES | PLAN_WRITES:
+        store = STORE_OF[name]
+        return (name, digest, store, versions.get(store))
+    return (name, digest)
+
+
+def _step_versions(ai, results: dict) -> dict:
+    """The newest version that the successful todo and plan results of one `ai` message
+    report, for each store. This is the version after the step of that message."""
+    out: dict = {}
+    for e in ai.tool_calls:
+        result = results.get(str(e.get("id") or ""))
+        store = STORE_OF.get(str(e.get("name") or ""))
+        if result is None or store is None or _result_failed(result):
+            continue
+        version = _version(result)
+        if version is not None and (out.get(store) is None or version > out[store]):
+            out[store] = version
+    return out
+
+
+def runs_allowed(name: str, source: RepeatSource) -> int:
+    """The successful runs of one key before the next call with it is refused. A todo or
+    plan write adds the same change again, a delegation starts the same sub-agents again,
+    and a run-start read returns the text that the run holds already, so each keeps 1."""
+    if name in TODO_WRITES | PLAN_WRITES or source.kind in ("delegation", "start"):
+        return 1
+    return REPEAT_RUNS_ALLOWED
+
+
+def repeat_sources(earlier, ai_entries: list[dict], thread_id: str = "") -> dict[int, RepeatSource]:
+    """The calls of this reply that repeat earlier calls, as `{position: RepeatSource}`.
+
+    A call repeats when the thread holds `runs_allowed` successful runs of its key
+    (`_key`) or more. A run whose result failed (`_result_failed`) does not count, because
+    the state that made it fail can change. A run whose result a compaction removed
+    (`compacted_indexes`) does not count, because the model no longer reads it. The reads
+    of REPEAT_EXEMPT never repeat.
+
+    The key of a todo or plan write holds the store version. For an earlier write it is
+    the newest version that the results of its `ai` message report. For the new call it is
+    the newest version that a successful result of the thread reports. The write repeats
+    only when no write of its store succeeded after the step of the earlier write.
+    """
+    results = {m.tool_call_id: m for m in earlier if m.role == "tool"}
+    gone = compacted_indexes(earlier, thread_id)
+    first: dict[tuple, RepeatSource] = {}
+    runs: dict[tuple, int] = {}
+    latest: dict = {}
+    for m in earlier:
+        if m.role == "tool" and m.tool_name in STORE_OF and not _result_failed(m):
+            version = _version(m)
+            if version is not None:
+                latest[STORE_OF[m.tool_name]] = version
+        if m.role != "ai":
+            continue
+        after_step = _step_versions(m, results)
+        for e in m.tool_calls:
+            result = results.get(str(e.get("id") or ""))
+            if result is None or _result_failed(result) or result.idx in gone:
+                continue
+            name = str(e.get("name") or "")
+            kind = ("start" if m.usage.get("synthetic") else
+                    "delegation" if e.get("kind") == "delegation" else
+                    "empty" if thread_facts.found_nothing(name, result.content) else "result")
+            key = _key(name, e.get("args"), after_step)
+            runs[key] = runs.get(key, 0) + 1
+            first.setdefault(key, RepeatSource(str(e.get("id") or ""),
+                                               int(m.usage.get("step_no") or 0), kind))
+    out: dict[int, RepeatSource] = {}
+    for position, e in enumerate(ai_entries):
+        name = str(e.get("name") or "")
+        if name in REPEAT_EXEMPT:
+            continue
+        key = _key(name, e.get("args"), latest)
+        source = first.get(key)
+        if source is not None and runs[key] >= runs_allowed(name, source):
+            out[int(e.get("position", position))] = RepeatSource(
+                source.call_id, source.step_no, source.kind, runs[key])
+    return out
+
+
+def _step_kind(names: list[str], repeated: list[bool]) -> str:
+    """`neutral` for a step of exempt reads only, `repeat` for a step of repeats and exempt
+    reads with one repeat at least, else `other`."""
+    if not names:
+        return "other"
+    if all(n in REPEAT_EXEMPT for n in names):
+        return "neutral"
+    if any(repeated) and all(r or n in REPEAT_EXEMPT for n, r in zip(names, repeated)):
+        return "repeat"
+    return "other"
+
+
 def repeat_streak(earlier, ai, repeats: dict) -> int:
-    """The count of model steps in a row, `ai` included, whose every call repeats an
-    earlier call. A `human` message ends the count."""
-    if not ai.tool_calls or len(repeats) < len(ai.tool_calls):
+    """The count of `repeat` steps in a row, `ai` included (`_step_kind`). A `neutral` step
+    neither adds to the count nor ends it. A `human` message ends the count."""
+    names = [str(e.get("name") or "") for e in ai.tool_calls]
+    now = [int(e.get("position", i)) in repeats for i, e in enumerate(ai.tool_calls)]
+    if _step_kind(names, now) != "repeat":
         return 0
     results = {m.tool_call_id: m for m in earlier if m.role == "tool"}
     streak = 1
@@ -539,12 +777,38 @@ def repeat_streak(earlier, ai, repeats: dict) -> int:
             break
         if m.role != "ai":
             continue
-        classes = [results[c].usage.get("error_class") if c in results else ""
-                   for c in (str(e.get("id") or "") for e in m.tool_calls)]
-        if not classes or any(k != REPEATED_CALL_CLASS for k in classes):
+        ids = [str(e.get("id") or "") for e in m.tool_calls]
+        names = [str(e.get("name") or "") for e in m.tool_calls]
+        repeated = [i in results and results[i].usage.get("error_class") == REPEATED_CALL_CLASS
+                    for i in ids]
+        kind = _step_kind(names, repeated)
+        if kind == "neutral":
+            continue
+        if kind != "repeat":
             break
         streak += 1
     return streak
+
+
+def repeat_text(source: RepeatSource, run_kind: str) -> str:
+    """The stored message of a refused call: the text of the kind of its source, which
+    names the count of earlier runs when it is more than 1, and the skill line for a run
+    of kind `chat` or `subagent`."""
+    fields = {"call_id": source.call_id, "step_no": source.step_no, "runs": source.runs}
+    many = source.runs > 1
+    if source.kind == "delegation":
+        return REPEAT_TEXT_DELEGATION.format(**fields)
+    if source.kind == "empty":
+        text = REPEAT_TEXT_EMPTY.format(source=(REPEAT_SOURCE_MANY if many
+                                                else REPEAT_SOURCE_ONE).format(**fields))
+    elif source.kind == "start":
+        text = REPEAT_TEXT_START.format(**fields)
+    else:
+        text = (REPEAT_TEXT_COUNT if many else REPEAT_TEXT_RESULT).format(**fields)
+    skill = REPEAT_SKILLS.get(source.kind)
+    if skill and run_kind in REPEAT_SKILL_KINDS:
+        text += " " + SKILL_LINE.format(skill=skill)
+    return text
 
 
 def _write_repeats(row, params: StepRef, ai, repeats: dict) -> None:
@@ -555,15 +819,63 @@ def _write_repeats(row, params: StepRef, ai, repeats: dict) -> None:
         if source is None:
             continue
         content = json.dumps({"success": False, "error": REPEATED_CALL_CLASS,
-                              "message": REPEATED_CALL_TEXT.format(call_id=source[0],
-                                                                   step_no=source[1])})
+                              "message": repeat_text(source, row.kind)})
         _write_tool_result(row, params.turn_uuid, ai, call, content, "error",
                            error_class=REPEATED_CALL_CLASS)
 
 
+def repeat_notes(messages, run_id: str) -> int:
+    """The repeat notes that run `run_id` wrote in its thread."""
+    return sum(1 for m in messages if m.role == "human" and m.run_id == run_id
+               and (m.content or "").startswith(REPEAT_NOTE_HEAD))
+
+
+def repeat_note_text(messages, todo: Optional[dict]) -> str:
+    """The repeat note: the open todo items when `todo` is given, and the searches that
+    found nothing, each list the newest REPEAT_NOTE_LINES."""
+    from tasks.P_agent import nagging
+
+    lines = [f"{REPEAT_NOTE_HEAD}, so none of them ran."]
+    if todo is not None:
+        items = nagging.open_items(todo)[-REPEAT_NOTE_LINES:]
+        if items:
+            lines.append("These todo items are still open:")
+            lines.extend(f"- {i.get('id')} {json.dumps(str(i.get('text') or ''), ensure_ascii=False)}"
+                         for i in items)
+    empty = thread_facts.empty_searches(messages, REPEAT_NOTE_LINES)
+    if empty:
+        lines.append("These searches found nothing:")
+        lines.extend(empty)
+    lines.append("Do not send these calls again. Change the query, remove a filter, work on an "
+                 "open item, or write your answer. If the next "
+                 f"{REPEAT_STEP_LIMIT} replies repeat earlier calls again, the run must answer.")
+    return "\n".join(lines)
+
+
+def _bring_back(row) -> str:
+    """The "Bring back" text of a sub-agent's stored briefing, or ""."""
+    if row.kind != "subagent" or not row.briefing:
+        return ""
+    briefing = thread_facts.json_object(row.briefing) or {}
+    return str(briefing.get("bring_back") or "").strip()
+
+
+def final_text(row, params: ModelStepParams) -> str:
+    """The human message of a `final` step: EMPTY_ANSWER_TEXT for the second final step of
+    a sub-agent, else the text of the reason. A sub-agent's text ends with its "Bring back"
+    text."""
+    if params.empty_retry:
+        text = EMPTY_ANSWER_TEXT
+    else:
+        text = FINAL_TEXT.get(params.final_reason) or FINAL_TEXT["step_budget"]
+    bring_back = _bring_back(row)
+    return text + ("\n\nBring back: " + bring_back if bring_back else "")
+
+
 def _close_for_final(row, params: ModelStepParams, messages) -> list:
     """Step 5 of `model_step` in mode `final`: a `not_run` result for each unanswered call of
-    the last reply, then the human message of the reason. A retry writes neither twice."""
+    the last reply, then the human message of the step (`final_text`). A retry writes
+    neither twice."""
     from database import agent_runs
 
     out = list(messages)
@@ -577,7 +889,7 @@ def _close_for_final(row, params: ModelStepParams, messages) -> list:
             _write_tool_result(row, params.turn_uuid, last_ai, call, content, "error",
                                error_class="not_run")
         out = _read_thread(row)
-    text = FINAL_TEXT.get(params.final_reason) or FINAL_TEXT["step_budget"]
+    text = final_text(row, params)
     last = out[-1] if out else None
     if not (last is not None and last.role == "human" and last.content == text):
         idx = max(m.idx for m in out) + 1 if out else 0
@@ -604,15 +916,21 @@ def _write_calls(row, params: ModelStepParams, earlier, ai, writer, stream) -> M
     entries = ai.tool_calls
     if stream is not None:
         stream.tool_rows(entries)
-    repeats = repeat_sources(earlier, entries)
+    repeats = repeat_sources(earlier, entries, row.thread_id)
     _write_repeats(row, params, ai, repeats)
-    next_seq = max([row.next_seq] + [int(e.get("seq") or 0) + 1 for e in entries])
+    calls_end = max([row.next_seq] + [int(e.get("seq") or 0) + 1 for e in entries])
+    next_seq, next_idx = calls_end, reply_end_idx(ai)
+    if ai.usage.get("note_warning"):
+        # The seq after the calls is the same on a retry, so the rows are the same.
+        next_seq = max(row.next_seq, _write_note_warning(row, ai, calls_end))
+        next_idx += 1
     writer.write(next_seq=next_seq, model_steps=max(row.model_steps, params.step_no),
                  **_step_tokens(row, params.step_no, ai.usage))
     return ModelStepResult(outcome="calls",
                            calls=[c for c in call_refs(ai) if c.position not in repeats],
                            repeat_streak=repeat_streak(earlier, ai, repeats),
-                           next_seq=next_seq, next_idx=reply_end_idx(ai))
+                           next_seq=next_seq, next_idx=next_idx,
+                           repeat_notes=repeat_notes(earlier, row.run_id))
 
 
 def keeps_answer(row, reply: str = "", earlier=()) -> bool:
@@ -634,8 +952,12 @@ def keeps_answer(row, reply: str = "", earlier=()) -> bool:
     return not reply.strip() and any(nagging.is_citation_note(m) for m in earlier)
 
 
-def _write_answer(row, params: ModelStepParams, earlier, ai, writer) -> ModelStepResult:
+def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
+                  seq0: Optional[int] = None) -> ModelStepResult:
     """Step 9 of `model_step`: the answer row and the run row of a reply with no call.
+
+    `seq0` is the first free seq of the step, one after the compaction line when the step
+    wrote one, and `row.next_seq` when it is None.
 
     `earlier` is the thread before the `ai` message. A retry after the run row write finds
     `model_steps` at this step, and writes the answer row again at the same seq. The
@@ -651,6 +973,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer) -> ModelSte
     from database import agent_runs
     from tasks.P_agent.stream_writer import context_window_for, round_view
 
+    first = row.next_seq if seq0 is None else seq0
     plan_prose, round_reasoning, _ = round_view(earlier)
     answer = "\n\n".join(p for p in (plan_prose, (ai.content or "").strip()) if p)
     reasoning = "\n\n".join(p for p in (round_reasoning, (ai.reasoning or "").strip()) if p)
@@ -659,15 +982,29 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer) -> ModelSte
         if transcript:
             _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid,
                                      row.start_seq)
-        writer.write(next_seq=row.next_seq, model_steps=max(row.model_steps, params.step_no),
+        writer.write(next_seq=first, model_steps=max(row.model_steps, params.step_no),
                      end_reason=params.final_reason,
                      **_step_tokens(row, params.step_no, ai.usage))
         # `keeps_answer` is true in a nag round, or else in the citation round.
         round_kind = "nag" if row.nags_this_turn > 0 else "citation"
         log.info("[P_agent] run %s: the %s round reply at step %d keeps the answer row",
                  row.run_id, round_kind, params.step_no)
-        return ModelStepResult(outcome="answered", next_seq=row.next_seq,
+        return ModelStepResult(outcome="answered", next_seq=first,
                                next_idx=reply_end_idx(ai))
+    empty = not (ai.content or "").strip()
+    if params.mode == "tools" and empty and not ai.tool_calls and not any(
+            m.role == "human" and m.content == EMPTY_REPLY_TEXT for m in earlier):
+        # The workflow writes EMPTY_REPLY_TEXT at `next_idx` and asks again, once in a
+        # thread, so this reply writes no answer row.
+        if agent_runs.writes_transcript(row):
+            _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid,
+                                     row.start_seq)
+        writer.write(next_seq=first, model_steps=max(row.model_steps, params.step_no),
+                     **_step_tokens(row, params.step_no, ai.usage))
+        log.info("[P_agent] run %s: the reply at step %d has no text and no call",
+                 row.run_id, params.step_no)
+        return ModelStepResult(outcome="empty", next_seq=first,
+                               next_idx=reply_end_idx(ai), empty_answer=True)
     start = 0
     for i, m in enumerate(earlier):
         if m.role == "human":
@@ -687,7 +1024,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer) -> ModelSte
             plan_reference = plan_runs.plan_reference(row)
     transcript = agent_runs.writes_transcript(row)
     written = row.model_steps >= params.step_no
-    seq = row.next_seq - (1 if written and transcript else 0)
+    seq = row.next_seq - 1 if written and transcript else first
     if transcript:
         usage = ai.usage
         model = str(usage.get("model") or "")
@@ -706,15 +1043,17 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer) -> ModelSte
                  end_reason=params.final_reason, **_step_tokens(row, params.step_no, ai.usage))
     log.info("[P_agent] run %s answered at step %d: %d chars, next seq %d",
              row.run_id, params.step_no, len(answer), seq)
-    return ModelStepResult(outcome="answered", next_seq=seq, next_idx=reply_end_idx(ai))
+    return ModelStepResult(outcome="answered", next_seq=seq, next_idx=reply_end_idx(ai),
+                           empty_answer=empty)
 
 
-def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str):
+def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str,
+                 seq0: Optional[int] = None):
     """Write the `ai` message of a reply at `idx`, with its call entries and usage.
 
     Each call entry gets its `position` in the reply and its transcript `seq`. The seqs
-    start at the row's `next_seq` in call order, and the delegations take the last ones,
-    so the seqs of one delegation batch are consecutive.
+    start at `seq0`, else at the row's `next_seq`, in call order, and the delegations take
+    the last ones, so the seqs of one delegation batch are consecutive.
     """
     from database import agent_runs
 
@@ -723,7 +1062,7 @@ def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str)
         entry = dict(raw)
         entry["position"] = position
         entries.append(entry)
-    seq = row.next_seq
+    seq = row.next_seq if seq0 is None else seq0
     for entry in ([e for e in entries if e.get("kind") != "delegation"]
                   + [e for e in entries if e.get("kind") == "delegation"]):
         entry["seq"] = seq
@@ -732,7 +1071,8 @@ def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str)
     usage.update(step_no=params.step_no, mode=params.mode,
                  bound_names=list(turn.get("bound_names") or []),
                  summarised=bool(turn.get("summarised")), model=model,
-                 compaction=bool(turn.get("compaction")))
+                 compaction=bool(turn.get("compaction")),
+                 note_warning=bool(turn.get("note_warning")))
     # A `plan` reply with no call is kept as a partial, which no request sends, so the
     # thread holds no plan text that the page does not show.
     final = 0 if params.mode == "plan" and not entries else 1
@@ -778,11 +1118,17 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
        message of the reason.
     5. `POST /model_step` streams the reply, with the earlier turns of the chat for a run
        that writes the transcript. The partial rows are written as it arrives.
-    6. A reply with calls gets its seqs (delegations last), the `ai` message, the
+    6. A `compaction` frame of a run that writes the transcript writes the compaction line
+       at `row.next_seq` in its running state, and every later seq of the step moves up by
+       one. The `end` frame rewrites the line in its done state (`compaction_line`).
+    7. A reply with calls gets its seqs (delegations last), the `ai` message, the
        `compaction` row when the service sent one, one live tool row for each call, the
-       result of each repeated call (`repeat_sources`), and the run row. A reply with no call gets the `ai` message, the answer row and the run row
-       with the result. The reply of a `final` step is always the answer: its calls get a
-       `not_run` result. A `plan` reply with no call writes no answer.
+       result of each repeated call (`repeat_sources`), the note warning when the
+       `model_turn` frame asks for it, and the run row. A reply with no
+       call gets the `ai` message, the answer row and the run row with the result. The
+       reply of a `final` step is always the answer: its calls get a `not_run` result. A
+       `plan` reply with no call writes no answer. The first `tools` reply of a thread
+       with no text and no call writes no answer and gives `empty`.
     """
     from database import agent_runs
     from tasks.P_agent.stream_writer import (
@@ -799,11 +1145,21 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
     if (last_ai is not None and last_ai.run_id == row.run_id
             and last_ai.usage.get("step_no") == params.step_no):
         earlier = [m for m in messages if m.idx < last_ai.idx]
+        seq0 = row.next_seq
+        if (last_ai.usage.get("compaction") and agent_runs.writes_transcript(row)
+                and row.model_steps < params.step_no):
+            # The run row is not written, so the line is at `row.next_seq`, and the call
+            # entries hold the seqs after it.
+            record = _stored_compaction(messages, last_ai)
+            if record is not None:
+                _chat_row(row)(row.next_seq, COMPACTION_ROLE, content=json.dumps(
+                    compaction_line(record, last_ai.usage.get("input_tokens") or 0)))
+            seq0 = row.next_seq + 1
         if last_ai.tool_calls and params.mode != "final":
             return _write_calls(row, params, earlier, last_ai, writer, None)
         if last_ai.tool_calls:
             _close_final_calls(row, params, messages, last_ai)
-        return _write_answer(row, params, earlier, last_ai, writer)
+        return _write_answer(row, params, earlier, last_ai, writer, seq0)
 
     # A step that returned its stored result above writes no row: the earlier attempt
     # wrote it.
@@ -833,6 +1189,11 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
             stream.start()
             ai = None
             ended = False
+            # 1 after the compaction line of this step, which takes `row.next_seq`.
+            shift = 0
+            running: dict = {}
+            record: dict = {}
+            prompt_tokens = 0
             for line in _lines(f"{agent_url_for(params.internet_tools)}/model_step", body,
                                RUN_STREAM_IDLE_SECONDS):
                 if not line or not line.startswith("data: "):
@@ -845,16 +1206,28 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
                 kind = frame.get("type")
                 if kind in ("reasoning", "response"):
                     stream.add(kind, str(frame.get("content") or ""))
+                elif kind == COMPACTION_ROLE and transcript and ai is None and not shift:
+                    running = {"state": "running",
+                               "tokens_before": int(frame.get("tokens_before") or 0),
+                               "target": int(frame.get("target") or 0),
+                               "parts": int(frame.get("parts") or 0)}
+                    content = json.dumps(running)
+                    _chat_row(row)(row.next_seq, COMPACTION_ROLE, content=content)
+                    shift = 1
+                    stream.shift_seq(1, COMPACTION_ROLE, content)
                 elif kind == "model_turn" and ai is None:
                     if params.mode == "plan":
                         _raise_if_past_limit(started)
                     # Written at once, so a retry after a later failure finds the reply.
-                    ai = _store_reply(row, params, frame, next_idx, body["llm_model"])
+                    ai = _store_reply(row, params, frame, next_idx, body["llm_model"],
+                                      seq0=row.next_seq + shift)
                     if frame.get("compaction"):
-                        _write_compaction(row, ai, frame["compaction"])
+                        record = dict(frame["compaction"])
+                        _write_compaction(row, ai, record)
                 elif kind == "end":
                     ended = True
                     usage = frame.get("usage") or {}
+                    prompt_tokens = int(usage.get("prompt_tokens") or 0)
                     event.name = str(frame.get("model") or event.name)
                     event.prompt_tokens = int(usage.get("prompt_tokens") or 0)
                     event.completion_tokens = int(usage.get("completion_tokens") or 0)
@@ -869,6 +1242,10 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
                 raise RuntimeError("the agent stream ended without a model_turn frame")
             if not ended:
                 raise RuntimeError("the agent stream ended without an end frame")
+            if shift:
+                _chat_row(row)(row.next_seq, COMPACTION_ROLE, content=json.dumps(
+                    compaction_line(record, prompt_tokens or ai.usage.get("input_tokens") or 0,
+                                    running.get("parts", 0))))
             if params.mode == "plan" and not ai.tool_calls:
                 writer.write(model_steps=max(row.model_steps, params.step_no),
                              **_step_tokens(row, params.step_no, ai.usage))
@@ -881,7 +1258,7 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
             else:
                 if ai.tool_calls:
                     _close_final_calls(row, params, messages, ai)
-                result = _write_answer(row, params, messages, ai, writer)
+                result = _write_answer(row, params, messages, ai, writer, row.next_seq + shift)
             event.ok = result.outcome in ("answered", "calls")
             return result
         finally:
@@ -1096,9 +1473,83 @@ def needs_citations(params: StepRef) -> bool:
     return nagging.needs_citation_round(row.result or "", _read_thread(row))
 
 
+@dataclass
+class RepeatNoteParams(StepRef):
+    """The input of `write_repeat_note`: the keys of the rows and the nag counters, which
+    the workflow computes."""
+
+    seq: int = 0
+    idx: int = 0
+    nags_this_turn: int = 0
+    nags_without_progress: int = 0
+    #: Write EMPTY_REPLY_TEXT in place of the repeat note.
+    empty_reply: bool = False
+
+
+@activity.defn
+@with_heartbeat
+def write_repeat_note(params: RepeatNoteParams) -> int:
+    """Write the repeat note, or EMPTY_REPLY_TEXT, as a `human` row at `idx`, and for a run
+    that writes the transcript, as a `nag` chat row at `seq`. Write the nag counters into
+    the run row. Returns the next free seq.
+
+    The note of a chat lead lists its open todo items. A retry writes the same rows at the
+    same keys, because the thread and the todo list do not change while it runs.
+    """
+    from database import agent_runs, chat_todos
+    from tasks.P_agent import nagging
+
+    row = _read_row(params)
+    if agent_runs.is_terminal(row):
+        return params.seq
+    if params.empty_reply:
+        text = EMPTY_REPLY_TEXT
+    else:
+        todo = (chat_todos.read_todo(row.username, row.session_id)
+                if agent_runs.is_chat_lead(row) else None)
+        text = repeat_note_text(_read_thread(row), todo)
+    agent_runs.write_message(
+        row.username, row.session_id, row.thread_id, row.run_id,
+        agent_runs.RunMessageRow(idx=params.idx, role="human", content=text,
+                                 run_id=row.run_id))
+    changes: dict = {"nags_this_turn": params.nags_this_turn,
+                     "nags_without_progress": params.nags_without_progress}
+    next_seq = params.seq
+    if agent_runs.writes_transcript(row):
+        _insert_chat_row(row.username, row.session_id, params.seq, nagging.NAG_ROLE,
+                         content=text)
+        next_seq = params.seq + 1
+        changes["next_seq"] = next_seq
+    agent_runs.write_run(row, **changes)
+    return next_seq
+
+
+@dataclass
+class FoundDocumentsParams(StepRef):
+    #: The end reason of the run: `step_budget`, `repeated_call`, or "" for a `tools` reply.
+    reason: str = ""
+
+
+@activity.defn
+@with_heartbeat
+def write_found_documents(params: FoundDocumentsParams) -> None:
+    """Write the listing of a sub-agent that answered with no text twice as its result
+    (`thread_facts.found_documents_text`). The ending writes the result as its report."""
+    from database import agent_runs
+
+    row = _read_row(params)
+    if agent_runs.is_terminal(row):
+        return
+    text = thread_facts.found_documents_text(_read_thread(row))
+    agent_runs.RunRowWriter(row).write(result=text, end_reason=params.reason)
+
+
 __all__ = [
-    "FINAL_TEXT", "ModelRequestRejected", "ModelStepParams", "ModelStepResult",
-    "NOT_RUN_TEXT", "StepFailure", "StepRef", "ToolCallParams", "ToolCallResult",
-    "args_digest", "canonical_json", "delegate_step", "model_step", "needs_citations", "plan_has_sections",
-    "prepare_continuation", "record_step_failure", "tool_call", "tool_idx",
+    "EMPTY_ANSWER_TEXT", "EMPTY_REPLY_TEXT", "FINAL_TEXT", "FoundDocumentsParams",
+    "ModelRequestRejected", "ModelStepParams", "ModelStepResult", "NOT_RUN_TEXT",
+    "REPEAT_NOTE_HEAD", "RepeatNoteParams", "RepeatSource", "StepFailure", "StepRef",
+    "ToolCallParams", "ToolCallResult", "args_digest", "canonical_json", "delegate_step",
+    "model_step", "needs_citations", "plan_has_sections", "prepare_continuation",
+    "record_step_failure", "repeat_sources", "repeat_streak", "tool_call", "tool_idx",
+    "write_found_documents", "write_repeat_note",
 ]

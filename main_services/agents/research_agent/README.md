@@ -61,7 +61,7 @@ renders the system prompt of every profile (`research_agent/prompts/__init__.py`
 profile, the run's skills by name and description, and the run's tools by name and summary
 come first. The first tool list holds the tools that every model call binds, and the second
 holds the deferred tools. The todo rule follows when every model call binds the four todo
-tools, and the verdict block when a sub-agent's `purpose` is `review`. The summary of a tool
+tools. The summary of a tool
 is the first sentence of its description, at most 160 characters. `_create_context` renders
 the prompt once for each step context, from the snapshot, so it does not change when a tool
 is bound, and the prompt cache holds the system text for the whole run.
@@ -111,7 +111,8 @@ first. The role skill of the lead holds the text on when to delegate. The tool s
 reply, and then writes one sub-agent run for each accepted briefing, and each runs as an `AgentRun` of its own, with the
 `research_subagent` profile. When the last one ends, a continuation of the delegating run
 sends the thread back with one `tool` result for each call, and the model continues. A
-sub-agent at depth 1 can delegate again, and a run at depth 2 cannot. The worker applies the
+sub-agent at depth 1 of a chat turn can delegate again, a run at depth 2 cannot, and a
+sub-agent of a plan cannot delegate. The worker applies the
 budgets. See `processing/tasks/Readme.md` for the runs, the fan-in and the budgets.
 
 **Depth is enforced by what is bound.** A step request with `can_delegate` false does not
@@ -119,9 +120,11 @@ bind `run_subagent`, so a call to it is a `parallel` call, and `/tool_call` answ
 `tool_unavailable`. A prompt asking a model not to recurse eventually meets a model that does.
 
 **A plan briefing names its section.** An organizer's briefing carries `plan_node_id`, a
-section of the approved tree, and `purpose`: `execute`, `review` or `correct`. The request
-sends a sub-agent's `purpose`, and `review` adds the verdict block to its prompt. The worker
-refuses a section briefing from any other run kind, and a third correction of one section.
+section of the approved tree, and `purpose`: `execute` or `correct`. A `correct` briefing
+also carries `sections`, every section it corrects, and `plan_node_id` is the first of them.
+The worker refuses a section briefing from any other run kind, a second run of a section, a
+second correction of a plan, a `review` briefing, and an organizer's briefing with no
+section.
 
 **Sub-agents share the conversation's session header, and that is the citation contract.**
 Citation handles are allocated per chat session by the collection-search server, keyed by
@@ -135,7 +138,7 @@ A tool pack is a named set of tools (`agent_common/tool_packs.py`): `catalogue`,
 of run (`chat`, `subagent`, `planner`, `organizer`) gets the packs that `AGENT_PACKS_CHAT`,
 `AGENT_PACKS_SUBAGENT`, `AGENT_PACKS_PLANNER` and `AGENT_PACKS_ORGANIZER` name, as a comma
 list or `all`. Every run kind also gets the `skills` pack (`search_skills`, `read_skill`,
-`read_tool`), whatever its setting says. `deploy.py` renders them from `hoover4.ini`. The
+`read_tool`, `write_note`), whatever its setting says. `deploy.py` renders them from `hoover4.ini`. The
 service refuses to start on an unknown pack name. A tool that an MCP server lists and no pack
 names is refused for every run.
 
@@ -229,14 +232,16 @@ The response is a stream of `data: {json}` frames, in this order:
 |---|---|---|
 | `reasoning` | `content` | each reasoning delta |
 | `response` | `content` | each text delta |
-| `model_turn` | `text`, `reasoning`, `tool_calls` (a list of call entries), `bound_names`, `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`), `summarised`, `compaction` (the record of this call's compaction, or null) | once, after the reply ends |
+| `compaction` | `state` (`running`), `tokens_before`, `target`, `parts` (1 or 3) | once, before the summary requests, when this call compacts its input |
+| `model_turn` | `text`, `reasoning`, `tool_calls` (a list of call entries), `bound_names`, `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`), `summarised`, `compaction` (the version 2 record of this call's compaction, or null), `note_warning` | once, after the reply ends |
 | `end` | `model`, `latency_ms`, `usage` (`prompt_tokens`, `completion_tokens`, `reasoning_tokens`) | once, last |
 | `error` | `error_class`, `retryable`, `content` | in place of `model_turn` and `end` |
 
 `error_class` is `read_timeout`, `connect_error`, `http_<status>` or `other`. `retryable` is
-false only for an HTTP 4xx status other than 408 and 429. `summarised` is true when the
-compaction of this call summarised the thread. The worker then adds the summary notice to
-the answer.
+false only for an HTTP 4xx status other than 408 and 429. `summarised` is true when this call
+compacted its input. The worker then adds the summary notice to the answer. `note_warning`
+is true when the worker writes the warning to save notes (see
+[Context compaction](#context-compaction-agent_compaction_fraction)).
 
 A call entry is one call of the reply as the service classifies it:
 
@@ -376,94 +381,105 @@ reaches its step budget. A model that cannot call a tool has to answer. See
 
 ## Context compaction: `AGENT_COMPACTION_FRACTION`
 
-A tool-using turn grows because every result it collected stays in the list sent back to
-the model on the next call. `research_agent/compaction.py` replaces the content of the
-older tool results with a placeholder once the last call the provider billed crosses a
-fraction of the model's stated context window. The assistant messages that requested them
-keep their `tool_calls`, so the model still sees that it searched and what for, and the
-`AGENT_COMPACTION_KEEP_RECENT` (default 3) most recent results stay intact because the
-model is usually still working with what it just read.
+A run grows because every result that it collected stays in the list of the next model call.
+`research_agent/compaction.py` compacts the list when the last call that the provider billed
+(prompt plus completion) reaches the trigger, a fraction of the model's stated context
+window. It plans the list to a target of a third of the trigger before the next model call,
+and replaces the older steps with one record.
 
 | variable | default | meaning |
 |---|---|---|
-| `AGENT_COMPACTION_FRACTION` | `0.65` | fraction of the stated window at which compaction fires. Out of range, or unparseable, turns compaction off rather than clamping |
-| `AGENT_COMPACTION_KEEP_RECENT` | `3` | most recent tool results left intact by eviction |
-| `AGENT_COMPACTION_KEEP_RECENT_MESSAGES` | `6` | trailing messages summarisation leaves alone, on top of what it may never touch |
-| `LLM_MODEL_COMPACTION` | the answering model | model that writes the handoff document |
+| `AGENT_COMPACTION_FRACTION` | `0.80` | fraction of the stated window at which compaction fires. Out of range, or unparseable, turns compaction off |
+| `LLM_MODEL_COMPACTION` | the answering model | model that writes the summary part of the record |
 
-The earlier turns of a chat reach the model as their stored threads, with every tool call
-and result (`POST /model_step` above), so a long conversation reaches the threshold.
+For a window of 262,144 tokens at 0.80, the trigger is 209,715 tokens, the target 69,905, the
+recent window 17,476 and the note warning 188,743.
 
-**The compacted list is kept.** When a call compacts its input, the `model_turn` frame
-carries `compaction`, a record that names each evicted and each summarised message by its
-stored key `[thread_id, idx]`, and the handoff document of a summarisation. The worker
-stores it as a `compaction` row after the `ai` message of that call. Each later call applies
-every stored row first (`run_messages.apply_compactions`), and then measures the usage of the
-last call, which was billed on the compacted list. The calls above the threshold therefore do
-not alternate between a short list and the full list. A stored row is applied in the request
-only: the thread keeps every message in full.
+**The parts of the list.** `compact` plans, in this order, with no model call:
 
-Three properties decide whether a citation still resolves:
+1. **The recent window.** The newest step groups (an `ai` message and its results), up to a
+   quarter of the target, and at least the newest group.
+2. **The keep set**, outside the window. Every user message. The newest successful todo
+   result and plan result. Every `cite_documents` result, and every `ai` text with a citation
+   handle such as `[D3]`. The newest `read_skill` result of each skill name, cut to 5,000
+   tokens, and 25,000 tokens for all skills. Every `run_subagent` report, cut to 4,000
+   tokens. The `write_note` results, 4,000 tokens for all notes. The keep set, user messages
+   included, has a cap of 35,000 tokens. A kept result keeps its call. Its `ai` message
+   keeps its text only when the text holds a citation handle.
+3. **The record.** Every other message: old results, old `ai` messages, and an earlier
+   record. One `human` message takes the place of the first of them.
+4. **Skill and tool texts.** A `read_skill` or `read_tool` result that is not in the window
+   or the keep set leaves the list whole, with its call. It never reaches the summariser.
+   The record names it, and the model can read it again. A later read of it is not a repeat.
 
-* **Nothing is edited.** The transformation applies to the messages of a model call only,
-  so the stored messages, the trajectory the website renders and the transcript rows all
-  keep every result in full. Only the model sees less.
-* **A result is shortened, never removed.** An assistant message whose `tool_calls` have no
-  matching tool result is rejected by an OpenAI-shaped API outright (the same constraint
-  a `final` step works around), so the placeholder is what "dropped" has to mean here.
+**The shrink order.** When the list with a record budget of 2,000 tokens passes the
+target, or the keep set passes its cap, the plan makes it smaller: the oldest window groups
+leave the window, then the oldest reports move to the record, then the oldest skills leave
+the list, then the record budget falls to 1,000 tokens, then the results of the newest group
+are cut to fit, to at least 500 tokens. When the user messages and the fixed part pass the
+target, the smallest list goes, and `target_reached` is false. The run goes on. After the
+plan, up to 3 of the newest `read_documents` results of the record come back, each cut to
+5,000 tokens, while the list stays at or under the target.
+
+**The token estimate.** The sizes are estimates. `Estimator.calibrate` divides the billed
+prompt of the newest billed call by the characters of the list that it sent, the system text
+and the bound tool schemas included, and clamps the ratio to 1/6 to 1/1.5 tokens a character.
+Each size gets a margin of 5 percent.
+
+**The record.** It starts with `RECORD_HEADER`. Code writes the lists next
+(`thread_index.py`): the searches that found nothing, the searches that found documents with
+their counts, the documents read with their pages, and one line that names the skill and tool
+texts that left the list. The model never writes those lists, because a summariser copies
+file hashes with errors. The served model writes the rest with thinking off, in one request,
+or in 3 requests at once when the record part passes 30,000 tokens. Each request gets its
+share of the record budget as `max_tokens`. A part that fails or times out gets the line
+`PART_FAILED`, and no second request is made. The summary request has the read timeout of a
+model call. Before the requests, the stream sends one `compaction` frame, and it sends
+keepalive lines while they run.
+
+**The compacted list is kept.** `model_turn` carries `compaction`, a version 2 record: the
+keys `[thread_id, idx]` of the messages that it `summarised`, `text_removed`, `dropped` and
+`cuts` (with the characters kept), the record as `handoff`, `tokens_before`, `threshold`,
+`target`, `est_after`, `target_reached`, the `steps` of the shrink order, the state of each summary
+part in `parts`, `steps_summarised` and `sizes`. The worker stores it as a `compaction` row
+after the `ai` message of that call. Each later call applies every stored row first
+(`run_messages.apply_compactions`, which also applies a version 1 row), and then measures the
+usage of the last call. `compact` builds its own list with `run_messages.apply_record`, so a
+replay of the row gives the list that the call sent. After the row applies, each call keeps
+one result and each result keeps its call, because the provider refuses a request without
+that.
+
+Three properties hold.
+
+* **Nothing is edited.** The compaction applies to the messages of a model call only, so the
+  stored messages, the trajectory that the website renders and the transcript rows keep every
+  result in full.
 * **An unknown window never fires the trigger.** `llm_models.context_window` is 0 when the
-  provider never stated one, and there is no default to fall back on. The catalog is the
-  source rather than the provider directly, so the number the trigger divides by is the
-  number the transcript footer shows the user.
+  provider never stated one, and there is no default. The catalog is the source, so the
+  number that the trigger divides by is the number that the transcript footer shows.
+* **The record is a user message.** It lands in the middle of the list, and this provider
+  answers a system message anywhere but the first position with `System message must be at
+  the beginning.`. The bracketed header tells the model that the user did not write it.
 
-### Layer two: summarisation
+**A compacted turn says so to the user.** The answer was written from a record and not from
+what the agent read, so the worker adds one line to the answer (`summarised` of
+`model_turn`).
 
-Eviction runs first, always, because it makes no model call and cannot lose a fact: every
-result it takes away is still in the transcript and can be re-read. Summarisation runs
-only on what eviction leaves, and only when the list is still projected to be over the
-threshold. That projection is an estimate and is labelled one. The only measured token
-count available is what the provider billed for the *previous* call, so the saving is
-scaled by the fraction of the list's characters eviction removed.
+**The notes tool.** `note_tools.py` gives the tool `write_note` (`text`, 1 to 2,000
+characters). It returns `{"saved": n, "note": text}`, where `n` counts the notes that the
+step context of the run saved. It is in the `skills` pack and it is deferred, so a run binds
+it with `read_tool`. Its results stay in the keep set. `model_turn` sets `note_warning` when
+the reply's input plus output tokens reach 90 percent of the trigger, the reply has calls,
+and no warning row (`NOTE_WARNING_TEXT`) follows the newest `compaction` row. The worker
+then writes the warning row.
 
-Layer two drops whole call-and-result groups and puts one structured handoff document in
-their place: what was replaced, the citations that stand, and three model-written sections
-quoting verbatim rather than paraphrasing. If the summariser answers with nothing, if there
-is too little unprotected material to be worth a model call, or if the handoff would be no
-smaller than what it replaces, the list is sent as layer one left it.
+The first model step of a run logs a warning when the system text, the tool schemas and the
+user messages pass the target, at 3 characters a token.
 
-**The handoff is a user message, not a system message.** It lands in the middle of the
-list, and this provider answers a system message anywhere but the first position with
-`System message must be at the beginning.`. A 400 the client retries, so the symptom is a
-turn that hangs rather than one that fails. The bracketed header is what tells the model
-the message is not the user speaking.
-
-The summariser runs with thinking off and a hard completion ceiling. Summarising is not a
-reasoning task, and a thinking model handed a transcript starts answering the research
-question instead of compressing it. Measured here as a call that did not return inside two
-minutes.
-
-**Some messages are never summarised, and that is enforced by selecting them in code, not
-by asking the summariser to spare them.** `protected_indexes` picks out the user's own
-messages, every todo call and result, the `cite_documents` result that says which document
-`[D3]` means, any message whose text carries a handle, every failed tool result, and the
-most recent exchanges;
-those are copied into the outgoing list unchanged and the summariser never sees them. A
-model asked politely to preserve a citation will eventually not, and **a compaction that
-loses a citation the answer already made is a correctness bug, not a compression
-trade-off.** Protection is closed over call-and-result groups, so a preserved result never
-arrives without the call that asked for it. Eviction honours the same set.
-
-**A summarised turn says so to the user; an evicted one does not.** The difference is what
-a reader can still check. Eviction leaves every result in the transcript, so the evidence
-is there. Summarisation replaces the model's own working prose, and the answer was written
-from that summary rather than from what the agent read, which is a fact about how much to
-trust it, so the answer carries one line saying so.
-
-Every applied compaction writes a `chat_compactions` row. What was evicted, the handoff
-document whole, the citation handles that were live, the model-visible list either side,
-the trigger and its denominator, and the token counts before and after. The "after" is the
-prompt of the first call made on the shortened list, so it arrives one call later and
-supersedes the first insert under the same compaction id.
+Every compaction writes a `chat_compactions` row: the record whole, the citation handles in
+the list, the list after, the trigger and its window, and the token counts before and after.
+The "after" is the prompt of the call made on the compacted list, so it arrives with the
+second insert under the same compaction id.
 
 ## Tool arguments sent as JSON strings
 

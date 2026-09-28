@@ -763,8 +763,8 @@ ORGANIZER_SECTION_FIELDS = ("node_id", "title", "state", "review", "corrections"
 def _organizer_sections(row) -> list[dict] | None:
     """The section states of the organizer's plan run, or `None` for any other run.
 
-    The organizer chooses which section to review or correct next. The rule of a failed
-    section (no accepting review after the newest work) is in `sections_json`, so the
+    The organizer chooses which sections to correct. The rule of a failed section (its
+    newest work run did not complete or wrote no report) is in `sections_json`, so the
     organizer reads the same state that the final report and the card read.
     """
     if not (row.kind == "organizer" and row.depth == 0 and row.plan_run_id):
@@ -895,16 +895,19 @@ def _delegate(row, calls, seqs, writer, chat_row) -> "RunSummary":
         used = run_budgets.count_used(row.username, row.session_id, turn_seq=row.turn_seq,
                                       plan_run_id=row.plan_run_id, own_batch_id=batch_id)
         limit = run_budgets.limit_for(row.plan_run_id)
-    sections, corrections = set(), {}
+    sections, section_runs = set(), {}
     if row.kind == "organizer" and row.plan_run_id:
         from tasks.P_agent import plan_runs
 
         sections = plan_runs.approved_sections(row.username, row.session_id, row.plan_run_id)
-        corrections = run_budgets.count_corrections(
+        section_runs = run_budgets.count_section_runs(
             row.username, row.session_id, plan_run_id=row.plan_run_id, own_batch_id=batch_id)
+    # A sub-agent of a plan does not delegate, so a plan's deepest caller is depth 0.
     decision = run_budgets.decide(calls, depth=row.depth, used=used, limit=limit,
                                   own_share=row.subagent_share, kind=row.kind,
-                                  sections=sections, corrections=corrections)
+                                  sections=sections, section_runs=section_runs,
+                                  max_depth=1 if row.plan_run_id else run_budgets.MAX_DEPTH,
+                                  in_plan=bool(row.plan_run_id))
 
     children = []
     for i, accepted in enumerate(decision.accepted):

@@ -189,7 +189,9 @@ def _lines(template: str, first: int, last: int) -> str:
     return "".join((FIXTURES / template).read_text().splitlines(keepends=True)[first - 1:last])
 
 
-#: The template lines that each role skill took, in template order.
+#: The template lines that each role skill took, in template order. `method_planner` and
+#: `method_organizer` are left out, because their texts now hold the plan caps and the
+#: packing numbers, which the old templates did not.
 ROLE_SOURCES = {
     "method_chat_internal": ("internal_search", [("internal_search.md.j2", 27, 36)]),
     "method_chat_full": (
@@ -197,8 +199,6 @@ ROLE_SOURCES = {
         [("full_research.md.j2", 23, 33), ("full_research.md.j2", 36, 40)],
     ),
     "method_subagent": ("research_subagent", [("research_subagent.md.j2", 31, 38)]),
-    "method_planner": ("planner", [("planner.md.j2", 14, 32)]),
-    "method_organizer": ("organizer", [("organizer.md.j2", 17, 52)]),
 }
 
 #: Old text that a skill holds in a corrected form, and the form it holds. The old text

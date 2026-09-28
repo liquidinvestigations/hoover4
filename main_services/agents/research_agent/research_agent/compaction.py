@@ -1,135 +1,211 @@
-"""Context compaction: eviction of old tool results, then summarisation.
+"""Context compaction: replace the older steps of a run with a record.
 
-A tool-using turn grows because every result the model collected stays in the list handed
-back to it on the next call. The answer needs the reasoning those results produced, not
-the fifty kilobytes of snippets they arrived in. Eviction replaces the content of the
-older tool results with a placeholder while the assistant messages that requested them
-keep their tool calls untouched, so the model still sees that it searched and what it
-searched for.
+A run grows because every result that the model collected stays in the list of the next
+call. When the last billed call reaches the trigger, a fraction of the model's stated
+context window, `compact` plans a smaller list before the next model call, and meets a
+target of a third of the trigger.
 
-Three properties hold, and dropping any one of them loses a citation.
+The list after a compaction holds these parts.
 
-**Nothing is edited.** This transformation is applied to the list on its way to the model
-and never written back into a stored message or into `chat_messages`. The transcript a user
-scrolls back through holds every result in full, which is the only reason a compaction
-error can be debugged afterwards. The worker stores a `compaction` row in the run thread
-that names the evicted and summarised messages (`CompactionReport.evicted_positions` and
-`summarised_positions`), and the next model call applies it
-(`run_messages.apply_compactions`). The next call therefore sends the compacted list, and
-measures the usage of the call that was made on it.
+- **The recent window.** The newest step groups (an `ai` message and its results), up to a
+  quarter of the target, and at least the newest group.
+- **The keep set.** Outside the window: every user message, the newest todo and plan
+  results, every `cite_documents` result and every `ai` text with a citation handle, the
+  newest read of each skill, every sub-agent report, the notes of `write_note`, and up to
+  three document reads again after the summary. Each class has a cap. A kept result keeps
+  its call.
+- **The record.** One `human` message in place of the first message that it replaces. Code
+  writes its first part, the index of `thread_index`: the searches, the documents read, and
+  the skill and tool texts that left the list. A model writes the rest from the compacted
+  part, in 1 or 3 requests.
 
-**A tool result is shortened, not removed.** An OpenAI-shaped request carrying an
-assistant message whose `tool_calls` have no matching tool result is rejected outright, so
-dropping the message would end the turn in a provider error rather than a shorter context.
-The placeholder is what "dropped" has to mean on this wire format.
+A `read_skill` or `read_tool` result outside the window and the keep set leaves the list
+whole. No summary is made of a skill or a tool text, and the index names it, so the model
+can read it again.
 
-**An unknown context window never fires the trigger.** `llm_models.context_window` is 0
-when the provider never stated one, and a threshold is a fraction of that number. Guessing
-a denominator is how a conversation silently loses its evidence, so 0 means no compaction
-is evaluated at all.
+Four properties hold.
 
-Layer two, summarisation, runs only when layer one has run and the list is still projected
-to be over. It drops whole call-and-result groups and puts a structured handoff document
-in their place. One rule governs its design and overrides compression everywhere the two
-disagree: **a compaction that loses a citation the answer already made is a correctness
-bug.** The messages that may never be summarised -- the user's own turns, the todo, and
-every message carrying or issuing a citation handle -- are therefore selected by
-`protected_indexes` and copied into the output list unchanged. The summariser model is
-never asked to preserve them, because a model asked politely will eventually not.
+**Nothing is edited.** The compaction applies to the list on its way to the model. The worker
+stores the record as a version 2 `compaction` row (`CompactionReport.row`), and each later
+call applies it with `run_messages.apply_record`. The transcript keeps every result in full.
+`compact` builds its own output with the same function, so a replay gives the same list.
+
+**Each call has one result.** A kept result keeps its `ai` message. A call whose result
+leaves the list leaves its `ai` message, and an `ai` message with no call and no text leaves
+the list. The provider refuses a request with a call and no result.
+
+**An unknown context window never fires the trigger.** `llm_models.context_window` is 0 when
+the provider never stated one, and 0 means no compaction.
+
+**The plan meets the target before the model call.** The sizes are estimates from a ratio of
+tokens to characters that the last billed call gives (`Estimator`). When the list still
+passes the target, `shrink` makes it smaller in a fixed order. When the parts that
+are never compacted pass the target, the smallest list goes, and `target_reached` is false.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import httpx
-from langchain_core.messages import (
-    AIMessage,
-    BaseMessage,
-    HumanMessage,
-    SystemMessage,
-    ToolMessage,
-)
 
-from research_agent import model_params
+from research_agent import model_params, thread_index
+from research_agent.run_messages import RunMessage, apply_record
 
 log = logging.getLogger(__name__)
 
 GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE", "Hoover4_Processing")
 
-#: Fraction of the model's context window at which compaction fires.
-#:
-#: 0.65 is the specified figure. It is configuration rather than a constant so it can be
-#: tuned with evidence, and so a demonstration can lower it without shipping the lower
-#: number. The earlier turns of a chat reach the model with their tool calls and results,
-#: so a long conversation reaches this fraction.
-DEFAULT_COMPACTION_FRACTION = 0.65
+#: Fraction of the model's context window at which compaction fires. Configuration
+#: (`AGENT_COMPACTION_FRACTION`) can change it.
+DEFAULT_COMPACTION_FRACTION = 0.80
+#: The target of a compaction is this share of the trigger.
+TARGET_SHARE = 1 / 3
+#: The recent window holds at most this share of the target, and at least one group.
+WINDOW_SHARE = 0.25
+#: The keep set outside the recent window, user messages included.
+KEEP_CAP_TOKENS = 35_000
+#: One sub-agent report in the keep set.
+REPORT_CAP_TOKENS = 4_000
+#: One skill text in the keep set, and all skill texts together.
+SKILL_CAP_TOKENS = 5_000
+SKILL_TOTAL_TOKENS = 25_000
+#: All notes of `write_note` together. The oldest note leaves first.
+NOTES_TOTAL_TOKENS = 4_000
+#: After a summary, this many `read_documents` results of the compacted part come back,
+#: each cut to this size, while the list stays at or under the target.
+REREAD_DOCS = 3
+REREAD_CAP_TOKENS = 5_000
+#: The completion budget of the record, and its smallest value.
+RECORD_BUDGET_TOKENS = 2_000
+RECORD_MIN_TOKENS = 1_000
+#: The results of the recent window are never cut below this size together.
+NEWEST_MIN_TOKENS = 500
+#: A compacted part above this size gets `PARTS` summary requests at once.
+PARTS_ABOVE_TOKENS = 30_000
+PARTS = 3
+#: The model step sets `note_warning` at this share of the trigger.
+NOTE_WARNING_SHARE = 0.90
+#: The warning row that the worker writes when `model_turn` sets `note_warning`, and its
+#: start. The worker keeps a copy, because the two images share no module.
+NOTE_WARNING_HEAD = "Your context is at"
+NOTE_WARNING_TEXT = (
+    NOTE_WARNING_HEAD + " {pct} percent of its limit. The older steps of this run will soon "
+    "be replaced by a record. Save each fact that you need later with `write_note` now. "
+    "When `write_note` is not ready, call `read_tool` with the name `write_note` first. "
+    "Then call `write_note` in your next reply."
+)
+#: The margin of the token estimate.
+MARGIN = 1.05
+#: What a cut tool result ends with.
+CUT_MARK = " [cut to save context]"
+#: The chars of one message that no content holds, such as the role.
+FRAME_CHARS = 24
 
-#: How many of the most recent tool results survive a compaction intact. The model is
-#: usually still working with what it just read, and evicting the result of the call it
-#: made moments ago forces an immediate re-read that costs more than it saved.
-DEFAULT_KEEP_RECENT = 3
-
-#: What an evicted tool result says in the model's place. It names the transcript as the
-#: place the content still exists, because the alternative reading -- that the tool
-#: returned nothing -- would make the model report a gap that is not there.
+#: What an evicted tool result says in the model's place. A version 1 row applies it.
 EVICTION_PLACEHOLDER = (
     "[This tool result was evicted to reclaim context. It is unchanged in the "
     "conversation transcript. The call that produced it is shown above. Re-run the tool "
     "if you need its content again.]"
 )
 
-#: A tool result shorter than the placeholder is left alone, because replacing it makes
-#: the context bigger. Measured on the first driven run: a `list_collections` result is 91
-#: characters and evicting it added 36. Most tool results here are kilobytes and this
-#: guard never sees them -- it exists for the handful that are one line.
-MIN_EVICTABLE_CHARS = len(EVICTION_PLACEHOLDER)
+#: The start of each record. A `human` message that starts with it is a record, never a
+#: user message, and a later compaction summarises it again.
+RECORD_HEADER = (
+    "[Record of earlier steps. Code wrote the lists of searches and documents. "
+    "A model wrote the rest from the steps it replaces. The full steps are in the "
+    "transcript.]\n\n"
+)
+#: The start of a record of a version 1 row.
+_V1_RECORD_HEAD = "[Context handoff."
 
-#: A citation handle as `cite_documents` allocates it and as the model writes it into an
-#: answer. Handles are allocated per chat session and are stable for its whole life, so
-#: `[D7]` from the first turn still has to resolve in the ninth.
+#: The line of a summary part that failed, timed out or gave no text.
+PART_FAILED = ("Part {n} of {k}. The summary failed. The lists above name its searches and "
+               "documents.")
+
+#: A citation handle as `cite_documents` allocates it and as the model writes it.
 CITATION_HANDLE = re.compile(r"\[D\d+\]")
 
-#: Tool results that carry the citation handle table. Summarising one of these takes the
-#: handle-to-document mapping away from the model while its own prose still cites it.
 CITATION_TOOLS = frozenset({"cite_documents"})
-
-#: The todo tools. The todo is the turn's plan and the thing the nag loop checks against,
-#: so a summary of it is a different todo rather than a cheaper one.
 TODO_TOOLS = frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"})
+PLAN_TOOLS = frozenset({"read_plan", "append_node", "append_child", "move_node", "edit_node",
+                        "remove_node"})
+REPORT_TOOL = "run_subagent"
+NOTE_TOOL = "write_note"
+READ_SKILL = "read_skill"
+READ_TOOL = "read_tool"
+TEXT_TOOLS = frozenset({READ_SKILL, READ_TOOL})
+REREAD_TOOL = "read_documents"
 
-#: How many messages at the end of the list layer two always leaves alone, on top of
-#: whatever `protected_indexes` selects. The model is mid-turn and the last few exchanges
-#: are what it is reasoning about right now.
-DEFAULT_KEEP_RECENT_MESSAGES = 6
+#: The request of one summary part. `{notes}` holds the line of a previous record and the
+#: line of a part, when they apply.
+SUMMARY_PROMPT = """\
+You compress the working history of a research agent that continues its work after you. \
+The agent keeps its task, the user's messages, its latest todo and plan, and its newest \
+steps. The history below (its own older steps, its tool calls and their results) leaves \
+its context now, and your record replaces it. Code adds a list of the searches that found \
+nothing and of the documents read, so do not repeat those lists.
 
-#: What the handoff document is introduced with in the model-visible list. It says the
-#: transcript is intact for the same reason the eviction placeholder does: the alternative
-#: reading, that those steps never happened, would make the model report a gap.
-HANDOFF_HEADER = (
-    "[Context handoff. The earlier steps of this turn were summarised to fit the "
-    "context window. They are unchanged in the conversation transcript. Every citation "
-    "handle already issued, the user's own messages and the todo are still present in "
-    "full below.]"
-)
+Use exactly these sections, in this order:
 
-#: How long the summariser model is given when `LLM_REQUEST_TIMEOUT_SECONDS` is unset. A
-#: compaction that hangs costs the turn it was meant to save, so this is bounded and a
-#: timeout means no summarisation rather than no answer. When the variable is set, the
-#: summariser gets the same read timeout as the agent's own model calls, because both wait
-#: in the same model server queue.
-_SUMMARISER_TIMEOUT = (5.0, 180.0)
+## Goal
+The task and the sub-goals that the history shows, in 1 to 3 sentences.
+
+## Findings
+One line for each fact that bears on the task. Give a short exact quote in quotation marks, \
+then its source: the collection name, the first 16 characters of the file hash, and the \
+path, or the URL, or the sub-agent. Copy every number, date, name, amount, count and \
+identifier exactly. A fact that a later step can need is a finding, also when it looks minor.
+
+## Open items
+The questions that the history raised and did not answer, and the leads not yet followed, \
+each with the document or the query that raised it.
+
+## Next steps
+The steps the agent planned and did not yet do. Write "unknown" if the history does not say.
+
+Rules: report only what the history below says. Invent nothing. Do not answer the task. \
+Keep the record under {words} words.
+{notes}
+The agent's task:
+{task}
+
+--- history being replaced ---
+{transcript}
+--- end ---
+"""
+PREVIOUS_RECORD_LINE = ("A previous record exists. Integrate every fact of it that still "
+                        "bears on the task.")
+PART_LINE = ("The history below is part {n} of {k} of the history being replaced, in order. "
+             "Records of the other parts are written apart.")
+#: The task in the summary request is cut to this many characters.
+TASK_CHARS = 2_000
+
+#: The (connect, read) timeout of a summary request when `LLM_REQUEST_TIMEOUT_SECONDS` is
+#: unset: the read timeout of a model call.
+_SUMMARISER_TIMEOUT = (5.0, 3600.0)
+
+#: How long a context window read from the catalog is trusted before it is read again.
+_WINDOW_TTL_SECONDS = 300
+
+_window_cache: dict[str, tuple[float, int]] = {}
+
+Key = Tuple[str, int]
+#: A summariser takes the prompt and the completion cap, and returns the text.
+Summariser = Callable[[str, int], str]
 
 
 def summariser_timeout() -> tuple[float, float]:
-    """The (connect, read) timeout of the summariser request."""
+    """The (connect, read) timeout of a summary request."""
     return model_params.request_timeout() or _SUMMARISER_TIMEOUT
 
 
@@ -137,30 +213,12 @@ def _without_cap(params: dict) -> dict:
     """`params` without `max_tokens`."""
     return {key: value for key, value in params.items() if key != "max_tokens"}
 
-#: How much unprotected material has to be there before a summariser call is worth making.
-#: Below this the handoff document would be about as long as what it replaces -- the
-#: refusal below catches that, but only after paying for a model call to find out.
-MIN_SUMMARISABLE_CHARS = 6000
-
-#: Ceiling on the handoff document's length, in tokens. A handoff longer than this is not
-#: a summary, and the refusal below already rejects one that is not smaller than what it
-#: replaces -- this stops the model spending the time to produce one first.
-SUMMARY_TOKEN_CEILING = 1200
-
-#: How long a context window read from the catalog is trusted before it is read again.
-#: The catalog is refreshed on a schedule and a model's window does not change between
-#: refreshes, so this only bounds how long a stale denominator can survive a re-list.
-_WINDOW_TTL_SECONDS = 300
-
-_window_cache: dict[str, tuple[float, int]] = {}
-
 
 def compaction_fraction() -> float:
     """The configured trigger, as a fraction of the context window.
 
-    Out-of-range values disable compaction rather than clamping into it: a fraction above
-    1 cannot fire anyway, and a fraction at or below 0 would compact every call, which is
-    a misconfiguration that must not silently look like a feature.
+    A value out of range, or not a number, turns compaction off. A fraction above 1 cannot
+    fire, and a fraction at or below 0 would compact every call.
     """
     raw = (os.getenv("AGENT_COMPACTION_FRACTION") or "").strip()
     if not raw:
@@ -176,13 +234,6 @@ def compaction_fraction() -> float:
     return value
 
 
-def keep_recent() -> int:
-    try:
-        return max(0, int(os.getenv("AGENT_COMPACTION_KEEP_RECENT") or DEFAULT_KEEP_RECENT))
-    except ValueError:
-        return DEFAULT_KEEP_RECENT
-
-
 def _clickhouse_url() -> str:
     return (os.getenv("CLICKHOUSE_URL") or "").rstrip("/")
 
@@ -194,12 +245,8 @@ def _auth() -> tuple[str, str]:
 def context_window(model_id: str, *, now: Optional[float] = None) -> int:
     """The model's context window from the catalog, or 0 when nothing states one.
 
-    Read from `llm_models` rather than from the provider directly so that the number the
-    trigger divides by is the same number the transcript footer shows the user. Two
-    denominators that disagree would make a compaction the user cannot account for.
-
-    Every failure -- no ClickHouse, no row, an unparseable answer -- returns 0, and 0
-    means the trigger cannot be evaluated. Never substitute a default here.
+    Read from `llm_models`, so the trigger divides by the number that the transcript footer
+    shows. Every failure returns 0, and 0 means no compaction. Never substitute a default.
     """
     model_id = (model_id or "").strip()
     if not model_id:
@@ -244,392 +291,446 @@ def threshold_tokens(window: int, fraction: Optional[float] = None) -> int:
     return int(window * frac)
 
 
-def last_billed_tokens(messages: Sequence[BaseMessage]) -> int:
-    """What the provider billed for the most recent model call in this list.
+def target_tokens(trigger: int) -> int:
+    """The size that a compaction plans the list to, a third of the trigger."""
+    return trigger // 3
 
-    The last assistant message carries the provider's own `usage_metadata`, which is the
-    only token count in the system that was not estimated by a tokeniser that is not the
-    model's. Prompt plus completion, because that is what the peak the trigger is sized
-    against means everywhere else.
 
-    0 when no assistant message reports usage -- before the first call of a run, or from a
-    provider that reports none. The trigger reads that as "not known to be over".
-    """
-    for message in reversed(list(messages)):
-        if not isinstance(message, AIMessage):
-            continue
-        meta = getattr(message, "usage_metadata", None)
-        if isinstance(meta, dict) and meta:
-            prompt = int(meta.get("input_tokens") or 0)
-            completion = int(meta.get("output_tokens") or 0)
-            if prompt:
-                return prompt + completion
-        resp = getattr(message, "response_metadata", None) or {}
-        usage = resp.get("token_usage") or resp.get("usage") or {} if isinstance(resp, dict) else {}
-        if isinstance(usage, dict) and usage:
-            prompt = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
-            completion = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
-            if prompt:
-                return prompt + completion
+def last_billed(messages: Sequence[RunMessage]) -> int:
+    """Prompt plus completion of the newest `ai` message with a billed prompt, else 0."""
+    for m in reversed(list(messages)):
+        if m.role == "ai" and m.usage and int(m.usage.get("input_tokens") or 0) > 0:
+            return int(m.usage.get("input_tokens") or 0) + int(m.usage.get("output_tokens") or 0)
     return 0
 
 
-def _content_text(message: BaseMessage) -> str:
-    """A message's content as one string, whatever shape it arrived in."""
-    content = getattr(message, "content", "") or ""
-    if isinstance(content, list):
-        content = "".join(
-            part.get("text", "") for part in content if isinstance(part, dict)
-        )
-    if not isinstance(content, str):
-        content = str(content)
-    return content
+# ------------------------------------------------------------------------ estimate
 
 
-def _content_length(message: BaseMessage) -> int:
-    return len(_content_text(message))
-
-
-def _tool_name(message: BaseMessage) -> str:
-    return str(getattr(message, "name", "") or "")
-
-
-def summarise_list(messages: Sequence[BaseMessage]) -> str:
-    """One line per message: what it is, what it called, how long its content is.
-
-    Logged either side of an applied compaction, because the question anyone debugging a
-    compaction asks first is what the model could still see. A compaction is rare by
-    construction, so this costs nothing until the one moment it is the only record of what
-    happened.
-    """
-    lines = []
-    for i, message in enumerate(messages):
-        kind = type(message).__name__
-        detail = ""
-        if isinstance(message, ToolMessage):
-            detail = f" result of {getattr(message, 'name', '') or '?'}"
-            if message.content == EVICTION_PLACEHOLDER:
-                detail += " EVICTED"
-        calls = getattr(message, "tool_calls", None) or []
-        if calls:
-            detail = " calls " + ", ".join(str(c.get("name") or "?") for c in calls)
-        lines.append(f"  {i:3d} {kind}{detail} [{_content_length(message)} chars]")
-    return "\n".join(lines)
+def msg_chars(m: RunMessage) -> int:
+    """The characters of one message: content, call names and arguments, and the frame."""
+    return (len(m.content or "")
+            + sum(len(c.name) + len(json.dumps(c.args, ensure_ascii=False))
+                  for c in m.tool_calls)
+            + FRAME_CHARS)
 
 
 @dataclass
-class CompactionReport:
-    """What one compaction did, for the trail and for the tests.
+class Estimator:
+    """Token sizes before the model call, from a ratio that the last billed call gives."""
 
-    One shape for both layers. `layer` says which one produced it: `eviction` fills the
-    `evicted`/`kept` and character counts, `summarisation` fills the summary, the counts
-    of what it dropped and preserved, and the handles it carried through. A row where
-    `layer` is `summarisation` also carries the eviction that ran in front of it, because
-    layer two only ever runs on a list layer one has already been over.
+    ratio: float
+    fixed: int
+
+    @classmethod
+    def calibrate(cls, applied: Sequence[RunMessage], system_text: str = "",
+                  schemas_json: str = "") -> "Estimator":
+        """The ratio of the newest `ai` message with a billed prompt P: P over the
+        characters of the list that its call sent, between 1/6 and 1/1.5 tokens a
+        character. With no billed call the ratio is 1/3."""
+        base = len(system_text or "") + len(schemas_json or "")
+        ratio = 1 / 3
+        for k in range(len(applied) - 1, -1, -1):
+            m = applied[k]
+            prompt = int((m.usage or {}).get("input_tokens") or 0) if m.role == "ai" else 0
+            if prompt > 0:
+                chars = base + sum(msg_chars(x) for x in applied[:k])
+                ratio = min(1 / 1.5, max(1 / 6, prompt / max(chars, 1)))
+                break
+        return cls(ratio, math.ceil(base * ratio * MARGIN))
+
+    def tokens(self, m: RunMessage) -> int:
+        return math.ceil(msg_chars(m) * self.ratio * MARGIN)
+
+    def tokens_text(self, text: str) -> int:
+        return math.ceil(len(text or "") * self.ratio * MARGIN)
+
+    def list_size(self, messages: Sequence[RunMessage]) -> int:
+        return sum(self.tokens(m) for m in messages)
+
+    def chars_for(self, tokens: int) -> int:
+        """The characters of content that `tokens` holds."""
+        return max(0, int(tokens / (self.ratio * MARGIN)))
+
+
+# ------------------------------------------------------------------------- layout
+
+
+def _key(m: RunMessage) -> Optional[Key]:
+    if m.thread_id is None or m.idx is None:
+        return None
+    return (str(m.thread_id), int(m.idx))
+
+
+def is_record(m: RunMessage) -> bool:
+    """Whether a `human` message is a compaction record."""
+    text = m.content or ""
+    return m.role == "human" and (text.startswith(RECORD_HEADER[:40])
+                                  or text.startswith(_V1_RECORD_HEAD))
+
+
+def step_groups(msgs: Sequence[RunMessage]) -> List[List[int]]:
+    """Index groups in list order: an `ai` message with its results, else one message."""
+    owner: Dict[str, int] = {}
+    groups: Dict[int, List[int]] = {}
+    for i, m in enumerate(msgs):
+        if m.role == "ai":
+            groups[i] = [i]
+            for c in m.tool_calls:
+                owner[c.id] = i
+        elif m.role == "tool" and m.tool_call_id in owner:
+            groups[owner[m.tool_call_id]].append(i)
+        else:
+            groups[i] = [i]
+    return [sorted(v) for _, v in sorted(groups.items())]
+
+
+def recent_window(groups: Sequence[List[int]], msgs: Sequence[RunMessage], est: Estimator,
+                  target: int) -> int:
+    """The index of the first group of the recent window: the newest groups up to
+    `WINDOW_SHARE` of the target, and at least the newest group."""
+    start, used = len(groups), 0
+    for g in range(len(groups) - 1, -1, -1):
+        cost = sum(est.tokens(msgs[i]) for i in groups[g])
+        if start < len(groups) and used + cost > WINDOW_SHARE * target:
+            break
+        start, used = g, used + cost
+    return start
+
+
+@dataclass
+class Layout:
+    """The plan of one compaction, by index into the applied list."""
+
+    msgs: List[RunMessage]
+    groups: List[List[int]]
+    names: Dict[int, str]
+    window_start: int
+    #: Kept results outside the window: state, citations and notes.
+    fixed_keep: Set[int] = field(default_factory=set)
+    #: Kept reports and skills outside the window, oldest first.
+    reports: List[int] = field(default_factory=list)
+    skills: List[int] = field(default_factory=list)
+    rereads: List[int] = field(default_factory=list)
+    #: A cap in tokens for a kept `tool` result.
+    cuts: Dict[int, int] = field(default_factory=dict)
+    budget: int = RECORD_BUDGET_TOKENS
+    steps: List[str] = field(default_factory=list)
+    target_reached: bool = True
+
+    def window(self) -> Set[int]:
+        return {i for g in self.groups[self.window_start:] for i in g}
+
+    def classify(self) -> Tuple[Set[int], Set[int], List[int], List[int]]:
+        """(kept, text_removed, summarised, dropped) for the messages outside the window.
+        The window messages are kept."""
+        window = self.window()
+        results = set(self.fixed_keep) | set(self.reports) | set(self.skills) | set(self.rereads)
+        kept: Set[int] = set(window)
+        blank: Set[int] = set()
+        gone: List[int] = []
+        drop: List[int] = []
+        members = {g[0]: g for g in self.groups}
+        for i, m in enumerate(self.msgs):
+            if i in window:
+                continue
+            if m.role == "human":
+                (gone.append(i) if is_record(m) else kept.add(i))
+            elif m.role == "tool":
+                if i in results:
+                    kept.add(i)
+                elif self.names.get(i) in TEXT_TOOLS:
+                    drop.append(i)
+                else:
+                    gone.append(i)
+            elif m.role == "ai":
+                own = [j for j in members.get(i, [i]) if j != i]
+                handle = bool(CITATION_HANDLE.search(m.content or ""))
+                if handle or any(j in results for j in own):
+                    kept.add(i)
+                    if not handle and (m.content or "").strip():
+                        blank.add(i)
+                else:
+                    gone.append(i)
+        return kept, blank, gone, drop
+
+    def row(self, est: Estimator, handoff: str) -> Dict[str, Any]:
+        """The keys of a version 2 record for this layout."""
+        kept, blank, gone, drop = self.classify()
+
+        def keys(indexes) -> List[List[Any]]:
+            return [[k[0], k[1]] for i in sorted(indexes) for k in [_key(self.msgs[i])] if k]
+
+        cuts = []
+        for i in sorted(self.cuts):
+            k = _key(self.msgs[i])
+            chars = est.chars_for(self.cuts[i])
+            if k and i in kept and len(self.msgs[i].content or "") > chars:
+                cuts.append([k[0], k[1], chars])
+        return {"version": 2, "layer": "record", "summarised": keys(gone),
+                "text_removed": keys(blank), "dropped": keys(drop), "cuts": cuts,
+                "handoff": handoff}
+
+
+def _names(msgs: Sequence[RunMessage]) -> Dict[int, str]:
+    """The tool name of each `tool` message, from its call."""
+    calls = {c.id: c.name for m in msgs if m.role == "ai" for c in m.tool_calls}
+    return {i: calls.get(m.tool_call_id or "", m.name or "") for i, m in enumerate(msgs)
+            if m.role == "tool"}
+
+
+def _ok(m: RunMessage) -> bool:
+    return m.status != "error"
+
+
+def _skill_name(msgs: Sequence[RunMessage], i: int) -> str:
+    call_id = msgs[i].tool_call_id
+    for m in msgs:
+        if m.role == "ai":
+            for c in m.tool_calls:
+                if c.id == call_id:
+                    return str((c.args or {}).get("name") or "")
+    return ""
+
+
+def initial_layout(msgs: List[RunMessage], est: Estimator, target: int,
+                   window_start: Optional[int] = None) -> Layout:
+    """The recent window and the keep set with its caps. With `window_start`, the window
+    starts at that group, else `recent_window` sets it."""
+    groups = step_groups(msgs)
+    names = _names(msgs)
+    start = recent_window(groups, msgs, est, target) if window_start is None else window_start
+    layout = Layout(msgs=msgs, groups=groups, names=names, window_start=start)
+    window = layout.window()
+    tools = [i for i, m in enumerate(msgs) if m.role == "tool"]
+    for family in (TODO_TOOLS, PLAN_TOOLS):
+        newest = [i for i in tools if names[i] in family and _ok(msgs[i])]
+        if newest and newest[-1] not in window:
+            layout.fixed_keep.add(newest[-1])
+    outside = [i for i in tools if i not in window]
+    layout.fixed_keep |= {i for i in outside if names[i] in CITATION_TOOLS}
+    layout.reports = [i for i in outside if names[i] == REPORT_TOOL]
+    for i in layout.reports:
+        layout.cuts[i] = REPORT_CAP_TOKENS
+    newest_skill: Dict[str, int] = {}
+    for i in tools:
+        if names[i] == READ_SKILL and _ok(msgs[i]):
+            newest_skill[_skill_name(msgs, i)] = i
+    layout.skills = sorted(i for i in newest_skill.values() if i not in window)
+    for i in layout.skills:
+        layout.cuts[i] = SKILL_CAP_TOKENS
+    while sum(min(est.tokens(msgs[i]), SKILL_CAP_TOKENS) for i in layout.skills) \
+            > SKILL_TOTAL_TOKENS:
+        layout.cuts.pop(layout.skills.pop(0), None)
+    notes = [i for i in outside if names[i] == NOTE_TOOL and _ok(msgs[i])]
+    while sum(est.tokens(msgs[i]) for i in notes) > NOTES_TOTAL_TOKENS:
+        notes.pop(0)
+    layout.fixed_keep |= set(notes)
+    return layout
+
+
+class Sizer:
+    """The sizes of a layout, from the list that its record gives."""
+
+    def __init__(self, rows: Sequence[RunMessage], est: Estimator):
+        self.rows = list(rows)
+        self.est = est
+
+    def index(self, layout: Layout) -> str:
+        kept, _blank, _gone, _drop = layout.classify()
+        cut_keys = {k for i in layout.cuts for k in [_key(layout.msgs[i])] if k}
+        present = {k for i in kept if layout.msgs[i].role == "tool"
+                   for k in [_key(layout.msgs[i])] if k}
+        return thread_index.render(self.rows, visible_after=present - cut_keys,
+                                   present_after=present)
+
+    def visible(self, layout: Layout, handoff: str) -> List[RunMessage]:
+        return apply_record(layout.msgs, layout.row(self.est, handoff))
+
+    def rest(self, layout: Layout) -> int:
+        """The fixed part, the kept messages, the window and the record without its body."""
+        visible = self.visible(layout, RECORD_HEADER + self.index(layout))
+        return self.est.fixed + self.est.list_size(visible)
+
+    def keep_outside_window(self, layout: Layout) -> int:
+        window = {k for i in layout.window() for k in [_key(layout.msgs[i])] if k}
+        visible = self.visible(layout, "")
+        return sum(self.est.tokens(m) for m in visible if _key(m) not in window)
+
+    def window_results(self, layout: Layout) -> List[int]:
+        return [i for i in sorted(layout.window()) if layout.msgs[i].role == "tool"]
+
+
+def shrink(layout: Layout, sizer: Sizer, target: int) -> Layout:
+    """Reach the target before any model call, in the shrink order.
+
+    1. The oldest groups of the recent window leave it, down to the newest group.
+    2. The oldest reports move to the compacted part, then the oldest skills leave the
+       list, while the list passes the target or the keep set passes its cap.
+    3. The record budget falls, down to `RECORD_MIN_TOKENS`.
+    4. The results of the newest group are cut, to at least `NEWEST_MIN_TOKENS`.
     """
+    budget = RECORD_BUDGET_TOKENS
+    if sizer.rest(layout) + budget <= target \
+            and sizer.keep_outside_window(layout) <= KEEP_CAP_TOKENS:
+        layout.budget = budget
+        return layout
+    while len(layout.groups) - layout.window_start > 1 \
+            and sizer.rest(layout) + RECORD_MIN_TOKENS > target:
+        steps = layout.steps
+        layout = initial_layout(layout.msgs, sizer.est, target, layout.window_start + 1)
+        layout.steps = steps + ["window"]
+    while (layout.reports or layout.skills) and (
+            sizer.rest(layout) + RECORD_MIN_TOKENS > target
+            or sizer.keep_outside_window(layout) > KEEP_CAP_TOKENS):
+        if layout.reports:
+            layout.cuts.pop(layout.reports.pop(0), None)
+            layout.steps.append("report")
+        else:
+            layout.cuts.pop(layout.skills.pop(0), None)
+            layout.steps.append("skill")
+    rest = sizer.rest(layout)
+    if rest + RECORD_MIN_TOKENS <= target:
+        layout.budget = min(budget, target - rest)
+        if layout.budget < budget:
+            layout.steps.append("budget")
+        return layout
+    results = sizer.window_results(layout)
+    newest = sum(sizer.est.tokens(layout.msgs[i]) for i in results)
+    room = max(NEWEST_MIN_TOKENS, target - (rest - newest) - RECORD_MIN_TOKENS)
+    for i in results:
+        share = sizer.est.tokens(layout.msgs[i]) / max(newest, 1)
+        layout.cuts[i] = min(layout.cuts.get(i, room), max(1, int(room * share)))
+    layout.steps.append("newest")
+    layout.budget = RECORD_MIN_TOKENS
+    layout.steps.append("budget")
+    if sizer.rest(layout) + RECORD_MIN_TOKENS > target:
+        layout.target_reached = False
+    return layout
 
-    compaction_id: str = ""
-    layer: str = "eviction"
-    tokens_before: int = 0
-    tokens_after: int = 0
-    context_window: int = 0
-    threshold_tokens: int = 0
-    messages_before: int = 0
-    messages_after: int = 0
-    evicted_count: int = 0
-    kept_count: int = 0
-    chars_before: int = 0
-    chars_after: int = 0
-    evicted: list[str] = field(default_factory=list)
-    model_id: str = ""
-    #: The handoff document layer two produced, stored whole. It is the only place the
-    #: prose the model was given in place of its own can be read back.
-    summary: str = ""
-    #: Messages layer two dropped, and messages it copied through unchanged.
-    summarised_count: int = 0
-    preserved_count: int = 0
-    #: Every citation handle that had been issued when the compaction ran. All of them
-    #: are preserved -- this is the record that says so, and what a later reader checks
-    #: an answer's citations against.
-    handles: list[str] = field(default_factory=list)
-    #: The model-visible list either side of the compaction, one line per message. §3.5.3
-    #: asks the record to hold the pre-compaction list, and the question anyone debugging
-    #: a compaction asks first is what the model could still see.
-    list_before: str = ""
-    list_after: str = ""
-    #: The positions, in the input list, of the tool results that eviction replaced, and
-    #: of the messages that summarisation replaced. The worker stores them as keys.
-    evicted_positions: list[int] = field(default_factory=list)
-    summarised_positions: list[int] = field(default_factory=list)
 
-    @property
-    def chars_freed(self) -> int:
-        return max(0, self.chars_before - self.chars_after)
+def add_rereads(layout: Layout, sizer: Sizer, target: int) -> Layout:
+    """The newest `REREAD_DOCS` successful `read_documents` results of the
+    compacted part come back, newest first, each cut to `REREAD_CAP_TOKENS`. A result comes
+    back only when the list then stays at or under the target."""
+    _kept, _blank, gone, _drop = layout.classify()
+    candidates = [i for i in reversed(gone) if layout.msgs[i].role == "tool"
+                  and layout.names.get(i) == REREAD_TOOL and _ok(layout.msgs[i])]
+    for i in candidates[:REREAD_DOCS]:
+        layout.rereads.append(i)
+        layout.cuts[i] = REREAD_CAP_TOKENS
+        if sizer.rest(layout) + layout.budget > target:
+            layout.rereads.remove(i)
+            layout.cuts.pop(i, None)
+    return layout
 
 
-def evict_tool_results(
-    messages: Sequence[BaseMessage],
-    *,
-    keep: int,
-) -> tuple[list[BaseMessage], CompactionReport]:
-    """Shorten every tool result but the `keep` most recent ones.
+# ------------------------------------------------------------------------ summary
 
-    Returns a new list. The input messages are never mutated: each evicted result is a
-    copy with different content, so the objects still held by the graph state -- and
-    therefore everything the transcript is written from -- are untouched.
 
-    Only `ToolMessage` is ever touched. The user's own messages, the assistant's prose,
-    and every `tool_calls` block stay exactly as they were, which is what leaves the model
-    able to see that it searched and what for.
+def _call_text(name: str, args: Dict[str, Any]) -> str:
+    return f"{name}({json.dumps(args or {}, ensure_ascii=False, sort_keys=True)})"
 
-    A result no longer than the placeholder is left alone -- see `MIN_EVICTABLE_CHARS`.
 
-    A `cite_documents` or todo result is left alone too, for the reason `protected_indexes`
-    gives: the `cite_documents` result is the model's only copy of which document `[D3]`
-    means, and evicting it while the model's own prose still says `[D3]` is how a cited
-    answer becomes an unsourced one. A failed tool result is left alone, so the model keeps
-    the error it has to correct. Both layers honour the same never-compacted set.
-    """
-    out = list(messages)
-    tool_indexes = [i for i, m in enumerate(out) if isinstance(m, ToolMessage)]
-    report = CompactionReport(
-        messages_before=len(out),
-        messages_after=len(out),
-        chars_before=sum(_content_length(out[i]) for i in tool_indexes),
-        kept_count=min(keep, len(tool_indexes)),
+def compacted_blocks(layout: Layout, est: Estimator) -> List[Tuple[str, int, bool]]:
+    """The compacted part as text blocks for the summariser, in list order: (text, tokens,
+    starts a group). No block holds a `read_skill` or `read_tool` call or result. An `ai`
+    message that keeps its place gives its text and its compacted calls."""
+    kept, blank, gone, _drop = layout.classify()
+    gone_set = set(gone)
+    results = {layout.msgs[i].tool_call_id: i for i in range(len(layout.msgs))
+               if layout.msgs[i].role == "tool"}
+    blocks: List[Tuple[str, int, bool]] = []
+    for i in sorted(gone_set | blank):
+        m = layout.msgs[i]
+        if m.role == "tool":
+            call = next((c for x in layout.msgs if x.role == "ai" for c in x.tool_calls
+                         if c.id == m.tool_call_id), None)
+            head = _call_text(call.name, call.args) if call else (m.name or "tool")
+            text = f"[result of {head}]\n{m.content}"
+        elif m.role == "ai":
+            calls = [c for c in m.tool_calls if c.name not in TEXT_TOOLS
+                     and results.get(c.id) in gone_set]
+            label = "assistant"
+            if calls:
+                label += " calling " + ", ".join(_call_text(c.name, c.args) for c in calls)
+            content = (m.content or "").strip()
+            if not calls and not content:
+                continue
+            text = f"[{label}]\n{content}".rstrip()
+        else:
+            text = f"[earlier record]\n{m.content}"
+        blocks.append((text, est.tokens_text(text) + est.tokens_text(" " * FRAME_CHARS),
+                       m.role != "tool"))
+    return blocks
+
+
+def split_at_groups(blocks: Sequence[Tuple[str, int, bool]], k: int) -> List[List[str]]:
+    """`k` pieces in order, of about equal tokens, each starting at a group."""
+    total = sum(b[1] for b in blocks)
+    pieces: List[List[str]] = [[]]
+    acc = 0
+    for text, tokens, starts in blocks:
+        if starts and pieces[-1] and len(pieces) < k and acc >= total * len(pieces) / k:
+            pieces.append([])
+        pieces[-1].append(text)
+        acc += tokens
+    return pieces
+
+
+def render_prompt(piece: Sequence[str], task: str, n: int, k: int, max_tokens: int,
+                  previous: bool) -> str:
+    """The request of one summary part."""
+    notes = []
+    if previous:
+        notes.append(PREVIOUS_RECORD_LINE)
+    if k > 1:
+        notes.append(PART_LINE.format(n=n, k=k))
+    return SUMMARY_PROMPT.format(
+        words=max(100, int(0.6 * max_tokens)),
+        notes=("\n" + "\n".join(notes) + "\n") if notes else "",
+        task=(task or "")[:TASK_CHARS],
+        transcript="\n\n".join(piece),
     )
-    evictable = tool_indexes[: max(0, len(tool_indexes) - keep)]
-    for i in evictable:
-        message = out[i]
-        if message.content == EVICTION_PLACEHOLDER:
-            # Already evicted on an earlier call of the same turn. Counting it again would
-            # report the same kilobytes freed twice.
-            continue
-        if _content_length(message) <= MIN_EVICTABLE_CHARS:
-            report.kept_count += 1
-            continue
-        if (_tool_name(message) in CITATION_TOOLS or _tool_name(message) in TODO_TOOLS
-                or _failed(message)):
-            report.kept_count += 1
-            continue
-        report.evicted.append(str(getattr(message, "name", "") or "tool"))
-        report.evicted_positions.append(i)
-        report.evicted_count += 1
-        out[i] = message.model_copy(update={"content": EVICTION_PLACEHOLDER})
-    report.chars_after = sum(_content_length(out[i]) for i in tool_indexes)
-    return out, report
 
 
-def _failed(message: BaseMessage) -> bool:
-    """A tool result whose call failed."""
-    return isinstance(message, ToolMessage) and getattr(message, "status", "") == "error"
+def summarise_parts(blocks: Sequence[Tuple[str, int, bool]], *, task: str, budget: int,
+                    summariser: Summariser, previous: bool = False
+                    ) -> Tuple[str, List[str]]:
+    """One request for a compacted part up to `PARTS_ABOVE_TOKENS`, else
+    `PARTS` requests at once, each with a third of the budget as its completion cap. A part
+    that fails, raises or gives no text gets the `PART_FAILED` line. Returns the body and
+    the state of each part, `ok` or `failed`."""
+    total = sum(b[1] for b in blocks)
+    k = PARTS if total > PARTS_ABOVE_TOKENS else 1
+    pieces = split_at_groups(blocks, k)
+    k = len(pieces)
+    cap = max(1, budget // k)
+    prompts = [render_prompt(piece, task, n + 1, k, cap, previous)
+               for n, piece in enumerate(pieces)]
 
-
-def _call_groups(messages: Sequence[BaseMessage]) -> list[list[int]]:
-    """Index groups that have to move together to keep the request well formed.
-
-    An assistant message whose `tool_calls` have no matching tool result is rejected by
-    an OpenAI-shaped API outright, and so is a tool result with no call that asked for
-    it. A group is one assistant message plus every result answering its calls, so
-    dropping a group can never leave half a pair behind.
-    """
-    owner_of: dict[str, int] = {}
-    groups: dict[int, list[int]] = {}
-    for i, message in enumerate(messages):
-        if isinstance(message, AIMessage) and (getattr(message, "tool_calls", None) or []):
-            groups[i] = [i]
-            for call in message.tool_calls:
-                call_id = str(call.get("id") or "")
-                if call_id:
-                    owner_of[call_id] = i
-    for i, message in enumerate(messages):
-        if not isinstance(message, ToolMessage):
-            continue
-        owner = owner_of.get(str(getattr(message, "tool_call_id", "") or ""))
-        if owner is None:
-            # No call in this list asked for it. It cannot be grouped, and it is left
-            # alone rather than guessed at.
-            groups[i] = [i]
-        else:
-            groups[owner].append(i)
-    grouped = {i for members in groups.values() for i in members}
-    for i in range(len(messages)):
-        if i not in grouped:
-            groups[i] = [i]
-    return [sorted(members) for _, members in sorted(groups.items())]
-
-
-def protected_indexes(
-    messages: Sequence[BaseMessage],
-    *,
-    keep_recent_messages: int = 0,
-) -> set[int]:
-    """Indexes layer two may never summarise.
-
-    This is where the never-summarised set is enforced. It is a selection made in code
-    over the list itself, not an instruction in the summariser's prompt: the summariser
-    never sees these messages and cannot rewrite, shorten or drop them, whatever it is
-    asked to do. Five things are protected.
-
-    * **The user's own messages**, and any system message that reached the list.
-    * **The todo**, every call and result of it. The todo is the turn's plan and what the
-      nag loop checks against, so a summary of it is a different todo, not a cheaper one.
-    * **Every citation handle already issued.** That means both halves of the mapping: the
-      `cite_documents` result that allocated `[D3]` and named the document, and any
-      message whose text carries `[D3]` -- which is the assistant's own prose. Losing
-      either turns a cited answer into an unsourced one, and that is a correctness bug
-      rather than a compression trade-off.
-    * **Every failed tool result**, because the model has to read the error to correct the
-      call.
-    * **The most recent `keep_recent_messages`**, because the model is mid-turn and those
-      are what it is reasoning about right now.
-
-    Protection is then closed over `_call_groups`, so protecting a tool result also
-    protects the assistant message that asked for it. Without the closure a preserved
-    result would arrive with no matching call and the provider would reject the request.
-    """
-    messages = list(messages)
-    protected: set[int] = set()
-    tail_start = len(messages) - max(0, keep_recent_messages)
-    for i, message in enumerate(messages):
-        if i >= tail_start:
-            protected.add(i)
-            continue
-        if isinstance(message, (HumanMessage, SystemMessage)):
-            protected.add(i)
-            continue
-        if isinstance(message, ToolMessage):
-            if (_tool_name(message) in CITATION_TOOLS or _tool_name(message) in TODO_TOOLS
-                    or _failed(message)):
-                protected.add(i)
-        if CITATION_HANDLE.search(_content_text(message)):
-            protected.add(i)
-    for members in _call_groups(messages):
-        if protected.intersection(members):
-            protected.update(members)
-    return protected
-
-
-def issued_citations(messages: Sequence[BaseMessage]) -> list[str]:
-    """Every citation handle visible in the list, in the order it was first issued.
-
-    Read from the list rather than from the citation server, because the question this
-    answers is what the *model* has already told the user, and the model can only have
-    used what is in front of it.
-    """
-    handles: list[str] = []
-    for message in messages:
-        for handle in CITATION_HANDLE.findall(_content_text(message)):
-            if handle not in handles:
-                handles.append(handle)
-    return handles
-
-
-def citation_index(messages: Sequence[BaseMessage]) -> list[str]:
-    """One verbatim line per cited document: handle, collection, hash, path.
-
-    Built from the `cite_documents` results by reading their fields, never by asking a
-    model to restate them. A paraphrase of a citation is a new citation nobody checked.
-    """
-    lines: list[str] = []
-    seen: set[str] = set()
-    for message in messages:
-        if not isinstance(message, ToolMessage) or _tool_name(message) not in CITATION_TOOLS:
-            continue
+    def one(prompt: str) -> str:
         try:
-            payload = json.loads(_content_text(message))
-        except (TypeError, ValueError):
-            continue
-        citations = payload.get("citations") if isinstance(payload, dict) else None
-        for citation in citations or []:
-            if not isinstance(citation, dict):
-                continue
-            handle = str(citation.get("handle") or "")
-            if not handle or handle in seen:
-                continue
-            seen.add(handle)
-            lines.append(
-                f"{handle} {citation.get('collectionname') or '?'}"
-                f"/{citation.get('file_hash') or '?'}"
-                f"  {citation.get('path') or ''}".rstrip()
-            )
-    return lines
+            return (summariser(prompt, cap) or "").strip()
+        except Exception as exc:  # noqa: BLE001 -- a failed part is a line of the record
+            log.warning("a summary part failed: %s", exc)
+            return ""
+
+    with ThreadPoolExecutor(max_workers=k) as pool:
+        texts = list(pool.map(one, prompts))
+    states = ["ok" if t else "failed" for t in texts]
+    parts = [t or PART_FAILED.format(n=i + 1, k=k) for i, t in enumerate(texts)]
+    body = parts[0] if k == 1 else "\n\n".join(
+        f"Part {i + 1} of {k}:\n{p}" for i, p in enumerate(parts))
+    return body, states
 
 
-#: What the summariser is asked for. The sections are fixed and named here rather than
-#: left to the model, because a handoff whose shape changes per compaction cannot be read
-#: back or compared. Verbatim quoting is asked for explicitly: a paraphrase of a fact is a
-#: new fact nobody checked.
-#:
-#: Nothing in this prompt protects a citation, a user message or the todo. Those never
-#: reach the summariser at all -- see `protected_indexes`.
-SUMMARISER_PROMPT = """\
-You are compacting the working context of a research assistant that is part-way \
-through answering a question. Below is the portion of its transcript that is being \
-replaced. The user's own messages, the todo and every citation already made are kept \
-separately and are NOT your responsibility.
+def summarise_with_model(prompt: str, *, model_id: str, max_tokens: int) -> str:
+    """Ask the compaction model for one summary part. An empty string on any failure.
 
-Write a handoff document with exactly these three sections, in this order, using these \
-headings and no others:
-
-## Work completed so far
-What was searched, read and established. Name the tools and the documents by the \
-identifiers used below.
-
-## Facts established, quoted verbatim
-The findings that must survive. Quote the source text exactly, in quotation marks, with \
-the document identifier beside each quote. Do not paraphrase. Write "none" if there are \
-no such facts.
-
-## What remains
-What the assistant had not yet done. Write "unknown" rather than guessing.
-
-Rules: report only what appears below. Invent nothing. Do not write a preamble, a \
-conclusion, or any heading other than the three above.
-
---- transcript being replaced ---
-{transcript}
---- end ---
-"""
-
-
-def keep_recent_messages() -> int:
-    """How many trailing messages layer two leaves alone, from configuration."""
-    try:
-        raw = os.getenv("AGENT_COMPACTION_KEEP_RECENT_MESSAGES")
-        return max(0, int(raw or DEFAULT_KEEP_RECENT_MESSAGES))
-    except ValueError:
-        return DEFAULT_KEEP_RECENT_MESSAGES
-
-
-def _transcript_for_summariser(messages: Sequence[BaseMessage]) -> str:
-    """The messages being replaced, rendered for the summariser as plain text."""
-    parts: list[str] = []
-    for message in messages:
-        if isinstance(message, ToolMessage):
-            label = f"tool result: {_tool_name(message) or 'tool'}"
-        elif isinstance(message, AIMessage):
-            calls = ", ".join(
-                f"{c.get('name') or '?'}({json.dumps(c.get('args') or {}, ensure_ascii=False)})"
-                for c in (getattr(message, "tool_calls", None) or [])
-            )
-            label = "assistant" + (f" calling {calls}" if calls else "")
-        else:
-            label = type(message).__name__
-        parts.append(f"[{label}]\n{_content_text(message)}")
-    return "\n\n".join(parts)
-
-
-def summarise_with_model(prompt: str, *, model_id: str) -> str:
-    """Ask the compaction model for the handoff document. Empty string on any failure.
-
-    A separate model from the one answering, when `LLM_MODEL_COMPACTION` names one --
-    summarising a transcript is not the task the conversation model was chosen for, and
-    it can be a cheaper or faster one. Falls back to the answering model so that an
-    unconfigured deployment still has a working layer two.
-
-    Every failure returns an empty string, and an empty summary means no summarisation.
-    Compaction exists to save a turn, so it must never be the thing that ends one.
+    `LLM_MODEL_COMPACTION` names the model, else the answering model. Thinking is off: a
+    thinking model given a transcript reasons about its content and starts to answer the
+    task (`research_agent/thinking.py`).
     """
     base = (os.getenv("LLM_BASE_URL") or "").rstrip("/")
     if not base:
@@ -652,25 +753,13 @@ def summarise_with_model(prompt: str, *, model_id: str) -> str:
                     # `sampling_params` is left out, because this body sets its own.
                     **_without_cap(model_params.sampling_params(0)),
                     "messages": [{"role": "user", "content": prompt}],
-                    # Thinking off, and a hard ceiling on the completion.
-                    #
-                    # Summarising is not a reasoning task, and a thinking model given a
-                    # transcript reasons about the *content* -- it starts answering the
-                    # research question instead of compressing it. Measured here: with
-                    # thinking left to the template's default the call did not return
-                    # inside two minutes, and a compaction that outlives its own timeout
-                    # is a compaction that never happens. See research_agent/thinking.py
-                    # for why the default is not a small budget but no thinking at all.
-                    "max_tokens": SUMMARY_TOKEN_CEILING,
+                    "max_tokens": int(max_tokens),
                     "chat_template_kwargs": {"enable_thinking": False},
                 },
             )
             if response.status_code >= 300:
-                log.warning(
-                    "the summariser refused: status=%s body=%s",
-                    response.status_code,
-                    response.text[:200],
-                )
+                log.warning("the summariser refused: status=%s body=%s",
+                            response.status_code, response.text[:200])
                 return ""
             choices = response.json().get("choices") or []
             return str((choices[0].get("message") or {}).get("content") or "").strip()
@@ -679,279 +768,224 @@ def summarise_with_model(prompt: str, *, model_id: str) -> str:
         return ""
 
 
-def build_handoff(
-    *,
-    summary_body: str,
-    dropped: Sequence[BaseMessage],
-    citations: Sequence[str],
-) -> str:
-    """The handoff document, fixed sections, machine-written parts first.
+# ------------------------------------------------------------------------ report
 
-    The two sections the correctness rule depends on -- what was replaced, and which
-    citation handles stand -- are assembled here from the list itself. Only the narrative
-    sections come from a model, so a summariser that answers badly costs detail and never
-    a handle.
+
+def summarise_list(messages: Sequence[RunMessage]) -> str:
+    """One line for each message: its role, its calls or its tool, and its length. Logged
+    with a compaction, because a reader first asks what the model could still see."""
+    lines = []
+    for i, m in enumerate(messages):
+        detail = ""
+        if m.role == "tool":
+            detail = f" result of {m.name or '?'}"
+            if (m.content or "").endswith(CUT_MARK):
+                detail += " CUT"
+        if m.tool_calls:
+            detail = " calls " + ", ".join(c.name for c in m.tool_calls)
+        lines.append(f"  {i:3d} {m.role}{detail} [{len(m.content or '')} chars]")
+    return "\n".join(lines)
+
+
+def issued_citations(messages: Sequence[RunMessage]) -> List[str]:
+    """Every citation handle in the list, in the order it first occurs."""
+    handles: List[str] = []
+    for m in messages:
+        for handle in CITATION_HANDLE.findall(m.content or ""):
+            if handle not in handles:
+                handles.append(handle)
+    return handles
+
+
+@dataclass
+class CompactionReport:
+    """What one compaction did: the row that the worker stores, and the trail row."""
+
+    compaction_id: str = ""
+    layer: str = "record"
+    tokens_before: int = 0
+    tokens_after: int = 0
+    context_window: int = 0
+    threshold_tokens: int = 0
+    target: int = 0
+    est_after: int = 0
+    target_reached: bool = True
+    steps: List[str] = field(default_factory=list)
+    parts: List[str] = field(default_factory=list)
+    steps_summarised: int = 0
+    sizes: Dict[str, int] = field(default_factory=dict)
+    messages_before: int = 0
+    messages_after: int = 0
+    chars_before: int = 0
+    chars_after: int = 0
+    model_id: str = ""
+    #: The record, stored whole.
+    summary: str = ""
+    summarised_count: int = 0
+    preserved_count: int = 0
+    handles: List[str] = field(default_factory=list)
+    list_before: str = ""
+    list_after: str = ""
+    #: The content of the version 2 `compaction` row.
+    row: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CompactionPlan:
+    """A compaction planned before any model call. `finish_compaction` summarises it."""
+
+    applied: List[RunMessage]
+    rows: List[RunMessage]
+    layout: Layout
+    est: Estimator
+    sizer: Sizer
+    index: str
+    blocks: List[Tuple[str, int, bool]]
+    model_id: str
+    window: int
+    trigger: int
+    target: int
+    billed: int
+
+    @property
+    def parts(self) -> int:
+        return PARTS if sum(b[1] for b in self.blocks) > PARTS_ABOVE_TOKENS else 1
+
+
+def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *,
+                    system_text: str = "", schemas_json: str = "", model_id: str = "",
+                    window: Optional[int] = None, fraction: Optional[float] = None,
+                    estimator: Optional[Estimator] = None) -> Optional[CompactionPlan]:
+    """The plan of a compaction, with no model call. `None` when the trigger does not fire or
+    nothing is outside the keep set and the window.
+
+    `applied` is the list after the stored compactions, `rows` the stored thread.
     """
-    tools: list[str] = []
-    for message in dropped:
-        for call in getattr(message, "tool_calls", None) or []:
-            tools.append(str(call.get("name") or "?"))
-    sections = [
-        HANDOFF_HEADER,
-        "",
-        "## What was replaced",
-        f"{len(dropped)} messages covering {len(tools)} tool calls"
-        + (f": {', '.join(tools)}" if tools else "")
-        + ".",
-        "",
-        "## Citations already issued, and still valid",
-        "\n".join(citations) if citations else "none",
-        "",
-    ]
-    return "\n".join(sections) + summary_body.strip() + "\n"
+    applied = list(applied)
+    resolved = context_window(model_id) if window is None else int(window)
+    trigger = threshold_tokens(resolved, fraction)
+    billed = last_billed(applied)
+    if trigger <= 0 or billed < trigger:
+        return None
+    target = target_tokens(trigger)
+    est = estimator or Estimator.calibrate(applied, system_text, schemas_json)
+    sizer = Sizer(rows, est)
+    layout = shrink(initial_layout(applied, est, target), sizer, target)
+    _kept, _blank, gone, _drop = layout.classify()
+    if not gone:
+        log.warning("compaction threshold %d crossed at %d tokens, and nothing is outside "
+                    "the keep set and the recent window", trigger, billed)
+        return None
+    layout = add_rereads(layout, sizer, target)
+    return CompactionPlan(applied=applied, rows=list(rows), layout=layout, est=est,
+                          sizer=sizer, index=sizer.index(layout),
+                          blocks=compacted_blocks(layout, est), model_id=model_id or "",
+                          window=resolved, trigger=trigger, target=target, billed=billed)
 
 
-def summarise_messages(
-    messages: Sequence[BaseMessage],
-    *,
-    model_id: str,
-    keep_messages: Optional[int] = None,
-    summariser: Optional[Callable[[str], str]] = None,
-) -> tuple[list[BaseMessage], CompactionReport]:
-    """Replace the unprotected older messages with one handoff document.
-
-    Returns a new list. Nothing is mutated and nothing is written back: like layer one,
-    this transformation happens on the way to the model and the transcript keeps every
-    message in full.
-
-    Whole `_call_groups` are dropped together, so the request stays well formed. The
-    protected messages are copied through unchanged and the handoff takes the position of
-    the first message it replaces, which keeps the surviving messages in the order they
-    happened.
-
-    The list is returned unchanged, with `summarised_count` at 0, when there is nothing
-    unprotected to replace, when the summariser gives nothing back, or when the result
-    would be longer than the input. The last of those is the same guard
-    `MIN_EVICTABLE_CHARS` is for layer one: a compaction that grows the context has
-    failed, however well it summarised.
-    """
-    messages = list(messages)
+def finish_compaction(plan: CompactionPlan, summariser: Optional[Summariser] = None
+                      ) -> Tuple[List[RunMessage], CompactionReport]:
+    """The summary, the record, the list and the report of a planned compaction."""
+    layout, est = plan.layout, plan.est
+    call = summariser or (lambda prompt, cap: summarise_with_model(
+        prompt, model_id=plan.model_id, max_tokens=cap))
+    task = next((m.content for m in plan.applied if m.role == "human" and not is_record(m)), "")
+    _kept, _blank, gone, _drop = layout.classify()
+    previous = any(plan.applied[i].role == "human" for i in gone)
+    body, states = summarise_parts(plan.blocks, task=task, budget=layout.budget,
+                                   summariser=call, previous=previous)
+    record = RECORD_HEADER + plan.index + ("\n\n" + body if body else "")
+    row = layout.row(est, record)
+    out = apply_record(plan.applied, row)
+    est_after = est.fixed + est.list_size(out)
+    window_keys = {k for i in layout.window() for k in [_key(plan.applied[i])] if k}
+    user = sum(est.tokens(m) for m in out if m.role == "human" and not is_record(m))
+    window_size = sum(est.tokens(m) for m in out if _key(m) in window_keys)
+    record_size = sum(est.tokens(m) for m in out if is_record(m))
+    sizes = {"fixed": est.fixed, "user": user,
+             "keep": max(0, est.list_size(out) - user - window_size - record_size),
+             "window": window_size, "index": est.tokens_text(plan.index)}
+    reached = est_after <= plan.target
+    steps_summarised = sum(1 for i in gone if plan.applied[i].role == "ai")
+    row.update({
+        "tokens_before": plan.billed, "threshold": plan.trigger, "target": plan.target,
+        "est_after": est_after, "target_reached": reached, "steps": list(layout.steps),
+        "parts": states, "steps_summarised": steps_summarised, "sizes": sizes,
+    })
     report = CompactionReport(
-        layer="summarisation",
-        model_id=model_id or "",
-        messages_before=len(messages),
-        messages_after=len(messages),
-        chars_before=sum(_content_length(m) for m in messages),
-        handles=issued_citations(messages),
-        list_before=summarise_list(messages),
+        compaction_id=uuid.uuid4().hex, tokens_before=plan.billed,
+        context_window=plan.window, threshold_tokens=plan.trigger, target=plan.target,
+        est_after=est_after, target_reached=reached, steps=list(layout.steps), parts=states,
+        steps_summarised=steps_summarised, sizes=sizes,
+        messages_before=len(plan.applied), messages_after=len(out),
+        chars_before=sum(len(m.content or "") for m in plan.applied),
+        chars_after=sum(len(m.content or "") for m in out), model_id=plan.model_id,
+        summary=record, summarised_count=len(row["summarised"]),
+        preserved_count=max(0, len(out) - 1), handles=issued_citations(plan.applied),
+        list_before=summarise_list(plan.applied), list_after=summarise_list(out), row=row,
     )
-    report.chars_after = report.chars_before
-    keep = keep_recent_messages() if keep_messages is None else max(0, keep_messages)
-    protected = protected_indexes(messages, keep_recent_messages=keep)
-    droppable = [i for i in range(len(messages)) if i not in protected]
-    report.preserved_count = len(protected)
-    if not droppable:
-        return messages, report
-    dropped = [messages[i] for i in droppable]
-    if sum(_content_length(m) for m in dropped) < MIN_SUMMARISABLE_CHARS:
-        log.info(
-            "not enough unprotected material to summarise (%d messages), "
-            "the list is sent as layer one left it",
-            len(dropped),
-        )
-        return messages, report
-    prompt = SUMMARISER_PROMPT.format(transcript=_transcript_for_summariser(dropped))
-    call = summariser or (lambda text: summarise_with_model(text, model_id=model_id))
-    body = (call(prompt) or "").strip()
-    if not body:
-        log.warning("summarisation produced nothing, the list is sent unchanged")
-        return messages, report
-    handoff = build_handoff(
-        summary_body=body, dropped=dropped, citations=citation_index(messages)
-    )
-    out: list[BaseMessage] = []
-    for i, message in enumerate(messages):
-        if i == droppable[0]:
-            # A user turn, not a system one, and this is not a style choice: the handoff
-            # lands in the middle of the list, and this provider rejects the whole request
-            # with `System message must be at the beginning.` -- a 400 the client retries,
-            # so the turn appears to hang rather than to fail. A user message is accepted
-            # anywhere, which is why Claude Code's own handoff arrives as one. The
-            # bracketed header says what it is, so the model does not read it as the
-            # user's words.
-            out.append(HumanMessage(content=handoff))
-        if i in protected:
-            out.append(message)
-    chars_after = sum(_content_length(m) for m in out)
-    if chars_after >= report.chars_before:
-        log.warning(
-            "the handoff document is not smaller than what it replaces "
-            "(%d chars vs %d), the list is sent unchanged",
-            chars_after,
-            report.chars_before,
-        )
-        return messages, report
-    report.summary = handoff
-    report.summarised_count = len(dropped)
-    report.summarised_positions = list(droppable)
-    report.messages_after = len(out)
-    report.chars_after = chars_after
-    report.list_after = summarise_list(out)
+    log.info("compacted context %s: %d tokens over trigger %d, target %d, estimate after %d, "
+             "steps %s, parts %s\nmodel-visible list AFTER:\n%s", report.compaction_id,
+             plan.billed, plan.trigger, plan.target, est_after, layout.steps or "none",
+             states, report.list_after)
+    if not reached:
+        log.warning("compaction %s did not reach the target %d: sizes %s",
+                    report.compaction_id, plan.target, sizes)
     return out, report
 
 
-def compact_messages(
-    messages: Sequence[BaseMessage],
-    *,
-    model_id: str,
-    window: Optional[int] = None,
-    summariser: Optional[Callable[[str], str]] = None,
-) -> tuple[list[BaseMessage], Optional[CompactionReport]]:
-    """Apply the layers, in order, if the last billed call crossed the threshold.
+def compact(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *,
+            system_text: str = "", schemas_json: str = "", model_id: str = "",
+            window: Optional[int] = None, fraction: Optional[float] = None,
+            summariser: Optional[Summariser] = None, estimator: Optional[Estimator] = None,
+            ) -> Tuple[List[RunMessage], Optional[CompactionReport]]:
+    """Plan and finish one compaction. `(applied, None)` when none fires."""
+    plan = plan_compaction(applied, rows, system_text=system_text, schemas_json=schemas_json,
+                           model_id=model_id, window=window, fraction=fraction,
+                           estimator=estimator)
+    if plan is None:
+        return list(applied), None
+    return finish_compaction(plan, summariser)
 
-    Returns the list to send and the report of what was done, or `(messages, None)` when
-    nothing fired -- which is the ordinary case on current traffic and is not an error.
 
-    Layer one runs first and layer two only runs on what it leaves, because eviction is
-    most of the benefit for none of the cost: it makes no model call and it cannot lose a
-    fact, since every evicted result is still in the transcript and can be re-read. Layer
-    two is what answers the two cases eviction cannot: nothing left to evict, and
-    everything evictable evicted while the list is still projected to be over.
+def fixed_part_passes_target(applied: Sequence[RunMessage], system_text: str,
+                             schemas_json: str, window: int) -> bool:
+    """Whether the system text, the schemas and the user messages pass the target, at 3
+    characters a token. The first model step of a run logs a warning when they do."""
+    target = target_tokens(threshold_tokens(window))
+    if target <= 0:
+        return False
+    chars = len(system_text or "") + len(schemas_json or "") + sum(
+        len(m.content or "") for m in applied if m.role == "human" and not is_record(m))
+    return chars / 3 > target
 
-    "Still projected to be over" is an estimate and is labelled one. The only measured token
-    count available here is what the provider billed for the *previous* call, so the
-    saving is projected by the fraction of the list's characters eviction removed. The
-    alternative is a second model call made only to measure, or a tokeniser that is not
-    the model's -- a guess wearing a number's clothes.
+
+def note_warning_due(rows: Sequence[RunMessage], usage: Dict[str, Any], has_calls: bool,
+                     window: int) -> bool:
+    """Whether the worker writes the note warning after this reply.
+
+    The reply's input plus output tokens are at or above `NOTE_WARNING_SHARE` of the
+    trigger, the reply has calls, and no warning follows the newest `compaction` row.
     """
-    resolved_window = context_window(model_id) if window is None else int(window)
-    threshold = threshold_tokens(resolved_window)
-    if threshold <= 0:
-        return list(messages), None
-    billed = last_billed_tokens(messages)
-    if billed < threshold:
-        return list(messages), None
-
-    evicted, report = evict_tool_results(messages, keep=keep_recent())
-    chars_before_all = sum(_content_length(m) for m in messages)
-    chars_after_all = sum(_content_length(m) for m in evicted)
-    projected = billed
-    if chars_before_all > 0:
-        projected = int(billed * chars_after_all / chars_before_all)
-
-    if report.evicted_count and projected < threshold:
-        report.compaction_id = uuid.uuid4().hex
-        report.tokens_before = billed
-        report.context_window = resolved_window
-        report.threshold_tokens = threshold
-        report.model_id = model_id or ""
-        report.list_before = summarise_list(messages)
-        report.list_after = summarise_list(evicted)
-        log.info(
-            "compacted context %s: %d tokens over threshold %d of window %d, "
-            "evicted %d tool results (%d chars), kept %d\n"
-            "model-visible list BEFORE:\n%s\nmodel-visible list AFTER:\n%s",
-            report.compaction_id,
-            billed,
-            threshold,
-            resolved_window,
-            report.evicted_count,
-            report.chars_freed,
-            report.kept_count,
-            report.list_before,
-            report.list_after,
-        )
-        return evicted, report
-
-    # Eviction was not enough -- either there was nothing to evict, or what it freed
-    # still leaves the list projected over the threshold. Layer two.
-    summarised, second = summarise_messages(
-        evicted, model_id=model_id, summariser=summariser
-    )
-    if not second.summarised_count:
-        # Layer two could not help -- nothing unprotected to replace, no summary came
-        # back, or the handoff was not smaller. Whatever layer one already freed still
-        # stands: throwing the eviction away because the second layer failed would send
-        # the model MORE than it would have been sent with layer two switched off.
-        if report.evicted_count:
-            report.compaction_id = uuid.uuid4().hex
-            report.tokens_before = billed
-            report.context_window = resolved_window
-            report.threshold_tokens = threshold
-            report.model_id = model_id or ""
-            report.list_before = summarise_list(messages)
-            report.list_after = summarise_list(evicted)
-            log.info(
-                "compacted context %s: %d tokens over threshold %d of window %d, "
-                "evicted %d tool results (%d chars), kept %d -- still projected over at "
-                "%d and summarisation reclaimed nothing\n"
-                "model-visible list BEFORE:\n%s\nmodel-visible list AFTER:\n%s",
-                report.compaction_id,
-                billed,
-                threshold,
-                resolved_window,
-                report.evicted_count,
-                report.chars_freed,
-                report.kept_count,
-                projected,
-                report.list_before,
-                report.list_after,
-            )
-            return evicted, report
-        log.warning(
-            "compaction threshold %d crossed at %d tokens and neither layer could "
-            "reclaim anything, the list is sent unchanged",
-            threshold,
-            billed,
-        )
-        return list(messages), None
-    # One row for the turn's compaction, carrying both layers: the eviction that ran in
-    # front of it is what layer two was handed, and reading the summary without it would
-    # not explain the counts.
-    second.compaction_id = uuid.uuid4().hex
-    second.tokens_before = billed
-    second.context_window = resolved_window
-    second.threshold_tokens = threshold
-    second.evicted = list(report.evicted)
-    second.evicted_positions = list(report.evicted_positions)
-    second.evicted_count = report.evicted_count
-    second.kept_count = report.kept_count
-    second.messages_before = len(messages)
-    second.chars_before = chars_before_all
-    second.list_before = summarise_list(messages)
-    log.info(
-        "compacted context %s: %d tokens over threshold %d of window %d, "
-        "evicted %d tool results then summarised %d messages into a handoff, "
-        "preserved %d, citation handles carried through: %s\n"
-        "model-visible list BEFORE:\n%s\nmodel-visible list AFTER:\n%s\n"
-        "handoff document:\n%s",
-        second.compaction_id,
-        billed,
-        threshold,
-        resolved_window,
-        second.evicted_count,
-        second.summarised_count,
-        second.preserved_count,
-        ", ".join(second.handles) or "none",
-        second.list_before,
-        second.list_after,
-        second.summary,
-    )
-    return summarised, second
+    trigger = threshold_tokens(window)
+    used = int(usage.get("input_tokens") or 0) + int(usage.get("output_tokens") or 0)
+    if trigger <= 0 or not has_calls or used < NOTE_WARNING_SHARE * trigger:
+        return False
+    for m in reversed(list(rows)):
+        if m.role == "compaction":
+            return True
+        if m.role == "human" and (m.content or "").startswith(NOTE_WARNING_HEAD):
+            return False
+    return True
 
 
-def record_compaction(
-    report: CompactionReport,
-    *,
-    username: Optional[str],
-    session_id: Optional[str],
-) -> None:
+def record_compaction(report: CompactionReport, *, username: Optional[str],
+                      session_id: Optional[str]) -> None:
     """Best-effort insert of the compaction trail. Never raises.
 
-    Written twice: once when the eviction is applied, and again with `tokens_after` filled
-    in once the next model call reports what the shortened list actually cost. The table
-    is a `ReplacingMergeTree` keyed on the compaction id, so the second insert supersedes
-    the first rather than doubling it.
+    Written twice: once when the compaction is applied, and again with `tokens_after`
+    once the next model call reports what the list cost. The table is a
+    `ReplacingMergeTree` keyed on the compaction id, so the second insert replaces the first.
     """
     base = _clickhouse_url()
     if not base or not report.compaction_id:
@@ -961,18 +995,18 @@ def record_compaction(
         "username": (username or "").strip() or "guest",
         "session_id": session_id or "",
         "model_id": report.model_id,
-        "layer": report.layer or "eviction",
+        "layer": report.layer or "record",
         "context_window": int(report.context_window),
         "threshold_tokens": int(report.threshold_tokens),
         "tokens_before": int(report.tokens_before),
         "tokens_after": int(report.tokens_after),
         "messages_before": int(report.messages_before),
         "messages_after": int(report.messages_after),
-        "evicted_count": int(report.evicted_count),
-        "kept_count": int(report.kept_count),
+        "evicted_count": 0,
+        "kept_count": int(report.preserved_count),
         "chars_before": int(report.chars_before),
         "chars_after": int(report.chars_after),
-        "evicted": list(report.evicted),
+        "evicted": [],
         "summary": report.summary,
         "summarised_count": int(report.summarised_count),
         "preserved_count": int(report.preserved_count),
@@ -984,18 +1018,13 @@ def record_compaction(
         with httpx.Client(timeout=(2.0, 5.0), auth=_auth()) as client:
             r = client.post(
                 f"{base}/",
-                params={
-                    "database": GLOBAL_DB,
-                    "query": "INSERT INTO chat_compactions FORMAT JSONEachRow",
-                },
+                params={"database": GLOBAL_DB,
+                        "query": "INSERT INTO chat_compactions FORMAT JSONEachRow"},
                 content=json.dumps(row, ensure_ascii=False).encode("utf-8"),
             )
             if r.status_code >= 300:
-                log.warning(
-                    "chat_compactions insert failed status=%s body=%s",
-                    r.status_code,
-                    r.text[:200],
-                )
+                log.warning("chat_compactions insert failed status=%s body=%s",
+                            r.status_code, r.text[:200])
     except Exception as exc:  # noqa: BLE001 -- the trail must not break a chat turn
         log.warning("chat_compactions insert failed: %s", exc)
 
@@ -1007,10 +1036,7 @@ def describe() -> str:
         return "context compaction: off"
     summariser = (os.getenv("LLM_MODEL_COMPACTION") or "").strip() or "the answering model"
     return (
-        # `:g` rather than `:.0%`: a demonstration lowers this to a small fraction, and a
-        # startup line that rounds 0.002 to "0%" says compaction is off when it is on.
-        f"context compaction: eviction at {fraction * 100:g}% of the model's stated context "
-        f"window, keeping the {keep_recent()} most recent tool results, then "
-        f"summarisation by {summariser} keeping the {keep_recent_messages()} most "
-        "recent messages"
+        # `:g`, because a test lowers the fraction, and "0%" would read as off.
+        f"context compaction: at {fraction * 100:g}% of the model's stated context window, "
+        f"to a third of that, with a record summarised by {summariser}"
     )

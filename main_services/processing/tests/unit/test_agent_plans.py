@@ -186,28 +186,104 @@ class TestVerdictsAndSectionStates:
         assert ap.parse_verdict(report) == ("accept", [])
         assert ap.parse_verdict("no block") == ("reject", ["no-verdict"])
 
-    def test_a_section_fails_without_an_accepting_review_after_its_newest_work(self):
+    def test_a_section_fails_when_its_newest_work_did_not_complete_or_wrote_no_report(self):
         snap = _tree(("append_node", {"text": "A"}))
         root = snap.root_id
         t0 = datetime(2026, 1, 1)
-        runs = [ap.SectionRun(root, "execute", "completed", t0),
-                ap.SectionRun(root, "review", "completed", t0 + timedelta(minutes=1)),
-                ap.SectionRun(root, "correct", "completed", t0 + timedelta(minutes=2))]
-        accept = '```json\n{"verdict": "accept", "defect_classes": []}\n```'
-        reject = '```json\n{"verdict": "reject", "defect_classes": ["missing-source"]}\n```'
-        early = ap.PlanDocument("d1", root, "reviewer", "review", 0, reject,
-                                t0 + timedelta(minutes=1))
-        [entry] = ap.section_states(snap, runs, [early])
-        assert (entry["failed"], entry["corrections"], entry["review"],
-                entry["defect_classes"]) == (True, 1, "reject", ["missing-source"])
-        [unreviewed] = ap.section_states(snap, runs, [])
-        assert (unreviewed["failed"], unreviewed["review"]) == (True, "")
-        late = ap.PlanDocument("d2", root, "reviewer", "review", 0, accept,
-                               t0 + timedelta(minutes=3))
-        [entry] = ap.section_states(snap, runs, [early, late])
-        assert (entry["failed"], entry["review"], entry["defect_classes"]) == (
-            False, "accept", [])
+        report = ap.PlanDocument(ap.document_id("r1", "report"), root, "executor", "report",
+                                 0, "The report.", t0)
+        done = [ap.SectionRun(root, "execute", "completed", t0, run_id="r1", report_node=root)]
+        [entry] = ap.section_states(snap, done, [report])
+        assert (entry["failed"], entry["state"], entry["review"], entry["defect_classes"]) == (
+            False, "completed", "", [])
+        [no_run] = ap.section_states(snap, [], [report])
+        [ended] = ap.section_states(
+            snap, [ap.SectionRun(root, "execute", "failed", t0, run_id="r1",
+                                 report_node=root)], [report])
+        [unreported] = ap.section_states(snap, done, [])
+        assert [e["failed"] for e in (no_run, ended, unreported)] == [True] * 3
+        table = ap.failed_sections_table([no_run, ended, unreported])
+        assert table.splitlines()[0] == "## Failed sections"
+        assert ("| section | cause |" in table and "no run" in table
+                and "the run ended `failed`" in table and "no report" in table)
         assert ap.failed_sections_table([entry]) == ""
-        table = ap.failed_sections_table([{"title": "A", "failed": True,
-                                           "defect_classes": ["no-verdict"]}])
-        assert table.splitlines()[0] == "## Failed sections" and "| A | no-verdict |" in table
+
+
+def _two_sections():
+    snap = _tree(("append_node", {"text": "A"}), ("append_node", {"text": "B"}))
+    ids = _ids(snap)
+    snap = ap.apply(snap, "append_child", parent_id=ids["A"], text="A1")
+    snap = ap.apply(snap, "append_child", parent_id=ids["B"], text="B1")
+    return snap, ids["A"], ids["B"]
+
+
+class TestOneCorrectionOfTwoSections:
+    """A correction run C names A and B. Its one report is under A, and counts for both."""
+
+    T0 = datetime(2026, 1, 1)
+
+    def _runs(self, c_state):
+        snap, a, b = _two_sections()
+        t0 = self.T0
+        runs = [ap.SectionRun(a, "execute", "completed", t0, run_id="ra", report_node=a),
+                ap.SectionRun(b, "execute", "completed", t0, run_id="rb", report_node=b)]
+        runs += [ap.SectionRun(node, "correct", c_state, t0 + timedelta(minutes=5),
+                               run_id="rc", report_node=a) for node in (a, b)]
+        docs = [ap.PlanDocument(ap.document_id(r, "report"), n, "executor", "report", 0,
+                                "text", t0) for r, n in (("ra", a), ("rb", b))]
+        return snap, runs, docs, a
+
+    def test_the_report_under_the_first_section_counts_for_both(self):
+        snap, runs, docs, a = self._runs("completed")
+        docs.append(ap.PlanDocument(ap.document_id("rc", "report"), a, "executor", "report",
+                                    1, "fixed", self.T0 + timedelta(minutes=9)))
+        entries = ap.section_states(snap, runs, docs)
+        assert [(e["failed"], e["corrections"]) for e in entries] == [(False, 1), (False, 1)]
+
+    def test_a_failed_correction_fails_both_sections(self):
+        snap, runs, docs, _ = self._runs("failed")
+        entries = ap.section_states(snap, runs, docs)
+        assert [e["failed"] for e in entries] == [True, True]
+        assert ap.failed_sections_table(entries).count("the run ended `failed`") == 2
+
+    def test_a_completed_correction_with_no_report_fails_both_sections(self):
+        snap, runs, docs, _ = self._runs("completed")
+        entries = ap.section_states(snap, runs, docs)
+        assert [e["failed"] for e in entries] == [True, True]
+        assert ap.failed_sections_table(entries).count("no report") == 2
+
+
+class TestSectionCap:
+    def _four(self):
+        snap = _tree(*[("append_node", {"text": t}) for t in "ABCD"])
+        ids = _ids(snap)
+        for t in "ABCD":
+            snap = ap.apply(snap, "append_child", parent_id=ids[t], text=t + "1")
+        assert len(ap.sections(snap)) == 4
+        return snap, ids
+
+    def test_a_leaf_under_the_root_of_four_sections_is_refused(self):
+        snap, _ = self._four()
+        with pytest.raises(ap.PlanError, match="makes 5 sections, and a plan has at most 4"):
+            ap.apply(snap, "append_node", text="E")
+
+    def test_a_task_under_a_section_is_accepted(self):
+        snap, ids = self._four()
+        assert len(ap.sections(ap.apply(snap, "append_child", parent_id=ids["A"],
+                                        text="A2"))) == 4
+
+    def test_a_fifth_section_by_a_move_is_refused(self):
+        snap, ids = self._four()
+        snap = ap.apply(snap, "append_child", parent_id=ids["A"], text="A2")
+        with pytest.raises(ap.PlanError, match="at most 4"):
+            ap.apply(snap, "move_node", node_id=_ids(snap)["A2"], new_parent_id=snap.root_id,
+                     position=1)
+
+    def test_a_tree_of_five_sections_from_before_accepts_a_removal(self):
+        snap, ids = self._four()
+        extra = ap.PlanNode("e-node", snap.root_id, 5, "E")
+        leaf = ap.PlanNode("e1-node", "e-node", 1, "E1")
+        five = ap.PlanSnapshot(snap.plan_id, snap.version, snap.nodes + (extra, leaf))
+        assert len(ap.sections(five)) == 5
+        assert len(ap.sections(ap.apply(five, "remove_node", node_id="e-node"))) == 4
+        assert len(ap.sections(ap.apply(five, "edit_node", node_id="e-node", text="F"))) == 5

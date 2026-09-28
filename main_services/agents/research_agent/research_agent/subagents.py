@@ -85,11 +85,18 @@ class Briefing(BaseModel):
             "Leave it out in every other run."
         ),
     )
-    purpose: Optional[Literal["execute", "review", "correct"]] = Field(
+    purpose: Optional[Literal["execute", "correct"]] = Field(
         default=None,
         description=(
-            "Organizer only, with plan_node_id: execute the section, review its report, "
-            "or correct it after a rejected review."
+            "Organizer only, with plan_node_id: execute the section, or correct the "
+            "reports of the sections in `sections` after you read them."
+        ),
+    )
+    sections: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Organizer only, with purpose correct: every section this correction fixes. "
+            "plan_node_id is the first of them."
         ),
     )
 

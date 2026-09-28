@@ -65,6 +65,6 @@ def test_the_limits_come_from_the_environment(monkeypatch):
     monkeypatch.delenv("AGENT_SUBAGENT_MAX_PER_TURN", raising=False)
     monkeypatch.setenv("AGENT_PLAN_RUN_BUDGET", "")
     assert run_budgets.limit_for(None) == 6
-    assert run_budgets.limit_for("p") == 300
+    assert run_budgets.limit_for("p") == 5
     monkeypatch.setenv("AGENT_SUBAGENT_MAX_PER_TURN", "9")
     assert run_budgets.turn_limit() == 9

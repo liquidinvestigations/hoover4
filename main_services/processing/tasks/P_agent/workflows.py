@@ -57,8 +57,10 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P_agent.preload import PRELOAD_TIMEOUT, PreloadParams, preload_reads
     from tasks.P_agent.steps import (
+        FoundDocumentsParams,
         ModelStepParams,
         ModelStepResult,
+        RepeatNoteParams,
         StepFailure,
         StepRef,
         REPEAT_STEP_LIMIT,
@@ -71,6 +73,8 @@ with workflow.unsafe.imports_passed_through():
         record_step_failure,
         runs_in_order,
         tool_call,
+        write_found_documents,
+        write_repeat_note,
     )
 
 
@@ -173,10 +177,15 @@ class AgentRun:
     `ordered` calls and the calls to the plan tree and todo tools (`steps.runs_in_order`)
     run one after the other in the order of the reply, the other calls run at once beside
     them, and a `delegation` runs after both. After `RUN_MODEL_STEPS` model steps, one
-    `final` step binds no tool and the run ends. A call that repeats an earlier call gets
-    a stored result and does not run, and the other calls of its reply run. When
-    `REPEAT_STEP_LIMIT` model steps in a row hold only repeated calls, the run gets one
-    `final` step. The workflow continues as new every
+    `final` step binds no tool and the run ends. A call that repeats earlier calls
+    (`steps.repeat_sources`) gets a stored result and does not run, and the other calls of
+    its reply run. When `REPEAT_STEP_LIMIT` model steps in a row hold only repeated calls
+    and exempt reads, the exempt reads run and the run gets one repeat note, which counts
+    as a nag. The second time, the run gets one `final` step. A sub-agent whose answer is
+    empty gets one more `final` step (`steps.EMPTY_ANSWER_TEXT`), and when that answer is
+    empty too, `write_found_documents` writes its result. The first `tools` reply of a
+    thread with no text and no call gets `steps.EMPTY_REPLY_TEXT` as a nag, and one more
+    model step. The workflow continues as new every
     `CONTINUE_AS_NEW_STEPS` model steps, or when its history passes
     `HISTORY_EVENTS_PER_RUN` events, and the new run resumes from the thread.
 
@@ -225,6 +234,10 @@ class AgentRun:
         #: The model steps of this workflow run, across its nag rounds.
         self._steps_here = 0
         self._planner_retry_done = False
+        #: The nag counters of the turn. `run` sets them from the row, and every note and
+        #: nag writes them back into the row.
+        self._nags_this_turn = 0
+        self._nags_without_progress = 0
 
     @workflow.run
     async def run(self, inp: AgentRunInput) -> str:
@@ -244,6 +257,8 @@ class AgentRun:
                                 f"run-{opened.continuation_run_id}")
             return "closed"
         self._steps = opened.model_steps
+        self._nags_this_turn = opened.nags_this_turn
+        self._nags_without_progress = opened.nags_without_progress
         try:
             summary = await self._rounds(inp, opened)
         except asyncio.CancelledError:
@@ -345,22 +360,81 @@ class AgentRun:
                                      if self._todo_before_nag is not None else ""),
                     planner_retry_done=self._planner_retry_done,
                 ))
-            final = self._steps >= RUN_MODEL_STEPS
-            result = await self._model_step(inp, opened, "final" if final else "tools",
-                                            "step_budget" if final else "")
+            if self._steps >= RUN_MODEL_STEPS:
+                return await self._forced_answer(inp, opened, "step_budget")
+            result = await self._model_step(inp, opened, "tools", "")
             if result.outcome == "closed":
                 return RunSummary(outcome="closed", next_seq=result.next_seq)
+            if result.outcome == "empty":
+                # The first reply of the thread with no text and no call gets one more step.
+                await self._write_note(inp, result, empty_reply=True)
+                continue
             if result.outcome == "answered":
+                if result.empty_answer and opened.kind == "subagent":
+                    return await self._empty_retry(inp, opened, "")
                 return RunSummary(outcome="answered", next_seq=result.next_seq,
-                                  next_idx=result.next_idx,
-                                  end_reason="step_budget" if final else "")
+                                  next_idx=result.next_idx)
             if result.repeat_streak >= REPEAT_STEP_LIMIT:
-                result = await self._model_step(inp, opened, "final", "repeated_call")
-                if result.outcome == "closed":
-                    return RunSummary(outcome="closed", next_seq=result.next_seq)
-                return RunSummary(outcome="answered", next_seq=result.next_seq,
-                                  next_idx=result.next_idx, end_reason="repeated_call")
+                if result.repeat_notes == 0:
+                    # The calls that are not repeats are exempt reads. They run first, so
+                    # each call of the step has its result before the note.
+                    if result.calls:
+                        delegated = await self._run_calls(inp, result.calls)
+                        if delegated is not None:
+                            return delegated
+                    await self._write_note(inp, result)
+                    continue
+                return await self._forced_answer(inp, opened, "repeated_call")
             pending = result.calls
+
+    async def _forced_answer(self, inp: AgentRunInput, opened: OpenedRun,
+                             reason: str) -> RunSummary:
+        """Run one `final` step for `reason`. A sub-agent whose answer is empty gets
+        `_empty_retry`."""
+        result = await self._model_step(inp, opened, "final", reason)
+        if result.outcome == "closed":
+            return RunSummary(outcome="closed", next_seq=result.next_seq)
+        if result.empty_answer and opened.kind == "subagent":
+            return await self._empty_retry(inp, opened, reason)
+        return RunSummary(outcome="answered", next_seq=result.next_seq,
+                          next_idx=result.next_idx, end_reason=reason)
+
+    async def _empty_retry(self, inp: AgentRunInput, opened: OpenedRun,
+                           reason: str) -> RunSummary:
+        """One more `final` step of a sub-agent whose answer was empty. When that answer is
+        empty too, `write_found_documents` writes the run's result from its thread."""
+        result = await self._model_step(inp, opened, "final", reason, empty_retry=True)
+        if result.outcome == "closed":
+            return RunSummary(outcome="closed", next_seq=result.next_seq)
+        if result.empty_answer:
+            await workflow.execute_activity(
+                write_found_documents,
+                FoundDocumentsParams(**self._ref_fields(inp), reason=reason),
+                start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                task_queue=CHAT_TASK_QUEUE,
+            )
+            self._raise_if_stopped()
+        return RunSummary(outcome="answered", next_seq=result.next_seq,
+                          next_idx=result.next_idx, end_reason=reason)
+
+    async def _write_note(self, inp: AgentRunInput, result: ModelStepResult,
+                          empty_reply: bool = False) -> None:
+        """The repeat note, or EMPTY_REPLY_TEXT, at the index and seq after the reply. It
+        counts as a nag."""
+        self._nags_this_turn += 1
+        self._nags_without_progress += 1
+        await workflow.execute_activity(
+            write_repeat_note,
+            RepeatNoteParams(**self._ref_fields(inp), seq=result.next_seq, idx=result.next_idx,
+                             nags_this_turn=self._nags_this_turn,
+                             nags_without_progress=self._nags_without_progress,
+                             empty_reply=empty_reply),
+            start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            task_queue=CHAT_TASK_QUEUE,
+        )
+        self._raise_if_stopped()
 
     async def _plan(self, inp: AgentRunInput, opened: OpenedRun) -> None:
         """The first-turn planning call, and one retry when the todo server refuses it.
@@ -400,7 +474,7 @@ class AgentRun:
         self._raise_if_stopped()
 
     async def _model_step(self, inp: AgentRunInput, opened: OpenedRun, mode: str,
-                          reason: str) -> ModelStepResult:
+                          reason: str, empty_retry: bool = False) -> ModelStepResult:
         self._steps += 1
         self._steps_here += 1
         plan = mode == "plan"
@@ -408,7 +482,7 @@ class AgentRun:
             result = await workflow.execute_activity(
                 model_step,
                 ModelStepParams(**self._ref_fields(inp), step_no=self._steps, mode=mode,
-                                final_reason=reason),
+                                final_reason=reason, empty_retry=empty_retry),
                 start_to_close_timeout=TIMEOUTS.plan_request if plan else TIMEOUTS.model_call,
                 heartbeat_timeout=STEP_HEARTBEAT_TIMEOUT,
                 # The wait for a free model slot. None sets no limit. Temporal does not
@@ -510,8 +584,6 @@ class AgentRun:
 
     async def _rounds(self, inp: AgentRunInput, opened: OpenedRun) -> RunSummary:
         summary = await self._agent_loop(inp, opened, first=True)
-        nags_this_turn = opened.nags_this_turn
-        nags_without_progress = opened.nags_without_progress
         while summary.outcome == "answered":
             if opened.kind == "planner":
                 has_sections = await workflow.execute_activity(
@@ -527,13 +599,12 @@ class AgentRun:
                 if self._planner_retry_done or summary.end_reason == "step_budget":
                     raise ApplicationError(PLANNER_NO_SECTION_ERROR, non_retryable=True)
                 self._planner_retry_done = True
-                await self._append_nag(inp, summary, PLANNER_NO_SECTION_NOTE, starts_round=True,
-                                       nags_this_turn=nags_this_turn,
-                                       nags_without_progress=nags_without_progress)
+                await self._append_nag(inp, summary, PLANNER_NO_SECTION_NOTE, starts_round=True)
                 summary = await self._agent_loop(inp, opened, first=False)
                 continue
-            # A forced answer binds no tool, so a nag after it cannot change the todo.
-            if summary.end_reason == "step_budget" or not opened.is_chat_lead:
+            # A forced answer binds no tool, so a nag after it cannot change the todo. The
+            # repeat note before a `repeated_call` answer was the nag.
+            if summary.end_reason in ("step_budget", "repeated_call") or not opened.is_chat_lead:
                 break
             # An answer that names a document in a turn with no citation gets one round
             # that asks for the citations and the answer again, before any todo nag.
@@ -543,9 +614,7 @@ class AgentRun:
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 task_queue=CHAT_TASK_QUEUE,
             ):
-                await self._append_nag(inp, summary, nagging.CITATION_NOTE, starts_round=True,
-                                       nags_this_turn=nags_this_turn,
-                                       nags_without_progress=nags_without_progress)
+                await self._append_nag(inp, summary, nagging.CITATION_NOTE, starts_round=True)
                 summary = await self._agent_loop(inp, opened, first=False)
                 continue
             todo = await self._read_todo(inp)
@@ -554,28 +623,26 @@ class AgentRun:
             if self._todo_before_nag is not None and chat_todos.is_material_change(
                 self._todo_before_nag, todo
             ):
-                nags_without_progress = 0
-            stop = nagging.stop_reason(todo, nags_without_progress, nags_this_turn)
+                self._nags_without_progress = 0
+            stop = nagging.stop_reason(todo, self._nags_without_progress, self._nags_this_turn)
             if stop:
                 # The stop reason goes to the log only. A transcript row after the answer
                 # would take the place of the answer as the last row of the turn.
                 if stop != "resolved":
                     workflow.logger.info("run %s ends its nag rounds: %s", inp.run_id, stop)
                 break
-            nags_this_turn += 1
-            nags_without_progress += 1
+            self._nags_this_turn += 1
+            self._nags_without_progress += 1
             self._todo_before_nag = todo
             await self._append_nag(
-                inp, summary, nagging.nag_message(todo, nags_without_progress),
+                inp, summary, nagging.nag_message(todo, self._nags_without_progress),
                 starts_round=True,
-                nags_this_turn=nags_this_turn,
-                nags_without_progress=nags_without_progress,
             )
             summary = await self._agent_loop(inp, opened, first=False)
         return summary
 
     async def _append_nag(self, inp: AgentRunInput, summary: RunSummary, message: str,
-                          starts_round: bool, **counters) -> int:
+                          starts_round: bool) -> int:
         return await workflow.execute_activity(
             append_nag,
             AppendNagParams(
@@ -586,7 +653,8 @@ class AgentRun:
                 idx=summary.next_idx,
                 message=message,
                 starts_round=starts_round,
-                **counters,
+                nags_this_turn=self._nags_this_turn,
+                nags_without_progress=self._nags_without_progress,
             ),
             start_to_close_timeout=_SHORT_TIMEOUT,
             heartbeat_timeout=HEARTBEAT_TIMEOUT,

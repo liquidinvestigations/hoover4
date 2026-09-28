@@ -140,7 +140,7 @@ def render(
 
     `snapshot` is the run's `CatalogueSnapshot`, and `skills` are its listed skills
     (`skill_store.listed_skills`). `purpose` is the purpose of an organizer's briefing
-    (`execute`, `review` or `correct`), and `review` adds the verdict block.
+    (`execute` or `correct`). No text of the template reads it now.
 
     `strict` raises `UnboundToolError` when a listed skill names a tool that no pack holds,
     in its front matter or in its text. The tests render strict, and the running agent does

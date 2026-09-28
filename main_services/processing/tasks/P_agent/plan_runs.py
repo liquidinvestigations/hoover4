@@ -23,9 +23,10 @@ attempt wrote.
 
 **Section documents.** A sub-agent thread with a `plan_node_id` writes its briefing as a
 `prompt` document when its row is written, and the `completed` ending of the thread's last
-run writes the report as a `report` document, or as a `review` document when its purpose
-is `review`. Both are keyed by the thread's first run. The organizer writes the final report
-as a `final` document.
+run writes the report as a `report` document. Both are keyed by the thread's first run and
+written under its `plan_node_id`. A correction names every section it corrects in the
+`sections` of its briefing, and its one report is under the first of them. The organizer
+writes the final report as a `final` document.
 """
 
 from __future__ import annotations
@@ -114,10 +115,24 @@ def section_entries(username: str, session_id: str, plan_run_id: str) -> list[di
     for row in rows:
         if row.plan_node_id and not row.continues_run_id and row.depth >= 1:
             newest = by_thread.get(row.thread_id, [row])[-1]
-            runs.append(agent_plans.SectionRun(row.plan_node_id, row.purpose, newest.state,
-                                               row.started_at))
+            nodes = ((briefing_sections(row) or [row.plan_node_id])
+                     if row.purpose == "correct" else [row.plan_node_id])
+            for node in nodes:
+                runs.append(agent_plans.SectionRun(
+                    node, row.purpose, newest.state, row.started_at,
+                    run_id=row.run_id, report_node=row.plan_node_id))
     documents = agent_plans.read_documents(username, session_id, plan_run_id)
     return agent_plans.section_states(snapshot, runs, documents)
+
+
+def briefing_sections(row) -> list[str]:
+    """The `sections` of a row's stored briefing: every section a correction names."""
+    try:
+        briefing = json.loads(row.briefing or "{}")
+    except ValueError:
+        return []
+    named = briefing.get("sections") if isinstance(briefing, dict) else None
+    return [str(s) for s in named] if isinstance(named, list) else []
 
 
 def refresh_sections(username: str, session_id: str, plan_run_id: str) -> list[dict]:
@@ -176,13 +191,9 @@ def write_prompt_document(child, briefing_text: str) -> None:
         return
     agent_plans.write_document(
         child.username, child.session_id, child.plan_run_id, child.run_id,
-        child.plan_node_id, _role(child.purpose), "prompt", briefing_text,
+        child.plan_node_id, "executor", "prompt", briefing_text,
         attempt=1 if child.purpose == "correct" else 0,
     )
-
-
-def _role(purpose: str) -> str:
-    return "reviewer" if purpose == "review" else "executor"
 
 
 def write_plan_ending(x, state: str, chain: list) -> None:
@@ -198,9 +209,8 @@ def write_plan_ending(x, state: str, chain: list) -> None:
     first = chain[-1] if chain else x
     if x.depth >= 1:
         if state == agent_runs.COMPLETED and first.plan_node_id:
-            kind = "review" if first.purpose == "review" else "report"
             agent_plans.write_document(user, session, plan_run_id, first.run_id,
-                                       first.plan_node_id, _role(first.purpose), kind,
+                                       first.plan_node_id, "executor", "report",
                                        x.result, attempt=1 if first.purpose == "correct" else 0)
         return
     if x.kind == "planner":
@@ -228,7 +238,8 @@ def write_plan_ending(x, state: str, chain: list) -> None:
 
 
 __all__ = [
-    "APPROVED_TEXT", "PLAN_KINDS", "REJECTED_TEXT", "approved_sections", "final_answer",
+    "APPROVED_TEXT", "PLAN_KINDS", "REJECTED_TEXT", "approved_sections", "briefing_sections",
+    "final_answer",
     "open_plan_run", "plan_id_for", "plan_reference", "refresh_sections", "section_entries",
     "write_plan_ending", "write_prompt_document",
 ]

@@ -426,6 +426,17 @@ class ModelStepWriter(ResearchStreamWriter):
                                          content=self.partial_text,
                                          reasoning=self.partial_reasoning, is_final=0))
 
+    def shift_seq(self, n: int, role: str = "", content: str = "") -> None:
+        """Move the assistant partial `n` seqs on, after a row that the step wrote at its
+        seq. The stream row at the old seq becomes a final row of `role` with `content`,
+        so the live rows and the chat rows of that seq agree."""
+        old = self.params.start_seq + self.tool_count
+        self.params.start_seq += n
+        if self.transcript and role:
+            self._mark_final(old, role, content)
+        if self.assistant_row_started:
+            self._write_assistant(force=True)
+
     def tool_rows(self, entries: list[dict[str, Any]]) -> None:
         """One live tool row for each call entry, at its seq. The first one takes the
         place of the assistant partial."""

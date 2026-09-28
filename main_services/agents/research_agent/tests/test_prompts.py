@@ -30,11 +30,10 @@ MAX_PROMPT_CHARS = 11_000
 BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
 
 #: Backticked words that are not tools: fields and states that the prompt names.
-NOT_TOOLS = frozenset({"in_progress", "done", "cancelled", "pending", "verdict",
-                       "accept", "reject", "defect_classes"})
+NOT_TOOLS = frozenset({"in_progress", "done", "cancelled", "pending"})
 
 EVERY_TOOL = frozenset().union(*PACKS.values())
-LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool"}
+LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool", "write_note"}
 
 
 class FakeTool:
@@ -85,7 +84,7 @@ def test_the_full_chat_lead_lists_every_tool_and_every_skill():
     names = listed_lines(text)
     tools = [n for n in names if n in EVERY_TOOL]
     assert sorted(tools) == sorted(EVERY_TOOL)
-    assert len(tools) == 50
+    assert len(tools) == 51
     assert [n for n in names if n not in EVERY_TOOL] == [s.name for s in skills]
 
 
@@ -142,11 +141,9 @@ def test_a_run_with_no_todo_writers_has_no_todo_rule():
     assert "Your todo list" in rendered("full_research")
 
 
-def test_the_verdict_block_renders_for_a_review_only():
-    review = rendered("research_subagent", purpose="review")
-    execute = rendered("research_subagent", purpose="execute")
-    assert '{"verdict": "accept", "defect_classes": []}' in review
-    assert "verdict" not in execute
+def test_no_purpose_renders_a_verdict_block():
+    for purpose in ("execute", "correct"):
+        assert "verdict" not in rendered("research_subagent", purpose=purpose)
 
 
 def test_no_readable_collection_is_said_plainly():
