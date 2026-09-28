@@ -81,7 +81,7 @@ class Briefing(BaseModel):
     plan_node_id: Optional[str] = Field(
         default=None,
         description=(
-            "Organizer only: the node_id of the plan section this briefing works on. "
+            "Organizer only: the number of the plan section this briefing works on. "
             "Leave it out in every other run."
         ),
     )

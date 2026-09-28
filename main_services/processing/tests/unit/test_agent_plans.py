@@ -111,25 +111,23 @@ class TestNumberPaths:
         with pytest.raises(ap.PlanError) as refused:
             ap.apply(snap, "append_child", parent_id="3", text="x")
         text = str(refused.value)
-        assert "no node has the id '3'" in text
-        assert f"root {snap.root_id} (What happened to the shipment in March?)" in text
-        assert f"1 {_ids(snap)['Survey']} (Survey)" in text
+        assert "no node has the id or number path '3'" in text
+        assert "root (What happened to the shipment in March?)" in text
+        assert "1 (Survey)" in text
 
     def test_the_tree_shows_the_path_of_each_node(self):
         snap = _tree(("append_node", {"text": "A"}),
                      ("append_child", {"parent_id": "1", "text": "A1"}))
-        ids = _ids(snap)
         assert ap.render_tree(snap).splitlines() == [
-            f"root. What happened to the shipment in March? [{snap.root_id}]",
-            f"  1. A [{ids['A']}]",
-            f"    1.1. A1 [{ids['A1']}]",
+            "root. What happened to the shipment in March?",
+            "  1. A",
+            "    1.1. A1",
         ]
 
-    def test_a_node_id_is_never_read_as_a_path(self):
-        # Only the parent argument takes a path. Other node arguments need the id.
+    def test_a_node_number_can_remove_its_node(self):
         snap = _tree(("append_node", {"text": "A"}))
-        with pytest.raises(ap.PlanError, match="no node has the id"):
-            ap.apply(snap, "remove_node", node_id="1")
+        changed = ap.apply(snap, "remove_node", node_id="1")
+        assert len(changed.nodes) == 1
 
 
 class TestPlanBound:

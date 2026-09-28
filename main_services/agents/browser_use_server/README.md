@@ -19,10 +19,10 @@ list, and a long tool list costs accuracy: a seven-tool adaptive shortlist score
 a fixed fifty and beats a fixed five by six points. Thirty from one server is the opposite
 of adaptive.
 
-### `read_page(urls=[…], goal=…)`
+### `read_page(urls=[…], goal=…, offset=0)`
 
-The way to read a page. Navigate, wait for the load to settle, extract the readable text
-with the navigation and adverts stripped, capture, return, for each URL, in one call.
+The tool reads up to six URLs in one call. It extracts text, stores a capture, and returns each page.
+For a cut page, pass its URL and the stated offset to read the next part.
 
 ```json
 {"urls": ["https://en.wikipedia.org/wiki/Enron_scandal",
@@ -30,8 +30,8 @@ with the navigation and adverts stripped, capture, return, for each URL, in one 
  "goal": "who audited Enron"}
 ```
 
-comes back as one text block per page, each headed by its title and final URL, then the
-trailing artifact marker carrying **one capture per page**:
+The result has a section for each page and a marker for each new capture.
+An offset read can use cached text and then has no new capture.
 
 ```
 ## Enron scandal - Wikipedia
@@ -39,7 +39,7 @@ https://en.wikipedia.org/wiki/Enron_scandal
 
 The Enron scandal was an accounting scandal … Arthur Andersen …
 
-[truncated — this page's share of the shared budget ran out]
+[cut: this call read 30,000 of the page's 40,000 characters. Call read_page with offset 30000 for the next part]
 
 ---
 
@@ -48,10 +48,10 @@ NOTE: 1 repeated URL ("https://example.com") was run once. Send each distinct UR
 
 Read these behaviours before you change it:
 
-* **`goal` is not an inner agent loop**, and one must not be added. It is passed to the
-  extraction, which keeps the paragraphs carrying the goal's words when the budget forces a
-  cut, and it is recorded on the artifact. An LLM loop inside a tool hides cost and latency
-  behind something that looks like a function call and cannot be debugged from outside.
+* **`goal` records the purpose of the read** on a new capture. It does not change the text order.
+  A cut page gives the length of the extracted text and the next character offset.
+  The browser keeps text under the chat for 30 minutes when its UTF-8 size is at most
+  `READ_PAGE_PDF_MAX_BYTES`. A cache miss or a larger page loads the URL again.
 * **The budget is shared and divided**, not per page: `READ_PAGE_TOTAL_CHARS` over the
   number of URLs, never below a floor. Under the floor the surplus URLs are dropped *and
   named*, because a page the model can read beats five it cannot.
@@ -71,7 +71,7 @@ Read these behaviours before you change it:
 * **A PDF is read through its text layer.** The same probe reads the document's content
   type. For `application/pdf`, a script in the page fetches the file again, so the proxy
   filter applies, and returns it as base64 in slices of 1 MB. `pypdf` reads the text of the
-  first 50 pages, and the goal cuts it like a web page. A file over
+  first 50 pages, and the offset selects a part of that text. A file over
   `READ_PAGE_PDF_MAX_BYTES` is not read, because `pypdf` gets no text from a cut file. The
   page error names the size of the file and the limit, after the first slice. A PDF with
   no text layer, for example a scan, is reported as `the PDF has no text layer`.
@@ -318,8 +318,9 @@ host regardless.
 
 ## Capture
 
-After `browser_take_screenshot` or `browser_snapshot` (and **also when the tool failed**)
-the router takes a capture through its own CDP connection:
+After `browser_take_screenshot` or `browser_snapshot`, the router takes a capture through CDP.
+It also captures a failed call of either tool. A new `read_page` load takes one capture per URL.
+An offset read from the cache takes no new capture.
 
 1. `Page.captureScreenshot` → downscaled to 1280×720 → WebP q72;
 2. `Page.captureSnapshot{format: "mhtml"}` → inlined to self-contained HTML by
@@ -336,15 +337,14 @@ a navigation urlcheck had refused). The router knows, so the router writes it do
 flag is written only when true; the array form without it is still read, for rows already
 stored.
 
-The router also strips markdown links into playwright-mcp's own output directory
-(`- [Snapshot](.playwright-mcp/page-2026-08-07T16-54-18-139Z.yml)`) from every text block,
-along with the section heading left standing over nothing. That file exists inside the
+The router replaces markdown links into playwright-mcp's own output directory
+with a line that names `browser_snapshot` under the Snapshot heading. That file exists inside the
 sidecar's container and nowhere else: the model cannot read files, and the website rendered
 it as a dead link in the transcript. Lines that merely *mention* the path are untouched;
 the rule matches a whole line that is only the link, because the rest of the result is
 evidence and must not be rewritten.
 
-**Captures are explicit, and they come from those two tools and nothing else.**
+**Interactive tool captures come from those two tools.**
 
 Capturing after almost every click (a screenshot plus a multi-megabyte MHTML
 serialisation) costs tens of rows and over ten megabytes in a single day of demo use.

@@ -23,6 +23,7 @@ from browser_use_server.server import (
     _append_marker,
     _attach_artifact,
     _drop_dead_links,
+    _loading_note,
 )
 
 
@@ -117,9 +118,22 @@ def test_the_snapshot_file_link_is_removed_with_its_orphaned_heading():
     )
     out = _text(_drop_dead_links(_result(text)))[0]
     assert ".playwright-mcp" not in out
-    # The heading went with it: "### Snapshot" over nothing reads as a missing snapshot.
-    assert not out.endswith("### Snapshot")
-    assert out.endswith("Example Domain")
+    assert "### Snapshot\nThe page tree is not in this result. Call browser_snapshot to read it." in out
+
+
+def test_snapshot_note_keeps_later_sections():
+    text = "### Snapshot\n- [Snapshot](.playwright-mcp/page-x.yml)\n### Events\n- event"
+    out = _text(_drop_dead_links(_result(text)))[0]
+    assert "### Snapshot\nThe page tree is not in this result. Call browser_snapshot to read it." in out
+    assert out.endswith("### Events\n- event")
+
+
+def test_loading_note_counts_elements_before_the_marker():
+    text = '- status "Loading" [ref=e1]\n- progressbar "Loading results" [ref=e2]'
+    result = _append_marker(_loading_note("browser_snapshot", _result(text)), [])
+    assert "NOTE: 2 elements say Loading. The page is not complete." in _text(result)[0]
+    assert _marker_payload(result) == {"artifacts": []}
+    assert _text(_loading_note("browser_navigate", _result(text)))[0] == text
 
 
 def test_a_heading_with_real_content_under_it_survives():
@@ -132,6 +146,11 @@ def test_page_text_that_merely_mentions_the_path_is_untouched():
     # The rule is anchored to a whole line that is only the link, the rest of a browser
     # result is the fetched page, and rewriting that would be rewriting evidence.
     text = "### Page\nthe article discusses .playwright-mcp/page-1.yml at length"
+    assert _text(_drop_dead_links(_result(text)))[0] == text
+
+
+def test_a_text_block_without_a_link_keeps_its_final_newline():
+    text = "### Snapshot\n- generic\n"
     assert _text(_drop_dead_links(_result(text)))[0] == text
 
 

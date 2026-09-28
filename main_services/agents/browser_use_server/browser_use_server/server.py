@@ -172,6 +172,7 @@ class RoutedTool(Tool):
             #    the card authenticates the marker by its position, and that only works
             #    if every result this router returns ends with one.
             result = _drop_dead_links(result)
+            result = _loading_note(tool_name, result)
 
             captured = None
             if capture_mod.should_capture(tool_name):
@@ -251,20 +252,50 @@ _DEAD_LINK = re.compile(r"^\s*-?\s*\[[^\]]*\]\(\.playwright-mcp/[^)]*\)\s*$", re
 
 #: A section heading left with nothing under it once the dead link above is gone.
 _EMPTY_TAIL_HEADING = re.compile(r"\n#+ *\w[^\n]*\s*$")
+SNAPSHOT_NOT_INCLUDED = "The page tree is not in this result. Call browser_snapshot to read it."
+_LOADING = re.compile(r'^\s*- (status|progressbar) "Loading[^"]*"', re.MULTILINE)
 
 
 def _drop_dead_links(result: ToolResult) -> ToolResult:
-    """Strip links into the sidecar's output directory from every text block."""
+    """Replace inaccessible snapshot links with a readable note."""
     content = []
     for block in result.content or []:
         text = getattr(block, "text", None)
         if isinstance(block, TextContent) and isinstance(text, str):
-            cleaned = _DEAD_LINK.sub("", text)
-            if cleaned != text:
-                # `### Snapshot` followed by only that link is now a heading over nothing.
+            lines = text.splitlines()
+            kept = []
+            changed = False
+            for line in lines:
+                if _DEAD_LINK.fullmatch(line):
+                    changed = True
+                    if kept and kept[-1].strip() == "### Snapshot":
+                        kept.append(SNAPSHOT_NOT_INCLUDED)
+                    continue
+                kept.append(line)
+            if changed:
+                cleaned = "\n".join(kept)
                 cleaned = _EMPTY_TAIL_HEADING.sub("", cleaned.rstrip())
                 block = TextContent(type="text", text=cleaned.rstrip())
         content.append(block)
+    return ToolResult(content=content, structured_content=result.structured_content)
+
+
+def _loading_note(tool_name: str, result: ToolResult) -> ToolResult:
+    """Name loading elements when a snapshot still shows an incomplete page."""
+    if tool_name != "browser_snapshot":
+        return result
+    count = sum(len(_LOADING.findall(getattr(block, "text", "") or ""))
+                for block in result.content or [] if isinstance(block, TextContent))
+    if count == 0:
+        return result
+    content = list(result.content or [])
+    note = (f"NOTE: {count} elements say Loading. The page is not complete. "
+            "browser_wait_for can wait for a change.")
+    for index in range(len(content) - 1, -1, -1):
+        block = content[index]
+        if isinstance(block, TextContent):
+            content[index] = TextContent(type="text", text=f"{block.text.rstrip()}\n{note}")
+            break
     return ToolResult(content=content, structured_content=result.structured_content)
 
 
@@ -459,6 +490,7 @@ class ReadPageTool(Tool):
                 arguments.get("urls"),
                 str(arguments.get("goal") or ""),
                 username,
+                int(arguments.get("offset") or 0),
             )
             await chat_browser.enforce_tab_cap(chat, router_mod.MAX_TABS_PER_CHAT)
 
@@ -495,9 +527,15 @@ READ_PAGE_SCHEMA = {
         "goal": {
             "type": "string",
             "description": (
-                "What you are looking for on these pages, in a few words. Used to choose "
-                "which part of a long page survives the length limit."
+                "What you are looking for on these pages, in a few words. "
+                "The capture records this goal."
             ),
+        },
+        "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0,
+            "description": "Character position in one page's extracted text. Use the cut line's offset to read the next part.",
         },
     },
     "required": ["urls"],
@@ -508,13 +546,14 @@ READ_PAGE_DESCRIPTION = (
     "results worth reading in full and it navigates to each, waits for it to load, and "
     "returns the page's readable text with the navigation and adverts stripped, plus a "
     "screenshot and an archived copy the user can open. This is how you read a page: use "
-    "it instead of navigating and snapshotting one URL at a time. Pass `goal` to say what "
-    "you are looking for, so long pages are cut around the relevant part. Pages that "
+    "it instead of navigating and snapshotting one URL at a time. Pass `goal` to record "
+    "what you are looking for. Cut pages keep text order. Pages that "
     "refuse, time out or return nothing are reported individually, and the rest still come "
     "back. Some sites show a bot check page, for example \"Just a moment...\". read_page "
     "waits for it to clear. If it does not clear, the page is reported as BLOCKED BY A BOT "
     "CHECK, and its text is not the page. Do not use that text as a source. Try the "
-    "archived copy with web_search and sources [\"wayback\"], or another page."
+    "archived copy with web_search and sources [\"wayback\"], or another page. "
+    "A cut result gives the next character offset. Pass one URL with that offset to read its next part."
 )
 
 

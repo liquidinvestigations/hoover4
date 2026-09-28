@@ -1540,8 +1540,8 @@ def test_a_flat_plan_is_reviewed_rejected_approved_and_completed(monkeypatch):
         # Each organizer continuation reads the section states beside the reports.
         steps = [json.loads(r["messages"][-1]["content"]) for r in stub.requests
                  if r["kind"] == "organizer" and _is_continuation(r)]
-        assert [[(s["node_id"], s["corrections"], s["failed"]) for s in step["sections"]]
-                for step in steps] == [[(root, 0, False)], [(root, 1, False)]]
+        assert [[s["node"] for s in step["sections"]] for step in steps] == [["root"], ["root"]]
+        assert all(s["state"] for step in steps for s in step["sections"])
 
     asyncio.run(_run_case(monkeypatch, script, body))
 

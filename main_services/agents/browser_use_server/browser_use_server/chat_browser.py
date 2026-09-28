@@ -184,6 +184,7 @@ class ChatBrowser:
     """Everything one conversation browses with."""
 
     session_id: str
+    page_reads: dict[str, tuple[float, str, str, str]] = field(default_factory=dict)
     profile_dir: str = ""
     browser: object | None = None
     #: The browser process. Ours, not nodriver's. See `start()`.

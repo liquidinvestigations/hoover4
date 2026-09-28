@@ -236,13 +236,13 @@ def node_paths(snapshot: PlanSnapshot) -> dict[str, str]:
 
 
 def render_tree(snapshot: PlanSnapshot) -> str:
-    """The tree as indented lines, one node a line, with its number path and its id."""
+    """The tree as indented lines, with one number path per node."""
     paths = node_paths(snapshot)
     lines = []
     for node in _ordered(snapshot.nodes):
         path = paths[node.node_id]
         level = 0 if path == ROOT_PATH else path.count(".") + 1
-        lines.append(f"{'  ' * level}{path}. {node.text} [{node.node_id}]")
+        lines.append(f"{'  ' * level}{path}. {node.text}")
     return "\n".join(lines)
 
 
@@ -268,10 +268,23 @@ def _new_node_id(plan_id: str, version: int) -> str:
 
 def _find(snapshot: PlanSnapshot, node_id: Any) -> PlanNode:
     wanted = _clean_text(node_id)
+    resolved = resolve_node(snapshot, wanted)
     for node in snapshot.nodes:
-        if node.node_id == wanted:
+        if node.node_id == resolved:
             return node
-    raise PlanError(f"no node has the id {wanted!r}. Call read_plan to see the ids.")
+    raise PlanError(f"no node has the id or number path {wanted!r}. Call read_plan to see the tree.")
+
+
+def resolve_node(snapshot: PlanSnapshot, value: Any) -> str | None:
+    """The node id named by an id or an outline number, if it exists."""
+    wanted = _clean_text(value).rstrip(".")
+    if not wanted or wanted.lower() == ROOT_PATH:
+        return snapshot.root_id
+    paths = node_paths(snapshot)
+    for node in snapshot.nodes:
+        if node.node_id == wanted or paths[node.node_id] == wanted:
+            return node.node_id
+    return None
 
 
 def _find_parent(snapshot: PlanSnapshot, parent: Any) -> PlanNode:
@@ -279,18 +292,17 @@ def _find_parent(snapshot: PlanSnapshot, parent: Any) -> PlanNode:
     `render_tree` (`root`, `1`, `1.2`, a last dot allowed). A value that names no node is
     refused with the path, id and text of the nodes, so the next call can name one."""
     wanted = _clean_text(parent)
-    by_path = {path: node_id for node_id, path in node_paths(snapshot).items()}
-    path = wanted.rstrip(".").lower()
+    resolved = resolve_node(snapshot, wanted)
     for node in snapshot.nodes:
-        if node.node_id == wanted or by_path.get(path) == node.node_id:
+        if node.node_id == resolved:
             return node
-    listed = [f"{node_path} {node_id} ({_short(text)})"
+    listed = [f"{node_path} ({_short(text)})"
               for node_path, node_id, text in _listing(snapshot)[:MAX_LISTED_NODES]]
     more = len(snapshot.nodes) - len(listed)
     tail = f", and {more} more. Call read_plan to see them all." if more > 0 else "."
     raise PlanError(
-        f"no node has the id {wanted!r}, and no node has that number path. Give the id or "
-        f"the number path of a node. The nodes are: {', '.join(listed)}{tail}"
+        f"no node has the id or number path {wanted!r}. Give a number path from this tree. "
+        f"The nodes are: {', '.join(listed)}{tail}"
     )
 
 
@@ -744,6 +756,6 @@ __all__ = [
     "apply", "children_of", "create_plan", "create_plan_run", "document_id",
     "failed_sections_table", "failure_cause", "initial_snapshot", "is_terminal", "mutate", "nodes_json",
     "parse_verdict", "read_decision", "read_documents", "read_plan_run", "read_snapshot",
-    "node_paths", "render_tree", "root_node_id", "section_ids", "section_states", "sections", "validate",
+    "node_paths", "render_tree", "resolve_node", "root_node_id", "section_ids", "section_states", "sections", "validate",
     "write_document", "write_plan_run", "write_snapshot",
 ]

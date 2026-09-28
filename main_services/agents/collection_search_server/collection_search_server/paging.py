@@ -116,7 +116,7 @@ RESPONSE_MODELS: dict[str, type[AgentModel]] = {
 #: loses its snippet or its text.
 IDENTITY_FIELDS = frozenset({"/file_hash", "/path", "/collectionname", "/dataset", "/collection_dataset"})
 #: The keys a route tool's continuation position may hold.
-POSITION_KEYS = frozenset({"window", "next", "artifact", "head", "start", "total", "cut", "blob", "part"})
+POSITION_KEYS = frozenset({"window", "next", "artifact", "head", "start", "stop", "total", "cut", "blob", "part"})
 
 
 #: The request header that carries the page share of one call, in UTF-8 bytes.
@@ -143,6 +143,7 @@ _HANDLE_RE = re.compile(r"^[0-9a-f]{12}$")
 #: writes nothing, and its entry leaves this map when newer entries arrive.
 _TOKENS: OrderedDict[str, str] = OrderedDict()
 _TOKENS_KEPT = 4096
+_UNIT_SHARE: contextvars.ContextVar[int | None] = contextvars.ContextVar("unit_share", default=None)
 
 
 def hash_start(value: str) -> str:
@@ -170,6 +171,12 @@ def slim_items(tool_name: str, items: list[Any]) -> tuple[list[Any], list[dict[s
     out: list[Any] = []
     refs: list[dict[str, Any]] = []
     for item in items:
+        if tool_name == "list_collections" and isinstance(item, dict):
+            out.append({"collectionname": item.get("collectionname") or "",
+                        "documents": item.get("document_count") or 0,
+                        "datasets": {row.get("name") or "": row.get("document_count") or 0
+                                     for row in item.get("datasets") or []}})
+            continue
         if not isinstance(item, dict) or not isinstance(item.get("file_hash"), str):
             out.append(item)
             continue
@@ -203,6 +210,8 @@ def page_doc_refs(text: str, refs: list[dict[str, Any]]) -> list[dict[str, Any]]
     except ValueError:
         return []
     items = page.get("items") if isinstance(page, dict) else None
+    if isinstance(page, dict) and isinstance(page.get("citations"), list):
+        return refs
     if not isinstance(items, list):
         return []
     by_start: dict[tuple[str, str], dict[str, Any]] = {}
@@ -268,6 +277,9 @@ def page_share() -> int:
     """The bytes one page of this call may take: the `X-Hoover4-Page-Share` header, cut to
     `MAX_PAGE_SHARE`, or `PAGE_LIMIT` when the header is absent or is not a positive
     integer."""
+    override = _UNIT_SHARE.get()
+    if override is not None:
+        return override
     raw = get_http_headers().get(PAGE_SHARE_HEADER, "").strip()
     try:
         value = int(raw)
@@ -346,16 +358,17 @@ class MeasureMiddleware(Middleware):
         if text != content[0].text:
             content[0] = content[0].model_copy(update={"text": text})
             result.content = content
-        if not measures:
+        if not measures and not refs:
             return result
-        measure = call_measure(content[0].text, measures)
-        if measure is None:
-            return result
-        measure["page_share"] = page_share()
-        measure.pop("continuation_token", None)
-        content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
-            uri=CALL_MEASURE_URI, mimeType="application/json", text=canonical_json(measure),
-        )))
+        if measures:
+            measure = call_measure(content[0].text, measures)
+            if measure is None:
+                return result
+            measure["page_share"] = page_share()
+            measure.pop("continuation_token", None)
+            content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
+                uri=CALL_MEASURE_URI, mimeType="application/json", text=canonical_json(measure),
+            )))
         doc_refs = page_doc_refs(content[0].text, refs)
         if doc_refs:
             content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
@@ -393,6 +406,7 @@ class PagedTool:
     shape: str
     item_key: str
     columns_key: str | None = None
+    max_rows: int | None = None
 
     def window(self, result: dict[str, Any]) -> Window:
         """The route paging policy. The units are the list under `item_key`, the rest of
@@ -472,13 +486,13 @@ def _live_page(tool: PagedTool, request: BaseModel, window_position: dict | None
     total = units if tool.shape == "blob" else window.total
     page, measure = _build(
         PageInput(tool.tool_name, tool.shape, window.items, window.columns, total, {"window": window_position},
-                  source, _input(request), None, after, window.fields),
+                  source, _input(request), None, after, window.fields, tool.max_rows),
         _page_limit(),
     )
     if measure.returned_units >= units:
         return page
     try:
-        artifact_id, body, head = _store_window(tool, window, _input(request), window_position)
+        artifact_id, body, head, _ = _store_window(tool, window, _input(request), window_position)
     except artifacts.ArtifactWriteFailed as exc:
         return canonical_json({"success": False, "error": "artifact_write_failed", "message": str(exc)})
     position = {"window": window_position, "next": window.next, "artifact": artifact_id, "head": head,
@@ -513,7 +527,7 @@ def _envelope_bytes(tool: PagedTool, window: Window, request_input: dict[str, An
 
 
 def _store_window(tool: PagedTool, window: Window, request_input: dict[str, Any],
-                  window_position: dict | None) -> tuple[str, bytes, int]:
+                  window_position: dict | None) -> tuple[str, bytes, int, list[int]]:
     """Write the window as one artifact, and return its id, its body and the header length.
     The header records the page share that the lines were stored with."""
     share = page_share()
@@ -522,13 +536,18 @@ def _store_window(tool: PagedTool, window: Window, request_input: dict[str, Any]
         header["refs"] = window.refs
     head = (canonical_json(header) + "\n").encode("utf-8")
     parts = [head]
+    ends: list[int] = []
+    offset = len(head)
     if tool.shape == "blob":
         parts.append((window.items[0] if window.items else "").encode("utf-8"))
     else:
         envelope = lambda cut_field: _envelope_bytes(tool, window, request_input, window_position, cut_field)
         whole_target = share - envelope(None)
         for unit in window.items:
-            parts.extend(_stored_unit(unit, share, whole_target, envelope))
+            segments = _stored_unit(unit, share, whole_target, envelope)
+            parts.extend(segments)
+            offset += sum(len(segment) for segment in segments)
+            ends.append(offset)
     body = b"".join(parts)
     headers = {key.lower(): value for key, value in get_http_headers().items()}
     request = artifacts.ArtifactRequest(
@@ -539,7 +558,85 @@ def _store_window(tool: PagedTool, window: Window, request_input: dict[str, Any]
     )
     artifact_id = str(uuid.uuid4())
     artifacts.write_required(request, artifact_id, artifact_id, body, ARTIFACT_CONTENT_TYPE)
-    return artifact_id, body, len(head)
+    return artifact_id, body, len(head), ends
+
+
+def unit_limits(share: int, envelope: int, n: int) -> list[int]:
+    """Give each document an equal part of the page content bytes."""
+    if n <= 0:
+        return []
+    return [max(0, (share - envelope) // n)] * n
+
+
+def render_document_reads(tool: PagedTool, request: BaseModel) -> str:
+    """Return one read item per document, with a continuation on each cut item."""
+    result = BackendClient().post(tool.route, request, RESPONSE_MODELS[tool.route])
+    if isinstance(result, AgentError):
+        return error_text(result)
+    window = tool.window(result.model_dump(mode="json", by_alias=True))
+    n = len(window.items)
+    if n == 0:
+        return _live_page(tool, request, None, window)
+    share = page_share()
+    envelope = len(canonical_json({"items": [], **window.fields}).encode("utf-8")) + n * 70
+    per = unit_limits(share, envelope, n)[0]
+    if per < 256:
+        return _invalid("the page share cannot hold one byte of each document")
+    if all(len(canonical_json(item).encode("utf-8")) <= per for item in window.items):
+        preview, measured = _build(
+            PageInput(tool.tool_name, "rows", window.items, None, window.total, {},
+                      window.fields.get("source", ""), _input(request), None,
+                      lambda count: _after_window(window) if count >= n else None,
+                      window.fields), _page_limit()
+        )
+        if measured.returned_units == n:
+            _note_refs(window.refs)
+            return preview
+    _note_refs(window.refs)
+    token = _UNIT_SHARE.set(per)
+    try:
+        artifact_id, body, head, ends = _store_window(tool, window, _input(request), None)
+    except artifacts.ArtifactWriteFailed as exc:
+        return canonical_json({"success": False, "error": "artifact_write_failed", "message": str(exc)})
+    finally:
+        _UNIT_SHARE.reset(token)
+    for _ in range(8):
+        items: list[dict[str, Any]] = []
+        start = head
+        for original, end in zip(window.items, ends):
+            position = {"artifact": artifact_id, "head": head, "start": start,
+                        "stop": end, "total": 1}
+            token = _UNIT_SHARE.set(per)
+            try:
+                page = json.loads(_stored_page(tool, request, position, _memory_reader(body)))
+            finally:
+                _UNIT_SHARE.reset(token)
+            if not page.get("items"):
+                return _invalid("the page share cannot hold one byte of each document")
+            item = page["items"][0]
+            if page.get("more"):
+                item["more"] = page["more"]
+                shown = len(str(item.get("text") or "").encode("utf-8"))
+                total = len(str(original.get("text") or "").encode("utf-8"))
+                item["cut"] = f"{shown} of {total} bytes"
+            items.append(item)
+            start = end
+        text, measure = _build(PageInput(tool.tool_name, "rows", items, None, window.total, {},
+                                         window.fields.get("source", ""), _input(request), None,
+                                         lambda count: _after_window(window) if count >= n else None,
+                                         window.fields), _page_limit())
+        if measure.returned_units == n:
+            try:
+                for item in items:
+                    if item.get("more"):
+                        store_handle(_TOKENS[item["more"]])
+            except artifacts.ArtifactWriteFailed as exc:
+                return canonical_json({"success": False, "error": "artifact_write_failed", "message": str(exc)})
+            return text
+        per = per * 3 // 4
+        if per < 256:
+            break
+    return _invalid("the page share cannot hold one byte of each document")
 
 
 def _stored_unit(unit: Any, share: int, whole_target: int, envelope: Callable[[str], int]) -> list[bytes]:
@@ -675,10 +772,18 @@ def _stored_page(
 
 
 def _stored_page_unchecked(tool, request, position, read, fields, columns) -> str:
+    if "stop" in position:
+        stop = int(position["stop"])
+        original_read = read
+
+        def read(start: int, length: int) -> tuple[bytes, int]:
+            data, _ = original_read(start, min(length, max(0, stop - start)))
+            return data, stop
+
     start = int(position["start"])
     head = int(position["head"])
-    base = {key: position[key] for key in ("window", "next", "artifact", "head", "total") if key in position}
-    source_end = {"window": position["next"]} if position.get("next") else None
+    base = {key: position[key] for key in ("window", "next", "artifact", "head", "stop", "total") if key in position}
+    source_end = {"window": position["next"]} if position.get("next") and "stop" not in position else None
     # The header is read whole whatever the current share, so that a later page keeps the
     # window's fields and its source. A window stored before the header held its share was
     # stored with `PAGE_LIMIT`.
@@ -695,7 +800,7 @@ def _stored_page_unchecked(tool, request, position, read, fields, columns) -> st
     source = fields.get("source", "")
     page_input = lambda shape, items, total, after, page_fields, cols=None: PageInput(
         tool.tool_name, shape, items, cols, total, {**base, "start": start}, source, _input(request),
-        position["artifact"], after, page_fields,
+        position["artifact"], after, page_fields, tool.max_rows,
     )
     too_small = lambda: _share_too_small(start, first_page)
 
@@ -856,7 +961,9 @@ def _position_is_valid(handler: Any, position: dict[str, Any]) -> bool:
         return False
     if any(position.get(key) is not None and not isinstance(position[key], dict) for key in ("window", "next")):
         return False
-    if any(key in position and (type(position[key]) is not int or position[key] < 0) for key in ("head", "start", "total")):
+    if any(key in position and (type(position[key]) is not int or position[key] < 0) for key in ("head", "start", "stop", "total")):
+        return False
+    if "stop" in position and position["stop"] <= position.get("start", 0):
         return False
     if "artifact" in position:
         if not isinstance(position["artifact"], str) or "start" not in position or "head" not in position:

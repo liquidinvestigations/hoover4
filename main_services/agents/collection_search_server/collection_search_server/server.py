@@ -31,7 +31,7 @@ from typing import Any, Sequence
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_serializer
 
 from agent_common import batching, retired
 from agent_common import embeddings as embeddings_client
@@ -1448,6 +1448,27 @@ class CitationsResponse(BaseModel):
     note: str = ""
     error: str | None = None
 
+    @model_serializer
+    def _slim_result(self) -> dict[str, Any]:
+        if not self.success:
+            return {"success": False, "error": self.error}
+        citations = []
+        for result in self.citations:
+            row: dict[str, Any] = {"file_hash": result.file_hash[:16]}
+            if result.handle:
+                row["handle"] = result.handle
+            if result.quote_verified:
+                row["quote_verified"] = True
+            if result.quote_reason:
+                row["quote_reason"] = result.quote_reason
+            if result.error:
+                row["error"] = result.error
+            citations.append(row)
+        out: dict[str, Any] = {"citations": citations}
+        if self.note:
+            out["note"] = self.note
+        return out
+
 
 #: Handles live for the life of a chat session, keyed by the session header the website
 #: forwards. It carries no authority (the ACL is a different header), and is an
@@ -1559,6 +1580,14 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
             "documents above are cited without one."
         )
 
+    from collection_search_server import paging
+    paging._note_refs([{
+        "handle": result.handle, "collectionname": result.collectionname,
+        "collection_dataset": result.collection_dataset, "file_hash": result.file_hash,
+        "path": result.path, "quote": result.quote, "why": result.why,
+        "quote_verified": result.quote_verified, "quote_reason": result.quote_reason,
+        "find_query": result.find_query,
+    } for result in results])
     return CitationsResponse(
         success=True, citations=results, note=" ".join(note_parts)
     )

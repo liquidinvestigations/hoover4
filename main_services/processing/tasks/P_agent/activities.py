@@ -776,7 +776,11 @@ def _organizer_sections(row) -> list[dict] | None:
         entries = json.loads(plan_run.sections_json or "[]") if plan_run else []
     except ValueError:
         entries = []
-    return [{k: e.get(k) for k in ORGANIZER_SECTION_FIELDS} for e in entries]
+    snapshot = agent_plans.read_snapshot(row.username, row.session_id, plan_run.plan_id,
+                                         plan_run.approved_version) if plan_run else None
+    paths = agent_plans.node_paths(snapshot) if snapshot else {}
+    return [{"node": paths.get(e.get("node_id"), ""), "state": e.get("state", "")}
+            for e in entries]
 
 
 def _add_continuation_results(row, messages, chat_row):
@@ -822,11 +826,16 @@ def _add_continuation_results(row, messages, chat_row):
                 task = json.loads(child.briefing or "{}").get("objective", "")
             except ValueError:
                 task = ""
-            reports.append({"task": task, "run_id": child.run_id, "state": child.state,
-                            "report": child.result, "error": child.error})
+            report = {"task": task, "report": child.result}
+            if child.state != "completed":
+                report["state"] = child.state
+            if child.error:
+                report["error"] = child.error
+            reports.append(report)
         result = {
             "reports": reports,
-            "refused": [r for r in refused if r.get("tool_call_id") == call_id],
+            "refused": [{"objective": r.get("objective", ""), "reason": r.get("reason", "")}
+                        for r in refused if r.get("tool_call_id") == call_id],
         }
         if sections is not None:
             result["sections"] = sections
@@ -898,8 +907,17 @@ def _delegate(row, calls, seqs, writer, chat_row) -> "RunSummary":
     sections, section_runs = set(), {}
     if row.kind == "organizer" and row.plan_run_id:
         from tasks.P_agent import plan_runs
+        from database import agent_plans
 
         sections = plan_runs.approved_sections(row.username, row.session_id, row.plan_run_id)
+        plan_run = agent_plans.read_plan_run(row.username, row.session_id, row.plan_run_id)
+        snapshot = agent_plans.read_snapshot(row.username, row.session_id, plan_run.plan_id,
+                                             plan_run.approved_version) if plan_run else None
+        if snapshot:
+            calls = [(call_id, [{**briefing, "plan_node_id":
+                                 agent_plans.resolve_node(snapshot, briefing.get("plan_node_id"))
+                                 or briefing.get("plan_node_id")}
+                                for briefing in briefings]) for call_id, briefings in calls]
         section_runs = run_budgets.count_section_runs(
             row.username, row.session_id, plan_run_id=row.plan_run_id, own_batch_id=batch_id)
     # A sub-agent of a plan does not delegate, so a plan's deepest caller is depth 0.

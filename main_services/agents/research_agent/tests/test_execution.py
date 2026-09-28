@@ -94,7 +94,8 @@ def test_a_thread_of_109000_tokens_still_gets_a_full_page(monkeypatch, mode):
     monkeypatch.setattr(execution, "MAX_PAGE_TOKENS", 30_000 if mode == "tokens" else None)
     monkeypatch.setattr(execution, "TokenCounter", lambda *args: CharCounter())
     names = ["read_documents"]
-    budget = execution.batch_budget(names, _long_thread(109_000))
+    budget = execution.batch_budget([(name, {"file_hash": ["a"]}) for name in names],
+                                    _long_thread(109_000))
     empty = len(execution.empty_page_text(names[0]).encode("utf-8"))
     assert budget.mode == mode and not budget.exhausted
     # The minimum page of a tool is its empty page plus one byte of content.
@@ -119,6 +120,32 @@ def test_the_token_budget_applies_the_allocation():
     assert list(budget.shares) == [e + min(content, 30_000) for e in empty]
     small = execution.token_budget(["a"] * 4, [AIMessage(content="", usage_metadata={"input_tokens": 50, "output_tokens": 0, "total_tokens": 50})], 166, CharCounter(), 20, None, fraction=0.6)
     assert small.exhausted
+
+
+def test_read_weights_count_distinct_hashes_and_cap_at_ten():
+    assert execution.read_weight("search_collections", {"file_hash": ["a"]}) == 0
+    assert execution.read_weight("read_documents", {"file_hash": "a"}) == 1
+    assert execution.read_weight("read_documents", {"file_hash": ["a", "a", "b"]}) == 2
+    assert execution.read_weight("read_documents", {"file_hash": [str(n) for n in range(20)]}) == 10
+
+
+def test_safe_read_gets_four_shares_beside_a_search():
+    names = ["search_collections", "read_documents"]
+    empty = [len(execution.empty_page_text(name).encode()) for name in names]
+    budget = execution.safe_budget(names, 0, 0, 8192, weights=[0, 4])
+    assert budget.shares == (SAFE_MODE_BATCH_BYTES,
+                             empty[1] + 4 * (SAFE_MODE_BATCH_BYTES - empty[1]))
+    limited = execution.safe_budget(names, 70_000, 100_000, 8192, weights=[0, 10], limit=80_000)
+    assert sum(limited.shares) <= 2_000
+    assert all(share >= size for share, size in zip(limited.shares, empty))
+
+
+def test_token_read_gets_four_weighted_units():
+    from agent_common.result_pages import allocate
+
+    empty = [0, 0]
+    assert allocate(0, empty, 100_000, 0, 8_000, [0, 4]) == [8_000, 32_000]
+    assert allocate(80_000, empty, 100_000, 0, 8_000, [0, 4]) == [4_000, 16_000]
 
 
 def test_the_client_factory_sends_the_share_of_the_current_call():

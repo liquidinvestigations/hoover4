@@ -16,8 +16,11 @@ URL, and merge with RRF so agreement between sources beats any one source's conf
 
 | Tool | Returns |
 |---|---|
-| `web_search(queries=[…], sources=None, max_results=15, timelimit=None)` | the fused, reranked, floored result list plus the timing table and a `search_detail` artifact id |
+| `web_search(queries=[…], sources=None, max_results=15, timelimit=None)` | titles, URLs, snippets, dates and result kinds, plus a `search_detail` artifact id |
 | `list_search_sources()` | every source with its kind, and which are configured |
+
+The result names sources with no results in `no_results_from`.
+The server stores search detail separately and gives its artifact id in `_hoover4_artifacts`.
 
 `timelimit` is `d`/`w`/`m`/`y` and only affects `ddg_news`, `ddg_api` and `gdelt`. The HTML
 endpoints take no time filter and the reference sources have no publication date. A bad
@@ -225,7 +228,7 @@ selector edit fails a test rather than production.
 ## Tests
 
 ```bash
-docker exec hoover4-mcp-metasearch python -m pytest tests/ -q   # 71 tests
+docker exec hoover4-mcp-metasearch python -m pytest tests/ -q
 ```
 
 They cover URL normalisation, both dedupes, the RRF merge, the per-kind floor, the rerank

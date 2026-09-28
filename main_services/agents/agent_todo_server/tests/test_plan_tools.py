@@ -101,8 +101,8 @@ def store(monkeypatch):
 
 def test_two_parallel_mutations_land_as_consecutive_versions(headers, store):
     async def both():
-        return await asyncio.gather(plan_tools.append_node.fn(text="A"),
-                                    plan_tools.append_node.fn(text="B"))
+        return await asyncio.gather(plan_tools.append_node.fn(version=1, text="A"),
+                                    plan_tools.append_node.fn(version=1, text="B"))
 
     first, second = asyncio.run(both())
     assert first.success and second.success
@@ -111,23 +111,38 @@ def test_two_parallel_mutations_land_as_consecutive_versions(headers, store):
     assert sorted(n.text for n in newest.nodes if n.parent_id) == ["A", "B"]
 
 
+def test_stale_number_is_refused_after_renumbering(headers, store):
+    call(plan_tools.append_node, version=1, text="A")
+    call(plan_tools.append_node, version=2, text="B")
+    call(plan_tools.remove_node, version=3, node_id="1")
+    refused = call(plan_tools.edit_node, version=3, node_id="1", text="Changed")
+    assert (refused.success, refused.code, refused.version) == (False, "stale_version", 4)
+    assert "B" in refused.tree
+
+
+def test_plan_result_exposes_outline_tree_only(headers, store):
+    result = call(plan_tools.append_node, version=1, text="A")
+    assert result.model_dump() == {"plan_state": "planning", "version": 2,
+                                   "tree": "root. What happened?\n  1. A"}
+
+
 def test_a_sub_agent_of_the_planner_changes_the_plan_with_no_role_check(headers, store):
     headers["X-Hoover4-Agent-Run"] = "helper-run"
-    result = call(plan_tools.append_node, text="From a helper")
+    result = call(plan_tools.append_node, version=1, text="From a helper")
     assert result.success and result.version == 2
     assert [s.tasks for s in result.sections] == [["From a helper"]]
 
 
 def test_frozen_plan_refuses_every_mutation_and_reads_the_approved_version(headers, store):
-    assert call(plan_tools.append_node, text="A").version == 2
-    assert call(plan_tools.append_node, text="B").version == 3
+    assert call(plan_tools.append_node, version=1, text="A").version == 2
+    assert call(plan_tools.append_node, version=2, text="B").version == 3
     store.plan_run.state = agent_plans.EXECUTING
     store.plan_run.approved_version = 2
     root = agent_plans.root_node_id(PLAN_ID)
     for tool, args in [(plan_tools.append_node, {"text": "C"}),
                        (plan_tools.edit_node, {"node_id": root, "text": "x"}),
                        (plan_tools.remove_node, {"node_id": root})]:
-        result = call(tool, **args)
+        result = call(tool, version=3, **args)
         assert (result.success, result.code, result.version) == (False, "plan_frozen", 2)
     assert max(store.snapshots) == 3
     read = call(plan_tools.read_plan)
@@ -136,7 +151,7 @@ def test_frozen_plan_refuses_every_mutation_and_reads_the_approved_version(heade
 
 
 def test_an_invalid_change_is_refused_with_the_tree(headers, store):
-    result = call(plan_tools.remove_node, node_id=agent_plans.root_node_id(PLAN_ID))
+    result = call(plan_tools.remove_node, version=1, node_id=agent_plans.root_node_id(PLAN_ID))
     assert (result.success, result.code, result.version) == (False, "invalid_plan_change", 1)
     assert "cannot be removed" in result.error
 
@@ -154,7 +169,7 @@ def test_a_call_without_a_plan_run_is_refused(headers, store, change, code):
 
 def test_a_terminal_plan_run_is_closed(headers, store):
     store.plan_run.state = agent_plans.CANCELLED
-    assert call(plan_tools.append_node, text="A").code == "run_closed"
+    assert call(plan_tools.append_node, version=1, text="A").code == "run_closed"
 
 
 def test_a_document_is_read_one_page_at_a_time(headers, store):
@@ -168,33 +183,34 @@ def test_a_document_is_read_one_page_at_a_time(headers, store):
 
 def test_a_mutation_repeated_with_one_key_writes_one_version(headers, store):
     headers["X-Hoover4-Idempotency-Key"] = "0b7c6f2e-3a4d-5e6f-8a9b-1c2d3e4f5a6b"
-    first = call(plan_tools.append_node, text="A")
-    second = call(plan_tools.append_node, text="A")
+    first = call(plan_tools.append_node, version=1, text="A")
+    second = call(plan_tools.append_node, version=1, text="A")
     assert first.version == 2
     assert second.model_dump() == first.model_dump()
     assert sorted(store.snapshots) == [1, 2]
 
 
 def test_a_mutation_with_no_key_writes_a_version_each_time(headers, store):
-    assert call(plan_tools.append_node, text="A").version == 2
-    assert call(plan_tools.append_node, text="A").version == 3
+    assert call(plan_tools.append_node, version=1, text="A").version == 2
+    assert call(plan_tools.append_node, version=1, text="A").version == 3
 
 
 def test_a_malformed_key_is_read_as_no_key(headers, store):
     headers["X-Hoover4-Idempotency-Key"] = "not-a-uuid"
-    assert call(plan_tools.append_node, text="A").version == 2
-    assert call(plan_tools.append_node, text="A").version == 3
+    assert call(plan_tools.append_node, version=1, text="A").version == 2
+    assert call(plan_tools.append_node, version=1, text="A").version == 3
     assert store.keys == {}
 
 
 def test_a_number_path_names_the_parent_and_an_unknown_one_lists_the_nodes(headers, store):
     # The calls of one planner reply that used numbers as parent ids.
-    assert call(plan_tools.append_node, text="Survey").success
-    child = call(plan_tools.append_child, parent_id="1", text="Search every collection")
+    assert call(plan_tools.append_node, version=1, text="Survey").success
+    child = call(plan_tools.append_child, version=2, parent_id="1", text="Search every collection")
     assert child.success
     assert [(s.title, s.tasks) for s in child.sections] == [("Survey", ["Search every collection"])]
-    assert "  1. Survey [" in child.tree and "    1.1. Search every collection [" in child.tree
-    refused = call(plan_tools.append_child, parent_id="3", text="Count per collection")
+    assert "  1. Survey" in child.tree and "    1.1. Search every collection" in child.tree
+    assert "[" not in child.tree
+    refused = call(plan_tools.append_child, version=3, parent_id="3", text="Count per collection")
     assert (refused.success, refused.code, refused.version) == (False, "invalid_plan_change", 3)
-    assert "no node has the id '3'" in refused.error
+    assert "no node has the id or number path '3'" in refused.error
     assert "1 " in refused.error and "(Survey)" in refused.error

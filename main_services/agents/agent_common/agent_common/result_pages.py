@@ -249,6 +249,7 @@ def allocate(
     threshold: int,
     completion_reserve: int,
     max_page_tokens: int | None,
+    weights: Sequence[int] = (),
 ) -> list[int] | None:
     """One content token limit per parallel result, or `None` when even the empty
     messages plus the completion reserve do not fit.
@@ -275,10 +276,13 @@ def allocate(
     if fixed + completion_reserve > ceiling:
         return None
     content_available = max(0, ceiling - completion_reserve - fixed)
-    share = content_available // k
+    units = [max(1, weight) for weight in weights] if weights else [1] * k
+    if len(units) != k:
+        raise ValueError("one weight is required for each result")
+    shares = [content_available * unit // sum(units) for unit in units]
     if max_page_tokens is not None:
-        share = min(share, max_page_tokens)
-    return [share] * k
+        shares = [min(share, unit * max_page_tokens) for share, unit in zip(shares, units)]
+    return shares
 
 
 # --------------------------------------------------------------------------------------
@@ -344,6 +348,7 @@ class PageInput:
     raw_artifact_id: str | None
     position_after: Callable[[int], dict | None]  # None means the source is exhausted
     fields: dict[str, Any] | None = None  # response fields outside the paged units
+    max_rows: int | None = None  # a tool may limit rows independently of the byte share
 
 
 @dataclass(frozen=True)
@@ -461,7 +466,7 @@ def _build_units(p: PageInput, limit: PageLimit, max_allowed: int) -> tuple[list
     ever emitting an orphan, given items ordered parent-before-child: a kept child's index
     is always past its parent's, so a kept prefix never excludes a kept child's parent."""
     columns = p.columns if p.shape == "table" else None
-    items_full = list(p.items)
+    items_full = list(p.items[:p.max_rows] if p.max_rows is not None else p.items)
 
     items = items_full
     while items:

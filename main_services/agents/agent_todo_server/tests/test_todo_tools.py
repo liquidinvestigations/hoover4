@@ -135,6 +135,14 @@ class TestIdentity:
 
 
 class TestWriteAndRead:
+    def test_each_tool_returns_its_slim_shape(self):
+        written = call(server.write_todo, goal="Find X", steps=["a", "b"])
+        assert set(written.model_dump()) == {"version", "ids", "summary"}
+        read = call(server.read_todo)
+        assert set(read.model_dump()) == {"goal", "items", "version", "summary"}
+        marked = call(server.mark_todo, ids=["1"], status="done")
+        assert set(marked.model_dump()) == {"version", "summary", "open"}
+
     def test_an_empty_list_asks_for_a_plan(self):
         result = call(server.read_todo)
         assert result.success is True

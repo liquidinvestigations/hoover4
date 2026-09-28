@@ -9,6 +9,8 @@ failed rather than as empty.
 from __future__ import annotations
 
 import json
+import asyncio
+from types import SimpleNamespace
 
 from browser_use_server import read_page
 from browser_use_server.read_page import PageRead, ReadResult
@@ -98,9 +100,32 @@ class TestRender:
 
     def test_truncation_is_stated(self):
         out = read_page.render(
-            ReadResult(pages=[PageRead(url="https://a.example", text="x", truncated=True)])
+            ReadResult(pages=[PageRead(url="https://a.example", text="x", full_chars=100, truncated=True)])
         )
-        assert "truncated" in out
+        assert "[cut: this call read 1 of the page's 100 characters. Call read_page with offset 1 for the next part]" in out
+
+
+def test_read_page_offsets_and_cached_text(monkeypatch):
+    url = "https://a.example"
+    chat = SimpleNamespace(page_reads={})
+    calls = []
+
+    async def load(_chat, _url, _goal, _limit, _username):
+        calls.append(_url)
+        return PageRead(url=_url, title="A", full_text="a" * 30_000 + "b" * 10_000)
+
+    monkeypatch.setattr(read_page, "_read_one", load)
+    first = asyncio.run(read_page.read(chat, [url], "", "user"))
+    assert len(first.pages[0].text) == 30_000
+    assert "offset 30000" in read_page.render(first)
+    middle = asyncio.run(read_page.read(chat, [url], "", "user", offset=30_000))
+    assert middle.pages[0].text == "b" * 10_000
+    assert not middle.pages[0].truncated
+    beyond = asyncio.run(read_page.read(chat, [url], "", "user", offset=50_000))
+    assert beyond.pages[0].text == ""
+    assert beyond.pages[0].full_chars == 40_000
+    assert "offset 50000 is at or past the page's 40,000 characters" in read_page.render(beyond)
+    assert calls == [url]
 
 
 class TestDecode:

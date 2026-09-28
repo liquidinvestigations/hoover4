@@ -15,6 +15,7 @@ from collection_search_server.backend_client import (
     DocumentsDiffSourcesRequest, DocumentsEmailRequest, DocumentsMetadataRequest,
     DocumentsPdfSearchRequest, DocumentsReadRequest, DocumentsSearchTextRequest, DocumentsSourcesRequest,
 )
+from collection_search_server import paging
 from collection_search_server.paging import PagedTool
 from collection_search_server.server import mcp
 from collection_search_server.tools_search import LocalPagedTool, collections_for
@@ -37,7 +38,16 @@ def _document_entities(request: DocumentEntitiesRequest) -> dict[str, Any]:
     return response.model_dump(mode="json")
 
 
-READ_DOCUMENTS = PagedTool(DocumentsReadRequest, "documents/read", "read_documents", "rows", "documents")
+class ReadDocumentsTool(PagedTool):
+    """Give each document an equal part of the result page."""
+
+    def render(self, request: BaseModel, position: dict[str, Any], source: str) -> str:
+        if position:
+            return super().render(request, position, source)
+        return paging.render_document_reads(self, request)
+
+
+READ_DOCUMENTS = ReadDocumentsTool(DocumentsReadRequest, "documents/read", "read_documents", "rows", "documents")
 DOC_SEARCH_TEXT = PagedTool(DocumentsSearchTextRequest, "documents/search_text", "doc_search_text", "rows", "hits")
 DOC_SOURCES = PagedTool(DocumentsSourcesRequest, "documents/sources", "doc_sources", "rows", "sources")
 DOC_METADATA = PagedTool(DocumentsMetadataRequest, "documents/metadata", "doc_metadata", "rows", "__metadata_entries")

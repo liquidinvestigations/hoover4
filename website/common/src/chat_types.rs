@@ -726,7 +726,7 @@ fn escape_pointer(key: &str) -> String {
 fn collect_arrays(v: &serde_json::Value, at: &str, out: &mut Vec<(String, usize)>) {
     match v {
         serde_json::Value::Array(items) => {
-            if !items.is_empty() {
+            if !items.is_empty() && !items.iter().all(serde_json::Value::is_string) {
                 out.push((at.to_string(), json_len(v)));
             }
             for (i, item) in items.iter().enumerate() {
@@ -1553,6 +1553,17 @@ mod tests {
         let v: serde_json::Value =
             serde_json::from_str(&out).expect("a truncated tool payload must still parse");
         assert_eq!(v["output"]["content"]["query"], "danube water level");
+    }
+
+    #[test]
+    fn text_blocks_keep_the_artifact_marker() {
+        let marker = r#"[hoover4:artifacts] {"artifacts": []}"#;
+        let raw = serde_json::json!(["x".repeat(31_000), marker]).to_string();
+        let out = truncate_tool_payload(&raw, 24_000);
+        let blocks: Vec<String> = serde_json::from_str(&out).unwrap();
+        assert_eq!(blocks.len(), 2);
+        assert!(blocks[0].starts_with('x') && blocks[0].ends_with('…'));
+        assert_eq!(blocks[1], marker);
     }
 
     #[test]

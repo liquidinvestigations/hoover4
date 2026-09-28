@@ -106,7 +106,7 @@ def test_a_query_alone_is_one_form_with_15_rows(monkeypatch):
     assert all("q" not in row and len(row["snippet"]) == 352 and "**Raptor**" in row["snippet"]
                for row in page["items"])
     assert page["notes"] == ["'Raptor': 40 found, first 15 shown"]
-    assert "more" not in page
+    assert len(page["more"]) == 12
 
 
 def test_an_empty_query_alone_is_one_route_search(monkeypatch):

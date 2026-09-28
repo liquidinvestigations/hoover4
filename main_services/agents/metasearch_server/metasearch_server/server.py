@@ -22,7 +22,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_serializer
 
 from agent_common import artifacts, batching, rerank as rerank_client
 from metasearch_server import pipeline
@@ -145,6 +145,33 @@ class WebSearchResponse(BaseModel):
     error: str | None = None
 
     model_config = {"populate_by_name": True}
+
+    @model_serializer
+    def _slim_result(self) -> dict[str, Any]:
+        if not self.success:
+            return {"success": False, "error": self.error}
+        several = len(self.queries) > 1
+        rows = []
+        for result in self.results:
+            row = {"title": result.title, "url": result.url, "snippet": result.snippet}
+            if result.published:
+                row["published"] = result.published
+            if result.kind:
+                row["kind"] = result.kind
+            if several:
+                forms = [self.queries.index(query) for query in result.matched_queries
+                         if query in self.queries]
+                if forms:
+                    row["q"] = sorted(set(forms))
+            rows.append(row)
+        out: dict[str, Any] = {"results": rows}
+        if self.degraded:
+            out["no_results_from"] = self.degraded
+        if self.note:
+            out["note"] = self.note
+        if self.hoover4_artifacts:
+            out[artifacts.ARTIFACTS_KEY] = self.hoover4_artifacts
+        return out
 
 
 #: Queries one call may fan out over. Every extra query is a full fan-out across every

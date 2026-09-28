@@ -171,7 +171,7 @@ order, and the other calls in parallel.
 ### The batch result budget and the call measure
 
 The result pages of all calls of one model reply share one budget. `/model_step` reserves
-the empty page of each call first, divides the rest equally, and gives each call entry its
+the empty page of each call first, divides the rest by read weight, and gives each call entry its
 `page_share`. `/tool_call` sends the share in the `X-Hoover4-Page-Share` header. The connections' HTTP client factory
 (`page_share_client`) adds the header, because the MCP adapter opens one session for each
 call. The collection server's page broker sizes each page within that share, a later page
@@ -188,6 +188,7 @@ of a stored window included.
 
 A page that the broker stored as a window is read on later pages with the share it was
 stored with, when not one unit fits the current share.
+`read_documents` gets one weight for each distinct document, up to ten weights.
 
 The broker returns the `build_page` measure of the page beside the page text, as an embedded
 resource. The adapter puts that block in the tool message artifact. `/tool_call` takes it out and

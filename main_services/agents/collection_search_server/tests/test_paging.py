@@ -251,16 +251,57 @@ def test_a_unit_larger_than_a_page_is_cut_inside_its_largest_field(monkeypatch):
         return response_model.model_validate({"documents": [document, small], "next_position": None, "total": 2, "partial": False, "source": "stable"})
 
     monkeypatch.setattr("collection_search_server.paging.BackendClient.post", post)
-    pages = walk(json.loads(tool.render(tool.model.model_validate({"collectionname": "c", "file_hash": ["h", "small"]}), {}, "")))
-    first = pages[0]["items"][0]
-    assert first["cut"]["field"] == "/text"
-    assert first["cut"]["total_bytes"] == len(text.encode("utf-8"))
-    assert first["cut"]["returned_bytes"] == len(first["text"].encode("utf-8"))
-    rest = "".join(page["items"][0] for page in pages[1:-1])
-    assert first["text"] + rest == text
-    assert all(page["cut"]["field"] == "/text" for page in pages[1:-1])
-    assert pages[-1]["items"][0]["file_hash"] == "small"
-    assert "more" not in pages[-1]
+    page = json.loads(tool.render(tool.model.model_validate({"collectionname": "c", "file_hash": ["h", "small"]}), {}, ""))
+    first, second = page["items"]
+    assert first["cut"].endswith(f"of {len(text.encode('utf-8'))} bytes")
+    assert second["file_hash"] == "small" and "more" not in second
+    parts = [first["text"]]
+    more = first["more"]
+    while more:
+        following = json.loads(paging.finish(paging.read_more.fn(more)))
+        parts.append(following["items"][0])
+        more = following.get("more")
+    assert "".join(parts) == text
+
+
+@pytest.mark.parametrize("count,share", [(5, 120_000), (10, 240_000), (20, 240_000)])
+def test_each_read_document_gets_an_equal_page_part(monkeypatch, count, share):
+    store = Store(monkeypatch)
+    monkeypatch.setattr(paging, "get_http_headers", lambda: {paging.PAGE_SHARE_HEADER: str(share)})
+    documents = [{**SAMPLES["read_documents"]["documents"][0],
+                  "file_hash": f"{n:016x}" + "0" * 48, "text": "x" * 90_000,
+                  "next_position": None} for n in range(count)]
+
+    def post(self, route, request, response_model, expected_source=None):
+        return response_model.model_validate({"documents": documents, "next_position": None,
+                                              "total": count, "partial": False, "source": "stable"})
+
+    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", post)
+    page = json.loads(tools_document.READ_DOCUMENTS.render(
+        tools_document.READ_DOCUMENTS.model.model_validate({
+            "collectionname": "c", "file_hash": [row["file_hash"] for row in documents]}), {}, ""))
+    assert len(page["items"]) == count
+    assert all("more" in item and item["cut"].endswith("of 90000 bytes") for item in page["items"])
+    lengths = [len(item["text"].encode()) for item in page["items"]]
+    assert max(lengths) - min(lengths) <= 1
+    assert len(canonical_json(page).encode()) <= share
+    assert len([body for body in store.bodies.values() if len(body) > 100_000]) == 1
+
+
+def test_short_read_documents_write_no_artifact(monkeypatch):
+    store = Store(monkeypatch)
+    documents = [{**SAMPLES["read_documents"]["documents"][0],
+                  "file_hash": f"{n:016x}" + "0" * 48, "text": "short",
+                  "next_position": None} for n in range(5)]
+    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request,
+                        response_model, expected_source=None: response_model.model_validate({
+                            "documents": documents, "next_position": None, "total": 5,
+                            "partial": False, "source": "stable"}))
+    page = json.loads(tools_document.READ_DOCUMENTS.render(
+        tools_document.READ_DOCUMENTS.model.model_validate({
+            "collectionname": "c", "file_hash": [row["file_hash"] for row in documents]}), {}, ""))
+    assert len(page["items"]) == 5
+    assert store.bodies == {}
 
 
 def test_a_continuation_into_another_callers_artifact_is_refused(monkeypatch):
@@ -778,8 +819,9 @@ def test_each_form_keeps_its_first_rows(monkeypatch):
     Store(monkeypatch)
     found = {"a": [f"a{n}" for n in range(200)], "b": [f"b{n}" for n in range(200)]}
     forms_backend(monkeypatch, found)
-    page = json.loads(tools_search.search_collections.fn(queries=["a", "b"]))
-    shown = [row["file_hash"] for row in page["items"]]
+    page = json.loads(paging.finish(tools_search.search_collections.fn(queries=["a", "b"])))
+    following = json.loads(paging.read_more.fn(page["more"]))
+    shown = [row["file_hash"] for row in page["items"] + following["items"]]
     assert shown == found["a"][:15] + found["b"][:15]
     assert "'a': 200 found, first 15 shown" in page["notes"]
 
@@ -790,6 +832,35 @@ def test_one_query_without_the_list_is_one_form(monkeypatch):
     assert asked == ["a OR b"]
     assert "q" not in page["items"][0]
     assert page["notes"] == ["the query 'a OR b': read 1 OR as |, because OR is an ordinary word in a search"]
+
+
+def test_one_form_of_40_rows_has_three_pages(monkeypatch):
+    Store(monkeypatch)
+    seen = []
+
+    def post(self, route, request, response_model, expected_source=None):
+        page = request.position.page if request.position else 0
+        seen.append((page, expected_source))
+        documents = [{**SAMPLES["search_collections"]["documents"][0],
+                      "file_hash": f"{n:016x}" + "0" * 48, "path": f"/{n}"}
+                     for n in range(page * 20, (page + 1) * 20)]
+        return response_model.model_validate({
+            **SAMPLES["search_collections"], "documents": documents, "total_count": 40,
+            "total": 40, "source": "stable", "has_more": page == 0,
+            "next_position": {"kind": "Page", "page": 1} if page == 0 else None,
+        })
+
+    monkeypatch.setattr("collection_search_server.backend_client.BackendClient.post", post)
+    first = json.loads(paging.finish(tools_search.search_collections.fn(query="x")))
+    second = json.loads(paging.finish(paging.read_more.fn(first["more"])))
+    third = json.loads(paging.read_more.fn(second["more"]))
+    assert all("items" in page for page in (first, second, third)), (first, second, third)
+    assert [len(page["items"]) for page in (first, second, third)] == [15, 15, 10]
+    assert "more" not in third
+    assert [row["file_hash"] for page in (first, second, third) for row in page["items"]] == [
+        f"{n:016x}" for n in range(40)
+    ]
+    assert seen == [(0, None), (0, "stable"), (1, "stable"), (1, "stable")]
 
 
 def dataset_backend(monkeypatch):

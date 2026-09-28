@@ -145,6 +145,9 @@ class PageRead:
     title: str = ""
     final_url: str = ""
     text: str = ""
+    full_chars: int = 0
+    offset: int = 0
+    full_text: str = ""
     error: str = ""
     truncated: bool = False
     artifact: dict | None = None
@@ -247,14 +250,25 @@ def render(result: ReadResult) -> str:
         if page.error:
             blocks.append(f"{head}\n\nCOULD NOT READ: {page.error}")
             continue
-        tail = "\n\n[truncated, because this page's share of the shared budget ran out]" if page.truncated else ""
+        if page.full_chars and page.offset >= page.full_chars:
+            blocks.append(
+                f"{head}\n\n[offset {page.offset} is at or past the page's "
+                f"{page.full_chars:,} characters]"
+            )
+            continue
+        tail = (
+            f"\n\n[cut: this call read {len(page.text):,} of the page's "
+            f"{page.full_chars:,} characters. Call read_page with offset "
+            f"{page.offset + len(page.text)} for the next part]"
+            if page.truncated else ""
+        )
         blocks.append(f"{head}\n\n{page.text}{tail}")
     if result.note:
         blocks.append(f"NOTE: {result.note}")
     return "\n\n---\n\n".join(blocks) if blocks else "No pages were read."
 
 
-async def read(chat, raw_urls: object, goal: str, username: str) -> ReadResult:
+async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0) -> ReadResult:
     """Navigate, extract and capture each URL in turn, inside one chat's browser.
 
     Serial rather than concurrent on purpose: there is one browser per chat and its calls
@@ -276,7 +290,25 @@ async def read(chat, raw_urls: object, goal: str, username: str) -> ReadResult:
         result.note = batching.corrective_note(result.note, batching.dropped_note(dropped, "URL"))
 
     for url in to_read:
-        page = await _read_one(chat, url, goal, per_page, username)
+        now = time.monotonic()
+        for old_url, stored in list(chat.page_reads.items()):
+            if stored[0] <= now:
+                del chat.page_reads[old_url]
+        cached = chat.page_reads.get(url)
+        if cached:
+            _, title, final_url, full_text = cached
+            page = PageRead(url=url, title=title, final_url=final_url, full_text=full_text)
+        else:
+            page = await _read_one(chat, url, goal, per_page, username)
+            if page.full_text and len(page.full_text.encode("utf-8")) <= PDF_MAX_BYTES:
+                chat.page_reads[url] = (
+                    time.monotonic() + 1800, page.title, page.final_url, page.full_text
+                )
+        if page.full_text:
+            page.offset = offset
+            page.full_chars = len(page.full_text)
+            page.text = page.full_text[offset:offset + per_page]
+            page.truncated = offset + len(page.text) < page.full_chars
         result.pages.append(page)
         result.note = batching.corrective_note(result.note, page.note)
         if page.artifact:
@@ -355,6 +387,7 @@ def _extract(
     if not text.strip():
         page.error = navigated or "the page returned no readable text"
     else:
+        page.full_text = text
         page.text, page.truncated = focus(text, goal or "", limit)
 
 
@@ -419,6 +452,7 @@ async def _read_pdf(chat, page: PageRead, url: str, goal: str, limit: int, probe
     if error:
         page.error = error
     else:
+        page.full_text = text
         page.text, page.truncated = focus(text, goal or "", limit)
 
 

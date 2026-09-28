@@ -12,7 +12,7 @@ because nothing ever populated it.
 | Tool | Purpose |
 |---|---|
 | `list_collections` | collection names and dataset counts this user may read |
-| `search_collections` | documents from selected permitted collections, for one query or a list of up to 8 query forms in one call |
+| `search_collections` | documents from selected permitted collections, for one query or up to 12 query forms in one call |
 | `read_documents` | one text page of each selected document, with its page range and the pages with hits |
 | `search_passages` | passages from keyword and vector ranking together, for several queries in one call |
 | `list_document_entities` | what the pipeline found in several documents, in two tiers, sharing one budget |
@@ -26,6 +26,8 @@ them as it continues a route tool. It also supplies search, document, PDF, table
 Each returns one canonical result page. A page can contain a continuation token for
 `read_more`. The server forwards only the caller identity and collection headers to the API.
 The API checks every requested collection.
+Search pages hold at most 15 rows per query form. `read_more` reads the next 15 rows of a form.
+The page also carries document references for the transcript.
 Row and tree pages keep other response fields in `fields`. Folder items carry their
 `children` or `files` field name.
 
@@ -246,9 +248,9 @@ while queries keep returning the old answers. See
 `_apply_payload_budget` measures `SearchResponse.model_dump_json()` and holds it under
 `SEARCH_PAYLOAD_BUDGET_CHARS` (24 000). It first shrinks every snippet to an equal share
 of what is left after the envelopes, clamped between `SEARCH_MIN_SNIPPET_CHARS` (120) and
-`SEARCH_SNIPPET_CHARS` (1200); when the envelopes alone no longer leave room for a
+`SEARCH_SNIPPET_CHARS` (350); when the envelopes alone no longer leave room for a
 readable line each, it drops the lowest-ranked hits and says so in `note`. Eight hits
-still get the full 1 200 characters each; a request for 200 comes back as ~60 with a line
+still get the full 350 characters each; a request for 200 comes back as ~60 with a line
 apiece. Reading them properly is `read_documents`.
 
 Bounding a field is not bounding a payload. A per-snippet budget with a count cap leaves
@@ -267,11 +269,8 @@ truncated one that cannot answer the question. Every call also logs
 the size the model actually received is observable.
 
 `max_results` is clamped to `SEARCH_MAX_ALLOWED_RESULTS` (200) and defaults to
-`SEARCH_MAX_RESULTS` (50) (a model that asks for `10000` gets 200), but it decides how
-deep the search goes, not how much comes back. The default is most of
-the cap on purpose: a tool call costs one provider round trip regardless of how much comes
-back, so running the same search four times to see what one run could have shown is four
-times the wall clock for the same answer.
+`SEARCH_MAX_RESULTS` (15) (a model that asks for `10000` gets 200), but it decides how
+deep the search goes, not how much comes back. A continuation reads later rows.
 
 The trim runs **after** ranking. The fused order and the cross-encoder both score the full
 passage; scoring a truncated one would change which documents come back, not only how much
@@ -309,8 +308,9 @@ versions:
 |---|---|
 | `CLICKHOUSE_URL` / `CLICKHOUSE_USER` / `CLICKHOUSE_PASSWORD` | `http://clickhouse:8123`, `hoover4`, `hoover4` |
 | `MANTICORE_URL` | `http://manticore:9308` |
-| `SEARCH_MAX_RESULTS` / `SEARCH_MAX_ALLOWED_RESULTS` | `50` / `200` |
-| `SEARCH_SNIPPET_CHARS` | `1200` |
+| `SEARCH_MAX_RESULTS` / `SEARCH_MAX_ALLOWED_RESULTS` | `15` / `200` |
+| `SEARCH_ROWS_PER_FORM` | `15` |
+| `SEARCH_SNIPPET_CHARS` | `350` |
 | `SEARCH_PAYLOAD_BUDGET_CHARS` / `SEARCH_MIN_SNIPPET_CHARS` | `24000` / `120` |
 | `COLLECTION_SEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `3` / `15` |
 | `COLLECTION_SEARCH_FUSION_CANDIDATES` | `60` |
@@ -320,7 +320,7 @@ versions:
 ## Tests
 
 ```bash
-docker exec hoover4-mcp-collections python -m pytest tests/ -q   # 161 tests
+docker exec hoover4-mcp-collections python -m pytest tests/ -q
 ```
 
 Everything in `tests/test_acl.py` is pure (no database), because the ACL and the query

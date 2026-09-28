@@ -45,10 +45,10 @@ A sub-agent row copies the `plan_run_id`, so the sub-agents of a planner reach t
 **No role check exists.** The plan run state is the only rule: a change is accepted only in
 `planning` or `revising`. After approval `read_plan` returns the approved version.
 
-**A parent by id or by number path.** `read_plan` shows each node with its number path
-(`root`, `1`, `1.2`) and its id. The tools `append_child` and `move_node` accept either value as the parent.
-A value that names no node is refused with the path, id and text of the nodes. Every other
-node argument takes the id only, so a wrong number never edits or removes a node.
+`read_plan` shows each node with its outline number (`root`, `1`, `1.2`).
+Every node argument accepts that number or the stored id. A refusal lists numbers and text.
+Each mutation takes the version of the last plan result. Calls of one reply can give the same
+version. A call is refused if a later change moved or removed a node that its number names.
 
 **One change of a plan at a time.** Each version is one row, so two parallel changes that
 read the same version would lose one of them. The server holds one `asyncio.Lock` for each
@@ -60,6 +60,9 @@ releases the lock. This holds because the server runs as one process in one cont
 column of `agent_plan_snapshots`. A second change with that key writes nothing and returns
 that version. A change with no key, or with a value that is not a UUID, writes a new
 version each time.
+
+`read_todo` returns the goal and all steps. `write_todo` returns the version and step ids.
+`edit_todo` and `mark_todo` return open steps. Every result keeps the version.
 
 ## Build context
 

@@ -31,7 +31,7 @@ from typing import Any, Literal, NoReturn, Optional
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr, model_serializer
 
 from agent_todo_server.identity import Caller, CallerUnknown, parse_caller
 
@@ -90,6 +90,28 @@ class TodoResponse(BaseModel):
     error: Optional[str] = Field(
         default=None, description="Why the call was refused, in words to act on"
     )
+    _result_kind: str = PrivateAttr(default="read")
+
+    @model_serializer
+    def _slim_result(self) -> dict[str, Any]:
+        items = [item.model_dump(exclude_defaults=True) for item in self.items]
+        if not self.success:
+            return {"success": False, "error": self.error, "version": self.version, "items": items}
+        if self._result_kind == "write":
+            return {"version": self.version, "ids": [item.id for item in self.items],
+                    "summary": self.summary}
+        if self._result_kind in ("edit", "mark"):
+            opened = [{"id": item.id, "text": item.text, "status": item.status}
+                      for item in self.items if item.status not in ("done", "cancelled")]
+            out = {"version": self.version, "summary": self.summary, "open": opened}
+            if self.needs_plan:
+                out["needs_plan"] = True
+            return out
+        out = {"goal": self.goal, "items": items, "version": self.version,
+               "summary": self.summary}
+        if self.needs_plan:
+            out["needs_plan"] = True
+        return out
 
 
 mcp = FastMCP(
@@ -103,9 +125,9 @@ def _caller() -> Caller:
     return parse_caller(dict(get_http_headers()))
 
 
-def _response(todo: dict, error: str | None = None) -> TodoResponse:
+def _response(todo: dict, error: str | None = None, kind: str = "read") -> TodoResponse:
     """One snapshot rendered for the model, with the two derived facts it acts on."""
-    return TodoResponse(
+    response = TodoResponse(
         success=error is None,
         goal=todo.get("goal", ""),
         items=[TodoItem(**item) for item in todo.get("items", [])],
@@ -114,6 +136,8 @@ def _response(todo: dict, error: str | None = None) -> TodoResponse:
         summary=chat_todos.summarise(todo),
         error=error,
     )
+    response._result_kind = kind
+    return response
 
 
 # The step lists are typed lists of strings. The agent decodes a JSON string argument
@@ -187,7 +211,7 @@ def write_todo(goal: str, steps: list[str]) -> TodoResponse:
         todo["version"],
         chat_todos.summarise(todo),
     )
-    return _response(todo)
+    return _response(todo, kind="write")
 
 
 @mcp.tool(
@@ -219,7 +243,7 @@ def edit_todo(steps: list[str]) -> TodoResponse:
         todo["version"],
         chat_todos.summarise(todo),
     )
-    return _response(todo)
+    return _response(todo, kind="edit")
 
 
 @mcp.tool(
@@ -254,7 +278,7 @@ def mark_todo(
         todo["version"],
         chat_todos.summarise(todo),
     )
-    return _response(todo)
+    return _response(todo, kind="mark")
 
 
 @mcp.custom_route("/health", methods=["GET"])

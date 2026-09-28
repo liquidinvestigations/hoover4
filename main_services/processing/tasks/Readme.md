@@ -212,8 +212,8 @@ child `AgentRun` for each child, with the parent's collections, model and intern
 its input, and returns. When a run ends, `fan_in` reads its sibling set. When every sibling
 is terminal, `continue_run` writes a continuation row of the parent, and the workflow starts
 it. The continuation's `prepare_continuation` adds one `tool` result for each `run_subagent`
-call, the
-JSON `{"reports": [...], "refused": [...]}`, and rewrites the call's transcript row with it.
+call and rewrites its transcript row. The result gives each accepted task's report.
+It gives refusal reasons without call ids. An organizer also receives section states by outline number.
 `write_ending` of a continuation writes its state into every run it continues. Child and
 continuation ids are `uuid5` values, so a retry and a second writer write the same rows, and
 a refused duplicate workflow start counts as started. A child at depth 2 cannot delegate, and

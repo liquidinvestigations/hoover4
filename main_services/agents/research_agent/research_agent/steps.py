@@ -195,7 +195,7 @@ def classify_calls(
         ))
     budgeted = [e for e in entries if e.kind != "delegation"]
     if budgeted:
-        budget = batch_budget([e.name for e in budgeted], budget_messages)
+        budget = batch_budget([(e.name, e.args) for e in budgeted], budget_messages)
         for entry, share in zip(budgeted, budget.shares):
             entry.page_share = int(share)
             entry.budget_exhausted = bool(budget.exhausted)

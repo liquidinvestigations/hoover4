@@ -109,7 +109,9 @@ def _at(value: Any, path: list[Any]) -> Any:
 
 def _collect(value: Any, path: list[Any], out: list, want: str) -> None:
     """Every array (or long string) in the document, as (path, size)."""
-    if want == "array" and isinstance(value, list) and value:
+    if want == "array" and isinstance(value, list) and value and not all(
+        isinstance(item, str) for item in value
+    ):
         out.append((list(path), len(_dumps(value))))
     if want == "string" and isinstance(value, str) and len(value) > _MIN_CLIPPABLE:
         out.append((list(path), len(value)))

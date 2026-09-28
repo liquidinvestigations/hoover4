@@ -9,7 +9,7 @@ can run in parallel.
 
 **The batch result budget.** The result pages of all calls of one model reply share one
 budget (`batch_budget`). The empty page of every call is reserved first, and the rest is
-divided equally. Each call sends its share in the `X-Hoover4-Page-Share` header
+divided by read weight. Each call sends its share in the `X-Hoover4-Page-Share` header
 (`page_share_client`). The collection server's page broker sizes each page within that
 share before it serializes the page, a later page of a stored window included, so no page
 is cut after it leaves the broker.
@@ -44,7 +44,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import httpx
 
@@ -73,6 +73,7 @@ ORDERED_TOOLS = PLAN_MUTATIONS | frozenset({
 
 #: The delegation tool. The worker delegates a readable call, and `/tool_call` refuses it.
 DELEGATION_TOOL = "run_subagent"
+READ_SHARE_CAP = 10
 
 #: The request header that carries one call's page share to the page broker.
 PAGE_SHARE_HEADER = "X-Hoover4-Page-Share"
@@ -193,52 +194,89 @@ def request_tokens(messages: Sequence[Any]) -> int:
     return len(_request_text(messages).encode("utf-8"))
 
 
+def read_weight(name: str, args: Mapping[str, Any]) -> int:
+    """Count distinct document hashes, up to ten, for a read call."""
+    if name != "read_documents":
+        return 0
+    values = args.get("file_hash") or []
+    if isinstance(values, str):
+        try:
+            decoded = json.loads(values)
+            values = decoded if isinstance(decoded, list) else [values]
+        except ValueError:
+            values = [values]
+    if not isinstance(values, list):
+        return 0
+    return min(len({value for value in values if isinstance(value, str) and value}), READ_SHARE_CAP)
+
+
 def safe_budget(
     names: Sequence[str], request_tokens: int, window: int, reserve: int,
     batch_bytes: int = SAFE_MODE_BATCH_BYTES,
+    weights: Sequence[int] = (), limit: int = 0,
 ) -> BatchBudget:
     """The byte budget of one batch. The batch receives `batch_bytes`, cut to what the
     request tokens plus `reserve` leave of the context window when the window is known.
     `window`, `reserve` and `request_tokens` are tokens. A page of N bytes holds at most N
     tokens, so the tokens left are also a safe byte count. The empty page of every call is
-    reserved first, and the rest is divided equally."""
+    reserved first. The rest follows each call's read weight."""
     empty = [len(empty_page_text(name).encode("utf-8")) for name in names]
-    total = batch_bytes
-    if window > 0:
-        total = min(total, max(0, window - reserve - request_tokens))
-    spare = max(0, total - sum(empty))
-    return BatchBudget("bytes", tuple(e + spare // len(names) for e in empty), total)
+    if weights and len(weights) != len(names):
+        raise ValueError("one weight is required for each result")
+    weights = weights or [0] * len(names)
+    ordinary = [i for i, weight in enumerate(weights) if weight == 0]
+    unit = [max(0, batch_bytes - value) for value in empty]
+    content = [0] * len(names)
+    if ordinary:
+        spare = max(0, batch_bytes - sum(empty[i] for i in ordinary))
+        for i in ordinary:
+            content[i] = spare // len(ordinary)
+    for i, weight in enumerate(weights):
+        if weight:
+            content[i] = weight * unit[i]
+    desired = sum(empty) + sum(content)
+    room = max(0, (limit or window) - reserve - request_tokens) if (limit or window) > 0 else desired
+    if desired > room:
+        available = max(0, room - sum(empty))
+        content = [part * available // sum(content) for part in content] if sum(content) else content
+    shares = tuple(e + part for e, part in zip(empty, content))
+    return BatchBudget("bytes", shares, min(desired, room), exhausted=room < sum(empty))
 
 
 def token_budget(
     names: Sequence[str], messages: Sequence[Any], window: int, counter: TokenCounter,
     reserve: int, max_page_tokens: int, fraction: Optional[float] = None,
+    weights: Sequence[int] = (),
 ) -> BatchBudget:
     """The token budget of one batch, from `allocate`. Each share is the empty page plus
     its content share. It raises `TokenCountFailed` when a count fails."""
     threshold = compaction.threshold_tokens(window, fraction)
     empty = [counter.count(empty_page_text(name)) for name in names]
     fixed = max(_last_billed(messages), counter.count(_request_text(messages)))
-    shares = allocate(fixed, empty, threshold, reserve, max_page_tokens)
+    shares = allocate(fixed, empty, threshold, reserve, max_page_tokens, weights)
     if shares is None:
         return BatchBudget("tokens", tuple(empty), sum(empty), counter, exhausted=True)
     pages = tuple(e + s for e, s in zip(empty, shares))
     return BatchBudget("tokens", pages, sum(pages), counter)
 
 
-def batch_budget(names: Sequence[str], messages: Sequence[Any]) -> BatchBudget:
+def batch_budget(calls: Sequence[tuple[str, Mapping[str, Any]]], messages: Sequence[Any]) -> BatchBudget:
     """The budget of one batch: token mode when the settings and the model permit it,
     and safe mode otherwise."""
     model = (os.getenv("LLM_MODEL") or "").strip()
     window = compaction.context_window(model) if model else 0
     reserve = COMPLETION_RESERVE_TOKENS or SAFE_MODE_COMPLETION_RESERVE
+    names = [name for name, _ in calls]
+    weights = [read_weight(name, args) for name, args in calls]
     if MAX_PAGE_TOKENS and COMPLETION_RESERVE_TOKENS and window > 0:
         counter = TokenCounter(os.getenv("LLM_BASE_URL") or "", model, _read_api_key() or None)
         try:
-            return token_budget(names, messages, window, counter, reserve, MAX_PAGE_TOKENS)
+            return token_budget(names, messages, window, counter, reserve, MAX_PAGE_TOKENS,
+                                weights=weights)
         except Exception as exc:  # noqa: BLE001 - every count failure keeps safe mode
             log.warning("token count failed, the batch uses safe mode: %s", exc)
-    return safe_budget(names, request_tokens(messages), window, reserve)
+    return safe_budget(names, request_tokens(messages), window, reserve, weights=weights,
+                       limit=compaction.threshold_tokens(window) if window else 0)
 
 
 def split_resources(artifact: Any) -> Tuple[Optional[Dict[str, Any]], Optional[List[Dict[str, Any]]], Any]:

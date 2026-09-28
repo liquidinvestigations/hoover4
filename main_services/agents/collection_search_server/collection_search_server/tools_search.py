@@ -4,6 +4,7 @@ the hybrid passage search of this server, paged by the same broker."""
 from __future__ import annotations
 
 import hashlib
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Annotated, Any, Callable
@@ -41,6 +42,7 @@ class LocalPagedTool:
     item_key: str
     produce: Callable[[Any], dict[str, Any]]
     shape: str = "rows"
+    max_rows: int | None = None
 
     def render(self, request: BaseModel, position: dict[str, Any], source: str) -> str:
         if position.get("artifact"):
@@ -49,6 +51,7 @@ class LocalPagedTool:
         if result.get("success") is False:
             return canonical_json(result)
         refs = result.pop(paging.REFS_KEY, None)
+        following = result.pop("__following", None)
         digest = hashlib.sha256(canonical_json(result).encode("utf-8")).hexdigest()[:32]
         if source and source != digest:
             return canonical_json({"success": False, "error": "source_changed", "message": "the source changed after the prior page"})
@@ -56,7 +59,7 @@ class LocalPagedTool:
         if refs is None:
             items, refs = paging.slim_items(self.tool_name, items)
         fields = {**{key: value for key, value in result.items() if key != self.item_key}, "source": digest}
-        return paging._live_page(self, request, None, paging.Window(items, fields, None, None, len(items), refs))
+        return paging._live_page(self, request, None, paging.Window(items, fields, None, following, len(items), refs))
 
 
 class SearchPassagesRequest(BaseModel):
@@ -193,6 +196,7 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
     found: dict[tuple[str, str], tuple[dict[str, Any], list[int]]] = {}
     partial = False
     succeeded = 0
+    following: list[dict[str, Any]] = []
     for number, form in enumerate(forms):
         result = BackendClient().post("search/results", _route_request(request, form), SearchResultsResponse)
         if isinstance(result, AgentError):
@@ -201,6 +205,12 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
         succeeded += 1
         partial |= result.partial
         notes.extend(f"the query {form!r}: {note}" for note in result.query_notes)
+        if len(result.documents) > server.ROWS_PER_FORM:
+            following.append({"form": number, "page": 0, "skip": server.ROWS_PER_FORM,
+                              "source": result.source})
+        elif result.next_position is not None:
+            following.append({"form": number, "page": result.next_position.page, "skip": 0,
+                              "source": result.source})
         if result.total_count > server.ROWS_PER_FORM:
             notes.append(f"{form!r}: {result.total_count} found, first {server.ROWS_PER_FORM} shown")
         for document in result.documents[:server.ROWS_PER_FORM]:
@@ -217,10 +227,59 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
         row = search_row(document, numbers if several else None, words)
         rows.append(row)
         refs.append(paging.doc_ref(document, snippet=row["snippet"]))
-    return {"documents": rows, "query_notes": notes, "partial": partial, paging.REFS_KEY: refs}
+    return {"documents": rows, "query_notes": notes, "partial": partial,
+            "__following": {"_forms": following} if following else None, paging.REFS_KEY: refs}
 
 
-SEARCH_FORMS = LocalPagedTool(SearchCollectionsRequest, "search_collections", "documents", _search_forms)
+def _following_form(request: SearchCollectionsRequest, position: dict[str, Any], tool: PagedTool) -> str:
+    """Read the next rows of one form from the route's page cursor."""
+    forms, _ = batching.dedupe(([request.query] if request.query.strip() else []) + list(request.queries))
+    forms = forms or [request.query]
+    pending = deepcopy(position["_forms"])
+    rows: list[dict[str, Any]] = []
+    refs: list[dict[str, Any]] = []
+    while pending and len(rows) < server.ROWS_PER_FORM:
+        cursor = pending[0]
+        if cursor["form"] >= len(forms):
+            return paging._invalid("continuation form is invalid")
+        route_request = _route_request(request, forms[cursor["form"]])
+        route_request = SearchResultsRequest.model_validate({
+            **route_request.model_dump(mode="json", exclude_none=True),
+            "position": {"kind": "Page", "page": cursor["page"]},
+        })
+        result = BackendClient().post("search/results", route_request, SearchResultsResponse,
+                                      expected_source=cursor["source"])
+        if isinstance(result, AgentError):
+            return error_text(result)
+        if result.source != cursor["source"]:
+            return canonical_json({"success": False, "error": "source_changed",
+                                   "message": "the source changed after the prior page"})
+        available = result.documents[cursor["skip"]:]
+        taken = available[:server.ROWS_PER_FORM - len(rows)]
+        for document in taken:
+            whole = document.model_dump(mode="json")
+            row = search_row(whole, None, server.query_words([forms[cursor["form"]]]))
+            rows.append(row)
+            refs.append(paging.doc_ref(whole, snippet=row["snippet"]))
+        skip = cursor["skip"] + len(taken)
+        if skip < len(result.documents):
+            cursor["skip"] = skip
+        elif result.next_position is not None:
+            cursor["page"] = result.next_position.page
+            cursor["skip"] = 0
+        else:
+            pending.pop(0)
+            break
+        if not taken and skip >= len(result.documents) and result.next_position is None:
+            continue
+        if not taken and skip >= len(result.documents) and result.next_position is not None:
+            return paging._invalid("continuation route returned no rows")
+    window = paging.Window(rows, {}, None, {"_forms": pending} if pending else None, len(rows), refs)
+    return paging._live_page(tool, request, position, window)
+
+
+SEARCH_FORMS = LocalPagedTool(SearchCollectionsRequest, "search_collections", "documents", _search_forms,
+                              max_rows=server.ROWS_PER_FORM)
 
 
 @dataclass(frozen=True)
@@ -230,13 +289,17 @@ class SearchCollectionsTool(PagedTool):
     stored before every call went through `_search_forms` holds one."""
 
     def render(self, request: BaseModel, position: dict[str, Any], source: str) -> str:
+        if position.get("artifact"):
+            return super().render(request, position, source)
+        if isinstance(position.get("window"), dict) and "_forms" in position["window"]:
+            return _following_form(request, position["window"], self)
         if position.get("window") or position.get("next"):
             return super().render(_route_request(request), position, source)
         return SEARCH_FORMS.render(request, position, source)
 
 
 LIST_COLLECTIONS = PagedTool(CollectionsListRequest, "collections/list", "list_collections", "rows", "collections")
-SEARCH_COLLECTIONS = SearchCollectionsTool(SearchCollectionsRequest, "search/results", "search_collections", "rows", "documents")
+SEARCH_COLLECTIONS = SearchCollectionsTool(SearchCollectionsRequest, "search/results", "search_collections", "rows", "documents", max_rows=server.ROWS_PER_FORM)
 SEARCH_FACET_VALUES = PagedTool(SearchFacetValuesRequest, "search/facet_values", "search_facet_values", "rows", "terms")
 SEARCH_HISTOGRAM = PagedTool(SearchDateHistogramRequest, "search/histogram", "search_histogram", "rows", "buckets")
 SEARCH_ENTITY_EXPLAINER = PagedTool(SearchEntityExplainerRequest, "search/entity_explainer", "search_entity_explainer", "rows", "documents")

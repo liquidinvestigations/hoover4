@@ -13,6 +13,7 @@ from tasks.P_agent.trajectory import (
     extract_doc_refs,
     is_canonical_page,
     truncate,
+    truncate_json,
 )
 
 
@@ -133,6 +134,14 @@ def test_payloads_are_truncated_rather_than_stored_whole():
     stored = json.loads(paired[0].tool_output)
     assert stored["text"].endswith("…"), "the clip is inside the field, not across the doc"
     assert stored["truncated"] is True
+
+
+def test_text_blocks_keep_the_artifact_marker():
+    marker = '[hoover4:artifacts] {"artifacts": []}'
+    stored = json.loads(truncate_json(json.dumps(["x" * 31_000, marker])))
+    assert len(stored) == 2
+    assert stored[0].startswith("x") and stored[0].endswith("…")
+    assert stored[1] == marker
 
 
 def test_the_summary_is_the_arguments_not_the_whole_event():
