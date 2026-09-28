@@ -24,7 +24,8 @@ Standing invariants for this repo. The full versions are skills, so load them by
   `cat >` and heredocs are for throwaway analysis outside the repo. Do not point
   them at source.
 - Commit messages are one lowercase line under ~50 characters, and nothing else.
-  Write no body, no trailer, and no explanation anywhere in git.
+  Write no body, no trailer, and no explanation anywhere in git. Write no plan
+  tag, such as `w1` or `D22`, in a commit message.
 - Documentation is present-tense truth: no dates, no history of the work, nothing
   aspirational, and never a reference to the gitignored scratch folder. Keep the
   lesson, drop the anecdote. Fix a comment in the patch that makes it false.

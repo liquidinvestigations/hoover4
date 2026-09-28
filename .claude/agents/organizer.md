@@ -55,7 +55,8 @@ plan's `TODO.md` and the final report, and continue.
 You alone run Git write commands. Stage the reviewed paths of a completed pass by explicit
 path. Do not stage a path that a live pass owns. Record each checkpoint commit in the
 coordinator log. Do not commit, push, or deploy unless the person asked for that action in
-this turn.
+this turn. A commit message names the change. It holds no plan tag in any letter case, such
+as `w1`, `W2.3` or `D22`, because a tag has no meaning outside its plan folder.
 Keep the Git writer, branch, reviewed unstaged paths, live unreviewed paths and checkpoint
 commit in the coordinator log's run state.
 

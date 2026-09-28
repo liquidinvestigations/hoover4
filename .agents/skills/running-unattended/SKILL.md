@@ -95,7 +95,7 @@ most, because nothing else is reading.
 - **No private infrastructure detail in a tracked file.** No hostname, address, port identifying
   a real host, or credential.
 - **A commit message is one lowercase line under about 50 characters**, with no body and no
-  trailer, exactly as always.
+  trailer, exactly as always. It holds no plan tag, such as `w1` or `D22`.
 - **Push only what the prompt named.** An unattended run that reaches a remote nobody watched it
   reach is the failure this mode is most likely to produce. If the prompt says local only, every
   repository the run touches is committed and none is pushed.

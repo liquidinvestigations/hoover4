@@ -120,7 +120,8 @@ edit that adds one.
 
 - **A commit message is one lowercase line under ~50 characters.** No body, no trailers, and
   no explanation anywhere in git. `git log --oneline` is a table of contents, and a changelog
-  does not belong there.
+  does not belong there. The message never holds a plan tag in any letter case, such as `w1`,
+  `W2.3` or `D22`. A tag has no meaning outside its plan folder, so name the change itself.
 - **Executors and reviewers run no Git write command.** The organizer stages reviewed owned
   paths by explicit path. The organizer commits only work the person authorised.
 - **Documentation and comments state what is true now.** No dates, no history of the work,

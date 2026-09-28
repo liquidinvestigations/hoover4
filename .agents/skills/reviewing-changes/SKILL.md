@@ -237,7 +237,8 @@ Three rules make it worth the second reading.
 - **A new configuration key has a consumer in the same change**, or is written down as
   not-yet-implemented. A key that is rendered and read by nothing is false.
 - **The commit message is one lowercase line** under about fifty characters, and nothing
-  else.
+  else. It holds no plan tag in any letter case, such as `w1`, `W2.3` or `D22`, because a tag
+  has no meaning outside its plan folder.
 
 ## References
 
