@@ -1333,6 +1333,14 @@ def render_main_env(cfg):
         env["LLM_MODEL"] = ""
         env["LLM_PROVIDER_NAME"] = ""
         env["LLM_SEND_TEMPERATURE"] = "true"
+    # The classifier route of the structured model server, which the research agents ask
+    # at the start of a run. Only the selfhosted tier serves it, so a cloud provider or a
+    # missing AI tier renders it empty, and the agents then read no classifier picks.
+    if provider == "selfhosted" and _ai_tier_present(cfg):
+        env["LLM_CLASSIFIER_URL"] = "http://%s:%s/v1/systemone" % (
+            ai_host, cfg.get("ai_services", "vllm_structured_port"))
+    else:
+        env["LLM_CLASSIFIER_URL"] = ""
 
     env["TEMPORAL_UI_URL"] = "http://localhost:%s" % cfg.get(m, "temporal_ui_port")
     env["EXTERNAL_CLICKHOUSE_URL"] = "http://localhost:%s" % cfg.get(m, "clickhouse_http_port")

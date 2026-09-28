@@ -1,0 +1,22 @@
+---
+name: call_arguments
+group: stumble
+description: how to fill in the arguments of a tool call: only the names its schema gives, a list where it asks for a list, and no extra quotes
+tools:
+---
+{# How to fill in the arguments of a call. The refused calls give an argument name that the
+   schema does not have, a text where the schema asks for a list, or a value in extra quotes. #}
+Filling in the arguments of a call
+
+{% if has('read_tool') %}
+When you are not sure of the arguments of a tool, call {{ tool('read_tool') }} with its name. It gives each argument, its type and the arguments that the tool requires.
+
+{% endif %}
+1. Give only the argument names that the tool gives. An argument with another name is refused.
+2. Give each required argument.
+3. Where the tool asks for a list, give a list, also for one value. Write queries ["lease"]. Do not write queries "lease".
+4. Where the tool asks for a number or true or false, give the value with no quotes. Write filename_only true. Do not write filename_only "true".
+5. Do not put quotes inside a text value. Write status done. Do not write status "\"done\"".
+6. Keep each value inside the limits of its tool, such as the most items of a list.
+
+When a call is refused, the error names the argument and what is wrong with it. Correct that argument, and then send the call.

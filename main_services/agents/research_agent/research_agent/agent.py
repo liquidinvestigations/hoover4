@@ -3,7 +3,7 @@
 The service keeps no state of a run between two requests. Each `/model_step` and
 `/tool_call` request names its run, and `MCPGatewayAgent.context_for` returns the
 `AgentContext` for it. A context holds the tool catalogue snapshot, the tool objects, the
-model client arguments and the system prompt renderer. It holds no open connection: the MCP
+model client arguments, the skill context and the system prompt. It holds no open connection: the MCP
 adapter opens one session for each server to list the tools when the context is built, and
 one session for each tool call, and closes each on exit.
 """
@@ -21,7 +21,7 @@ from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 
 from agent_common import tool_packs
-from research_agent import compaction, model_params, prompts, subagents
+from research_agent import compaction, model_params, prompts, skill_store, subagents
 from research_agent.execution import page_share_client
 from research_agent.tool_args import decode_string_arguments, rename_aliases, repair_arguments
 from research_agent.tool_catalogue import DELEGATION_TOOL, CatalogueSnapshot, build_snapshot
@@ -97,11 +97,7 @@ AGENT_RUN_HEADER = "X-Hoover4-Agent-Run"
 
 #: The prompt profile of each run kind that has its own. A chat lead keeps the profile of
 #: its container, `internal_search` or `full_research`.
-RUN_KIND_PROFILES = {
-    "subagent": "research_subagent",
-    "planner": "planner",
-    "organizer": "organizer",
-}
+RUN_KIND_PROFILES = skill_store.RUN_KIND_PROFILES
 
 
 def acl_headers(
@@ -148,7 +144,9 @@ class AgentContext:
 
     `llm_kwargs` are the arguments of `ThinkingChatOpenAI` with no request body, because
     the thinking value of the body belongs to one step (`steps.thinking_body`).
-    `system_text_for` renders the system prompt for the callable names of one model call.
+    `system_text_for` returns the system prompt. It takes the callable names of one model
+    call and returns the same text for every list, because the prompt is rendered once for
+    the run. `skill_context` is what a `read_skill` call renders with.
     """
 
     snapshot: CatalogueSnapshot
@@ -156,6 +154,7 @@ class AgentContext:
     llm_kwargs: Dict[str, Any]
     model_id: str
     system_text_for: Callable[[Tuple[str, ...]], str]
+    skill_context: Optional[skill_store.SkillContext] = None
 
 
 class MCPGatewayAgent:
@@ -171,8 +170,8 @@ class MCPGatewayAgent:
     ):
         self.name = name
         self.mcp_servers = mcp_servers
-        # An override, not the prompt itself. The prompt is rendered for each model call,
-        # because it is a function of what that call binds. A non-empty value here,
+        # An override, not the prompt itself. The prompt is rendered once for each step
+        # context, from the run's snapshot and skills. A non-empty value here,
         # `SYSTEM_PROMPT` in compose, or a literal handed in by a test, wins outright.
         self.system_prompt_override = (system_prompt or "").strip()
         self.llm_model = llm_model
@@ -354,8 +353,19 @@ class MCPGatewayAgent:
 
         # One snapshot for this context. `/model_step` binds from it and `/tool_call` runs
         # from it, with the names that the thread bound, so the model never receives a
-        # tool that `/tool_call` refuses.
-        snapshot = build_snapshot(tools, allowed, kind)
+        # tool that `/tool_call` refuses. The run kind selects the profile, and a chat lead
+        # keeps the container's profile. `collections_hint` is the caller's ACL: an empty
+        # one means every collection search will come back empty, which the model should
+        # be told rather than left to discover.
+        profile = RUN_KIND_PROFILES.get(kind, self.profile)
+        snapshot = build_snapshot(
+            tools, allowed, kind,
+            skill_store.SkillContext(
+                profile=profile, tool_names=frozenset(),
+                collections_hint=bool(allowed_collections),
+            ),
+        )
+        skill_context = snapshot.skill_context
         log.info(
             "catalogue %s for kind %s: %d core tools, %d deferred",
             snapshot.version[:12],
@@ -364,31 +374,23 @@ class MCPGatewayAgent:
             len(snapshot.deferred_names),
         )
 
-        # The prompt is rendered from the tools one model call binds, so a prompt cannot
-        # claim a tool the model does not have, and a bound tool cannot go unmentioned.
-        # It is rendered once for each distinct tool list. `collections_hint` is the
-        # caller's ACL: an empty one means every collection search will come back empty,
-        # which the model should be told rather than left to discover.
-        # The run kind selects the prompt. A chat lead keeps the container's profile.
-        profile = RUN_KIND_PROFILES.get(kind, self.profile)
-        system_texts: Dict[Tuple[str, ...], str] = {}
-
-        def system_text_for(names: Tuple[str, ...]) -> str:
-            if names not in system_texts:
-                system_texts[names] = self.system_prompt_override or prompts.system_prompt(
-                    profile,
-                    tools=list(names),
-                    collections_hint=bool(allowed_collections),
-                    purpose=purpose,
-                )
-            return system_texts[names]
+        # The prompt lists the run's skills and every tool of the snapshot, bound or
+        # deferred, so it does not change when a tool is bound. It is rendered once here.
+        system_text = self.system_prompt_override or prompts.system_prompt(
+            profile,
+            snapshot=snapshot,
+            skills=skill_store.listed_skills(skill_context),
+            collections_hint=bool(allowed_collections),
+            purpose=purpose,
+        )
 
         return AgentContext(
             snapshot=snapshot,
             tools=tools,
             llm_kwargs=llm_kwargs,
             model_id=model_id,
-            system_text_for=system_text_for,
+            system_text_for=lambda names: system_text,
+            skill_context=skill_context,
         )
 
 
@@ -405,7 +407,7 @@ async def build_agent(
         mcp_servers: List of MCP server URLs to connect to
         name: Name of the agent
         system_prompt: Overrides the rendered prompt when non-empty; empty means render
-            this profile's templates from the tools that each model call binds
+            the prompt of the run's profile from its snapshot and skills
         llm_model: Optional LLM model override
         profile: Agent profile, which selects the prompt of a chat lead. Defaults to
             the container's `AGENT_PROFILE`.

@@ -1,282 +1,177 @@
-"""System prompts as templates, rendered from what the deployment actually binds.
+"""The system prompt of every run kind, rendered from the run's snapshot and skills.
 
-**A prompt here is a function of the deployment, not a constant.** The text lives in the
-`.md.j2` files beside this module and this loader is the only thing that renders them.
-That is not tidiness: a prompt written as a string literal asserts things about the tool
-set that nothing checks, and it goes stale silently. Renaming one tool used to mean
-correcting the same sentence by hand in several prose files, and the file that was missed
-told the model to call a name that no longer existed.
+One template, `agent.md.j2`, renders for every profile. It holds the role line of the
+profile, the listed skills by name and description, and the tools of the run's snapshot by
+name and summary in two lists: the tools that every model call binds, and the deferred
+tools that the model binds with `read_tool`. The method text is in the skill store
+(`research_agent.skill_store`), which the model reads with `read_skill`.
 
-One named parameter carries the whole contract:
+The prompt depends on the profile, the purpose, `collections_hint` and the snapshot. None of
+these changes during a run, so the step context renders it once, and the prompt cache of the
+system text holds for the whole run.
 
-* **`tools`** is the list of tool names that one model call binds, read off the MCP
-  connections when the step context is built. The tool section of every prompt is generated
-  from it, so a tool that is not bound cannot be described and a tool that is bound cannot
-  be left out. `tests/test_prompts.py` fails when a template names a tool outside it.
-
-The rest (`profile`, `subagents_enabled`, `collections_hint`, `web_enabled`) are the
-facts that change what a correct instruction says: which of the three profiles this is,
-whether delegation is available, whether the caller can read any collection at all, and
-whether the open web is reachable from this agent.
-
-`SYSTEM_PROMPT` still overrides the rendered text outright, which is what an experiment
-wants. It does not change the tool binding, which the tool packs of the run kind decide
+`SYSTEM_PROMPT` overrides the rendered text outright, which is what an experiment wants. It
+does not change the tool binding, which the tool packs of the run kind decide
 (`agent_common.tool_packs`). See `active_profile`.
 
-The Manticore match syntax reaches the model through the search section of the templates
-(`_blocks/search.md.j2`) and through the descriptions of the search tools. The collection
-server also renders it into its MCP instructions, which this agent does not pass to the
-model.
+The Manticore match syntax reaches the model through the skill `search` and through the
+descriptions of the search tools.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
+import re
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from agent_common.tool_packs import pack_of
+from research_agent.skill_store import (
+    DEFAULT_PROFILE,
+    Skill,
+    SkillContext,
+    UnboundToolError,
+    environment,
+    render_skill,
+)
+
 log = logging.getLogger(__name__)
 
-#: Where the templates live: this package's own directory, and `_blocks/` inside it for
-#: the fragments more than one profile includes.
+#: Where the templates live: this package's own directory.
 TEMPLATE_DIR = Path(__file__).parent
 
-#: The profiles, and the template each renders from.
-PROFILES: Dict[str, str] = {
-    "internal_search": "internal_search.md.j2",
-    "full_research": "full_research.md.j2",
-    "research_subagent": "research_subagent.md.j2",
-    "planner": "planner.md.j2",
-    "organizer": "organizer.md.j2",
+#: The template of the system prompt of every profile.
+AGENT_TEMPLATE = "agent.md.j2"
+
+#: Each profile, and the run kind that renders it.
+PROFILE_KINDS: Dict[str, str] = {
+    "internal_search": "chat",
+    "full_research": "chat",
+    "research_subagent": "subagent",
+    "planner": "planner",
+    "organizer": "organizer",
 }
 
-DEFAULT_PROFILE = "internal_search"
+#: The role line of each profile, as Jinja source. It reads `web_enabled` and
+#: `collections_hint`.
+ROLE_LINES: Dict[str, str] = {
+    "internal_search": (
+        "You are Hoover4's document research assistant. Answer only from the user's own document\n"
+        "collections, never from your general knowledge and never from the web.\n"
+        "{% if not collections_hint %}\n\n"
+        "This conversation can read no collections at all, so every search will come back empty.\n"
+        "Say that plainly instead of searching again in different words.\n"
+        "{% endif %}"
+    ),
+    "full_research": (
+        "You are a research assistant. You can read the user's own document\n"
+        "collections{% if web_enabled %} and search the open web{% endif %}.\n"
+        "{% if not collections_hint %}\n\n"
+        "This conversation can read no document collections at all, so every collection search will\n"
+        "come back empty. Say so plainly, and answer from the open web if the question allows it.\n"
+        "{% endif %}"
+    ),
+    "research_subagent": (
+        "You are one of several researchers working in parallel on separate parts of one question.\n"
+        "You cannot see the others and you do not need to: answer the objective you were given and\n"
+        "nothing else."
+    ),
+    "planner": (
+        "You plan a research project for a person who will read your plan before any research runs.\n"
+        "Do not answer the question yet. Build the plan, and then describe it."
+    ),
+    "organizer": (
+        "You run an approved research plan. The person approved the tree, and it does not change now."
+    ),
+}
 
+#: The longest summary of one tool in the tool lists.
+SUMMARY_MAX_CHARS = 160
 
-class UnboundToolError(RuntimeError):
-    """A template named a tool that is not bound on the profile being rendered.
+#: The todo tools. The todo rule renders only when every model call binds all four.
+TODO_TOOLS = ("read_todo", "write_todo", "edit_todo", "mark_todo")
 
-    Raised only under `strict=True`, which is what the drift test renders with. At runtime
-    the name is rendered and the mismatch logged instead: a stale sentence is a defect, but
-    an agent that refuses to start because of one is a worse defect.
-    """
-
-
-@dataclass(frozen=True)
-class ToolGroup:
-    """One line of the tool section: the tools it describes, and what to say about them.
-
-    A group renders only when at least one of its tools is bound, and it names only the
-    bound ones. That is what makes the section a description of the real surface rather
-    than a claim about it.
-    """
-
-    tools: Tuple[str, ...]
-    note: str
-
-
-#: The tool section, in the order a model should read it. Every tool any profile binds
-#: belongs to exactly one group; a tool that belongs to none still reaches the prompt,
-#: through the catch-all line `_render_tool_surface` adds, because an unmentioned tool is
-#: an invisible tool.
-#:
-#: These notes are about *when to reach for a tool*, deliberately short. The detail lives
-#: in the tool's own description, which the model reads in context at the moment it picks
-#: one; piling it into the system prompt is what made an earlier draft loop forever.
-TOOL_GROUPS: Tuple[ToolGroup, ...] = (
-    ToolGroup(
-        ("search_collections",),
-        "the user's own documents, every collection of this chat in one call. Put the "
-        "forms of a name or an address in `queries`.",
-    ),
-    ToolGroup(
-        ("read_documents",),
-        "read up to 20 documents from a search, by file_hash.",
-    ),
-    ToolGroup(
-        ("list_collections",),
-        "the names of the collections and datasets, when you must narrow a search.",
-    ),
-    ToolGroup(
-        ("list_document_entities",),
-        "the names, dates and places found in one document, which is where the next query "
-        "usually comes from.",
-    ),
-    ToolGroup(
-        ("web_search",),
-        "several search engines at once, merged so that pages more than one engine "
-        "returned rank highest. Each result lists which engines found it; a page three "
-        "engines agree on is better corroborated than one only a single engine returned.",
-    ),
-    ToolGroup(
-        ("list_search_sources",),
-        "which engines are configured and which are currently degraded.",
-    ),
-    ToolGroup(
-        ("read_page",),
-        "open promising results in a real browser and read their full text. Search "
-        "snippets are short by design; when a result matters, open it. Pass several URLs "
-        "at once and say what you are looking for in `goal`.",
-    ),
-    ToolGroup(
-        (
-            "browser_navigate",
-            "browser_snapshot",
-            "browser_click",
-            "browser_type",
-            "browser_select_option",
-            "browser_press_key",
-        ),
-        "for pages that have to be *operated* rather than read, such as a form, a login, a "
-        "control that reveals the content. Reading a page needs none of them.",
-    ),
-    ToolGroup(
-        ("whois_lookup",),
-        "who registered a domain, and when.",
-    ),
-    ToolGroup(
-        ("cite_documents",),
-        "turn the documents you relied on into handles you can write into your prose.",
-    ),
-    # Two groups, not one, because a worker binds the reader and none of the writers: a
-    # single group would describe writing a plan to a profile that cannot write one, which
-    # is the exact class of claim these templates exist to make impossible.
-    ToolGroup(
-        ("read_todo",),
-        "this conversation's working checklist, and the context an objective came out of.",
-    ),
-    ToolGroup(
-        ("write_todo", "edit_todo", "mark_todo"),
-        "your working checklist for this conversation: write it, change it, and mark its "
-        "steps.",
-    ),
-    ToolGroup(
-        ("run_subagent",),
-        "delegate independent parts of a hard question to several researchers at once, "
-        "each starting fresh. They cannot see each other.",
-    ),
-)
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
 
 
 def _environment() -> Environment:
-    """The Jinja environment. `StrictUndefined` so a mistyped parameter is loud."""
+    """The Jinja environment of the templates. `StrictUndefined` so a mistyped name is loud."""
     return Environment(
         loader=FileSystemLoader(str(TEMPLATE_DIR)),
         undefined=StrictUndefined,
         trim_blocks=True,
         lstrip_blocks=True,
         # Kept, so that a block ends with its own newline and the blank line that follows
-        # an `{% include %}` survives as a paragraph break. With it stripped, `trim_blocks`
-        # eats the other half of the pair and two paragraphs run together.
+        # it survives as a paragraph break.
         keep_trailing_newline=True,
     )
 
 
-def _tool_names(tools: Iterable) -> List[str]:
-    """Tool names out of whatever the caller has: name strings, or bound tool objects."""
-    names: List[str] = []
-    for tool in tools or []:
-        name = tool if isinstance(tool, str) else getattr(tool, "name", "")
-        if name:
-            names.append(str(name))
-    return names
+def tool_summary(description: str) -> str:
+    """The first sentence of the first line of a description, cut at a word boundary to at
+    most `SUMMARY_MAX_CHARS` characters."""
+    lines = (description or "").strip().splitlines()
+    first = lines[0].strip() if lines else ""
+    sentence = _SENTENCE_END.split(first, maxsplit=1)[0].strip()
+    if len(sentence) <= SUMMARY_MAX_CHARS:
+        return sentence
+    cut = sentence[:SUMMARY_MAX_CHARS + 1].rsplit(" ", 1)[0]
+    return cut if cut else sentence[:SUMMARY_MAX_CHARS]
 
 
-def _render_tool_surface(bound: Sequence[str]) -> str:
-    """The tool section, generated from the bound names.
-
-    Every bound tool appears exactly once. Groups render in `TOOL_GROUPS` order, naming
-    only their bound members; anything bound that no group covers is listed at the end,
-    so a tool added to an MCP server reaches the prompt on the next connection rather
-    than waiting for somebody to write a sentence about it.
-    """
-    present = set(bound)
-    lines: List[str] = []
-    described: set = set()
-    for group in TOOL_GROUPS:
-        named = [name for name in group.tools if name in present]
-        if not named:
-            continue
-        described.update(named)
-        lines.append("* " + " / ".join(f"`{name}`" for name in named) + ": " + group.note)
-    rest = sorted(present - described)
-    if rest:
-        lines.append(
-            "* also bound, described by their own tool descriptions: "
-            + ", ".join(f"`{name}`" for name in rest)
-            + "."
-        )
-    return "\n".join(lines)
+def _pairs(snapshot: Any, names: Sequence[str]) -> List[Tuple[str, str]]:
+    tools = snapshot.tools_by_name
+    return [(n, tool_summary(getattr(tools[n], "description", "") or "")) for n in names]
 
 
 def render(
     profile: str,
     *,
-    tools: Iterable,
+    snapshot: Any,
+    skills: Sequence[Skill],
     collections_hint: bool = True,
-    web_enabled: Optional[bool] = None,
-    subagents_enabled: Optional[bool] = None,
     purpose: Optional[str] = None,
     strict: bool = False,
 ) -> str:
-    """Render one profile's system prompt for the deployment it will run in.
+    """Render the system prompt of one profile for one run.
 
-    `tools` is the bound tool list (names or tool objects), and everything the prompt
-    says about the tool surface is derived from it. `web_enabled` and `subagents_enabled`
-    default to what that list implies and are overridable only so a test can pin them.
+    `snapshot` is the run's `CatalogueSnapshot`, and `skills` are its listed skills
+    (`skill_store.listed_skills`). `purpose` is the purpose of an organizer's briefing
+    (`execute`, `review` or `correct`), and `review` adds the verdict block.
 
-    `purpose` is the purpose of an organizer's briefing (`execute`, `review` or `correct`).
-    `review` adds the verdict block to the sub-agent profile. `None` adds nothing.
-
-    `strict` turns a template naming an unbound tool into `UnboundToolError` instead of a
-    logged warning. The drift test renders strict; the running agent does not.
+    `strict` raises `UnboundToolError` when a listed skill names a tool that no pack holds,
+    in its front matter or in its text. The tests render strict, and the running agent does
+    not. An unknown profile raises `KeyError`.
     """
     name = (profile or "").strip().lower()
-    template_name = PROFILES.get(name)
-    if template_name is None:
+    if name not in ROLE_LINES:
         raise KeyError(f"unknown agent profile: {profile!r}")
-
-    bound = _tool_names(tools)
-    present = set(bound)
-
-    def tool(tool_name: str) -> str:
-        """A tool named in running prose, checked against what is bound."""
-        if tool_name not in present:
-            if strict:
-                raise UnboundToolError(
-                    f"profile {name!r} does not bind {tool_name!r}, but its prompt names it"
-                )
-            log.warning(
-                "prompt for profile %s names %s, which is not bound", name, tool_name
-            )
-        return f"`{tool_name}`"
-
-    context = {
-        "profile": name,
-        "tools": bound,
-        "tool": tool,
-        "has": lambda tool_name: tool_name in present,
-        "tool_surface": _render_tool_surface(bound),
-        "collections_hint": bool(collections_hint),
-        "purpose": (purpose or "").strip().lower(),
-        # Defaults for the shared blocks, so a profile template that forgets to set one
-        # renders sensible prose rather than raising on StrictUndefined.
-        "citation_artefact": "answer",
-        "citation_resolver": "reader",
-        "web_enabled": (
-            bool(web_enabled) if web_enabled is not None else "web_search" in present
-        ),
-        "subagents_enabled": (
-            bool(subagents_enabled)
-            if subagents_enabled is not None
-            else "run_subagent" in present
-        ),
-    }
-    return _environment().get_template(template_name).render(**context).strip()
+    tool_names = frozenset(snapshot.tools_by_name)
+    if strict:
+        by_name = {skill.name: skill for skill in skills}
+        ctx = SkillContext(profile=name, tool_names=tool_names,
+                           collections_hint=bool(collections_hint))
+        for skill in skills:
+            unknown = [t for t in skill.tools if pack_of(t) is None]
+            if unknown:
+                raise UnboundToolError(f"skill {skill.name!r} names {unknown}, which no pack holds")
+            render_skill(skill.name, ctx, strict=True, skills=by_name)
+    role_line = environment().from_string(ROLE_LINES[name]).render(
+        web_enabled="web_search" in tool_names, collections_hint=bool(collections_hint),
+    ).strip()
+    core = set(snapshot.core_names)
+    return _environment().get_template(AGENT_TEMPLATE).render(
+        role_line=role_line,
+        skills=list(skills),
+        bound=_pairs(snapshot, snapshot.core_names),
+        deferred=_pairs(snapshot, snapshot.deferred_names),
+        catalogue_search="search_agent_tools" in tool_names,
+        todo_rule=all(t in core for t in TODO_TOOLS),
+        purpose=(purpose or "").strip().lower(),
+    ).strip()
 
 
 #: The template of the first-turn planning call. It is not a profile: it has no tool
@@ -296,7 +191,7 @@ def active_profile() -> str:
 
     Read separately from `system_prompt`, so a `SYSTEM_PROMPT` override keeps the profile
     name. An unknown name is returned as it stands, and `system_prompt` renders the
-    internal-search template for it.
+    internal-search profile for it.
     """
     return (os.getenv("AGENT_PROFILE") or DEFAULT_PROFILE).strip().lower()
 
@@ -306,15 +201,10 @@ def system_prompt_override() -> str:
     return (os.getenv("SYSTEM_PROMPT") or "").strip()
 
 
-def system_prompt(
-    profile: Optional[str] = None,
-    *,
-    tools: Optional[Iterable] = None,
-    **kwargs,
-) -> str:
+def system_prompt(profile: Optional[str] = None, **kwargs) -> str:
     """This container's system prompt: the override if set, otherwise the rendered one.
 
-    An unknown profile renders the internal-search template rather than raising: a typo in
+    An unknown profile renders the internal-search profile rather than raising. A typo in
     compose must not leave the agent with no instructions at all, and the narrow prompt is
     the safe one to fall back to.
     """
@@ -322,23 +212,25 @@ def system_prompt(
     if override:
         return override
     name = (profile or active_profile()).strip().lower()
-    if name not in PROFILES:
+    if name not in ROLE_LINES:
         log.warning("unknown agent profile %r; falling back to %s", name, DEFAULT_PROFILE)
         name = DEFAULT_PROFILE
-    return render(name, tools=tools or [], **kwargs)
+    return render(name, **kwargs)
 
 
 __all__ = [
-    "PROFILES",
+    "AGENT_TEMPLATE",
     "DEFAULT_PROFILE",
-    "TEMPLATE_DIR",
-    "TOOL_GROUPS",
-    "ToolGroup",
-    "UnboundToolError",
     "PLANNING_CALL_TEMPLATE",
+    "PROFILE_KINDS",
+    "ROLE_LINES",
+    "SUMMARY_MAX_CHARS",
+    "TEMPLATE_DIR",
+    "UnboundToolError",
     "active_profile",
     "planning_call",
     "render",
     "system_prompt",
     "system_prompt_override",
+    "tool_summary",
 ]

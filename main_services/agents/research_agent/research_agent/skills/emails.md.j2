@@ -1,0 +1,27 @@
+---
+name: emails
+group: technique
+description: how to read e-mail documents: sender, recipients, date, subject, headers, copies and threads
+tools: doc_email, doc_metadata, read_documents
+---
+{# How to read e-mail documents. The message fields come from `doc_email`, the text from
+   `read_documents`. Each sentence that names a tool renders only when the run has it. #}
+Reading e-mail documents
+
+{% if has('search_collections') %}
+Find e-mails with {{ tool('search_collections') }}. Put every form of an address or a name into one call, for example the address, "First Last" and "Last, First".
+
+{% endif %}
+{% if has('doc_email') %}
+1. Call {{ tool('doc_email') }} with the file_hash of the e-mail. It gives the sender, the recipients, the copies, the date, the subject, the parent message, the attachments and the message graph.
+2. To follow a thread, give node, the file hash of another message in the graph. The graph then centres on that message.
+3. An attachment is a document of its own. Read it with its own file_hash.
+{% endif %}
+{% if has('read_documents') %}
+4. Read the text of the message with {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_metadata') %}
+5. For the headers and the dates that are not in the text, call {{ tool('doc_metadata') }}.
+{% endif %}
+
+A copy of the same message can be in more than one mailbox. Compare the date, the sender and the subject before you count two copies as two messages. In your answer, give the sender, the recipients and the date of each e-mail that you use.

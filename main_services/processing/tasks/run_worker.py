@@ -704,7 +704,7 @@ async def run_chat_worker():
   research run cannot take a chat model slot.
 
   `chat-queue` carries `AgentRun` and its short activities (open, nag, ending, fan-in,
-  delegation, continuation, step failure, plan check, todo read, title).
+  delegation, continuation, step failure, plan check, todo read, title, run-start reads).
   `chat-model-queue` carries `model_step` for a chat turn and its sub-agents.
   `research-queue` carries `model_step` for a run whose row names that queue: the
   planner and organizer runs of a deep-research plan, and their sub-agents.
@@ -725,6 +725,7 @@ async def run_chat_worker():
       summarize_if_first_turn,
       write_ending,
   )
+  from .P_agent.preload import preload_reads
   from .P_agent.steps import (
       delegate_step,
       model_step,
@@ -765,7 +766,7 @@ async def run_chat_worker():
         activities=[
             open_run, append_nag, write_ending, summarize_if_first_turn, fan_in,
             continue_run, read_chat_todo, delegate_step, prepare_continuation,
-            record_step_failure, plan_has_sections, needs_citations,
+            record_step_failure, plan_has_sections, needs_citations, preload_reads,
         ],
         activity_executor=activity_executor,
         max_concurrent_activities=low_latency_slots,

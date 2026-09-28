@@ -55,6 +55,7 @@ with workflow.unsafe.imports_passed_through():
         summarize_if_first_turn,
         write_ending,
     )
+    from tasks.P_agent.preload import PRELOAD_TIMEOUT, PreloadParams, preload_reads
     from tasks.P_agent.steps import (
         ModelStepParams,
         ModelStepResult,
@@ -178,6 +179,12 @@ class AgentRun:
     `final` step. The workflow continues as new every
     `CONTINUE_AS_NEW_STEPS` model steps, or when its history passes
     `HISTORY_EVENTS_PER_RUN` events, and the new run resumes from the thread.
+
+    **The run-start reads.** A run that starts a thread (`OpenedRun.preload`) writes its
+    role and general skill reads as synthetic calls before its first model step, after
+    the planning call (`preload.preload_reads`). The first turn of a chat also classifies
+    its request, reads the picked skills and tools, and marks the first todo item done. The
+    step gets one attempt, and a failure leaves the turn going on without the reads.
 
     **The planning call.** The first turn of an ordinary chat (`OpenedRun.first_turn_plan`)
     starts with one `plan` step, which binds `write_todo` only. The loop runs its call
@@ -313,6 +320,8 @@ class AgentRun:
         pending: list[CallRef] = []
         if first and opened.first_turn_plan and self._steps == 0:
             await self._plan(inp, opened)
+        if first and opened.preload:
+            await self._preload(inp, opened)
         if first:
             if opened.continues:
                 await workflow.execute_activity(
@@ -368,6 +377,27 @@ class AgentRun:
             statuses = [await self._tool_call(inp, call) for call in result.calls]
             if all(status == "ok" for status in statuses):
                 return
+
+    async def _preload(self, inp: AgentRunInput, opened: OpenedRun) -> None:
+        """The run-start reads of a run that starts a thread. One attempt. A failure has
+        its `agent_step_events` row with step `preload`, and the turn goes on without the
+        reads. Only a stop ends the run here."""
+        try:
+            await workflow.execute_activity(
+                preload_reads,
+                PreloadParams(**self._ref_fields(inp), classify=opened.preload_classify,
+                              mark_item=opened.first_turn_plan),
+                start_to_close_timeout=PRELOAD_TIMEOUT,
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=1),
+                task_queue=CHAT_TASK_QUEUE,
+                cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+            )
+        except ActivityError as exc:
+            if _was_cancelled(exc):
+                raise
+            await self._record_failure(inp, "preload", CHAT_TASK_QUEUE, exc, name="systemone")
+        self._raise_if_stopped()
 
     async def _model_step(self, inp: AgentRunInput, opened: OpenedRun, mode: str,
                           reason: str) -> ModelStepResult:

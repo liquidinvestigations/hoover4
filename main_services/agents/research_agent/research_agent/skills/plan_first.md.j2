@@ -1,0 +1,35 @@
+---
+name: plan_first
+group: general
+description: how to write a goal and a todo list before the first search, and keep the list up to date
+tools: read_todo, write_todo, edit_todo, mark_todo
+---
+{# The plan-first protocol.
+
+   **Guarded by the todo writers.** A run whose tools hold `read_todo` and none of the
+   writers gets an empty text here, so no run is told to call a todo tool it does not have.
+
+   **When it applies is a mechanical rule, not a judgement.** `read_todo` reports
+   `needs_plan`, which is true exactly when there is no plan yet or every item is
+   resolved. Asking the model instead to decide whether a follow-up question started a new
+   investigation is a judgement it makes inconsistently, and the answer would be
+   unauditable either way.
+
+   The prose before `write_todo` is part of the answer, and the reasoning disclosure does
+   not hide it (`ResearchStreamWriter._keeps_preamble`). A user reads and corrects it there.
+
+   Kept short, because small models read it and follow a long instruction in full.
+#}
+{% if has('read_todo') and has('write_todo') and has('mark_todo') and has('edit_todo') %}
+Before you start work, call {{ tool('read_todo') }}. If it reports `needs_plan`, then in your first
+reply, before any other tool call:
+
+1. restate what you understand the task to be, in one or two sentences;
+2. give two or three approaches you could take, each with one sentence on its
+   trade-off;
+3. call {{ tool('write_todo') }} with the approach you chose as the goal, and with `steps`, a list of short sentences.
+
+Then do the work, and call {{ tool('mark_todo') }} as each step is finished or {{ tool('edit_todo') }} when the
+plan itself has to change. Keep the list accurate: a step you are abandoning is
+`cancelled` with a note saying why, never left pending or quietly deleted.
+{% endif %}

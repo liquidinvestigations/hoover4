@@ -1,341 +1,219 @@
-"""The drift test: a prompt that claims a tool it does not have fails here.
+"""The single system prompt: what it lists, how large it is, and that it stays fixed.
 
-A system prompt is prose about a tool surface, and prose about a tool surface goes stale
-silently. Renaming one tool used to mean correcting the same sentence by hand in several
-files, and the one that was missed told the model to call a name that no longer existed.
-Nothing failed; the model just wasted a turn.
-
-These tests are what makes that a failure. They render each profile against the tool list
-it really binds and check two things a reader cannot check by eye:
-
-* every tool name the prompt mentions is bound on that profile (`strict=True` raises, and
-  a second pass re-reads the rendered text so a hardcoded literal cannot slip past the
-  `tool()` helper);
-* every tool that *is* bound reaches the prompt, because an unmentioned tool is an
-  invisible one.
-
-`PROFILE_TOOLS` below is the surface as deployed, and it is pinned deliberately: a change
-to what an MCP server advertises has to be made here too, which is the point at which
-somebody reads the prompts again.
+The prompt is rendered from the run's snapshot and listed skills. These tests render it for
+each profile against the tools of its packs and check that it lists every tool of the
+snapshot, names no tool outside it, and stays inside its size budget.
 """
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 
 import pytest
 
-from research_agent import prompts, subagents
-from agent_common.tool_packs import PACKS
+from agent_common.tool_packs import PACKS, allowed_tools
+from research_agent import prompts, skill_store
+from research_agent.skill_store import Skill, SkillContext, listed_skills
+from research_agent.tool_catalogue import build_snapshot
 
-#: Everything the collection-search and todo servers advertise, the narrow profile.
-INTERNAL_SEARCH_TOOLS = frozenset(
-    {
-        "cite_documents",
-        "list_collections",
-        "list_document_entities",
-        "read_documents",
-        "search_collections",
-        "read_todo",
-        "write_todo",
-        "edit_todo",
-        "mark_todo",
-    }
-)
+FIXTURES = Path(__file__).parent / "prompt_fixtures"
 
-#: The narrow set plus metasearch, the browser and whois. `run_subagent` is appended by
-#: `agent._create_context` after the MCP tools, so it belongs to the lead and to nothing else.
-FULL_RESEARCH_TOOLS = INTERNAL_SEARCH_TOOLS | {
-    "web_search",
-    "list_search_sources",
-    "read_page",
-    "browser_navigate",
-    "browser_snapshot",
-    "browser_click",
-    "browser_type",
-    "browser_select_option",
-    "browser_press_key",
-    "whois_lookup",
-    subagents.DELEGATION_TOOL,
-}
+#: The first description line of each tool that the MCP servers and the agent list.
+TOOL_DESCRIPTIONS = json.loads((FIXTURES / "tool_descriptions.json").read_text())
 
-#: A depth 2 sub-agent with narrow packs: no browser, no todo writers and no delegation.
-RESEARCH_SUBAGENT_TOOLS = frozenset(
-    name for name in FULL_RESEARCH_TOOLS
-    if name not in PACKS["browser"] | {"write_todo", "edit_todo", "mark_todo",
-                                       subagents.DELEGATION_TOOL}
-)
+#: The size budget of the system text of every profile.
+MAX_PROMPT_CHARS = 11_000
 
-PROFILE_TOOLS = {
-    "internal_search": INTERNAL_SEARCH_TOOLS,
-    "full_research": FULL_RESEARCH_TOOLS,
-    "research_subagent": RESEARCH_SUBAGENT_TOOLS,
-}
-
-#: Any backticked snake_case word in a rendered prompt. The prompts use backticks for tool
-#: names and for a handful of field names, so a match is a candidate, not a verdict.
+#: Any backticked snake_case word in a rendered prompt.
 BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
 
-#: Backticked words that are deliberately not tools: fields, arguments and states the
-#: prompts name. Listed so that a genuinely new tool name cannot hide among them.
-NOT_TOOLS = frozenset(
-    {"needs_plan", "cancelled", "goal", "steps", "degraded", "max_results", "queries"}
-)
+#: Backticked words that are not tools: fields and states that the prompt names.
+NOT_TOOLS = frozenset({"in_progress", "done", "cancelled", "pending", "verdict",
+                       "accept", "reject", "defect_classes"})
 
-#: The union of every name any profile binds. A backticked word inside it, in a prompt for
-#: a profile that does not bind it, is drift, which is what the second pass looks for.
-ALL_TOOLS = frozenset().union(*PROFILE_TOOLS.values())
+EVERY_TOOL = frozenset().union(*PACKS.values())
+LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool"}
 
 
-def rendered(profile: str, **kwargs) -> str:
-    return prompts.render(profile, tools=sorted(PROFILE_TOOLS[profile]), strict=True, **kwargs)
+class FakeTool:
+    def __init__(self, name, description=""):
+        self.name = name
+        self.description = description
+        self.args_schema = {"type": "object", "properties": {}}
 
 
-@pytest.mark.parametrize("profile", sorted(PROFILE_TOOLS))
-def test_every_profile_renders(profile):
-    """Each of the three profiles renders, strictly, against its real tool list."""
-    text = rendered(profile)
-    assert text.strip()
-    assert len(text) > 400, "a profile prompt this short has lost a block"
+def fake_tools(names):
+    return [FakeTool(n, TOOL_DESCRIPTIONS.get(n, f"{n}.")) for n in sorted(names)
+            if n not in LOCAL_TOOLS]
 
 
-@pytest.mark.parametrize("profile", sorted(PROFILE_TOOLS))
-def test_a_prompt_never_names_a_tool_it_does_not_bind(profile):
-    """The drift test proper.
-
-    `strict=True` catches a name that went through `tool()`; this second pass re-reads the
-    rendered text, so a name written straight into a template as a backticked literal
-    fails too. Both directions matter: the first is the mechanism, the second is what
-    happens when somebody bypasses it.
-    """
-    bound = PROFILE_TOOLS[profile]
-    text = rendered(profile)
-    named = {word for word in BACKTICKED.findall(text) if word not in NOT_TOOLS}
-    claimed_but_unbound = (named & ALL_TOOLS) - bound
-    assert not claimed_but_unbound, (
-        f"the {profile} prompt names tools it does not bind: "
-        f"{sorted(claimed_but_unbound)}"
-    )
-    unknown = named - ALL_TOOLS
-    assert not unknown, (
-        f"the {profile} prompt backticks {sorted(unknown)}, which is neither a tool any "
-        "profile binds nor a declared non-tool word (see NOT_TOOLS)"
+def snapshot_for(profile, packs="all", tools=None):
+    kind = prompts.PROFILE_KINDS[profile]
+    allowed = allowed_tools(kind, packs)
+    return build_snapshot(
+        fake_tools(tools if tools is not None else allowed), allowed, kind,
+        SkillContext(profile=profile, tool_names=frozenset()),
     )
 
 
-@pytest.mark.parametrize("profile", sorted(PROFILE_TOOLS))
-def test_every_bound_tool_reaches_the_prompt(profile):
-    """A tool the model has and the prompt never mentions is a tool it will not use."""
-    text = rendered(profile)
-    named = set(BACKTICKED.findall(text))
-    missing = PROFILE_TOOLS[profile] - named
-    assert not missing, f"the {profile} prompt never mentions {sorted(missing)}"
+def rendered(profile, packs="all", tools=None, skills=None, **kwargs):
+    snap = snapshot_for(profile, packs, tools)
+    if skills is None:
+        skills = listed_skills(snap.skill_context)
+    return prompts.render(profile, snapshot=snap, skills=skills, strict=True, **kwargs)
 
 
-def test_a_worker_prompt_has_no_plan_first_block_and_no_delegation():
-    """Two structural facts about the worker, asserted on the rendered text.
-
-    Neither is a special case in the worker's template: the plan-first block renders only
-    where the todo writers are bound, and `run_subagent` is absent from the worker's pool,
-    so the tool section cannot mention it.
-    """
-    text = rendered("research_subagent")
-    assert "write_todo" not in text
-    assert subagents.DELEGATION_TOOL not in text
-    assert "read_todo" in text
+def all_skills(profile):
+    """The listed skills of a run that has every tool: its role skill and every general,
+    technique and stumble skill of the store."""
+    return listed_skills(SkillContext(profile=profile, tool_names=EVERY_TOOL))
 
 
-@pytest.mark.parametrize("profile", sorted(PROFILE_TOOLS))
-def test_the_todo_text_names_the_steps_argument(profile):
-    """`write_todo` takes `steps`. No chat profile tells the model to send the steps as items,
-    and each profile that binds the todo writers names the `steps` argument."""
-    text = rendered(profile)
-    assert "as items" not in text
-    if "write_todo" in PROFILE_TOOLS[profile]:
-        assert "`steps`" in text
+def listed_lines(text):
+    return re.findall(r"^\* `([a-z_]+)`: ", text, re.M)
 
 
-def test_the_lead_prompt_offers_delegation_and_the_narrow_one_does_not():
-    assert subagents.DELEGATION_TOOL in rendered("full_research")
-    assert subagents.DELEGATION_TOOL not in rendered("internal_search")
+# -------------------------------------------------------------------------- normal
 
 
-@pytest.mark.parametrize("profile", sorted(PROFILE_TOOLS))
-def test_the_delegation_paragraph_follows_the_binding(profile):
-    """Each profile has the delegation paragraph when `run_subagent` is bound, and none when
-    it is not. No profile says that a worker cannot delegate."""
-    tools = set(PROFILE_TOOLS[profile])
-    with_tool = prompts.render(profile, tools=sorted(tools | {subagents.DELEGATION_TOOL}))
-    without = prompts.render(profile, tools=sorted(tools - {subagents.DELEGATION_TOOL}))
-    assert f"`{subagents.DELEGATION_TOOL}` in one call" in with_tool.replace("\n", " ")
-    assert subagents.DELEGATION_TOOL not in without
-    assert "cannot delegate" not in with_tool + without
+def test_the_full_chat_lead_lists_every_tool_and_every_skill():
+    skills = all_skills("full_research")
+    assert len(skills) == 21
+    text = rendered("full_research", skills=skills)
+    names = listed_lines(text)
+    tools = [n for n in names if n in EVERY_TOOL]
+    assert sorted(tools) == sorted(EVERY_TOOL)
+    assert len(tools) == 50
+    assert [n for n in names if n not in EVERY_TOOL] == [s.name for s in skills]
 
 
-def test_a_review_briefing_gets_the_verdict_block():
-    tools = sorted(PROFILE_TOOLS["research_subagent"])
-    review = prompts.render("research_subagent", tools=tools, purpose="review")
-    execute = prompts.render("research_subagent", tools=tools, purpose="execute")
+def test_the_internal_chat_lists_no_web_tool():
+    text = rendered("internal_search", packs="collections,conversation,catalogue")
+    for name in PACKS["web"] | PACKS["browser"]:
+        assert f"`{name}`" not in text
+    assert "open web" not in text
+    assert "Hoover4's document research assistant" in text
+
+
+@pytest.mark.parametrize("profile", sorted(prompts.PROFILE_KINDS))
+def test_every_profile_renders_strictly_and_names_only_its_tools(profile):
+    snap = snapshot_for(profile)
+    text = prompts.render(profile, snapshot=snap, skills=listed_skills(snap.skill_context),
+                          strict=True)
+    named = {w for w in BACKTICKED.findall(text) if w not in NOT_TOOLS}
+    skills = {s.name for s in listed_skills(snap.skill_context)}
+    assert (named & EVERY_TOOL) <= set(snap.tools_by_name)
+    assert set(snap.tools_by_name) <= named
+    assert skills <= named
+
+
+def test_the_bound_tools_come_first_and_the_deferred_tools_second():
+    snap = snapshot_for("full_research")
+    text = prompts.render("full_research", snapshot=snap, skills=[])
+    tools_part = text.split("\nTools\n", 1)[1]
+    names = listed_lines(tools_part)
+    assert names[:len(snap.core_names)] == list(snap.core_names)
+    assert names[len(snap.core_names):] == list(snap.deferred_names)
+    assert "Find more tools by a few words with `search_agent_tools`." in text
+
+
+def test_a_summary_is_the_first_sentence_cut_at_a_word_boundary():
+    assert prompts.tool_summary("Read a table. Then more.\nSecond line.") == "Read a table."
+    long = "word " * 60
+    summary = prompts.tool_summary(long)
+    assert len(summary) <= prompts.SUMMARY_MAX_CHARS
+    assert not summary.endswith(" ") and summary.split(" ")[-1] == "word"
+
+
+# ------------------------------------------------------------------------ boundary
+
+
+@pytest.mark.parametrize("profile", sorted(prompts.PROFILE_KINDS))
+def test_the_prompt_stays_inside_its_size_budget(profile):
+    text = rendered(profile, skills=all_skills(profile))
+    assert len(text) <= MAX_PROMPT_CHARS, len(text)
+
+
+def test_a_run_with_no_todo_writers_has_no_todo_rule():
+    planner = rendered("planner", packs="collections,web,plan")
+    assert "Your todo list" not in planner
+    assert "Your todo list" in rendered("full_research")
+
+
+def test_the_verdict_block_renders_for_a_review_only():
+    review = rendered("research_subagent", purpose="review")
+    execute = rendered("research_subagent", purpose="execute")
     assert '{"verdict": "accept", "defect_classes": []}' in review
     assert "verdict" not in execute
 
 
-def test_naming_an_unbound_tool_is_an_error_under_strict_rendering():
-    """The mechanism the drift test relies on, tested directly.
-
-    Without this, a template could stop using `tool()` and every other assertion here
-    would keep passing while checking nothing. The delegation paragraph is guarded by
-    `subagents_enabled` alone, so forcing it on without the tool names an unbound tool.
-    """
-    with pytest.raises(prompts.UnboundToolError):
-        prompts.render(
-            "full_research",
-            tools=sorted(INTERNAL_SEARCH_TOOLS),
-            subagents_enabled=True,
-            strict=True,
-        )
-
-
-def test_a_prompt_survives_a_tool_disappearing():
-    """A shrunken surface renders, smaller and without the missing tool.
-
-    The running agent must not refuse to start because an MCP server is down and its
-    tools are therefore unbound. It renders what is left, which is also the truth.
-    """
-    text = prompts.render("full_research", tools=sorted(INTERNAL_SEARCH_TOOLS))
-    assert "web_search" not in text
-    assert "search_collections" in text
-    assert "open web" not in text
-
-
 def test_no_readable_collection_is_said_plainly():
-    """`collections_hint` is a parameter because an empty ACL changes what is true."""
-    assert "no collections at all" in rendered("internal_search", collections_hint=False)
+    snap = snapshot_for("internal_search")
+    text = prompts.render("internal_search", snapshot=snap, skills=[], collections_hint=False)
+    assert "no collections at all" in text
     assert "no collections at all" not in rendered("internal_search")
 
 
-def test_an_unknown_profile_falls_back_rather_than_raising(monkeypatch):
+def test_the_full_role_line_names_the_web_only_when_the_run_has_it():
+    assert "You are a research assistant." in rendered("full_research")
+    assert "search the open web" in rendered("full_research")
+    narrow = rendered("full_research", packs="collections,conversation")
+    assert "search the open web" not in narrow
+
+
+# ------------------------------------------------------------------------- failure
+
+
+def test_an_unknown_profile_raises():
+    with pytest.raises(KeyError):
+        prompts.render("typo_profile", snapshot=snapshot_for("internal_search"), skills=[])
+
+
+def test_an_unknown_profile_falls_back_to_the_narrow_prompt(monkeypatch):
     monkeypatch.delenv("SYSTEM_PROMPT", raising=False)
-    text = prompts.system_prompt("typo_profile", tools=sorted(INTERNAL_SEARCH_TOOLS))
+    text = prompts.system_prompt("typo_profile", snapshot=snapshot_for("internal_search"),
+                                 skills=[])
     assert "Hoover4's document research assistant" in text
 
 
-def test_the_environment_override_still_wins(monkeypatch):
+def test_the_environment_override_is_returned_unchanged(monkeypatch):
     monkeypatch.setenv("SYSTEM_PROMPT", "  be brief  ")
     assert prompts.system_prompt_override() == "be brief"
-    assert (
-        prompts.system_prompt("full_research", tools=sorted(FULL_RESEARCH_TOOLS))
-        == "be brief"
-    )
+    assert prompts.system_prompt(
+        "full_research", snapshot=snapshot_for("full_research"), skills=[]) == "be brief"
 
 
-@pytest.mark.parametrize("profile", ["planner", "organizer"])
-def test_the_plan_profiles_render_strictly_with_the_plan_tools(profile):
-    tools = sorted(FULL_RESEARCH_TOOLS | PACKS["plan"])
-    text = prompts.render(profile, tools=tools, strict=True)
-    assert "`read_plan`" in text
-    if profile == "organizer":
-        assert "`plan_node_id`" in text and "`correct`" in text
+def test_a_skill_that_names_a_tool_outside_every_pack_fails_strict_rendering():
+    odd = Skill("odd", "technique", "d", (), "Call {{ tool('no_such_tool') }}.")
+    snap = snapshot_for("full_research")
+    with pytest.raises(prompts.UnboundToolError):
+        prompts.render("full_research", snapshot=snap, skills=[odd], strict=True)
+    assert prompts.render("full_research", snapshot=snap, skills=[odd])
 
 
-THOROUGH = "Investigate thoroughly for the user"
+# ----------------------------------------------------------------------- stability
 
 
-@pytest.mark.parametrize("profile", ["internal_search", "full_research", "research_subagent"])
-def test_every_researching_profile_asks_for_a_thorough_investigation(profile):
-    assert THOROUGH in rendered(profile)
+async def test_the_system_text_is_the_same_for_every_list_of_bound_names(monkeypatch):
+    from research_agent import agent as agent_module
 
+    class FakeClient:
+        def __init__(self, servers):
+            pass
 
-def test_the_thorough_block_names_the_web_only_where_it_is_bound():
-    assert "open web" in rendered("full_research")
-    narrow = rendered("internal_search")
-    assert THOROUGH in narrow
-    assert "open web" not in narrow
+        async def get_tools(self):
+            return fake_tools(EVERY_TOOL)
 
-
-def test_the_narrow_profile_no_longer_stops_after_two_or_three_searches():
-    text = rendered("internal_search")
-    assert "Search two or three" not in text
-    assert "Go from broad searches to narrow searches." in text
-
-
-def test_the_planner_plans_a_thorough_investigation():
-    tools = sorted(FULL_RESEARCH_TOOLS | PACKS["plan"])
-    assert "Research method for a plan" in prompts.render(
-        "planner", tools=tools, strict=True)
-
-
-def test_the_organizer_tells_each_researcher_to_try_every_tool():
-    tools = sorted(FULL_RESEARCH_TOOLS | PACKS["plan"] | {"run_subagent"})
-    assert "How to write an execute briefing" in prompts.render(
-        "organizer", tools=tools, strict=True)
-
-
-#: Every tool of every pack. A profile rendered with all of them must still render strictly,
-#: because each sentence of a block that names a tool is guarded by `has()`.
-EVERY_PACK_TOOLS = sorted(frozenset().union(*PACKS.values()))
-
-#: The method block of each profile, and its first line.
-METHOD_TITLES = {
-    "full_research": "Research method",
-    "internal_search": "Research method",
-    "planner": "Research method for a plan",
-    "organizer": "Research method for running a plan",
-    "research_subagent": "Research method for a researcher",
-}
-
-#: The words that no method block holds.
-ETHICS_WORDS = ("ethic", "moral", "privacy", "consent", "harm", "victim", "safety")
-
-
-@pytest.mark.parametrize("profile", sorted(prompts.PROFILES))
-def test_every_profile_renders_strictly_with_every_pack(profile):
-    text = prompts.render(profile, tools=EVERY_PACK_TOOLS, strict=True)
-    assert METHOD_TITLES[profile] + "\n" in text
-
-
-@pytest.mark.parametrize("profile", sorted(prompts.PROFILES))
-def test_every_tool_a_block_names_is_backticked_and_bound(profile):
-    """A method block names a tool only through `tool()`, so no bare tool name is left."""
-    tools = sorted(PROFILE_TOOLS.get(profile, FULL_RESEARCH_TOOLS | PACKS["plan"]))
-    text = prompts.render(profile, tools=tools, strict=True)
-    every = frozenset().union(*PACKS.values())
-    bare = {word for word in re.findall(r"(?<![`\w])([a-z]+_[a-z_]+)(?![`\w])", text)}
-    assert not (bare & every), f"bare tool names in {profile}: {sorted(bare & every)}"
-
-
-def test_the_narrow_profile_without_the_web_says_nothing_of_the_web():
-    tools = sorted(INTERNAL_SEARCH_TOOLS)
-    text = prompts.render("internal_search", tools=tools, strict=True)
-    assert "web_search" not in text
-    assert "Use the web only after the documents" not in text
-    assert "Search the documents first." in text
-
-
-def test_the_full_profile_searches_the_documents_before_the_web():
-    text = rendered("full_research")
-    assert "Search the documents first. Use the web only after the documents" in text
-    assert "as its queries list" in text
-
-
-def test_the_planner_with_its_packs_names_no_todo_tool():
-    from agent_common.tool_packs import allowed_tools
-
-    tools = sorted(allowed_tools("planner", "collections,web,plan"))
-    text = prompts.render("planner", tools=tools, strict=True)
-    assert "todo" not in text
-    assert "Research method for a plan" in text
-    assert "`append_child`" in text
-
-
-def test_the_method_blocks_hold_no_ethics_wording():
-    for path in sorted((prompts.TEMPLATE_DIR / "_blocks").glob("method_*.md.j2")):
-        body = path.read_text().lower()
-        found = [word for word in ETHICS_WORDS if word in body]
-        assert not found, f"{path.name} holds {found}"
-
-
-def test_the_todo_tools_are_a_checklist_and_not_the_plan():
-    text = rendered("internal_search")
-    assert "your working checklist for this conversation" in text
-    assert "write the plan" not in text
+    monkeypatch.setattr(agent_module, "MultiServerMCPClient", FakeClient)
+    monkeypatch.setenv("LLM_API_KEY", "test")
+    monkeypatch.delenv("SYSTEM_PROMPT", raising=False)
+    gateway = agent_module.MCPGatewayAgent([], "test", "", profile="full_research")
+    context = await gateway._create_context(None, ["c"], kind="chat")
+    first = context.system_text_for(("doc_email",))
+    second = context.system_text_for(("table_page", "pdf_search"))
+    assert first == second
+    assert "Skills" in first and "`method_chat_full`" in first
+    assert context.skill_context.profile == "full_research"
+    assert context.skill_context.tool_names == frozenset(context.snapshot.tools_by_name)

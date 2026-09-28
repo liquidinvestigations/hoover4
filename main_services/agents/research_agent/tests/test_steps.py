@@ -20,10 +20,12 @@ from langchain_core.tools import StructuredTool
 from mcp.types import EmbeddedResource, TextResourceContents
 
 from agent_common.result_pages import ByteLimit, PageInput, SAFE_MODE_BATCH_BYTES, build_page
-from research_agent import execution, steps, subagents
+from agent_common.tool_packs import allowed_tools
+from research_agent import execution, steps, stumbles, subagents
 from research_agent.agent import AgentContext
 from research_agent.chat_model import ThinkingChatOpenAI
-from research_agent.tool_catalogue import build_snapshot
+from research_agent.skill_tools import SKILL_TOOLS
+from research_agent.tool_catalogue import SEARCH_TOOL, build_snapshot
 
 LIST_SCHEMA = {
     "type": "object",
@@ -167,13 +169,25 @@ async def test_a_streamed_reply_sends_the_same_frames(model, monkeypatch):
 async def test_a_reply_with_three_calls_is_classified(model):
     names = ["search_collections", "append_node"]
     tools = [dict_tool(n, EMPTY_SCHEMA, []) for n in names] + [subagents.make_delegation_tool()]
-    agent = FakeAgent(tools, set(names) | {"run_subagent"}, kind="planner")
+    agent = FakeAgent(tools, set(names) | {"run_subagent", "read_tool"}, kind="planner")
+    # The plan tools and `run_subagent` are deferred, so the thread binds them with
+    # `read_tool` first.
+    thread = [
+        {"role": "human", "content": "Find the lease."},
+        {"role": "ai", "content": "", "tool_calls": [
+            {"id": "r1", "name": "read_tool", "args": {"name": "append_node"}},
+            {"id": "r2", "name": "read_tool", "args": {"name": "run_subagent"}}]},
+        {"role": "tool", "content": '{"tool": "append_node"}', "tool_call_id": "r1",
+         "name": "read_tool"},
+        {"role": "tool", "content": '{"tool": "run_subagent"}', "tool_call_id": "r2",
+         "name": "read_tool"},
+    ]
     model.replies.append(AIMessage(content="", tool_calls=[
         {"id": "a", "name": "search_collections", "args": {"query": "lease"}},
         {"id": "b", "name": "append_node", "args": {}},
         {"id": "d", "name": "run_subagent", "args": {"tasks": [briefing("A")]}},
     ]))
-    entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
+    entries = turn_of(await frames_of(agent, step_request(thread, step_no=2)))["tool_calls"]
     assert [e["kind"] for e in entries] == ["parallel", "ordered", "delegation"]
     assert len(entries[2]["briefings"]) == 1 and entries[2]["page_share"] is None
     assert entries[0]["page_share"] + entries[1]["page_share"] <= SAFE_MODE_BATCH_BYTES
@@ -187,7 +201,8 @@ async def test_run_subagent_with_unreadable_briefings_is_a_parallel_call(model):
         {"id": "d", "name": "run_subagent", "args": {"tasks": "not json"}}]))
     entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
     assert entries[0]["kind"] == "parallel" and entries[0]["briefings"] is None
-    result = await steps.run_tool_call(agent, tool_request("run_subagent", {"tasks": "not json"}))
+    result = await steps.run_tool_call(agent, tool_request(
+        "run_subagent", {"tasks": "not json"}, bound_names=["run_subagent"]))
     assert (result["status"], result["error_class"]) == ("error", "invalid_arguments")
 
 
@@ -367,11 +382,62 @@ async def test_an_unbound_tool_is_refused_with_tool_unavailable():
     assert seen == []
 
 
+def pack_agent(kind, packs, seen):
+    """An agent over one stub tool for each MCP tool of the packs. The snapshot builds the
+    catalogue and skill tools itself."""
+    allowed = allowed_tools(kind, packs)
+    local = {SEARCH_TOOL, *SKILL_TOOLS}
+    tools = [dict_tool(n, EMPTY_SCHEMA, seen) for n in sorted(allowed - local)]
+    return FakeAgent(tools, allowed, kind=kind)
+
+
+def refusal_of(result):
+    assert (result["status"], result["error_class"]) == ("error", "tool_unavailable")
+    data = json.loads(result["content"])
+    assert data["error"] == "tool_unavailable"
+    return data["message"]
+
+
+READY_TEXT = ("The tool {0!r} is not ready. Call read_tool with the name {0!r} first, "
+              "and then call the tool in your next reply.")
+
+
+async def test_a_deferred_plan_tool_of_a_planner_is_refused_with_the_read_tool_text():
+    seen: List[Any] = []
+    agent = pack_agent("planner", "collections,web,plan", seen)
+    message = refusal_of(await steps.run_tool_call(agent, tool_request("append_node")))
+    assert message == READY_TEXT.format("append_node")
+    assert SEARCH_TOOL not in message and seen == []
+
+
+async def test_a_deferred_web_tool_of_a_chat_lead_is_refused_with_the_read_tool_text():
+    seen: List[Any] = []
+    agent = pack_agent("chat", "all", seen)
+    message = refusal_of(await steps.run_tool_call(agent, tool_request("web_search")))
+    assert message == READY_TEXT.format("web_search") and seen == []
+
+
+async def test_a_name_outside_every_pack_names_search_agent_tools_when_the_run_has_it():
+    chat = pack_agent("chat", "all", [])
+    message = refusal_of(await steps.run_tool_call(chat, tool_request("no_such_tool")))
+    assert message == "No tool of this run is named 'no_such_tool'. Find tools with search_agent_tools."
+    planner = pack_agent("planner", "collections,web,plan", [])
+    message = refusal_of(await steps.run_tool_call(planner, tool_request("no_such_tool")))
+    assert message == "No tool of this run is named 'no_such_tool'."
+
+
+def test_the_refusal_texts_of_an_unbound_tool_name_no_skill():
+    for text in (READY_TEXT.format("append_node"), "No tool of this run is named 'x'."):
+        content = json.dumps({"success": False, "message": text})
+        assert stumbles.stumble_skill("append_node", content, "error", {}) is None, text
+
+
 async def test_the_mcp_server_receives_the_idempotency_key_and_the_share():
     seen: List[Any] = []
     agent = FakeAgent([dict_tool("append_node", EMPTY_SCHEMA, seen)], {"append_node"}, kind="planner")
     result = await steps.run_tool_call(
-        agent, tool_request("append_node", idempotency_key="K", page_share=5000))
+        agent, tool_request("append_node", idempotency_key="K", page_share=5000,
+                            bound_names=["append_node"]))
     assert result["status"] == "ok"
     headers = seen[0][2]
     assert headers["x-hoover4-idempotency-key"] == "K"

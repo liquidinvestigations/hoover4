@@ -1,4 +1,5 @@
-"""The catalogue snapshot, the core and deferred split, and `search_agent_tools`."""
+"""The catalogue snapshot, the core and deferred split, the bind step, and
+`search_agent_tools`."""
 
 import json
 
@@ -43,21 +44,21 @@ def snapshot(kind="chat", allowed=EVERY_PACK, tools=None):
 # --------------------------------------------------------------- core and deferred
 
 
-def test_the_core_set_is_the_named_collection_tools_and_every_other_server():
+def test_the_core_set_is_the_always_bound_set_that_the_run_holds():
     snap = snapshot()
     assert set(snap.core_names) == {
         "list_collections", "search_collections", "search_passages", "read_documents",
-        "list_document_entities", "cite_documents", "read_more", "search_agent_tools",
-        "read_todo", "web_search",
+        "cite_documents", "search_agent_tools", "search_skills", "read_skill", "read_tool",
+        "read_todo",
     }
     assert "doc_search_text" in snap.deferred_names
     assert "table_cell" in snap.deferred_names
-    assert {"read_plan", "append_node"} <= set(snap.deferred_names)
+    assert {"read_plan", "append_node", "web_search"} <= set(snap.deferred_names)
 
 
-def test_the_plan_tools_are_core_for_the_planner_and_the_organizer():
-    for kind in ("planner", "organizer"):
-        assert {"read_plan", "append_node"} <= set(snapshot(kind).core_names)
+@pytest.mark.parametrize("kind", ["chat", "subagent", "planner", "organizer"])
+def test_the_plan_tools_are_deferred_for_every_run_kind(kind):
+    assert {"read_plan", "append_node"} <= set(snapshot(kind).deferred_names)
 
 
 def test_a_tool_outside_the_packs_is_not_in_the_snapshot():
@@ -134,7 +135,7 @@ def test_the_bind_step_keeps_the_newest_matches_first_and_at_most_the_match_coun
     newest = ["doc_email", "table_page", "search_collections", "pdf_search"]
     bound = bind_names(snap, earlier, newest)
     assert bound == ("doc_email", "table_page", "pdf_search", "table_cell")
-    many = [n for n in snap.deferred_names][:10]
+    many = [n for n in snap.deferred_names if n not in tool_catalogue.STICKY][:10]
     assert len(bind_names(snap, (), many)) == CATALOGUE_MATCH_COUNT
 
 

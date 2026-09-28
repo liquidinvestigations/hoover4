@@ -1,0 +1,22 @@
+---
+name: after_a_result
+group: stumble
+description: what to do after each call returns: use its result, change the arguments or take the next step, and never send the same call again
+tools:
+---
+{# What to do after a call returns. The workflow refuses a call whose name and arguments
+   equal an earlier call of the run, and the refusal text names this skill. #}
+After each result
+
+A call that has the same tool and the same arguments as an earlier call of this run is not run again. The run refuses it, and after a few such replies it ends and asks for your answer.
+
+After each result, do one of these things.
+
+1. The result holds what you need. Use it, and take the next step of your todo list.
+2. The result is empty or does not help. Change the arguments: other words, another form of a name, another collection, another page, or no filter.
+3. The result is an error. Read the error text, correct the argument that it names, and then send the call.
+4. You have enough to answer. Write the answer.
+
+A result that you received stays in your context. When you need it again, read it there. Do not send the call again to see it.
+
+Keep a short record in your reply of what each search found, for example "search 3, the lease: 4 documents, 2 read". Before a call, check that record. When the call is in it, take another step.

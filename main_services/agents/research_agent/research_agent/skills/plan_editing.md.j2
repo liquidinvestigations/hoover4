@@ -1,0 +1,20 @@
+---
+name: plan_editing
+group: technique
+description: how to change a research plan tree: add, rename, move or remove a section or a task, and approve or continue the plan
+tools: read_plan, append_node, append_child, move_node, edit_node, remove_node
+---
+{# How to change a plan tree with the plan tools. The ids come from `read_plan`, which is the
+   cause of most failed plan calls. The person approves a plan on the page, and no tool does. #}
+Changing a research plan tree
+
+1. Call {{ tool('read_plan') }} first, and again after each change. It gives each node with its id and its number path, such as 2 or 2.1. Give a node by its id or by its number path from the latest read. Never make up an id.
+2. A node with leaf children is a section, and its leaves are its tasks.
+3. To add a top-level node, call {{ tool('append_node') }}. To add a task under a section, call {{ tool('append_child') }} with parent_id.
+4. To rename a node, call {{ tool('edit_node') }}. To move a node and its subtree, call {{ tool('move_node') }} with new_parent_id and position. Position 1 is first, and 0 puts the node last.
+5. To remove a node and its whole subtree, call {{ tool('remove_node') }}. The root cannot be removed or moved.
+6. The text of a node is one line of at most 120 characters. A plan holds at most 150 nodes.
+
+A number path changes when you add, move or remove a node. Read the plan again before the next call that gives a path.
+
+The person approves the plan on the page. After the approval, the plan runs, and the tools cannot change it. A refused call that names an executing plan means that the plan runs already. Do not send that call again.

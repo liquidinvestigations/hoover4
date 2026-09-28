@@ -1,0 +1,17 @@
+---
+name: deep_research
+group: technique
+description: how to start in-depth research with a plan and helpers, and when a question needs it
+tools:
+---
+{# When a question needs in-depth research, and the two ways to get it. The sentence on
+   delegation renders only when the run has `run_subagent`. #}
+In-depth research
+
+A question needs in-depth research when it has two or more parts that do not depend on each other, when it asks about many people, documents or years, or when the user asks for a full report. A lookup of one known document does not need it.
+
+The user starts in-depth research with the Deep Research option of the chat. A planner then writes a plan of sections and tasks, the user approves it, and a researcher runs each section. When a question needs that depth, tell the user to send it again with Deep Research on.
+{% if has('run_subagent') %}
+
+Inside one turn, you can send independent parts of the question to helpers with {{ tool('run_subagent') }}. Give 2 to 5 tasks in one call. Each task has an objective, the one question that it answers, known, what you found already, and bring_back, what its report must hold. The helpers start with no memory and do not see each other. Do the work yourself when the question is one thread, because a helper costs more than your own search.
+{% endif %}

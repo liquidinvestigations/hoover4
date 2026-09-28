@@ -134,6 +134,12 @@ def test_the_second_nag_says_the_list_is_still_open():
     assert "mark_todo" in message and "write_todo" not in message
 
 
+@pytest.mark.parametrize("nag_number", [1, 2])
+def test_every_nag_ends_with_the_skill_of_the_marks(nag_number):
+    message = nagging.nag_message(_todo("g", _item("1", "read them")), nag_number)
+    assert message.endswith("The skill `todo_upkeep` tells how to mark the items.")
+
+
 def test_open_items_are_the_unresolved_ones_in_plan_order():
     todo = _todo(
         "g",

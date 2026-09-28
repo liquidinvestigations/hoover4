@@ -144,7 +144,21 @@ and one more when the todo server refuses it. A `plan` step has one attempt of
 `plan_request_timeout_seconds` (60 s). The workflow continues as new every 250 model steps, or past 30,000 history events. A planner
 that answers with no plan section gets one more round with a note, and then fails.
 
-**Each attempt of a model step, a tool step and a title call writes one row of
+**The run-start reads** (`P_agent/preload.py`). A run that starts a thread runs one
+`preload_reads` activity on `chat-queue` after the planning call and before its first model
+step: no model step yet, a thread that holds only its opening message, and a row that
+continues no other run. The activity sends `POST /preload` to the agent service and writes
+the reads as one synthetic `ai` message with a `tool` result for each read. The first turn
+of a chat also classifies the request (`classify` `all`), and then marks the open todo item
+"Read relevant tools and skills" done through `POST /tool_call`, as a second synthetic
+message. A planner classifies the request type only. A chat turn after the first sends the
+skills that the earlier turns read, and the agent leaves them out. Every thread row goes in
+one insert (`agent_runs.write_messages`), after the late-write guard. A synthetic `ai`
+message has empty text, and `synthetic` true and `step_no` 0 in its usage. The activity has
+one attempt of 30 s: 20 s for `POST /preload` and 10 s for the mark. A failure writes its
+`agent_step_events` row with step `preload`, and the turn goes on without the reads.
+
+**Each attempt of a model step, a tool step, a preload and a title call writes one row of
 `agent_step_events`** (`database/agent_step_events.py`). The row holds the queue wait, the
 duration, the status, the error class and the tokens. The step activities write it from a `finally`
 block through the buffer of `task_timing.py`. A step that returns a stored result writes no

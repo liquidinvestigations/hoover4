@@ -1,0 +1,29 @@
+---
+name: passages
+group: technique
+description: how to find the exact passages or pages that answer a question with search_passages, inside many documents or one
+tools: search_passages, doc_search_text, pdf_search
+---
+{# How to find the passages and the pages that answer a question, in many documents or in
+   one. Each sentence that names a tool renders only when the run has it. #}
+Finding passages and pages
+
+{% if has('search_passages') %}
+To search many documents, use {{ tool('search_passages') }}. It searches the text passages by keywords and by meaning together. Use it for a question in plain words, when the words that the documents use are not clear. Give up to 8 queries in one call, each a different form of the question. Each hit names the queries that found it. For an exact name, an address or a phrase, use {{ tool('search_collections') }}.
+
+{% endif %}
+{% if has('doc_search_text') or has('pdf_search') %}
+To search one long document, use these tools.
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} lists the hits of a query in one text source, in page order, with the page of each hit.
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} finds a query on the pages of a PDF source. Give page_from and page_to to search a range of pages.
+{% endif %}
+
+{% endif %}
+{% if has('read_documents') %}
+Then read the page of the best hit with {{ tool('read_documents') }}. Give its page, or give the query and no page, and the read opens the page with the most hits.
+{% endif %}
+
+Quote the passage that answers the question, and give its document and page.

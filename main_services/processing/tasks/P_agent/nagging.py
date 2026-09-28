@@ -89,7 +89,8 @@ def nag_message(todo: dict, nag_number: int) -> str:
     status is enough. The reply after the marks does not replace the answer
     (`tasks.P_agent.steps.keeps_answer`).
 
-    The second nag of a streak says that the list is still open.
+    The second nag of a streak says that the list is still open. Each nag ends with
+    `TODO_SKILL_SENTENCE`, which names the skill that teaches the marks.
     """
     lines = "\n".join(f"- {item['id']}. {item['text']}" for item in open_items(todo))
     head = ("Your todo list is still not finished" if nag_number > 1
@@ -100,8 +101,14 @@ def nag_message(todo: dict, nag_number: int) -> str:
         "Call `mark_todo` now. Give status `done` to each item that your answer "
         "completes. Give status `cancelled` and a note with the reason to each item that "
         "it does not complete. Do not write the answer again, and do not start new work. "
-        "After the marks, stop with no text."
+        "After the marks, stop with no text. "
+        f"{TODO_SKILL_SENTENCE}"
     )
+
+
+#: The last sentence of every nag. A chat lead always has `read_skill`, and the nag runs
+#: only for a chat lead.
+TODO_SKILL_SENTENCE = "The skill `todo_upkeep` tells how to mark the items."
 
 
 #: The note of the citation round. A chat answer that names a document in a turn with no

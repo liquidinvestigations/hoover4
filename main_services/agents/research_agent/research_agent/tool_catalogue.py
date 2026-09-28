@@ -1,8 +1,9 @@
 """The tool catalogue of one step context, and the `search_agent_tools` tool.
 
-A model step binds a small core set of tools on every model call. The other tools of the
-run's packs are deferred: the model finds them with `search_agent_tools`, and the matches
-are bound for the next model call.
+A model step binds the tools of `ALWAYS_BOUND` on every model call, the same set for every
+run kind. The other tools of the run's packs are deferred. The model binds one for the next
+model call in two ways: a match of `search_agent_tools`, or a successful `read_tool` call.
+A plan tool or `run_subagent` that the model bound stays bound for the rest of the run.
 
 `CatalogueSnapshot` is built once for each step context from the tools that context loaded.
 It holds only the tools of the run's packs, so the model cannot bind, run or find a tool
@@ -17,29 +18,39 @@ import hashlib
 import json
 import logging
 import os
-import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from agent_common.tool_packs import PACKS, pack_of
+from research_agent import skill_tools
+from research_agent.skill_store import (
+    DEFAULT_PROFILE,
+    RUN_KIND_PROFILES,
+    SkillContext,
+    rank_matches,
+)
 
 log = logging.getLogger(__name__)
 
 SEARCH_TOOL = "search_agent_tools"
 DELEGATION_TOOL = "run_subagent"
 
-#: The collection tools that every model call binds. The other collection tools are
-#: deferred.
-CORE_COLLECTION_TOOLS = frozenset({
-    "list_collections", "search_collections", "search_passages", "read_documents",
-    "list_document_entities", "cite_documents", "read_more",
+#: The tools that every model call binds, for every run kind. A name that the run's packs
+#: do not hold is not in the snapshot, so it is not bound.
+ALWAYS_BOUND = frozenset({
+    "search_agent_tools", "search_skills", "read_skill", "read_tool",
+    "read_todo", "write_todo", "edit_todo", "mark_todo",
+    "list_collections", "search_collections", "search_passages",
+    "read_documents", "cite_documents",
 })
 
-#: The run kinds that bind the plan tools on every call. For other kinds they are deferred.
-PLAN_KINDS = frozenset({"planner", "organizer"})
+#: The deferred tools that stay bound for the rest of the run once the model binds them. They
+#: do not count against `CATALOGUE_MATCH_COUNT`, so a planner that binds its plan tools and
+#: then a research tool keeps every plan tool.
+STICKY = PACKS["plan"] | {DELEGATION_TOOL}
 
 #: The text of a search that matched nothing.
 NO_MATCH_TEXT = "No available tool matches this request."
@@ -66,17 +77,7 @@ def _match_count() -> int:
 #: How many names one search returns, and how many deferred names one run keeps bound.
 CATALOGUE_MATCH_COUNT = _match_count()
 
-_STOP_WORDS = frozenset({
-    "a", "an", "and", "the", "of", "to", "in", "on", "for", "by", "with", "or", "is",
-    "are", "it", "its", "this", "that", "from", "at", "as", "be", "i", "me", "my", "all",
-    "one", "tool", "tools",
-})
-
 _CATEGORY_PREFIXES = ("search", "doc", "pdf", "table", "folder")
-
-
-def _words(text: str) -> List[str]:
-    return [w for w in re.split(r"[^a-z0-9]+", (text or "").lower()) if w]
 
 
 def _summary_of(tool: Any) -> str:
@@ -108,6 +109,7 @@ class CatalogueSnapshot:
     summaries: Mapping[str, str]
     categories: Mapping[str, str]
     refused_names: Tuple[str, ...] = field(default=())
+    skill_context: Optional[SkillContext] = None
 
     def callable_names(self, bound_names: Iterable[str] = ()) -> Tuple[str, ...]:
         """Return the core names and then the bound names that this snapshot holds."""
@@ -129,52 +131,39 @@ class CatalogueSnapshot:
         A tool that matches in none of these ways is left out.
         """
         limit = CATALOGUE_MATCH_COUNT if limit is None else limit
-        text = (query or "").strip().lower()
-        joined = "_".join(_words(text))
-        query_words = [w for w in _words(text) if w not in _STOP_WORDS]
-        phrase = " ".join(_words(text))
-        ranked = []
-        for name in self.tools_by_name:
-            if name == SEARCH_TOOL:
-                continue
-            summary = self.summaries.get(name, "")
-            summary_words = _words(summary)
-            name_words = _words(name)
-            if joined and name == joined:
-                rank = 0
-            elif phrase and re.search(rf"\b{re.escape(phrase)}\b", " ".join(summary_words)):
-                rank = 1
-            elif joined and name.startswith(joined):
-                rank = 2
-            else:
-                rank = 3
-            overlap = len(set(query_words) & (set(name_words) | set(summary_words)))
-            if rank == 3 and overlap == 0:
-                continue
-            ranked.append(((rank, -overlap, name), name))
-        ranked.sort()
+        items = [
+            (name, self.summaries.get(name, ""))
+            for name in self.tools_by_name if name != SEARCH_TOOL
+        ]
         return [
             {"name": name, "summary": self.summaries.get(name, ""),
              "category": self.categories.get(name, "")}
-            for _, name in ranked[:limit]
+            for name in rank_matches(query, items)[:limit]
         ]
 
 
 def _is_core(name: str, kind: str) -> bool:
-    pack = pack_of(name)
-    if pack == "collections":
-        return name in CORE_COLLECTION_TOOLS
-    if pack == "plan":
-        return kind in PLAN_KINDS
-    return True
+    """Whether every model call binds a tool. `kind` is not read, because the set is the same
+    for every run kind."""
+    return name in ALWAYS_BOUND
 
 
-def build_snapshot(tools: Sequence[Any], allowed: Iterable[str], kind: str) -> CatalogueSnapshot:
+def build_snapshot(
+    tools: Sequence[Any],
+    allowed: Iterable[str],
+    kind: str,
+    skill_context: Optional[SkillContext] = None,
+) -> CatalogueSnapshot:
     """Build the snapshot of one graph from the tools it loaded.
 
     `allowed` is the tool names of the run's packs. A tool outside them is left out, and
     its name is logged once. When `search_agent_tools` is allowed, the snapshot gets its own
-    search tool, which searches this snapshot and no other.
+    search tool, which searches this snapshot and no other. The skill tools that `allowed`
+    holds are built the same way, over this snapshot and its skill context.
+
+    `skill_context` gives the profile and `collections_hint` of the run. The snapshot keeps a
+    copy whose `tool_names` are the snapshot's tools. With no context, the profile is the one
+    of the run kind.
     """
     allowed = frozenset(allowed)
     kept: Dict[str, Any] = {}
@@ -194,6 +183,11 @@ def build_snapshot(tools: Sequence[Any], allowed: Iterable[str], kind: str) -> C
     holder: Dict[str, CatalogueSnapshot] = {}
     if SEARCH_TOOL in allowed:
         kept[SEARCH_TOOL] = make_search_tool(lambda: holder["snapshot"])
+    for tool in skill_tools.make_skill_tools(
+        lambda: holder["snapshot"], lambda: holder["snapshot"].skill_context
+    ):
+        if tool.name in allowed:
+            kept[tool.name] = tool
 
     names = sorted(kept)
     digest = hashlib.sha256(
@@ -203,6 +197,11 @@ def build_snapshot(tools: Sequence[Any], allowed: Iterable[str], kind: str) -> C
     ).hexdigest()
     core = tuple(n for n in names if _is_core(n, kind))
     deferred = tuple(n for n in names if not _is_core(n, kind))
+    if skill_context is None:
+        skill_context = SkillContext(
+            profile=RUN_KIND_PROFILES.get(kind, DEFAULT_PROFILE), tool_names=frozenset()
+        )
+    skill_context = replace(skill_context, tool_names=frozenset(names))
     snapshot = CatalogueSnapshot(
         version=digest,
         tools_by_name=dict(kept),
@@ -211,6 +210,7 @@ def build_snapshot(tools: Sequence[Any], allowed: Iterable[str], kind: str) -> C
         summaries={n: _summary_of(kept[n]) for n in names},
         categories={n: _category_of(n) for n in names},
         refused_names=tuple(sorted(set(refused))),
+        skill_context=skill_context,
     )
     holder["snapshot"] = snapshot
     return snapshot
@@ -289,15 +289,17 @@ def bind_names(
     earlier: Sequence[str],
     newest_batch: Sequence[str],
 ) -> Tuple[str, ...]:
-    """The bind step. Put the newest batch's matches first, then the earlier bound names.
-    Remove duplicates, core names and names the snapshot does not hold. Keep the first
-    `CATALOGUE_MATCH_COUNT`."""
+    """The bind step. Put the newest batch's names first, then the earlier bound names.
+    Remove duplicates, core names and names the snapshot does not hold. Keep every name of
+    `STICKY`, and the first `CATALOGUE_MATCH_COUNT` of the other names."""
     out: List[str] = []
+    sticky: List[str] = []
     for name in list(newest_batch) + list(earlier or ()):
-        if name in out or name in snapshot.core_names or name not in snapshot.tools_by_name:
+        if (name in out or name in sticky or name in snapshot.core_names
+                or name not in snapshot.tools_by_name):
             continue
-        out.append(name)
-    return tuple(out[:CATALOGUE_MATCH_COUNT])
+        (sticky if name in STICKY else out).append(name)
+    return tuple(sticky + out[:CATALOGUE_MATCH_COUNT])
 
 
 def bound_names_from_thread(snapshot: CatalogueSnapshot, messages: Sequence[Any]) -> Tuple[str, ...]:
@@ -305,8 +307,9 @@ def bound_names_from_thread(snapshot: CatalogueSnapshot, messages: Sequence[Any]
 
     `messages` are `RunMessage` rows in thread order. For each `ai` message with calls, the
     `tool` messages that follow it are its batch. The names that the successful
-    `search_agent_tools` results of the batch matched are bound first, before the earlier
-    names. The function is pure, so each step of a run derives the same names from the
+    `search_agent_tools` results of the batch matched, and then the names of its successful
+    `read_tool` results in call order, are bound first, before the earlier names. The
+    function is pure, so each step of a run derives the same names from the
     same thread, and a retried step keeps the names that earlier searches bound.
     """
     bound: Tuple[str, ...] = ()
@@ -315,21 +318,25 @@ def bound_names_from_thread(snapshot: CatalogueSnapshot, messages: Sequence[Any]
             continue
         ids = {call.id for call in message.tool_calls}
         newest: List[str] = []
+        read: List[str] = []
         for answer in messages[i + 1:]:
             if getattr(answer, "role", None) != "tool":
                 break
-            if (
-                answer.tool_call_id in ids
-                and answer.name == SEARCH_TOOL
-                and getattr(answer, "status", None) != "error"
-            ):
+            if answer.tool_call_id not in ids or getattr(answer, "status", None) == "error":
+                continue
+            if answer.name == SEARCH_TOOL:
                 newest.extend(matched_names(answer.content))
-        bound = bind_names(snapshot, bound, newest)
+            elif answer.name == skill_tools.READ_TOOL:
+                name = skill_tools.read_tool_name(answer.content)
+                if name:
+                    read.append(name)
+        bound = bind_names(snapshot, bound, newest + read)
     return bound
 
 
 __all__ = [
-    "CATALOGUE_MATCH_COUNT", "CatalogueSnapshot", "NO_MATCH_TEXT", "PACKS", "SEARCH_TOOL",
+    "ALWAYS_BOUND", "CATALOGUE_MATCH_COUNT", "CatalogueSnapshot", "NO_MATCH_TEXT", "PACKS",
+    "SEARCH_TOOL", "STICKY",
     "bind_names", "bound_names_from_thread", "build_snapshot", "make_search_tool",
     "matched_names", "search_result", "tool_schema",
 ]

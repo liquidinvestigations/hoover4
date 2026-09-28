@@ -1,0 +1,66 @@
+{
+ "browser_use": {
+  "group": "technique",
+  "description": "how to drive a web browser: open an address, read the page snapshot, then click, type or choose by the element reference"
+ },
+ "web_research": {
+  "group": "technique",
+  "description": "how to search the open web, read a web page or the owner record of a domain, and name the web sources in the answer"
+ },
+ "spreadsheets": {
+  "group": "technique",
+  "description": "how to read a spreadsheet file with the table tools: its sheets, columns, rows and single cells"
+ },
+ "emails": {
+  "group": "technique",
+  "description": "how to read e-mail documents: sender, recipients, date, subject, headers, copies and threads"
+ },
+ "folders_and_files": {
+  "group": "technique",
+  "description": "how to see what a collection holds: datasets, folders, file types, counts and dates, and how to find a file by its name or path"
+ },
+ "passages": {
+  "group": "technique",
+  "description": "how to find the exact passages or pages that answer a question with search_passages, inside many documents or one"
+ },
+ "entities": {
+  "group": "technique",
+  "description": "how to list the people, organisations, places, e-mail addresses and amounts that documents name"
+ },
+ "plan_editing": {
+  "group": "technique",
+  "description": "how to change a research plan tree: add, rename, move or remove a section or a task, and approve or continue the plan"
+ },
+ "deep_research": {
+  "group": "technique",
+  "description": "how to start in-depth research with a plan and helpers, and when a question needs it"
+ },
+ "after_a_result": {
+  "group": "stumble",
+  "description": "what to do after each call returns: use its result, change the arguments or take the next step, and never send the same call again"
+ },
+ "todo_upkeep": {
+  "group": "stumble",
+  "description": "how to change a todo list that exists: plain item ids, one status for each item, and each item done or cancelled before the answer"
+ },
+ "document_ids": {
+  "group": "stumble",
+  "description": "how to name a document in a call: the 64-character file_hash from a search result, never a file name or a path"
+ },
+ "call_arguments": {
+  "group": "stumble",
+  "description": "how to fill in the arguments of a tool call: only the names its schema gives, a list where it asks for a list, and no extra quotes"
+ },
+ "collection_names": {
+  "group": "stumble",
+  "description": "how to name a collection or a dataset in a call: the exact name that list_collections returns"
+ },
+ "no_results": {
+  "group": "stumble",
+  "description": "what to do when a search finds nothing: remove filters, split a phrase, try other forms of a name, then say what is missing"
+ },
+ "reviewing_a_report": {
+  "group": "stumble",
+  "description": "how to review, grade or check a report given in the brief: search for the facts of each claim, never for the report title"
+ }
+}

@@ -5,10 +5,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from agent_common import tool_packs
-from research_agent import steps
+from research_agent import preload, steps
 from research_agent.agent import build_agent
 from research_agent.prompts import active_profile, system_prompt_override
 from research_agent.run_messages import to_langchain
+from research_agent.preload import PreloadRequest
 from research_agent.steps import ModelStepRequest, ToolCallRequest
 
 
@@ -44,12 +45,11 @@ async def lifespan(app: FastAPI):
         "mcp_servers": os.getenv("MCP_SERVERS", "").split(",") if os.getenv("MCP_SERVERS") else [],
         "agent_name": os.getenv("AGENT_NAME", "Research Agent"),
         # `SYSTEM_PROMPT` only, and empty when it is not set. The prompt itself is
-        # rendered for each model call from the tools that call binds, which is not known
-        # until the MCP connections are open. See research_agent/prompts/ for why a prompt is
-        # a function of the deployment rather than a constant.
+        # rendered once for each step context from the run's tools and skills, which are not
+        # known until the MCP connections are open. See research_agent/prompts/.
         "system_prompt": system_prompt_override(),
-        # The profile by name, separately from its prompt. It selects the prompt
-        # template. The tool packs decide which tools are bound.
+        # The profile by name, separately from its prompt. It selects the role line and the
+        # role skill. The tool packs decide which tools are bound.
         "profile": active_profile(),
         "llm_model": os.getenv("LLM_MODEL")
     }
@@ -164,6 +164,18 @@ async def tool_call(request: ToolCallRequest) -> Dict[str, Any]:
     return await steps.run_tool_call(_agent(), request)
 
 
+@app.post("/preload")
+async def preload_reads(request: PreloadRequest) -> Dict[str, Any]:
+    """Return the reads of a run that starts a thread, and the answers of the classifier.
+
+    The reads are the run's always-read skills, then the picked technique and stumble
+    skills, then one `read_tool` for each picked tool. A failed classifier request gives
+    no picks, and the route still answers. The ids of the reads are empty, and the worker
+    sets them.
+    """
+    return await preload.run_preload(_agent(), request)
+
+
 def _require_langfuse(agent):
     """Return the Langfuse client, or 503 if tracing/feedback is not configured."""
     handler = getattr(agent, "langfuse_handler", None)
@@ -275,6 +287,7 @@ async def root():
             "health": "/health",
             "model_step": "/model_step",
             "tool_call": "/tool_call",
+            "preload": "/preload",
             "feedback_message": "/feedback/message",
             "feedback_session": "/feedback/session",
             "feedback_delete": "/feedback/{score_id}"

@@ -11,13 +11,15 @@ call compacted its input, `model_turn` carries `compaction`, the record that the
 as a `compaction` row of the run thread (`run_messages.apply_compactions`).
 
 Mode `plan` is the first-turn planning call. Its system text is `prompts/planning_call.md.j2`,
-it binds `write_todo` only, thinking is off, and a call to any other name is dropped. A failed
+it binds `write_todo` only, thinking is off, and a call to any other name is dropped. The
+service puts `PRELOAD_ITEM` first in the steps of the call before it classifies it. A failed
 call sends one `error` frame in place of `model_turn` and `end`. While no frame is ready,
 the stream sends the SSE comment line `KEEPALIVE_LINE` every `KEEPALIVE_SECONDS`.
 
 `/tool_call` runs one call and returns its result as JSON. It refuses a name that the
 thread did not bind, a `run_subagent` call, arguments that do not match the tool's schema,
-and every call of a reply whose budget is exhausted.
+and every call of a reply whose budget is exhausted. A failed result that shows a known
+stumble ends with a sentence that names the skill of the fix (`stumbles.py`).
 """
 
 from __future__ import annotations
@@ -27,14 +29,14 @@ import hashlib
 import json
 import logging
 import os
-from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Sequence, Tuple
+from typing import Any, AsyncIterator, Dict, FrozenSet, List, Literal, Optional, Sequence, Tuple
 
 import httpx
 import openai
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field, model_validator
 
-from research_agent import compaction, llm_events, prompts
+from research_agent import compaction, llm_events, prompts, skill_store, stumbles
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.execution import (
     DELEGATION_TOOL, ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
@@ -46,6 +48,7 @@ from research_agent.run_messages import (
 from research_agent.subagents import briefings_of
 from research_agent import thinking
 from research_agent.tool_args import decode_string_arguments, rename_aliases, repair_arguments
+from research_agent.skill_tools import READ_TOOL, read_tool_name
 from research_agent.tool_catalogue import SEARCH_TOOL, bound_names_from_thread, matched_names, tool_schema
 
 log = logging.getLogger(__name__)
@@ -265,6 +268,29 @@ async def run_model_step(agent: Any, request: ModelStepRequest) -> AsyncIterator
 
 PLAN_TOOL = "write_todo"
 
+#: The first item of every list that the planning call writes. The run reads its skills
+#: and tools for this item before its first model step, and the worker marks it done.
+PRELOAD_ITEM = "Read relevant tools and skills"
+#: The most items of a todo list. Mirrors `MAX_ITEMS` of `database/chat_todos.py` in the
+#: processing tree. The two images share no module, so the two values change together.
+TODO_MAX_ITEMS = 40
+
+
+def with_preload_item(args: Dict[str, Any], schema: Optional[dict]) -> Dict[str, Any]:
+    """The `write_todo` arguments of the planning call with `PRELOAD_ITEM` as step 1.
+
+    Steps sent as a JSON string are decoded first. A step equal to the item, whatever its
+    case, is dropped, so the item is there once. The model's last steps are dropped when
+    the list would pass `TODO_MAX_ITEMS`. Arguments with no list of steps stay as they are,
+    and the todo server refuses them.
+    """
+    args = decode_string_arguments(dict(args or {}), schema)
+    steps = args.get("steps")
+    if isinstance(steps, list):
+        rest = [s for s in steps if str(s).strip().lower() != PRELOAD_ITEM.lower()]
+        args["steps"] = [PRELOAD_ITEM] + rest[:TODO_MAX_ITEMS - 1]
+    return args
+
 
 def build_model_input(
     earlier: Sequence[RunMessage], messages: Sequence[RunMessage], model_id: str,
@@ -383,6 +409,12 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
         for c in (getattr(message, "tool_calls", None) or [])
         if not plan or c.get("name") == PLAN_TOOL
     ]
+    if plan:
+        # Before the calls are classified, so the stored call, its digest, the todo
+        # server and the page hold the same list.
+        plan_schema = tool_schema(snapshot.tools_by_name[PLAN_TOOL])
+        for call in calls:
+            call["args"] = with_preload_item(call["args"], plan_schema)
     budget_messages = history + [message]
     entries = await asyncio.to_thread(
         classify_calls, snapshot, names, calls, request.step_no, thread, budget_messages
@@ -495,9 +527,50 @@ def _tool_response(request: ToolCallRequest, content: str, status: str = "ok",
     }
 
 
+def _listed_skill_names(context: Any) -> FrozenSet[str]:
+    """The names of the skills that the run lists, for the skill line of an error."""
+    ctx = getattr(context, "skill_context", None) \
+        or getattr(getattr(context, "snapshot", None), "skill_context", None)
+    if ctx is None:
+        return frozenset()
+    return frozenset(skill.name for skill in skill_store.listed_skills(ctx))
+
+
 async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
-    """Run one tool call and return its result."""
+    """Run one tool call and return its result. A failed result that shows a known stumble
+    ends with the sentence that names its skill (`stumbles.with_skill_line`)."""
     context = await _context(agent, request)
+    response = await _run_tool_call(context, request)
+    return stumbles.with_skill_line(response, dict(request.call.args or {}),
+                                    _listed_skill_names(context))
+
+
+def _ready_now_when_bound(content: str, bound_names: Sequence[str]) -> Tuple[str, bool]:
+    """A `read_tool` result of a tool that the step bound already says `ready` "now".
+    Returns the content and whether the tool was bound already."""
+    name = read_tool_name(content)
+    if not name or name not in bound_names:
+        return content, False
+    data = json.loads(content)
+    data["ready"] = "now"
+    return json.dumps(data), True
+
+
+def _unbound_tool_message(name: str, snapshot: Any) -> str:
+    """The refusal text of a call to a tool that the step did not bind. A tool of the
+    snapshot is deferred, so the text names `read_tool` when the run has it. Any other name
+    gets the text of the `read_tool` refusal (`skill_tools.read_tool_result`)."""
+    tools = snapshot.tools_by_name
+    if name in tools and READ_TOOL in tools:
+        return (f"The tool {name!r} is not ready. Call {READ_TOOL} with the name {name!r} "
+                f"first, and then call the tool in your next reply.")
+    message = f"No tool of this run is named {name!r}."
+    if SEARCH_TOOL in tools:
+        message += f" Find tools with {SEARCH_TOOL}."
+    return message
+
+
+async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, Any]:
     snapshot = context.snapshot
     name = request.call.name
     allowed = snapshot.callable_names(request.bound_names)
@@ -513,10 +586,7 @@ async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
         ), "error", "invalid_arguments")
     if name not in allowed:
         return _tool_response(request, _error(
-            "tool_unavailable",
-            f"The tool {name!r} is not available in this run. Call only the tools "
-            f"you were given, or find more with {SEARCH_TOOL}.",
-            tool=name,
+            "tool_unavailable", _unbound_tool_message(name, snapshot), tool=name,
         ), "error", "tool_unavailable")
 
     tool = snapshot.tools_by_name[name]
@@ -556,7 +626,13 @@ async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
             status = "error"
     else:
         content = _text_of(result)
-    matched = matched_names(content) if name == SEARCH_TOOL and status == "ok" else []
+    matched: List[str] = []
+    if status == "ok" and name == SEARCH_TOOL:
+        matched = matched_names(content)
+    elif status == "ok" and name == READ_TOOL:
+        content, bound_already = _ready_now_when_bound(content, request.bound_names)
+        if not bound_already:
+            matched = [n for n in [read_tool_name(content)] if n]
     return _tool_response(
         request, content, status, "tool_error" if status == "error" else "",
         _with_repairs(measure, repairs), matched
@@ -577,8 +653,8 @@ def _with_repairs(measure: Optional[Dict[str, Any]], repairs: List[str]) -> Opti
 
 __all__ = [
     "BROWSER_ACTIONS", "CallEntry", "KEEPALIVE_LINE", "KEEPALIVE_SECONDS", "ModelStepRequest",
-    "PLAN_TOOL", "StepRun", "ToolCallRequest", "args_digest", "build_model_input", "call_ids",
-    "classify_calls", "compaction_record",
+    "PLAN_TOOL", "PRELOAD_ITEM", "StepRun", "TODO_MAX_ITEMS", "ToolCallRequest", "args_digest",
+    "build_model_input", "call_ids", "classify_calls", "compaction_record",
     "classify_error", "llm_streaming_enabled", "run_model_step", "run_tool_call",
-    "stream_frames", "thinking_body",
+    "stream_frames", "thinking_body", "with_preload_item",
 ]

@@ -1,0 +1,42 @@
+---
+name: citation
+group: general
+description: how to cite the documents an answer relies on with cite_documents
+tools: cite_documents
+---
+{# The citation protocol of every run that has `cite_documents`.
+
+   `citation_artefact` names what the model writes, for example an answer or a report.
+   `citation_resolver` says who turns a handle back into a document. A worker runs on the
+   lead's chat session, so its handles are the lead's handles, and its text names the lead.
+#}
+{% if has('cite_documents') %}
+The person sees a document only when you cite it. Call {{ tool('cite_documents') }} before you write your {{ citation_artefact }}.
+Give it each {% if web_enabled %}internal {% endif %}document that your {{ citation_artefact }} names, quotes or relies on.
+Then write the {{ citation_artefact }} with the handles that the call returned.
+Do not name a document, a file hash or a file path in the {{ citation_artefact }} without its handle.
+One call takes at most 12 citations. Cite what you used, not everything a search returned.
+When a search or a read returned documents that your {{ citation_artefact }} uses, cite them before you write it.
+
+For each citation give:
+- collectionname and file_hash, copied from a tool result. Never make up a file_hash.
+- quote: one sentence copied exactly from the document text you read.
+- find: optional. The shortest exact phrase of the quote that the person must see. The card
+  opens the document at this phrase.
+- why: one line that says what the document supports.
+
+Write the handle that you get back, for example `[D1]`, in your {{ citation_artefact }} where you make the claim.
+
+Example. {{ tool('read_documents') if has('read_documents') else 'A tool' }} returned the email "Re: DRAFT talking points" in the collection enron.
+Its text says "Your notes look great. Best of luck today with the Hearings." Your {{ citation_artefact }} says
+that Jim Steffes approved the draft. Call {{ tool('cite_documents') }} with collectionname enron, the
+file_hash from the result, the quote "Your notes look great. Best of luck today with the
+Hearings.", find "Your notes look great", and why "Steffes approves the draft of 27 December".
+Then write "Steffes approved the draft [D1]."
+{% if web_enabled %}
+Web sources keep their URLs. The handles are for the user's own documents.
+{% endif %}
+{% if citation_resolver == "lead" %}
+The lead researcher resolves them, so a handle you never allocated is no use to anyone.
+{% endif %}
+{% endif %}

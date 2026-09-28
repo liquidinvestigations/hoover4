@@ -54,6 +54,9 @@ services:
       - AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
+      # The classifier of the run-start reads, rendered by deploy.py for the selfhosted
+      # provider only. Empty sends no classifier request.
+      - LLM_CLASSIFIER_URL=${LLM_CLASSIFIER_URL:-}
       - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
       - AGENT_PROFILE=internal_search
       # The tool packs of each kind of agent run, rendered by deploy.py from
@@ -157,6 +160,9 @@ services:
       - AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
+      # The classifier of the run-start reads, rendered by deploy.py for the selfhosted
+      # provider only. Empty sends no classifier request.
+      - LLM_CLASSIFIER_URL=${LLM_CLASSIFIER_URL:-}
       - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
       # The tool packs below decide which agents bind `run_subagent`, and by default
       # this agent and the internal search agent both do. A `run_subagent` call ends the

@@ -42,10 +42,16 @@ def test_every_run_kind_gets_every_pack_by_default():
         assert packs_for(kind, "") == frozenset(PACKS)
 
 
-def test_a_narrowed_setting_gives_only_its_packs():
+def test_a_narrowed_setting_gives_only_its_packs_and_the_skill_tools():
     assert allowed_tools("subagent", "collections,catalogue") == (
-        PACKS["collections"] | PACKS["catalogue"]
+        PACKS["collections"] | PACKS["catalogue"] | PACKS["skills"]
     )
+
+
+def test_every_run_kind_gets_the_skills_pack():
+    assert "skills" in packs_for("planner", "collections,web,plan")
+    for kind in RUN_KINDS:
+        assert "skills" in packs_for(kind, "collections")
 
 
 def test_an_unknown_pack_or_kind_raises():

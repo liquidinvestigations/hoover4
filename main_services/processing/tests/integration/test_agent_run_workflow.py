@@ -2,8 +2,9 @@
 
 Each test runs one `Worker` for each queue of the loop, on task queues of its own, with the
 real workflow and the real activities. The agent service and the browser server are
-replaced by one local HTTP stub. It answers `/model_step` from a script of replies and
-`/tool_call` from a script of tool results, so the rows each case writes are known. Every
+replaced by one local HTTP stub. It answers `/model_step` from a script of replies,
+`/tool_call` from a script of tool results, and `/preload` from a function, so the rows each
+case writes are known. Every
 case uses a username of its own and deletes its rows at the end.
 
 The worker runs the workflow unsandboxed, so the test can point the module's queue names
@@ -31,7 +32,7 @@ from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
 from database import agent_plans, agent_runs, chat_todos
 from database.clickhouse import get_global_client
-from tasks.P_agent import activities, plan_runs, steps, stream_writer, workflows
+from tasks.P_agent import activities, plan_runs, preload, steps, stream_writer, workflows
 from tasks.run_worker import STEP_HEARTBEAT_THROTTLE, WORKFLOW_FAILURE_EXCEPTION_TYPES
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(240)]
@@ -93,14 +94,21 @@ def _ok_tool(request, n):
                  "measure": {"sha256": f"digest-{call['id'][-6:]}"}, "error_class": ""}
 
 
+def _no_reads(request, n):
+    return 200, {"request_classes": [], "class_scores": {}, "picks": {}, "reads": [],
+                 "todo_item_text": "", "classifier": {"state": "off", "error": "", "ms": 0}}
+
+
 class _Stub:
     """The agent service and the browser server, as one scripted HTTP server."""
 
-    def __init__(self, script, tool=None):
+    def __init__(self, script, tool=None, preload=None):
         self.script = script
         self.tool = tool or _ok_tool
+        self.preload = preload or _no_reads
         self.requests: list[dict] = []
         self.tool_requests: list[dict] = []
+        self.preload_requests: list[dict] = []
         #: Each tool request as `(name, args, started, ended)`.
         self.tool_log: list[tuple] = []
         self.released: list[str] = []
@@ -120,6 +128,16 @@ class _Stub:
                     self._send(200, {})
                     return
                 request = json.loads(body)
+                if self.path == "/preload":
+                    with stub.lock:
+                        stub.preload_requests.append(request)
+                        n = len(stub.preload_requests)
+                    status, answer = stub.preload(request, n)
+                    try:
+                        self._send(status, answer)
+                    except OSError:
+                        pass
+                    return
                 if self.path == "/tool_call":
                     with stub.lock:
                         stub.tool_requests.append(request)
@@ -213,15 +231,18 @@ class _Case:
 
 
 async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
-                    model_worker=True, plan=False):
+                    model_worker=True, plan=False, preload_reads=None):
     """Run `body(client, case, stub, queue, titled)` with a worker on each queue of the
     loop, all of them the case's own. The first-turn planning call runs only when `plan`
-    is true, so the other cases script the loop alone."""
-    stub = _Stub(script, tool)
-    if not plan:
-        opened = activities._opened
-        monkeypatch.setattr(activities, "_opened",
-                            lambda row: replace(opened(row), first_turn_plan=False))
+    is true, and the run-start reads only when `preload_reads` answers `/preload`, so the
+    other cases script the loop alone."""
+    stub = _Stub(script, tool, preload_reads)
+    opened = activities._opened
+    off = {} if plan else {"first_turn_plan": False}
+    if preload_reads is None:
+        off["preload"] = False
+    if off:
+        monkeypatch.setattr(activities, "_opened", lambda row: replace(opened(row), **off))
     case = _Case()
     suffix = uuid.uuid4().hex[:8]
     chat_queue, model_queue = f"w19-chat-{suffix}", f"w19-model-{suffix}"
@@ -239,7 +260,8 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
     acts = [activities.open_run, activities.append_nag, activities.write_ending,
             activities.summarize_if_first_turn, activities.read_chat_todo, activities.fan_in,
             activities.continue_run, steps.delegate_step, steps.prepare_continuation,
-            steps.record_step_failure, steps.plan_has_sections, steps.needs_citations]
+            steps.record_step_failure, steps.plan_has_sections, steps.needs_citations,
+            preload.preload_reads]
     try:
         client = await Client.connect("temporal:7233")
         with ThreadPoolExecutor(max_workers=32) as executor:
@@ -1552,3 +1574,114 @@ def test_a_second_turn_gets_no_planning_call(monkeypatch):
 
     asyncio.run(_run_case(monkeypatch, _plan_script([PLAN]), body, tool=_plan_tool([]),
                           plan=True))
+
+
+# ------------------------------------------------------------------- the run-start reads
+
+PRELOAD_ITEM = "Read relevant tools and skills"
+
+
+def _preload_answer(request, n):
+    """The reads of `/preload`: one skill and one tool, and the text of the todo item."""
+    reads = [
+        {"id": "", "name": "read_skill", "args": {"name": "search"},
+         "content": "Skill `search`.\n\nSearch first.", "status": "ok", "error_class": ""},
+        {"id": "", "name": "read_tool", "args": {"name": "doc_email"},
+         "content": json.dumps({"tool": "doc_email", "ready": "next call"}), "status": "ok",
+         "error_class": ""},
+    ]
+    return 200, {"request_classes": ["topic"], "class_scores": {"topic": 0.9},
+                 "picks": {"tools": [["doc_email", 0.97]], "technique": [], "stumble": []},
+                 "reads": reads, "todo_item_text": PRELOAD_ITEM,
+                 "classifier": {"state": "ok", "error": "", "ms": 300}}
+
+
+def _todo_server(request, n):
+    """The todo server of the case: `write_todo` and `mark_todo` change the stored list."""
+    call = request["call"]
+    user, session = request["username"], request["session_id"]
+    if call["name"] == "write_todo":
+        todo = chat_todos.write_steps(user, session, call["args"]["goal"], call["args"]["steps"])
+    elif call["name"] == "mark_todo":
+        todo = chat_todos.mark_steps(user, session, call["args"]["ids"], call["args"]["status"])
+    else:
+        return _ok_tool(request, n)
+    return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "ok",
+                 "content": json.dumps({"items": todo["items"]}, default=str), "measure": None,
+                 "error_class": ""}
+
+
+def test_a_first_turn_preload_reads_after_the_plan_and_marks_the_item_done(monkeypatch):
+    # The agent service puts the item of the reads first in the plan.
+    plan = {"goal": PLAN["goal"], "steps": [PRELOAD_ITEM, *PLAN["steps"]]}
+
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        assert await handle.result() == "completed"
+        # The open items of the plan then get the nag rounds, which this case does not read.
+        assert stub.modes()[:2] == ["plan", "tools"]
+        assert [(r["kind"], r["classify"]) for r in stub.preload_requests] == [("chat", "all")]
+        assert stub.preload_requests[0]["request_text"] == "What is in the reports?"
+        assert [t["call"]["name"] for t in stub.tool_requests] == ["write_todo", "mark_todo"]
+        assert _roles(case)[:9] == [(0, "human"), (1, "ai"), (2, "tool"), (3, "ai"), (4, "tool"),
+                                (5, "tool"), (6, "ai"), (7, "tool"), (8, "ai")]
+        messages = case.messages()
+        assert [c["id"] for c in messages[3].tool_calls] == ["preload-3-0", "preload-3-1"]
+        assert messages[3].usage["mode"] == "preload" and messages[3].usage["step_no"] == 0
+        assert messages[6].tool_calls[0]["args"] == {"ids": ["1"], "status": "done"}
+        # The first tools step reads the plan, the reads and the mark.
+        roles = [m["role"] for m in stub.requests[1]["messages"]]
+        assert roles == ["human", "ai", "tool", "ai", "tool", "tool", "ai", "tool"]
+        todo = chat_todos.read_todo(case.username, case.session_id)
+        assert [(i["id"], i["status"]) for i in todo["items"][:2]] == [
+            ("1", "done"), ("2", "pending")]
+        rows = case.chat_rows()
+        assert [(r[1], r[3]) for r in rows[1:6]] == [
+            ("tool", "write_todo"), ("tool", "read_skill"), ("tool", "read_tool"),
+            ("tool", "mark_todo"), ("assistant", "")]
+
+    asyncio.run(_run_case(monkeypatch, _plan_script([plan]), body, tool=_todo_server,
+                          plan=True, preload_reads=_preload_answer))
+
+
+def test_a_failed_preload_is_recorded_once_and_the_turn_answers(monkeypatch):
+    from database import agent_step_events
+
+    recorded = []
+    monkeypatch.setattr(agent_step_events, "record", recorded.append)
+
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        assert await handle.result() == "completed"
+        assert len(stub.preload_requests) == 1
+        assert _roles(case) == [(0, "human"), (1, "ai")]
+        assert [(r[1], r[2]) for r in case.chat_rows()][-1] == ("assistant", "done")
+        rows = [e for e in recorded if e.step == "preload"]
+        assert [(e.ok, e.name) for e in rows] == [(False, "systemone")]
+
+    asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, "done"), body,
+                          preload_reads=lambda request, n: (500, {"detail": "down"})))
+
+
+def test_a_stop_during_the_preload_ends_the_run_cancelled(monkeypatch):
+    def slow(request, n):
+        time.sleep(15)
+        return _preload_answer(request, n)
+
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        deadline = time.monotonic() + 30
+        while not stub.preload_requests and time.monotonic() < deadline:
+            await asyncio.sleep(0.2)
+        assert stub.preload_requests, "the preload did not start"
+        agent_runs.write_turn_stop(case.username, case.session_id, case.turn_seq)
+        await handle.cancel()
+        lead = await _wait_terminal(case, seconds=60)
+        assert lead.state == "cancelled"
+        with pytest.raises(WorkflowFailureError):
+            await handle.result()
+        assert stub.requests == []
+        assert [m.role for m in case.messages()] == ["human"]
+
+    asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, "done"), body,
+                          preload_reads=slow))

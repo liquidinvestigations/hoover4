@@ -1,0 +1,23 @@
+---
+name: entities
+group: technique
+description: how to list the people, organisations, places, e-mail addresses and amounts that documents name
+tools: list_document_entities, search_entity_explainer, search_facet_values
+---
+{# How to list what the pipeline extracted from documents, and how to treat its two tiers.
+   Each sentence that names a tool renders only when the run has it. #}
+Listing what documents name
+
+{% if has('list_document_entities') %}
+1. Call {{ tool('list_document_entities') }} once for every promising document of a search. Give each document as its collectionname and the file_hash that the search returned.
+2. The result has two tiers. entities is a language model's reading of the prose: people, organisations and places. It can be wrong, so check a name in the text before you rely on it. structured holds the values that a rule validated, such as identifiers with a valid check digit, dates and amounts of money with a currency code.
+3. Search for the new names, addresses and identifiers with {{ tool('search_collections') }}. Put every form of one name into one call.
+{% endif %}
+{% if has('search_entity_explainer') %}
+4. When a result names a rule and a value that you do not understand, call {{ tool('search_entity_explainer') }}.
+{% endif %}
+{% if has('search_facet_values') %}
+5. {{ tool('search_facet_values') }} gives the values of an entity filter across a collection, with their counts.
+{% endif %}
+
+A name that the pipeline extracted is not proof that the document is about that person. Read the text around it.

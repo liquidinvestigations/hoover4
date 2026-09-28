@@ -166,8 +166,10 @@ The worker refuses the briefings past a budget by name, and the model reads the 
 `agent_packs_organizer` give the tool packs of each kind of agent run, as a comma list of
 pack names or `all`. The default is `all`, except for `agent_packs_planner`, whose default
 is `collections,web,plan`, so that the planner writes the tree with the plan tools and has no
-todo tool. The packs are `catalogue`, `collections`,
-`conversation`, `plan`, `delegation`, `web` and `browser`. A run binds and calls only the
+todo tool. The packs are `catalogue`, `skills`, `collections`,
+`conversation`, `plan`, `delegation`, `web` and `browser`. Every run kind gets the `skills`
+pack (`search_skills`, `read_skill` and `read_tool`), also when its setting leaves it out,
+because every run reads its role skill with `read_skill`. A run binds and calls only the
 tools of its packs, and the agent service refuses to start on an unknown pack name.
 `agent_max_page_tokens` and `agent_completion_reserve_tokens` switch the agents' result
 pages to token mode: each page takes at most `agent_max_page_tokens` tokens of content, and

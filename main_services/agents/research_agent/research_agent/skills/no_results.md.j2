@@ -1,0 +1,21 @@
+---
+name: no_results
+group: stumble
+description: what to do when a search finds nothing: remove filters, split a phrase, try other forms of a name, then say what is missing
+tools: search_collections, search_passages, web_search
+---
+{# What to do after a search that found nothing. The runs that stopped after an empty search
+   sent no later search with a changed query. The same search again is refused as a repeat. #}
+When a search finds nothing
+
+Do not send the same search again. It finds nothing again, and the run refuses it. Change the search in these steps, one at a time.
+
+1. Remove each filter: the date, the size, the file type and the collection.
+2. Split a long phrase into its names and words. Remove the double quotes from a phrase.
+3. Try other forms of a name in one call: the full name, the family name alone, "Last, First", the initials, and an e-mail address.
+4. Try other words for the same thing, such as contract and agreement.
+{% if has('search_passages') %}
+5. For a question in plain words, call {{ tool('search_passages') }}. It finds a passage by its meaning.
+{% endif %}
+
+When these searches find nothing, stop. In your answer, list each search that you ran, its filters and its count, and say what the documents do not hold. An empty result is a finding, and the reader needs it.

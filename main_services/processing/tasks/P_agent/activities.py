@@ -497,6 +497,13 @@ class OpenedRun:
     #: planning call: a chat lead, no user row before its turn, and a thread that holds
     #: only its opening message.
     first_turn_plan: bool = False
+    #: The run starts a thread, so the loop writes its run-start reads before the first
+    #: model step (`preload.preload_reads`): no model step yet, a thread that holds only
+    #: its opening message, and a row that continues no other run.
+    preload: bool = False
+    #: What the classifier of the preload asks: `all` for the first turn of a chat,
+    #: `types` for a planner, else `none`.
+    preload_classify: str = "none"
 
 
 @dataclass
@@ -600,17 +607,20 @@ def _opened(row) -> OpenedRun:
 
     messages = prepare_thread(
         agent_runs.read_messages(row.username, row.session_id, row.thread_id))
+    starts_thread = (row.model_steps == 0 and [m.role for m in messages] == ["human"]
+                     and not row.continues_run_id)
     first_turn_plan = (
-        agent_runs.is_chat_lead(row) and row.model_steps == 0
-        and [m.role for m in messages] == ["human"]
+        agent_runs.is_chat_lead(row) and starts_thread
         and _earlier_user_rows(row.username, row.session_id, row.turn_seq) == 0
     )
+    classify = "all" if first_turn_plan else "types" if row.kind == "planner" else "none"
     return OpenedRun(
         state=row.state, queue=row.queue, kind=row.kind, depth=row.depth,
         is_chat_lead=agent_runs.is_chat_lead(row), plan=bool(row.plan_run_id),
         nags_this_turn=row.nags_this_turn, nags_without_progress=row.nags_without_progress,
         model_steps=row.model_steps, continues=bool(row.continues_run_id),
         pending=pending_calls(row, messages), first_turn_plan=first_turn_plan,
+        preload=starts_thread, preload_classify=classify if starts_thread else "none",
     )
 
 

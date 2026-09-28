@@ -357,6 +357,24 @@ def write_message(username: str, session_id: str, thread_id: str, run_id: str,
         ]], MESSAGE_COLUMNS)
 
 
+def write_messages(username: str, session_id: str, thread_id: str, run_id: str,
+                   messages: list[RunMessageRow]) -> None:
+    """Write several messages of one thread in one insert.
+
+    The table has no partition key, so one insert of a few rows is one block, and the
+    rows are written together or not at all. A later write of the same key replaces a row.
+    """
+    if not messages:
+        return
+    now = _now()
+    with _client() as client:
+        _insert(client, "agent_run_messages", [[
+            username, session_id, uuid.UUID(thread_id), int(m.idx), uuid.UUID(run_id), m.role,
+            m.content, m.reasoning, m.tool_calls_json, m.tool_call_id, m.tool_name,
+            m.usage_json, int(m.is_final), now,
+        ] for m in messages], MESSAGE_COLUMNS)
+
+
 def read_messages(username: str, session_id: str, thread_id: str) -> list[RunMessageRow]:
     """The thread's messages in `idx` order, partials included."""
     with _client() as client:
@@ -431,6 +449,7 @@ __all__ = [
     "WAITING_FOR_CHILDREN", "batch_id_for", "child_run_id", "continuation_run_id",
     "create_run", "is_chat_lead", "is_terminal", "iter_thread_tool_seqs",
     "read_earlier_threads", "read_messages",
-    "read_run", "read_turn_runs", "turn_is_stopped", "write_message", "write_run",
+    "read_run", "read_turn_runs", "turn_is_stopped", "write_message", "write_messages",
+    "write_run",
     "write_run_terminal", "write_turn_stop", "writes_transcript",
 ]

@@ -1,0 +1,17 @@
+---
+name: collection_names
+group: stumble
+description: how to name a collection or a dataset in a call: the exact name that list_collections returns
+tools: list_collections, search_collections
+---
+{# How to name a collection in a call. The refused calls give a dataset name, a changed name
+   or a collection that the chat cannot read. #}
+Naming a collection
+
+1. Leave out collectionname to search every collection of this chat. That is correct for most questions.
+2. When you must give a collection, copy its name exactly from {{ tool('list_collections') }}, or from the collectionname of a result row.
+3. A dataset is not a collection. The dataset tables/ehudx is in the collection tables. Give tables.
+4. Do not change a name. Do not add a space, change a capital letter or translate it.
+5. When a call says that a collection is outside the permitted collections, this chat cannot read it. Do not send the call again. Use the collections of this chat.
+
+To read a document, give the collectionname of the same result row as its file_hash.

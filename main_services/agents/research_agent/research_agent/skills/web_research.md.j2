@@ -1,0 +1,25 @@
+---
+name: web_research
+group: technique
+description: how to search the open web, read a web page or the owner record of a domain, and name the web sources in the answer
+tools: web_search, read_page, whois_lookup, list_search_sources
+---
+{# How to research the open web. Each sentence that names a tool renders only when the run
+   has that tool. The documents of the investigator come first, so the text says when the web
+   is the correct place. #}
+Researching the open web
+
+Search the investigator's documents first. Use the web for context that the documents do not hold, or when the user asks for it.
+
+{% if has('web_search') %}
+1. Put every angle of the question into one {{ tool('web_search') }} call, as its queries list. For example, give ["arthur andersen enron", "andersen collapse 2002"] in one call. Do not send one call for each query.
+2. Leave out sources to search every source. Give sources only to narrow the search, for example ["gdelt"] for news or ["wayback"] for an earlier copy of a page.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} gives the names of the sources.{% endif +%}
+{% endif %}
+{% if has('read_page') %}
+3. Read the best results in full with {{ tool('read_page') }}. Give all the addresses in one call, and give goal to say what you look for. A result marked BLOCKED BY A BOT CHECK is not the page. Do not use its text.
+{% endif %}
+{% if has('whois_lookup') %}
+4. For the owner, the registrar or the dates of a domain, call {{ tool('whois_lookup') }} with every domain in one call.
+{% endif %}
+
+In your answer, give the address of each web page that a fact comes from. Say which facts came from the web and which came from the documents. A search result snippet is not a source. Read the page before you rely on it.

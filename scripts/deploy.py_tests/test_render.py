@@ -226,6 +226,28 @@ def test_both_research_agents_receive_the_pack_keys():
             assert f"{key}=${{{key}:-all}}" in environment, (name, key)
 
 
+@pytest.mark.parametrize(("fixture_name", "expected"), [
+    pytest.param("llm-selfhosted-tier.ini", "http://127.0.0.1:21963/v1/systemone",
+                 id="selfhosted-with-tier"),
+    pytest.param("llm-selfhosted.ini", "", id="selfhosted-without-tier"),
+    pytest.param("llm-cloud.ini", "", id="cloud"),
+])
+def test_the_classifier_url_follows_the_selfhosted_provider(fixture_name, expected):
+    assert _env(fixture_name)["LLM_CLASSIFIER_URL"] == expected
+
+
+@pytest.mark.parametrize("fixture_name", sorted(
+    p.name for p in FIXTURES.glob("*.ini") if p.name != "cassandra-memory-refused.ini"))
+def test_every_rendered_env_holds_the_classifier_key(fixture_name):
+    assert "LLM_CLASSIFIER_URL" in _env(fixture_name)
+
+
+def test_both_research_agents_receive_the_classifier_url():
+    agents = dict(_compose_documents())["research-agents.yaml"]["services"]
+    for name in ("hoover4-internal-search-agent", "hoover4-full-research-agent"):
+        assert "LLM_CLASSIFIER_URL=${LLM_CLASSIFIER_URL:-}" in agents[name]["environment"]
+
+
 def test_the_subagent_budgets_default_to_6_and_300():
     env = _env("settings-defaults.ini")
     assert (env["AGENT_SUBAGENT_MAX_PER_TURN"], env["AGENT_PLAN_RUN_BUDGET"]) == ("6", "300")

@@ -1,0 +1,20 @@
+---
+name: document_ids
+group: stumble
+description: how to name a document in a call: the 64-character file_hash from a search result, never a file name or a path
+tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
+---
+{# How to name a document in a call. The failed reads give a file name, a path or a hash of
+   the wrong length in place of the file_hash. #}
+Naming a document
+
+A tool that reads one document takes its file_hash. A file_hash is 64 characters, each a digit or a letter from a to f. It comes from a result row of a search.
+
+1. Copy the file_hash and the collectionname of the same result row. Never write a hash yourself, and never shorten it or add a character.
+2. A file name such as stanley.ec02.pdf is refused. A path such as other_emails/invitation.eml is refused. The title of a document is refused.
+3. To find the file_hash of a file by its name, search for the name with {{ tool('search_collections') }}{% if has('folder_search') %} or {{ tool('folder_search') }}{% endif %}, and copy the file_hash of the row.
+{% if has('read_more') %}
+4. When a row has no file_hash, call {{ tool('read_more') }} for the next page of the result.
+{% endif %}
+
+When a read says that no readable dataset holds a hash, the hash is wrong or it belongs to another collection. Do not send it again. Copy the hash and the collectionname again from the row, or search again.
