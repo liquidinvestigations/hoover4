@@ -332,12 +332,21 @@ class AgentRun:
             await self._preload(inp, opened)
         if first:
             if opened.continues:
-                await workflow.execute_activity(
+                asked_after_children: CallRef | None = await workflow.execute_activity(
                     prepare_continuation, self._ref(inp),
                     start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                     task_queue=CHAT_TASK_QUEUE,
                 )
+                if asked_after_children is not None:
+                    next_seq = await workflow.execute_activity(
+                        write_asked_answer,
+                        AskedAnswerParams(**self._ref_fields(inp), call=asked_after_children),
+                        start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                        retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                        task_queue=CHAT_TASK_QUEUE,
+                    )
+                    return RunSummary(outcome="answered", next_seq=next_seq, asked=True)
             pending = list(opened.pending)
         while True:
             if pending:

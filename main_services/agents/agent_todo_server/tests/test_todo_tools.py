@@ -91,8 +91,8 @@ class TestIdentity:
 
     def test_a_subagent_write_keeps_the_lead_list(self, monkeypatch, store):
         runs = {
-            "child-1": SimpleNamespace(kind="subagent", run_id="child-1", session_id="s1"),
-            "child-2": SimpleNamespace(kind="subagent", run_id="child-2", session_id="s1"),
+            "child-1": SimpleNamespace(kind="subagent", run_id="child-1", thread_id="child-thread", session_id="s1"),
+            "child-2": SimpleNamespace(kind="subagent", run_id="child-2", thread_id="child-thread", session_id="s1"),
         }
         monkeypatch.setattr(server.agent_runs, "read_run", lambda u, s, r: runs.get(r))
         call(server.write_todo, goal="Lead", steps=["lead step"])
@@ -100,8 +100,11 @@ class TestIdentity:
                             lambda: {**HEADERS, "X-Hoover4-Agent-Run": "child-1"})
         call(server.write_todo, goal="Child", steps=["child step"])
         assert store[("ann", "s1")]["goal"] == "Lead"
-        assert store[("ann", "child-1")]["goal"] == "Child"
-        assert ("ann", "child-2") not in store
+        assert store[("ann", "child-thread")]["goal"] == "Child"
+        monkeypatch.setattr(server, "get_http_headers",
+                            lambda: {**HEADERS, "X-Hoover4-Agent-Run": "child-2"})
+        assert call(server.read_todo).goal == "Child"
+        assert set(store) == {("ann", "s1"), ("ann", "child-thread")}
 
     def test_header_casing_does_not_matter(self):
         caller = parse_caller(

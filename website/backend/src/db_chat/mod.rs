@@ -8,7 +8,7 @@
 pub mod artifacts;
 pub mod plans;
 
-use common::chat_types::{ChatMessageItem, ChatOptions, ChatRole, ChatSessionItem};
+use common::chat_types::{ChatMessageItem, ChatOptions, ChatRole, ChatSessionItem, TodoItemView, TodoSnapshot};
 use time::format_description::well_known::Rfc3339;
 
 use crate::db_auth::{insert_row, now};
@@ -341,6 +341,39 @@ pub async fn list_messages_after(
             context_window: r.context_window,
             plan_reference_json: r.plan_reference_json,
             streaming: false,
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
+struct TodoRow {
+    version: u32,
+    goal: String,
+    items: String,
+}
+
+/// Read the named versions of the chat lead's todo list.
+pub async fn todo_snapshots(
+    username: &str,
+    session_id: &str,
+    versions: &[u32],
+) -> anyhow::Result<Vec<TodoSnapshot>> {
+    if versions.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = get_global_client()
+        .query("SELECT version, goal, items FROM chat_todos FINAL WHERE username = ? AND session_id = ? AND version IN ? ORDER BY version")
+        .bind(username)
+        .bind(session_id)
+        .bind(versions)
+        .fetch_all::<TodoRow>()
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| TodoSnapshot {
+            version: row.version,
+            goal: row.goal,
+            items: serde_json::from_str::<Vec<TodoItemView>>(&row.items).unwrap_or_default(),
         })
         .collect())
 }
@@ -916,6 +949,31 @@ pub async fn turn_runs(
         .bind(username)
         .bind(session_id)
         .bind(turn_seq)
+        .fetch_all::<AgentRunRow>()
+        .await?;
+    Ok(rows)
+}
+
+/// Every depth-one run of the named completed delegation batches.
+///
+/// The caller selects the newest run of each thread. Continuations have their own run
+/// id, so selecting a bare terminal row here would show one briefing more than once.
+pub async fn subagent_batch_runs(
+    username: &str,
+    session_id: &str,
+    batch_ids: &[String],
+) -> anyhow::Result<Vec<AgentRunRow>> {
+    if batch_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = get_global_client()
+        .query(&format!(
+            "{RUN_SELECT} WHERE username = ? AND session_id = ? AND depth = 1 \
+             AND batch_id IN ? ORDER BY started_at, run_id"
+        ))
+        .bind(username)
+        .bind(session_id)
+        .bind(batch_ids)
         .fetch_all::<AgentRunRow>()
         .await?;
     Ok(rows)

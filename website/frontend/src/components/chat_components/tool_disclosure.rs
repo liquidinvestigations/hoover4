@@ -12,10 +12,14 @@
 //! wall of JSON or, when the writer had not populated the payload columns, nothing.
 
 use common::search_query::SearchQuery;
+use common::search_result::FacetOriginalValue;
+use common::storage_tree::CollectionNode;
 use dioxus::prelude::*;
 
 use crate::components::chat_components::tool_cards::{tool_content, tool_failure};
+use crate::components::chat_components::markdown_text::MarkdownishText;
 use crate::routes::Route;
+use crate::api::storage_api::list_storage_tree;
 
 /// Longest value rendered inline in the readable view before it is clipped. Past this
 /// the raw view is the right place to look.
@@ -37,7 +41,16 @@ pub fn ToolCallDisclosure(
 
     let label = collapsed_label(&tool_name, &tool_input, &content_summary);
     let chip = tool_chip(&tool_name);
-    let search_route = search_route_from_tool_input(&tool_name, &tool_input);
+    let needs_tree = tool_name == "search_collections" && !call_collections(&tool_input).is_empty();
+    let collection_tree = use_resource(move || async move {
+        if needs_tree { list_storage_tree().await } else { Ok(Vec::new()) }
+    });
+    let search_route = if needs_tree {
+        collection_tree.read().as_ref().and_then(|result| result.as_ref().ok())
+            .and_then(|tree| search_route_from_tool_input(&tool_name, &tool_input, tree))
+    } else {
+        search_route_from_tool_input(&tool_name, &tool_input, &[])
+    };
     // The same query over every collection, shown only when the call named a collection.
     let search_all_route = search_all_route_from_tool_input(&tool_name, &tool_input);
     // The collapsed label is built from the *arguments*, so on its own it describes what
@@ -55,6 +68,17 @@ pub fn ToolCallDisclosure(
     // An empty disclosure looks like a bug even when the data predates it.
     let input_view = readable_fields(&tool_input);
     let output_view = readable_fields(&tool_output);
+    let output_content = tool_content(&tool_output);
+    let object_rows = output_content.as_ref().and_then(|value| {
+        value.get("items").and_then(|items| items.as_array())
+            .or_else(|| value.as_array())
+    }).filter(|items| items.iter().all(|item| item.is_object())).cloned().unwrap_or_default();
+    let next_line = output_content.as_ref().map(|value| {
+        value.get("next").and_then(|next| next.as_str()).unwrap_or_default().to_string()
+    }).unwrap_or_default();
+    let skill_text = if tool_name == "read_skill" {
+        output_content.as_ref().and_then(|value| value.as_str().or_else(|| value.get("text").and_then(|text| text.as_str()))).unwrap_or_default().to_string()
+    } else { String::new() };
     let has_payload = !tool_input.is_empty() || !tool_output.is_empty();
 
     rsx! {
@@ -152,6 +176,15 @@ pub fn ToolCallDisclosure(
                     if !output_view.is_empty() {
                         FieldSection { heading: "Result", fields: output_view.clone() }
                     }
+                    if !next_line.is_empty() {
+                        div { style: "font-size: 12px;", "{next_line}" }
+                    }
+                    if !object_rows.is_empty() {
+                        ObjectRowsTable { rows: object_rows.clone() }
+                    }
+                    if !skill_text.is_empty() {
+                        MarkdownishText { text: skill_text.clone() }
+                    }
 
                     if has_payload {
                         div {
@@ -176,6 +209,41 @@ pub fn ToolCallDisclosure(
             }
         }
     }
+}
+
+#[component]
+fn ObjectRowsTable(rows: Vec<serde_json::Value>) -> Element {
+    let columns = object_row_columns(&rows);
+    rsx! {
+        div { style: "max-width: 100%; overflow-x: auto;",
+            table { style: "border-collapse: collapse; font-size: 11px;",
+                thead { tr { for column in columns.iter() { th { style: "padding: 4px; text-align: left;", "{column}" } } } }
+                tbody {
+                    for (index, row) in rows.into_iter().take(20).enumerate() {
+                        tr { key: "{index}",
+                            for column in columns.iter() {
+                                td { style: "padding: 4px; vertical-align: top; border-top: 1px solid #FDE68A;",
+                                    "{row.get(column).map(summarise_value).unwrap_or_default()}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn object_row_columns(rows: &[serde_json::Value]) -> Vec<String> {
+    let mut columns = Vec::new();
+    for row in rows.iter().take(20) {
+        if let Some(object) = row.as_object() {
+            for key in object.keys() {
+                if !columns.contains(key) { columns.push(key.clone()); }
+            }
+        }
+    }
+    columns
 }
 
 #[component]
@@ -418,40 +486,67 @@ fn first_scalar_argument(raw: &str) -> Option<String> {
     map.values().find_map(|v| v.as_number().map(|n| n.to_string()))
 }
 
-fn search_route_from_tool_input(tool_name: &str, tool_input: &str) -> Option<Route> {
+pub(crate) fn search_route_from_tool_input(
+    tool_name: &str,
+    tool_input: &str,
+    tree: &[CollectionNode],
+) -> Option<Route> {
     if tool_name != "search_collections" {
         return None;
     }
-    let query_string = json_str_field(tool_input, "query")?;
+    let query_string = search_query(tool_input)?;
     let collections = call_collections(tool_input);
-    // MCP takes collection *names*; the search page wants collection_dataset ids.
-    // Passing names into collection_datasets still lets the user land on /search with
-    // the same query text; facet filters are empty (not recorded on the tool input).
-    Some(Route::search_page_from_query(SearchQuery {
+    let mut datasets = Vec::new();
+    for name in collections {
+        let collection = tree.iter().find(|collection| collection.collectionname == name)?;
+        let ids = collection.dataset_ids();
+        if ids.is_empty() { return None; }
+        datasets.extend(ids);
+    }
+    datasets.sort();
+    datasets.dedup();
+    let mut query = SearchQuery {
         query_string,
-        collection_datasets: collections,
+        collection_datasets: datasets.clone(),
         ..Default::default()
-    }))
+    };
+    if !datasets.is_empty() {
+        query.facet_filters.insert("collection_dataset".to_string(), datasets.into_iter()
+            .map(FacetOriginalValue::String).collect());
+    }
+    Some(Route::search_page_from_query(query))
 }
 
 /// The search page route of a `search_collections` call with no collection, or `None` when
 /// the call named no collection, because "Search this" already searches every collection.
-fn search_all_route_from_tool_input(tool_name: &str, tool_input: &str) -> Option<Route> {
+pub(crate) fn search_all_route_from_tool_input(tool_name: &str, tool_input: &str) -> Option<Route> {
     if tool_name != "search_collections" || call_collections(tool_input).is_empty() {
         return None;
     }
-    let query_string = json_str_field(tool_input, "query")?;
+    let query_string = search_query(tool_input)?;
     Some(Route::search_page_from_query(SearchQuery { query_string, ..Default::default() }))
+}
+
+fn search_query(tool_input: &str) -> Option<String> {
+    let input = serde_json::from_str::<serde_json::Value>(tool_input).ok()?;
+    let input = input.get("input").unwrap_or(&input);
+    input.get("query").and_then(|query| query.as_str()).filter(|query| !query.is_empty())
+        .or_else(|| input.get("queries").and_then(|queries| queries.as_array())
+            .and_then(|queries| queries.first()).and_then(|query| query.as_str()))
+        .map(str::to_string)
 }
 
 /// The collections a search call named: `collectionname` as one name or a list, or the
 /// older `collections` list.
-fn call_collections(tool_input: &str) -> Vec<String> {
-    if let Some(one) = json_str_field(tool_input, "collectionname").filter(|c| !c.is_empty()) {
-        return vec![one];
+pub(crate) fn call_collections(tool_input: &str) -> Vec<String> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(tool_input) else { return Vec::new(); };
+    let input = value.get("input").unwrap_or(&value);
+    let field = input.get("collectionname").or_else(|| input.get("collections"));
+    match field {
+        Some(serde_json::Value::String(name)) if !name.is_empty() => vec![name.clone()],
+        Some(serde_json::Value::Array(names)) => names.iter().filter_map(|name| name.as_str().map(str::to_string)).collect(),
+        _ => Vec::new(),
     }
-    let named = json_string_array(tool_input, "collectionname");
-    if named.is_empty() { json_string_array(tool_input, "collections") } else { named }
 }
 
 fn json_str_field(raw: &str, key: &str) -> Option<String> {
@@ -617,12 +712,36 @@ mod tests {
 
     #[test]
     fn the_search_link_only_appears_for_collection_searches() {
-        assert!(search_route_from_tool_input("web_search", r#"{"query":"x"}"#).is_none());
+        assert!(search_route_from_tool_input("web_search", r#"{"query":"x"}"#, &[]).is_none());
         assert!(
-            search_route_from_tool_input("search_collections", r#"{"query":"x"}"#).is_some()
+            search_route_from_tool_input("search_collections", r#"{"query":"x"}"#, &[]).is_some()
         );
         // No query means no reproducible search.
-        assert!(search_route_from_tool_input("search_collections", "{}").is_none());
+        assert!(search_route_from_tool_input("search_collections", "{}", &[]).is_none());
+    }
+
+    #[test]
+    fn named_collection_route_keeps_only_its_dataset_ids() {
+        use common::storage_tree::DatasetSummary;
+        use crate::data_definitions::url_param::UrlParam;
+        let tree = vec![CollectionNode {
+            collectionname: "enron".into(),
+            datasets: vec![DatasetSummary { collection_dataset: "enron_mail".into(), ..Default::default() },
+                           DatasetSummary { collection_dataset: "enron_files".into(), ..Default::default() }],
+        }];
+        let input = r#"{"input":{"queries":["water"],"collectionname":["enron"]}}"#;
+        let route = search_route_from_tool_input("search_collections", input, &tree).unwrap();
+        let Route::SearchPage { query, .. } = route else { panic!("expected search route") };
+        let decoded: UrlParam<SearchQuery> = query.to_string().parse().unwrap();
+        assert_eq!(decoded.0.query_string, "water");
+        assert_eq!(decoded.0.collection_datasets, vec!["enron_files", "enron_mail"]);
+        assert_eq!(decoded.0.facet_filters["collection_dataset"], [
+            FacetOriginalValue::String("enron_files".into()),
+            FacetOriginalValue::String("enron_mail".into()),
+        ].into_iter().collect());
+        assert!(search_route_from_tool_input("search_collections",
+            r#"{"query":"water","collectionname":"unknown"}"#, &tree).is_none());
+        assert!(search_all_route_from_tool_input("search_collections", input).is_some());
     }
 
     #[test]
@@ -633,5 +752,14 @@ mod tests {
         assert!(search_all_route_from_tool_input("search_collections", r#"{"query":"x"}"#).is_none());
         let listed = r#"{"query":"x","collectionname":["enron","consulate"]}"#;
         assert_eq!(call_collections(listed).len(), 2);
+        let nested = r#"{"input":{"queries":["x"],"collectionname":["enron"]}}"#;
+        assert_eq!(call_collections(nested), vec!["enron".to_string()]);
+        assert!(search_all_route_from_tool_input("search_collections", nested).is_some());
+    }
+
+    #[test]
+    fn a_generic_table_has_columns_from_later_displayed_rows() {
+        let rows = vec![serde_json::json!({"first": 1}), serde_json::json!({"later": 2})];
+        assert_eq!(object_row_columns(&rows), vec!["first", "later"]);
     }
 }

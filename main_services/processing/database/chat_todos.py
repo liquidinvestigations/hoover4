@@ -35,7 +35,9 @@ def key_for_run(run) -> str:
     A planner and a sub-agent own separate lists. A chat lead and an organizer use the
     conversation list that the page reads.
     """
-    return str(run.run_id if run.kind in ("planner", "subagent") else run.session_id)
+    if run.kind == "subagent":
+        return str(run.thread_id)
+    return str(run.run_id if run.kind == "planner" else run.session_id)
 
 #: Every status an item can hold. The last two are resolved, the first two are open.
 ITEM_STATUSES = ("pending", "in_progress", "done", "cancelled")

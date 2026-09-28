@@ -9,7 +9,8 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `locked_options.rs` | The two switches, read-only, above the transcript once they are frozen. |
 | `session_card.rs` | Homepage / history card showing title + summary. |
 | `transcript.rs` | User bubbles, assistant markdown, tool disclosures, inline doc cards, the retry-attempt disclosure, and the token footer under an answer. |
-| `tool_cards/mod.rs` | The card **registry**: dispatches on tool name, plus the shared card chrome, the elapsed-seconds counter, and the JSON/link helpers every card uses. |
+| `tool_cards/mod.rs` | The card registry dispatches on tool name and provides card chrome, elapsed counters, and JSON helpers. |
+| `tool_cards/result_cards.rs` | Result-page, read, citation, todo, plan, and question cards. |
 | `tool_cards/web_search_card.rs` | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
 | `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
 | `tool_cards/subagent_card.rs` | `run_subagent`: each sub-agent's state, live tool calls and partial text from the poll's `subagent_runs` while the batch is open, a depth 2 sub-agent under its parent, then the reports from the tool row's `tool_output`. |
@@ -59,7 +60,7 @@ conversation. Weight and colour carry the hierarchy instead. A test pins this.
 
 ## A run of tool rows is one line
 
-`transcript.rs` puts each run of consecutive finished tool rows behind one button, and the
+`transcript.rs` puts each run of consecutive tool and instruction rows behind one button, and the
 button opens the cards of the run. `tool_run_summary` writes the line from rules, for
 example `Searched 20 terms, read 8 documents, 2 failed, took 8m12s`. The kinds of call
 always appear in one order: corpus search, document reads, web search, web page reads,
@@ -109,17 +110,17 @@ those columns existed show the stored summary with a note, instead of a blank pa
 * **Pending** (streaming, `tool_start` seen, no `tool_result`): the query in quotes, the
   sources it is waiting on, and a seconds counter. A pending search with no counter is
   indistinguishable from a wedged one.
-* **Collapsed:** `web_search · "danube water level" · 30 results · 7 sources`, plus a
-  warning pip when a source came back empty and a "not reranked" pip when the
-  cross-encoder did not run.
-* **Expanded:** the summary strip (sources, degraded list, dedupe counts, timings) and the
-  result list, rank badge, title as a real link, the **full** snippet, the source chips,
-  and an `RRF #7 → #2` badge where reranking moved it.
-* **Popup:** both orderings side by side, fetched lazily from the `search_detail` artifact
-  through the `chat_artifact_detail` server function. The tool payload cannot carry two
-  orderings of forty candidates, which is why that artifact exists.
+* **Collapsed:** the numbered search forms and the result count.
+* **Expanded:** each result's title link, host, matching forms, and snippet.
+  The card shows sources that returned no results and the tool's note.
+* **Popup:** both orderings side by side, fetched lazily from the web search JSON artifact
+  through the `chat_artifact_detail` server function. It shows ranking and timing details
+  that the model did not read.
 
 ### Document cards
+
+The `Search this` link resolves named collections through the permitted storage tree. Its search filter contains dataset IDs. A name with no permitted dataset has no scoped link.
+The `read_more` card shows scalar continuation text in page order and keeps the source and part in its title.
 
 A `search_collections` hit carries up to `SEARCH_SNIPPET_CHARS` (1200) characters of page
 text and one turn can return a dozen, so `ChatDocRefCard` renders

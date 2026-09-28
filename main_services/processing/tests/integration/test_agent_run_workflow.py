@@ -1575,6 +1575,56 @@ def test_ask_user_ends_after_all_calls_without_a_todo_nag(monkeypatch):
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
+def test_organizer_question_after_delegated_child_ends_the_turn(monkeypatch):
+    plan_run_id = str(uuid.uuid4())
+    plan_id = plan_runs.plan_id_for(plan_run_id)
+    root = agent_plans.root_node_id(plan_id)
+    question = "Which report should the next round use?"
+
+    def script(request, n):
+        if request["kind"] == "planner":
+            agent_plans.mutate(request["username"], request["session_id"], plan_id,
+                               "append_node", text="Read the reports")
+            return _answer_frames(request, "Review this plan.")
+        if request["kind"] == "subagent":
+            return _answer_frames(request, "The child report is ready.")
+        assert request["kind"] == "organizer"
+        assert not _is_continuation(request), "the question started another model call"
+        return _reply(request, calls=[
+            _call("run_subagent", {"tasks": [dict(_briefing("read the reports"),
+                                                  plan_node_id=root, purpose="execute")]}, "d1"),
+            _call("ask_user", {"question": question, "options": ["first", "second"]}, "q1"),
+        ])
+
+    def tool(request, n):
+        call = request["call"]
+        assert call["name"] == "ask_user"
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "ok",
+                     "content": json.dumps({"success": True, "asked": True, **call["args"]}),
+                     "measure": None, "error_class": ""}
+
+    async def body(client, case, stub, queue, titled):
+        _, result = await _run_plan(client, queue, _plan_input(case, plan_run_id),
+                                    f"plan-{plan_run_id}-r0")
+        assert result == "completed"
+        inp = _decide(case, plan_run_id, "approve", 2)
+        _, result = await _run_plan(client, queue, inp, f"plan-{plan_run_id}-o1")
+        assert result == "delegated"
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            if any(row[1:3] == ("assistant", question) for row in case.chat_rows()):
+                break
+            await asyncio.sleep(0.5)
+        assert [row[2] for row in case.chat_rows() if row[1] == "assistant"][-1] == question
+        assert [row[3] for row in case.chat_rows() if row[1] == "tool"].count("ask_user") == 1
+        assert len([request for request in stub.requests if request["kind"] == "organizer"]) == 1
+        children = [row for row in agent_runs.read_turn_runs(case.username, case.session_id,
+                                                               inp.turn_seq) if row.depth == 1]
+        assert len(children) == 1 and children[0].state == "completed"
+
+    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
+
+
 
 
 def test_a_failed_preload_is_recorded_once_and_the_turn_answers(monkeypatch):

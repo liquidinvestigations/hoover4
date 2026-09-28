@@ -11,7 +11,8 @@ This directory centralizes database utilities and schema definitions used by the
 - `s3.py` - S3 client helpers and bucket naming for the Garage blob store.
 - `chat_todos.py` - chat and agent-run todo lists: validation, storage, and the two
   questions that decide whether the agent gets nagged. A `cancelled` item needs a note, and a
-  bare status flip is not a change - see the module docstring for why both matter.
+  bare status flip is not a change - see the module docstring for why both matter. A sub-agent
+  uses its thread ID as the todo key, so its continuation reads the same list.
 - `agent_runs.py` - every read and write of `agent_runs`, `agent_run_messages` and
   `agent_turn_stops`: the state of each `AgentRun` workflow and its model conversation. Every
   read uses `FINAL` and the owner prefix, and a run row write adds one to `state_version`.

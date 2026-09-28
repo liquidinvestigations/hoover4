@@ -39,10 +39,18 @@ struct DocumentEntities {
     collectionname: String,
     file_hash: String,
     /// The rule scanner's tier: value and the rule that accepted it.
-    structured: Vec<(String, String)>,
+    structured: Vec<(String, String, Option<u64>)>,
     /// The NER tier, flattened across its types. No rule, so no card.
     model_found: Vec<String>,
     error: String,
+    truncated: bool,
+}
+
+fn entity_label(value: &str, count: Option<u64>) -> String {
+    match count {
+        Some(count) => format!("{value} ({count})"),
+        None => value.to_string(),
+    }
 }
 
 /// Every shape the tool has answered in: a result page whose `items` are the documents,
@@ -66,8 +74,8 @@ fn parse_document(v: &serde_json::Value) -> DocumentEntities {
             items
                 .iter()
                 .filter(|e| !json_str(e, "rule_id").is_empty())
-                .map(|e| (json_str(e, "value"), json_str(e, "rule_id")))
-                .filter(|(value, _)| !value.is_empty())
+                .map(|e| (json_str(e, "value"), json_str(e, "rule_id"), e.get("count").and_then(|count| count.as_u64())))
+                .filter(|(value, _, _)| !value.is_empty())
                 .collect()
         })
         .unwrap_or_default();
@@ -91,6 +99,7 @@ fn parse_document(v: &serde_json::Value) -> DocumentEntities {
         structured,
         model_found,
         error: json_str(v, "error"),
+        truncated: v.get("truncated").and_then(|value| value.as_bool()).unwrap_or(false),
     }
 }
 
@@ -147,6 +156,7 @@ pub fn EntitiesCard(
             running,
             expanded,
             failure,
+            raw_output: tool_output.clone(),
             badges: rsx! {
                 if !running && openable > 0 {
                     span {
@@ -198,10 +208,13 @@ fn DocumentEntityRow(
             if !document.error.is_empty() {
                 div { style: "font-size: 12px; color: #991B1B;", "{document.error}" }
             }
+            if document.truncated {
+                div { style: "font-size: 12px; color: #92400E;", "The entity list was cut." }
+            }
             if !document.structured.is_empty() {
                 div {
                     style: "display: flex; flex-wrap: wrap; gap: 6px;",
-                    for (value, rule_id) in document.structured.clone() {
+                    for (value, rule_id, count) in document.structured.clone() {
                         if let Some(identifier) = identifier.clone() {
                             Link {
                                 key: "s{value}",
@@ -211,7 +224,7 @@ fn DocumentEntityRow(
                                         border-radius: 999px; padding: 1px 9px; \
                                         font-size: 12px; color: #3730A3; \
                                         text-decoration: none; word-break: break-all;",
-                                "{value}"
+                                "{entity_label(&value, count)}"
                             }
                         } else {
                             span {
@@ -221,7 +234,7 @@ fn DocumentEntityRow(
                                         border-radius: 999px; padding: 1px 9px; \
                                         font-size: 12px; color: #64748B; \
                                         word-break: break-all;",
-                                "{value}"
+                                "{entity_label(&value, count)}"
                             }
                         }
                     }
@@ -287,7 +300,7 @@ mod tests {
         });
         let parsed = parse_documents(&single);
         assert_eq!(parsed.len(), 1);
-        assert_eq!(parsed[0].structured, vec![("AD12".to_string(), "bank.iban".to_string())]);
+        assert_eq!(parsed[0].structured, vec![("AD12".to_string(), "bank.iban".to_string(), None)]);
         assert_eq!(parsed[0].model_found, vec!["Ana".to_string()]);
 
         let batched = serde_json::json!({ "documents": [single.clone(), single.clone()] });
@@ -311,5 +324,16 @@ mod tests {
         let parsed = parse_document(&document);
         assert_eq!(parsed.structured.len(), 1, "only the value naming a rule");
         assert_eq!(parsed.structured[0].0, "AD12");
+    }
+
+    #[test]
+    fn the_entity_count_and_cut_state_reach_the_card() {
+        let document = serde_json::json!({
+            "structured": [{"value": "AD12", "rule_id": "bank.iban", "count": 3}],
+            "truncated": true,
+        });
+        let parsed = parse_document(&document);
+        assert_eq!(parsed.structured[0].2, Some(3));
+        assert!(parsed.truncated);
     }
 }

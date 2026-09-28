@@ -10,13 +10,14 @@ use crate::components::chat_components::{
     doc_ref_card::{ChatDocRefCard, ChatDocRefRow},
     markdown_text::{MarkdownishText, source_anchor_id},
     plan_card::{PlanCard, PlanCardContext},
-    tool_cards::ToolCard,
-    tool_run_summary::{run_duration_ms, tool_run_summary},
+    tool_cards::{ElapsedCounter, ToolCard},
+    tool_run_summary::{run_duration_ms, timestamp_ms, tool_run_summary},
 };
 
 #[component]
 pub fn ChatTranscript(
     messages: Vec<ChatMessageItem>,
+    draft: Signal<String>,
     find_query: Signal<String>,
     match_index: Signal<usize>,
     match_count: Signal<usize>,
@@ -39,6 +40,14 @@ pub fn ChatTranscript(
     /// its handles.
     #[props(default)]
     run_cited_handles: Vec<String>,
+    /// Finished delegation batches read with the stored transcript.
+    #[props(default)]
+    subagent_batches: Vec<common::chat_types::SubagentBatchState>,
+    #[props(default)]
+    todo_versions: Vec<common::chat_types::TodoSnapshot>,
+    /// Plain chats keep each todo write outside a tool group.
+    #[props(default)]
+    deep_research: bool,
 ) -> Element {
     let stream_live = stream_live.unwrap_or(true);
     let waiting_line = match queued_for.as_str() {
@@ -91,7 +100,6 @@ pub fn ChatTranscript(
             .filter_map(|m| m.plan_reference())
             .any(|r| &r.run_id == run_id)
     });
-
     // One row as `MessageEntry`. A run of tool rows renders the same entries inside its
     // group when the group is open.
     let entry = |i: usize| -> Element {
@@ -113,10 +121,31 @@ pub fn ChatTranscript(
                 .filter_map(|later| later.plan_reference())
                 .any(|later| later.run_id == r.run_id)
         });
+        let plan_question = if m.plan_reference().is_some() {
+            asked_question(&messages[..i])
+        } else {
+            String::new()
+        };
+        let plan_question_options = if plan_question.is_empty() {
+            Vec::new()
+        } else {
+            asked_options(&messages[..i])
+        };
+        let read_more_source = if m.tool_name == "read_more" {
+            read_more_source(&messages, i)
+        } else { None };
+        let repeat_question = m.role == ChatRole::Assistant
+            && asked_question(&messages[..i]) == m.content
+            && !m.content.is_empty();
         // Only a delegation row reads the entries. The others get an empty list, so a poll
         // that moves a sub-agent re-renders that row alone.
         let runs = if m.tool_name == "run_subagent" || !m.plan_reference_json.is_empty() {
             subagent_runs.clone()
+        } else {
+            Vec::new()
+        };
+        let batches = if m.tool_name == "run_subagent" {
+            subagent_batches.clone()
         } else {
             Vec::new()
         };
@@ -129,12 +158,37 @@ pub fn ChatTranscript(
                 cited_handles: cited_handles.clone(),
                 datasets: datasets.clone(),
                 subagent_runs: runs,
+                subagent_batches: batches,
+                todo_versions: todo_versions.clone(),
                 plan_superseded,
+                plan_question,
+                plan_question_options,
+                read_more_source,
+                repeat_question,
+                draft,
             }
         }
     };
-    // Runs of consecutive tool rows, and every other row on its own, as index ranges.
-    let segments = tool_run_segments(&messages);
+    // Runs of tool and instruction rows, and every other row on its own, as index ranges.
+    let segments = tool_run_segments(&messages, !deep_research);
+    let live_tools = stream
+        .as_ref()
+        .map(|turn| turn.tool_rows.clone())
+        .unwrap_or_default();
+    let live_segments = live_tool_segments(&live_tools, !deep_research);
+    let can_join = live_segments.first().is_some_and(|(_, _, todo)| !todo);
+    let live_group_start = live_group_start(&messages, &segments, !deep_research, can_join);
+    let joined_live_end = if live_group_start.is_some() {
+        live_segments.first().map(|(_, end, _)| *end).unwrap_or(0)
+    } else { 0 };
+    let live_elapsed = stream.as_ref().and_then(|turn| {
+        let before = live_group_start
+            .and_then(|start| start.checked_sub(1).and_then(|index| messages.get(index)))
+            .or_else(|| messages.last());
+        before.and_then(|message| timestamp_ms(&message.created_ms)).map(|start| {
+            turn.server_now_ms.saturating_sub(start).clamp(0, i64::from(u32::MAX)) as u32
+        })
+    });
 
     rsx! {
         div {
@@ -147,18 +201,53 @@ pub fn ChatTranscript(
                 }
             }
             for (start, end) in segments.iter().copied() {
-                if end - start == 1 && messages[start].role != ChatRole::Tool {
+                if end - start == 1
+                    && messages[start].role != ChatRole::Tool
+                    && !messages[start].role.is_instruction()
+                    || end - start == 1 && (is_todo_write(&messages[start]) || is_question(&messages[start]))
+                {
                     {entry(start)}
                 } else {
                     ToolRunGroup {
                         key: "tools-{messages[start].seq}",
-                        summary: tool_run_summary(
-                            &messages[start..end],
-                            run_duration_ms(start.checked_sub(1).map(|b| &messages[b]), &messages[start..end]),
-                        ),
+                        summary: if live_group_start == Some(start) {
+                            format!(
+                                "{} + {} running tool {}",
+                                tool_run_summary(
+                                    &messages[start..end],
+                                    run_duration_ms(start.checked_sub(1).map(|b| &messages[b]), &messages[start..end]),
+                                ),
+                                joined_live_end,
+                                if joined_live_end == 1 { "call" } else { "calls" },
+                            )
+                        } else {
+                            tool_run_summary(
+                                &messages[start..end],
+                                run_duration_ms(start.checked_sub(1).map(|b| &messages[b]), &messages[start..end]),
+                            )
+                        },
                         force_open: active_msg.is_some_and(|a| (start..end).contains(&a)),
+                        live: live_group_start == Some(start),
+                        elapsed_ms: if live_group_start == Some(start) { live_elapsed } else { None },
                         for i in start..end {
                             {entry(i)}
+                        }
+                        if live_group_start == Some(start) {
+                            for tool in live_tools[..joined_live_end].to_vec() {
+                                div {
+                                    key: "stream-tool-{tool.seq}",
+                                    style: "display: flex; flex-direction: column; gap: 8px;",
+                                    ToolCard {
+                                        tool_name: tool.tool_name.clone(),
+                                        tool_input: tool.summary.clone(),
+                                        tool_output: String::new(),
+                                        content_summary: tool.summary.clone(),
+                                        running: !tool.done,
+                                        elapsed_ms: tool.elapsed_ms,
+                                        datasets: datasets.clone(),
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -177,25 +266,39 @@ pub fn ChatTranscript(
                 }
             }
             if let Some(turn) = stream {
-                for tool in turn.tool_rows.clone() {
-                    div {
-                        key: "stream-tool-{tool.seq}",
-                        style: "display: flex; flex-direction: column; gap: 8px;",
-                        ToolCard {
-                            tool_name: tool.tool_name.clone(),
-                            // A stream row has no payload columns. The arguments and
-                            // result are written only when the call finalises into
-                            // chat_messages. Its `summary` *is* the arguments JSON while
-                            // the call runs (`AgentToolCall::summary` takes `input`
-                            // first), which is what lets the pending web_search card show
-                            // the query. Truncated past 400 chars, so the cards parse it
-                            // best-effort and fall back to a bare label.
-                            tool_input: tool.summary.clone(),
-                            tool_output: String::new(),
-                            content_summary: tool.summary.clone(),
-                            running: !tool.done,
-                            elapsed_ms: tool.elapsed_ms,
-                            datasets: datasets.clone(),
+                for (start, end, todo) in live_segments.clone() {
+                    if start >= joined_live_end {
+                        if todo {
+                            div { "data-todo-change": "true", style: "align-self: stretch;",
+                                ToolCard {
+                                    tool_name: turn.tool_rows[start].tool_name.clone(),
+                                    tool_input: turn.tool_rows[start].summary.clone(),
+                                    tool_output: String::new(),
+                                    content_summary: turn.tool_rows[start].summary.clone(),
+                                    running: !turn.tool_rows[start].done,
+                                    elapsed_ms: turn.tool_rows[start].elapsed_ms,
+                                    datasets: datasets.clone(),
+                                }
+                            }
+                        } else {
+                            ToolRunGroup {
+                                key: "tools-{turn.tool_rows[start].seq}",
+                                summary: format!("{} running tool {}", end - start, if end - start == 1 { "call" } else { "calls" }),
+                                force_open: true,
+                                live: true,
+                                elapsed_ms: live_elapsed,
+                                for tool in turn.tool_rows[start..end].to_vec() {
+                                    ToolCard {
+                                        tool_name: tool.tool_name.clone(),
+                                        tool_input: tool.summary.clone(),
+                                        tool_output: String::new(),
+                                        content_summary: tool.summary.clone(),
+                                        running: !tool.done,
+                                        elapsed_ms: tool.elapsed_ms,
+                                        datasets: datasets.clone(),
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -238,12 +341,43 @@ pub fn ChatTranscript(
 
 /// The rows of `messages` as index ranges: each run of consecutive tool rows is one range,
 /// and each other row is a range of its own.
-fn tool_run_segments(messages: &[ChatMessageItem]) -> Vec<(usize, usize)> {
+fn is_todo_write(message: &ChatMessageItem) -> bool {
+    matches!(message.tool_name.as_str(), "write_todo" | "edit_todo" | "mark_todo")
+}
+
+fn is_question(message: &ChatMessageItem) -> bool {
+    message.role == ChatRole::Tool && message.tool_name == "ask_user"
+}
+
+fn live_tool_segments(rows: &[common::chat_types::StreamToolRow], split_todo: bool) -> Vec<(usize, usize, bool)> {
+    let mut segments = Vec::new();
+    for (index, row) in rows.iter().enumerate() {
+        let todo = split_todo && matches!(row.tool_name.as_str(), "write_todo" | "edit_todo" | "mark_todo");
+        if todo {
+            segments.push((index, index + 1, true));
+        } else if let Some((_, end, false)) = segments.last_mut() {
+            *end = index + 1;
+        } else {
+            segments.push((index, index + 1, false));
+        }
+    }
+    segments
+}
+
+fn tool_run_segments(messages: &[ChatMessageItem], split_todo: bool) -> Vec<(usize, usize)> {
     let mut out: Vec<(usize, usize)> = Vec::new();
     for (i, m) in messages.iter().enumerate() {
+        if is_question(m) || split_todo && is_todo_write(m) {
+            out.push((i, i + 1));
+            continue;
+        }
         match out.last_mut() {
             Some((start, end))
-                if m.role == ChatRole::Tool && messages[*start].role == ChatRole::Tool =>
+                if (m.role == ChatRole::Tool || m.role.is_instruction())
+                    && (messages[*start].role == ChatRole::Tool
+                        || messages[*start].role.is_instruction())
+                    && !is_question(&messages[*start])
+                    && !(split_todo && is_todo_write(&messages[*start])) =>
             {
                 *end = i + 1;
             }
@@ -253,11 +387,44 @@ fn tool_run_segments(messages: &[ChatMessageItem]) -> Vec<(usize, usize)> {
     out
 }
 
+/// The final stored tool group keeps its identity while stream rows extend it.
+fn live_group_start(
+    messages: &[ChatMessageItem],
+    segments: &[(usize, usize)],
+    split_todo: bool,
+    has_live_tools: bool,
+) -> Option<usize> {
+    if !has_live_tools {
+        return None;
+    }
+    let (start, end) = segments.last().copied()?;
+    let first = &messages[start];
+    if end == messages.len()
+        && (first.role == ChatRole::Tool || first.role.is_instruction())
+        && !(split_todo && is_todo_write(first))
+    {
+        Some(start)
+    } else {
+        None
+    }
+}
+
 /// A run of tool rows, collapsed behind its summary line. The line expands to the cards.
 /// `force_open` holds it open while the conversation search points at a row inside it.
 #[component]
-fn ToolRunGroup(summary: String, force_open: bool, children: Element) -> Element {
+fn ToolRunGroup(
+    summary: String,
+    force_open: bool,
+    #[props(default)] live: bool,
+    #[props(default)] elapsed_ms: Option<u32>,
+    children: Element,
+) -> Element {
     let mut open = use_signal(|| false);
+    use_effect(move || {
+        if live && !*open.peek() {
+            open.set(true);
+        }
+    });
     let shown = *open.read() || force_open;
     let action = if shown { "Hide" } else { "Show" };
     rsx! {
@@ -276,6 +443,7 @@ fn ToolRunGroup(summary: String, force_open: bool, children: Element) -> Element
                     open.set(next);
                 },
                 span { "{summary}" }
+                if live { ElapsedCounter { already_ms: elapsed_ms } }
                 span { style: "font-size: 12px; color: #4F46E5; text-decoration: underline;", "{action}" }
             }
             if shown {
@@ -373,6 +541,52 @@ fn issued_handles(messages: &[ChatMessageItem], run_cited_handles: &[String]) ->
     handles
 }
 
+fn asked_question(messages: &[ChatMessageItem]) -> String {
+    messages
+        .iter()
+        .rev()
+        .take_while(|message| message.role == ChatRole::Tool || message.role.is_instruction())
+        .filter(|message| message.tool_name == "ask_user")
+        .last()
+        .and_then(|message| serde_json::from_str::<serde_json::Value>(&message.tool_input).ok())
+        .map(|value| value.get("input").cloned().unwrap_or(value))
+        .and_then(|value| value.get("question").and_then(|value| value.as_str()).map(str::to_string))
+        .unwrap_or_default()
+}
+
+fn asked_options(messages: &[ChatMessageItem]) -> Vec<String> {
+    messages.iter().rev()
+        .take_while(|message| message.role == ChatRole::Tool || message.role.is_instruction())
+        .filter(|message| message.tool_name == "ask_user")
+        .last()
+        .and_then(|message| serde_json::from_str::<serde_json::Value>(&message.tool_input).ok())
+        .map(|value| value.get("input").cloned().unwrap_or(value))
+        .and_then(|value| value.get("options").and_then(|options| options.as_array()).cloned())
+        .unwrap_or_default().iter().filter_map(|option| option.as_str().map(str::to_string)).collect()
+}
+
+fn read_more_source(messages: &[ChatMessageItem], index: usize) -> Option<(String, u32, u32)> {
+    let input: serde_json::Value = serde_json::from_str(&messages.get(index)?.tool_input).ok()?;
+    let input = input.get("input").unwrap_or(&input);
+    let handle = input.get("continuation").and_then(|value| value.as_str())?;
+    let prior = messages[..index].iter().enumerate().rev().find(|(_, row)| {
+        row.role == ChatRole::Tool
+            && crate::components::chat_components::tool_cards::tool_content(&row.tool_output)
+                .as_ref().is_some_and(|value| {
+                    value.get("more").and_then(|more| more.as_str()) == Some(handle)
+                        || value.get("items").and_then(|items| items.as_array()).is_some_and(|items| {
+                            items.iter().any(|item| item.get("more").and_then(|more| more.as_str()) == Some(handle))
+                        })
+                })
+    })?;
+    if prior.1.tool_name == "read_more" {
+        let (name, seq, part) = read_more_source(messages, prior.0)?;
+        Some((name, seq, part + 1))
+    } else {
+        Some((prior.1.tool_name.clone(), prior.1.seq, 2))
+    }
+}
+
 /// The citations of the turn that ends at `answer_index`.
 ///
 /// Walks backwards over the tool rows of that turn and stops at the previous answer or
@@ -399,6 +613,7 @@ fn citations_for_answer(messages: &[ChatMessageItem], answer_index: usize) -> Ve
 fn MessageEntry(
     message: ChatMessageItem,
     highlight: bool,
+    draft: Signal<String>,
     /// The documents this answer cited, for the strip beneath it. Empty for every role
     /// but the assistant's.
     #[props(default)]
@@ -413,9 +628,23 @@ fn MessageEntry(
     /// plan card only.
     #[props(default)]
     subagent_runs: Vec<common::chat_types::SubagentRunEntry>,
+    /// Terminal depth-one entries of a finished delegation batch.
+    #[props(default)]
+    subagent_batches: Vec<common::chat_types::SubagentBatchState>,
+    #[props(default)]
+    todo_versions: Vec<common::chat_types::TodoSnapshot>,
     /// True when a later planner answer names the same plan run.
     #[props(default)]
     plan_superseded: bool,
+    /// The planner question that ended this answer's tool group.
+    #[props(default)]
+    plan_question: String,
+    #[props(default)]
+    plan_question_options: Vec<String>,
+    #[props(default)]
+    read_more_source: Option<(String, u32, u32)>,
+    #[props(default)]
+    repeat_question: bool,
 ) -> Element {
     let ring = if highlight {
         "outline: 2px solid #F59E0B; outline-offset: 2px;"
@@ -446,11 +675,13 @@ fn MessageEntry(
                     if !message.reasoning.is_empty() {
                         ReasoningDisclosure { reasoning: message.reasoning.clone() }
                     }
-                    div {
-                        "data-chat-answer": "{message.seq}",
-                        MarkdownishText {
-                            text: message.content.clone(),
-                            cited_handles: Some(cited_handles.clone()),
+                    if !repeat_question {
+                        div {
+                            "data-chat-answer": "{message.seq}",
+                            MarkdownishText {
+                                text: message.content.clone(),
+                                cited_handles: Some(cited_handles.clone()),
+                            }
                         }
                     }
                     if !sources.is_empty() {
@@ -461,6 +692,8 @@ fn MessageEntry(
                             reference,
                             subagent_runs: subagent_runs.clone(),
                             superseded: plan_superseded,
+                            question: plan_question.clone(),
+                            question_options: plan_question_options.clone(),
                         }
                     }
                     // A turn that only succeeded on retry is a healthy answer over an
@@ -492,14 +725,19 @@ fn MessageEntry(
         ChatRole::Tool => {
             let refs = message.parsed_doc_refs();
             rsx! {
-                div { style: "display: flex; flex-direction: column; gap: 8px; {ring}",
+                div { "data-todo-change": if is_todo_write(&message) { "true" } else { "false" }, style: "display: flex; flex-direction: column; gap: 8px; {ring}",
                     ToolCard {
                         tool_name: message.tool_name.clone(),
                         tool_input: message.tool_input.clone(),
                         tool_output: message.tool_output.clone(),
+                        doc_refs: refs.clone(),
                         content_summary: message.content.clone(),
                         datasets: datasets.clone(),
                         subagent_runs: subagent_runs.clone(),
+                        subagent_batches: subagent_batches.clone(),
+                        todo_versions: todo_versions.clone(),
+                        read_more_source: read_more_source.clone(),
+                        draft: Some(draft),
                     }
                     if !refs.is_empty() {
                         DocRefsDisclosure { tool_name: message.tool_name.clone(), refs }
@@ -526,6 +764,9 @@ fn MessageEntry(
                 }
             }
         },
+        ChatRole::Compaction => rsx! {
+            CompactionLine { content: message.content.clone(), ring: ring.to_string() }
+        },
         ChatRole::Error => {
             let retries = message.parsed_retry_errors();
             rsx! {
@@ -551,6 +792,44 @@ fn MessageEntry(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+#[component]
+fn CompactionLine(content: String, ring: String) -> Element {
+    let value: serde_json::Value = serde_json::from_str(&content).unwrap_or_default();
+    let state = value.get("state").and_then(|v| v.as_str()).unwrap_or_default();
+    let before = value.get("tokens_before").and_then(|v| v.as_u64()).unwrap_or(0);
+    let target = value.get("target").and_then(|v| v.as_u64()).unwrap_or(0);
+    let after = value.get("tokens_after").and_then(|v| v.as_u64()).unwrap_or(0);
+    let steps = value.get("steps_summarised").and_then(|v| v.as_u64()).unwrap_or(0);
+    let reached = value.get("target_reached").and_then(|v| v.as_bool()).unwrap_or(true);
+    let failed = value.get("part_states").and_then(|v| v.as_array()).map(|parts| {
+        parts.iter().filter(|part| part.as_str() == Some("failed")).count()
+    }).unwrap_or(0);
+    let mut record_open = use_signal(|| false);
+    let line = if state == "running" {
+        format!("Compacting the context: {before} tokens to a target of {target}.")
+    } else {
+        format!("Context compacted: {steps} steps summarised, {before} tokens to {after}.")
+    };
+    rsx! {
+        div { class: "x-chat-compaction", style: "align-self: stretch; font-size: 12px; color: #475569; {ring}",
+            "{line}"
+            if !reached { span { " The context stays above the target of {target}." } }
+            if failed > 0 { span { " {failed} summary parts failed. The record holds the lists only." } }
+            if let Some(record) = value.get("record").and_then(|v| v.as_str()) {
+                button {
+                    style: "margin-left: 8px; background: none; border: none; color: #4F46E5; cursor: pointer; text-decoration: underline;",
+                    onclick: move |_| {
+                        let next = !*record_open.peek();
+                        record_open.set(next);
+                    },
+                    "Show the record"
+                }
+                if *record_open.read() { MarkdownishText { text: record.to_string() } }
             }
         }
     }
@@ -849,6 +1128,90 @@ mod tests {
             ),
             row(3, ChatRole::Assistant, "", "", answer),
         ]
+    }
+
+    #[test]
+    fn tool_and_instruction_rows_share_a_group_and_plain_todos_split_it() {
+        let messages = vec![
+            row(1, ChatRole::Tool, "search_collections", "", ""),
+            row(2, ChatRole::Nag, "", "", "continue"),
+            row(3, ChatRole::Tool, "mark_todo", "", ""),
+            row(4, ChatRole::Tool, "read_documents", "", ""),
+        ];
+        assert_eq!(tool_run_segments(&messages, true), vec![(0, 2), (2, 3), (3, 4)]);
+        assert_eq!(tool_run_segments(&messages, false), vec![(0, 4)]);
+    }
+
+    #[test]
+    fn live_tools_join_the_final_stored_tool_group() {
+        let tools = vec![
+            row(1, ChatRole::Tool, "search_collections", "", ""),
+            row(2, ChatRole::Nag, "", "", "continue"),
+        ];
+        let segments = tool_run_segments(&tools, true);
+        assert_eq!(live_group_start(&tools, &segments, true, true), Some(0));
+
+        let closed = vec![
+            row(1, ChatRole::Tool, "search_collections", "", ""),
+            row(2, ChatRole::Assistant, "", "", "answer"),
+        ];
+        let segments = tool_run_segments(&closed, true);
+        assert_eq!(live_group_start(&closed, &segments, true, true), None);
+    }
+
+    #[test]
+    fn a_question_uses_the_tool_input_inside_its_envelope() {
+        let mut question = row(1, ChatRole::Tool, "ask_user", "", "");
+        question.tool_input = r#"{"input":{"question":"Which source should I read?"}}"#.to_string();
+        assert_eq!(asked_question(&[question]), "Which source should I read?");
+    }
+
+    #[test]
+    fn two_questions_follow_the_group_and_the_first_is_the_answer() {
+        let tool = row(1, ChatRole::Tool, "read_todo", "", "");
+        let mut first = row(2, ChatRole::Tool, "ask_user", "", "");
+        first.tool_input = r#"{"input":{"question":"First?"}}"#.to_string();
+        let mut second = row(3, ChatRole::Tool, "ask_user", "", "");
+        second.tool_input = r#"{"input":{"question":"Second?"}}"#.to_string();
+        let messages = vec![tool, first, second];
+        assert_eq!(tool_run_segments(&messages, true), vec![(0, 1), (1, 2), (2, 3)]);
+        assert_eq!(asked_question(&messages), "First?");
+    }
+
+    #[test]
+    fn a_live_todo_splits_the_tool_groups() {
+        let names = ["read_documents", "mark_todo", "search_collections"];
+        let rows: Vec<common::chat_types::StreamToolRow> = names.iter().enumerate().map(|(i, name)| {
+            common::chat_types::StreamToolRow {
+                seq: i as u32 + 1, tool_call_index: i as u32,
+                tool_name: (*name).to_string(), summary: String::new(), done: false,
+                elapsed_ms: 0,
+            }
+        }).collect();
+        assert_eq!(live_tool_segments(&rows, true), vec![(0, 1, false), (1, 2, true), (2, 3, false)]);
+        assert_eq!(live_tool_segments(&rows, false), vec![(0, 3, false)]);
+    }
+
+    #[test]
+    fn read_more_identifies_the_search_that_issued_its_handle() {
+        let mut search = row(4, ChatRole::Tool, "search_collections", "", "");
+        search.tool_output = r#"{"items":[],"more":"first"}"#.to_string();
+        let mut second = row(5, ChatRole::Tool, "read_more", "", "");
+        second.tool_input = r#"{"continuation":"first"}"#.to_string();
+        second.tool_output = r#"{"items":[],"more":"second"}"#.to_string();
+        let mut third = row(6, ChatRole::Tool, "read_more", "", "");
+        third.tool_input = r#"{"continuation":"second"}"#.to_string();
+        let messages = vec![search, second, third];
+        assert_eq!(read_more_source(&messages, 2), Some(("search_collections".to_string(), 4, 3)));
+    }
+
+    #[test]
+    fn read_more_identifies_a_document_item_handle() {
+        let mut read = row(4, ChatRole::Tool, "read_documents", "", "");
+        read.tool_output = r#"{"items":[{"path":"/a","more":"document-next"}]}"#.to_string();
+        let mut next = row(5, ChatRole::Tool, "read_more", "", "");
+        next.tool_input = r#"{"continuation":"document-next"}"#.to_string();
+        assert_eq!(read_more_source(&[read, next], 1), Some(("read_documents".to_string(), 4, 2)));
     }
 
     #[test]

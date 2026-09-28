@@ -275,9 +275,9 @@ no authority. It is an **isolation key**. `hoover4-mcp-browser` uses it to give 
 conversation its own Chromium browser context, so cookies and storage from one chat do not
 follow the next one. A step request also sends `X-Hoover4-Agent-Run` with the run
 id, and the browser server then keys the browser by the run. The chat session stays the
-key for citations and artifacts. The todo server keys chat and organizer lists by session,
-and planner and sub-agent lists by run id. Sessions are dropped when the chat ends, or after
-`BROWSER_SESSION_IDLE_SECONDS` (1 h) idle. See
+key for citations and artifacts. The todo server keys chat and organizer lists by session.
+It keys planner lists by run id and sub-agent lists by thread id. Sessions are dropped when
+the chat ends, or after `BROWSER_SESSION_IDLE_SECONDS` (1 h) idle. See
 [`../browser_use_server/README.md`](../browser_use_server/README.md).
 
 ## Thinking: the `thinking` value of a model step

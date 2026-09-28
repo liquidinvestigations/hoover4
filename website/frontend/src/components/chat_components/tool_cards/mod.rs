@@ -14,6 +14,7 @@
 
 pub mod browser_card;
 pub mod entities_card;
+pub mod result_cards;
 pub mod subagent_card;
 pub mod web_search_card;
 
@@ -22,6 +23,52 @@ use std::collections::HashMap;
 use dioxus::prelude::*;
 
 use crate::components::chat_components::tool_disclosure::ToolCallDisclosure;
+
+/// Rows of an old or current result page.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageRows {
+    pub items: Vec<serde_json::Value>,
+    pub fields: serde_json::Map<String, serde_json::Value>,
+    pub more: bool,
+}
+
+/// Read both result-page wire formats that occur in stored chat rows.
+pub fn page_rows(tool_output: &str) -> Option<PageRows> {
+    let value = tool_content(tool_output)?;
+    let object = value.as_object()?;
+    let items = object.get("items")?.as_array()?.clone();
+    let fields = object
+        .get("fields")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_else(|| {
+            object
+                .iter()
+                .filter(|(key, _)| !matches!(key.as_str(), "kind" | "items" | "more"))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        });
+    Some(PageRows {
+        items,
+        fields,
+        more: object.get("more").is_some_and(|v| !v.is_null() && v != ""),
+    })
+}
+
+#[cfg(test)]
+mod page_tests {
+    use super::*;
+
+    #[test]
+    fn page_rows_reads_old_and_current_page_shapes() {
+        let old = r#"{"kind":"result_page","items":[{"path":"a"}],"fields":{"total":1}}"#;
+        let current = r#"{"items":[{"path":"a"}],"total":1,"more":"next"}"#;
+        assert_eq!(page_rows(old).unwrap().items.len(), 1);
+        let current = page_rows(current).unwrap();
+        assert_eq!(current.fields.get("total").and_then(|value| value.as_u64()), Some(1));
+        assert!(current.more);
+    }
+}
 
 /// Route one tool call to its card.
 ///
@@ -37,6 +84,10 @@ pub fn ToolCard(
     /// How long a still-running call has been going, from the server. See
     /// [`ElapsedCounter`].
     elapsed_ms: Option<u32>,
+    #[props(default)]
+    doc_refs: Vec<common::chat_types::ChatDocRef>,
+    #[props(default)]
+    draft: Option<Signal<String>>,
     /// `file_hash` to `collection_dataset`, gathered from the rest of the conversation.
     /// Only the entities card uses it, and only to address a document the tool named by
     /// collection and hash alone.
@@ -46,15 +97,53 @@ pub fn ToolCard(
     /// them, and every other row receives an empty list.
     #[props(default)]
     subagent_runs: Vec<common::chat_types::SubagentRunEntry>,
+    /// Terminal depth-one runs read after a delegation batch leaves the live poll.
+    #[props(default)]
+    subagent_batches: Vec<common::chat_types::SubagentBatchState>,
+    #[props(default)]
+    todo_versions: Vec<common::chat_types::TodoSnapshot>,
+    #[props(default)]
+    read_more_source: Option<(String, u32, u32)>,
 ) -> Element {
     let running = running.unwrap_or(false);
     match tool_name.as_str() {
+        "search_collections" | "search_passages" | "list_collections" => rsx! {
+            result_cards::SearchCard { tool_name, tool_input, tool_output, running, doc_refs }
+        },
+        "read_more" if read_more_source.as_ref().is_some_and(|(name, _, _)| matches!(name.as_str(), "search_collections" | "search_passages" | "list_collections")) => rsx! {
+            result_cards::SearchCard {
+                tool_name: read_more_source.as_ref().map(|(name, seq, part)| format!("read_more · part {part} of {name} #{seq}")).unwrap_or_default(),
+                tool_input, tool_output, running, doc_refs,
+            }
+        },
+        "read_documents" | "read_more" => rsx! {
+            result_cards::ReadCard {
+                tool_name: if tool_name == "read_more" {
+                    read_more_source.as_ref().map(|(name, seq, part)| format!("read_more · part {part} of {name} #{seq}"))
+                        .unwrap_or_else(|| "read_more · an earlier result".to_string())
+                } else { tool_name },
+                tool_input, tool_output, running, doc_refs,
+            }
+        },
+        "cite_documents" => rsx! {
+            result_cards::CiteCard { tool_input, tool_output, running, doc_refs }
+        },
+        "ask_user" => rsx! {
+            result_cards::QuestionCard { tool_input, tool_output, running, draft }
+        },
+        "read_todo" | "write_todo" | "edit_todo" | "mark_todo" => rsx! {
+            result_cards::TodoCard { tool_name, tool_input, tool_output, running, todo_versions }
+        },
+        "append_node" | "append_child" | "move_node" | "edit_node" | "remove_node" | "read_plan" => rsx! {
+            result_cards::PlanToolCard { tool_name, tool_input, tool_output, running }
+        },
         "run_subagent" => rsx! {
             subagent_card::SubagentCard {
                 tool_input: tool_input.clone(),
                 tool_output: tool_output.clone(),
                 running,
                 subagent_runs: subagent_runs.clone(),
+                subagent_batches: subagent_batches.clone(),
             }
         },
         "list_document_entities" => rsx! {
@@ -429,7 +518,10 @@ pub fn CardShell(
     /// pip **collapsed**, which is the state a reader who is skimming actually sees; an
     /// error visible only after clicking Expand is an error nobody reads.
     failure: Option<ToolFailure>,
+    #[props(default)]
+    raw_output: String,
 ) -> Element {
+    let mut show_raw = use_signal(|| false);
     let (background, border, ink) = match failure {
         Some(_) => ("#FEF2F2", "#FECACA", "#991B1B"),
         None => ("#FFFBEB", "#FDE68A", "#78350F"),
@@ -437,6 +529,7 @@ pub fn CardShell(
     let chip_bg = if failure.is_some() { "#FECACA" } else { "#FDE68A" };
     rsx! {
         div {
+            "data-card-chip": "{chip}",
             style: "align-self: flex-start; max-width: 92%; background: {background}; \
                     border: 1px solid {border}; border-radius: 10px; padding: 8px 12px; \
                     font-size: 13px; color: {ink};",
@@ -481,6 +574,19 @@ pub fn CardShell(
                 div {
                     style: "margin-top: 8px; display: flex; flex-direction: column; gap: 8px;",
                     {children}
+                    if !raw_output.is_empty() {
+                        button {
+                            style: "align-self: flex-start; background: none; border: none; color: {ink}; cursor: pointer; text-decoration: underline;",
+                            onclick: move |_| {
+                                let next = !*show_raw.peek();
+                                show_raw.set(next);
+                            },
+                            if *show_raw.read() { "Hide raw JSON" } else { "Show raw JSON" }
+                        }
+                        if *show_raw.read() {
+                            pre { style: "white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto;", "{raw_output}" }
+                        }
+                    }
                 }
             }
         }

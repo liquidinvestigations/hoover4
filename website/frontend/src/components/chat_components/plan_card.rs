@@ -87,6 +87,11 @@ pub fn PlanCard(
     /// then shows an earlier version, also when the tree version did not change.
     #[props(default)]
     superseded: bool,
+    /// A planner question replaces the ordinary review actions with an answer box.
+    #[props(default)]
+    question: String,
+    #[props(default)]
+    question_options: Vec<String>,
 ) -> Element {
     let context = try_consume_context::<PlanCardContext>();
     let mut loaded = use_signal(|| Loaded::Pending);
@@ -218,6 +223,7 @@ pub fn PlanCard(
     let stale = superseded || (version != 0 && version < view.reviewed_version);
     let terminal = view.is_terminal();
     let can_review = !stale && version != 0 && view.state == "awaiting_review";
+    let question_review = can_review && !question.is_empty();
     let can_stop = !stale && !terminal;
     let sections = parse_sections(&view.sections_json);
     let show_sections = !sections.is_empty() && !stale;
@@ -246,6 +252,7 @@ pub fn PlanCard(
     };
     let mut decide_approve = decide.clone();
     let mut decide_reject = decide.clone();
+    let mut decide_question = decide.clone();
     let mut decide_cancel = decide;
 
     rsx! {
@@ -284,7 +291,30 @@ pub fn PlanCard(
                     "{text}"
                 }
             }
-            if can_review && *reject_open.read() {
+            if question_review {
+                div { style: "display: flex; flex-direction: column; gap: 6px;",
+                    div { "data-plan-question": "true", style: "font-size: 13px; white-space: pre-wrap;", "{question}" }
+                    div { style: "display: flex; gap: 6px; flex-wrap: wrap;",
+                        for (index, option) in question_options.into_iter().enumerate() {
+                            button {
+                                key: "{index}",
+                                style: BUTTON_PLAIN,
+                                onclick: move |_| comment.set(option.clone()),
+                                "{option}"
+                            }
+                        }
+                    }
+                    textarea {
+                        "data-plan-question-reply": "true",
+                        rows: "3",
+                        maxlength: "{MAX_PLAN_COMMENT_CHARS}",
+                        placeholder: "Reply to the planner",
+                        style: "font-size: 13px; padding: 6px 8px; border: 1px solid #CBD5E1; border-radius: 6px; resize: vertical;",
+                        value: "{comment}",
+                        oninput: move |e| comment.set(e.value()),
+                    }
+                }
+            } else if can_review && *reject_open.read() {
                 div { style: "display: flex; flex-direction: column; gap: 6px;",
                     textarea {
                         "data-plan-comment": "true",
@@ -300,7 +330,15 @@ pub fn PlanCard(
             }
             if can_review || can_stop {
                 div { style: "display: flex; gap: 8px; flex-wrap: wrap;",
-                    if can_review && !*reject_open.read() {
+                    if question_review {
+                        button {
+                            "data-plan-action": "question-reply",
+                            style: BUTTON_PRIMARY,
+                            disabled: is_busy || comment_len == 0,
+                            onclick: move |_| decide_question(PlanAction::Reject),
+                            "Send answer"
+                        }
+                    } else if can_review && !*reject_open.read() {
                         button {
                             "data-plan-action": "approve",
                             style: BUTTON_PRIMARY,

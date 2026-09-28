@@ -282,6 +282,17 @@ mod tests {
     }
 
     #[test]
+    fn selected_collection_datasets_survive_admin_and_restricted_sanitation() {
+        let query = query_with_selection(&["a_ds", "b_ds"]);
+        let admin = sanitize_query(query.clone(), &PermissionSet::All).unwrap();
+        assert_eq!(admin.facet_filters["collection_dataset"], query.facet_filters["collection_dataset"]);
+        let restricted = sanitize_query(query, &some_perms(&["a_ds", "c_ds"])).unwrap();
+        assert_eq!(restricted.collection_datasets, vec!["a_ds"]);
+        assert_eq!(restricted.facet_filters["collection_dataset"],
+            [FacetOriginalValue::String("a_ds".into())].into_iter().collect());
+    }
+
+    #[test]
     fn permission_set_allows() {
         assert!(PermissionSet::All.allows("anything"));
         let some = some_perms(&["a_ds"]);

@@ -576,6 +576,18 @@ return {ok: true};
         raise RuntimeError(f"unknown action {verb!r}")
 
 
+def resolve_chat_fixture_url(url: str) -> str:
+    """Resolve a named local chat fixture without storing its id in a scenario."""
+    match = re.search(r"\{\{chat_fixture:([a-z_]+)\}\}", url)
+    if not match:
+        return url
+    fixtures = json.loads(os.environ.get("HOOVER4_SCREENSHOT_CHAT_FIXTURES", "{}"))
+    session_id = fixtures.get(match.group(1), "")
+    if not re.fullmatch(r"[0-9a-f]{64}", session_id):
+        raise IncompleteCapture(f"chat fixture {match.group(1)} is unavailable")
+    return url.replace(match.group(0), session_id)
+
+
 # ---------------------------------------------------------------------------------
 # Snapshot
 # ---------------------------------------------------------------------------------
@@ -1442,7 +1454,7 @@ async def capture_all(
                 page_reports.append(f"- `{stem}` (`{page.url}`): {INCOMPLETE_EXECUTION} ({reason})")
                 continue
             try:
-                page.url = resolve_document_url(page, profile or {}, contract or {})
+                page.url = resolve_chat_fixture_url(resolve_document_url(page, profile or {}, contract or {}))
             except IncompleteCapture as error:
                 reason = str(error)
                 print(f"[{index + 1}/{len(pages)}] {stem}: incomplete ({reason})", flush=True)

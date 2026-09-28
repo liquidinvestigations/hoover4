@@ -20,7 +20,10 @@ enum Kind {
     Cite,
     Subagent,
     Plan,
+    Skill,
+    Note,
     Todo,
+    Instruction,
     Other,
 }
 
@@ -39,6 +42,8 @@ impl Kind {
             "append_node" | "append_child" | "move_node" | "edit_node" | "remove_node"
             | "read_plan" => Kind::Plan,
             "write_todo" | "edit_todo" | "mark_todo" | "read_todo" => Kind::Todo,
+            "search_skills" | "read_skill" | "read_tool" | "search_agent_tools" => Kind::Skill,
+            "write_note" => Kind::Note,
             name if name.starts_with("browser_") => Kind::Browser,
             _ => Kind::Other,
         }
@@ -57,7 +62,10 @@ impl Kind {
             Kind::Cite => format!("cited {n} {}", s("document", "documents")),
             Kind::Subagent => format!("ran {n} {}", s("sub-agent", "sub-agents")),
             Kind::Plan => format!("{n} plan {}", s("call", "calls")),
+            Kind::Skill => format!("read {n} {} and tool texts", s("skill", "skills")),
+            Kind::Note => format!("saved {n} {}", s("note", "notes")),
             Kind::Todo => format!("{n} todo list {}", s("call", "calls")),
+            Kind::Instruction => format!("{n} {} to the agent", s("instruction", "instructions")),
             Kind::Other => format!("{n} other {}", s("call", "calls")),
         }
     }
@@ -164,7 +172,11 @@ pub fn tool_run_summary(rows: &[ChatMessageItem], duration_ms: Option<i64>) -> S
     let mut counts: Vec<(Kind, u64)> = Vec::new();
     let mut failures = 0u64;
     for row in rows {
-        let kind = Kind::of(&row.tool_name);
+        let kind = if row.role.is_instruction() {
+            Kind::Instruction
+        } else {
+            Kind::of(&row.tool_name)
+        };
         let n = units(kind, &arguments(&row.tool_input));
         match counts.iter_mut().find(|(k, _)| *k == kind) {
             Some((_, total)) => *total += n,

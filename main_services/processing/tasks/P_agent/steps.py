@@ -1451,16 +1451,21 @@ def delegate_step(params: StepRef) -> Optional[RunSummary]:
 
 @activity.defn
 @with_heartbeat
-def prepare_continuation(params: StepRef) -> int:
+def prepare_continuation(params: StepRef) -> CallRef | None:
     """Add the result of each `run_subagent` call of the continued run to the thread.
-    Returns the count of results the thread holds after it."""
+    Return the successful question from that reply, when it has one."""
     from database import agent_runs
 
     row = _read_row(params)
     if agent_runs.is_terminal(row) or not row.continues_run_id:
-        return 0
+        return None
     messages = _add_continuation_results(row, _read_thread(row), _chat_row(row))
-    return sum(1 for m in messages if m.role == "tool" and m.tool_name == DELEGATION_TOOL)
+    ai = _last_ai(messages)
+    if ai is None:
+        return None
+    return next((call for call in call_refs(ai)
+                 if call.name == "ask_user" and (answer := _answer_of(messages, call.call_id))
+                 and answer.usage.get("status") == "ok"), None)
 
 
 @activity.defn

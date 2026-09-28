@@ -1,17 +1,6 @@
-//! The `web_search` card: pending, collapsed, expanded, and the ranking popup.
-//!
-//! Four states, because the four questions are different:
-//!
-//! * **Pending**: the query and an elapsed counter, while the search runs. This is
-//!   possible only because in-flight tool calls are visible at all.
-//! * **Collapsed**: `web_search · "danube water level" · 18 results · 5 sources`, plus a
-//!   warning pip when a source came back empty.
-//! * **Expanded** shows the result list: rank badge, domain chip, the title as a real link,
-//!   the *full* snippet, the sources that corroborated it, and an `RRF #7 → #2` badge
-//!   where reranking moved it. This is the level that answers "what did it actually find".
-//! * **Popup**, both orderings side by side, fetched lazily from the search-detail
-//!   artifact. `TOOL_PAYLOAD_CHARS` cannot carry two orderings of forty candidates, which
-//!   is why the artifact exists.
+//! The `web_search` card shows model-visible results and optional search detail.
+//! The result list shows the title, host, matching forms, and snippet.
+//! The detail artifact contains source timings and both ranking orders.
 //!
 //! Every string here is a text node and every link goes through `http_link` first. See
 //! the module docstring in `tool_cards/mod.rs`.
@@ -20,7 +9,8 @@ use dioxus::prelude::*;
 
 use crate::api::chat_api::chat_artifact_detail;
 use crate::components::chat_components::tool_cards::{
-    focus, http_link, json_bool, json_f64, json_str, json_strings, json_u64, tool_content,
+    artifact_refs_from_text, focus, http_link, json_bool, json_f64, json_str, json_strings, json_u64,
+    strip_artifact_marker, tool_content,
     tool_failure, CardShell, ElapsedCounter, FocusHandle, ModalCloseButton, ModalShell,
     ToolFailure,
 };
@@ -37,6 +27,7 @@ struct Row {
     rerank_rank: Option<u64>,
     rerank_score: Option<f64>,
     published: String,
+    forms: Vec<u64>,
 }
 
 fn parse_rows(v: &serde_json::Value, key: &str) -> Vec<Row> {
@@ -56,10 +47,46 @@ fn parse_rows(v: &serde_json::Value, key: &str) -> Vec<Row> {
                     rerank_rank: r.get("rerank_rank").and_then(|x| x.as_u64()),
                     rerank_score: json_f64(r, "rerank_score"),
                     published: json_str(r, "published"),
+                    forms: r.get("q").and_then(|q| q.as_array())
+                        .map(|forms| forms.iter().filter_map(|form| form.as_u64()).collect())
+                        .unwrap_or_default(),
                 })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn detail_artifact_id(tool_output: &str, content: &serde_json::Value) -> String {
+    artifact_refs_from_text(tool_output).into_iter()
+        .find(|artifact| artifact.kind == "json")
+        .map(|artifact| artifact.artifact_id)
+        .or_else(|| content.get("_hoover4_artifacts").and_then(|refs| refs.as_array())
+            .and_then(|refs| refs.iter().find(|reference| json_str(reference, "kind") == "json"
+                && json_str(reference, "tool_name") == "web_search"))
+            .map(|reference| json_str(reference, "artifact_id")))
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{detail_artifact_id, parse_rows};
+
+    #[test]
+    fn web_detail_uses_the_stored_json_artifact() {
+        let content = serde_json::json!({"results": [], "_hoover4_artifacts": [
+            {"artifact_id": "detail-1", "kind": "json", "tool_name": "web_search"}
+        ]});
+        assert_eq!(detail_artifact_id("", &content), "detail-1");
+    }
+
+    #[test]
+    fn slim_rows_keep_kind_published_and_form_numbers() {
+        let value = serde_json::json!({"results":[{"title":"A","url":"https://example.org/a","q":[0,2],"kind":"news","published":"2026-01-02"}]});
+        let rows = parse_rows(&value, "results");
+        assert_eq!(rows[0].forms, vec![0, 2]);
+        assert_eq!(rows[0].kind, "news");
+        assert_eq!(rows[0].published, "2026-01-02");
+    }
 }
 
 #[component]
@@ -74,10 +101,12 @@ pub fn WebSearchCard(
     // The button that opened the popup, so focus returns to it on close.
     let mut opener: FocusHandle = use_signal(|| None);
 
-    let query = serde_json::from_str::<serde_json::Value>(&tool_input)
-        .ok()
-        .map(|v| json_str(&v, "query"))
-        .unwrap_or_default();
+    let input = serde_json::from_str::<serde_json::Value>(&tool_input).unwrap_or_default();
+    let input = input.get("input").unwrap_or(&input);
+    let queries = input.get("queries").and_then(|queries| queries.as_array())
+        .map(|queries| queries.iter().filter_map(|query| query.as_str().map(str::to_string)).collect::<Vec<_>>())
+        .unwrap_or_else(|| input.get("query").and_then(|query| query.as_str()).map(|query| vec![query.to_string()]).unwrap_or_default());
+    let query = queries.first().cloned().unwrap_or_default();
     let requested_sources = serde_json::from_str::<serde_json::Value>(&tool_input)
         .ok()
         .map(|v| json_strings(&v, "sources"))
@@ -87,43 +116,45 @@ pub fn WebSearchCard(
         return rsx! { PendingSearch { query, sources: requested_sources, elapsed_ms } };
     }
 
-    let Some(content) = tool_content(&tool_output) else {
+    let Some(raw_content) = tool_content(&tool_output) else {
         // Not "the payload was not recorded": the payload IS recorded, it just did not
         // survive as JSON. Showing the bytes is worth more than a card that denies the
         // data exists. See `truncate_tool_payload`, which is why this happens far less
         // often now.
         return rsx! { UnparseableSearch { query, raw: tool_output.clone() } };
     };
+    let content = if let Some(text) = raw_content.as_str() {
+        serde_json::from_str::<serde_json::Value>(&strip_artifact_marker(text)).unwrap_or(raw_content)
+    } else { raw_content };
 
     let results = parse_rows(&content, "results");
-    let sources_used = json_strings(&content, "sources_used");
-    let degraded = json_strings(&content, "degraded");
-    let unknown_sources = json_strings(&content, "unknown_sources");
-    let rerank_applied = json_bool(&content, "rerank_applied");
-    let rerank_error = json_str(&content, "rerank_error");
-    let artifact_id = json_str(&content, "artifact_id");
+    let degraded = json_strings(&content, "no_results_from");
+    let degraded_text = degraded.join(", ");
+    let artifact_id = detail_artifact_id(&tool_output, &content);
     // A dead search used to read "0 results · 0 sources". A count, phrased as if the web
     // had nothing to say. The failure is the headline, so it goes in the header.
     let failure = tool_failure(&content);
     let error = failure.as_ref().map(|f| f.message.clone()).unwrap_or_default();
-    let total_ms = json_f64(&content, "total_ms").unwrap_or(0.0);
-    let before = json_u64(&content, "total_before_dedupe");
-    let after = json_u64(&content, "total_after_dedupe");
 
     let label = if query.is_empty() {
         "searched the web".to_string()
+    } else if queries.len() > 1 {
+        queries.iter().enumerate().map(|(index, form)| format!("{index}: {form}"))
+            .collect::<Vec<_>>().join("; ")
     } else {
         format!("\u{201c}{query}\u{201d}")
     };
     let has_artifact = !artifact_id.is_empty();
 
     rsx! {
+        div { "data-web-search-card": "true",
         CardShell {
             chip: "web_search".to_string(),
             label,
             running: false,
             expanded,
             failure: failure.clone(),
+            raw_output: tool_output.clone(),
             badges: rsx! {
                 // Counts only when there was a search to count. Beside a "failed" pip they
                 // read as a result rather than as the absence of one.
@@ -131,7 +162,7 @@ pub fn WebSearchCard(
                     span {
                         style: "flex-shrink: 0; font-size: 11px; opacity: 0.8; \
                                 font-variant-numeric: tabular-nums;",
-                        "{results.len()} results \u{b7} {sources_used.len()} sources"
+                        "{results.len()} results"
                     }
                 }
                 if !degraded.is_empty() {
@@ -140,16 +171,6 @@ pub fn WebSearchCard(
                         style: "flex-shrink: 0; background: #FEE2E2; color: #991B1B; \
                                 border-radius: 999px; padding: 1px 7px; font-size: 11px;",
                         "\u{26a0} {degraded.len()} degraded"
-                    }
-                }
-                // Only meaningful about a search that ran: "not reranked" beside a failure
-                // pip invites the reader to assume ranking was the problem.
-                if !rerank_applied && failure.is_none() {
-                    span {
-                        title: "The cross-encoder did not run, so these are in fusion order",
-                        style: "flex-shrink: 0; background: #E0E7FF; color: #3730A3; \
-                                border-radius: 999px; padding: 1px 7px; font-size: 11px;",
-                        "not reranked"
                     }
                 }
             },
@@ -162,16 +183,11 @@ pub fn WebSearchCard(
                 }
             }
 
-            SearchSummaryStrip {
-                sources_used: sources_used.clone(),
-                degraded: degraded.clone(),
-                unknown_sources: unknown_sources.clone(),
-                rerank_applied,
-                rerank_error: rerank_error.clone(),
-                total_ms,
-                before,
-                after,
+            for (index, form) in queries.iter().enumerate() {
+                div { style: "font-size: 12px;", "Form {index}: {form}" }
             }
+            if !degraded.is_empty() { div { "No results from: {degraded_text}" } }
+            if let Some(note) = content.get("note").and_then(|note| note.as_str()) { div { "{note}" } }
 
             for (i, row) in results.iter().enumerate() {
                 ResultRow { key: "{i}-{row.url}", row: row.clone() }
@@ -215,6 +231,7 @@ pub fn WebSearchCard(
                     focus(opener);
                 },
             }
+        }
         }
     }
 }
@@ -334,24 +351,14 @@ fn SearchSummaryStrip(
 #[component]
 fn ResultRow(row: Row) -> Element {
     let link = http_link(&row.url);
-    let moved = match row.rerank_rank {
-        Some(new) if row.rrf_rank > 0 && new != row.rrf_rank => {
-            Some(format!("RRF #{} \u{2192} #{new}", row.rrf_rank))
-        }
-        _ => None,
-    };
-    let rank = row.rerank_rank.unwrap_or(row.rrf_rank);
-    let title = if row.title.is_empty() { row.display_url.clone() } else { row.title.clone() };
+    let title = if row.title.is_empty() { row.url.clone() } else { row.title.clone() };
+    let host = row.url.split("//").nth(1).unwrap_or(&row.url).split('/').next().unwrap_or("").to_string();
+    let forms = row.forms.iter().map(u64::to_string).collect::<Vec<_>>().join(", ");
 
     rsx! {
         div {
             style: "display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; \
                     border-top: 1px solid #FEF3C7;",
-            span {
-                style: "flex-shrink: 0; min-width: 22px; text-align: right; font-size: 11px; \
-                        opacity: 0.6; font-variant-numeric: tabular-nums; padding-top: 2px;",
-                "{rank}"
-            }
             div {
                 style: "min-width: 0; flex: 1;",
                 div {
@@ -370,44 +377,25 @@ fn ResultRow(row: Row) -> Element {
                     } else {
                         span { style: "font-weight: 500; word-break: break-word;", "{title}" }
                     }
-                    if !row.kind.is_empty() && row.kind != "web" {
-                        span {
-                            style: "flex-shrink: 0; background: #DBEAFE; color: #1E40AF; \
-                                    border-radius: 999px; padding: 0 6px; font-size: 10px;",
-                            "{row.kind}"
-                        }
-                    }
                 }
                 div {
                     style: "font-size: 11px; color: #166534; word-break: break-all;",
-                    "{row.display_url}"
+                    "{host}"
+                }
+                if !forms.is_empty() {
+                    div { style: "font-size: 11px;", "Forms: {forms}" }
+                }
+                if !row.kind.is_empty() {
+                    div { style: "font-size: 11px;", "Kind: {row.kind}" }
+                }
+                if !row.published.is_empty() {
+                    div { style: "font-size: 11px;", "Published: {row.published}" }
                 }
                 if !row.snippet.is_empty() {
                     div {
                         style: "font-size: 12px; line-height: 1.5; margin-top: 2px; \
                                 word-break: break-word;",
                         "{row.snippet}"
-                    }
-                }
-                div {
-                    style: "display: flex; gap: 5px; flex-wrap: wrap; margin-top: 3px; \
-                            font-size: 10px; opacity: 0.8;",
-                    for source in row.sources.clone() {
-                        span {
-                            key: "{source}",
-                            style: "background: #FEF3C7; border-radius: 999px; padding: 0 6px;",
-                            "{source}"
-                        }
-                    }
-                    if let Some(m) = moved.clone() {
-                        span {
-                            style: "background: #DCFCE7; color: #166534; border-radius: 999px; \
-                                    padding: 0 6px;",
-                            "{m}"
-                        }
-                    }
-                    if !row.published.is_empty() {
-                        span { style: "opacity: 0.75;", "{row.published}" }
                     }
                 }
             }
@@ -458,6 +446,7 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
                     div {
                         style: "padding: 12px 16px; border-bottom: 1px solid #E2E8F0; \
                                 font-size: 12px; color: #334155; line-height: 1.7;",
+                        div { "The model did not read these ranks." }
                         div { "{dedupe}" }
                         if applied {
                             div { "cross-encoder reranked in {rerank_ms:.0} ms" }

@@ -246,6 +246,39 @@ def test_a_successful_question_writes_the_turn_answer(monkeypatch, store, kind, 
     assert store["run"][-1] == {"result": question, "next_seq": 7}
 
 
+def test_a_question_after_delegation_ends_the_continued_run(monkeypatch, store):
+    question = "Which collection should I read?"
+    parent_id = "parent"
+    store["row"] = _row(run_id="continued", kind="organizer", continues_run_id=parent_id,
+                        next_seq=8)
+    store["messages"].extend([
+        agent_runs.RunMessageRow(idx=1, role="ai", content="", run_id=parent_id,
+                                 tool_calls_json=json.dumps([
+                                     _entry("ask-1", "ask_user", {"question": question}),
+                                     _entry("child-1", "run_subagent", {"tasks": []},
+                                            kind="delegation")])),
+        agent_runs.RunMessageRow(idx=2, role="tool", content='{"asked":true}',
+                                 run_id=parent_id, tool_call_id="ask-1", tool_name="ask_user",
+                                 usage_json=json.dumps({"status": "ok"})),
+    ])
+    monkeypatch.setattr(steps, "_add_continuation_results", lambda row, messages, chat_row:
+                        messages + [agent_runs.RunMessageRow(
+                            idx=3, role="tool", content='{"reports":[]}', run_id="continued",
+                            tool_call_id="child-1", tool_name="run_subagent",
+                            usage_json=json.dumps({"status": "ok"}))])
+    monkeypatch.setattr(agent_runs, "write_run",
+                        lambda row, **changes: store["run"].append(changes))
+    ref = StepRef(run_id="continued", username="u", session_id="s")
+    asked = ActivityEnvironment().run(steps.prepare_continuation, ref)
+    assert asked is not None and asked.call_id == "ask-1"
+    next_seq = ActivityEnvironment().run(
+        steps.write_asked_answer,
+        steps.AskedAnswerParams(run_id="continued", username="u", session_id="s", call=asked))
+    assert next_seq == 9
+    assert store["chat"][-1]["content"] == question
+    assert store["run"][-1] == {"result": question, "next_seq": 9}
+
+
 def _frames(text="", entries=(), usage=None, reasoning=""):
     turn = {"type": "model_turn", "text": text, "reasoning": reasoning,
             "tool_calls": list(entries),

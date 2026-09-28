@@ -258,7 +258,8 @@ def _following_form(request: SearchCollectionsRequest, position: dict[str, Any],
         taken = available[:server.ROWS_PER_FORM - len(rows)]
         for document in taken:
             whole = document.model_dump(mode="json")
-            row = search_row(whole, None, server.query_words([forms[cursor["form"]]]))
+            row = search_row(whole, [cursor["form"]] if len(forms) > 1 else None,
+                             server.query_words([forms[cursor["form"]]]))
             rows.append(row)
             refs.append(paging.doc_ref(whole, snippet=row["snippet"]))
         skip = cursor["skip"] + len(taken)

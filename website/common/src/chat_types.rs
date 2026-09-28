@@ -67,6 +67,7 @@ pub enum ChatRole {
     Assistant,
     Tool,
     Nag,
+    Compaction,
     Error,
 }
 
@@ -78,6 +79,7 @@ impl ChatRole {
             Self::Assistant => "assistant",
             Self::Tool => "tool",
             Self::Nag => "nag",
+            Self::Compaction => "compaction",
             Self::Error => "error",
         }
     }
@@ -91,6 +93,7 @@ impl ChatRole {
             "assistant" => Self::Assistant,
             "tool" => Self::Tool,
             "nag" => Self::Nag,
+            "compaction" => Self::Compaction,
             _ => Self::Error,
         }
     }
@@ -99,6 +102,11 @@ impl ChatRole {
     /// opposed to a trace of how an answer was produced.
     pub fn is_conversational(&self) -> bool {
         matches!(self, Self::User | Self::Assistant)
+    }
+
+    /// Instruction rows join a tool group without pretending to be a tool call.
+    pub fn is_instruction(&self) -> bool {
+        matches!(self, Self::Nag)
     }
 }
 
@@ -422,6 +430,10 @@ pub struct StreamTurn {
     /// Version stamp: milliseconds of the newest stream row. The poll loop's change
     /// detection is built on it.
     pub updated_ms: i64,
+    /// Server time when this poll assembled the turn. A live group uses it to keep its
+    /// elapsed counter independent from the browser clock.
+    #[serde(default)]
+    pub server_now_ms: i64,
     /// The sub-agent runs of the current delegation batches of this turn, at most 30.
     /// Empty when no batch is open. The `run_subagent` card finds its entries by
     /// `batch_id` and `tool_call_id`. A batch that ended leaves this list, and the card
@@ -527,6 +539,12 @@ pub struct ChatPollResult {
     /// transcript row, so its handles reach the page only through this list.
     #[serde(default)]
     pub run_cited_handles: Vec<String>,
+    /// Todo snapshots named by tool rows returned in this poll.
+    #[serde(default)]
+    pub todo_versions: Vec<TodoSnapshot>,
+    /// Completed depth-one sub-agent runs of batches named by returned tool rows.
+    #[serde(default)]
+    pub subagent_batches: Vec<SubagentBatchState>,
     /// Opaque change-detection token: the client echoes it back on the next poll, and
     /// the server returns early when the current state produces a different one.
     pub sig: String,
@@ -575,6 +593,42 @@ pub struct ChatSessionDetail {
     /// See [`ChatPollResult::run_cited_handles`].
     #[serde(default)]
     pub run_cited_handles: Vec<String>,
+    /// The lead todo snapshots named by this transcript's todo writes.
+    #[serde(default)]
+    pub todo_versions: Vec<TodoSnapshot>,
+    /// Completed depth-one sub-agent runs of batches named by this transcript.
+    #[serde(default)]
+    pub subagent_batches: Vec<SubagentBatchState>,
+}
+
+/// One stored version of the conversation's todo list.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TodoSnapshot {
+    pub version: u32,
+    pub goal: String,
+    #[serde(default)]
+    pub items: Vec<TodoItemView>,
+}
+
+/// One todo item as the transcript renders it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TodoItemView {
+    pub id: String,
+    pub text: String,
+    pub status: String,
+    #[serde(default)]
+    pub note: String,
+}
+
+/// The terminal state of one depth-one sub-agent thread.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SubagentBatchState {
+    pub batch_id: String,
+    pub tool_call_id: String,
+    pub task: String,
+    pub state: String,
+    #[serde(default)]
+    pub report: String,
 }
 
 /// Maximum length of one user message. Guards the agent's context window and keeps a
@@ -1203,6 +1257,7 @@ mod tests {
             ChatRole::Assistant,
             ChatRole::Tool,
             ChatRole::Nag,
+            ChatRole::Compaction,
             ChatRole::Error,
         ] {
             assert_eq!(ChatRole::from_str(role.as_str()), role);

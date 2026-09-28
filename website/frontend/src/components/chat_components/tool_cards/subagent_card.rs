@@ -12,10 +12,11 @@
 //! Every text is a text node. A report and a partial text come from a model that read
 //! documents and web pages, so neither is rendered as HTML.
 
-use common::chat_types::{SubagentMessage, SubagentRunEntry};
+use common::chat_types::{SubagentBatchState, SubagentMessage, SubagentRunEntry};
 use dioxus::prelude::*;
 
 use super::{json_str, tool_content};
+use crate::components::chat_components::markdown_text::MarkdownishText;
 
 /// Characters of a stored report the card shows before the rest is cut.
 const REPORT_CHARS: usize = 2_000;
@@ -27,6 +28,9 @@ pub fn SubagentCard(
     running: bool,
     /// The poll's entries for the whole turn. The card picks its own.
     subagent_runs: Vec<SubagentRunEntry>,
+    /// Finished depth-one runs of batches that the transcript names.
+    #[props(default)]
+    subagent_batches: Vec<SubagentBatchState>,
 ) -> Element {
     let input: serde_json::Value = serde_json::from_str(&tool_input).unwrap_or_default();
     let batch_id = json_str(&input, "batch_id");
@@ -46,6 +50,15 @@ pub fn SubagentCard(
             .cloned()
             .collect()
     };
+    let stored: Vec<SubagentBatchState> = if batch_id.is_empty() {
+        Vec::new()
+    } else {
+        subagent_batches
+            .iter()
+            .filter(|entry| entry.batch_id == batch_id && entry.tool_call_id == call_id)
+            .cloned()
+            .collect()
+    };
     let reports = stored_reports(&tool_output);
 
     let headline = if !own.is_empty() {
@@ -57,6 +70,8 @@ pub fn SubagentCard(
             text.push_str(&format!(", {} briefings refused", refused.len()));
         }
         text
+    } else if !stored.is_empty() {
+        format!("Sub-agents: {} finished", stored.len())
     } else if running || batch_id.is_empty() {
         "Delegating to sub-agents\u{2026}".to_string()
     } else {
@@ -102,9 +117,32 @@ pub fn SubagentCard(
                         "Refused: {reason}"
                     }
                 }
+            } else if !stored.is_empty() {
+                for entry in stored {
+                    StoredBatchStateView { entry }
+                }
             } else {
                 for (i, objective) in objectives.into_iter().enumerate() {
                     div { key: "briefing-{i}", style: "color: #075985;", "\u{2022} {objective}" }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn StoredBatchStateView(entry: SubagentBatchState) -> Element {
+    rsx! {
+        details {
+            summary { style: "cursor: pointer;",
+                StateBadge { state: entry.state.clone() }
+                span { style: "margin-left: 6px;", "{entry.task}" }
+            }
+            if !entry.report.is_empty() {
+                div {
+                    style: "margin-top: 4px; padding: 6px 8px; background: white; border-radius: 6px; \
+                            white-space: pre-wrap; word-break: break-word; color: #1E293B;",
+                    MarkdownishText { text: entry.report.clone() }
                 }
             }
         }
@@ -163,7 +201,7 @@ fn StoredReport(report: Report) -> Element {
             div {
                 style: "margin-top: 4px; padding: 6px 8px; background: white; border-radius: 6px; \
                         white-space: pre-wrap; word-break: break-word; color: #1E293B;",
-                "{text}"
+                MarkdownishText { text }
             }
         }
     }

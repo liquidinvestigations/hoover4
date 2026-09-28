@@ -37,7 +37,7 @@ use rand::RngCore;
 
 use common::chat_types::{
     citation_handles, title_from_message, ChatOptions, ChatPollResult, ChatRole, ChatSendResult, ChatSessionDetail,
-    ChatSessionItem, StreamToolRow, StreamTurn, MAX_MESSAGE_CHARS,
+    ChatSessionItem, StreamToolRow, StreamTurn, SubagentBatchState, MAX_MESSAGE_CHARS,
 };
 use common::current_user::CurrentUser;
 use time::format_description::well_known::Rfc3339;
@@ -81,6 +81,8 @@ pub async fn get_chat_session(
     let available_collections = list_permitted_collections(user).await?;
     let tail = stream_state(username, &session_id).await?;
     let run_cited_handles = run_cited_handles(username, &session_id).await?;
+    let todo_versions = todo_snapshots(username, &session_id, &messages).await?;
+    let subagent_batches = subagent_batches(username, &session_id, &messages).await?;
 
     let options = row.options();
     Ok(ChatSessionDetail {
@@ -102,6 +104,8 @@ pub async fn get_chat_session(
         queued: tail.queued,
         queued_for: tail.queued_for,
         run_cited_handles,
+        todo_versions,
+        subagent_batches,
     })
 }
 
@@ -111,6 +115,65 @@ pub async fn get_chat_session(
 async fn run_cited_handles(username: &str, session_id: &str) -> anyhow::Result<Vec<String>> {
     let outputs = db_chat::session_citation_outputs(username, session_id).await?;
     Ok(citation_handles(outputs.iter().map(String::as_str)))
+}
+
+fn todo_versions_in(messages: &[common::chat_types::ChatMessageItem]) -> Vec<u32> {
+    let mut versions = Vec::new();
+    for message in messages.iter().filter(|message| {
+        matches!(message.tool_name.as_str(), "read_todo" | "write_todo" | "edit_todo" | "mark_todo")
+    }) {
+        let value = serde_json::from_str::<serde_json::Value>(&message.tool_output).unwrap_or_default();
+        let content = value.get("output").and_then(|value| value.get("content")).unwrap_or(&value);
+        let parsed;
+        let content = if let Some(text) = content.as_str() {
+            parsed = serde_json::from_str::<serde_json::Value>(text).unwrap_or_default();
+            &parsed
+        } else {
+            content
+        };
+        if let Some(version) = content.get("version").and_then(|value| value.as_u64()) {
+            let version = version as u32;
+            if version > 1 && !versions.contains(&(version - 1)) {
+                versions.push(version - 1);
+            }
+            if !versions.contains(&version) {
+                versions.push(version);
+            }
+        }
+    }
+    versions
+}
+
+async fn todo_snapshots(
+    username: &str,
+    session_id: &str,
+    messages: &[common::chat_types::ChatMessageItem],
+) -> anyhow::Result<Vec<common::chat_types::TodoSnapshot>> {
+    db_chat::todo_snapshots(username, session_id, &todo_versions_in(messages)).await
+}
+
+fn subagent_batch_ids_in(messages: &[common::chat_types::ChatMessageItem]) -> Vec<String> {
+    let mut batch_ids = Vec::new();
+    for message in messages.iter().filter(|message| message.tool_name == "run_subagent") {
+        let root = serde_json::from_str::<serde_json::Value>(&message.tool_input).unwrap_or_default();
+        let input = root.get("input").unwrap_or(&root);
+        let Some(batch_id) = input.get("batch_id").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        if !batch_id.is_empty() && !batch_ids.iter().any(|id| id == batch_id) {
+            batch_ids.push(batch_id.to_string());
+        }
+    }
+    batch_ids
+}
+
+async fn subagent_batches(
+    username: &str,
+    session_id: &str,
+    messages: &[common::chat_types::ChatMessageItem],
+) -> anyhow::Result<Vec<SubagentBatchState>> {
+    let rows = db_chat::subagent_batch_runs(username, session_id, &subagent_batch_ids_in(messages)).await?;
+    Ok(subagent_batch_states(&rows))
 }
 
 pub async fn delete_chat_session(user: &CurrentUser, session_id: String) -> anyhow::Result<()> {
@@ -610,6 +673,7 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
         reasoning: assistant.map(|r| r.reasoning.clone()).unwrap_or_default(),
         tool_rows,
         updated_ms,
+        server_now_ms: now_ms,
         subagent_runs,
     };
 
@@ -693,6 +757,7 @@ fn waiting_turn(
         reasoning: String::new(),
         tool_rows: Vec::new(),
         updated_ms: 0,
+        server_now_ms: time::OffsetDateTime::now_utc().unix_timestamp_nanos() as i64 / 1_000_000,
         subagent_runs,
     })
 }
@@ -850,6 +915,55 @@ fn subagent_entries(runs: &[db_chat::AgentRunRow]) -> Vec<common::chat_types::Su
     out.into_iter().map(|(_, e)| e).collect()
 }
 
+/// One state per depth-one sub-agent thread of each finished batch.
+///
+/// A continuation copies its first run's batch and tool call ids. The first row supplies
+/// the briefing and the last row supplies the state and report.
+fn subagent_batch_states(runs: &[db_chat::AgentRunRow]) -> Vec<SubagentBatchState> {
+    let continued: std::collections::HashSet<&str> = runs
+        .iter()
+        .filter(|run| !run.continues.is_empty())
+        .map(|run| run.continues.as_str())
+        .collect();
+    let mut threads: Vec<&str> = runs.iter().map(|run| run.thread.as_str()).collect();
+    threads.sort_unstable();
+    threads.dedup();
+    threads
+        .into_iter()
+        .filter_map(|thread| {
+            let first = runs
+                .iter()
+                .filter(|run| run.thread == thread)
+                .min_by_key(|run| run.started_ms)?;
+            let last = runs
+                .iter()
+                .filter(|run| run.thread == thread && !continued.contains(run.rid.as_str()))
+                .max_by_key(|run| run.started_ms)
+                .unwrap_or(first);
+            let task = serde_json::from_str::<serde_json::Value>(&first.briefing)
+                .ok()
+                .and_then(|briefing| {
+                    briefing
+                        .get("objective")
+                        .and_then(|objective| objective.as_str())
+                        .map(str::to_string)
+                })
+                .unwrap_or_default();
+            Some(SubagentBatchState {
+                batch_id: first.batch.clone(),
+                tool_call_id: first.tool_call_id.clone(),
+                task,
+                state: last.state.clone(),
+                report: if last.error_head.is_empty() {
+                    last.result_head.clone()
+                } else {
+                    last.error_head.clone()
+                },
+            })
+        })
+        .collect()
+}
+
 /// The most entries in the poll's `subagent_runs`: 5 depth 1 runs and 5 x 5 depth 2 runs.
 const SUBAGENT_ENTRIES_CAP: usize = 30;
 
@@ -951,6 +1065,8 @@ pub async fn poll_chat(
                 tokio::time::sleep(remaining).await;
             }
             let run_cited_handles = run_cited_handles(username, &session_id).await?;
+            let todo_versions = todo_snapshots(username, &session_id, &messages).await?;
+            let subagent_batches = subagent_batches(username, &session_id, &messages).await?;
             return Ok(ChatPollResult {
                 messages,
                 stream: tail.stream,
@@ -959,6 +1075,8 @@ pub async fn poll_chat(
                 queued: tail.queued,
                 queued_for: tail.queued_for,
                 run_cited_handles,
+                todo_versions,
+                subagent_batches,
                 sig: current_sig,
             });
         }
@@ -1757,5 +1875,28 @@ mod tests {
         let k1 = child("k1", "lead", "b0", "c1", 1, "completed", 1);
         let lead2 = continuation("lead2", &lead, "running", 2);
         assert!(subagent_entries(&[lead, k1, lead2]).is_empty());
+    }
+
+    #[test]
+    fn a_finished_batch_keeps_one_state_for_a_continued_thread() {
+        let first = child("first", "lead", "batch", "call", 1, "waiting_for_children", 1);
+        let mut last = continuation("last", &first, "completed", 2);
+        last.result_head = "reported".into();
+        let states = subagent_batch_states(&[first, last]);
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].batch_id, "batch");
+        assert_eq!(states[0].tool_call_id, "call");
+        assert_eq!(states[0].task, "task first");
+        assert_eq!(states[0].state, "completed");
+        assert_eq!(states[0].report, "reported");
+    }
+
+    #[test]
+    fn todo_writes_request_the_prior_snapshot_too() {
+        let row = serde_json::from_value(serde_json::json!({
+            "seq": 1, "role": "Tool", "content": "", "tool_name": "mark_todo",
+            "tool_output": "{\"version\":4}", "created_at": ""
+        })).unwrap();
+        assert_eq!(todo_versions_in(&[row]), vec![3, 4]);
     }
 }

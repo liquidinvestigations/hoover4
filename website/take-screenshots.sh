@@ -4,7 +4,7 @@
 #
 # Usage: ./take-screenshots.sh [--target URL] [--out DIR] [--only SUBSTRING] [--names CSV]
 #                               [--login-env FILE] [--remote-target] [--operation-id ID]
-#                               [--resolutions LIST] [--shards N]
+#                               [--resolutions LIST] [--shards N] [--dispatch]
 # Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
 # Credential values are not accepted as wrapper arguments and are not placed in
 # Docker or Python argument lists.
@@ -32,7 +32,8 @@
 # fixtures the scenarios name exist. Nothing here ingests anything. Two scenarios in
 # `browser-tests/`, `admin-dataset-rescan-dispatch` and `admin-operations-rerun`, name a
 # control that dispatches server work; both capture the control's state without engaging
-# it, so no scenario in the current list dispatches server work. A page whose dataset is
+# it. The scenarios in `browser-tests/dispatch/` dispatch server work, and a run reads
+# them only with `--dispatch`. A page whose dataset is
 # absent is incomplete_execution; other pages still run.
 #
 # How it works, and why it looks like this
@@ -79,6 +80,7 @@ REMOTE_TARGET=0
 OPERATION_ID=""
 RESOLUTIONS_ARG=""
 SHARDS=4
+DISPATCH=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -94,6 +96,10 @@ while [ $# -gt 0 ]; do
         --operation-id) OPERATION_ID="${2:?--operation-id needs a value}"; shift 2 ;;
         --resolutions) RESOLUTIONS_ARG="${2:?--resolutions needs a value}"; shift 2 ;;
         --shards) SHARDS="${2:?--shards needs a value}"; shift 2 ;;
+        --dispatch)
+            DISPATCH=1
+            shift
+            ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
@@ -250,10 +256,15 @@ PASS_THROUGH_ENV=()
 [ -n "$CRED_USERNAME" ] && PASS_THROUGH_ENV+=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
 [ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && PASS_THROUGH_ENV+=(-e HOOVER4_CAPTURE_REVISION)
 [ -n "$OPERATION_ID" ] && PASS_THROUGH_ENV+=(-e "HOOVER4_SCREENSHOT_OPERATION_ID=$OPERATION_ID")
+[ -n "${HOOVER4_SCREENSHOT_CHAT_FIXTURES:-}" ] && PASS_THROUGH_ENV+=(-e HOOVER4_SCREENSHOT_CHAT_FIXTURES)
 
 run_capture_python() {
+    local scenario_dir="$REMOTE_DIR/browser-tests"
+    if [ "$DISPATCH" -eq 1 ]; then
+        scenario_dir="$scenario_dir/dispatch"
+    fi
     docker exec "${PASS_THROUGH_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/capture_screenshots.py" \
-        --ini "$REMOTE_DIR/browser-tests" \
+        --ini "$scenario_dir" \
         --out-root "$REMOTE_DIR/out" \
         --run-name "$RUN_NAME" \
         --base-url "$SITE_URL" \

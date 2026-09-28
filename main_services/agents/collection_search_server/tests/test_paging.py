@@ -304,6 +304,29 @@ def test_short_read_documents_write_no_artifact(monkeypatch):
     assert store.bodies == {}
 
 
+def test_complete_read_items_fit_below_the_old_256_byte_floor(monkeypatch):
+    store = Store(monkeypatch)
+    documents = [{**SAMPLES["read_documents"]["documents"][0],
+                  "text": "x", "next_position": None}]
+    response = {"documents": documents, "next_position": None, "total": 1,
+                "partial": False, "source": "stable"}
+    monkeypatch.setattr("collection_search_server.paging.BackendClient.post",
+                        lambda self, route, request, response_model, expected_source=None:
+                        response_model.model_validate(response))
+    tool = tools_document.READ_DOCUMENTS
+    window = tool.window(RESPONSE_MODELS[tool.route].model_validate(response).model_dump(mode="json", by_alias=True))
+    envelope = len(canonical_json({"items": [], **window.fields}).encode("utf-8")) + 70
+    assert max(len(canonical_json(item).encode("utf-8")) for item in window.items) < 255
+    monkeypatch.setattr(paging, "get_http_headers",
+                        lambda: {paging.PAGE_SHARE_HEADER: str(envelope + 255)})
+    assert paging.page_share() == envelope + 255
+    assert paging.unit_limits(paging.page_share(), envelope, 1) == [255]
+    page = json.loads(tool.render(tool.model.model_validate({
+        "collectionname": "c", "file_hash": [row["file_hash"] for row in documents]}), {}, ""))
+    assert len(page["items"]) == 1
+    assert store.bodies == {}
+
+
 def test_a_continuation_into_another_callers_artifact_is_refused(monkeypatch):
     tool = TOOLS["table_page"]
     store = Store(monkeypatch)
@@ -820,9 +843,12 @@ def test_each_form_keeps_its_first_rows(monkeypatch):
     found = {"a": [f"a{n}" for n in range(200)], "b": [f"b{n}" for n in range(200)]}
     forms_backend(monkeypatch, found)
     page = json.loads(paging.finish(tools_search.search_collections.fn(queries=["a", "b"])))
-    following = json.loads(paging.read_more.fn(page["more"]))
+    following = json.loads(paging.finish(paging.read_more.fn(page["more"])))
     shown = [row["file_hash"] for row in page["items"] + following["items"]]
     assert shown == found["a"][:15] + found["b"][:15]
+    assert [row["q"] for row in following["items"]] == [[1]] * 15
+    later = json.loads(paging.read_more.fn(following["more"]))
+    assert all(row["q"] == [0] for row in later["items"])
     assert "'a': 200 found, first 15 shown" in page["notes"]
 
 

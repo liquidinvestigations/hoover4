@@ -250,6 +250,10 @@ fn ChatConversationPanel(
     // The handles that the citations of every run of the session issued, sub-agents
     // included. The server sends the whole list on each load and each poll.
     let mut run_cited_handles = use_signal(Vec::<String>::new);
+    // Finished batch states survive after the live stream stops. A poll returns states
+    // only for its newly finalised rows, so the page retains earlier batch states.
+    let mut subagent_batches = use_signal(Vec::<common::chat_types::SubagentBatchState>::new);
+    let mut todo_versions = use_signal(Vec::<common::chat_types::TodoSnapshot>::new);
     let mut loaded_for = use_signal(String::new);
     let mut find_query = use_signal(String::new);
     let mut match_index = use_signal(|| 0_usize);
@@ -291,6 +295,8 @@ fn ChatConversationPanel(
         interrupted.set(detail.interrupted);
         queued_for.set(detail.queued_for.clone());
         run_cited_handles.set(detail.run_cited_handles.clone());
+        subagent_batches.set(detail.subagent_batches.clone());
+        todo_versions.set(detail.todo_versions.clone());
         loaded_for.set(detail.session.session_id.clone());
         // A refresh mid-answer picks the turn up exactly where a poller left it.
         if detail.active && !detail.interrupted {
@@ -332,6 +338,32 @@ fn ChatConversationPanel(
                         queued_for.set(result.queued_for.clone());
                         if *run_cited_handles.peek() != result.run_cited_handles {
                             run_cited_handles.set(result.run_cited_handles.clone());
+                        }
+                        if !result.subagent_batches.is_empty() {
+                            let mut known = subagent_batches.read().clone();
+                            for batch in result.subagent_batches {
+                                if let Some(index) = known.iter().position(|stored| {
+                                    stored.batch_id == batch.batch_id
+                                        && stored.tool_call_id == batch.tool_call_id
+                                        && stored.task == batch.task
+                                }) {
+                                    known[index] = batch;
+                                } else {
+                                    known.push(batch);
+                                }
+                            }
+                            subagent_batches.set(known);
+                        }
+                        if !result.todo_versions.is_empty() {
+                            let mut known = todo_versions.read().clone();
+                            for snapshot in result.todo_versions {
+                                if let Some(index) = known.iter().position(|stored| stored.version == snapshot.version) {
+                                    known[index] = snapshot;
+                                } else {
+                                    known.push(snapshot);
+                                }
+                            }
+                            todo_versions.set(known);
                         }
                         // An interrupted turn keeps whatever partial text it produced
                         // (under the banner, which is its marker), but never the
@@ -573,6 +605,7 @@ fn ChatConversationPanel(
             }
             ChatTranscript {
                 messages: messages.read().clone(),
+                draft,
                 find_query,
                 match_index,
                 match_count,
@@ -580,6 +613,9 @@ fn ChatConversationPanel(
                 stream_live: !*interrupted.read(),
                 queued_for: queued_for.read().clone(),
                 run_cited_handles: run_cited_handles.read().clone(),
+                subagent_batches: subagent_batches.read().clone(),
+                todo_versions: todo_versions.read().clone(),
+                deep_research: detail.session.options.deep_research,
                 // A plan that has no planner answer row yet shows its card from here.
                 pending_plan: crate::components::chat_components::plan_card::started_plan(
                     &session_id.read(),

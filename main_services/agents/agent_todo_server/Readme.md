@@ -26,7 +26,8 @@ failed result.
 ## The caller
 
 The list uses the user and chat session from request headers. Chat and organizer runs use
-the session id. Planner and sub-agent runs use the run id from `X-Hoover4-Agent-Run`.
+the session id. Planner runs use the run id. Sub-agent runs use their thread id, which
+stays the same when a continuation gets a new run id.
 The server reads the stored run kind before it selects the key. Tool arguments cannot
 select another list.
 

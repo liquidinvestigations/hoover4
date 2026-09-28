@@ -580,7 +580,7 @@ def render_document_reads(tool: PagedTool, request: BaseModel) -> str:
     share = page_share()
     envelope = len(canonical_json({"items": [], **window.fields}).encode("utf-8")) + n * 70
     per = unit_limits(share, envelope, n)[0]
-    if per < 256:
+    if per < 1:
         return _invalid("the page share cannot hold one byte of each document")
     if all(len(canonical_json(item).encode("utf-8")) <= per for item in window.items):
         preview, measured = _build(
@@ -634,7 +634,7 @@ def render_document_reads(tool: PagedTool, request: BaseModel) -> str:
                 return canonical_json({"success": False, "error": "artifact_write_failed", "message": str(exc)})
             return text
         per = per * 3 // 4
-        if per < 256:
+        if per < 1:
             break
     return _invalid("the page share cannot hold one byte of each document")
 
