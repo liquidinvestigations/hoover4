@@ -494,7 +494,7 @@ async def test_an_exhausted_budget_runs_no_call():
     result = await steps.run_tool_call(agent, tool_request("read_plan", budget_exhausted=True))
     assert not seen
     assert result["error_class"] == "budget_exhausted"
-    assert json.loads(result["content"])["status"] == "budget_exhausted"
+    assert json.loads(result["content"])["error"] == "budget_exhausted"
 
 
 async def test_a_search_result_returns_its_matched_names():
@@ -548,4 +548,4 @@ async def test_three_parallel_pages_share_one_safe_mode_budget(model):
         assert measure["page_sha256"] == hashlib.sha256(result["content"].encode("utf-8")).hexdigest()
         assert measure["page_share"] <= SAFE_MODE_BATCH_BYTES // 3 + 400
         assert "page_sha256" not in result["content"]
-        assert json.loads(result["content"])["returned_units"] > 0
+        assert len(json.loads(result["content"])["items"]) > 0

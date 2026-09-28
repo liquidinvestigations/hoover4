@@ -42,17 +42,14 @@ services:
       # Shared bearer token as a bind-mounted file (deploy.py); acl.py falls back to
       # it when MCP_SHARED_SECRET is unset.
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
-      # The default result count and the hard cap the model's `max_results` is clamped to.
-      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-50}
-      - SEARCH_MAX_ALLOWED_RESULTS=${SEARCH_MAX_ALLOWED_RESULTS:-200}
-      # What the result set WEIGHS, measured on the whole serialised response. Neither the
-      # count nor a per-snippet ceiling is a bound: capping the count at 200 while
-      # budgeting only snippet text left 50 000 characters of ids and paths on top, and
-      # the prompt grew from 27 800 tokens to 44 700. Snippets shrink first, then the
-      # lowest-ranked hits are dropped until the payload fits.
-      - SEARCH_SNIPPET_CHARS=${SEARCH_SNIPPET_CHARS:-1200}
-      - SEARCH_PAYLOAD_BUDGET_CHARS=${SEARCH_PAYLOAD_BUDGET_CHARS:-24000}
-      - SEARCH_MIN_SNIPPET_CHARS=${SEARCH_MIN_SNIPPET_CHARS:-120}
+      # The default and the cap of the model's `max_results` of search_passages, per query form.
+      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-15}
+      - SEARCH_MAX_ALLOWED_RESULTS=${SEARCH_MAX_ALLOWED_RESULTS:-15}
+      # The rows that each query form of a search keeps, and the query forms of one call.
+      - SEARCH_ROWS_PER_FORM=${SEARCH_ROWS_PER_FORM:-15}
+      - SEARCH_MAX_QUERIES=${SEARCH_MAX_QUERIES:-12}
+      # The characters of a snippet that the model reads, cut round the first match.
+      - SEARCH_SNIPPET_CHARS=${SEARCH_SNIPPET_CHARS:-350}
       # Per-kind floor over the keyword/vector rankings. Kept well below SEARCH_MAX_RESULTS
       # on purpose: a floor of 10 per kind reserves 20 slots and max_results stops meaning
       # anything, which is how an 8-result search returned 20.

@@ -31,8 +31,10 @@ a retried plan mutation changes the tree once.
 
 **The call measure.** The broker adds the `PageMeasure` of the page it returned as an
 embedded resource beside the page text, and the MCP adapter puts that block in the tool
-message artifact. `split_measure` takes it out of the artifact, and `/tool_call` returns it
-beside the result. The model never reads it.
+message artifact. `split_resources` takes it out of the artifact, and `/tool_call` returns
+it beside the result. The broker also adds the doc refs, the whole identity of each row of
+the page, as a second embedded resource. `/tool_call` returns them as `doc_refs`. The model
+reads neither.
 """
 
 from __future__ import annotations
@@ -78,6 +80,8 @@ PAGE_SHARE_HEADER = "X-Hoover4-Page-Share"
 IDEMPOTENCY_HEADER = "X-Hoover4-Idempotency-Key"
 #: The URI of the embedded resource in which the broker returns the call measure.
 CALL_MEASURE_URI = "hoover4://call-measure"
+#: The URI of the embedded resource in which the broker returns the doc refs of a page.
+DOC_REFS_URI = "hoover4://doc-refs"
 #: The completion reserve of safe mode when `AGENT_COMPLETION_RESERVE_TOKENS` is not set.
 SAFE_MODE_COMPLETION_RESERVE = 8192
 #: The `total_units` and artifact id with which the empty page of a call is measured. They
@@ -237,25 +241,31 @@ def batch_budget(names: Sequence[str], messages: Sequence[Any]) -> BatchBudget:
     return safe_budget(names, request_tokens(messages), window, reserve)
 
 
-def split_measure(artifact: Any) -> Tuple[Optional[Dict[str, Any]], Any]:
-    """Take the broker's call measure out of a tool message artifact. Return the measure,
-    or `None`, and the artifact without it, or `None` when nothing else is left."""
+def split_resources(artifact: Any) -> Tuple[Optional[Dict[str, Any]], Optional[List[Dict[str, Any]]], Any]:
+    """Take the broker's call measure and doc refs out of a tool message artifact. Return
+    the measure or `None`, the doc refs or `None`, and the artifact without them, or `None`
+    when nothing else is left."""
     if not isinstance(artifact, list):
-        return None, artifact
+        return None, None, artifact
     measure = None
+    doc_refs = None
     rest = []
     for block in artifact:
         resource = getattr(block, "resource", None)
-        if measure is None and resource is not None and str(getattr(resource, "uri", "")) == CALL_MEASURE_URI:
+        uri = str(getattr(resource, "uri", "")) if resource is not None else ""
+        if uri in (CALL_MEASURE_URI, DOC_REFS_URI):
             try:
-                measure = json.loads(getattr(resource, "text", "") or "")
+                value = json.loads(getattr(resource, "text", "") or "")
             except ValueError:
-                measure = None
-            if isinstance(measure, dict):
+                value = None
+            if uri == CALL_MEASURE_URI and measure is None and isinstance(value, dict):
+                measure = value
                 continue
-            measure = None
+            if uri == DOC_REFS_URI and doc_refs is None and isinstance(value, list):
+                doc_refs = value
+                continue
         rest.append(block)
-    return measure, (rest or None)
+    return measure, doc_refs, (rest or None)
 
 
 def _text_of(content: Any) -> str:
@@ -306,5 +316,5 @@ __all__ = [
     "BatchBudget", "DELEGATION_TOOL", "IDEMPOTENCY_HEADER", "ORDERED_TOOLS", "PAGE_SHARE_HEADER",
     "PLAN_MUTATIONS",
     "batch_budget", "empty_page_text", "page_share_client", "pending_calls", "request_tokens",
-    "safe_budget", "split_measure", "token_budget", "validation_error",
+    "safe_budget", "split_resources", "token_budget", "validation_error",
 ]

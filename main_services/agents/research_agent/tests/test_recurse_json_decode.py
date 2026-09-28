@@ -29,6 +29,10 @@ class TestRecurseJsonDecode:
         decoded = recurse_json_decode(event)
         assert decoded["content"][0]["text"] == PAGE_TEXT
 
+    def test_a_slim_page_string_is_returned_unchanged(self):
+        text = '{"items":[{"file_hash":"5e8bb0ff3822761c"}],"more":"c7f3a91b0d2e"}'
+        assert recurse_json_decode({"output": text})["output"] == text
+
     def test_a_non_page_json_string_still_decodes(self):
         # Every other JSON-shaped string keeps today's behaviour: decoded into an
         # object, recursively.

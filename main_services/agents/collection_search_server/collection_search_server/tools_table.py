@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from agent_common.result_pages import canonical_json
 from collection_search_server.backend_client import AgentTableFilter, AgentTableSort, TablesCellRequest, TablesColumnValuesRequest, TablesOverviewRequest, TablesPageRequest, TablesSearchCellsRequest
+from collection_search_server import server
 from collection_search_server.paging import PagedTool
 from collection_search_server.server import mcp
 
@@ -21,6 +22,14 @@ PAGED_TOOLS = {"table_overview": TABLE_OVERVIEW, "table_page": TABLE_PAGE, "tabl
 
 
 def _render(tool: PagedTool, values: dict[str, Any]) -> str:
+    """The first page of `tool` for `values`. A hash start in `file_hash` becomes its whole
+    hash first."""
+    try:
+        values["file_hash"] = server.full_hashes(values["collectionname"], values["file_hash"])
+    except server.HashPrefixError as exc:
+        return canonical_json({"success": False, "error": "invalid_argument", "message": str(exc)})
+    except Exception:  # noqa: BLE001, a failed lookup leaves the hash to the route
+        server.log.warning("the file_hash of %s was not looked up", tool.tool_name, exc_info=True)
     try:
         return tool.render(tool.model.model_validate(values), {}, "")
     except ValidationError as exc:

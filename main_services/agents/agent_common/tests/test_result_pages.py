@@ -78,6 +78,49 @@ class TestIsCanonicalPage:
         text = json.dumps({"kind": "result_page", "b": 1, "a": 2})
         assert rp.is_canonical_page(text) is False
 
+    #: The empty and the full slim search results that the run side tests read.
+    SLIM_EMPTY = '{"items":[]}'
+    SLIM_FULL = ('{"items":[{"collectionname":"enron","date":"2001-05-14","file_hash":"5e8bb0ff3822761c",'
+                 '"path":"/maildir/kean-s/sent/12.","snippet":"…the **Raptor** approval…","type":"email"}],'
+                 '"more":"c7f3a91b0d2e","notes":["\'Raptor\': 40 found, first 15 shown"]}')
+
+    def test_true_for_the_slim_pages(self):
+        assert rp.is_canonical_page(self.SLIM_EMPTY)
+        assert rp.is_canonical_page(self.SLIM_FULL)
+
+    def test_true_for_a_page_stored_before_the_slim_format(self):
+        old = rp.canonical_json({"success": True, "kind": "result_page", "tool_name": "t", "shape": "rows",
+                                 "items": [], "returned_units": 0, "total_units": 0,
+                                 "raw_artifact_id": None, "continuation": None})
+        assert rp.is_canonical_page(old)
+
+    def test_true_for_the_budget_exhausted_error_and_false_for_another_error(self):
+        assert rp.is_canonical_page(rp.canonical_json({"success": False, "error": "budget_exhausted", "message": "m"}))
+        assert rp.is_canonical_page(rp.canonical_json({"success": False, "error": "not_found", "message": "m"})) is False
+
+
+class TestSlimEnvelope:
+    def test_fields_move_to_the_top_level_and_empty_values_are_left_out(self):
+        p = _page_input(fields={"query_notes": ["n"], "source": "s", "total_count": 3, "partial": False,
+                                "note": "", "hit_count": 0})
+        text, _ = rp.build_page(p, rp.ByteLimit(10_000))
+        page = json.loads(text)
+        assert page["notes"] == ["n"] and page["hit_count"] == 0
+        assert not {"query_notes", "source", "total_count", "partial", "note", "success", "kind"} & set(page)
+
+    def test_a_route_field_named_items_stays_under_fields(self):
+        p = _page_input(fields={"items": ["route"], "more": "x"})
+        page = json.loads(rp.build_page(p, rp.ByteLimit(10_000))[0])
+        assert page["fields"] == {"items": ["route"], "more": "x"}
+        assert page["items"] == _page_input().items and "more" not in page
+
+    def test_the_handle_is_the_same_for_the_same_token_and_the_page_fits_its_limit(self):
+        first_text, first = rp.build_page(_page_input(), rp.ByteLimit(150))
+        second_text, second = rp.build_page(_page_input(), rp.ByteLimit(150))
+        assert first.continuation_token is not None
+        assert first_text == second_text and first.continuation_token == second.continuation_token
+        assert first.page_bytes == len(first_text.encode("utf-8")) <= 150
+
 
 # ----------------------------------------------------------------------------------
 # Continuation
@@ -156,9 +199,9 @@ class TestBuildPageRows:
     def test_everything_fits_no_continuation(self):
         text, measure = rp.build_page(_page_input(), rp.ByteLimit(10_000))
         envelope = json.loads(text)
-        assert envelope["returned_units"] == 5
-        assert envelope["total_units"] == 5
-        assert envelope["continuation"] is None
+        assert len(envelope["items"]) == measure.returned_units == 5
+        assert "more" not in envelope and measure.continuation_token is None
+        assert set(envelope) == {"items"}
         assert measure.truncated is False
         assert measure.status == "ok"
 
@@ -166,25 +209,26 @@ class TestBuildPageRows:
         p = _page_input()
         # A budget too small for all five rows but big enough for at least one, once the
         # encoded continuation's own overhead is accounted for.
-        text, measure = rp.build_page(p, rp.ByteLimit(400))
+        text, measure = rp.build_page(p, rp.ByteLimit(150))
         envelope = json.loads(text)
-        assert 0 < envelope["returned_units"] < 5
-        assert envelope["continuation"] is not None
+        assert 0 < len(envelope["items"]) < 5
+        assert envelope["more"] == rp.continuation_handle(measure.continuation_token)
+        assert len(envelope["more"]) == 12
         assert measure.truncated is True
-        decoded = rp.decode_continuation(envelope["continuation"])
+        decoded = rp.decode_continuation(measure.continuation_token)
         assert decoded["source"] == "fingerprint-1"
-        assert decoded["position"] == {"offset": envelope["returned_units"]}
+        assert decoded["position"] == {"offset": len(envelope["items"])}
 
     def test_next_page_starts_after_the_returned_rows(self):
         rows = _page_input().items
-        first_text, _ = rp.build_page(_page_input(), rp.ByteLimit(400))
+        first_text, first_measure = rp.build_page(_page_input(), rp.ByteLimit(150))
         first = json.loads(first_text)
-        offset = rp.decode_continuation(first["continuation"])["position"]["offset"]
+        offset = rp.decode_continuation(first_measure.continuation_token)["position"]["offset"]
         next_input = _page_input(items=rows[offset:], position_start={"offset": offset})
         next_text, _ = rp.build_page(next_input, rp.ByteLimit(10_000))
         second = json.loads(next_text)
         assert first["items"] + second["items"] == rows
-        assert second["continuation"] is None
+        assert "more" not in second
 
     def test_non_advancing_position_is_rejected(self):
         p = _page_input(position_after=lambda count: {"offset": 0})
@@ -194,10 +238,10 @@ class TestBuildPageRows:
     def test_budget_too_small_for_one_row_is_budget_exhausted(self):
         text, measure = rp.build_page(_page_input(), rp.ByteLimit(10))
         envelope = json.loads(text)
-        assert envelope["success"] is False
-        assert envelope["status"] == "budget_exhausted"
-        assert envelope["returned_units"] == 0
-        assert envelope["continuation"] is None
+        assert envelope == {"success": False, "error": "budget_exhausted", "message":
+                            "This step had no room for the result. Call the tool again in a step with fewer calls."}
+        assert measure.returned_units == 0
+        assert rp.is_canonical_page(text)
         assert measure.status == "budget_exhausted"
 
 
@@ -275,9 +319,9 @@ class TestBuildPageBlob:
         value = "café " * 60
         data = value.encode("utf-8")
         first_input = _page_input(shape="blob", items=[value], total_units=len(data))
-        first_text, _ = rp.build_page(first_input, rp.ByteLimit(400))
+        first_text, first_measure = rp.build_page(first_input, rp.ByteLimit(200))
         first = json.loads(first_text)
-        offset = rp.decode_continuation(first["continuation"])["position"]["offset"]
+        offset = rp.decode_continuation(first_measure.continuation_token)["position"]["offset"]
         assert offset == len(first["items"][0].encode("utf-8"))
         next_input = _page_input(
             shape="blob", items=[data[offset:].decode("utf-8")],
@@ -286,14 +330,14 @@ class TestBuildPageBlob:
         next_text, _ = rp.build_page(next_input, rp.ByteLimit(10_000))
         second = json.loads(next_text)
         assert first["items"][0] + second["items"][0] == value
-        assert second["continuation"] is None
+        assert "more" not in second
 
     def test_no_content_fits_is_budget_exhausted(self):
         p = _page_input(shape="blob", items=["hello world"], columns=None, total_units=11)
         text, measure = rp.build_page(p, rp.ByteLimit(5))
         envelope = json.loads(text)
         assert envelope["success"] is False
-        assert envelope["status"] == "budget_exhausted"
+        assert envelope["error"] == "budget_exhausted"
         assert measure.status == "budget_exhausted"
 
 

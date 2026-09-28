@@ -321,15 +321,17 @@ RUN_STREAM_IDLE_SECONDS = 300
 #: The browser server, which keeps one browser for each run until the run releases it.
 BROWSER_SERVER_URL = os.getenv("BROWSER_SERVER_URL", "http://hoover4-mcp-browser:8087")
 
-def tool_row_fields(name: str, args: Any, content: str) -> dict[str, str]:
+def tool_row_fields(name: str, args: Any, content: str, doc_refs: Any = None) -> dict[str, str]:
     """The `chat_messages` columns of one finished tool call, in today's row shape.
 
     A canonical broker page is stored as its own bytes, every other result as truncated
-    JSON, and the summary is the start of the arguments.
+    JSON, and the summary is the start of the arguments. `doc_refs` is the list that the
+    collection server sent beside the page, with the whole hashes and the datasets. When it
+    is None, the refs come from the content.
     """
     from tasks.P_agent.trajectory import (
         TOOL_SUMMARY_CHARS, _dumps, call_query, extract_doc_refs, is_canonical_page,
-        truncate, truncate_json,
+        response_doc_refs, truncate, truncate_json,
     )
 
     tool_input = _dumps(args if args is not None else {})
@@ -343,7 +345,10 @@ def tool_row_fields(name: str, args: Any, content: str) -> dict[str, str]:
         except (TypeError, ValueError):
             result = content
         tool_output = truncate_json(_dumps(result))
-    refs = extract_doc_refs(name, result, call_query(args))
+    if isinstance(doc_refs, list):
+        refs = response_doc_refs(name, doc_refs, call_query(args))
+    else:
+        refs = extract_doc_refs(name, result, call_query(args))
     return {
         "tool_name": name,
         "tool_input": truncate_json(tool_input),
@@ -479,12 +484,25 @@ class ToolCallWriter(ResearchStreamWriter):
                          tool_call_index=self.index)
 
 
+def _opens_round(content: Any) -> bool:
+    """False for the human text of a `final` step, with or without its "Bring back" text,
+    and for the note warning. Every other human message opens a round."""
+    from tasks.P_agent.steps import EMPTY_ANSWER_TEXT, FINAL_TEXT, NOTE_WARNING_TEXT
+
+    text = content if isinstance(content, str) else ""
+    for final in (*FINAL_TEXT.values(), EMPTY_ANSWER_TEXT):
+        if text == final or text.startswith(final + "\n\nBring back: "):
+            return False
+    return not text.startswith(NOTE_WARNING_TEXT.split("{pct}")[0])
+
+
 def round_view(messages) -> tuple[str, str, bool]:
     """The plan-first prose, the reasoning and the opening state of the current round.
 
     The round starts after the last `human` message of the thread that is not the human
-    message of a `final` step. No step keeps state, so each step derives these from the
-    stored `ai` messages of the round:
+    message of a `final` step, with or without its "Bring back" text, and is not the note
+    warning. No step keeps state, so each step derives these from the stored `ai` messages
+    of the round:
 
     * the opening holds while every call so far is in `PLAN_FIRST_TOOLS`, and only in the
       round that the first `human` message of the thread opens. A nag round has no
@@ -495,10 +513,7 @@ def round_view(messages) -> tuple[str, str, bool]:
 
     Returns `(plan_prose, reasoning, in_opening)`.
     """
-    from tasks.P_agent.steps import FINAL_TEXT
-
-    notes = set(FINAL_TEXT.values())
-    humans = [i for i, m in enumerate(messages) if m.role == "human" and m.content not in notes]
+    humans = [i for i, m in enumerate(messages) if m.role == "human" and _opens_round(m.content)]
     start = humans[-1] + 1 if humans else 0
     plan, reasoning, in_opening = [], [], len(humans) <= 1
     for message in messages[start:]:

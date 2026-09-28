@@ -9,7 +9,7 @@ import pytest
 from agent_common.result_pages import decode_continuation
 from collection_search_server import server, tools_document, tools_search
 from collection_search_server.paging import _read_more_response
-from test_paging import Store
+from test_paging import Store, token_of
 
 
 @pytest.fixture
@@ -79,7 +79,7 @@ def _hits(count):
         queries=["q"],
         collections_searched=["c"],
         results=[
-            server.SearchHit(collectionname="c", collection_dataset="c_d", file_hash=f"{n:064x}", page_id=1, score=1.0, snippet="s" * 300)
+            server.SearchHit(collectionname="c", collection_dataset="c_d", file_hash=f"{n:016x}" + "a" * 48, page_id=1, score=1.0, snippet="s" * 300)
             for n in range(count)
         ],
     )
@@ -94,17 +94,16 @@ def test_search_passages_pages_its_hits_through_the_broker(monkeypatch):
 
     monkeypatch.setattr(server, "search_passages", fake_search)
     store = Store(monkeypatch)
-    page = json.loads(tools_search.search_passages.fn(queries='["q", "r"]', collectionname="c", max_results=120))
-    assert asked[0] == (["q", "r"], ["c"], 120)
-    assert page["tool_name"] == "search_passages" and page["shape"] == "rows"
-    assert page["total_units"] == 120 and 0 < page["returned_units"] < 120
+    page = json.loads(tools_search.search_passages.fn(queries='["q", "r"]', collectionname="c", max_results=15))
+    assert asked[0] == (["q", "r"], ["c"], 15)
+    assert 0 < len(page["items"]) < 120
     seen = [item["file_hash"] for item in page["items"]]
-    while page["continuation"]:
-        token = decode_continuation(page["continuation"])
+    while page.get("more"):
+        token = decode_continuation(token_of(page))
         assert token["tool"] == "search_passages"
         page = json.loads(_read_more_response(token))
         seen += [item["file_hash"] for item in page["items"]]
-    assert seen == [f"{n:064x}" for n in range(120)]
+    assert seen == [f"{n:016x}" for n in range(120)]
     # The complete result is one window, stored once, and every later page reads it.
     assert len(store.bodies) == 1
 
@@ -116,22 +115,21 @@ def test_a_changed_local_result_refuses_the_continuation(monkeypatch):
         tools_search.SearchPassagesRequest(queries=["q"]), {"page": 0, "offset": 0}, "stale"
     )
     assert json.loads(changed)["error"] == "source_changed"
-    assert page["fields"]["source"] != "stale"
+    assert "source" not in page
 
 
 def test_list_document_entities_pages_documents_through_the_broker(monkeypatch):
     def fake_entities(documents=None, collectionname=None, file_hash=None):
         return server.DocumentsEntities(
             success=True,
-            documents=[server.DocumentEntities(success=True, collectionname="c", file_hash=f"{n:064x}", entities={"PER": ["Ana"]}) for n in range(3)],
+            documents=[server.DocumentEntities(success=True, collectionname="c", file_hash=f"{n:016x}" + "a" * 48, entities={"PER": ["Ana"]}) for n in range(3)],
             note="three documents",
         )
 
     monkeypatch.setattr(server, "list_document_entities", fake_entities)
     page = json.loads(tools_document.list_document_entities.fn(documents=[{"collectionname": "c", "file_hash": "0" * 64}]))
-    assert page["tool_name"] == "list_document_entities" and page["total_units"] == 3
-    assert [item["file_hash"] for item in page["items"]] == [f"{n:064x}" for n in range(3)]
-    assert page["fields"]["note"] == "three documents"
+    assert [item["file_hash"] for item in page["items"]] == [f"{n:016x}" for n in range(3)]
+    assert page["note"] == "three documents"
 
 
 def test_a_failed_entity_listing_is_returned_as_is(monkeypatch):

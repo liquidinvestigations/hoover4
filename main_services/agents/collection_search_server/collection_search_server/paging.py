@@ -39,9 +39,16 @@ can be sent again in a step with fewer calls.
 
 The call measure is the `PageMeasure` that `build_page` returned for the page a tool call
 returns. `measure_middleware` adds it to the tool result as one embedded resource with the
-URI `CALL_MEASURE_URI`, beside the page text. The page text stays the only text content
-block, so the page bytes do not change. The MCP adapter of the agent puts a non-text block
-in the tool message artifact, which the model does not read.
+URI `CALL_MEASURE_URI`, beside the page text. It adds the doc refs as a second embedded
+resource with the URI `DOC_REFS_URI`: the whole identity of each row of the page, in page
+order, which the page itself names by a 16-character hash start. The page text stays the
+only text content block, so the page bytes do not change. The MCP adapter of the agent puts
+a non-text block in the tool message artifact, which the model does not read.
+
+A page with more units carries `more`, a 12-character handle. `finish`, which the
+middleware runs on every tool result, stores the encoded continuation that the handle names once, as a chat artifact of the kind
+`agent_continuation` whose id is a UUID of the chat session and the handle. `read_more`
+reads the continuation of a handle, and still decodes an encoded continuation.
 """
 
 from __future__ import annotations
@@ -49,7 +56,9 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import json
+import re
 import uuid
+from collections import OrderedDict
 from dataclasses import asdict, dataclass
 from typing import Any, Callable
 
@@ -60,8 +69,8 @@ from pydantic import BaseModel, ValidationError
 
 from agent_common import artifacts
 from agent_common.result_pages import (
-    ByteLimit, ContinuationInvalid, PageInput, PageMeasure, build_page, canonical_json, cut_unit,
-    decode_continuation, largest_string_field, replace_at_pointer, utf8_prefix,
+    ByteLimit, ContinuationInvalid, PageInput, PageMeasure, build_page, canonical_json, continuation_handle,
+    cut_unit, decode_continuation, largest_string_field, replace_at_pointer, utf8_prefix,
 )
 from collection_search_server.backend_client import (
     AgentError, AgentModel, BackendClient, CollectionsListResponse,
@@ -118,6 +127,141 @@ MAX_PAGE_SHARE = 1_048_576
 MAX_HEADER_BYTES = 4 * MAX_PAGE_SHARE
 #: The URI of the embedded resource that carries the call measure.
 CALL_MEASURE_URI = "hoover4://call-measure"
+#: The URI of the embedded resource that carries the whole identity of each row of a page.
+DOC_REFS_URI = "hoover4://doc-refs"
+#: The characters of a file hash that a page shows.
+HASH_START = 16
+#: The key under which a local tool's result carries the doc refs of its rows.
+REFS_KEY = "__refs"
+#: The row keys of `read_documents` that a page does not show.
+READ_DROPPED_KEYS = frozenset({"collection_dataset", "title", "source_used", "count_state", "next_position"})
+#: The namespace of the artifact ids of stored continuations.
+MORE_NAMESPACE = uuid.UUID("5f0c8a4e-2b7d-4c61-9e3a-7d1f0b6c2a95")
+_HANDLE_RE = re.compile(r"^[0-9a-f]{12}$")
+#: The continuations of the pages that `build_page` returned lately, by handle. `finish`
+#: stores the one that the returned page names. A candidate page that was not returned
+#: writes nothing, and its entry leaves this map when newer entries arrive.
+_TOKENS: OrderedDict[str, str] = OrderedDict()
+_TOKENS_KEPT = 4096
+
+
+def hash_start(value: str) -> str:
+    """The first `HASH_START` characters of a file hash."""
+    return value[:HASH_START] if isinstance(value, str) else value
+
+
+def doc_ref(row: dict[str, Any], page_id: int | None = None, snippet: str | None = None) -> dict[str, Any]:
+    """The whole identity of one row: collection, dataset, 64-character hash, path, page and
+    snippet."""
+    return {
+        "collectionname": row.get("collectionname") or "",
+        "collection_dataset": row.get("collection_dataset") or "",
+        "file_hash": row.get("file_hash") or "",
+        "path": row.get("path") or "",
+        "page_id": page_id if page_id is not None else row.get("page_id", row.get("page")),
+        "snippet": snippet if snippet is not None else (row.get("snippet") or ""),
+    }
+
+
+def slim_items(tool_name: str, items: list[Any]) -> tuple[list[Any], list[dict[str, Any]]]:
+    """The units of a page as the model reads them, and the doc ref of each unit that names a
+    document. A unit's `file_hash` becomes its first `HASH_START` characters. A
+    `read_documents` unit also loses the keys of `READ_DROPPED_KEYS` and every empty value."""
+    out: list[Any] = []
+    refs: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict) or not isinstance(item.get("file_hash"), str):
+            out.append(item)
+            continue
+        refs.append(doc_ref(item))
+        slim = {**item, "file_hash": hash_start(item["file_hash"])}
+        if tool_name == "read_documents":
+            slim = {key: value for key, value in slim.items()
+                    if key not in READ_DROPPED_KEYS and (key == "text" or value not in (None, False, "", [], {}))}
+        out.append(slim)
+    return out, refs
+
+
+#: The doc refs that the current tool call read, or `None` outside a call that
+#: `measure_middleware` wraps.
+_CALL_REFS: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
+    "call_refs", default=None,
+)
+
+
+def _note_refs(refs: list[dict[str, Any]] | None) -> None:
+    kept = _CALL_REFS.get()
+    if kept is not None and refs:
+        kept.extend(refs)
+
+
+def page_doc_refs(text: str, refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The doc ref of each row of the page `text`, in page order. A row is matched by its
+    collection and its hash start. A row with no doc ref is left out."""
+    try:
+        page = json.loads(text)
+    except ValueError:
+        return []
+    items = page.get("items") if isinstance(page, dict) else None
+    if not isinstance(items, list):
+        return []
+    by_start: dict[tuple[str, str], dict[str, Any]] = {}
+    for ref in refs:
+        key = (ref.get("collectionname") or "", hash_start(ref.get("file_hash") or ""))
+        by_start.setdefault(key, ref)
+    out = []
+    for item in items:
+        if isinstance(item, dict) and isinstance(item.get("file_hash"), str):
+            ref = by_start.get((item.get("collectionname") or "", item["file_hash"]))
+            if ref is not None:
+                out.append(ref)
+    return out
+
+
+def _session_and_user() -> tuple[str, str]:
+    headers = {key.lower(): value for key, value in get_http_headers().items()}
+    return headers.get("x-hoover4-chat-session", ""), headers.get("x-hoover4-user", "")
+
+
+def handle_artifact_id(handle: str) -> str:
+    """The artifact id of the continuation that `handle` names in this chat session."""
+    session, _ = _session_and_user()
+    return str(uuid.uuid5(MORE_NAMESPACE, f"{session}:{handle}"))
+
+
+def store_handle(token: str) -> str:
+    """Store the encoded continuation `token` under its handle, and return the handle. The
+    same token gives the same artifact id, so a retried call writes the same row."""
+    handle = continuation_handle(token)
+    session, user = _session_and_user()
+    artifact_id = handle_artifact_id(handle)
+    artifacts.write_required(
+        artifacts.ArtifactRequest(session_id=session, username=user,
+                                  kind=artifacts.KIND_AGENT_CONTINUATION, tool_name="read_more"),
+        artifact_id, artifact_id, token.encode("utf-8"), "text/plain",
+    )
+    return handle
+
+
+def finish(text: str) -> str:
+    """The page `text` as a tool returns it, after the continuation of its `more` handle is
+    stored. A page with no `more` writes nothing. A failed store is an
+    `artifact_write_failed` answer, because the handle would name nothing."""
+    if '"more":"' not in text:
+        return text
+    try:
+        page = json.loads(text)
+    except ValueError:
+        return text
+    handle = page.get("more") if isinstance(page, dict) else None
+    token = _TOKENS.get(handle) if isinstance(handle, str) else None
+    if token is None:
+        return text
+    try:
+        store_handle(token)
+    except artifacts.ArtifactWriteFailed as exc:
+        return canonical_json({"success": False, "error": "artifact_write_failed", "message": str(exc)})
+    return text
 
 
 def page_share() -> int:
@@ -144,6 +288,10 @@ _CALL_MEASURES: contextvars.ContextVar[list[PageMeasure] | None] = contextvars.C
 def _build(p: PageInput, limit: ByteLimit) -> tuple[str, PageMeasure]:
     """`build_page`, with the measure kept for the call measure of the current call."""
     text, measure = build_page(p, limit)
+    if measure.continuation_token is not None:
+        _TOKENS[continuation_handle(measure.continuation_token)] = measure.continuation_token
+        while len(_TOKENS) > _TOKENS_KEPT:
+            _TOKENS.popitem(last=False)
     kept = _CALL_MEASURES.get()
     if kept is not None:
         kept.append(measure)
@@ -179,25 +327,40 @@ def call_measure(text: str, measures: list[PageMeasure]) -> dict[str, Any] | Non
 
 class MeasureMiddleware(Middleware):
     """Adds the call measure of a paged tool call to its result, as one embedded
-    resource after the page text."""
+    resource after the page text, and the doc refs of the page's rows as a second one."""
 
     async def on_call_tool(self, context: MiddlewareContext, call_next):
         measures: list[PageMeasure] = []
+        refs: list[dict[str, Any]] = []
         token = _CALL_MEASURES.set(measures)
+        refs_token = _CALL_REFS.set(refs)
         try:
             result = await call_next(context)
         finally:
             _CALL_MEASURES.reset(token)
+            _CALL_REFS.reset(refs_token)
         content = list(getattr(result, "content", None) or [])
-        if len(content) != 1 or getattr(content[0], "type", "") != "text" or not measures:
+        if len(content) != 1 or getattr(content[0], "type", "") != "text":
+            return result
+        text = finish(content[0].text)
+        if text != content[0].text:
+            content[0] = content[0].model_copy(update={"text": text})
+            result.content = content
+        if not measures:
             return result
         measure = call_measure(content[0].text, measures)
         if measure is None:
             return result
         measure["page_share"] = page_share()
+        measure.pop("continuation_token", None)
         content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
             uri=CALL_MEASURE_URI, mimeType="application/json", text=canonical_json(measure),
         )))
+        doc_refs = page_doc_refs(content[0].text, refs)
+        if doc_refs:
+            content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
+                uri=DOC_REFS_URI, mimeType="application/json", text=canonical_json(doc_refs),
+            )))
         result.content = content
         return result
 
@@ -216,6 +379,8 @@ class Window:
     columns: list[Any] | None
     next: dict[str, Any] | None
     total: int
+    #: The doc ref of each unit that names a document, which the page shows by hash start.
+    refs: list[dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
@@ -246,9 +411,12 @@ class PagedTool:
         else:
             raw_items = result.get(self.item_key, [])
             items = raw_items if isinstance(raw_items, list) else [raw_items]
+        refs: list[dict[str, Any]] = []
         if self.shape == "blob":
             text = items[0] if items else ""
             items = [text if isinstance(text, str) else canonical_json(text)]
+        else:
+            items, refs = slim_items(self.tool_name, items)
         if self.columns_key:
             excluded.add(self.columns_key)
         fields = {key: value for key, value in result.items() if key not in excluded}
@@ -257,7 +425,7 @@ class PagedTool:
         total = result.get("total")
         if not isinstance(total, int):
             total = len(items)
-        return Window(items, fields, columns, next_position, total)
+        return Window(items, fields, columns, next_position, total, refs)
 
     def render(self, request: BaseModel, position: dict[str, Any], source: str) -> str:
         if position.get("artifact"):
@@ -297,6 +465,7 @@ def _live_page(tool: PagedTool, request: BaseModel, window_position: dict | None
     whole. Otherwise the window is stored, and its first page is read from the stored
     bytes the way `read_more` reads the later ones."""
     source = window.fields.get("source", "")
+    _note_refs(window.refs)
     units = len(window.items[0].encode("utf-8")) if tool.shape == "blob" and window.items else len(window.items)
     pending = {"artifact": PENDING_ARTIFACT_ID, "start": 0}
     after = lambda count: _after_window(window) if count >= units else pending
@@ -348,7 +517,10 @@ def _store_window(tool: PagedTool, window: Window, request_input: dict[str, Any]
     """Write the window as one artifact, and return its id, its body and the header length.
     The header records the page share that the lines were stored with."""
     share = page_share()
-    head = (canonical_json({"fields": window.fields, "columns": window.columns, "share": share}) + "\n").encode("utf-8")
+    header = {"fields": window.fields, "columns": window.columns, "share": share}
+    if window.refs:
+        header["refs"] = window.refs
+    head = (canonical_json(header) + "\n").encode("utf-8")
     parts = [head]
     if tool.shape == "blob":
         parts.append((window.items[0] if window.items else "").encode("utf-8"))
@@ -512,6 +684,8 @@ def _stored_page_unchecked(tool, request, position, read, fields, columns) -> st
     # stored with `PAGE_LIMIT`.
     header = json.loads(read(0, head)[0].decode("utf-8"))
     first_page = fields is not None
+    if not first_page:
+        _note_refs(header.get("refs"))
     if fields is None:
         fields, columns = header.get("fields") or {}, header.get("columns")
     # A read takes the larger of the stored share and the current share. Every page is
@@ -570,7 +744,14 @@ def _stored_page_unchecked(tool, request, position, read, fields, columns) -> st
         offset = newline + 1
         ends.append(start + offset)
     if not units:
+        # The stored line is longer than one read. A unit stored with moved fields can be:
+        # its `__cut` entries are longer than the cut marker that its page shows.
         line, size = _read_line(read, start, length)
+        record = json.loads(line.decode("utf-8"))
+        if isinstance(record, dict) and "__cut" in record:
+            data, size = read(start, len(line) + 1 + length)
+            return _cut_unit_page(tool, base, start, len(line) + 1, data, size, record, source_end, page_input, fields, columns) \
+                or text_page(line, size, 0)
         return text_page(line, size, 0)
 
     def after_units(count: int) -> dict | None:
@@ -728,10 +909,30 @@ from collection_search_server.server import mcp
 mcp.add_middleware(MeasureMiddleware())
 
 
-@mcp.tool(name="read_more", description="Read the next page from a prior paged tool result. Use it when that result contains a continuation token.")
-def read_more(continuation: str) -> str:
-    """Read only a continuation issued by this server."""
+def _handle_token(handle: str) -> str | None:
+    """The encoded continuation that `handle` names in this chat session, or None."""
     try:
-        return _read_more_response(decode_continuation(continuation))
+        data, _ = _artifact_reader(handle_artifact_id(handle))(0, MAX_HEADER_BYTES)
+    except (artifacts.ArtifactNotFound, artifacts.ArtifactForbidden, artifacts.ArtifactRangeRefused):
+        return None
+    return data.decode("utf-8")
+
+
+READ_MORE_TEXT = "Read the rest of a result. Give the more value of that result or item as continuation."
+
+
+@mcp.tool(name="read_more", description=READ_MORE_TEXT)
+def read_more(continuation: str) -> str:
+    """Read only a continuation issued by this server, given as its `more` handle or as the
+    encoded continuation of a page stored before the handles."""
+    value = (continuation or "").strip()
+    if _HANDLE_RE.match(value):
+        token = _handle_token(value)
+        if token is None:
+            return canonical_json({"success": False, "error": "not_found",
+                                   "message": "No result has this more handle in this chat. Copy more from the result."})
+        value = token
+    try:
+        return _read_more_response(decode_continuation(value))
     except ContinuationInvalid as exc:
         return canonical_json({"success": False, "error": "invalid_argument", "message": str(exc)})

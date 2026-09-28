@@ -5,8 +5,8 @@ skill that teaches the fix.
 for every tool, so no MCP server holds this text. `stumble_skill` reads the result and
 its arguments and gives the name of one stumble or technique skill, or `None`.
 
-A result gets no line when it shows no failure, when it is a result page (`kind`
-`result_page`, whose bytes must not change), when the run does not list the skill, or when
+A result gets no line when it shows no failure, when it is a result page
+(`is_canonical_page`, whose bytes must not change), when the run does not list the skill, or when
 it holds the line already. A repeat refusal gets no line here, because the worker writes
 that text.
 """
@@ -17,14 +17,14 @@ import json
 import re
 from typing import Any, Dict, FrozenSet, Optional
 
+from agent_common.result_pages import is_canonical_page
+
 #: The sentence that a stumble adds to an error.
 SKILL_LINE = "Before you call this tool again, read the skill `{skill}` with `read_skill`."
 
 #: The key of a JSON error that gets the sentence when it has no `message` or `error` text.
 NEXT_KEY = "next"
 
-#: The `kind` of a result page. Its bytes stay as the tool wrote them.
-RESULT_PAGE_KIND = "result_page"
 
 TODO_TOOLS = frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"})
 PLAN_TOOLS = frozenset({"read_plan", "append_node", "append_child", "move_node", "edit_node",
@@ -131,9 +131,9 @@ def stumble_skill(name: str, content: str, status: str, args: dict) -> Optional[
     """
     if not isinstance(content, str) or not content:
         return None
-    data = _parse(content)
-    if isinstance(data, dict) and data.get("kind") == RESULT_PAGE_KIND:
+    if is_canonical_page(content):
         return None
+    data = _parse(content)
     if status == "ok" and not isinstance(data, dict) and not name.startswith("browser_"):
         return None
     cause = _cause(name, content, args if isinstance(args, dict) else {})

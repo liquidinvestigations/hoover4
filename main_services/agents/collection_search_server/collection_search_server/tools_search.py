@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Annotated, Any, Callable
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -47,12 +48,15 @@ class LocalPagedTool:
         result = self.produce(request)
         if result.get("success") is False:
             return canonical_json(result)
+        refs = result.pop(paging.REFS_KEY, None)
         digest = hashlib.sha256(canonical_json(result).encode("utf-8")).hexdigest()[:32]
         if source and source != digest:
             return canonical_json({"success": False, "error": "source_changed", "message": "the source changed after the prior page"})
         items = list(result.get(self.item_key) or [])
+        if refs is None:
+            items, refs = paging.slim_items(self.tool_name, items)
         fields = {**{key: value for key, value in result.items() if key != self.item_key}, "source": digest}
-        return paging._live_page(self, request, None, paging.Window(items, fields, None, None, len(items)))
+        return paging._live_page(self, request, None, paging.Window(items, fields, None, None, len(items), refs))
 
 
 class SearchPassagesRequest(BaseModel):
@@ -66,15 +70,29 @@ class SearchPassagesRequest(BaseModel):
 
 
 def _search_passages(request: SearchPassagesRequest) -> dict[str, Any]:
+    """The rows of `search_passages` that the model reads, and `__refs`, the whole identity
+    of each row. A row names the forms that found it in `q` when the call has more than one."""
     response = server.search_passages(
         queries=request.queries, collections=request.collectionname or None, max_results=request.max_results,
     )
-    return response.model_dump(mode="json")
+    if not response.success:
+        return {"success": False, "error": "invalid_argument", "message": response.error or "the search failed"}
+    several = len(response.queries) > 1
+    rows: list[dict[str, Any]] = []
+    refs: list[dict[str, Any]] = []
+    for hit in response.results:
+        forms = [response.queries.index(q) for q in hit.matched_queries if q in response.queries]
+        row = {"file_hash": paging.hash_start(hit.file_hash), "collectionname": hit.collectionname,
+               "path": hit.path or None, "page": hit.page_id, "q": forms if several else None,
+               "snippet": hit.snippet}
+        rows.append({key: value for key, value in row.items() if value not in (None, "", [])} | {"snippet": hit.snippet})
+        refs.append(paging.doc_ref(hit.model_dump(mode="json"), page_id=hit.page_id, snippet=hit.snippet))
+    return {"results": rows, "notes": [response.note] if response.note else [], paging.REFS_KEY: refs}
 
 
 class SearchCollectionsRequest(SearchResultsRequest):
     """The arguments of `search_collections`: the route request, and the list of query
-    forms. With `queries` empty the call is one route search, paged by the route's pages."""
+    forms. With `queries` empty the query is the one form."""
 
     queries: list[str] = Field(default_factory=list, max_length=server.MAX_QUERIES_PER_CALL)
     #: The notes of `collections_for`, for `query_notes`. Not a route argument.
@@ -127,25 +145,55 @@ def _route_request(request: SearchResultsRequest, query: str | None = None) -> S
     return SearchResultsRequest.model_validate(values)
 
 
+def _search_date(epoch: int | None) -> str | None:
+    """The UTC calendar date of an epoch in seconds, or None for no date."""
+    if epoch is None:
+        return None
+    try:
+        return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime("%Y-%m-%d")
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def search_row(document: dict[str, Any], forms: list[int] | None, words: list[str]) -> dict[str, Any]:
+    """The row of one document that the model reads. `forms` is the numbers of the query
+    forms that found it, or None when the call has one form. The title is left out when
+    the path holds it, and every empty value is left out."""
+    title = document.get("title") or ""
+    path = document.get("path") or ""
+    row = {
+        "file_hash": paging.hash_start(document.get("file_hash") or ""),
+        "collectionname": document.get("collectionname") or "",
+        "path": path,
+        "title": title if title and title not in path else None,
+        "type": document.get("canonical_file_type") or None,
+        "date": _search_date(document.get("document_date")),
+        "q": forms or None,
+        "snippet": server.centred_snippet(document.get("snippet") or "", server.SNIPPET_CHARS, words),
+    }
+    return {key: value for key, value in row.items() if value not in (None, "", []) or key in ("path", "snippet")}
+
+
 def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
     """One route search for each query form, the rows merged.
 
-    Rows merge by `(collectionname, file_hash)`, first seen first, and each row gets
-    `matched_queries`, the forms that found it, in the order of the list. A form that
-    fails adds its error to `query_notes`, and the other forms still run. Each form
-    returns the first route page of its rows. The notes of `collections_for` come first
-    in `query_notes`."""
+    Each form keeps the first `ROWS_PER_FORM` rows of its first route page. Rows merge by
+    `(collectionname, file_hash)`, first seen first. When the call has more than one form,
+    each row names the forms that found it in `q`, by number from 0. A form that fails adds
+    its error to `query_notes`, and the other forms still run. The notes of
+    `collections_for` come first in `query_notes`. A call with no form runs the query as
+    one form, so a browse with an empty query is one route search. `__refs` holds the whole
+    identity of each row, which `LocalPagedTool.render` takes out of the result."""
     forms, repeats = batching.dedupe(([request.query] if request.query.strip() else []) + list(request.queries))
     notes: list[str] = list(getattr(request, "collection_notes", []))
-    if not forms and notes:
-        # A browse whose collection was mapped runs here too, so the result keeps the note.
+    if not forms:
         forms = [request.query]
     if repeats:
         notes.append(batching.repeats_note(repeats, "query"))
-    rows: dict[tuple[str, str], dict[str, Any]] = {}
+    found: dict[tuple[str, str], tuple[dict[str, Any], list[int]]] = {}
     partial = False
     succeeded = 0
-    for form in forms:
+    for number, form in enumerate(forms):
         result = BackendClient().post("search/results", _route_request(request, form), SearchResultsResponse)
         if isinstance(result, AgentError):
             notes.append(f"the query {form!r} failed: {result.message}")
@@ -153,18 +201,23 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
         succeeded += 1
         partial |= result.partial
         notes.extend(f"the query {form!r}: {note}" for note in result.query_notes)
-        if result.has_more:
-            notes.append(
-                f"the query {form!r} found {result.total_count} documents, and this result holds "
-                f"its first {len(result.documents)}. Search with that query alone to read the others."
-            )
-        for document in result.documents:
+        if result.total_count > server.ROWS_PER_FORM:
+            notes.append(f"{form!r}: {result.total_count} found, first {server.ROWS_PER_FORM} shown")
+        for document in result.documents[:server.ROWS_PER_FORM]:
             key = (document.collectionname, document.file_hash)
-            row = rows.setdefault(key, {**document.model_dump(mode="json"), "matched_queries": []})
-            row["matched_queries"].append(form)
+            _, numbers = found.setdefault(key, (document.model_dump(mode="json"), []))
+            numbers.append(number)
     if not succeeded:
         return {"success": False, "error": "invalid_argument", "message": " ".join(notes) or "no query to run"}
-    return {"documents": list(rows.values()), "total_count": len(rows), "query_notes": notes, "partial": partial}
+    several = len(forms) > 1
+    rows = []
+    refs = []
+    for document, numbers in found.values():
+        words = server.query_words([forms[n] for n in numbers])
+        row = search_row(document, numbers if several else None, words)
+        rows.append(row)
+        refs.append(paging.doc_ref(document, snippet=row["snippet"]))
+    return {"documents": rows, "query_notes": notes, "partial": partial, paging.REFS_KEY: refs}
 
 
 SEARCH_FORMS = LocalPagedTool(SearchCollectionsRequest, "search_collections", "documents", _search_forms)
@@ -172,14 +225,14 @@ SEARCH_FORMS = LocalPagedTool(SearchCollectionsRequest, "search_collections", "d
 
 @dataclass(frozen=True)
 class SearchCollectionsTool(PagedTool):
-    """`search_collections`. A request with `queries` or `collection_notes` is the merged
-    search of `_search_forms`, and a request without is one route search. A continuation of either
-    carries its own input, so `read_more` reaches the same path again."""
+    """`search_collections`. Every call is the merged search of `_search_forms`. Only a
+    continuation that carries a route position goes to the route, and only a page that was
+    stored before every call went through `_search_forms` holds one."""
 
     def render(self, request: BaseModel, position: dict[str, Any], source: str) -> str:
-        if getattr(request, "queries", None) or getattr(request, "collection_notes", None):
-            return SEARCH_FORMS.render(request, position, source)
-        return super().render(_route_request(request), position, source)
+        if position.get("window") or position.get("next"):
+            return super().render(_route_request(request), position, source)
+        return SEARCH_FORMS.render(request, position, source)
 
 
 LIST_COLLECTIONS = PagedTool(CollectionsListRequest, "collections/list", "list_collections", "rows", "collections")
@@ -210,7 +263,7 @@ LIST_COLLECTIONS_TEXT = (
 
 SEARCH_COLLECTIONS_TEXT = r"""Search the user's documents. Leave out collectionname to search every collection of this chat. That is the default, and it is correct for most questions. Give collectionname only to narrow a search, with names from list_collections. A dataset is not a collection.
 
-Give queries as a list of up to 8 forms of what you look for, for example the email address, the name in double quotes and the name with the surname first. Each row names the queries that found it. Do not make one call for each form.
+Give queries as a list of up to 12 forms of what you look for, for example the email address, the name in double quotes and the name with the surname first. Each row names the forms that found it in q, by number from 0. Do not make one call for each form.
 Example: queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]
 
 Query rules:
@@ -222,15 +275,16 @@ Query rules:
 - from: and to: are not fields. The search drops them, keeps the word after them, and says so in query_notes.
 - An email address works as typed.
 
-Each row gives file_hash, path and collectionname. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has a continuation, call read_more to get the other rows.
+Each row gives file_hash, path and collectionname. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has more, give that value to read_more to get the other rows.
 
 Set a filter only when the user asks for it. Dates are epoch seconds. size_min and size_max are in bytes. A facet_filters value is a term id from a facet count or search_facet_values."""
 
 SEARCH_PASSAGES_TEXT = (
     "Search the text passages of the user's documents by keywords and by meaning together. Use "
     "it for a question in plain words, when you do not know the words that the documents use. "
-    "Leave out collectionname to search every collection of this chat. Give up to 8 queries in "
-    "one call. Each hit names the queries that found it. For an exact name, address or phrase, "
+    "Leave out collectionname to search every collection of this chat. Give up to 12 queries in "
+    "one call. Each row names the forms that found it in q, by number from 0. Copy file_hash "
+    "from a row to read_documents. For an exact name, address or phrase, "
     "use search_collections."
 )
 

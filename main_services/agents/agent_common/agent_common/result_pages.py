@@ -5,9 +5,17 @@ plain text, and never parsed and re-serialized on the way. **The byte rule** is 
 this module exists: the UTF-8 byte string this module serializes is the byte string the
 transcript stores. A page is recognised with no side channel, by a fixed-point test
 (:func:`is_canonical_page`): canonical JSON is idempotent under its own serialization, so a
-text is a page when it parses to an object whose `kind` is `result_page` and re-serializing
-that object, sorted and compact, reproduces the text byte for byte. Anything that
-reformatted, reordered, escaped or re-parsed the page fails that test.
+text is a page when it parses to an object that holds a list under `items`, or is the
+`budget_exhausted` error, and re-serializing that object, sorted and compact, reproduces
+the text byte for byte. Anything that reformatted, reordered, escaped or re-parsed the page
+fails that test. A page stored before the slim format has `"kind": "result_page"`, and it
+still passes.
+
+A page holds its units under `items`, the table columns under `columns`, and its route
+fields at the top level, with `query_notes` renamed `notes` and every empty value left
+out. A page with more units has `more`, a 12-character handle: the first 12 hex characters
+of the SHA-256 of the encoded continuation. `build_page` returns that continuation in
+`PageMeasure.continuation_token`, and the collection server stores it under the handle.
 
 The caller supplies a source position after each possible returned prefix. A continuation
 uses the position after the units in its page.
@@ -22,8 +30,20 @@ import os
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
-#: The `kind` value that marks an envelope as a result page.
+#: The `kind` value that marks a page stored before the slim format.
 KIND_RESULT_PAGE = "result_page"
+
+#: The error code of the page that had no room for one unit.
+STATUS_BUDGET_EXHAUSTED_ERROR = "budget_exhausted"
+#: The characters of a `more` handle, and the placeholder a candidate page is measured with.
+HANDLE_CHARS = 12
+MORE_PLACEHOLDER = "0" * HANDLE_CHARS
+#: Page fields that a page never shows.
+DROPPED_FIELDS = frozenset({"source", "total_count", "page_info", "next_position"})
+#: Page fields that a page shows under another name.
+FIELD_NAMES = {"query_notes": "notes"}
+#: The keys of a page that a page field cannot replace. Such a field stays under `fields`.
+PAGE_KEYS = frozenset({"items", "more", "columns"})
 
 #: A dead tokenizer endpoint fails within the connection timeout. A slow response fails
 #: within the total timeout.
@@ -64,9 +84,16 @@ def page_digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def continuation_handle(token: str) -> str:
+    """The `more` handle of an encoded continuation."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:HANDLE_CHARS]
+
+
 def is_canonical_page(text: str) -> bool:
-    """True when `text` is a broker page: a `result_page` object whose canonical
-    re-serialization is `text` itself, byte for byte.
+    """True when `text` is a broker page whose canonical re-serialization is `text`
+    itself, byte for byte. A page is an object with a list under `items`, the
+    `budget_exhausted` error, or an object with `"kind": "result_page"`, which a page
+    stored before the slim format has.
 
     This is the fixed-point test the byte rule relies on: canonical JSON is idempotent
     under `canonical_json`, so anything that reformatted, reordered, escaped or re-parsed
@@ -77,7 +104,10 @@ def is_canonical_page(text: str) -> bool:
         value = json.loads(text)
     except (json.JSONDecodeError, TypeError, ValueError):
         return False
-    if not isinstance(value, dict) or value.get("kind") != KIND_RESULT_PAGE:
+    if not isinstance(value, dict):
+        return False
+    if not (isinstance(value.get("items"), list) or value.get("error") == STATUS_BUDGET_EXHAUSTED_ERROR
+            or value.get("kind") == KIND_RESULT_PAGE):
         return False
     return canonical_json(value) == text
 
@@ -327,6 +357,8 @@ class PageMeasure:
     total_units: int
     truncated: bool
     status: Literal["ok", "budget_exhausted"]
+    #: The encoded continuation that the page's `more` handle names, or None.
+    continuation_token: str | None = None
 
 
 STATUS_OK = "ok"
@@ -344,41 +376,39 @@ def _envelope(
     continuation: str | None,
     fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    envelope: dict[str, Any] = {
-        "success": True,
-        "kind": KIND_RESULT_PAGE,
-        "tool_name": tool_name,
-        "shape": shape,
-        "items": items,
-        "returned_units": returned_units,
-        "total_units": total_units,
-        "raw_artifact_id": raw_artifact_id,
-        "continuation": continuation,
-    }
+    """The slim page: `items`, `columns` for a table, the route fields at the top level
+    with every empty value left out, and `more` when `continuation` is not None. The page
+    holds the placeholder handle, and `build_page` puts the real handle in last, so a
+    candidate page measures what the final page measures."""
+    del tool_name, returned_units, total_units, raw_artifact_id
+    page: dict[str, Any] = {"items": items}
     if shape == "table" and columns is not None:
-        envelope["columns"] = columns
-    if fields:
-        envelope["fields"] = fields
-    return envelope
+        page["columns"] = columns
+    kept: dict[str, Any] = {}
+    for key, value in (fields or {}).items():
+        if key in DROPPED_FIELDS or value is None or value is False or value in ("", [], {}):
+            continue
+        name = FIELD_NAMES.get(key, key)
+        if name in PAGE_KEYS:
+            kept[key] = value
+        else:
+            page[name] = value
+    if kept:
+        page["fields"] = kept
+    if continuation is not None:
+        page["more"] = MORE_PLACEHOLDER
+    return page
 
 
 def _budget_exhausted_envelope(
     tool_name: str, shape: PageShape, total_units: int, raw_artifact_id: str | None
 ) -> dict[str, Any]:
-    """The smallest zero-content message: `success=false`, zero returned units, the raw
-    artifact id when one exists, and no continuation, because nothing was read to resume
-    from."""
+    """The smallest zero-content message, a failed result with no `items`."""
+    del tool_name, shape, total_units, raw_artifact_id
     return {
         "success": False,
-        "kind": KIND_RESULT_PAGE,
-        "tool_name": tool_name,
-        "shape": shape,
-        "status": STATUS_BUDGET_EXHAUSTED,
-        "items": [],
-        "returned_units": 0,
-        "total_units": total_units,
-        "raw_artifact_id": raw_artifact_id,
-        "continuation": None,
+        "error": STATUS_BUDGET_EXHAUSTED_ERROR,
+        "message": "This step had no room for the result. Call the tool again in a step with fewer calls.",
     }
 
 
@@ -388,7 +418,10 @@ def _finish(
     returned_units: int,
     total_units: int,
     status: Literal["ok", "budget_exhausted"],
+    continuation: str | None = None,
 ) -> tuple[str, PageMeasure]:
+    if continuation is not None:
+        envelope = {**envelope, "more": continuation_handle(continuation)}
     data = canonical_page_bytes(envelope)
     text = data.decode("utf-8")
     measure = PageMeasure(
@@ -397,8 +430,9 @@ def _finish(
         page_tokens=(limit.counter.count(text) if isinstance(limit, TokenLimit) else None),
         returned_units=returned_units,
         total_units=total_units,
-        truncated=status == STATUS_BUDGET_EXHAUSTED or envelope["continuation"] is not None,
+        truncated=status == STATUS_BUDGET_EXHAUSTED or continuation is not None,
         status=status,
+        continuation_token=continuation,
     )
     return text, measure
 
@@ -493,7 +527,7 @@ def build_page(p: PageInput, limit: PageLimit) -> tuple[str, PageMeasure]:
         p.tool_name, p.shape, items, columns, returned_units, p.total_units,
         p.raw_artifact_id, continuation, p.fields,
     )
-    return _finish(envelope, limit, returned_units, p.total_units, STATUS_OK)
+    return _finish(envelope, limit, returned_units, p.total_units, STATUS_OK, continuation)
 
 
 # --------------------------------------------------------------------------------------

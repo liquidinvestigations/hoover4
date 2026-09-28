@@ -422,9 +422,11 @@ def _chat_row(row):
 
 
 def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, status: str,
-                       measure: Any = None, error_class: str = "") -> None:
+                       measure: Any = None, error_class: str = "", doc_refs: Any = None) -> None:
     """The `tool` message of one call, and for a run that writes the transcript, its
-    finished tool row at the call's seq and the final stream row."""
+    finished tool row at the call's seq and the final stream row. `doc_refs` is the list
+    that the `/tool_call` response carried beside the result, or None. The run message
+    does not store it."""
     from database import agent_runs
     from tasks.P_agent.stream_writer import ToolCallWriter, tool_row_fields
 
@@ -437,7 +439,7 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
             usage_json=json.dumps({"chat_seq": call.seq, "status": status, "measure": measure,
                                    "error_class": error_class}, default=str)))
     if agent_runs.writes_transcript(row):
-        _chat_row(row)(call.seq, "tool", **tool_row_fields(call.name, entry.get("args"), content))
+        _chat_row(row)(call.seq, "tool", **tool_row_fields(call.name, entry.get("args"), content, doc_refs))
         ToolCallWriter(row, turn_uuid, call.seq, call.name, entry.get("args")).finish()
 
 
@@ -1328,7 +1330,7 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
             status = "error" if result.get("status") == "error" else "ok"
             error_class = str(result.get("error_class") or "")
             _write_tool_result(row, params.turn_uuid, ai, call, content, status,
-                               result.get("measure"), error_class)
+                               result.get("measure"), error_class, result.get("doc_refs"))
             # A result with an error code only in its text, such as not_found, is a result.
             event.ok = status != "error"
             event.error_class = error_class

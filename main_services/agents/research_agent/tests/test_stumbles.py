@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from agent_common.result_pages import canonical_json
 from agent_common.tool_packs import PACKS
 from research_agent import steps
 from research_agent.skill_store import SkillContext, listed_skills
@@ -71,10 +72,12 @@ def test_each_cause_names_its_skill():
 
 
 def test_a_result_page_error_gets_no_line():
-    content = json.dumps({"kind": "result_page", "success": False,
-                          "error": "file_hash must be a content hash from search_collections"})
-    out = with_skill_line(response("read_documents", content), {"file_hash": "x.pdf"}, LISTED)
-    assert out["content"] == content
+    for value in ({"kind": "result_page", "success": False,
+                   "error": "file_hash must be a content hash from search_collections"},
+                  {"success": False, "error": "budget_exhausted", "message": "No room."}):
+        content = canonical_json(value)
+        out = with_skill_line(response("read_documents", content), {"file_hash": "x.pdf"}, LISTED)
+        assert out["content"] == content
 
 
 def test_an_ok_result_gets_no_line():

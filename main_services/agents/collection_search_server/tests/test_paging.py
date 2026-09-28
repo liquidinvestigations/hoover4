@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from agent_common import artifacts
 from agent_common.artifacts import ArtifactWriteFailed
+from agent_common import result_pages
 from agent_common.result_pages import ByteLimit, canonical_json, decode_continuation, replace_at_pointer
 from collection_search_server import tools_document, tools_folder, tools_search, tools_table
 from collection_search_server import paging
@@ -46,28 +47,32 @@ SAMPLES = {
 }
 
 
-@pytest.mark.parametrize("name", sorted(SAMPLES))
+@pytest.mark.parametrize("name", sorted(set(SAMPLES) - {"search_collections"}))
 def test_route_fields_reach_page(name, monkeypatch):
+    """A route page shows its units under `items` and its route fields at the top level,
+    with every empty value, `source`, `total_count` and `next_position` left out."""
     tool = TOOLS[name]
     response = {**SAMPLES[name], "source": "fingerprint"}
     monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, expected_source=None: response_model.model_validate(response))
     request = tool.model.model_construct()
     page = json.loads(tool.render(request, {}, ""))
-    assert page["success"] is True
-    assert page["tool_name"] == name
+    assert "success" not in page and "kind" not in page and "tool_name" not in page
     assert RESPONSE_MODELS[tool.route].model_fields.keys() == response.keys()
-    assert page["fields"]["source"] == "fingerprint"
+    assert "source" not in page
     for key, value in SAMPLES[name].items():
         if key == tool.item_key:
-            assert page["items"] == (value if isinstance(value, list) else [value])
+            expected = value if isinstance(value, list) else [value]
+            assert page["items"] == (expected if tool.shape == "blob" else paging.slim_items(name, expected)[0])
         elif key == tool.columns_key:
             assert page["columns"] == value
         elif key == "raw_metadata":
             assert page["items"] == [{"field": "raw_metadata", "key": k, "value": v} for k, v in value.items()]
         elif name == "folder_list" and key in ("children", "files"):
             assert {"field": key, "value": value[0]} in page["items"]
+        elif key in ("source", "total_count", "page_info", "next_position") or value is None or value is False or value in ("", [], {}):
+            assert key not in page
         else:
-            assert page["fields"][key] == value
+            assert page[result_pages.FIELD_NAMES.get(key, key)] == value
 
 
 @pytest.mark.parametrize("name,item_key,missing", [
@@ -131,13 +136,26 @@ class Store:
         return read
 
 
+def token_of(page):
+    """The encoded continuation that the page's `more` handle names, or None."""
+    return paging._TOKENS.get(page.get("more")) if page.get("more") else None
+
+
+def units_of(page):
+    """The units of a page: its rows, or the bytes of its text."""
+    items = page.get("items") or []
+    if len(items) == 1 and isinstance(items[0], str):
+        return len(items[0].encode("utf-8"))
+    return len(items)
+
+
 def walk(page, limit=200):
     """Every page of a result, following its continuations."""
     pages = [page]
     for _ in range(limit):
-        if not page.get("continuation"):
+        if not page.get("more"):
             break
-        page = json.loads(_read_more_response(decode_continuation(page["continuation"])))
+        page = json.loads(_read_more_response(decode_continuation(token_of(page))))
         pages.append(page)
     return pages
 
@@ -173,7 +191,7 @@ def unit(name, n):
 
 @pytest.mark.parametrize("name", sorted(KINDS))
 def test_the_broker_continues_with_the_route_next_position(name, monkeypatch):
-    tool = TOOLS[name]
+    tool = ROUTE_SEARCH if name == "search_collections" else TOOLS[name]
     following, item_key, values = KINDS[name]
     store = Store(monkeypatch)
     sent = []
@@ -196,7 +214,7 @@ def test_the_broker_continues_with_the_route_next_position(name, monkeypatch):
     items = [item for page in pages for item in page["items"]]
     assert len(items) == 6
     assert sent == [None, following]
-    assert pages[-1]["continuation"] is None
+    assert "more" not in pages[-1]
     assert not store.bodies
 
 
@@ -216,7 +234,7 @@ def test_a_large_window_is_stored_once_and_later_pages_read_ranges(monkeypatch):
     assert len(calls) == 1
     assert len(store.bodies) == 1
     assert len(pages) > 1
-    assert all(page["raw_artifact_id"] == pages[0]["raw_artifact_id"] for page in pages)
+    assert len({decode_continuation(token_of(page))["position"]["artifact"] for page in pages[:-1]}) == 1
     assert [row["row_number"] for page in pages for row in page["items"]] == list(range(50))
     assert all(page["columns"] == SAMPLES["table_page"]["columns"] for page in pages)
     assert all(length <= paging.page_share() for _, length in store.reads)
@@ -240,9 +258,9 @@ def test_a_unit_larger_than_a_page_is_cut_inside_its_largest_field(monkeypatch):
     assert first["cut"]["returned_bytes"] == len(first["text"].encode("utf-8"))
     rest = "".join(page["items"][0] for page in pages[1:-1])
     assert first["text"] + rest == text
-    assert all(page["fields"]["cut"]["field"] == "/text" for page in pages[1:-1])
+    assert all(page["cut"]["field"] == "/text" for page in pages[1:-1])
     assert pages[-1]["items"][0]["file_hash"] == "small"
-    assert pages[-1]["continuation"] is None
+    assert "more" not in pages[-1]
 
 
 def test_a_continuation_into_another_callers_artifact_is_refused(monkeypatch):
@@ -251,7 +269,7 @@ def test_a_continuation_into_another_callers_artifact_is_refused(monkeypatch):
     rows = [{"row_number": n, "row_id": n, "cells": {"a": "x" * 900}} for n in range(50)]
     monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, expected_source=None: response_model.model_validate({**SAMPLES["table_page"], "rows": rows, "source": "stable"}))
     page = json.loads(tool.render(tool.model.model_validate({"collectionname": "c", "file_hash": "h", "sheet": 0}), {}, ""))
-    token = decode_continuation(page["continuation"])
+    token = decode_continuation(token_of(page))
     store.caller = "mallory"
     assert json.loads(_read_more_response(token))["error"] == "permission_denied"
     store.caller = store.owner
@@ -280,7 +298,7 @@ def test_a_blob_window_pages_by_utf8_bytes(monkeypatch):
     diff = "-é\n+b\n" * 9_000
     monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, expected_source=None: response_model.model_validate({**SAMPLES["doc_diff_sources"], "unified_diff": diff, "source": "stable"}))
     pages = walk(json.loads(tool.render(tool.model.model_validate({"collectionname": "c", "file_hash": "h", "source_a": "a", "source_b": "b"}), {}, "")))
-    assert all(page["shape"] == "blob" for page in pages)
+    assert all(len(page["items"]) == 1 and isinstance(page["items"][0], str) for page in pages)
     assert "".join(page["items"][0] for page in pages) == diff
 
 
@@ -369,7 +387,7 @@ def wide_row_walk(monkeypatch, cells, share=None):
 def test_a_row_still_too_large_after_one_cut_is_read_field_by_field(monkeypatch, cells, share):
     wide, pages = wide_row_walk(monkeypatch, cells, share)
     assert all(page.get("success", True) and page["items"] for page in pages), [page.get("status") for page in pages]
-    assert pages[-1]["continuation"] is None
+    assert "more" not in pages[-1]
     head = pages[0]["items"][0]
     assert head["row_number"] == 1
     # Rebuild every cell from the pages in order: the cell text on the row page, then
@@ -380,7 +398,7 @@ def test_a_row_still_too_large_after_one_cut_is_read_field_by_field(monkeypatch,
     current = head["cut"]["field"]
     rest = []
     for page in pages[1:]:
-        marker = page.get("fields", {}).get("cut")
+        marker = page.get("cut")
         if marker is None:
             rest.append(page)
             continue
@@ -402,17 +420,17 @@ def test_a_stored_line_with_no_string_longer_than_a_page_is_read_as_unit_text(mo
     rows = [{"row_number": n, "row_id": n, "cells": {"a": "x" * 900}} for n in range(50)]
     monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, expected_source=None: response_model.model_validate({**SAMPLES["table_page"], "rows": rows, "source": "stable"}))
     page = json.loads(tool.render(tool.model.model_validate({"collectionname": "c", "file_hash": "h", "sheet": 0}), {}, ""))
-    token = decode_continuation(page["continuation"])
+    token = decode_continuation(token_of(page))
     artifact_id = token["position"]["artifact"]
     start = token["position"]["start"]
     body = store.bodies[artifact_id]
     wide = {"row_number": 9, "pad": [1] * 30_001}
     store.bodies[artifact_id] = body[:start] + b'{"row_number": 9, "pad": [' + b"1," * 30_000 + b'1]}\n' + body[start:]
     pages = walk(json.loads(_read_more_response(token)), limit=500)
-    assert all(page.get("success") and page["returned_units"] > 0 for page in pages)
+    assert all("items" in page and units_of(page) > 0 for page in pages)
     rebuilt = rebuild(pages)
     assert rebuilt[0] == wide
-    assert rebuilt[1:] == rows[page["returned_units"]:]
+    assert rebuilt[1:] == rows[units_of(page):]
 
 
 def share_header(monkeypatch, share):
@@ -438,7 +456,7 @@ def test_the_page_share_header_sizes_the_page(monkeypatch):
     assert paging.page_share() == 5_000
     page = tool.render(tool.model.model_validate(values), {}, "")
     assert len(page.encode("utf-8")) <= 5_000
-    assert json.loads(page)["returned_units"] >= 1
+    assert units_of(json.loads(page)) >= 1
     share_header(monkeypatch, "not a number")
     assert paging.page_share() == paging.PAGE_LIMIT.max_bytes
     share_header(monkeypatch, 10**9)
@@ -456,9 +474,9 @@ def test_a_later_page_with_a_smaller_share_keeps_the_fields_and_the_source(monke
     assert [row["row_number"] for page in pages for row in page["items"]] == list(range(50))
     for page in pages[1:]:
         assert len(canonical_json(page).encode("utf-8")) <= 2_500
-        assert page["fields"]["source"] == "stable"
+        assert "source" not in page
         assert page["columns"] == SAMPLES["table_page"]["columns"]
-        assert decode_continuation(page["continuation"])["source"] == "stable" if page["continuation"] else True
+        assert decode_continuation(token_of(page))["source"] == "stable" if page.get("more") else True
 
 
 def test_the_call_measure_is_the_build_page_measure_of_the_returned_page(monkeypatch):
@@ -470,7 +488,7 @@ def test_the_call_measure_is_the_build_page_measure_of_the_returned_page(monkeyp
     from collection_search_server import server
 
     store = Store(monkeypatch)
-    hits = [{"collectionname": "c", "collection_dataset": "c_d", "file_hash": f"{n:064x}", "page_id": 1, "score": 1.0, "snippet": "s" * 300} for n in range(120)]
+    hits = [{"collectionname": "c", "collection_dataset": "c_d", "file_hash": f"{n:016x}" + "0" * 48, "page_id": 1, "score": 1.0, "snippet": "s" * 300} for n in range(120)]
     monkeypatch.setattr(server, "search_passages", lambda **kwargs: server.SearchResponse(success=True, query="q", queries=["q"], collections_searched=["c"], results=hits))
 
     async def call():
@@ -478,16 +496,19 @@ def test_the_call_measure_is_the_build_page_measure_of_the_returned_page(monkeyp
             return await client.call_tool("search_passages", {"queries": ["q"]})
 
     result = asyncio.run(call())
-    page, resource = result.content
+    page, resource, refs = result.content
     assert page.type == "text" and resource.type == "resource"
+    assert str(refs.resource.uri) == paging.DOC_REFS_URI
+    assert [ref["file_hash"] for ref in json.loads(refs.resource.text)] == [
+        hit["file_hash"] for hit in hits[:len(json.loads(page.text)["items"])]]
     assert str(resource.resource.uri) == paging.CALL_MEASURE_URI
     measure = json.loads(resource.resource.text)
     assert measure["page_sha256"] == hashlib.sha256(page.text.encode("utf-8")).hexdigest()
     assert measure["page_bytes"] == len(page.text.encode("utf-8"))
     assert measure["page_share"] == paging.PAGE_LIMIT.max_bytes
-    assert measure["returned_units"] == json.loads(page.text)["returned_units"]
+    assert measure["returned_units"] == units_of(json.loads(page.text))
     assert "page_sha256" not in page.text
-    assert len(store.bodies) == 1
+    assert len(store.bodies) == 2
 
 
 def pointer_value(unit, pointer):
@@ -518,7 +539,7 @@ def rebuild(pages):
             units.append(item)
 
     for page in pages:
-        marker = (page.get("fields") or {}).get("cut")
+        marker = page.get("cut")
         if marker is not None and marker["field"] == "":
             assert marker["start_bytes"] == len(text)
             text += page["items"][0].encode("utf-8")
@@ -535,6 +556,13 @@ def rebuild(pages):
     assert text == b""
     close()
     return units
+
+
+#: The route search as a plain paged tool, which pages the whole route window. Every
+#: `search_collections` call goes through the query forms, so the broker's stored-window
+#: cases use this tool.
+ROUTE_SEARCH = paging.PagedTool(tools_search.SearchResultsRequest,
+                                "search/results", "search_collections", "rows", "documents")
 
 
 def search_window(monkeypatch, field_bytes, unit_bytes, count):
@@ -555,7 +583,7 @@ def search_window(monkeypatch, field_bytes, unit_bytes, count):
         "collection_search_server.paging.BackendClient.post",
         lambda self, route, request, response_model, expected_source=None: response,
     )
-    return TOOLS["search_collections"], {}, response.model_dump(mode="json", by_alias=True)["documents"]
+    return ROUTE_SEARCH, {}, response.model_dump(mode="json", by_alias=True)["documents"]
 
 
 def walk_at(monkeypatch, tool, values, store_share, read_share, limit=2_000):
@@ -567,9 +595,9 @@ def walk_at(monkeypatch, tool, values, store_share, read_share, limit=2_000):
     share[0] = read_share
     for _ in range(limit):
         page = json.loads(texts[-1])
-        if not page.get("continuation"):
+        if not page.get("more"):
             return texts
-        texts.append(_read_more_response(decode_continuation(page["continuation"])))
+        texts.append(_read_more_response(decode_continuation(token_of(page))))
     raise AssertionError("the walk did not end")
 
 
@@ -579,8 +607,8 @@ def assert_walk_invariants(texts, units, store_share, read_share):
     pages = [json.loads(text) for text in texts]
     for index, (text, page) in enumerate(zip(texts, pages)):
         assert len(text.encode("utf-8")) <= (store_share if index == 0 else read_share), index
-        assert page.get("success") is True and page["returned_units"] > 0, (index, page)
-    assert pages[-1]["continuation"] is None
+        assert "items" in page and units_of(page) > 0, (index, page)
+    assert "more" not in pages[-1]
     assert rebuild(pages) == units
 
 
@@ -629,8 +657,8 @@ def test_a_share_smaller_than_the_page_envelope_keeps_the_continuation(monkeypat
     share = [24_000]
     monkeypatch.setattr(paging, "page_share", lambda: share[0])
     first = json.loads(tool.render(tool.model.model_validate(values), {}, ""))
-    token = decode_continuation(first["continuation"])
-    share[0] = 200
+    token = decode_continuation(token_of(first))
+    share[0] = 40
     answer = json.loads(_read_more_response(token))
     assert answer["error"] == "invalid_argument"
     assert "fewer tool calls" in answer["message"]
@@ -653,8 +681,8 @@ def test_a_unit_stored_with_a_moved_field_is_read_as_unit_text_at_a_smaller_shar
     tool, values = TOOLS["table_page"], {"collectionname": "c", "file_hash": "h", "sheet": 0}
     texts = walk_at(monkeypatch, tool, values, 24_000, 2_000)
     pages = [json.loads(text) for text in texts]
-    assert any((page.get("fields") or {}).get("cut", {}).get("field") == "" for page in pages)
-    assert any((page.get("fields") or {}).get("cut", {}).get("field") == "/cells/big" for page in pages)
+    assert any((page.get("cut") or {}).get("field") == "" for page in pages)
+    assert any((page.get("cut") or {}).get("field") == "/cells/big" for page in pages)
     assert_walk_invariants(texts, response.model_dump(mode="json", by_alias=True)["rows"], 24_000, 2_000)
 
 
@@ -673,10 +701,10 @@ def test_rows_keep_their_identity_when_the_facets_fill_the_page(monkeypatch, uni
         assert "cut" not in row
     # The facets are on each page that can hold them beside a row. No page holds 10 KB of
     # facets beside a 15,000-byte row, so that result shows no facets.
-    with_facets = [page for page in pages if "facet_counts" in (page.get("fields") or {})]
+    with_facets = [page for page in pages if "facet_counts" in page]
     assert bool(with_facets) == (unit_bytes < 10_000)
     # Only the facets move. The other window fields stay on the first page.
-    assert "total_count" in (pages[0].get("fields") or {})
+    assert "has_more" in pages[0]
 
 
 def test_a_row_larger_than_the_page_keeps_its_identity_and_moves_its_snippet(monkeypatch):
@@ -724,11 +752,8 @@ def test_the_query_forms_run_in_one_call_and_merge_their_rows(monkeypatch):
     asked = forms_backend(monkeypatch, found)
     page = json.loads(tools_search.search_collections.fn(queries=list(found)))
     assert asked == list(found)
-    union = {h for hashes in found.values() for h in hashes}
-    assert page["total_units"] == len(union)
-    rows = {row["file_hash"]: row["matched_queries"] for row in page["items"]}
-    assert rows == {"1": ["a@x.com", "aB"], "2": ["a@x.com", '"A B"'], "3": ['"A B"'],
-                    "4": ['"B, A"', "aB"], "5": ["aB"]}
+    rows = {row["file_hash"]: row["q"] for row in page["items"]}
+    assert rows == {"1": [0, 3], "2": [0, 1], "3": [1], "4": [2, 3], "5": [3]}
     assert [row["file_hash"] for row in page["items"]] == ["1", "2", "3", "4", "5"]
 
 
@@ -737,7 +762,7 @@ def test_a_failing_query_form_is_a_note_and_the_others_return_rows(monkeypatch):
     forms_backend(monkeypatch, {"a": ["1"], "b": ["2"]}, failing={"NOT"})
     page = json.loads(tools_search.search_collections.fn(queries=["a", "NOT", "b"], query=""))
     assert [row["file_hash"] for row in page["items"]] == ["1", "2"]
-    assert any("'NOT' failed" in note for note in page["fields"]["query_notes"])
+    assert any("'NOT' failed" in note for note in page["notes"])
 
 
 def test_the_query_is_the_first_form_and_its_rewrite_is_noted(monkeypatch):
@@ -745,26 +770,26 @@ def test_the_query_is_the_first_form_and_its_rewrite_is_noted(monkeypatch):
     asked = forms_backend(monkeypatch, {"a OR b": ["1"], "c": ["1"]})
     page = json.loads(tools_search.search_collections.fn(query="a OR b", queries=["c"]))
     assert asked == ["a OR b", "c"]
-    assert page["items"][0]["matched_queries"] == ["a OR b", "c"]
-    assert any("OR as |" in note for note in page["fields"]["query_notes"])
+    assert page["items"][0]["q"] == [0, 1]
+    assert any("OR as |" in note for note in page["notes"])
 
 
-def test_a_merged_result_larger_than_a_page_continues_with_read_more(monkeypatch):
+def test_each_form_keeps_its_first_rows(monkeypatch):
     Store(monkeypatch)
     found = {"a": [f"a{n}" for n in range(200)], "b": [f"b{n}" for n in range(200)]}
     forms_backend(monkeypatch, found)
-    pages = walk(json.loads(tools_search.search_collections.fn(queries=["a", "b"])))
-    shown = [row["file_hash"] for page in pages for row in page["items"]]
-    assert shown == found["a"] + found["b"]
-    assert len(pages) > 1
+    page = json.loads(tools_search.search_collections.fn(queries=["a", "b"]))
+    shown = [row["file_hash"] for row in page["items"]]
+    assert shown == found["a"][:15] + found["b"][:15]
+    assert "'a': 200 found, first 15 shown" in page["notes"]
 
 
-def test_one_query_without_the_list_is_one_route_search(monkeypatch):
+def test_one_query_without_the_list_is_one_form(monkeypatch):
     asked = forms_backend(monkeypatch, {"a OR b": ["1"]})
     page = json.loads(tools_search.search_collections.fn(query="a OR b"))
     assert asked == ["a OR b"]
-    assert "matched_queries" not in page["items"][0]
-    assert page["fields"]["query_notes"] == ["read 1 OR as |, because OR is an ordinary word in a search"]
+    assert "q" not in page["items"][0]
+    assert page["notes"] == ["the query 'a OR b': read 1 OR as |, because OR is an ordinary word in a search"]
 
 
 def dataset_backend(monkeypatch):
@@ -794,7 +819,7 @@ def test_a_dataset_name_in_collectionname_searches_its_collection_and_says_so(mo
     page = json.loads(tools_search.search_collections.fn(collectionname=[name], query="budget"))
     assert asked == [["consulate"]]
     assert [row["file_hash"] for row in page["items"]] == ["1"]
-    assert page["fields"]["query_notes"][0] == (
+    assert page["notes"][0] == (
         f"{name!r} is a dataset of the collection 'consulate', not a collection, so this "
         "search covers the collection 'consulate'. Give collectionname 'consulate'.")
 

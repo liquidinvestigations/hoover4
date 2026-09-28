@@ -42,7 +42,7 @@ from research_agent import compaction, llm_events, prompts, skill_store, stumble
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.execution import (
     DELEGATION_TOOL, ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
-    batch_budget, empty_page_text, split_measure, validation_error,
+    batch_budget, empty_page_text, split_resources, validation_error,
 )
 from research_agent.run_messages import (
     RunMessage, ToolCallRecord, apply_compactions, close_unanswered, to_langchain,
@@ -536,7 +536,10 @@ async def stream_frames(frames: AsyncIterator[Dict[str, Any]]) -> AsyncIterator[
 
 def _tool_response(request: ToolCallRequest, content: str, status: str = "ok",
                    error_class: str = "", measure: Optional[Dict[str, Any]] = None,
-                   matched: Optional[List[str]] = None) -> Dict[str, Any]:
+                   matched: Optional[List[str]] = None,
+                   doc_refs: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """The `/tool_call` response. `doc_refs` is the whole identity of each row of a
+    result page, or None when the tool sent none."""
     return {
         "tool_call_id": request.call.id,
         "name": request.call.name,
@@ -545,6 +548,7 @@ def _tool_response(request: ToolCallRequest, content: str, status: str = "ok",
         "error_class": error_class,
         "measure": measure,
         "matched_names": matched or [],
+        "doc_refs": doc_refs,
     }
 
 
@@ -639,10 +643,11 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
         _IDEMPOTENCY_KEY.reset(key_token)
 
     measure = None
+    doc_refs = None
     status = "ok"
     if isinstance(result, ToolMessage):
         content = _text_of(result.content)
-        measure, _ = split_measure(result.artifact)
+        measure, doc_refs, _ = split_resources(result.artifact)
         if result.status == "error":
             status = "error"
     else:
@@ -656,7 +661,7 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
             matched = [n for n in [read_tool_name(content)] if n]
     return _tool_response(
         request, content, status, "tool_error" if status == "error" else "",
-        _with_repairs(measure, repairs), matched
+        _with_repairs(measure, repairs), matched, doc_refs
     )
 
 

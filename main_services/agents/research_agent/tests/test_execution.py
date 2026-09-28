@@ -142,12 +142,15 @@ def test_the_client_factory_sends_the_idempotency_key_of_the_current_call():
     assert execution.IDEMPOTENCY_HEADER not in execution.page_share_client().headers
 
 
-def test_the_measure_is_taken_out_of_the_artifact():
+def test_the_measure_and_the_doc_refs_are_taken_out_of_the_artifact():
     other = EmbeddedResource(type="resource", resource=TextResourceContents(uri="hoover4://other", text="x"))
     measure = EmbeddedResource(type="resource", resource=TextResourceContents(uri=execution.CALL_MEASURE_URI, text='{"page_bytes": 3}'))
-    assert execution.split_measure([other, measure]) == ({"page_bytes": 3}, [other])
-    assert execution.split_measure([measure]) == ({"page_bytes": 3}, None)
-    assert execution.split_measure(None) == (None, None)
+    refs = EmbeddedResource(type="resource", resource=TextResourceContents(
+        uri=execution.DOC_REFS_URI, text='[{"file_hash": "' + "a" * 64 + '", "collection_dataset": "c_d"}]'))
+    assert execution.split_resources([other, measure]) == ({"page_bytes": 3}, None, [other])
+    assert execution.split_resources([measure, refs]) == (
+        {"page_bytes": 3}, [{"file_hash": "a" * 64, "collection_dataset": "c_d"}], None)
+    assert execution.split_resources(None) == (None, None, None)
 
 
 def test_the_ordered_tools_are_the_plan_tools_and_the_todo_tools():

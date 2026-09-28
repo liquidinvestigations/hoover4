@@ -27,7 +27,7 @@ import json
 import logging
 import os
 import re
-from typing import Any
+from typing import Any, Sequence
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
@@ -64,42 +64,49 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-#: Default and hard cap on results. The cap exists because every hit carries a text
-#: snippet into the agent's context window; an unbounded search would blow the context
-#: long before it blew any database. A model that asks for 10 000 gets 200.
-#:
-#: The default is deliberately most of the cap. Latency here is one provider round trip
-#: per tool call and is almost independent of how much comes back, so a search that has
-#: to be run four times to see what one run could have shown costs four times as much
-#: wall clock for the same answer. The weight of a result set is bounded by
-#: `PAYLOAD_BUDGET_CHARS` below, not by counting it. Neither number is a size, and the
-#: budget is what actually decides how many results come back.
-DEFAULT_MAX_RESULTS = int(os.getenv("SEARCH_MAX_RESULTS", "50"))
-MAX_ALLOWED_RESULTS = int(os.getenv("SEARCH_MAX_ALLOWED_RESULTS", "200"))
+#: The default and the cap of `max_results` of `search_passages`, for each query form.
+#: A model that asks for 10 000 gets the cap. The size of the result is bounded by the
+#: page share of the broker, which stores the rows past it for `read_more`.
+DEFAULT_MAX_RESULTS = int(os.getenv("SEARCH_MAX_RESULTS", "15"))
+MAX_ALLOWED_RESULTS = int(os.getenv("SEARCH_MAX_ALLOWED_RESULTS", "15"))
 
-#: How much page text one hit may contribute, in characters.
-SNIPPET_CHARS = int(os.getenv("SEARCH_SNIPPET_CHARS", "1200"))
+#: The characters of a snippet that the model reads, cut round the first match by
+#: `centred_snippet`. It sets that length and nothing else.
+SNIPPET_CHARS = int(os.getenv("SEARCH_SNIPPET_CHARS", "350"))
 
-#: Total size of the serialised result, across every hit, envelopes included.
-#:
-#: **A result count is not a size, and neither is a snippet budget.** Bounding only the
-#: snippet text leaves every hit's envelope unbounded: `collection_dataset`,
-#: `collectionname`, a 64-character `file_hash`, `match_sources`, `page_id`, `path`,
-#: `score` measure ~250 characters and tokenise badly, so 200 hits carrying 24 000
-#: characters of snippet are a 74 000-character payload: a heavier prompt than the one an
-#: uncapped count produces, which is what goes wrong when a field is bounded instead of the message.
-#: What the model receives is the serialised `SearchResponse`, so that is what is
-#: measured and that is what is bounded, by dropping the lowest-ranked hits until it
-#: fits. `max_results` is a ceiling on the count and never a promise.
-#:
-#: 24 000 is the same figure the website truncates a stored `tool_output` at
-#: (`common/src/chat_types.rs`), which is the point: a result that fits the budget is
-#: stored whole, so `chat_messages.tool_output` is an accurate copy of what the model saw
-#: instead of a truncated one that cannot be used to check the size.
-PAYLOAD_BUDGET_CHARS = int(os.getenv("SEARCH_PAYLOAD_BUDGET_CHARS", "24000"))
+#: The characters of candidate text that `_search_one` keeps and the reranker scores.
+#: It has no environment key, so a change of the snippet length does not change the rank.
+RERANK_TEXT_CHARS = 1200
 
-#: Floor on the per-hit snippet, so a large result set still says why each hit matched.
-MIN_SNIPPET_CHARS = int(os.getenv("SEARCH_MIN_SNIPPET_CHARS", "120"))
+
+def centred_snippet(text: str, n: int = SNIPPET_CHARS, words: Sequence[str] = ()) -> str:
+    """At most n characters of text round its first match, with "…" at each cut end.
+    The first match is the first "**". With no marker, it is the first case-insensitive
+    occurrence of a word of `words` of three or more characters. With neither, a prefix."""
+    if len(text) <= n:
+        return text
+    i = text.find("**")
+    if i < 0:
+        low = text.lower()
+        hits = [low.find(w.lower()) for w in words if len(w) >= 3]
+        hits = [h for h in hits if h >= 0]
+        i = min(hits) if hits else -1
+    if i < 0:
+        return text[:n].rstrip() + "…"
+    start = max(0, min(i - n // 2, len(text) - n))
+    return ("…" if start else "") + text[start:start + n].strip() + "…"
+
+
+def query_words(forms: Sequence[str]) -> list[str]:
+    """The words of the query forms, for `centred_snippet`: split on white space, with
+    quotes, `|` and a leading `-` removed."""
+    words: list[str] = []
+    for form in forms:
+        for word in form.split():
+            word = word.replace('"', "").replace("|", "").lstrip("-")
+            if word:
+                words.append(word)
+    return words
 
 #: How much text one document may contribute to a `read_documents` call.
 #: Citation verification does not use this limit. It reads every extracted page.
@@ -321,6 +328,11 @@ MIN_HASH_PREFIX = 12
 
 #: The start of a file hash: hex, from `MIN_HASH_PREFIX` to 63 characters.
 _HASH_PREFIX_RE = re.compile(r"^[0-9a-f]{%d,63}$" % MIN_HASH_PREFIX)
+
+def _is_hash_or_start(value: str) -> bool:
+    """A whole content hash, or the start of one that `full_hash` can resolve."""
+    return _is_hash(value) or bool(_HASH_PREFIX_RE.match(value or ""))
+
 
 #: A hex value longer than a file hash: a hash that the model copied with extra characters.
 _TOO_LONG_HASH_RE = re.compile(r"^[0-9a-f]{65,}$")
@@ -575,61 +587,6 @@ def list_collections() -> list[CollectionInfo]:
     return infos
 
 
-def _envelope_chars(hit: SearchHit) -> int:
-    """What one hit costs with no snippet at all: its keys, ids, path and separator.
-
-    Measured on the hit rather than estimated, because it is the part that varies.
-    A deep path and a long dataset name cost several times what a short one does.
-    """
-    return len(hit.model_copy(update={"snippet": ""}).model_dump_json()) + 1
-
-
-def _apply_payload_budget(response: SearchResponse) -> tuple[int, int]:
-    """Trim snippets, then drop whole hits, until the serialised response fits the budget.
-
-    Returns `(size_chars, dropped)`. Applied after ranking, never before: the fused order
-    and the cross-encoder both score the full passage, and scoring a truncated one would
-    change which documents come back, not only how much of them does.
-
-    The order matters. Snippets are shortened first so a broad survey keeps its breadth,
-    and only when the envelopes alone no longer fit does the tail get dropped. A hit
-    that cannot carry `MIN_SNIPPET_CHARS` of text says nothing about why it matched, so
-    it is worth less than the room it takes.
-    """
-    hits = response.results
-    if not hits:
-        return len(response.model_dump_json()), 0
-
-    base = len(response.model_copy(update={"results": []}).model_dump_json())
-    budget = max(PAYLOAD_BUDGET_CHARS - base, MIN_SNIPPET_CHARS)
-
-    kept = 0
-    spent = 0
-    for hit in hits:
-        envelope = _envelope_chars(hit)
-        if kept and spent + envelope + MIN_SNIPPET_CHARS > budget:
-            break
-        spent += envelope
-        kept += 1
-
-    dropped = len(hits) - kept
-    del hits[kept:]
-    allowance = max(MIN_SNIPPET_CHARS, min(SNIPPET_CHARS, (budget - spent) // kept))
-    for hit in hits:
-        if len(hit.snippet) > allowance:
-            hit.snippet = hit.snippet[:allowance].rstrip() + "…"
-
-    # The estimate above counts characters; JSON escaping of newlines and quotes inside a
-    # snippet costs more than one each, so the measured size can still overshoot. Measure
-    # and shed the tail rather than trust the arithmetic.
-    size = len(response.model_dump_json())
-    while len(hits) > 1 and size > PAYLOAD_BUDGET_CHARS:
-        hits.pop()
-        dropped += 1
-        size = len(response.model_dump_json())
-    return size, dropped
-
-
 def search_passages(
     queries: list[str] | str | None = None,
     collections: list[str] | str | None = None,
@@ -669,7 +626,7 @@ def search_passages(
             error="queries cannot be empty; pass a list of one or more search phrases",
         )
 
-    limit = max(1, min(int(max_results), MAX_ALLOWED_RESULTS))
+    limit = max(1, min(int(max_results), MAX_ALLOWED_RESULTS, ROWS_PER_FORM))
 
     notes: list[str] = []
     corrective = batching.corrective_note(
@@ -695,8 +652,10 @@ def search_passages(
             errors.append(error)
         notes.extend(query_notes)
 
-    hits = _fuse_across_queries(per_query, limit)
+    hits = _fuse_across_queries(per_query, ROWS_PER_FORM * len(wanted))
     _attach_paths(hits)
+    for hit in hits:
+        hit.snippet = centred_snippet(hit.snippet, SNIPPET_CHARS, query_words(hit.matched_queries))
 
     # Every query failing the same way is a query problem, not an infrastructure one.
     error = errors[0] if errors and not hits else None
@@ -710,37 +669,17 @@ def search_passages(
         error=error,
         note="; ".join(dict.fromkeys(notes)) or None,
     )
-    found = len(hits)
-    size, dropped = _apply_payload_budget(response)
-    if dropped:
-        # The model has to know the set was cut, or it reads "12 results" as "there are
-        # twelve". The note is inside the budget: it is added before the final measure.
-        response.note = "; ".join(
-            filter(None, [response.note,
-                          f"{dropped} lower-ranked result(s) omitted to fit the "
-                          f"{PAYLOAD_BUDGET_CHARS}-character tool payload budget"])
-        )
-        size, extra = _apply_payload_budget(response)
-        dropped += extra
-    # The one number that says how heavy this tool call was. `chat_messages.tool_output`
-    # cannot answer it. That column is truncated and the model's copy is not, so the
-    # size the model actually received is only observable if it is recorded here.
-    log.info(
-        "search_passages payload: %d chars, %d quer(ies), %d of %d hit(s), %d dropped",
-        size, len(wanted), len(response.results), found, dropped,
-    )
+    log.info("search_passages: %d quer(ies), %d hit(s)", len(wanted), len(hits))
     return response
 
 
-#: More angles than this in one call is a model listing synonyms rather than choosing.
-#: The surplus is refused by name. Silently running the first few would hide the cost.
-#:
-#: Eight rather than five because a capable model asks for six unprompted on an ordinary
-#: question, and a limit reached in ordinary use is measuring the limit rather than the
-#: behaviour it was meant to catch. Each angle costs a full hybrid fan-out and a rerank
-#: (about a third of a second each), so eight is still well short of where the search
-#: dominates the turn.
-MAX_QUERIES_PER_CALL = int(os.getenv("SEARCH_MAX_QUERIES", "8"))
+#: More query forms than this in one call is a model listing synonyms rather than
+#: choosing. The tool schema refuses the surplus, so the model reads the limit.
+MAX_QUERIES_PER_CALL = int(os.getenv("SEARCH_MAX_QUERIES", "12"))
+
+#: The rows that each query form of a search keeps: the first rows of a
+#: `search_collections` form, and the `max_results` cap of a `search_passages` form.
+ROWS_PER_FORM = int(os.getenv("SEARCH_ROWS_PER_FORM", "15"))
 
 
 def _fuse_across_queries(
@@ -864,7 +803,7 @@ def _search_one(
                         file_hash=row.get("file_hash", ""),
                         page_id=int(row.get("page_id") or 0),
                         keyword_score=float(row["score"]) if row.get("score") is not None else 0.0,
-                        text=(row.get("page_text") or "")[:SNIPPET_CHARS],
+                        text=(row.get("page_text") or "")[:RERANK_TEXT_CHARS],
                     )
                 )
 
@@ -959,7 +898,7 @@ def _fused_pipeline(
         if v.text and key not in snippet_from_chunk:
             # The chunk is the matched passage; it makes a better snippet than the
             # page excerpt the keyword half brought.
-            c.text = v.text[:SNIPPET_CHARS]
+            c.text = v.text[:RERANK_TEXT_CHARS]
             snippet_from_chunk.add(key)
         vector_candidates.append(c)
 
@@ -1000,10 +939,10 @@ def _fused_pipeline(
         min_per_kind=MIN_PER_KIND,
         max_per_kind=max(MAX_PER_KIND, limit),
     )
-    notes.append(
-        f"{len(keyword_list)} keyword + {len(vector_list)} vector candidates, "
-        f"{len(fused)} after fusion"
-        + (f", cross-encoder reranked in {rerank_ms:.0f} ms" if rerank_applied else "")
+    log.info(
+        "%d keyword + %d vector candidates, %d after fusion%s",
+        len(keyword_list), len(vector_list), len(fused),
+        f", cross-encoder reranked in {rerank_ms:.0f} ms" if rerank_applied else "",
     )
     return [
         SearchHit(
@@ -1062,6 +1001,10 @@ def read_documents(
     this replaced. That last one is why no separate compatibility path is needed.
     """
     pairs, malformed = _document_pairs(documents, collectionname, file_hash)
+    try:
+        pairs = [(c, full_hashes(c, h)) for c, h in pairs]
+    except HashPrefixError as exc:
+        return DocumentsEntities(success=False, error=str(exc))
     wanted, repeats = batching.dedupe([f"{c}\x00{h}" for c, h in pairs], casefold=False)
     pairs = [tuple(k.split("\x00", 1)) for k in wanted]
 
@@ -1135,7 +1078,7 @@ def _document_pairs(
         if isinstance(entry, dict):
             collection = str(entry.get("collectionname") or "").strip()
             digest = str(entry.get("file_hash") or "").strip()
-            if collection and _is_hash(digest):
+            if collection and _is_hash_or_start(digest):
                 pairs.append((collection, digest))
                 continue
         malformed.append(str(entry)[:80])
@@ -1147,7 +1090,7 @@ def _document_pairs(
         if len(collections) == 1 and len(hashes) > 1:
             collections = collections * len(hashes)
         for collection, digest in zip(collections, hashes):
-            if collection and _is_hash(digest):
+            if collection and _is_hash_or_start(digest):
                 pairs.append((collection, digest))
             else:
                 malformed.append(f"{collection}/{digest}"[:80])

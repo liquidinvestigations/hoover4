@@ -21,6 +21,7 @@ from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 
 from agent_common import tool_packs
+from agent_common.result_pages import is_canonical_page
 from research_agent import compaction, model_params, prompts, skill_store, subagents
 from research_agent.execution import page_share_client
 from research_agent.tool_args import decode_string_arguments, rename_aliases, repair_arguments
@@ -34,15 +35,14 @@ def recurse_json_decode(d):
         elif isinstance(d, list):
             return [recurse_json_decode(item) for item in d]
         elif isinstance(d, str):
-            parsed = json.loads(d)
-            if isinstance(parsed, dict) and parsed.get("kind") == "result_page":
+            if is_canonical_page(d):
                 # A broker result page. The byte rule requires this string to reach
                 # `trajectory.py` unchanged: decoding it into a dict here and
                 # re-serializing it later would produce bytes the broker never wrote,
                 # which breaks the fixed-point test that recognises a page on the way
                 # in. See `agent_common.result_pages`, "The byte rule".
                 return d
-            return recurse_json_decode(parsed)
+            return recurse_json_decode(json.loads(d))
         else:
             return d
     except (JSONDecodeError, TypeError):

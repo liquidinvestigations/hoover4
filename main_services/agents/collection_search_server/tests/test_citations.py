@@ -369,7 +369,7 @@ class TestHashStart:
         monkeypatch.setattr(srv, "_caller", _acl)
         sent = []
         monkeypatch.setattr(tools_document, "_render",
-                            lambda tool, values: sent.append(values) or "{}")
+                            lambda tool, values, **kwargs: sent.append(values) or "{}")
         result = json.loads(tools_document.read_documents.fn(
             collectionname="testdata", file_hash=[self.FULL[:12], "c" * 64]))
         # A whole hash that no document has is left out, and the result says so.

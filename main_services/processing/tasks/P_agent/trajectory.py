@@ -29,14 +29,18 @@ def _canonical_json(value: Any) -> str:
 
 def is_canonical_page(text: str) -> bool:
     """Mirrors `agent_common.result_pages.is_canonical_page`. See `_canonical_json` for
-    why this is a copy. True when `text` parses to a `result_page` object whose canonical
-    re-serialization is `text` itself, byte for byte -- the fixed-point test the byte
-    rule relies on to recognise a broker page with no side channel."""
+    why this is a copy. True when `text` parses to an object that holds a list under
+    `items`, is the `budget_exhausted` error, or has `"kind": "result_page"`, and whose
+    canonical re-serialization is `text` itself, byte for byte. That is the fixed-point
+    test the byte rule relies on to recognise a broker page with no side channel."""
     try:
         value = json.loads(text)
     except (json.JSONDecodeError, TypeError, ValueError):
         return False
-    if not isinstance(value, dict) or value.get("kind") != "result_page":
+    if not isinstance(value, dict):
+        return False
+    if not (isinstance(value.get("items"), list) or value.get("error") == "budget_exhausted"
+            or value.get("kind") == "result_page"):
         return False
     return _canonical_json(value) == text
 
@@ -225,9 +229,23 @@ def _result_rows(result: Any, key: str) -> Any:
     """The rows of a result: `items` of a broker result page, else the list under `key`,
     which a row stored before the page broker holds."""
     value = _as_dict(result)
-    if value.get("kind") == "result_page" and isinstance(value.get("items"), list):
+    if isinstance(value.get("items"), list):
         return value["items"]
     return value.get(key)
+
+
+def response_doc_refs(tool_name: str, refs: Any, query: str = "") -> list[dict[str, Any]]:
+    """The doc refs that the collection server sent beside a result page, in the shape of
+    `extract_doc_refs`. Each ref has the whole file hash and the dataset, which the page
+    itself does not show. A search ref opens its document at `query`."""
+    if not isinstance(refs, list):
+        return []
+    out = [d for d in (_doc_ref(ref) for ref in refs) if d]
+    if query and tool_name in _SEARCH_TOOLS:
+        for ref in out:
+            if not ref["find_query"]:
+                ref["find_query"] = query
+    return out
 
 
 def _extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:

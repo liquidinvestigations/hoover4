@@ -106,10 +106,29 @@ def _with_notes(text: str, notes: list[str], hash_notes: list[str] | None = None
     return canonical_json(body)
 
 
-def _render(tool: PagedTool | LocalPagedTool, values: dict[str, Any]) -> str:
+def _full_hashes(values: dict[str, Any]) -> None:
+    """Replace a hash start in `file_hash` and `node` with its whole hash. Raises
+    `server.HashPrefixError` for a start that names more than one document."""
+    collectionname = values.get("collectionname")
+    if not isinstance(collectionname, str) or not collectionname:
+        return
+    for key in ("file_hash", "node"):
+        if isinstance(values.get(key), str) and values[key]:
+            values[key] = server.full_hashes(collectionname, values[key])
+
+
+def _render(tool: PagedTool | LocalPagedTool, values: dict[str, Any], resolve: bool = True) -> str:
     """The first page of `tool` for `values`. A dataset name in `collectionname` becomes its
-    collection first. A name that is already readable costs nothing."""
+    collection first. A name that is already readable costs nothing. With `resolve`, a hash
+    start in `file_hash` or `node` becomes its whole hash."""
     notes = _map_collections(values)
+    if resolve:
+        try:
+            _full_hashes(values)
+        except server.HashPrefixError as exc:
+            return canonical_json({"success": False, "error": "invalid_argument", "message": str(exc)})
+        except Exception:  # noqa: BLE001, a failed lookup leaves the hash to the route
+            server.log.warning("the file_hash of %s was not looked up", tool.tool_name, exc_info=True)
     try:
         return _with_notes(tool.render(tool.model.model_validate(values), {}, ""), notes)
     except ValidationError as exc:
@@ -129,7 +148,7 @@ def read_documents(collectionname: str, file_hash: list[str], source: str | None
         server.log.warning("the file_hashes of read_documents were not looked up", exc_info=True)
     if not values["file_hash"] and hash_notes:
         return canonical_json({"success": False, "error": "not_found", "message": " ".join(hash_notes)})
-    return _with_notes(_render(READ_DOCUMENTS, values), notes, hash_notes)
+    return _with_notes(_render(READ_DOCUMENTS, values, resolve=False), notes, hash_notes)
 
 
 @mcp.tool(name="doc_search_text", description="List the hits of a query in one document text source, in page order, with the page, the offsets and a snippet of each hit. Use it to find the pages of a long document to read.")
@@ -168,4 +187,4 @@ def list_document_entities(
     collectionname: list[str] | str | None = None,
     file_hash: list[str] | str | None = None,
 ) -> str:
-    return _render(LIST_DOCUMENT_ENTITIES, {"documents": documents, "collectionname": collectionname, "file_hash": file_hash})
+    return _render(LIST_DOCUMENT_ENTITIES, {"documents": documents, "collectionname": collectionname, "file_hash": file_hash}, resolve=False)

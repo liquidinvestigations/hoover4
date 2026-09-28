@@ -132,11 +132,14 @@ plan in review writes `cancelled`, and a cancel of a running plan writes the sto
 cancels its runs. While a plan waits or runs, the conversation refuses a new message.
 
 The organizer delegates the sections of the approved tree. A briefing names the section and
-a purpose: `execute`, `review` or `correct`. A section takes at most two corrections, and
-every sub-agent run of the plan counts against the plan budget (`agent_plan_run_budget`).
-Each sub-agent thread of a section writes its prompt and its report or review as plan
-documents. The organizer's final report ends with a generated table of the sections that
-have no accepting review. The plan runs take their model steps on `research-queue`.
+a purpose: `execute` or `correct`. No sub-agent reviews a section, and the organizer checks
+each report itself. A plan has at most 4 sections and one correction, which can name more
+than one section. Every sub-agent run of the plan counts against the plan budget
+(`agent_plan_run_budget`, at most 5). Each sub-agent thread of a section writes its prompt
+and its report as plan documents. A section is failed when its newest `execute` or `correct`
+run did not end `completed` or wrote no report. The organizer's final report ends with a
+generated table of the failed sections and the cause of each. The plan runs take their
+model steps on `research-queue`.
 
 `AgentRun` keeps the run in `agent_runs` and its model conversation in
 `agent_run_messages`, and runs the agent loop. Each model call is one `model_step`

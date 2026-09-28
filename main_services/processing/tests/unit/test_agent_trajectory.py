@@ -240,3 +240,36 @@ def test_a_stored_search_row_with_only_the_short_dataset_gets_the_composed_key()
     refs = extract_doc_refs("search_collections", {"kind": "result_page", "items": [
         {"collectionname": "enron", "dataset": "maildir", "file_hash": "aaa"}]})
     assert refs[0]["collection_dataset"] == "enron_maildir"
+
+
+#: The empty and the full slim search results. The same strings are fixtures of
+#: `agent_common/tests/test_result_pages.py`, which tests the agent copy of the test.
+_SLIM_EMPTY = '{"items":[]}'
+_SLIM_FULL = ('{"items":[{"collectionname":"enron","date":"2001-05-14","file_hash":"5e8bb0ff3822761c",'
+              '"path":"/maildir/kean-s/sent/12.","snippet":"…the **Raptor** approval…","type":"email"}],'
+              '"more":"c7f3a91b0d2e","notes":["\'Raptor\': 40 found, first 15 shown"]}')
+
+
+def test_the_slim_pages_and_the_budget_error_are_canonical_pages():
+    assert is_canonical_page(_SLIM_EMPTY)
+    assert is_canonical_page(_SLIM_FULL)
+    assert is_canonical_page(_canonical_json({"success": False, "error": "budget_exhausted", "message": "m"}))
+    assert is_canonical_page(_canonical_json({"success": False, "error": "not_found", "message": "m"})) is False
+    assert is_canonical_page(_SLIM_FULL + " ") is False
+
+
+def test_the_doc_refs_of_the_response_give_the_whole_hash():
+    whole = "5e8bb0ff3822761c" + "0" * 48
+    refs = [{"collectionname": "enron", "collection_dataset": "enron_kean_s", "file_hash": whole,
+             "path": "/maildir/kean-s/sent/12.", "page_id": None, "snippet": "…the **Raptor** approval…"}]
+    fields = tool_row_fields("search_collections", {"query": "Raptor"}, _SLIM_FULL, refs)
+    assert fields["tool_output"] == _SLIM_FULL
+    stored = json.loads(fields["doc_refs"])
+    assert [r["file_hash"] for r in stored] == [whole]
+    assert stored[0]["collection_dataset"] == "enron_kean_s" and stored[0]["find_query"] == "Raptor"
+
+
+def test_without_the_doc_refs_of_the_response_the_refs_come_from_the_content():
+    fields = tool_row_fields("search_collections", {"query": "Raptor"}, _SLIM_FULL)
+    stored = json.loads(fields["doc_refs"])
+    assert [r["file_hash"] for r in stored] == ["5e8bb0ff3822761c"]
