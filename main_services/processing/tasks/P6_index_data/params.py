@@ -8,6 +8,7 @@ class IndexDatasetPlanParams:
     collection_dataset: str
     plan_hash: str
     op_id: str = ""
+    vectors_only: bool = False
 
 @dataclass
 class PlanShardsParams:
@@ -15,6 +16,7 @@ class PlanShardsParams:
     collection_dataset: str
     plan_hash: str
     hashes: list[str]
+    vectors_only: bool = False
 
 @dataclass
 class IndexShardParams:

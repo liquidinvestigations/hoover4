@@ -19,12 +19,15 @@ Session handling, database routing and the full-text argument builder are
 
 ## Search fan-out
 
-Manticore holds no global search tables. Each collection's search data lives in a
+The text Manticore daemon holds no global search tables. Each collection's search data lives in a
 dynamic number of shard tables, `<collectionname>_<n>_pages` (capped by the indexing
 planner at 4 GB of text or 2.5 M rows, whichever binds first). Distributed tables are
 deliberately not used: Manticore 14.1.0 cannot run this site's stored-field/FACET query
 shape over them. Measured, not assumed, and it fails by returning NULL stored fields
 rather than by erroring.
+
+The vectors daemon holds `<collectionname>_<n>_vectors` tables. Website search reads text
+tables only, so an unavailable vectors daemon does not stop full-text search.
 
 **One table per shard, and no JOIN.** Each document's metadata is denormalized onto every
 one of its pages rows by the indexer. The JOIN this replaced was the single most expensive

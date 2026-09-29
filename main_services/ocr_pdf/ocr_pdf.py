@@ -46,12 +46,17 @@ import base64
 import binascii
 import hashlib
 import io
+import json
 import logging
 import os
+import signal
+import subprocess
+import sys
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import requests
 from fastapi import FastAPI, HTTPException, Response
@@ -112,6 +117,8 @@ app = FastAPI(title="hoover4 OCR'd PDF", version="1.0")
 
 _pool = ThreadPoolExecutor(max_workers=OCR_PDF_CONCURRENCY, thread_name_prefix="ocrpdf")
 _inflight = threading.Semaphore(OCR_PDF_CONCURRENCY + OCR_PDF_QUEUE_DEPTH)
+RENDER_WORKER_COMMAND = [sys.executable, "-m", "render_worker"]
+RENDER_TIMEOUT_SECONDS = int(os.getenv("OCR_PDF_RENDER_TIMEOUT_SECONDS", "3600"))
 
 
 class OcrPdfRequest(BaseModel):
@@ -167,139 +174,35 @@ def validate_dest_key(dest_key: str) -> str:
     return key
 
 
-def _ocr_page(engine: str, languages: str, image_bytes: bytes) -> dict:
-    """One page through the OCR tier. Returns the service's own JSON body."""
-    url = OCR_ENDPOINTS.get(engine, "")
-    if not url:
-        # Not configured is not unavailable: the caller must not retry it.
-        raise HTTPException(
-            status_code=501,
-            detail=f"OCR engine {engine!r} has no endpoint configured",
-        )
-    payload = {
-        "image_b64": base64.b64encode(image_bytes).decode("ascii"),
-        "languages": languages,
-    }
-    try:
-        response = requests.post(url, json=payload, timeout=(5, OCR_READ_TIMEOUT))
-    except requests.RequestException as exc:
-        raise HTTPException(status_code=503, detail=f"OCR tier unreachable: {exc}")
-    if response.status_code == 503:
-        # The OCR tier sheds load the same way this service does. Pass the backpressure
-        # up rather than absorbing it: the caller turns it into a retryable Temporal error.
-        raise HTTPException(status_code=503, detail="OCR tier queue is full",
-                            headers={"Retry-After": response.headers.get("Retry-After", "5")})
-    if response.status_code >= 400:
-        raise HTTPException(status_code=422,
-                            detail=f"OCR tier said {response.status_code}: {response.text[:300]}")
-    return response.json()
-
-
-def _draw_invisible_words(canvas, words: List[dict], scale: float, page_height_pt: float) -> int:
-    """Draw one page's OCR words as invisible text over the already-placed image.
-
-    Text render mode 3 is "neither fill nor stroke". The glyphs are laid out, measured
-    and selectable, and nothing is painted. That is what makes the output a *searchable*
-    scan rather than a scan with a text file stapled to it.
-
-    Each word is horizontally scaled to the width of its own box so that a selection
-    lands on the ink the reader sees. Without it, Helvetica's metrics drift from the
-    scanned glyphs across a line and the selection ends up one word off by the margin.
-    """
-    from reportlab.pdfbase.pdfmetrics import stringWidth
-
-    drawn = 0
-    canvas.setFillColorRGB(0, 0, 0)
-    for word in words:
-        text = (word.get("text") or "").strip()
-        if not text:
-            continue
+def run_renderer(pdf_bytes: bytes, engine: str, languages: str, dpi: int) -> tuple:
+    """Run PDFium in one child process and return its output."""
+    with tempfile.TemporaryDirectory(prefix="ocr-pdf-") as folder:
+        source = os.path.join(folder, "source.pdf")
+        destination = os.path.join(folder, "result.pdf")
+        with open(source, "wb") as handle:
+            handle.write(pdf_bytes)
         try:
-            left = float(word["left"]) * scale
-            top = float(word["top"]) * scale
-            width = float(word["width"]) * scale
-            height = float(word["height"]) * scale
-        except (KeyError, TypeError, ValueError):
-            continue
-        if width <= 0 or height <= 0:
-            continue
-
-        # PDF's origin is bottom-left, the raster's is top-left.
-        baseline = page_height_pt - top - height
-        font_size = max(height, 1.0)
-        natural = stringWidth(text, "Helvetica", font_size)
-        if natural <= 0:
-            continue
-
-        text_object = canvas.beginText()
-        text_object.setTextRenderMode(3)
-        text_object.setFont("Helvetica", font_size)
-        text_object.setHorizScale(100.0 * width / natural)
-        text_object.setTextOrigin(left, baseline)
-        text_object.textOut(text)
-        canvas.drawText(text_object)
-        drawn += 1
-    return drawn
-
-
-def build_searchable_pdf(pdf_bytes: bytes, engine: str, languages: str, dpi: int) -> tuple:
-    """Render, OCR and re-assemble. Returns ``(pdf_bytes, page_count, pages_with_text)``."""
-    import pypdfium2 as pdfium
-    from PIL import Image
-    from reportlab.lib.utils import ImageReader
-    from reportlab.pdfgen import canvas as pdfcanvas
-
-    document = pdfium.PdfDocument(pdf_bytes)
-    try:
-        page_count = len(document)
-        if page_count == 0:
-            raise HTTPException(status_code=422, detail="the PDF has no pages")
-        if page_count > MAX_PAGES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"the PDF has {page_count} pages, limit is {MAX_PAGES}",
+            result = subprocess.run(
+                list(RENDER_WORKER_COMMAND) + [source, destination, engine, languages, str(dpi)],
+                text=True, capture_output=True, timeout=RENDER_TIMEOUT_SECONDS, check=False,
             )
-
-        buffer = io.BytesIO()
-        canvas = None
-        pages_with_text = 0
-
-        for index in range(page_count):
-            page = document[index]
-            # pypdfium2 reports points (1/72"), which is also reportlab's unit, so the
-            # output page is the same physical size as the input page. Page numbers and
-            # page geometry both have to survive: the viewer's page jump and the
-            # `text_content.page_id` rows are matched against this file.
-            width_pt, height_pt = page.get_size()
-            bitmap = page.render(scale=dpi / 72.0)
-            image = bitmap.to_pil().convert("RGB")
-
-            jpeg = io.BytesIO()
-            image.save(jpeg, format="JPEG", quality=JPEG_QUALITY, optimize=True)
-            jpeg.seek(0)
-
-            if canvas is None:
-                canvas = pdfcanvas.Canvas(buffer, pagesize=(width_pt, height_pt))
-            else:
-                canvas.setPageSize((width_pt, height_pt))
-
-            canvas.drawImage(ImageReader(jpeg), 0, 0, width=width_pt, height=height_pt)
-
-            body = _ocr_page(engine, languages, jpeg.getvalue())
-            words = body.get("words") or []
-            # The image raster and the PDF page are the same rectangle at different
-            # scales; one factor converts every box.
-            scale = width_pt / image.width if image.width else 1.0
-            if _draw_invisible_words(canvas, words, scale, height_pt):
-                pages_with_text += 1
-
-            canvas.showPage()
-            image.close()
-
-        canvas.save()
-        return buffer.getvalue(), page_count, pages_with_text
-    finally:
-        document.close()
+        except subprocess.TimeoutExpired:
+            raise HTTPException(504, "the renderer timed out on this PDF")
+        if result.returncode < 0:
+            name = signal.Signals(-result.returncode).name
+            raise HTTPException(422, "the renderer stopped with signal %s on this PDF" % name)
+        try:
+            body = json.loads(result.stdout.splitlines()[-1])
+        except (IndexError, json.JSONDecodeError):
+            raise HTTPException(500, "the renderer returned no result")
+        if not body.get("ok"):
+            raise HTTPException(body.get("status", 500), body.get("detail", "renderer failed"),
+                                headers=body.get("headers") or None)
+        try:
+            output = open(destination, "rb").read()
+        except OSError as exc:
+            raise HTTPException(500, "the renderer wrote no PDF: %s" % exc)
+        return output, int(body["page_count"]), int(body["pages_with_text"])
 
 
 @app.get("/health")
@@ -391,7 +294,7 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
 
         try:
             out_bytes, page_count, pages_with_text = _pool.submit(
-                build_searchable_pdf, pdf_bytes, request.engine, request.languages, request.dpi
+                run_renderer, pdf_bytes, request.engine, request.languages, request.dpi
             ).result()
         except HTTPException:
             raise

@@ -71,10 +71,14 @@ going" before any tuning decision: `tuning-the-pipeline`.
 manticore.sh "SHOW TABLES"
 manticore.sh "SELECT count(*) FROM <collection>_<shard>_pages"
 manticore.sh "SHOW TABLE <collection>_<shard>_pages STATUS"
+MANTICORE_CONTAINER=manticore-vectors manticore.sh "SHOW TABLES"
 ```
 
 One denormalised page table per shard, a per-collection entities table, and a per-collection
 tree table. No join: the page table carries what a result needs.
+
+The vectors daemon holds the matching `_vectors` tables. Vector tables are rebuilt from stored
+vectors after a restore, so a collection backup contains text tables only.
 
 The tree table is read **uncached** by the site, deliberately, because it changes while
 ingestion runs.

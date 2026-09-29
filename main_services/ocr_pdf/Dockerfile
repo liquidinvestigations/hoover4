@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir \
         "pytest>=8.3"
 
 COPY ocr_pdf.py /app/ocr_pdf.py
+COPY render_worker.py /app/render_worker.py
 COPY tests /app/tests
 
 ENV HOST=0.0.0.0 \

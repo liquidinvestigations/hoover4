@@ -109,6 +109,79 @@ def test_error_identity_includes_source_task_dataset_and_hash(monkeypatch):
     assert rows[1]["error_identity"] != expected
 
 
+def test_patched_workflow_sends_one_group_for_one_failed_chunk(monkeypatch):
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    scheduled = []
+
+    class _WorkflowInfo:
+        run_id = "workflow-run"
+
+    async def execute_activity(*args, **_kwargs):
+        scheduled.append(args)
+        return 3
+
+    monkeypatch.setattr(workflow, "now", lambda: now)
+    monkeypatch.setattr(workflow, "info", lambda: _WorkflowInfo())
+    monkeypatch.setattr(workflow, "in_workflow", lambda: True)
+    monkeypatch.setattr(workflow, "patched", lambda _change: True)
+    monkeypatch.setattr(workflow, "payload_converter", lambda: PayloadConverter.default)
+    monkeypatch.setattr(workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(parse_common, "format_temporal_exception_chain", lambda _error: "failed")
+
+    inserted = asyncio.run(parse_common.record_errors_from_results(
+        [RuntimeError("failed")] * 3,
+        task_ids=["P4_ExtractEntities"] * 3,
+        starts=[now] * 3,
+        collectionname="collection",
+        collection_dataset="dataset",
+        item_hashes=["hash-0", "hash-1", "hash-2"],
+        source_execution_ids=["source-0"] * 3,
+        op_id="operation-1",
+    ))
+
+    assert inserted == 3
+    assert len(scheduled) == 1
+    _, params = scheduled[0]
+    assert len(params.groups) == 1
+    assert params.groups[0].item_hashes == ["hash-0", "hash-1", "hash-2"]
+
+
+def test_patched_workflow_formats_one_exception_per_source_group(monkeypatch):
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    calls = []
+    scheduled = []
+
+    class _WorkflowInfo:
+        run_id = "workflow-run"
+
+    async def execute_activity(_activity, params, **_kwargs):
+        scheduled.append(params)
+        return sum(len(group.item_hashes) for group in params.groups)
+
+    monkeypatch.setattr(workflow, "now", lambda: now)
+    monkeypatch.setattr(workflow, "info", lambda: _WorkflowInfo())
+    monkeypatch.setattr(workflow, "in_workflow", lambda: True)
+    monkeypatch.setattr(workflow, "patched", lambda _change: True)
+    monkeypatch.setattr(workflow, "payload_converter", lambda: PayloadConverter.default)
+    monkeypatch.setattr(workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(parse_common, "format_temporal_exception_chain",
+                        lambda error: calls.append(error) or str(error))
+
+    count = 100
+    errors = [RuntimeError("first")] * 75 + [RuntimeError("second")] * 25
+    inserted = asyncio.run(parse_common.record_errors_from_results(
+        errors, task_ids=["P4_ExtractEntities"] * count, starts=[now] * count,
+        collectionname="collection", collection_dataset="dataset",
+        item_hashes=[f"hash-{index}" for index in range(count)],
+        source_execution_ids=["source-0"] * 75 + ["source-1"] * 25,
+        op_id="operation-1",
+    ))
+
+    assert inserted == count
+    assert len(calls) == 2
+    assert [len(group.item_hashes) for params in scheduled for group in params.groups] == [75, 25]
+
+
 def test_helper_rejects_missing_source_ids_before_writing(monkeypatch):
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     monkeypatch.setattr(workflow, "now", lambda: now)

@@ -243,10 +243,9 @@ const RAW_SQL_TIMEOUT_SECONDS: u64 = 10;
 /// `SHOW STATUS`, `SHOW TABLES` and `SHOW TABLE <t> STATUS`, which the admin metrics page
 /// reads. It bypasses the result cache, because a status value is only correct when it is
 /// fresh.
-pub async fn manticore_raw_sql(sql: &str) -> anyhow::Result<Vec<ManticoreRawRow>> {
-    let base = std::env::var("MANTICORE_URL").unwrap_or("http://127.0.0.1:21903".to_string());
+pub async fn manticore_raw_sql(base: &str, sql: &str) -> anyhow::Result<Vec<ManticoreRawRow>> {
     let response = reqwest::Client::new()
-        .post(format!("{base}/sql?mode=raw"))
+        .post(format!("{}/sql?mode=raw", base.trim_end_matches('/')))
         .timeout(Duration::from_secs(RAW_SQL_TIMEOUT_SECONDS))
         .form(&[("query", sql)])
         .send()

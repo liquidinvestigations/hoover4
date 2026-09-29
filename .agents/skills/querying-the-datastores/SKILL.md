@@ -26,9 +26,9 @@ hand-typed spellings were in circulation before this script existed; that is wha
 - **ClickHouse**: one database per collection, plus a global database for everything that is
   not collection-scoped. `ch.sh "SHOW DATABASES"` lists what actually exists. Do not
   construct the name from a collection name you were told.
-- **Manticore**: one denormalised page table per shard, plus a per-collection entities table
-  and a per-collection tree table. There is no join; the page table carries what a result
-  needs.
+- **Manticore**: the text daemon has one denormalised page table per shard, plus a
+  per-collection entities table and a per-collection tree table. The vectors daemon has
+  `_vectors` tables. Set `MANTICORE_CONTAINER=manticore-vectors` for its script queries.
 - **Object store**: a bucket per collection, plus a system bucket. **Readers take the bucket
   out of the row's stored path** rather than rebuilding it, and derived output lives under a
   prefix that the disk-scan stage must never walk.

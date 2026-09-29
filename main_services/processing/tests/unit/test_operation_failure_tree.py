@@ -11,6 +11,14 @@ from tasks.operation_failure_tree import (
     compute_signature,
     walk_failure_tree,
 )
+from tasks.operation_failure_tree import _INDEX_SLOT, capture_index_base
+
+
+def test_capture_index_base_fits_int32_parent_indices():
+    for index in range(10_000):
+        base = capture_index_base("operation", "workflow-%d" % index, "run-%d" % index)
+        assert base >= _INDEX_SLOT
+        assert base + _INDEX_SLOT - 1 <= 2**31 - 1
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 

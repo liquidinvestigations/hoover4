@@ -470,7 +470,8 @@ def import_collection(collectionname: str, source: str, confirm: str, wait: bool
 
 @cli.command(name="reindex-collection")
 @click.argument("collectionname", type=str)
-def reindex_collection(collectionname: str):
+@click.option("--vectors-only", is_flag=True, help="Rebuild vector tables and keep text indexes.")
+def reindex_collection(collectionname: str, vectors_only: bool = False):
     """Drop a collection's Manticore tables + shard ledger and re-index every finished plan.
 
     Recovery path for a lost Manticore volume, for a change to
@@ -519,7 +520,8 @@ def reindex_collection(collectionname: str):
         )
 
     try:
-        op_id = submit_operation("reindex_collection", collectionname=collectionname)
+        op_id = submit_operation("reindex_collection", collectionname=collectionname,
+                                 detail={"vectors_only": vectors_only})
     except OperationLocked as e:
         raise click.ClickException(str(e))
     click.echo(f"operation {op_id}")

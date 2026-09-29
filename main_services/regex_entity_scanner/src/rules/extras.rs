@@ -249,7 +249,9 @@ fn labelled_by_header(candidate: &Candidate<'_>) -> bool {
     let label = before[..at - 1].trim_end();
     MESSAGE_ID_HEADERS.iter().any(|header| {
         label.len().checked_sub(header.len()).is_some_and(|from| {
-            label[from..].eq_ignore_ascii_case(header)
+            label
+                .get(from..)
+                .is_some_and(|tail| tail.eq_ignore_ascii_case(header))
                 && !label[..from]
                     .bytes()
                     .next_back()

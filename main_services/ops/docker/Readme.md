@@ -39,6 +39,10 @@ Temporal readiness gate read the other runtime's copy of its constants there.
 `deploy.py` renders the generated `.env` files these read; **never hand-edit a generated
 file**. The next deploy overwrites it, and until then the change looks like it worked.
 
+`manticore_mem_limit` and `manticore_vectors_mem_limit` are required `[main_services]`
+keys. `clickhouse_mem_limit` and `ocr_pdf_mem_limit` set their container limits. ClickHouse
+uses 80 percent of its container limit as the server cap.
+
 Relative paths resolve against the **project directory** (the first compose file's
 directory) not against the file that declares them, so an overlay in `compose/` points
 somewhere else from where it reads as pointing. `./deploy --print-command` and

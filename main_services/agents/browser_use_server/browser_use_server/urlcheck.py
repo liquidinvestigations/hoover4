@@ -41,7 +41,7 @@ ALLOWED_SCHEMES = frozenset({"http", "https"})
 #: list, so the two lines of defence cannot drift apart.
 DENIED_HOSTS = frozenset(
     {
-        "clickhouse", "manticore", "temporal", "temporal-ui", "redis", "zookeeper",
+        "clickhouse", "manticore", "manticore-vectors", "temporal", "temporal-ui", "redis", "zookeeper",
         "minio-s3", "minio", "garage", "garage-init", "hoover4-vllm",
         "hoover4-ai-server", "hoover4-worker",
         "hoover4-website", "temporal-cassandra", "temporal-elasticsearch",

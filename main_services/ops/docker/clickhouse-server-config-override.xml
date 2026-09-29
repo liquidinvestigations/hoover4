@@ -13,7 +13,9 @@
     </zookeeper>
 
     
-    <max_server_memory_usage>16106127360</max_server_memory_usage>
+    <!-- The server cap follows the container cgroup limit. -->
+    <max_server_memory_usage>0</max_server_memory_usage>
+    <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
     <mark_cache_size>1536870912</mark_cache_size>
     <concurrent_threads_soft_limit_num>3</concurrent_threads_soft_limit_num>
     <max_concurrent_queries>512</max_concurrent_queries>

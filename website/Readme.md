@@ -16,8 +16,9 @@ plane. Three Rust crates in one workspace.
 
 ## Runtime dependencies
 
-The backend expects ClickHouse (`CLICKHOUSE_URL`) for structured data and Manticore
-(`MANTICORE_URL`) for text search, plus the blob store for document bytes and the two agent
+The backend expects ClickHouse (`CLICKHOUSE_URL`) for structured data and the text Manticore
+daemon (`MANTICORE_URL`) for search. The admin views use `MANTICORE_VECTORS_URL` to inspect
+the vectors daemon. The backend also uses the blob store for document bytes and the two agent
 services for chat. Every URL is a key in `hoover4.ini`, rendered into the generated `.env`;
 `docs/operations/Configuration_Reference.md` lists them with their consumers.
 

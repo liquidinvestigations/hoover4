@@ -371,6 +371,7 @@ is the map back to the group above that explains it.
 
 - `ner_provider`, `ner_spacy_enabled`, `embeddings_provider`, `pdf_ocr_provider`
 - `tesseract_cpu_enabled`, `tesseract_languages`, `ocr_pdf_enabled`, `regex_scanner_threads`
+- `manticore_mem_limit`, `manticore_vectors_mem_limit` (required), `clickhouse_mem_limit`, `ocr_pdf_mem_limit`
 - `tesseract_cpu_concurrency`, `tesseract_threads_per_page`, `tesseract_cpu_cpus`, `tesseract_cpu_mem_limit`
 - `regex_scanner_queue_depth`, `website_release_mode`, `search_max_parallelism`, `search_timeout_seconds`
 - `common_workers`, `common_concurrency`, `common_max_cached_workflows`, `worker_mem_limit`, `tika_concurrency`
@@ -390,7 +391,7 @@ is the map back to the group above that explains it.
 - `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`
 - `testdata_dir`, `datasets_mount_path`
 - `mcp_shared_secret_file`, `website_bind_ip`, `infra_bind_ip`, `clickhouse_http_port`
-- `clickhouse_native_port`, `manticore_sql_port`, `manticore_http_port`, `garage_s3_port`
+- `clickhouse_native_port`, `manticore_sql_port`, `manticore_http_port`, `manticore_vectors_sql_port`, `manticore_vectors_http_port`, `garage_s3_port`
 - `garage_admin_port`, `redis_port`, `temporal_grpc_port`, `temporal_http_port`
 - `temporal_ui_port`, `clickhouse_monitoring_port`, `ch_ui_port`, `cassandra_port`
 - `elasticsearch_port`, `pdf_to_html_port`, `tesseract_cpu_port`, `ocr_pdf_port`

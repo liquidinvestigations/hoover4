@@ -397,5 +397,5 @@ def _insert_rows(rows: Sequence[list]) -> int:
             )
         return len(rows)
     except Exception:
-        log.exception("operation_failures ClickHouse is unreachable")
+        log.exception("operation_failures insert of %d rows failed", len(rows))
         return 0

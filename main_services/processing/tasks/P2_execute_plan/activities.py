@@ -324,6 +324,29 @@ class RecordProcessingErrorsParams:
     errors: List[Dict[str, Any]]
 
 
+@dataclass
+class ErrorGroup:
+    """The shared failure data for one failed workflow activity call."""
+
+    task_name: str
+    source_execution_id: str
+    started_at: datetime
+    error_logs: str
+    item_hashes: List[str]
+
+
+@dataclass
+class RecordErrorGroupsParams:
+    """Failure groups that the activity expands into processing error rows."""
+
+    collectionname: str
+    collection_dataset: str
+    op_id: str
+    workflow_run_id: str
+    recorded_at: datetime
+    groups: List[ErrorGroup]
+
+
 @activity.defn
 @with_heartbeat
 def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
@@ -428,3 +451,30 @@ def record_processing_errors(params: RecordProcessingErrorsParams) -> int:
         )
 
     return len(errors)
+
+
+@activity.defn
+@with_heartbeat
+def record_processing_error_groups(params: RecordErrorGroupsParams) -> int:
+    """Expand failure groups and write the same error rows as the older activity."""
+    from tasks.P3_parse_files.parse_common import error_identity
+
+    rows = []
+    for group in params.groups:
+        elapsed = int((params.recorded_at - group.started_at).total_seconds() * 1000)
+        for item_hash in group.item_hashes:
+            rows.append({
+                "collection_dataset": params.collection_dataset,
+                "hash": item_hash,
+                "task_name": group.task_name,
+                "run_time_ms": max(0, elapsed),
+                "error_logs": group.error_logs,
+                "attempt": 0,
+                "workflow_run_id": params.workflow_run_id,
+                "op_id": params.op_id,
+                "error_identity": error_identity(
+                    group.source_execution_id, group.task_name,
+                    params.collection_dataset, item_hash),
+            })
+    return record_processing_errors(
+        RecordProcessingErrorsParams(collectionname=params.collectionname, errors=rows))

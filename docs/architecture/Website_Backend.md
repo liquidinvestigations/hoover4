@@ -8,6 +8,9 @@ The search fan-out and everything downstream of it is
 [Search architecture](Search_Architecture.md); the chat turn is
 [Chat and agents](Chat_And_Agents.md).
 
+Website search uses the text Manticore daemon. The admin AI status and metrics views also read
+the vectors daemon through `MANTICORE_VECTORS_URL` and show its tables separately.
+
 ## Contents
 
 - [Sessions: one route mints, every other endpoint requires](#sessions-one-route-mints-every-other-endpoint-requires)

@@ -271,6 +271,9 @@ the checkout:
 python3 scripts/collect-debug-report.py
 ```
 
+Read `summary/verdict.txt` first. Use `--deployed-at` for a deployment check and
+`--expect-limit NAME=SIZE` for each limit that the deployment requires.
+
 If `docker ps` needs root on the host, run the command with `sudo`. A run takes 1 to 4
 minutes. The script writes `tmp/hoover4-debug-<host>-<UTC time>.zip` in the checkout.
 Git ignores `tmp/`. `--out-dir` writes the zip to another folder. `--help` lists the other

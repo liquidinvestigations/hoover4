@@ -39,6 +39,44 @@ def test_list_shard_tables_regex_covers_vectors():
     assert not pattern.match("testdata_x_1_pages")  # a different collection's shard
 
 
+def test_purge_dataset_routes_vector_table_to_its_endpoint(monkeypatch):
+    """A dataset purge sends each table to the daemon that owns it."""
+    from contextlib import contextmanager
+
+    from database import manticore
+    from tasks.P_admin.activities import PurgeDatasetParams, purge_dataset_from_manticore
+
+    calls = []
+
+    class Cursor:
+        def execute(self, statement, values):
+            calls.append((statement, values))
+
+    class Client:
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            return None
+
+    @contextmanager
+    def client_for_table(table):
+        calls.append(("client", table))
+        yield Client()
+
+    monkeypatch.setattr(
+        manticore,
+        "list_collection_tables",
+        lambda _collection: ["case_1_pages", "case_1_vectors"],
+    )
+    monkeypatch.setattr(manticore, "client_for_table", client_for_table)
+
+    purge_dataset_from_manticore(PurgeDatasetParams("case", "case_data"))
+
+    assert ("client", "case_1_pages") in calls
+    assert ("client", "case_1_vectors") in calls
+
+
 def test_shard_table_name_canonical():
     assert shard_table_name("testdata", 1) == "testdata_1_pages"
     assert shard_table_name("testdata", 2) == "testdata_2_pages"

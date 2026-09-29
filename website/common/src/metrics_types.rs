@@ -121,6 +121,13 @@ pub struct ManticoreLoad {
     pub largest_tables: Vec<ManticoreTableLoad>,
 }
 
+/// The live load of one Manticore daemon.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+pub struct ManticoreDaemonLoad {
+    pub daemon: String,
+    pub load: ManticoreLoad,
+}
+
 /// One table's line of `SHOW TABLE <t> STATUS`.
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ManticoreTableLoad {

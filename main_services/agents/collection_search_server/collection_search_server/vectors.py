@@ -31,7 +31,7 @@ from collection_search_server.backends import (
     GLOBAL_DB,
     clickhouse_query,
     collection_db,
-    manticore_query,
+    manticore_vectors_query,
 )
 
 log = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ log = logging.getLogger(__name__)
 #: Candidates per shard per search. HNSW makes a k=60 probe cheap; the fused pool is
 #: capped again after the merge.
 VECTOR_PER_SHARD = int(os.getenv("COLLECTION_SEARCH_VECTOR_PER_SHARD", "60"))
+VECTOR_OVERSAMPLING = float(os.getenv("COLLECTION_SEARCH_VECTOR_OVERSAMPLING", "5.0"))
 
 #: The serving model changes only when an admin re-probes; a search need not re-read
 #: server_settings on every call.
@@ -54,12 +55,17 @@ _MODEL_CACHE_SECONDS = 300.0
 _MISS_CACHE_SECONDS = 10.0
 
 _model_cache: tuple[float, str | None] = (0.0, None)
+_vectors_endpoint_missing_reported = False
 
 _VECTORS_TABLE_RE = re.compile(r"^[a-z0-9_]+_[0-9]+_vectors$")
 
 #: Same content-hash rule as server.py, hashes heading for a SQL literal are validated
 #: first. Duplicated rather than imported to keep this module usable without the server.
 _HASH_RE = re.compile(r"^[0-9a-f]{32,128}$")
+
+
+class VectorRankingUnavailable(RuntimeError):
+    """The vectors daemon cannot provide a ranking for this search."""
 
 
 @dataclass
@@ -116,7 +122,7 @@ def _vector_tables(collectionname: str, existing: set[str]) -> list[str]:
 
 def _existing_tables() -> set[str]:
     out: set[str] = set()
-    for row in manticore_query("SHOW TABLES"):
+    for row in manticore_vectors_query("SHOW TABLES"):
         out.update(str(v) for v in row.values())
     return out
 
@@ -132,18 +138,26 @@ def search(query_vector: list[float], collections: list[str]) -> list[VectorCand
         return []
 
     vector_csv = ",".join(repr(float(v)) for v in query_vector)
-    existing = _existing_tables()
+    global _vectors_endpoint_missing_reported
+    try:
+        existing = _existing_tables()
+    except Exception as exc:  # noqa: BLE001 - the caller keeps keyword search available
+        if not _vectors_endpoint_missing_reported:
+            log.error("vector ranking is unavailable: %s", exc)
+            _vectors_endpoint_missing_reported = True
+        raise VectorRankingUnavailable(str(exc)) from exc
     hits: list[VectorCandidate] = []
     for collectionname in collections:
         for table in _vector_tables(collectionname, existing):
             sql = (
                 f"SELECT collection_dataset, file_hash, extracted_by, page_id, chunk_index, "
                 f"knn_dist() AS dist FROM {table} "
-                f"WHERE knn(embedding, {VECTOR_PER_SHARD}, ({vector_csv})) "
+                f"WHERE knn(embedding, {VECTOR_PER_SHARD}, ({vector_csv}), "
+                f"{{rescore=1, oversampling={VECTOR_OVERSAMPLING}}}) "
                 f"ORDER BY dist ASC LIMIT {VECTOR_PER_SHARD}"
             )
             try:
-                rows = manticore_query(sql)
+                rows = manticore_vectors_query(sql)
             except Exception as exc:  # noqa: BLE001 - one bad shard must not blank the search
                 log.warning("vector shard %s failed: %s", table, exc)
                 continue

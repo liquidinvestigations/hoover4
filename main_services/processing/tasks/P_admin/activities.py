@@ -91,11 +91,11 @@ def count_dataset_rows(collectionname: str, collection_dataset: str) -> dict[str
     expensive, and the row count is what answers "what will this delete".
     """
     from database.clickhouse import get_collection_client
-    from database.manticore import get_manticore_client, list_collection_tables
+    from database.manticore import client_for_table, list_collection_tables
 
     manticore: dict[str, int] = {}
     for table in list_collection_tables(collectionname):
-        with get_manticore_client() as cnx:
+        with client_for_table(table) as cnx:
             cursor = cnx.cursor()
             cursor.execute(
                 f"SELECT count(*) FROM {table} WHERE collection_dataset = %s",
@@ -128,19 +128,19 @@ def purge_dataset_from_manticore(params: PurgeDatasetParams) -> str:
     holds one row per VFS node scoped by `collection_dataset` too, and a purge that
     skipped it would leave the purged dataset's folders in the tree sidebar.
     """
-    from database.manticore import get_manticore_client, list_collection_tables
+    from database.manticore import client_for_table, list_collection_tables
 
     tables = list_collection_tables(params.collectionname)
-    with get_manticore_client() as cnx:
-        cursor = cnx.cursor()
-        for table in tables:
+    for table in tables:
+        with client_for_table(table) as cnx:
+            cursor = cnx.cursor()
             # Identifiers come from list_shard_tables (regex-validated); only the
             # collection_dataset value is bound.
             cursor.execute(
                 f"DELETE FROM {table} WHERE collection_dataset = %s",
                 (params.collection_dataset,),
             )
-        cnx.commit()
+            cnx.commit()
     log.info(
         "[P_admin] Purged %s from %d Manticore tables of %s",
         params.collection_dataset, len(tables), params.collectionname,

@@ -42,9 +42,9 @@ EXEMPT_COLLECTION_DATASET_DICTS = {
     ("tasks/P3_parse_files/parse_pdf.py", 268): "The PDF page Arrow row is not workflow input.",
     ("tasks/P3_parse_files/parse_pdf.py", 360): "The image Arrow rows are not workflow input.",
     ("tasks/P3_parse_files/parse_pdf.py", 369): "The link Arrow rows are not workflow input.",
-    ("tasks/P_ops/workflows.py", 236): "Location refresh does not write an Error.",
-    ("tasks/P_ops/workflows.py", 304): "ComputePlans input writes no Error.",
-    ("tasks/P_ops/workflows.py", 408): "PurgeDataset input writes no Error.",
+    ("tasks/P_ops/workflows.py", 312): "Location refresh does not write an Error.",
+    ("tasks/P_ops/workflows.py", 380): "ComputePlans input writes no Error.",
+    ("tasks/P_ops/workflows.py", 484): "PurgeDataset input writes no Error.",
 }
 
 

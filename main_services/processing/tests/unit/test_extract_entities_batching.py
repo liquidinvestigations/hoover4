@@ -34,8 +34,8 @@ class _FakeCHClient:
         self.inserts = {}
 
     def query_arrow(self, query, parameters=None):
-        # Two reads: the segments to process, then the variants each file has (which is
-        # the whole table, not the anti-joined subset).
+        # The activity first reads keys and byte sizes, then variants, then one batch of
+        # complete text rows at a time.
         if "groupUniqArray" in query:
             variants = {}
             for row in self._text_rows:
@@ -43,6 +43,12 @@ class _FakeCHClient:
             return _FakeQueryResult([
                 {"file_hash": file_hash, "variants": sorted(values)}
                 for file_hash, values in variants.items()
+            ])
+        if "text_bytes" in query:
+            return _FakeQueryResult([
+                {"file_hash": row["file_hash"], "extracted_by": row["extracted_by"],
+                 "page_id": row["page_id"], "text_bytes": len(row["text"].encode("utf-8"))}
+                for row in self._text_rows
             ])
         return _FakeQueryResult(self._text_rows)
 

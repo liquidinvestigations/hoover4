@@ -29,8 +29,8 @@ services:
       - '${INFRA_BIND_IP:-0.0.0.0}:${MANTICORE_HTTP_PORT}:9308'
     volumes:
       - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/manticore_data_v14:/var/lib/manticore
-    memswap_limit: 19000M
-    mem_limit: 19000M
+    memswap_limit: ${MANTICORE_MEM_LIMIT:?set manticore_mem_limit in hoover4.ini}
+    mem_limit: ${MANTICORE_MEM_LIMIT:?set manticore_mem_limit in hoover4.ini}
     ulimits:
       nproc: 65535
       nofile:
@@ -44,12 +44,46 @@ services:
       - hoover4
     environment:
       - TELEMETRY=0
+      - searchd_rt_flush_period=900
     user: 999:999
     healthcheck:
       # Proves the daemon answers its own MySQL wire protocol, the one every writer and
       # every search query uses. Without this check, a container that Docker still shows
       # as running, but whose daemon answers nothing, looks the same as a working one
       # until a person tries a search.
+      test: ["CMD-SHELL", "mysql -h0 -P9306 -e 'SELECT 1;' || exit 1"]
+      interval: 15s
+      timeout: 13s
+      retries: 6
+      start_period: 4s
+
+  manticore-vectors:
+    logging: *logging
+    image: manticoresearch/manticore:14.1.0
+    container_name: manticore-vectors
+    ports:
+      - '${INFRA_BIND_IP:-0.0.0.0}:${MANTICORE_VECTORS_SQL_PORT}:9306'
+      - '${INFRA_BIND_IP:-0.0.0.0}:${MANTICORE_VECTORS_HTTP_PORT}:9308'
+    volumes:
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/manticore_vectors_data_v14:/var/lib/manticore
+    memswap_limit: ${MANTICORE_VECTORS_MEM_LIMIT:?set manticore_vectors_mem_limit in hoover4.ini}
+    mem_limit: ${MANTICORE_VECTORS_MEM_LIMIT:?set manticore_vectors_mem_limit in hoover4.ini}
+    ulimits:
+      nproc: 65535
+      nofile:
+         soft: 65535
+         hard: 65535
+      memlock:
+        soft: -1
+        hard: -1
+    restart: unless-stopped
+    networks:
+      - hoover4
+    environment:
+      - TELEMETRY=0
+      - searchd_rt_flush_period=900
+    user: 999:999
+    healthcheck:
       test: ["CMD-SHELL", "mysql -h0 -P9306 -e 'SELECT 1;' || exit 1"]
       interval: 15s
       timeout: 13s
@@ -91,8 +125,8 @@ services:
       interval: 13s
       timeout: 15s
       retries: 6
-    memswap_limit: 19000M
-    mem_limit: 19000M
+    memswap_limit: ${CLICKHOUSE_MEM_LIMIT:-19000M}
+    mem_limit: ${CLICKHOUSE_MEM_LIMIT:-19000M}
     restart: unless-stopped
     depends_on:
       - zookeeper
@@ -524,6 +558,7 @@ services:
       - "HOOVER4_EMBED_CONCURRENCY=${HOOVER4_EMBED_CONCURRENCY:-}"
       - "HOOVER4_INDEXING_CONCURRENCY=${HOOVER4_INDEXING_CONCURRENCY:-}"
       - "HOOVER4_INDEXING_WORKERS=${HOOVER4_INDEXING_WORKERS:-}"
+      - "MANTICORE_VECTORS_MEM_LIMIT_BYTES=${MANTICORE_VECTORS_MEM_LIMIT_BYTES:-}"
       - "HOOVER4_CHAT_MODEL_CONCURRENCY=${HOOVER4_CHAT_MODEL_CONCURRENCY:-}"
       - "HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY=${HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY:-}"
       - "HOOVER4_RESEARCH_CONCURRENCY=${HOOVER4_RESEARCH_CONCURRENCY:-}"
@@ -670,6 +705,7 @@ services:
       - HOOVER4_TEMPORAL_READINESS_PY=/mirror/processing-tasks/temporal_readiness.py
       - CLICKHOUSE_URL=http://clickhouse:8123
       - MANTICORE_URL=http://manticore:9308
+      - MANTICORE_VECTORS_URL=http://manticore-vectors:9308
       - PDF_TO_HTML_ENDPOINT=http://hoover4-processing-pdf-to-html:19027/
       - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
       - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"

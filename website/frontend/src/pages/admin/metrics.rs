@@ -83,7 +83,12 @@ fn ManticorePanel() -> Element {
                     Some(Err(error)) => rsx! {
                         p { style: "{HELP_TEXT} color: #ba2121;", "Manticore status could not be read: {error}" }
                     },
-                    Some(Ok(load)) => rsx! { ManticoreLoadTables { load } },
+                    Some(Ok(loads)) => rsx! {
+                        for daemon in loads {
+                            h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "{daemon.daemon}" }
+                            ManticoreLoadTables { load: daemon.load }
+                        }
+                    },
                 }
             }
         }

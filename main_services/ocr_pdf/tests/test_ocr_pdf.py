@@ -15,6 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import ocr_pdf  # noqa: E402
+import render_worker  # noqa: E402
 
 
 class TestValidateDestKey:
@@ -91,7 +92,7 @@ class TestInvisibleWords:
         canvas = _FakeCanvas()
         words = [{"text": "hello", "left": 100, "top": 50, "width": 60, "height": 20}]
         # A 1000 px wide raster of a 500 pt page: one point is two pixels.
-        drawn = ocr_pdf._draw_invisible_words(canvas, words, scale=0.5, page_height_pt=800.0)
+        drawn = render_worker._draw_invisible_words(canvas, words, scale=0.5, page_height_pt=800.0)
 
         assert drawn == 1
         (text,) = canvas.texts
@@ -105,7 +106,7 @@ class TestInvisibleWords:
     def test_each_word_is_stretched_to_its_own_box(self):
         canvas = _FakeCanvas()
         words = [{"text": "iiii", "left": 0, "top": 0, "width": 400, "height": 20}]
-        ocr_pdf._draw_invisible_words(canvas, words, scale=1.0, page_height_pt=100.0)
+        render_worker._draw_invisible_words(canvas, words, scale=1.0, page_height_pt=100.0)
         (text,) = canvas.texts
         # "iiii" in Helvetica is far narrower than 400 pt, so the scale must open it up
         # rather than leaving the selection rectangle a fraction of the visible ink.
@@ -124,7 +125,7 @@ class TestInvisibleWords:
     def test_unusable_boxes_are_skipped_not_fatal(self, word):
         """OCR output is data, not a contract: one bad box must not lose the page."""
         canvas = _FakeCanvas()
-        assert ocr_pdf._draw_invisible_words(canvas, [word], 1.0, 100.0) == 0
+        assert render_worker._draw_invisible_words(canvas, [word], 1.0, 100.0) == 0
         assert canvas.texts == []
 
 
@@ -155,13 +156,13 @@ class TestBuildSearchablePdf:
 
     def test_round_trips_a_page_and_keeps_its_size(self, monkeypatch):
         monkeypatch.setattr(
-            ocr_pdf,
+            render_worker,
             "_ocr_page",
             lambda *a, **k: {"words": [
                 {"text": "scanned", "left": 200, "top": 250, "width": 200, "height": 40},
             ]},
         )
-        out, pages, with_text = ocr_pdf.build_searchable_pdf(
+        out, pages, with_text = render_worker.build_searchable_pdf(
             self._one_page_pdf(), "tesseract", "eng", 100
         )
         assert pages == 1
@@ -181,8 +182,8 @@ class TestBuildSearchablePdf:
             document.close()
 
     def test_a_page_the_engine_read_nothing_on_is_still_a_page(self, monkeypatch):
-        monkeypatch.setattr(ocr_pdf, "_ocr_page", lambda *a, **k: {"words": []})
-        out, pages, with_text = ocr_pdf.build_searchable_pdf(
+        monkeypatch.setattr(render_worker, "_ocr_page", lambda *a, **k: {"words": []})
+        out, pages, with_text = render_worker.build_searchable_pdf(
             self._one_page_pdf(), "tesseract", "eng", 72
         )
         assert (pages, with_text) == (1, 0)

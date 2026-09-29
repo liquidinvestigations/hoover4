@@ -36,6 +36,10 @@ def _manticore_url() -> str:
     return os.getenv("MANTICORE_URL", "http://manticore:9308").rstrip("/")
 
 
+def _manticore_vectors_url() -> str:
+    return os.getenv("MANTICORE_VECTORS_URL", "").rstrip("/")
+
+
 def clickhouse_query(sql: str, database: str, params: dict[str, Any] | None = None) -> list[dict]:
     """Run a SELECT and return rows as dicts.
 
@@ -68,8 +72,25 @@ def manticore_query(sql: str) -> list[dict]:
     result set still carries an `error` field, which is checked here so a broken query
     surfaces as an exception instead of silently returning nothing.
     """
+    return _manticore_query(_manticore_url(), sql)
+
+
+def manticore_vectors_query(sql: str) -> list[dict]:
+    """Run one KNN statement on the vectors endpoint.
+
+    A missing endpoint is an unavailable vector ranking.  It never routes a vectors
+    table to the text endpoint.
+    """
+    url = _manticore_vectors_url()
+    if not url:
+        raise RuntimeError("MANTICORE_VECTORS_URL is not configured")
+    return _manticore_query(url, sql)
+
+
+def _manticore_query(url: str, sql: str) -> list[dict]:
+    """Run one Manticore SQL statement against one selected endpoint."""
     response = requests.post(
-        f"{_manticore_url()}/sql",
+        f"{url}/sql",
         params={"mode": "raw"},
         data={"query": sql},
         timeout=DEFAULT_TIMEOUT,

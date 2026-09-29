@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -66,6 +66,42 @@ def test_p6_failed_writers_keep_one_source_id_for_each_chunk_member(monkeypatch)
     assert ids_by_hash[("hash-0", "P6_IndexVectors")] == ["run", "P6.vectors", 1]
     assert json.loads(passed["source_execution_ids"][0]) == ["run", "P6.text", 0]
     assert json.loads(passed["source_execution_ids"][100]) == ["run", "P6.vectors", 0]
+
+
+def test_p6_manticore_calls_use_the_restart_retry_policy(monkeypatch):
+    calls = []
+
+    def execute_activity(fn, _params, **kwargs):
+        calls.append((fn, kwargs))
+
+        async def result():
+            if fn is index_workflows.fetch_plan_hashes:
+                return []
+            if fn is index_workflows.plan_shards:
+                return []
+            return None
+
+        return result()
+
+    monkeypatch.setattr(index_workflows.workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(index_workflows.workflow, "info", lambda: SimpleNamespace(run_id="run"))
+    async def record_errors(*_args, **_kwargs):
+        return 0
+
+    monkeypatch.setattr(index_workflows, "record_errors_from_results", record_errors)
+    params = IndexDatasetPlanParams("collection", "dataset", "plan", "op")
+    asyncio.run(index_workflows.IndexDatasetPlan().run(params))
+
+    expected = index_workflows.MANTICORE_RETRY
+    assert expected == index_workflows.RetryPolicy(
+        maximum_attempts=12,
+        initial_interval=timedelta(seconds=10),
+        backoff_coefficient=2,
+        maximum_interval=timedelta(seconds=300),
+    )
+    plan_options = dict(calls)[index_workflows.plan_shards]
+    assert plan_options["retry_policy"] == expected
+    assert plan_options["task_queue"] == index_workflows.PLANNER_TASK_QUEUE
 
 
 @pytest.mark.parametrize("stage,workflow_type,params_type,activity_name,label,task_name", [

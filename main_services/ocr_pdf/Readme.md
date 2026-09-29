@@ -75,6 +75,9 @@ order is a defect even though the PDF still opens.
   error, so a busy OCR tier slows the pipeline instead of filling `processing_errors`.
 * `OCR_PDF_MAX_PAGES` (2000) and `OCR_PDF_MAX_INPUT_BYTES` (512 MB) bound one request. A
   bomb-shaped PDF is a real corpus artefact, not a hypothetical.
+* The parent process starts one renderer child per request. The thread pool limits child
+  processes to `OCR_PDF_CONCURRENCY`. `OCR_PDF_MAX_PAGE_PIXELS` limits one raster to
+  40,000,000 pixels. A renderer crash returns one failed request and keeps the service up.
 * `/health` reports which engines are **configured**, not which are reachable: an
   unreachable tier changes between two health checks, and reporting it here would make
   this service's health flap with someone else's.

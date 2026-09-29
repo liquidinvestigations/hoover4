@@ -45,9 +45,13 @@ services:
       - OCR_PDF_CONCURRENCY=${OCR_PDF_CONCURRENCY:-2}
       - OCR_PDF_QUEUE_DEPTH=${OCR_PDF_QUEUE_DEPTH:-4}
       - OCR_PDF_MAX_PAGES=${OCR_PDF_MAX_PAGES:-2000}
+      - OCR_PDF_MAX_PAGE_PIXELS=${OCR_PDF_MAX_PAGE_PIXELS:-40000000}
+      - OCR_PDF_RENDER_TIMEOUT_SECONDS=${OCR_PDF_RENDER_TIMEOUT_SECONDS:-3600}
       - OCR_READ_TIMEOUT_SECONDS=${OCR_READ_TIMEOUT_SECONDS:-600}
       - HOOVER4_CONFIG_FINGERPRINT=${HOOVER4_CONFIG_FINGERPRINT:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    memswap_limit: ${OCR_PDF_MEM_LIMIT:-8000M}
+    mem_limit: ${OCR_PDF_MEM_LIMIT:-8000M}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]

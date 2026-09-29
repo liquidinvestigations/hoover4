@@ -261,6 +261,8 @@ the bytes of prose, of mail and of a log file. A single-column list is a text fi
 single-line file is a text file. Below the threshold, no manifest row is written. The
 activity returns a skipped outcome and writes no `processing_errors` row.
 
+The activity removes its temporary cells and manifest before it returns the skipped outcome.
+
 Every cap in `table_formats.py` that fires is recorded in three parallel arrays on the
 manifest row (the limit's stable name, its maximum and the sheet it fired on), so the
 grid can say what was dropped. A cap that is invisible in the UI reads as "this file has

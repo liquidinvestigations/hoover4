@@ -45,6 +45,7 @@ from .params import (
     ResolveCanonicalFileTypeParams,
 )
 from tasks.heartbeat import with_heartbeat
+from tasks.text_sources import fetch_text_batch, plan_text_batches
 from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
 from tasks.regex_entities import (
     FACET_BY_ENTITY_TYPE,
@@ -284,6 +285,19 @@ def vfs_delete_ids_sql(vfs_table: str, ids: list[int]) -> str:
     return f"DELETE FROM {vfs_table} WHERE id IN ({','.join(str(int(i)) for i in ids)})"
 
 
+def log_missing_ner_watermarks(collection_dataset: str, plan_hash: str,
+                               missing_watermarks: int, text_segments: int) -> None:
+    """Record one activity-level warning for segments without NER output."""
+    if not missing_watermarks:
+        return
+    level = log.info if (os.getenv("NER_PROVIDER") or "").strip() == "none" else log.warning
+    level(
+        "%s (plan %s): %d of %d segments have no nlp_processed watermark; "
+        "indexed with empty entities",
+        collection_dataset, plan_hash[:8], missing_watermarks, text_segments,
+    )
+
+
 @activity.defn
 @with_heartbeat
 def index_text_pages(params: IndexShardParams) -> list[str]:
@@ -293,11 +307,12 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     metadata is read once per chunk and both row kinds are written by one writer. See
     the module docstring.
 
-    Rows are inserted grouped by ``(collection_dataset, file_hash, page_id)``. That
+    Rows are inserted by text batch, grouped by ``(collection_dataset, file_hash,
+    page_id)`` within each batch. That
     ordering is what makes the duplicated metadata nearly free: the columnar engine picks
     a storage scheme per block, and a block whose rows all belong to one document holds
-    one repeated value per metadata column. Inserted in arrival order the same data costs
-    several times as much on disk.
+    one repeated value per metadata column. The writer places each document's filename
+    before its first page and writes filename-only documents after all text batches.
 
     Returns the file_hashes actually written (committed). ``IndexDatasetPlan``
     records exactly these in ``index_state``, a document whose writer failed
@@ -317,8 +332,8 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
         # deterministic, so the duplicate REPLACEs into the same row rather than corrupting
         # the index, but it doubles the work of the whole activity, and the page text is
         # then non-deterministically whichever copy came back last.
-        text_content = client.query_arrow("""
-            SELECT collection_dataset, file_hash, extracted_by, page_id, text
+        text_segments = client.query_arrow("""
+            SELECT file_hash, extracted_by, page_id, text_bytes
             FROM text_content FINAL
             WHERE collection_dataset = {collection_dataset:String}
             AND file_hash IN {item_hashes:Array(String)}
@@ -385,68 +400,30 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
         for field in FACET_FIELDS
     }
 
-    rows = []
-    for row in text_content:
-        key = (row['file_hash'], row['extracted_by'], row['page_id'])
-        if key not in processed_keys:
-            # Running out of order: the NLP stage has no watermark for this
-            # segment (and will have recorded its own error). A missing entity
-            # list must not block search - index with empty entity MVAs.
-            log.warning(
-                f"{collection_dataset} (plan {plan_hash[:8]}): no nlp_processed watermark for "
-                f"{row['file_hash']}/{row['extracted_by']}/{row['page_id']}; indexing with empty entities"
-            )
-            segment_entities = {}
-        else:
-            segment_entities = entities_by_segment.get(key, {})
-        page = dict(metadata.get(row['file_hash']) or empty_document_metadata())
-        page.update({
-            'collection_dataset': row['collection_dataset'],
-            'file_hash': row['file_hash'],
-            'extracted_by': row['extracted_by'],
-            'page_id': row['page_id'],
-            'page_text': clean_text(row['text']),
-        })
-        for entity_type in ("PER", "ORG", "LOC", "MISC"):
-            field_name = f"ner_{entity_type.lower()}"
-            field_values = [ner_ids[value] for value in segment_entities.get(entity_type, [])]
-            page[field_name] = repr_manticore_tuple(field_values)
+    missing_watermarks = 0
+    text_batches = plan_text_batches([
+        ((row['file_hash'], row['extracted_by'], row['page_id']), int(row['text_bytes']))
+        for row in sorted(text_segments, key=lambda row: (
+            row['file_hash'], row['page_id'], row['extracted_by']))
+    ])
+    written_hashes = set()
+    filename_hashes = set()
 
-        segment_regex = regex_facets.get(key, {})
-        for field in FACET_FIELDS:
-            ids = regex_ids[field.term_field]
-            page[field.column] = repr_manticore_tuple(
-                [ids[value] for value in segment_regex.get(field.term_field, ())
-                 if value in ids]
-            )
-        days = mentioned_by_segment.get(key, [])
-        page['mentioned_dates'] = repr_manticore_tuple(days)
-        # A segment that mentions no date carries the unknown sentinel, exactly as an
-        # undated document does on `date_min`/`date_max`: the columns exist to measure
-        # the histogram's domain, and a zero there would put every such segment on
-        # 1970-01-01.
-        page['mentioned_date_min'] = days[0] if days else DATE_UNKNOWN
-        page['mentioned_date_max'] = days[-1] if days else DATE_UNKNOWN
-        rows.append(page)
-
-    for file_hash, document in metadata.items():
-        if not document['basenames']:
-            continue
-        filename_row = dict(document)
-        filename_row.update({
+    def filename_row(file_hash):
+        document = metadata[file_hash]
+        row = dict(document)
+        row.update({
             'collection_dataset': collection_dataset,
             'file_hash': file_hash,
             'extracted_by': FILENAME_EXTRACTED_BY,
             'page_id': FILENAME_PAGE_ID,
             'page_text': "\n".join(document['basenames']),
         })
-        rows.append(filename_row)
+        return row
 
-    # Grouped by document, filename row first (page_id -1). See the docstring.
-    rows.sort(key=lambda row: (row['collection_dataset'], row['file_hash'],
-                               row['page_id'], row['extracted_by']))
-
-    with get_manticore_client() as client:
+    def write_rows(client, rows):
+        rows.sort(key=lambda row: (row['collection_dataset'], row['file_hash'],
+                                   row['page_id'], row['extracted_by']))
         for chunk in chunks(rows, INDEX_ROW_CHUNK_SIZE):
             for row in chunk:
                 manticore_execute(
@@ -456,8 +433,76 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
                 )
             log.info(f"{collection_dataset} (plan {plan_hash[:8]}): Indexed {len(chunk)} rows into {pages_table}")
             client.commit()
-        client.commit()
-    return sorted({row['file_hash'] for row in rows})
+        rows.clear()
+
+    with get_manticore_client() as manticore_client:
+      for text_batch in text_batches:
+        with get_collection_client(params.collectionname) as client:
+            text_content = fetch_text_batch(client, collection_dataset, text_batch)
+        rows = []
+        for row in text_content:
+            file_hash = row['file_hash']
+            if file_hash not in filename_hashes:
+                document = metadata.get(file_hash)
+                if document and document['basenames']:
+                    rows.append(filename_row(file_hash))
+                filename_hashes.add(file_hash)
+            key = (row['file_hash'], row['extracted_by'], row['page_id'])
+            if key not in processed_keys:
+                # Running out of order: the NLP stage has no watermark for this
+                # segment (and will have recorded its own error). A missing entity
+                # list must not block search - index with empty entity MVAs.
+                missing_watermarks += 1
+                segment_entities = {}
+            else:
+                segment_entities = entities_by_segment.get(key, {})
+            page = dict(metadata.get(row['file_hash']) or empty_document_metadata())
+            page.update({
+                'collection_dataset': row['collection_dataset'],
+                'file_hash': row['file_hash'],
+                'extracted_by': row['extracted_by'],
+                'page_id': row['page_id'],
+                'page_text': clean_text(row['text']),
+            })
+            for entity_type in ("PER", "ORG", "LOC", "MISC"):
+                field_name = f"ner_{entity_type.lower()}"
+                field_values = [ner_ids[value] for value in segment_entities.get(entity_type, [])]
+                page[field_name] = repr_manticore_tuple(field_values)
+
+            segment_regex = regex_facets.get(key, {})
+            for field in FACET_FIELDS:
+                ids = regex_ids[field.term_field]
+                page[field.column] = repr_manticore_tuple(
+                    [ids[value] for value in segment_regex.get(field.term_field, ())
+                     if value in ids]
+                )
+            days = mentioned_by_segment.get(key, [])
+            page['mentioned_dates'] = repr_manticore_tuple(days)
+            # A segment that mentions no date carries the unknown sentinel, exactly as an
+            # undated document does on `date_min`/`date_max`: the columns exist to measure
+            # the histogram's domain, and a zero there would put every such segment on
+            # 1970-01-01.
+            page['mentioned_date_min'] = days[0] if days else DATE_UNKNOWN
+            page['mentioned_date_max'] = days[-1] if days else DATE_UNKNOWN
+            rows.append(page)
+        del text_content
+        written_hashes.update(row['file_hash'] for row in rows)
+        write_rows(manticore_client, rows)
+        row = None
+        page = None
+
+      rows = []
+      for file_hash, document in metadata.items():
+        if file_hash not in filename_hashes and document['basenames']:
+            rows.append(filename_row(file_hash))
+      written_hashes.update(row['file_hash'] for row in rows)
+      write_rows(manticore_client, rows)
+
+    log_missing_ner_watermarks(
+        collection_dataset, plan_hash, missing_watermarks, len(text_segments),
+    )
+
+    return sorted(written_hashes)
 
 
 @activity.defn
@@ -1449,7 +1494,10 @@ def index_vectors(params: IndexShardParams) -> list[str]:
     from temporalio.exceptions import ApplicationError
 
     from database.clickhouse import get_server_setting
-    from database.manticore import get_manticore_client, shard_knn_dims, vectors_table_from_name
+    from database.manticore import (
+        VECTORS, create_vectors_table, get_manticore_client, hnsw_bytes_per_vector,
+        shard_knn_dims, shard_knn_quantization, vectors_table_from_name,
+    )
 
     collection_dataset: str = params.collection_dataset
     item_hashes: list[str] = params.hashes
@@ -1480,15 +1528,6 @@ def index_vectors(params: IndexShardParams) -> list[str]:
             non_retryable=True,
         )
 
-    table_dims = shard_knn_dims(vectors_table)
-    if table_dims is None:
-        raise ApplicationError(
-            f"{vectors_table} does not exist while {len(rows)} vectors wait to be "
-            "indexed; the shard planner creates it from the probed dimension. "
-            "is this worker running current code?",
-            non_retryable=True,
-        )
-
     kept = [r for r in rows if r["embedding_model"] == serving_model]
     skipped = len(rows) - len(kept)
     if skipped:
@@ -1501,6 +1540,21 @@ def index_vectors(params: IndexShardParams) -> list[str]:
         return []
 
     dims_found = {int(r["dims"]) for r in kept}
+    if len(dims_found) != 1:
+        raise ApplicationError(
+            f"refusing to index {len(kept)} vectors with dimensions {sorted(dims_found)} "
+            f"into {vectors_table}", non_retryable=True,
+        )
+    table_dims = shard_knn_dims(vectors_table)
+    if table_dims is None:
+        collection, shard_index = params.shard_name.rsplit("_", 1)
+        create_vectors_table(collection, int(shard_index), next(iter(dims_found)))
+        table_dims = shard_knn_dims(vectors_table)
+    if table_dims is None:
+        raise ApplicationError(
+            f"{vectors_table} could not be created on the vectors endpoint",
+            non_retryable=True,
+        )
     if dims_found != {table_dims}:
         raise ApplicationError(
             f"refusing to index {len(kept)} vectors of dims {sorted(dims_found)} into "
@@ -1510,7 +1564,60 @@ def index_vectors(params: IndexShardParams) -> list[str]:
             non_retryable=True,
         )
 
-    with get_manticore_client() as client:
+    limit_raw = os.getenv("MANTICORE_VECTORS_MEM_LIMIT_BYTES", "").strip()
+    if not limit_raw:
+        raise ApplicationError(
+            "MANTICORE_VECTORS_MEM_LIMIT_BYTES is not set; deploy the rendered configuration",
+            type="VectorMemoryBudget", non_retryable=True,
+        )
+    try:
+        limit = int(limit_raw)
+    except ValueError as exc:
+        raise ApplicationError(
+            "MANTICORE_VECTORS_MEM_LIMIT_BYTES is not a whole number",
+            type="VectorMemoryBudget", non_retryable=True,
+        ) from exc
+    quantization = shard_knn_quantization(vectors_table)
+    per_vector = hnsw_bytes_per_vector(table_dims, quantization)
+    with get_manticore_client(VECTORS) as client:
+        cursor = client.cursor()
+        cursor.execute("SHOW TABLES")
+        vector_tables = [row[0] for row in cursor.fetchall() if row[0].endswith("_vectors")]
+        sizes = []
+        target_current = 0
+        for table in vector_tables:
+            cursor.execute(f"SHOW TABLE {table} STATUS")
+            status = {row[0]: row[1] for row in cursor.fetchall()}
+            count = int(status.get("indexed_documents", 0))
+            dims = shard_knn_dims(table)
+            if dims is None:
+                raise ApplicationError(
+                    f"{table} has no knn_dims", type="VectorMemoryBudget", non_retryable=True,
+                )
+            size = count * hnsw_bytes_per_vector(dims, shard_knn_quantization(table))
+            sizes.append(size)
+            if table == vectors_table:
+                target_current = size
+        resident = sum(sizes)
+        incoming = len(kept) * per_vector
+        slots = int(os.getenv("HOOVER4_INDEXING_WORKERS", "").strip() or "4") * int(
+            os.getenv("HOOVER4_INDEXING_CONCURRENCY", "").strip() or "1")
+        other_slots = incoming * max(0, slots - 1)
+        ram_chunks = len(vector_tables) * 128 * 1024 * 1024
+        merge = max(sizes + [target_current + incoming], default=0)
+        reserve = limit // 10
+        need = resident + incoming + other_slots + ram_chunks + merge + reserve
+        if need > limit:
+            raise ApplicationError(
+                f"vector memory budget: {len(kept)} vectors for {vectors_table} would need "
+                f"{need} of {limit} bytes (resident {resident}, RAM chunks {ram_chunks}, "
+                f"largest merge {merge}, other slots {other_slots}, reserve {reserve}). "
+                "Raise manticore_vectors_mem_limit in hoover4.ini and run "
+                "reindex-collection <collection> --vectors-only.",
+                type="VectorMemoryBudget", non_retryable=True,
+            )
+
+    with get_manticore_client(VECTORS) as client:
         for chunk in chunks(kept, INDEX_ROW_CHUNK_SIZE):
             for row in chunk:
                 manticore_execute(

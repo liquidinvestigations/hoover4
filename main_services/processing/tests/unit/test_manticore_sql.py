@@ -10,7 +10,9 @@ from database.manticore import (
     DATE_UNKNOWN,
     DOCUMENT_COLUMNS,
     SIZE_UNKNOWN,
+    hnsw_bytes_per_vector,
     pages_table_ddl,
+    shard_knn_quantization,
     vectors_table_ddl,
     vfs_table_ddl,
     vfs_table_name,
@@ -170,6 +172,7 @@ def test_vectors_table_ddl_golden():
             page_id int,
             chunk_index int,
             embedding float_vector knn_type='hnsw' knn_dims='384' hnsw_similarity='COSINE'
+                quantization='1bit'
         )
     """)
 
@@ -180,6 +183,37 @@ def test_vectors_table_ddl_validates_dims():
     for bad in (0, -1, 70000, 1.5, True, "384"):
         with pytest.raises(ValueError):
             vectors_table_ddl("testdata_1_vectors", bad)
+
+
+@pytest.mark.parametrize(("quantization", "minimum"), [
+    (None, 1684), ("8bit", 536), ("1bit", 213),
+])
+def test_hnsw_bytes_per_vector_covers_the_measured_values(quantization, minimum):
+    assert hnsw_bytes_per_vector(384, quantization) >= minimum
+
+
+def test_shard_knn_quantization_parses_manticore_output(monkeypatch):
+    class Cursor:
+        def execute(self, _sql):
+            pass
+
+        def fetchone(self):
+            return ("vectors", "embedding float_vector knn_dims='384' quantization='1BIT'")
+
+    class Client:
+        def cursor(self):
+            return Cursor()
+
+    class Connection:
+        def __enter__(self):
+            return Client()
+
+        def __exit__(self, *_args):
+            return False
+
+    import database.manticore as manticore
+    monkeypatch.setattr(manticore, "get_manticore_client", lambda _endpoint: Connection())
+    assert shard_knn_quantization("testdata_1_vectors") == "1bit"
 
 
 def test_repr_manticore_vector():

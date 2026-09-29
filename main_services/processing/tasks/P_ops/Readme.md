@@ -176,6 +176,9 @@ copied afterwards, which matters: this container holds the store volumes read-on
 neither delete an original nor hard-link one. **A cross-mount hard link is refused even
 inside one filesystem, so a backup copies bytes.**
 
+Manticore backs up its text tables only. Vector tables are disposable and a restore rebuilds
+them from the stored vectors after the text tables and configuration rows are present.
+
 Manticore is taken with `FREEZE`, which flushes the table's RAM chunk, holds it read-only
 and answers with the exact file list. Copying a live table's directory without it captures
 an unflushed chunk mid-write. Every freeze is released on the way out, including out of a
@@ -216,9 +219,12 @@ rows pointing at blobs that were never written. `main.py import-collection <coll
 --source <directory>` submits it, and it demands the collection name typed back before it
 dispatches.
 
-**Clean target only, and the same name only.** The collection must be absent or empty in all
-three stores, and every store is checked before a byte moves; a target that still holds
-anything is refused in one sentence naming every store that is occupied. Writing into
+**Clean target only, and the same name only.** The collection payload must be absent or empty
+in all three stores, and every store is checked before a byte moves. Schema rows, empty shard
+ledger rows and task telemetry do not describe the payload. The import prepares an empty
+database for task telemetry. The ClickHouse restore activity removes it. A target that still
+holds data is refused in one sentence naming every store that
+is occupied. Writing into
 populated tables would leave two copies of every row in version-less `ReplacingMergeTree`
 tables with no way to tell which is real, which is why ClickHouse's `allow_non_empty_tables`
 is never set. The name is part of the database name, of every `collection_dataset`, of every
@@ -249,9 +255,9 @@ staging directory is on that volume because `IMPORT TABLE` **moves** the files a
 across filesystems is a copy rather than a rename. The staging directory is not the
 destination, because the destination must not exist, which is also why the directory `DROP TABLE` leaves behind is removed first.
 
-**The configuration rows are written last**, because they are what offers the collection to
-the rest of the system: until they land, an unfinished restore is a collection nobody is
-shown rather than one that is shown and half empty. `server_settings` is deliberately not
+**The configuration rows are written after the vector plan children finish**, because they
+offer the collection to the rest of the system. The import operation waits for each child.
+An unfinished restore stays unpublished. `server_settings` is deliberately not
 among them. Those belong to the deployment, not to the collection, and restoring one
 deployment's into another would reconfigure everything else running there.
 

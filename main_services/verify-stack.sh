@@ -152,6 +152,7 @@ MAX_SHARD_ROWS=2500000
 
 CH() { docker exec clickhouse clickhouse-client -u hoover4 --password hoover4 -q "$1"; }
 MC() { docker exec manticore mysql -h0 -P9306 -N -B -e "$1" 2>/dev/null; }
+MCV() { docker exec manticore-vectors mysql -h0 -P9306 -N -B -e "$1" 2>/dev/null; }
 
 FAILURES=0
 ok()   { echo "OK   - $1"; }
@@ -210,6 +211,14 @@ wait_for_manticore() {
         sleep 5
     done
     echo "Manticore did not become healthy in time" >&2; exit 1
+}
+
+wait_for_manticore_vectors() {
+    for _ in $(seq 1 60); do
+        if MCV "show tables" >/dev/null 2>&1; then return 0; fi
+        sleep 5
+    done
+    echo "Manticore vectors did not become healthy in time" >&2; exit 1
 }
 
 wait_for_worker() {
@@ -292,6 +301,7 @@ fi
 echo "== waiting for ClickHouse, Manticore, the worker and Temporal =="
 wait_for_clickhouse
 wait_for_manticore
+wait_for_manticore_vectors
 wait_for_worker
 wait_for_temporal
 
@@ -689,36 +699,43 @@ else
     ok "no per-collection tables in the global database"
 fi
 
-# 4. Shard ledger matches Manticore's SHOW TABLES, and Manticore holds no
+# 4. Shard ledger matches the text Manticore's SHOW TABLES, and Manticore holds no
 #    non-shard tables (in particular no global doc_text_pages / doc_metadata, and no
 #    leftover per-document `_meta` table).
 #    Manticore's mysql protocol always emits bordered output (it ignores -N -B),
 #    so the table names are the second |-delimited column. Take ALL of them, not
 #    just *_pages matches: a leftover non-shard table must fail this check.
 #
-#    There are THREE table families. `<shard>_pages` is one table per shard and holds
-#    everything the search queries; `<shard>_vectors` is the second, and whether it is
-#    expected follows the probe, above.
-#    The third and fourth are per collection rather than per shard, so they have no
+#    `<shard>_pages` is one table per shard and holds everything the search queries.
+#    The two collection tables are per collection rather than per shard, so they have no
 #    ledger row to derive from and are expected for every collection that has any shard
 #    at all: the same indexing run that opens a shard also creates them.
 #    `<collectionname>_vfs` holds one small row per VFS node; `<collectionname>_entities`
 #    holds the entity terms the facet search boxes query.
 manticore_tables=$(MC "show tables" | awk -F'|' 'NF>2 {gsub(/ /,"",$2); if ($2 != "") print $2}' | sort)
-ledger_tables=""
+vector_tables=$(MCV "show tables" | awk -F'|' 'NF>2 {gsub(/ /,"",$2); if ($2 != "") print $2}' | sort)
+text_ledger_tables=""
+vector_ledger_tables=""
 for coll in $COLLECTIONS; do
     shards=$(CH "SELECT shard_name FROM Hoover4_Collection_$coll.manticore_shards FINAL ORDER BY shard_index")
     for shard in $shards; do
-        ledger_tables="$ledger_tables${shard}_pages\n"
-        [ "$EXPECT_VECTOR_SHARDS" = "1" ] && ledger_tables="$ledger_tables${shard}_vectors\n"
+        text_ledger_tables="$text_ledger_tables${shard}_pages\n"
+        [ "$EXPECT_VECTOR_SHARDS" = "1" ] && vector_ledger_tables="$vector_ledger_tables${shard}_vectors\n"
     done
-    [ -n "$shards" ] && ledger_tables="$ledger_tables${coll}_vfs\n${coll}_entities\n"
+    [ -n "$shards" ] && text_ledger_tables="$text_ledger_tables${coll}_vfs\n${coll}_entities\n"
 done
-ledger_tables=$(printf "%b" "$ledger_tables" | sort)
-if [ "$manticore_tables" = "$ledger_tables" ]; then
-    ok "Manticore tables exactly match the shard ledgers"
+text_ledger_tables=$(printf "%b" "$text_ledger_tables" | sort)
+vector_ledger_tables=$(printf "%b" "$vector_ledger_tables" | sort)
+if [ "$manticore_tables" = "$text_ledger_tables" ]; then
+    ok "text Manticore tables exactly match the shard ledgers"
 else
-    fail "Manticore/ledger mismatch: manticore=[$(echo $manticore_tables)], ledger=[$(echo $ledger_tables)]"
+    fail "text Manticore/ledger mismatch: manticore=[$(echo $manticore_tables)], ledger=[$(echo $text_ledger_tables)]"
+fi
+unexpected_vector_tables=$(comm -23 <(printf '%s\n' "$vector_tables") <(printf '%s\n' "$vector_ledger_tables"))
+if [ -z "$unexpected_vector_tables" ]; then
+    ok "vectors Manticore tables are a shard-ledger subset"
+else
+    fail "vectors Manticore has tables outside the shard ledger: [$(echo $unexpected_vector_tables)]"
 fi
 
 # 5. No shard over either budget (single-document shards may exceed both).

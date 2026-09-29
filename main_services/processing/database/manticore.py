@@ -29,6 +29,7 @@ interpolate anything else.
 
 from contextlib import contextmanager
 import logging
+import os
 import re
 
 log = logging.getLogger(__name__)
@@ -47,16 +48,46 @@ PAGES_TABLE_SUFFIX = 'pages'
 VECTORS_TABLE_SUFFIX = 'vectors'
 VFS_TABLE_SUFFIX = 'vfs'
 ENTITIES_TABLE_SUFFIX = 'entities'
+TEXT = "text"
+VECTORS = "vectors"
+VECTOR_QUANTIZATION = "1bit"
+
+
+def endpoint_for_table(table: str) -> str:
+    """Return the endpoint that owns `table`."""
+    return VECTORS if table.endswith(f"_{VECTORS_TABLE_SUFFIX}") else TEXT
 
 
 @contextmanager
-def get_manticore_client():
+def get_manticore_client(endpoint: str = TEXT):
+    """Open the selected Manticore endpoint.
+
+    The vector endpoint has a connection limit because its daemon can bind before it
+    loads the vector tables. A failed connection then releases the indexing slot for its
+    retry instead of holding it through the load.
+    """
     import mysql.connector
-    cnx = mysql.connector.connect(
-        host="manticore",
-        port=9306,
-        user="manticore",
-        password="manticore", database='Manticore')
+    if endpoint not in (TEXT, VECTORS):
+        raise ValueError(f"unknown Manticore endpoint {endpoint!r}")
+    host_key = "MANTICORE_HOST" if endpoint == TEXT else "MANTICORE_VECTORS_HOST"
+    host_default = "manticore" if endpoint == TEXT else "manticore-vectors"
+    host = os.getenv(host_key, host_default)
+    other_host = os.getenv(
+        "MANTICORE_VECTORS_HOST" if endpoint == TEXT else "MANTICORE_HOST",
+        "manticore-vectors" if endpoint == TEXT else "manticore",
+    )
+    if host == other_host:
+        raise ValueError("Manticore text and vectors endpoints must use different hosts")
+    options = {
+        "host": host,
+        "port": 9306,
+        "user": "manticore",
+        "password": "manticore",
+        "database": "Manticore",
+    }
+    if endpoint == VECTORS:
+        options["connection_timeout"] = 10
+    cnx = mysql.connector.connect(**options)
     try:
         yield cnx
     finally:
@@ -65,6 +96,13 @@ def get_manticore_client():
         except Exception as e:
             log.error(f"Error closing Manticore connection: {e}")
             pass
+
+
+@contextmanager
+def client_for_table(table: str):
+    """Open the endpoint that owns `table`."""
+    with get_manticore_client(endpoint_for_table(table)) as client:
+        yield client
 
 
 def quote_manticore_values(cnx, params) -> list:
@@ -130,9 +168,9 @@ def manticore_execute(cnx, sql, params=()) -> None:
     cnx.cmd_query(bind_manticore_sql(cnx, sql, params))
 
 
-def check_manticore_health():
+def check_manticore_health(endpoint: str = TEXT):
     log.info("Checking ManticoreSearch health...")
-    with get_manticore_client() as cnx:
+    with get_manticore_client(endpoint) as cnx:
         cur = cnx.cursor()
         cur.execute("SELECT CURDATE()")
         row = cur.fetchone()
@@ -140,8 +178,8 @@ def check_manticore_health():
         return row[0]
 
 
-def _execute_ddl(sql):
-    with get_manticore_client() as cnx:
+def _execute_ddl(sql, endpoint: str = TEXT):
+    with get_manticore_client(endpoint) as cnx:
         log.info("Manticore Execute DDL: {}".format(sql))
         cur = cnx.cursor()
         cur.execute(sql)
@@ -476,6 +514,7 @@ def vectors_table_ddl(table_name: str, dims: int) -> str:
             page_id int,
             chunk_index int,
             embedding float_vector knn_type='hnsw' knn_dims='{dims}' hnsw_similarity='COSINE'
+                quantization='{VECTOR_QUANTIZATION}'
         )
     """
 
@@ -489,7 +528,7 @@ def shard_knn_dims(vectors_table: str) -> int | None:
     vectors into a 1024-dim table is the failure the whole probe mechanism exists to
     prevent.
     """
-    with get_manticore_client() as cnx:
+    with get_manticore_client(VECTORS) as cnx:
         cur = cnx.cursor()
         try:
             cur.execute(f"SHOW CREATE TABLE {vectors_table}")
@@ -500,6 +539,40 @@ def shard_knn_dims(vectors_table: str) -> int | None:
         return None
     m = re.search(r"knn_dims='(\d+)'", row[1])
     return int(m.group(1)) if m else None
+
+
+def shard_knn_quantization(vectors_table: str) -> str | None:
+    """The vector quantization set when `vectors_table` was created."""
+    with get_manticore_client(VECTORS) as cnx:
+        cur = cnx.cursor()
+        try:
+            cur.execute(f"SHOW CREATE TABLE {vectors_table}")
+        except Exception:
+            return None
+        row = cur.fetchone()
+    if not row or len(row) < 2:
+        return None
+    match = re.search(r"quantization='([^']+)'", row[1], re.IGNORECASE)
+    if not match:
+        return None
+    value = match.group(1).lower()
+    if value not in {"1bit", "8bit"}:
+        raise ValueError(f"unknown Manticore vector quantization {value!r}")
+    return value
+
+
+def hnsw_bytes_per_vector(dims: int, quantization: str | None, hnsw_m: int = 16) -> int:
+    """Return the resident HNSW bytes per vector.
+
+    Manticore 14.1.0 measured 1,684 float bytes, 536 8bit bytes and 213 1bit bytes
+    at 384 dimensions. The formula stays above those values.
+    """
+    if dims < 1 or hnsw_m < 1:
+        raise ValueError("HNSW dimensions and M must be positive")
+    data_bytes = dims * {None: 4, "8bit": 1, "1bit": 1 / 8}.get(quantization, 0)
+    if quantization not in (None, "8bit", "1bit"):
+        raise ValueError(f"unknown Manticore vector quantization {quantization!r}")
+    return int(-(-data_bytes // 1) + 8 * hnsw_m + 40)
 
 
 def create_shard_tables(collectionname: str, shard_index: int, vector_dims: int | None = None) -> str:
@@ -514,13 +587,18 @@ def create_shard_tables(collectionname: str, shard_index: int, vector_dims: int 
     """
     pages_table = shard_table_name(collectionname, shard_index)
     _execute_ddl(pages_table_ddl(pages_table))
-    if vector_dims is not None:
-        _execute_ddl(vectors_table_ddl(vectors_table_name(collectionname, shard_index), vector_dims))
     return pages_table
 
 
-def _list_all_tables() -> list[str]:
-    with get_manticore_client() as cnx:
+def create_vectors_table(collectionname: str, shard_index: int, dims: int) -> str:
+    """Create one shard's disposable vector table on the vectors endpoint."""
+    table = vectors_table_name(collectionname, shard_index)
+    _execute_ddl(vectors_table_ddl(table, dims), VECTORS)
+    return table
+
+
+def _list_all_tables(endpoint: str = TEXT) -> list[str]:
+    with get_manticore_client(endpoint) as cnx:
         cur = cnx.cursor()
         cur.execute("SHOW TABLES")
         return [row[0] for row in cur.fetchall()]
@@ -537,7 +615,7 @@ def list_shard_tables(collectionname: str) -> list[str]:
     from database.clickhouse import validate_collectionname
     validate_collectionname(collectionname)
     pattern = re.compile(_SHARD_TABLE_RE_TEMPLATE.format(coll=re.escape(collectionname)))
-    return sorted(t for t in _list_all_tables() if pattern.match(t))
+    return sorted(t for t in (_list_all_tables(TEXT) + _list_all_tables(VECTORS)) if pattern.match(t))
 
 
 def list_collection_tables(collectionname: str) -> list[str]:
@@ -549,7 +627,7 @@ def list_collection_tables(collectionname: str) -> list[str]:
     per-shard search fan-out) must not be handed a table that has no shard index.
     """
     tables = list_shard_tables(collectionname)
-    all_tables = _list_all_tables()
+    all_tables = _list_all_tables(TEXT)
     for table in (vfs_table_name(collectionname), entities_table_name(collectionname)):
         if table in all_tables:
             tables.append(table)
@@ -560,11 +638,23 @@ def drop_collection_tables(collectionname: str) -> list[str]:
     """Drop every Manticore table of a collection. Returns the dropped table names."""
     dropped = []
     for table in list_collection_tables(collectionname):
-        _execute_ddl(f"drop table if exists {table}")
+        _execute_ddl(f"drop table if exists {table}", endpoint_for_table(table))
         dropped.append(table)
     if dropped:
         log.warning("Dropped Manticore tables for collection %s: %s", collectionname, dropped)
     return dropped
+
+
+def drop_collection_vector_tables(collectionname: str) -> list[str]:
+    """Drop a collection's disposable vectors tables from the vectors endpoint."""
+    from database.clickhouse import validate_collectionname
+    validate_collectionname(collectionname)
+    pattern = re.compile(_SHARD_TABLE_RE_TEMPLATE.format(coll=re.escape(collectionname)))
+    tables = sorted(table for table in _list_all_tables(VECTORS)
+                    if pattern.match(table) and table.endswith(f"_{VECTORS_TABLE_SUFFIX}"))
+    for table in tables:
+        _execute_ddl(f"drop table if exists {table}", VECTORS)
+    return tables
 
 
 def probed_embedding_dims() -> int | None:
@@ -595,10 +685,13 @@ def manticore_migrate():
     volume loss). Recovered tables come back EMPTY - see
     ``main.py reindex-collection`` for the reindex story.
     """
-    check_manticore_health()
+    check_manticore_health(TEXT)
+    try:
+        check_manticore_health(VECTORS)
+    except Exception as exc:
+        log.warning("Manticore vectors endpoint is unavailable during migrate: %s", exc)
     log.info("Starting ManticoreSearch migration....")
     from database.clickhouse import get_collection_client, list_collections
-    vector_dims = probed_embedding_dims()
     for collectionname in list_collections():
         # The structure index and the facet-term index have no ledger to recover from
         # (each is one table per collection, rebuilt from ClickHouse by P6), so they are
@@ -610,12 +703,16 @@ def manticore_migrate():
                 "SELECT shard_index FROM manticore_shards FINAL ORDER BY shard_index"
             ).result_rows
         for (shard_index,) in rows:
-            create_shard_tables(collectionname, int(shard_index), vector_dims=vector_dims)
+            create_shard_tables(collectionname, int(shard_index))
         if rows:
             log.info(
                 "Collection %s: ensured %d shard tables exist",
                 collectionname, len(rows),
             )
+    for table in _list_all_tables(TEXT):
+        if table.endswith(f"_{VECTORS_TABLE_SUFFIX}"):
+            _execute_ddl(f"drop table if exists {table}", TEXT)
+            log.warning("Dropped old vectors table %s. Run reindex-collection with --vectors-only.", table)
     log.info("ManticoreSearch migration OK.")
 
 

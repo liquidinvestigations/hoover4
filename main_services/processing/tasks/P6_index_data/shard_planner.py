@@ -56,7 +56,6 @@ from database.manticore import (
     create_entities_table,
     create_shard_tables,
     create_vfs_table,
-    probed_embedding_dims,
 )
 from .params import FinalizeIndexBatchParams, PlanShardsParams, RecordIndexedParams
 from tasks.heartbeat import with_heartbeat
@@ -299,6 +298,17 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
     if not hashes:
         return []
 
+    if params.vectors_only:
+        with get_collection_client(collectionname) as client:
+            rows = client.query(
+                "SELECT shard_name, groupArray(file_hash) FROM manticore_shard_assignments FINAL "
+                "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
+                "GROUP BY shard_name ORDER BY shard_name",
+                parameters={"cd": collection_dataset, "hashes": hashes},
+            ).result_rows
+        return [ShardAssignment(shard_name=row[0], shard_index=int(row[0].rsplit("_", 1)[1]),
+                                hashes=sorted(row[1])) for row in rows]
+
     with get_collection_client(collectionname) as client:
         # Documents already assigned keep their shard: a re-index overwrites in
         # place (REPLACE INTO with deterministic ids), never duplicates across shards.
@@ -344,7 +354,7 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
             text_sums = {
                 row[0]: int(row[1])
                 for row in client.query(
-                    "SELECT file_hash, sum(length(text)) AS text_bytes "
+                    "SELECT file_hash, sum(text_bytes) AS text_bytes "
                     "FROM text_content FINAL "
                     "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
                     "GROUP BY file_hash",
@@ -378,15 +388,11 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
         existing_assignments=existing,
     )
 
-    # Create the Manticore tables of every shard before any writer can be scheduled
-    # against it. Idempotent (`create table if not exists`), and deliberately run for
-    # EXISTING shards too, not only newly-opened ones: a shard planned before the
-    # vectors stage existed has no `_vectors` table, and this is the self-heal path
-    # that creates it (from the probed dimension, never the ini) without a reindex.
+    # Create the text tables of every shard before its page writer can run. The vector
+    # writer creates its own table after it reads the serving vector dimension.
     old_indexes = {s.shard_index for s in ledger}
-    vector_dims = probed_embedding_dims()
     for state in new_ledger:
-        create_shard_tables(collectionname, state.shard_index, vector_dims=vector_dims)
+        create_shard_tables(collectionname, state.shard_index)
     # The collection's structure and facet-term indexes, neither of which is sharded.
     # Created here as well as in `manticore_migrate` because a collection created and
     # indexed between two migrate runs would otherwise have nowhere for

@@ -25,8 +25,8 @@ MAX_WALK_DEPTH = 32
 #: Local indices per capture sit in 8 bits, which holds the 200-node cap.
 _INDEX_SLOT = 256
 
-#: Slots 1 .. 2^24-1 identify a non-root capture. Slot 0 is the Operation walk.
-_INDEX_SLOTS = (1 << 24) - 1
+#: Slots 1 .. 2^23-1 identify a non-root capture. Slot 0 is the Operation walk.
+_INDEX_SLOTS = (1 << 23) - 1
 
 _FRAME_RE = re.compile(r'File "([^"]+)", line \d+, in (\S+)')
 _TRUNCATION_MARKER = "\n[truncated to %d bytes]"
@@ -119,6 +119,8 @@ def capture_index_base(op_id: str, capturing_workflow_id: str, capturing_run_id:
 
 def apply_index_base(nodes: Sequence[FailureNode], base: int) -> List[FailureNode]:
     """Shift local indices by ``base``. ``parent_index`` of -1 stays -1."""
+    assert all(0 <= node.node_index < _INDEX_SLOT for node in nodes)
+    assert all(node.parent_index < _INDEX_SLOT for node in nodes)
     shifted: List[FailureNode] = []
     for node in nodes:
         parent = node.parent_index if node.parent_index < 0 else node.parent_index + base

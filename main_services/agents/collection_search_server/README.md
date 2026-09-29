@@ -3,9 +3,8 @@
 ACL-bounded search and document reads for the user's permitted collections. Port `21930`,
 container `hoover4-mcp-collections`. Both agents use this server.
 
-Search goes through **Manticore**, not vectors: the pipeline writes its page text to
-Manticore shards and its extracted text to ClickHouse. The Milvus tier was removed
-because nothing ever populated it.
+Keyword search uses the text Manticore service. Vector ranking uses the separate vectors
+Manticore service. The pipeline stores extracted text in ClickHouse.
 
 ## Tools
 

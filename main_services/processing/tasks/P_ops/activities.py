@@ -22,6 +22,7 @@ from temporalio.service import RPCError, RPCStatusCode
 from ..heartbeat import with_heartbeat
 from .params import (
     DatasetProgressParams, DatasetRegistryParams, OperationStateParams,
+    REBUILD_PLAN_PAGE_SIZE, RebuildPlansParams, ReindexCollectionParams,
 )
 
 log = logging.getLogger(__name__)
@@ -463,7 +464,7 @@ def reindex_collection_activity(collectionname: str) -> int:
     in-flight writer would record index state into shards this is about to drop, and
     the result is a ledger claiming documents no table holds.
 
-    Returns the number of plans queued for re-indexing.
+    Returns the number of plans re-indexed.
     """
     import asyncio
 
@@ -494,8 +495,9 @@ def reindex_collection_activity(collectionname: str) -> int:
         from ..visibility import dataset_search_attributes
 
         client = await TemporalClient.connect("temporal:7233")
+        handles = []
         for collection_dataset, plan_hash in plans:
-            await client.start_workflow(
+            handles.append(await client.start_workflow(
                 IndexDatasetPlan.run,
                 IndexDatasetPlanParams(collectionname=collectionname,
                                        collection_dataset=collection_dataset,
@@ -507,7 +509,8 @@ def reindex_collection_activity(collectionname: str) -> int:
                 id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
                 id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
                 search_attributes=dataset_search_attributes(collection_dataset),
-            )
+            ))
+        await asyncio.gather(*(handle.result() for handle in handles))
 
     # A sync activity, like everything else here, so it runs in the worker's thread
     # pool and `with_heartbeat` can pump for it. This is the one piece of async work
@@ -515,3 +518,37 @@ def reindex_collection_activity(collectionname: str) -> int:
     # and losing the pump.
     asyncio.run(_queue_them())
     return len(plans)
+
+
+@activity.defn
+@with_heartbeat
+def prepare_reindex_collection(params: ReindexCollectionParams) -> None:
+    """Clear the selected search tables before the operation starts child workflows."""
+    from database.clickhouse import get_collection_client
+    from database.manticore import drop_collection_tables, drop_collection_vector_tables
+
+    if params.vectors_only:
+        drop_collection_vector_tables(params.collectionname)
+        return
+    drop_collection_tables(params.collectionname)
+    with get_collection_client(params.collectionname) as client:
+        client.command("TRUNCATE TABLE manticore_shards")
+        client.command("TRUNCATE TABLE manticore_shard_assignments")
+        client.command("TRUNCATE TABLE index_state")
+
+
+@activity.defn
+@with_heartbeat
+def list_rebuild_plan_page(params: RebuildPlansParams) -> list[tuple[str, str]]:
+    """Read the next bounded page of finished plans in stable order."""
+    from database.clickhouse import get_collection_client
+
+    with get_collection_client(params.collectionname) as client:
+        return [tuple(row) for row in client.query(
+            "SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL "
+            "WHERE collection_dataset > {cd:String} OR "
+            "(collection_dataset = {cd:String} AND plan_hash > {ph:String}) "
+            "ORDER BY collection_dataset, plan_hash LIMIT {limit:UInt32}",
+            parameters={"cd": params.cursor_dataset, "ph": params.cursor_hash,
+                        "limit": REBUILD_PLAN_PAGE_SIZE},
+        ).result_rows]

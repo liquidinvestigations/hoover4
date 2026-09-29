@@ -317,6 +317,15 @@ def source_execution_id(run_id: str, call_site: str, ordinal: int) -> str:
                       separators=(",", ":"))
 
 
+def error_identity(source_execution_id: str, task_name: str,
+                   collection_dataset: str, item_hash: str) -> str:
+    """Return the stable identity of one document failure row."""
+    source = [source_execution_id, task_name, collection_dataset, item_hash]
+    return hashlib.sha256(json.dumps(
+        source, ensure_ascii=False, separators=(",", ":")
+    ).encode("utf-8")).hexdigest()
+
+
 async def record_errors_from_results(
     results: Sequence[Any],
     *,
@@ -347,41 +356,58 @@ async def record_errors_from_results(
         run_id = _wf.info().run_id or ""
     except Exception:
         run_id = ""
+    use_groups = _wf.in_workflow() and _wf.patched("error-groups-activity")
     error_rows: List[Dict[str, Any]] = []
+    grouped: Dict[tuple[str, str], Dict[str, Any]] = {}
     for idx, res in enumerate(results):
         if isinstance(res, Exception):
             started_at = starts[idx] if idx < len(starts) else now_ts
             dur_ms = int((now_ts - started_at).total_seconds() * 1000)
             if dur_ms < 0:
                 dur_ms = 0
-            err_str = format_temporal_exception_chain(res)
             task_name = task_ids[idx] if idx < len(task_ids) else default_task_name
             item_hash = item_hashes[idx] if idx < len(item_hashes) else ""
-            identity_input = [source_execution_ids[idx], task_name,
-                              collection_dataset, item_hash]
-            error_identity = hashlib.sha256(json.dumps(
-                identity_input, ensure_ascii=False, separators=(",", ":")
-            ).encode("utf-8")).hexdigest()
-            error_rows.append({
-                "collection_dataset": collection_dataset,
-                "hash": item_hash,
-                "task_name": task_name,
-                "run_time_ms": dur_ms,
-                "error_logs": err_str,
-                "attempt": 0,
-                "workflow_run_id": run_id,
-                "op_id": op_id,
-                "error_identity": error_identity,
-            })
+            source_id = source_execution_ids[idx]
+            if use_groups:
+                key = (source_id, task_name)
+                if key not in grouped:
+                    grouped[key] = {
+                        "task_name": task_name,
+                        "source_execution_id": source_id,
+                        "started_at": started_at,
+                        "error_logs": format_temporal_exception_chain(res),
+                        "item_hashes": [],
+                    }
+                group = grouped[key]
+                group["item_hashes"].append(item_hash)
+            else:
+                err_str = format_temporal_exception_chain(res)
+                error_rows.append({
+                    "collection_dataset": collection_dataset,
+                    "hash": item_hash,
+                    "task_name": task_name,
+                    "run_time_ms": dur_ms,
+                    "error_logs": err_str,
+                    "attempt": 0,
+                    "workflow_run_id": run_id,
+                    "op_id": op_id,
+                    "error_identity": error_identity(
+                        source_id, task_name, collection_dataset, item_hash),
+                })
 
-    if not error_rows:
+    if not error_rows and not grouped:
         return 0
 
-    log.info("[P3] Recording %d errors for %s", len(error_rows), collection_dataset)
+    row_count = len(error_rows) if error_rows else sum(
+        len(group["item_hashes"]) for group in grouped.values())
+    log.info("[P3] Recording %d errors for %s", row_count, collection_dataset)
 
     with _wf.unsafe.imports_passed_through():
         from tasks.P2_execute_plan.activities import record_processing_errors as _record_processing_errors
         from tasks.P2_execute_plan.activities import RecordProcessingErrorsParams as _RecordProcessingErrorsParams
+        from tasks.P2_execute_plan.activities import record_processing_error_groups as _record_processing_error_groups
+        from tasks.P2_execute_plan.activities import ErrorGroup as _ErrorGroup
+        from tasks.P2_execute_plan.activities import RecordErrorGroupsParams as _RecordErrorGroupsParams
 
     # Every size below is the encoded size that the payload guard measures. The JSON
     # converter writes each character outside ASCII as an escape of 6 or 12 bytes, so a
@@ -395,6 +421,52 @@ async def record_errors_from_results(
 
     def encoded_size(value: Any) -> int:
         return payload_size(converter.to_payloads([value])[0])
+
+    if use_groups:
+        groups = [_ErrorGroup(**group) for group in grouped.values()]
+        empty_bytes = encoded_size(_RecordErrorGroupsParams(
+            collectionname=collectionname, collection_dataset=collection_dataset,
+            op_id=op_id, workflow_run_id=run_id, recorded_at=now_ts, groups=[]))
+
+        def group_size(group: Any) -> int:
+            return len(converter.to_payloads([group])[0].data)
+
+        def truncate_group(group: Any) -> None:
+            allowed = ERROR_PAYLOAD_BUDGET_BYTES - empty_bytes
+            size = group_size(group)
+            while size > allowed and group.error_logs:
+                keep = (len(group.error_logs) * allowed // size
+                        - len(ERROR_PAYLOAD_TRUNCATION_MARKER))
+                group.error_logs = group.error_logs[:max(0, min(keep, len(group.error_logs) - 1))]
+                group.error_logs += ERROR_PAYLOAD_TRUNCATION_MARKER
+                size = group_size(group)
+
+        async def record_groups(batch: List[Any]) -> None:
+            await _wf.execute_activity(
+                _record_processing_error_groups,
+                _RecordErrorGroupsParams(
+                    collectionname=collectionname, collection_dataset=collection_dataset,
+                    op_id=op_id, workflow_run_id=run_id, recorded_at=now_ts, groups=batch),
+                start_to_close_timeout=_td(seconds=start_to_close_timeout_seconds),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=_RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            )
+
+        batch: List[Any] = []
+        batch_bytes = empty_bytes
+        for group in groups:
+            truncate_group(group)
+            group_bytes = group_size(group) + (1 if batch else 0)
+            if batch and batch_bytes + group_bytes > ERROR_PAYLOAD_BUDGET_BYTES:
+                await record_groups(batch)
+                batch = []
+                batch_bytes = empty_bytes
+                group_bytes -= 1
+            batch.append(group)
+            batch_bytes += group_bytes
+        if batch:
+            await record_groups(batch)
+        return row_count
 
     empty_batch_bytes = encoded_size(
         _RecordProcessingErrorsParams(collectionname=collectionname, errors=[]))

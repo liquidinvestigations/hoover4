@@ -3,7 +3,7 @@
 import pytest
 
 from agent_common import rerank as rerank_client
-from collection_search_server import server
+from collection_search_server import server, vectors
 from collection_search_server.server import SearchHit
 from collection_search_server.vectors import VectorCandidate
 
@@ -184,3 +184,51 @@ class TestResultBudget:
         _identity_rerank(monkeypatch)
         hits = server._fused_pipeline("q", keyword, [], limit=40, notes=[])
         assert len(hits) == 40
+
+
+class TestVectorEndpoint:
+    def test_knn_uses_the_vectors_endpoint_and_query_options(self, monkeypatch):
+        queries = []
+
+        def vectors_query(sql):
+            queries.append(sql)
+            if sql == "SHOW TABLES":
+                return [{"Table": "coll_1_vectors"}]
+            return []
+
+        monkeypatch.setattr(vectors, "manticore_vectors_query", vectors_query)
+        monkeypatch.setattr(
+            vectors,
+            "clickhouse_query",
+            lambda *_args, **_kwargs: [{"shard_name": "coll_1"}],
+        )
+        vectors.search([0.5], ["coll"])
+
+        assert len(queries) == 2
+        assert "rescore=1, oversampling=5.0" in queries[1]
+
+    def test_unavailable_vectors_keep_keyword_results_and_add_a_note(self, monkeypatch):
+        monkeypatch.setattr(vectors, "serving_model", lambda: "model")
+        monkeypatch.setattr(server, "_shard_tables", lambda _collection: ["coll_1_pages"])
+        monkeypatch.setattr(
+            server,
+            "manticore_query",
+            lambda _query: [{
+                "collection_dataset": "coll_ds", "file_hash": H1, "page_id": 1,
+                "score": 1.0, "page_text": "keyword result",
+            }],
+        )
+        monkeypatch.setattr(server.embeddings_client, "embed_query", lambda *_args: [0.5])
+        monkeypatch.setattr(
+            vectors,
+            "search",
+            lambda *_args: (_ for _ in ()).throw(
+                vectors.VectorRankingUnavailable("vectors daemon is unavailable")
+            ),
+        )
+
+        hits, notes, error = server._search_one("keyword", ["coll"], 3, [])
+
+        assert error is None
+        assert [hit.match_sources for hit in hits] == [["keyword"]]
+        assert notes == ["vector search unavailable: vectors daemon is unavailable"]

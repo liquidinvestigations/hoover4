@@ -45,6 +45,9 @@ Per file, from the size and mtime the scan already collected:
 | mtime differs, size same | rehash; a different hash is a change, the same hash is a touch |
 | row present, path not found by the scan | deleted, tombstoned and de-indexed |
 
+The de-index sweep deletes search rows on each table's Manticore daemon. It removes
+`index_state` after all search deletes succeed, so a failed delete remains eligible for retry.
+
 Comparing paths alone (which is what a rescan did before there was anything else to
 compare) is wrong in the direction that loses data: a file whose *content* changed at
 the same path was skipped for ever, with no new blob, no new plan, and nothing

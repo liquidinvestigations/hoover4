@@ -7,6 +7,8 @@ discover.
 
 from dataclasses import dataclass, field
 
+REBUILD_PLAN_PAGE_SIZE = 100
+
 
 @dataclass
 class OperationParams:
@@ -35,6 +37,26 @@ class OperationStateParams:
     error: str = ""
     progress_done: int = 0
     progress_total: int = 0
+
+
+@dataclass
+class ReindexCollectionParams:
+    """The collection and selected reindex mode for one operations activity."""
+
+    collectionname: str
+    vectors_only: bool = False
+
+
+@dataclass
+class RebuildPlansParams:
+    """State for one bounded page of a collection rebuild."""
+
+    op_id: str
+    collectionname: str
+    vectors_only: bool
+    cursor_dataset: str = ""
+    cursor_hash: str = ""
+    completed: int = 0
 
 
 @dataclass

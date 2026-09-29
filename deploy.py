@@ -67,6 +67,8 @@ VOLUMES = (
            "ghcr.io/duyet/clickhouse-monitoring:2cc8058", "data"),
     Volume("manticore_data_v14", "main", "manticore", 999, 999,
            "manticoresearch/manticore:14.1.0", "data"),
+    Volume("manticore_vectors_data_v14", "main", "manticore-vectors", 999, 999,
+           "manticoresearch/manticore:14.1.0", "data"),
     Volume("temporal_cassandra", "main", "temporal-cassandra", 999, 999,
            CASSANDRA_IMAGE, "temporal"),
     # Elasticsearch writes as uid 1000 with group 0.
@@ -206,6 +208,9 @@ DEFAULTS = {
         "search_max_parallelism": "",
         "search_timeout_seconds": "",
         "ocr_pdf_enabled": "true",
+        # Datastore memory limits. The Manticore limits are mandatory values in the ini.
+        "clickhouse_mem_limit": "19000M",
+        "ocr_pdf_mem_limit": "8000M",
         # Worker fleet. Empty = the worker's own default, except the three chat keys,
         # which the ini sets because a slot is one turn in flight.
         "common_workers": "",
@@ -333,6 +338,8 @@ DEFAULTS = {
         "clickhouse_native_port": "21901",
         "manticore_sql_port": "21902",
         "manticore_http_port": "21903",
+        "manticore_vectors_sql_port": "21914",
+        "manticore_vectors_http_port": "21915",
         "garage_s3_port": "21904",
         "garage_admin_port": "21905",
         "redis_port": "21906",
@@ -513,6 +520,8 @@ MAIN_PUBLISHED = [
     ("clickhouse", "main_services", "clickhouse_native_port"),
     ("manticore", "main_services", "manticore_sql_port"),
     ("manticore", "main_services", "manticore_http_port"),
+    ("manticore-vectors", "main_services", "manticore_vectors_sql_port"),
+    ("manticore-vectors", "main_services", "manticore_vectors_http_port"),
     ("garage", "main_services", "garage_s3_port"),
     ("garage", "main_services", "garage_admin_port"),
     ("redis", "main_services", "redis_port"),
@@ -799,6 +808,16 @@ def size_bytes(cfg, key):
     if not match:
         fail("[main_services] %s is not a size such as 8G or 16000M: %r" % (key, raw))
     return int(match.group(1)) * _SIZE_UNITS[match.group(2).upper()]
+
+
+def required_size(cfg, key):
+    """A mandatory `[main_services]` size."""
+    raw = cfg.values.get("main_services", {}).get(key, "").strip()
+    if not raw:
+        fail("[main_services] %s is required: the memory limit of its Manticore "
+             "container, for example %s = 32G. See "
+             "docs/operations/Configuration_Reference.md" % (key, key))
+    return size_bytes(cfg, key)
 
 
 def whole_number(cfg, key, minimum=1, section="main_services"):
@@ -1229,6 +1248,16 @@ def render_main_env(cfg):
     env["TEMPORAL_CPUS"] = cfg.get(m, "temporal_cpus")
     env["DEFAULT_NAMESPACE_RETENTION"] = cfg.get(m, "temporal_retention")
     env.update(render_tesseract_env(cfg))
+
+    required_size(cfg, "manticore_mem_limit")
+    manticore_vectors_mem_limit_bytes = required_size(cfg, "manticore_vectors_mem_limit")
+    env["MANTICORE_MEM_LIMIT"] = cfg.get(m, "manticore_mem_limit")
+    env["MANTICORE_VECTORS_MEM_LIMIT"] = cfg.get(m, "manticore_vectors_mem_limit")
+    env["MANTICORE_VECTORS_MEM_LIMIT_BYTES"] = str(manticore_vectors_mem_limit_bytes)
+    env["CLICKHOUSE_MEM_LIMIT"] = cfg.get(m, "clickhouse_mem_limit")
+    env["OCR_PDF_MEM_LIMIT"] = cfg.get(m, "ocr_pdf_mem_limit")
+    size_bytes(cfg, "clickhouse_mem_limit")
+    size_bytes(cfg, "ocr_pdf_mem_limit")
 
     # Log rotation, read by the x-logging field of every compose file.
     env["CONTAINER_LOG_MAX_SIZE"] = cfg.get(m, "container_log_max_size")

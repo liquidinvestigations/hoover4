@@ -461,11 +461,14 @@ def export_manticore(params: ExportParams) -> ExportStoreResult:
     """
     import zstandard
 
-    from database.manticore import get_manticore_client, list_collection_tables
+    from database.manticore import TEXT, endpoint_for_table, get_manticore_client, list_collection_tables
 
     phase = _Phase(params.op_id, "manticore")
     manticore_dir = os.path.join(params.directory, "manticore")
-    tables = list_collection_tables(params.collectionname)
+    tables = [
+        table for table in list_collection_tables(params.collectionname)
+        if endpoint_for_table(table) == TEXT
+    ]
     artifacts: list[dict] = []
     done = 0
     total = 0

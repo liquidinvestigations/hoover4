@@ -4,10 +4,10 @@ The email, archive, PDF and video stages of the group workflow each extract a fi
 temporary folder. `scan_container_folders` scans each of those folders in this process,
 with the functions that the disk scan runs, and then removes it. It starts no workflow.
 
-Only the scan of a folder removes that folder, after the scan. So a folder that is gone
-when its scan starts was removed from outside the group, and the file gets a failed
-result of type `ContainerFolderMissing`. A scan that fails leaves its folder on disk, and a
-rerun of the file extracts into the same folder again.
+Only the scan of a folder removes that folder, after the scan. An earlier activity attempt
+can remove a folder before its result is recorded. The retry reads `vfs_files` and reports a
+recovered scan when that container already has stored members. A scan that fails leaves its
+folder on disk, and a rerun of the file extracts into the same folder again.
 """
 
 import logging
@@ -81,6 +81,24 @@ def scan_container_folders(params: ScanContainerFoldersParams) -> BatchResult:
     """
     def scan_one(folder: ContainerFolder) -> Dict[str, str]:
         if not os.path.isdir(folder.out_dir):
+            from database.clickhouse import get_collection_client
+
+            try:
+                with get_collection_client(params.collectionname) as client:
+                    rows = client.query(
+                        "SELECT count() FROM vfs_files "
+                        "WHERE collection_dataset = {cd:String} "
+                        "AND container_hash = {ch:String}",
+                        parameters={"cd": params.collection_dataset, "ch": folder.container_hash},
+                    ).result_rows
+            except Exception:
+                rows = []
+                log.warning("[P3] Could not read members for removed container folder %s",
+                            folder.out_dir)
+            member_count = int(rows[0][0]) if rows else 0
+            if member_count:
+                log.info("[P3] Recovered member scan for removed container folder %s", folder.out_dir)
+                return {"status": "scanned", "recovered": "folder removed by an earlier attempt"}
             raise ApplicationError(
                 f"container folder {folder.out_dir} is gone before its scan",
                 type=CONTAINER_FOLDER_MISSING, non_retryable=True)

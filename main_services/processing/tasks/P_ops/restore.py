@@ -136,6 +136,20 @@ def read_manifest(directory: str) -> dict:
 #: the same thing. The target is not empty, and here is the shape of what is in it.
 OCCUPANCY_EXAMPLES = 3
 
+#: Task telemetry describes work on the target. `import_clickhouse` drops the
+#: empty collection database before restore.
+SELF_WRITTEN_TABLES = ("processing_task_runs", "processing_task_inflight")
+
+
+def _payload_row_count(client, table: str) -> int:
+    """Count target rows that would conflict with a collection restore."""
+    if table == "schema_versions" or table in SELF_WRITTEN_TABLES:
+        return 0
+    query = f"SELECT count() FROM `{table}`"
+    if table == "manticore_shards":
+        query += " FINAL WHERE doc_count > 0 OR text_bytes > 0"
+    return int(client.query(query).result_rows[0][0])
+
 
 def _largest(occupied: list[tuple[str, int]]) -> str:
     """The few fullest tables of a store, as one clause naming the rest by count."""
@@ -161,7 +175,7 @@ def _occupancy(collectionname: str, backed_up_datasets: set[str]) -> list[str]:
     from database.clickhouse import (
         collection_db_name, get_dedicated_collection_client, get_global_client,
     )
-    from database.manticore import get_manticore_client, list_collection_tables
+    from database.manticore import client_for_table, list_collection_tables
     from database.s3 import collection_bucket, get_s3_client
 
     blockers: list[str] = []
@@ -175,7 +189,7 @@ def _occupancy(collectionname: str, backed_up_datasets: set[str]) -> list[str]:
         occupied: list[tuple[str, int]] = []
         with get_dedicated_collection_client(collectionname) as client:
             for (table,) in client.query("SHOW TABLES").result_rows:
-                rows = int(client.query(f"SELECT count() FROM `{table}`").result_rows[0][0])
+                rows = _payload_row_count(client, table)
                 if rows:
                     occupied.append((table, rows))
         if occupied:
@@ -185,7 +199,7 @@ def _occupancy(collectionname: str, backed_up_datasets: set[str]) -> list[str]:
 
     occupied = []
     for table in list_collection_tables(collectionname):
-        with get_manticore_client() as cnx:
+        with client_for_table(table) as cnx:
             cursor = cnx.cursor()
             cursor.execute(f"SELECT count(*) FROM {table}")
             row = cursor.fetchone()
@@ -226,14 +240,14 @@ def begin_import(params: ImportParams) -> str:
     being restored into, the target is checked for anything a restore would land on top
     of, and the backup's schema version is compared with this deployment's.
 
-    What it then removes is only ever empty: an empty collection database, whose presence
-    would make `RESTORE DATABASE` fail, and empty Manticore tables with the directories
-    `DROP TABLE` leaves behind, which `IMPORT TABLE` refuses to overwrite. The bucket is
-    kept. An empty bucket is exactly what the object phase wants.
+    It then removes empty Manticore tables and their directories. `IMPORT TABLE` refuses
+    a destination that already exists. It provisions an empty database before its timing
+    wrapper writes. The ClickHouse restore activity then removes that database. The bucket
+    remains for the object phase.
     """
-    from database.clickhouse import drop_collection_db, get_global_client
+    from database.clickhouse import get_global_client
     from database.manticore import drop_collection_tables, list_collection_tables
-    from database.s3 import collection_bucket, ensure_bucket
+    from database.s3 import ensure_collection_storage
 
     source = validate_destination(params.source)
     directory = os.path.join(BACKUP_ROOT, source)
@@ -273,7 +287,6 @@ def begin_import(params: ImportParams) -> str:
               "`main.py operations` / the admin page's delete, or do not import."
         )
 
-    drop_collection_db(params.collectionname)
     tables = list_collection_tables(params.collectionname)
     drop_collection_tables(params.collectionname)
     for table in tables:
@@ -281,10 +294,27 @@ def begin_import(params: ImportParams) -> str:
         # destination that already exists, with an error about a directory rather than
         # about a table.
         shutil.rmtree(os.path.join(MANTICORE_RESTORE_ROOT, table), ignore_errors=True)
-    ensure_bucket(collection_bucket(params.collectionname))
+    ensure_collection_storage(params.collectionname)
     log.info("[P_ops] import %s restoring %s from %s",
              params.op_id, params.collectionname, directory)
     return directory
+
+
+@activity.defn
+@with_heartbeat
+def hide_import_collection(params: ImportParams) -> None:
+    """Hide an existing empty collection until its imported vectors are ready."""
+    from database.clickhouse import get_global_client
+
+    with get_global_client() as client:
+        client.command(
+            "INSERT INTO collections (collectionname, fullname, is_public, created_at, "
+            "updated_at, is_deleted) "
+            "SELECT collectionname, fullname, is_public, created_at, "
+            "greatest(updated_at, now()) + INTERVAL 1 SECOND, 1 "
+            "FROM collections FINAL WHERE collectionname = {name:String} AND is_deleted = 0",
+            parameters={"name": params.collectionname},
+        )
 
 
 @activity.defn
@@ -364,7 +394,9 @@ def import_clickhouse(params: ImportParams) -> ExportStoreResult:
     brought up to this deployment's schema by running the same migrations any other
     collection database runs, and one taken at the current version is a no-op.
     """
-    from database.clickhouse import collection_db_name, get_global_client, migrate_collection
+    from database.clickhouse import (
+        collection_db_name, drop_collection_db, get_global_client, migrate_collection,
+    )
 
     manifest = read_manifest(params.directory)
     block = manifest["stores"]["clickhouse"]
@@ -376,6 +408,9 @@ def import_clickhouse(params: ImportParams) -> ExportStoreResult:
     phase.report(0, total, force=True)
     status = ""
     error = ""
+    # `begin_import` must keep this database until its timing wrapper records the
+    # activity result. This activity restores it before its own wrapper writes.
+    drop_collection_db(params.collectionname)
     with get_global_client() as client:
         client.query(f"RESTORE DATABASE `{database}` FROM File('{relative}') "
                      f"SETTINGS id='{params.op_id}', async=1")
@@ -431,12 +466,16 @@ def import_manticore(params: ImportParams) -> ExportStoreResult:
 
     import zstandard
 
-    from database.manticore import get_manticore_client
+    from database.manticore import TEXT, endpoint_for_table, get_manticore_client
 
     manifest = read_manifest(params.directory)
     block = manifest["stores"]["manticore"]
-    artifacts = block.get("tables") or []
-    total = int(block.get("source_bytes") or 0)
+    artifacts = [
+        artifact for artifact in (block.get("tables") or [])
+        if endpoint_for_table(str(artifact.get("table", ""))) == TEXT
+    ]
+    skipped = len((block.get("tables") or [])) - len(artifacts)
+    total = sum(int(artifact.get("source_bytes") or 0) for artifact in artifacts)
 
     phase = _Phase(params.op_id, "manticore")
     phase.report(0, total, force=True)
@@ -486,10 +525,13 @@ def import_manticore(params: ImportParams) -> ExportStoreResult:
         shutil.rmtree(staging_root, ignore_errors=True)
 
     phase.report(total, total, force=True)
+    if skipped:
+        log.info("[P_ops] import %s skipped %d disposable vector artifact(s)",
+                 params.op_id, skipped)
     return phase.finish(ExportStoreResult(
         store="manticore",
         bytes_written=done,
-        detail={"tables": restored},
+        detail={"tables": restored, "skipped_vectors": skipped},
     ))
 
 
@@ -513,26 +555,29 @@ def _restore_configuration(collectionname: str, configuration: dict) -> dict[str
     and the restore is the newer writer, so it is stamped as such rather than left to
     lose to whatever was there.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
     from database.clickhouse import get_global_client
 
     written: dict[str, int] = {}
     versions = {"collections": "updated_at", "collection_group_permissions": "updated_at",
                 "dataset": "date_modified", "dataset_settings": "updated_at"}
-    now = datetime.now(timezone.utc).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     with get_global_client() as client:
-        existing = int(client.query(
-            "SELECT count() FROM collections FINAL WHERE collectionname = {name:String}",
+        existing, latest = client.query(
+            "SELECT count(), max(updated_at) FROM collections FINAL "
+            "WHERE collectionname = {name:String}",
             parameters={"name": collectionname},
-        ).result_rows[0][0])
+        ).result_rows[0]
         for table, version_column in versions.items():
             rows = configuration.get(table) or []
             if not rows:
                 written[table] = 0
                 continue
             if table == "collections" and existing:
-                rows = [{**row, version_column: now} for row in rows]
+                prior = latest.replace(tzinfo=None)
+                version = max(now, prior + timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
+                rows = [{**row, version_column: version} for row in rows]
             block = "\n".join(json.dumps(row, default=str) for row in rows)
             client.raw_insert(table, insert_block=block.encode("utf-8"),
                               fmt="JSONEachRow")
@@ -542,19 +587,70 @@ def _restore_configuration(collectionname: str, configuration: dict) -> dict[str
 
 @activity.defn
 @with_heartbeat
-def finish_import(params: ImportParams) -> str:
-    """Restore the configuration rows, which is what makes the collection usable.
+def publish_imported_collection(params: ImportParams) -> int:
+    """Restore configuration after vector children finish."""
+    from database.operations import merge_detail
 
-    Last, because these rows are what offers the collection to everything else: a restore
-    that stopped before this point left a collection nobody is shown rather than one that
-    is shown and half empty.
-    """
+    manifest = read_manifest(params.directory)
+    written = _restore_configuration(
+        params.collectionname, manifest.get("configuration") or {},
+    )
+    merge_detail(params.op_id, configuration=written)
+    return sum(written.values())
+
+
+@activity.defn
+@with_heartbeat
+def finish_import(params: ImportParams) -> str:
+    """Complete imports scheduled before the workflow child rebuild path."""
     from database.operations import merge_detail
 
     manifest = read_manifest(params.directory)
     written = _restore_configuration(params.collectionname,
                                      manifest.get("configuration") or {})
+    rebuilt = _rebuild_vectors(params.collectionname)
     merge_detail(params.op_id, configuration=written)
-    log.info("[P_ops] import %s restored configuration rows %s", params.op_id, written)
+    log.info("[P_ops] import %s restored configuration rows %s and rebuilt %d vector plan(s)",
+             params.op_id, written, rebuilt)
     return (f"restored {params.collectionname} from {params.source} "
-            f"({sum(written.values())} configuration row(s))")
+            f"({sum(written.values())} configuration row(s), {rebuilt} vector plan(s))")
+
+
+def _rebuild_vectors(collectionname: str) -> int:
+    """Start and wait for vector-only indexing of every finished collection plan."""
+    import asyncio
+
+    from database.clickhouse import get_collection_client
+
+    with get_collection_client(collectionname) as client:
+        plans = client.query(
+            "SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL "
+            "ORDER BY collection_dataset, plan_hash"
+        ).result_rows
+    if not plans:
+        return 0
+
+    async def queue() -> None:
+        import temporalio.common
+        from temporalio.client import Client as TemporalClient
+        from tasks.P6_index_data.params import IndexDatasetPlanParams
+        from tasks.P6_index_data.workflows import IndexDatasetPlan
+        from tasks.visibility import dataset_search_attributes
+
+        temporal = await TemporalClient.connect("temporal:7233")
+        handles = []
+        for collection_dataset, plan_hash in plans:
+            handles.append(await temporal.start_workflow(
+                IndexDatasetPlan.run,
+                IndexDatasetPlanParams(collectionname, collection_dataset, plan_hash,
+                                       vectors_only=True),
+                id=f"restore-vectors-{collection_dataset}-{plan_hash}",
+                task_queue="processing-common-queue",
+                id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+                search_attributes=dataset_search_attributes(collection_dataset),
+            ))
+        await asyncio.gather(*(handle.result() for handle in handles))
+
+    asyncio.run(queue())
+    return len(plans)

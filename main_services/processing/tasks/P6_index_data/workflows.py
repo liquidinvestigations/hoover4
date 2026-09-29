@@ -42,6 +42,15 @@ with workflow.unsafe.imports_passed_through():
 # with max_concurrent_activities=1. See shard_planner.py's module docstring.
 PLANNER_TASK_QUEUE = "processing-index-planner-queue"
 INDEXING_TASK_QUEUE = "processing-indexing-queue"
+# Manticore can restart while a collection is being indexed.  The six waits total
+# 2,110 seconds, which lets an index activity outlast that restart without making a
+# data error retryable.
+MANTICORE_RETRY = RetryPolicy(
+    maximum_attempts=12,
+    initial_interval=timedelta(seconds=10),
+    backoff_coefficient=2,
+    maximum_interval=timedelta(seconds=300),
+)
 # build_email_graph deletes the rows of its collection that are older than its own
 # start, so two runs on one collection can delete each other's rows. This queue is
 # served by exactly one process with one slot for the whole deployment.
@@ -72,7 +81,7 @@ class IndexDatasetPlan:
 
         plan_hashes = await workflow.execute_activity(
             fetch_plan_hashes,
-            FetchPlanHashesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+                FetchPlanHashesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
             start_to_close_timeout=timedelta(minutes=10),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=2),
@@ -85,10 +94,12 @@ class IndexDatasetPlan:
 
         assignments = await workflow.execute_activity(
             plan_shards,
-            PlanShardsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, hashes=plan_hashes),
+            PlanShardsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset,
+                             plan_hash=params.plan_hash, hashes=plan_hashes,
+                             vectors_only=params.vectors_only),
             start_to_close_timeout=timedelta(minutes=10),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
+            retry_policy=MANTICORE_RETRY,
             task_queue=PLANNER_TASK_QUEUE,
         )
 
@@ -109,24 +120,21 @@ class IndexDatasetPlan:
                     hashes=chunk_hashes,
                     ordinal=len(chunks),
                     started=workflow.now(),
-                    pages_future=workflow.execute_activity(
-                        index_text_pages,
-                        shard_params,
-                        start_to_close_timeout=INDEXING_TIMEOUT,
-                        heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                        retry_policy=RetryPolicy(maximum_attempts=2),
-                        task_queue=INDEXING_TASK_QUEUE,
-                    ),
+                    pages_future=None if params.vectors_only else workflow.execute_activity(
+                        index_text_pages, shard_params, start_to_close_timeout=INDEXING_TIMEOUT,
+                        heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=MANTICORE_RETRY,
+                        task_queue=INDEXING_TASK_QUEUE),
                     vectors_future=workflow.execute_activity(
                         index_vectors,
                         shard_params,
                         start_to_close_timeout=INDEXING_TIMEOUT,
                         heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                        retry_policy=RetryPolicy(maximum_attempts=2),
+                        retry_policy=MANTICORE_RETRY,
                         task_queue=INDEXING_TASK_QUEUE,
                     ),
                 ))
-        pages_results = await gather(*[c.pages_future for c in chunks], return_exceptions=True)
+        pages_results = ([] if params.vectors_only else
+                         await gather(*[c.pages_future for c in chunks], return_exceptions=True))
         vectors_results = await gather(*[c.vectors_future for c in chunks], return_exceptions=True)
 
         # A failed writer chunk (retries already exhausted) becomes one
@@ -140,9 +148,11 @@ class IndexDatasetPlan:
         # index_state entries: the union of the hashes each successful writer
         # reports as written. A permanently failed writer chunk contributes nothing.
         indexed_entries: set[tuple[str, str]] = set()
-        for chunk, pages_res, vectors_res in zip(chunks, pages_results, vectors_results):
-            for res, task_id in ((pages_res, "P6_IndexTextPages"),
-                                 (vectors_res, "P6_IndexVectors")):
+        for index, chunk in enumerate(chunks):
+            writer_results = [(vectors_results[index], "P6_IndexVectors")]
+            if not params.vectors_only:
+                writer_results.insert(0, (pages_results[index], "P6_IndexTextPages"))
+            for res, task_id in writer_results:
                 if isinstance(res, Exception):
                     for item_hash in chunk.hashes:
                         failed_results.append(res)
@@ -170,7 +180,7 @@ class IndexDatasetPlan:
         # Record what actually reached a shard before refreshing the ledger:
         # recompute_shard_ledger counts from index_state, so a permanently failed
         # writer chunk never inflates the shard budget.
-        if indexed_entries:
+        if indexed_entries and not params.vectors_only:
             await workflow.execute_activity(
                 record_indexed,
                 RecordIndexedParams(
@@ -185,20 +195,23 @@ class IndexDatasetPlan:
                 task_queue=PLANNER_TASK_QUEUE,
             )
 
-        await workflow.execute_activity(
-            finalize_index_batch,
-            FinalizeIndexBatchParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
-            start_to_close_timeout=timedelta(minutes=10),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=PLANNER_TASK_QUEUE,
-        )
+        if not params.vectors_only:
+            await workflow.execute_activity(
+                finalize_index_batch,
+                FinalizeIndexBatchParams(collectionname=params.collectionname,
+                                         collection_dataset=params.collection_dataset,
+                                         plan_hash=params.plan_hash),
+                start_to_close_timeout=timedelta(minutes=10),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+                task_queue=PLANNER_TASK_QUEUE,
+            )
 
         # Compaction, once per plan and only for the shards it wrote to, never in the
         # per-chunk loop, where it would compete with the writer for I/O on the table
         # being written. The statement itself is asynchronous, so this returns as soon as
         # the merges are queued.
-        if chunks:
+        if chunks and not params.vectors_only:
             await workflow.execute_activity(
                 optimize_shard_tables,
                 OptimizeShardsParams(
@@ -209,7 +222,7 @@ class IndexDatasetPlan:
                 ),
                 start_to_close_timeout=timedelta(minutes=10),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=2),
+                retry_policy=MANTICORE_RETRY,
                 task_queue=INDEXING_TASK_QUEUE,
             )
 
@@ -245,7 +258,7 @@ class RefreshDocumentLocations:
             params,
             start_to_close_timeout=timedelta(minutes=45),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
+            retry_policy=MANTICORE_RETRY,
             task_queue=INDEXING_TASK_QUEUE,
         )
         await workflow.execute_activity(
@@ -253,7 +266,7 @@ class RefreshDocumentLocations:
             vfs_params,
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
+            retry_policy=MANTICORE_RETRY,
             task_queue=INDEXING_TASK_QUEUE,
         )
         await workflow.execute_activity(
@@ -261,7 +274,7 @@ class RefreshDocumentLocations:
             vfs_params,
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
+            retry_policy=MANTICORE_RETRY,
             task_queue=INDEXING_TASK_QUEUE,
         )
         refreshed = result.refreshed_count

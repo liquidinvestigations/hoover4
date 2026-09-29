@@ -25,6 +25,7 @@ with workflow.unsafe.imports_passed_through():
     from .activities import (
         admit_operation, cancel_target_operation, count_dataset_rows_activity,
         record_operation_state,
+        list_rebuild_plan_page, prepare_reindex_collection,
         reindex_collection_activity, sample_dataset_progress,
         tombstone_dataset_row,
     )
@@ -35,16 +36,19 @@ with workflow.unsafe.imports_passed_through():
     )
     from .params import (
         DatasetProgressParams, DatasetRegistryParams, ExportParams, ImportParams,
-        OperationParams, OperationStateParams,
+        OperationParams, OperationStateParams, REBUILD_PLAN_PAGE_SIZE,
+        RebuildPlansParams, ReindexCollectionParams,
     )
     from tasks.P_admin.rerun_params import ReconcileErrorsParams, SelectErrorsParams, SelectionResult
     from tasks.P_admin.collection_backfill import CollectionBackfillParams, FinishedPlanPage
     from .restore import (
-        begin_import, finish_import, import_clickhouse, import_manticore,
-        import_object_store,
+        begin_import, finish_import, hide_import_collection,
+        import_clickhouse, import_manticore, import_object_store,
+        publish_imported_collection,
     )
     from ..heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from ..visibility import dataset_search_attributes
+    from tasks.P6_index_data.params import IndexDatasetPlanParams
 
 #: How long the purge settle loop waits between row counts.
 PROGRESS_INTERVAL_SECONDS = 15
@@ -75,6 +79,57 @@ ADMISSION_POLL = timedelta(seconds=30)
 #: about 11 history events, so 240 waits stay far below the history limit.
 ADMISSION_ATTEMPTS_PER_RUN = 240
 COLLECTION_PLANS_PER_RUN = 500
+
+
+@workflow.defn
+class RebuildCollectionPlans:
+    """Wait for one page of index children before continuing to the next page."""
+
+    @workflow.run
+    async def run(self, params: RebuildPlansParams) -> int:
+        plans = await workflow.execute_activity(
+            list_rebuild_plan_page, params,
+            task_queue="operations-queue",
+            start_to_close_timeout=timedelta(minutes=5),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=ROW_RETRY,
+        )
+        if not plans:
+            return params.completed
+
+        async def run_plan(collection_dataset: str, plan_hash: str):
+            mode = "vectors" if params.vectors_only else "full"
+            return await workflow.execute_child_workflow(
+                "IndexDatasetPlan",
+                IndexDatasetPlanParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=collection_dataset,
+                    plan_hash=plan_hash,
+                    op_id=params.op_id,
+                    vectors_only=params.vectors_only,
+                ),
+                id=f"rebuild-{mode}-{params.op_id}-{collection_dataset}-{plan_hash}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(collection_dataset),
+            )
+
+        results = await asyncio.gather(
+            *(run_plan(dataset, plan_hash) for dataset, plan_hash in plans),
+            return_exceptions=True,
+        )
+        failures = [result for result in results if isinstance(result, BaseException)]
+        if failures:
+            raise RuntimeError(
+                f"{len(failures)} of {len(plans)} index plan children failed: {failures[0]}"
+            )
+        completed = params.completed + len(plans)
+        if len(plans) == REBUILD_PLAN_PAGE_SIZE:
+            dataset, plan_hash = plans[-1]
+            workflow.continue_as_new(RebuildPlansParams(
+                params.op_id, params.collectionname, params.vectors_only,
+                dataset, plan_hash, completed,
+            ))
+        return completed
 
 
 @workflow.defn
@@ -222,6 +277,27 @@ class Operation:
         if params.kind == "import_collection":
             return await self._import_collection(params)
         if params.kind == "reindex_collection":
+            if workflow.patched("operation-rebuild-child"):
+                await workflow.execute_activity(
+                    prepare_reindex_collection,
+                    ReindexCollectionParams(
+                        collectionname=params.collectionname,
+                        vectors_only=bool(params.detail.get("vectors_only", False)),
+                    ),
+                    task_queue="operations-queue",
+                    start_to_close_timeout=timedelta(hours=2),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                )
+                rebuilt = await workflow.execute_child_workflow(
+                    RebuildCollectionPlans.run,
+                    RebuildPlansParams(
+                        params.op_id, params.collectionname,
+                        bool(params.detail.get("vectors_only", False)),
+                    ),
+                    id=f"rebuild-{params.op_id}",
+                    task_queue="operations-queue",
+                )
+                return f"re-indexed {rebuilt} plan(s)"
             queued = await workflow.execute_activity(
                 reindex_collection_activity,
                 params.collectionname,
@@ -557,9 +633,8 @@ class Operation:
         an interrupted restore would offer documents that cannot be opened; this way it
         leaves blobs nothing points at, which is invisible rather than broken.
 
-        The configuration rows come last, in `finish_import`, because they are what
-        offers the collection to the rest of the system: until they are written a
-        half-finished restore is a collection nobody is shown.
+        New runs wait for vector children before `publish_imported_collection` writes
+        configuration. The old `finish_import` activity remains for workflow replay.
 
         Nothing retries, for the same reason the export does not: every phase writes into
         a store, and re-running a phase over a target it has already half filled is the
@@ -568,6 +643,7 @@ class Operation:
         source = str(params.detail.get("source", ""))
         if not source:
             raise ApplicationErrorDetail(params.kind, "source")
+        use_new_rebuild = workflow.patched("operation-rebuild-child")
         restore = ImportParams(op_id=params.op_id,
                                collectionname=params.collectionname,
                                source=source)
@@ -578,6 +654,14 @@ class Operation:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=1),
         )
+        if use_new_rebuild:
+            await workflow.execute_activity(
+                hide_import_collection, restore,
+                task_queue="operations-queue",
+                start_to_close_timeout=timedelta(minutes=2),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
         for step, queue in ((import_object_store, "operations-garage-queue"),
                             (import_clickhouse, "operations-clickhouse-queue"),
                             (import_manticore, "operations-manticore-queue")):
@@ -588,6 +672,22 @@ class Operation:
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=1),
             )
+        if use_new_rebuild:
+            rebuilt = await workflow.execute_child_workflow(
+                RebuildCollectionPlans.run,
+                RebuildPlansParams(params.op_id, params.collectionname, True),
+                id=f"restore-rebuild-{params.op_id}",
+                task_queue="operations-queue",
+            )
+            total = await workflow.execute_activity(
+                publish_imported_collection, args=[restore],
+                task_queue="operations-queue",
+                start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
+            return (f"restored {params.collectionname} from {source} "
+                    f"({total} configuration row(s), {rebuilt} vector plan(s))")
         return await workflow.execute_activity(
             finish_import, restore,
             task_queue="operations-queue",

@@ -165,6 +165,14 @@ pdf_ocr_provider      = tesseract  ; easyocr | tesseract | both | none
 tesseract_cpu_enabled = true
 tesseract_languages   = eng
 ocr_pdf_enabled       = true
+; Required memory limits for the text and vector Manticore containers. Each start
+; replays its binlog inside this limit.
+manticore_mem_limit         = 32G
+manticore_vectors_mem_limit = 32G
+; The ClickHouse server cap follows 80 percent of this container limit.
+clickhouse_mem_limit = 19000M
+; The searchable-PDF service uses one child process for each admitted request.
+ocr_pdf_mem_limit = 8000M
 
 # ---- regex entity scanning ------------------------------------------------------
 # Always running: there is no twin to fall back to and no provider to choose between,
@@ -417,6 +425,8 @@ clickhouse_http_port      = 21900
 clickhouse_native_port    = 21901
 manticore_sql_port        = 21902
 manticore_http_port       = 21903
+manticore_vectors_sql_port  = 21914
+manticore_vectors_http_port = 21915
 garage_s3_port            = 21904   ; S3 API
 garage_admin_port         = 21905   ; admin API, bound to 127.0.0.1 only
 redis_port                = 21906

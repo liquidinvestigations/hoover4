@@ -34,7 +34,7 @@ from tasks.regex_entities import (
     money_bucket_from_value_json,
 )
 from tasks.remote import post_json, scanner_health
-from tasks.text_sources import ner_reads_variant
+from tasks.text_sources import fetch_text_batch, ner_reads_variant, plan_text_batches
 from tasks.P6_index_data.string_term_encodings import get_string_term_ids
 
 from .params import ScanRegexEntitiesParams, ScanRegexEntitiesResult
@@ -77,8 +77,8 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
         # FINAL for the same reason P4 needs it: a re-parse leaves a second
         # ReplacingMergeTree row for the segment until the background merge collapses it,
         # and the anti-join cannot tell the copies apart, so the page is scanned twice.
-        text_content = client.query_arrow("""
-            SELECT t.collection_dataset, t.file_hash, t.extracted_by, t.page_id, t.text
+        text_segments = client.query_arrow("""
+            SELECT t.file_hash, t.extracted_by, t.page_id, t.text_bytes
             FROM text_content AS t FINAL
             LEFT ANTI JOIN regex_scanned AS s
                 ON s.collection_dataset = t.collection_dataset
@@ -94,7 +94,7 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
             "rule_set_version": rule_set_version,
         }).to_pylist()
 
-        if not text_content:
+        if not text_segments:
             log.info(f"{collection_dataset} (plan {plan_hash[:8]}): nothing to scan")
             return ScanRegexEntitiesResult(0, 0, rule_set_version)
 
@@ -115,82 +115,87 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
         }).to_pylist():
             variants_present[row['file_hash']] = set(row['variants'])
 
-    # The same cleaning the indexer applies, so what is scanned is what is searched.
-    cleaned_texts = [clean_text(row['text']) for row in text_content]
-
-    # The same variant filter NER uses. A skipped segment still gets a watermark: without
-    # one it is reconsidered on every run for ever.
-    scan_indices = [
-        i for i, row in enumerate(text_content)
-        if ner_reads_variant(row['extracted_by'], variants_present.get(row['file_hash'], ()))
-    ]
-    skipped = len(text_content) - len(scan_indices)
-    if skipped:
-        log.info(
-            f"{collection_dataset} (plan {plan_hash[:8]}): {skipped}/{len(text_content)} "
-            f"text segments are a redundant variant, not scanning them"
-        )
-
-    scan_texts = [cleaned_texts[i] for i in scan_indices]
-    scanned: list[dict] = []
-    for batch in batch_texts_by_chars(scan_texts):
-        # Batch boundary. Nothing is written until the whole activity finishes, so a
-        # drained worker gives the batch straight back instead of holding a slot until
-        # its heartbeat deadline expires and losing the same work anyway.
-        stop_if_worker_is_stopping(f"scanned {len(scanned)}/{len(scan_texts)} texts")
-        result = post_json(
-            [("regex-scanner", scanner_url("/scan_batch"))],
-            {"texts": batch},
-            service="regex_scan",
-        )
-        served_version = result.data.get("rule_set_version")
-        if served_version != rule_set_version:
-            raise RuntimeError(
-                f"the scanner reported rule set {rule_set_version} on /health and "
-                f"{served_version} on /scan_batch. The image changed mid-activity, and "
-                f"writing these rows would file them under the wrong version"
-            )
-        scanned.extend(result.data["results"])
-        heartbeat.beat(f"scanned {len(scanned)}/{len(scan_texts)} texts")
-
-    result_by_index = dict(zip(scan_indices, scanned))
-
     rows: list[dict] = []
     term_values: dict[str, set[str]] = {}
-    for i, text_row in enumerate(text_content):
-        for entity_type, values in (result_by_index.get(i) or {}).get("types", {}).items():
-            row = {
+    watermark_rows: list[dict] = []
+    scanned_count = 0
+    skipped_count = 0
+    segment_batches = plan_text_batches([
+        ((row['file_hash'], row['extracted_by'], row['page_id']), int(row['text_bytes']))
+        for row in text_segments
+    ])
+    for segment_batch in segment_batches:
+        with get_collection_client(params.collectionname) as client:
+            text_content = fetch_text_batch(client, collection_dataset, segment_batch)
+        cleaned_texts = [clean_text(row['text']) for row in text_content]
+        scan_indices = [
+            i for i, row in enumerate(text_content)
+            if ner_reads_variant(row['extracted_by'], variants_present.get(row['file_hash'], ()))
+        ]
+        skipped_count += len(text_content) - len(scan_indices)
+        scan_texts = [cleaned_texts[i] for i in scan_indices]
+        scanned: list[dict] = []
+        for batch in batch_texts_by_chars(scan_texts):
+            stop_if_worker_is_stopping(f"scanned {scanned_count + len(scanned)}/{len(text_segments)} texts")
+            result = post_json(
+                [("regex-scanner", scanner_url("/scan_batch"))],
+                {"texts": batch},
+                service="regex_scan",
+            )
+            served_version = result.data.get("rule_set_version")
+            if served_version != rule_set_version:
+                raise RuntimeError(
+                    f"the scanner reported rule set {rule_set_version} on /health and "
+                    f"{served_version} on /scan_batch. The image changed mid-activity, and "
+                    f"writing these rows would file them under the wrong version"
+                )
+            scanned.extend(result.data["results"])
+            heartbeat.beat(f"scanned {scanned_count + len(scanned)}/{len(text_segments)} texts")
+        scanned_count += len(scan_texts)
+        result_by_index = dict(zip(scan_indices, scanned))
+        for i, text_row in enumerate(text_content):
+            for entity_type, values in (result_by_index.get(i) or {}).get("types", {}).items():
+                row = {
+                    "collection_dataset": text_row['collection_dataset'],
+                    "file_hash": text_row['file_hash'],
+                    "extracted_by": text_row['extracted_by'],
+                    "page_id": text_row['page_id'],
+                    "rule_set_version": rule_set_version,
+                    "entity_type": entity_type,
+                    "entity_values": [v["value"] for v in values],
+                    "entity_rule_ids": [v["rule_id"] for v in values],
+                    "entity_value_json": [_dumps(v["value_json"]) for v in values],
+                    "entity_counts": [int(v["count"]) for v in values],
+                    "entity_texts": [v.get("text", "") for v in values],
+                }
+                assert_parallel_value_arrays(row)
+                rows.append(row)
+                facet = FACET_BY_ENTITY_TYPE.get(entity_type)
+                if facet is None:
+                    continue
+                if entity_type == "money":
+                    keys = {
+                        bucket for bucket in (
+                            money_bucket_from_value_json(payload)
+                            for payload in row["entity_value_json"]
+                        ) if bucket
+                    }
+                else:
+                    keys = set(row["entity_values"])
+                term_values.setdefault(facet.term_field, set()).update(keys)
+            watermark_rows.extend({
                 "collection_dataset": text_row['collection_dataset'],
                 "file_hash": text_row['file_hash'],
                 "extracted_by": text_row['extracted_by'],
                 "page_id": text_row['page_id'],
-                "rule_set_version": rule_set_version,
-                "entity_type": entity_type,
-                "entity_values": [v["value"] for v in values],
-                "entity_rule_ids": [v["rule_id"] for v in values],
-                "entity_value_json": [_dumps(v["value_json"]) for v in values],
-                "entity_counts": [int(v["count"]) for v in values],
-                "entity_texts": [v.get("text", "") for v in values],
-            }
-            assert_parallel_value_arrays(row)
-            rows.append(row)
+                "text_bytes": len(cleaned_texts[i].encode('utf-8')),
+            } for i, text_row in enumerate(text_content))
 
-            facet = FACET_BY_ENTITY_TYPE.get(entity_type)
-            if facet is None:
-                continue
-            # Money's facet key is its magnitude bucket, not its amount: 2 419 distinct
-            # amounts across twenty-five documents is not a facet, and ten buckets per
-            # currency is. The raw amounts stay in the row above.
-            if entity_type == "money":
-                keys = {
-                    bucket for bucket in (
-                        money_bucket_from_value_json(payload)
-                        for payload in row["entity_value_json"]
-                    ) if bucket
-                }
-            else:
-                keys = set(row["entity_values"])
-            term_values.setdefault(facet.term_field, set()).update(keys)
+    if skipped_count:
+        log.info(
+            f"{collection_dataset} (plan {plan_hash[:8]}): {skipped_count}/{len(text_segments)} "
+            f"text segments are a redundant variant, not scanning them"
+        )
 
     # Populate the term dictionary here. The indexing stage calls the same function with
     # the same values and gets cache hits; the ids are content-derived, so there is no
@@ -217,21 +222,21 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
         # ClickHouse DateTime columns are naive UTC.
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         insert_arrow_idempotent(client, "regex_scanned", pa.table({
-            "collection_dataset": pa.array([r['collection_dataset'] for r in text_content], type=pa.string()),
-            "file_hash": pa.array([r['file_hash'] for r in text_content], type=pa.string()),
-            "extracted_by": pa.array([r['extracted_by'] for r in text_content], type=pa.string()),
-            "page_id": pa.array([r['page_id'] for r in text_content], type=pa.uint32()),
-            "rule_set_version": pa.array([rule_set_version] * len(text_content), type=pa.uint32()),
-            "text_bytes": pa.array([len(t.encode('utf-8')) for t in cleaned_texts], type=pa.uint64()),
-            "scanned_at": pa.array([now] * len(text_content), type=pa.timestamp("s")),
+            "collection_dataset": pa.array([r['collection_dataset'] for r in watermark_rows], type=pa.string()),
+            "file_hash": pa.array([r['file_hash'] for r in watermark_rows], type=pa.string()),
+            "extracted_by": pa.array([r['extracted_by'] for r in watermark_rows], type=pa.string()),
+            "page_id": pa.array([r['page_id'] for r in watermark_rows], type=pa.uint32()),
+            "rule_set_version": pa.array([rule_set_version] * len(watermark_rows), type=pa.uint32()),
+            "text_bytes": pa.array([r['text_bytes'] for r in watermark_rows], type=pa.uint64()),
+            "scanned_at": pa.array([now] * len(watermark_rows), type=pa.timestamp("s")),
         }))
 
     log.info(
         f"{collection_dataset} (plan {plan_hash[:8]}): scanned {len(scan_texts)} of "
-        f"{len(text_content)} text segments under rule set {rule_set_version}, "
+        f"{len(text_segments)} text segments under rule set {rule_set_version}, "
         f"writing {len(rows)} entity groups"
     )
-    return ScanRegexEntitiesResult(len(text_content), len(rows), rule_set_version)
+    return ScanRegexEntitiesResult(len(text_segments), len(rows), rule_set_version)
 
 
 def batch_texts_by_chars(texts, max_texts=REGEX_BATCH_TEXTS, max_chars=REGEX_BATCH_CHARS):

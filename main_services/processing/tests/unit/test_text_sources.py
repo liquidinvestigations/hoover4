@@ -16,6 +16,19 @@ from tasks.text_sources import (
     parse_ocr_extracted_by,
     split_languages,
 )
+from tasks.text_sources import plan_text_batches
+
+
+def test_plan_text_batches_keeps_order_and_large_segments_alone():
+    keys = [(('a', 'x', 0), 4), (('b', 'x', 0), 4), (('c', 'x', 0), 4),
+            (('d', 'x', 0), 30), (('e', 'x', 0), 1)]
+    assert plan_text_batches(keys, max_bytes=10) == [
+        [('a', 'x', 0), ('b', 'x', 0)], [('c', 'x', 0)], [('d', 'x', 0)],
+        [('e', 'x', 0)],
+    ]
+    assert plan_text_batches([(('large', 'x', 0), 100)], max_bytes=10) == [
+        [('large', 'x', 0)]]
+    assert plan_text_batches([]) == []
 
 
 def test_label_shape():

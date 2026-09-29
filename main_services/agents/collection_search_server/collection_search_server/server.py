@@ -819,8 +819,10 @@ def _search_one(
     if vector_model:
         try:
             query_vector = embeddings_client.embed_query(query, vector_model)
-            vector_branch_ran = True
             vector_list = vectors.search(query_vector, targets)
+            vector_branch_ran = True
+        except vectors.VectorRankingUnavailable as exc:
+            notes.append(f"vector search unavailable: {exc}")
         except embeddings_client.EmbeddingUnavailable as exc:
             notes.append(f"vector search unavailable: {exc}")
         except Exception as exc:  # noqa: BLE001 - a search must still answer

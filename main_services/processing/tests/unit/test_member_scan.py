@@ -78,6 +78,36 @@ def test_gone_folder_fails_with_container_folder_missing(tmp_path, scan_calls):
     assert scan_calls == []
 
 
+@pytest.mark.parametrize(("count", "expected"), [
+    (3, {"status": "scanned", "recovered": "folder removed by an earlier attempt"}),
+    (0, None),
+])
+def test_gone_folder_recovers_only_when_members_are_stored(tmp_path, scan_calls, monkeypatch,
+                                                           count, expected):
+    class Client:
+        def query(self, _sql, parameters):
+            assert parameters == {"cd": "c_d", "ch": "h1"}
+            return type("Result", (), {"result_rows": [(count,)]})()
+
+    class Connection:
+        def __enter__(self):
+            return Client()
+
+        def __exit__(self, *_args):
+            return False
+
+    import database.clickhouse
+    monkeypatch.setattr(database.clickhouse, "get_collection_client", lambda _collection: Connection())
+
+    batch = member_scan.scan_container_folders(_params(_folder(tmp_path / "email_h1")))
+
+    if expected is None:
+        assert batch.results[0].error_type == "ContainerFolderMissing"
+    else:
+        assert batch.results[0].value == expected
+    assert scan_calls == []
+
+
 def test_failed_scan_leaves_the_folder(tmp_path, monkeypatch):
     out_dir = tmp_path / "pdf_h1"
     out_dir.mkdir()

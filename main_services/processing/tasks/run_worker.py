@@ -259,6 +259,7 @@ async def run_common_worker():
         cleanup_plan_dir,
         mark_plan_finished,
         ensure_temp_dir_exists,
+        record_processing_error_groups,
         record_processing_errors,
     )
     from .P2_execute_plan.workflows import (
@@ -394,6 +395,7 @@ async def run_common_worker():
             cleanup_plan_dir,
             mark_plan_finished,
             ensure_temp_dir_exists,
+            record_processing_error_groups,
             record_processing_errors,
             resolve_document_dates,
 
@@ -841,17 +843,19 @@ async def run_operations_worker():
   """
   from .P_ops.activities import (
       admit_operation, cancel_target_operation, count_dataset_rows_activity, record_operation_state,
-      reindex_collection_activity, sample_dataset_progress, supervise_operations, tombstone_dataset_row,
+      list_rebuild_plan_page, prepare_reindex_collection, reindex_collection_activity,
+      sample_dataset_progress, supervise_operations, tombstone_dataset_row,
   )
   from .P_ops.backup import (
       begin_export, export_clickhouse, export_manticore, export_object_store,
       finish_export,
   )
   from .P_ops.restore import (
-      begin_import, finish_import, import_clickhouse, import_manticore,
-      import_object_store,
+      begin_import, finish_import, hide_import_collection,
+      import_clickhouse, import_manticore,
+      import_object_store, publish_imported_collection,
   )
-  from .P_ops.workflows import CancelOperation, Operation
+  from .P_ops.workflows import CancelOperation, Operation, RebuildCollectionPlans
   from .P_agent.supervise import supervise_agent_runs
   from .visibility import ensure_search_attributes
   log.info("Starting Operations worker...")
@@ -869,11 +873,15 @@ async def run_operations_worker():
       task_queue="operations-queue",
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
-      workflows=[Operation, CancelOperation],
+      workflows=[Operation, CancelOperation, RebuildCollectionPlans],
       activities=[cancel_target_operation, record_operation_state, sample_dataset_progress,
-                  supervise_operations, reindex_collection_activity, count_dataset_rows_activity,
+                  supervise_operations, reindex_collection_activity,
+                  prepare_reindex_collection, list_rebuild_plan_page,
+                  count_dataset_rows_activity,
                   tombstone_dataset_row, begin_export, finish_export,
-                  begin_import, finish_import, capture_operation_failure,
+                  begin_import, finish_import, hide_import_collection,
+                  publish_imported_collection,
+                  capture_operation_failure,
                   supervise_agent_runs],
       activity_executor=executor,
       max_concurrent_activities=orchestration,

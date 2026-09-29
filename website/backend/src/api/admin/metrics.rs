@@ -259,12 +259,17 @@ const MANTICORE_STATUS_PARALLELISM: usize = 8;
 /// `/admin/metrics`. It reads `SHOW STATUS`, `SHOW TABLES`, then `SHOW TABLE <t> STATUS`
 /// for each table. A table whose status call fails counts as unread and the rest still
 /// show. A failure of the first two calls fails the whole call.
-pub async fn admin_get_manticore_load(user: &CurrentUser) -> anyhow::Result<ManticoreLoad> {
+pub async fn admin_get_manticore_load(user: &CurrentUser) -> anyhow::Result<Vec<ManticoreDaemonLoad>> {
     use futures::StreamExt;
 
     guard::require_admin(user)?;
-    let status = manticore_raw_sql("SHOW STATUS").await?;
-    let tables = manticore_raw_sql("SHOW TABLES").await?;
+    let text = std::env::var("MANTICORE_URL").unwrap_or_else(|_| "http://manticore:9308".into());
+    let vectors = std::env::var("MANTICORE_VECTORS_URL")
+        .unwrap_or_else(|_| "http://manticore-vectors:9308".into());
+    let mut loads = Vec::new();
+    for (daemon, base) in [("manticore", text), ("manticore-vectors", vectors)] {
+        let status = manticore_raw_sql(&base, "SHOW STATUS").await?;
+        let tables = manticore_raw_sql(&base, "SHOW TABLES").await?;
     let names: Vec<String> = tables
         .iter()
         .filter_map(|row| row.get("Table").and_then(serde_json::Value::as_str))
@@ -272,21 +277,29 @@ pub async fn admin_get_manticore_load(user: &CurrentUser) -> anyhow::Result<Mant
         .collect();
     let per_table: Vec<(String, anyhow::Result<Vec<ManticoreRawRow>>)> =
         futures::stream::iter(names)
-            .map(|name| async move {
-                // The name comes from SHOW TABLES and is interpolated into a statement,
-                // so any name outside the table naming rule is refused, never sent.
-                if !is_plain_table_name(&name) {
-                    let refused = anyhow::anyhow!("table name {name:?} is not a plain name");
-                    return (name, Err(refused));
+            .map(|name| {
+                let base = base.clone();
+                async move {
+                    // The name comes from SHOW TABLES and is interpolated into a statement,
+                    // so any name outside the table naming rule is refused, never sent.
+                    if !is_plain_table_name(&name) {
+                        let refused = anyhow::anyhow!("table name {name:?} is not a plain name");
+                        return (name, Err(refused));
+                    }
+                    let rows = manticore_raw_sql(&base, &format!("SHOW TABLE {name} STATUS")).await;
+                    (name, rows)
                 }
-                let rows = manticore_raw_sql(&format!("SHOW TABLE {name} STATUS")).await;
-                (name, rows)
             })
             .buffer_unordered(MANTICORE_STATUS_PARALLELISM)
             .collect()
             .await;
-    let read_at = format_ts(time::OffsetDateTime::now_utc().unix_timestamp());
-    Ok(manticore_load_from_rows(&status, per_table, read_at))
+        let read_at = format_ts(time::OffsetDateTime::now_utc().unix_timestamp());
+        loads.push(ManticoreDaemonLoad {
+            daemon: daemon.to_string(),
+            load: manticore_load_from_rows(&status, per_table, read_at),
+        });
+    }
+    Ok(loads)
 }
 
 fn is_plain_table_name(name: &str) -> bool {

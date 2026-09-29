@@ -108,6 +108,30 @@ fn accepts_a_message_id_behind_its_header_name() {
     }
 }
 
+#[test]
+fn message_id_header_check_handles_unicode_prefixes() {
+    let scanner = support::scanner();
+    for text in ["ab\u{a0}essage-ID: <x@y>", "ab\u{2011}ssage-ID: <x@y>"] {
+        let entities = scanner.scan(text, 0);
+        assert!(
+            entities
+                .iter()
+                .all(|entity| entity.entity_type != EntityType::MessageId),
+            "{text:?} produced {entities:?}"
+        );
+    }
+
+    let entities = scanner.scan("Message-ID: <x@y>", 0);
+    assert_eq!(
+        entities
+            .iter()
+            .filter(|entity| entity.entity_type == EntityType::MessageId)
+            .count(),
+        1,
+        "{entities:?}"
+    );
+}
+
 /// An address in a `From` line has exactly the shape of a message id, and reading it as one both
 /// invents an entity and hides the address behind it.
 #[test]

@@ -2,6 +2,10 @@
 
 This stage indexes parsed text and metadata into Manticore to enable search and entity retrieval. It is P6, not P4 or P5: entity extraction (P4) and chunk embedding (P5) both run before it.
 
+Text tables use `manticore`. Vector tables use `manticore-vectors` with `1bit` quantization.
+The vector writer refuses a batch above its memory budget. The text writer remains independent.
+`main.py reindex-collection <collection> --vectors-only` rebuilds vector tables from ClickHouse.
+
 An operation-owned writer records document outcomes only for hashes it returns as committed.
 Text and vector writers keep separate outcomes for each shard chunk.
 
@@ -38,7 +42,7 @@ Rows are inserted grouped by `(collection_dataset, file_hash, page_id)`. The col
 
 Every writer here sends its rows with `database.manticore.manticore_execute`, never through a MySQL cursor: the driver's cursor mangles a statement whose data contains the word `delimiter` followed by whitespace and a quote, which is ordinary MediaWiki text. See [`../../database/Readme.md`](../../database/Readme.md). One page like that fails the whole activity, and the workflow then records an error for every document in the batch, so a single file can present as dozens of unindexable ones.
 
-Indexing batches items in fixed chunk sizes (`INDEX_ROW_CHUNK_SIZE = 512`) to limit transaction sizes. Entity MVAs (`ner_per/org/loc/misc`) are built from `entity_hit` and are per SEGMENT, not per document; if a segment has no `nlp_processed` watermark the stage logs a WARNING and indexes it with empty entity MVAs. A missing entity list must not block search. String term IDs are derived from deterministic hashes and stored in lookup tables for reuse.
+The page writer reads and writes one text batch at a time. It keeps no cleaned page text from a prior batch. It places the filename row before the first page of each document and writes filename-only documents last. Each write uses chunks of at most `INDEX_ROW_CHUNK_SIZE = 512` rows. Entity MVAs (`ner_per/org/loc/misc`) come from `entity_hit` per segment. If a segment has no `nlp_processed` watermark, the stage logs a WARNING and indexes it with empty entity MVAs. A missing entity list does not block search. Deterministic hashes give string term IDs for reuse.
 
 ## The regex entity columns
 

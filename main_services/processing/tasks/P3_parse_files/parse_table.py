@@ -29,10 +29,10 @@ gets `status = 'failed'`, a `processing_errors` row explains why, and the activi
 Where the 2x2 rule is applied
 ------------------------------
 Delimited text has to produce at least `MIN_DELIMITED_ROWS` rows and
-`MIN_DELIMITED_COLUMNS` columns in one sheet before any row is written -- below that it
-is a text file and nothing here happened. The activity still returns normally, wrapped
-in `SkippedOutcome` so `processing_task_runs.outcome` reads `skipped`, never `error`,
-and `table_not_a_table` names the reason in the worker log rather than in
+`MIN_DELIMITED_COLUMNS` columns in one sheet before it is a table. The activity removes
+its temporary cells and manifest when the threshold fails. It then returns normally,
+wrapped in `SkippedOutcome` so `processing_task_runs.outcome` reads `skipped`, never
+`error`, and `table_not_a_table` names the reason in the worker log rather than in
 `processing_errors`. A binary spreadsheet is a table on the strength of its format and
 only has to produce `MIN_BINARY_CELLS` cells. See `table_formats` for why the asymmetry
 is the point.
@@ -124,8 +124,7 @@ class _ColumnStats:
     distinct: set = None  # type: ignore[assignment]
     distinct_overflow: bool = False
     samples: list = None  # type: ignore[assignment]
-    min_sort: Any = None
-    max_sort: Any = None
+    bounds: dict = None  # type: ignore[assignment]
     min_text: str = ""
     max_text: str = ""
 
@@ -133,6 +132,7 @@ class _ColumnStats:
         self.kinds = Counter()
         self.distinct = set()
         self.samples = []
+        self.bounds = {}
 
 
 @dataclass
@@ -293,10 +293,15 @@ class _Collector:
             if text > stats.max_text:
                 stats.max_text = text
         else:
-            if stats.min_sort is None or key < stats.min_sort[0]:
-                stats.min_sort = (key, text)
-            if stats.max_sort is None or key > stats.max_sort[0]:
-                stats.max_sort = (key, text)
+            family = "number" if cell.float_value is not None else "time"
+            bounds = stats.bounds.get(family)
+            if bounds is None:
+                stats.bounds[family] = [key, text, key, text]
+            else:
+                if key < bounds[0]:
+                    bounds[0:2] = [key, text]
+                if key > bounds[2]:
+                    bounds[2:4] = [key, text]
 
     def _flush(self, client) -> None:
         if not self.batch:
@@ -377,8 +382,10 @@ def _column_rows(params: ParseTableParams, collector: _Collector):
             ordered = sorted(stats.kinds.items(), key=lambda item: (-item[1], item[0]))
             column_type = _column_type(stats.kinds)
             if column_type in NUMERIC_KINDS or column_type in TEMPORAL_KINDS:
-                low = stats.min_sort[1] if stats.min_sort else ""
-                high = stats.max_sort[1] if stats.max_sort else ""
+                family = "number" if column_type in NUMERIC_KINDS else "time"
+                bounds = stats.bounds.get(family)
+                low = bounds[1] if bounds else ""
+                high = bounds[3] if bounds else ""
             else:
                 low, high = stats.min_text, stats.max_text
             sheet_ids.append(sheet_id)
@@ -595,8 +602,12 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
         run_time_ms = max(int((time.time() - started) * 1000), 0)
 
         if not collector.meets_threshold():
-            # No manifest row means no evidence, which means no `table` canonical type,
-            # which means no glyph and no Table source. One rule, five consequences.
+            # The buffered writes can contain a partial delimited file. It is text, so
+            # release its cells before removing the temporary manifest.
+            client.command(
+                "DELETE FROM table_cells WHERE file_hash = {h:String}",
+                parameters={"h": params.file_hash},
+            )
             client.command(
                 "DELETE FROM table_documents WHERE collection_dataset = {cd:String} "
                 "AND hash = {h:String}",

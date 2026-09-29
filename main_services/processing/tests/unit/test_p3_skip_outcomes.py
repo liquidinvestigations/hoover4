@@ -32,6 +32,14 @@ class _NoRowsClient(_Client):
         return SimpleNamespace(result_rows=[])
 
 
+class _CommandClient(_NoRowsClient):
+    def __init__(self):
+        self.commands = []
+
+    def command(self, query, parameters=None):
+        self.commands.append((query, parameters))
+
+
 def _ocr_params(file_path: str, op_id: str = "operation-1"):
     return parse_ocr.RunOcrParams(
         collectionname="collection",
@@ -143,6 +151,40 @@ def test_table_without_reader_is_skipped(monkeypatch):
     assert isinstance(result, SkippedOutcome)
     assert result.value == {"status": "skipped", "reason": "no reader for this file"}
     assert calls == []
+
+
+def test_non_table_releases_temporary_cells(monkeypatch):
+    from tasks.P3_parse_files import table_readers
+    from tasks.P3_parse_files.table_formats import KIND_TEXT, READER_CSV
+
+    client = _CommandClient()
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
+    monkeypatch.setattr(clickhouse, "insert_arrow_idempotent", lambda *_args: None)
+    monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args: READER_CSV)
+    monkeypatch.setattr(parse_table, "table_format_for", lambda *_args: "csv")
+    monkeypatch.setattr(
+        table_readers,
+        "read_cells",
+        lambda *_args, **_kwargs: iter([(0, "", table_readers.RawCell(1, 1, KIND_TEXT, "word"))]),
+    )
+    params = parse_table.ParseTableParams(
+        collectionname="collection",
+        collection_dataset="dataset",
+        file_hash="hash",
+        file_path="file.csv",
+        timeout_seconds=30,
+        op_id="operation-5",
+    )
+
+    result = parse_table.parse_table_and_store(params)
+
+    assert isinstance(result, SkippedOutcome)
+    assert [query.split()[2] for query, _parameters in client.commands] == [
+        "table_cells",
+        "table_documents",
+    ]
+    assert client.commands[0][1] == {"h": "hash"}
+    assert client.commands[1][1] == {"cd": "dataset", "h": "hash"}
 
 
 def test_table_reader_failure_records_op_id(monkeypatch):

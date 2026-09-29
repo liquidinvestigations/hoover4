@@ -312,7 +312,7 @@ def purge_dropped_ocr_variants(params: PurgeVariantsParams) -> Dict[str, int]:
     separate activities.
     """
     from database.clickhouse import get_collection_client
-    from database.manticore import get_manticore_client, list_shard_tables
+    from database.manticore import client_for_table, list_shard_tables
 
     if not params.variants:
         return {"clickhouse_tables": 0, "manticore_tables": 0, "pdf_rows": 0}
@@ -366,17 +366,17 @@ def purge_dropped_ocr_variants(params: PurgeVariantsParams) -> Dict[str, int]:
         # writers only REPLACE. A reindex therefore never removes a dropped variant's
         # rows. Deleting them here is the only thing that does.
         placeholders = ", ".join(["%s"] * len(params.variants))
-        with get_manticore_client() as cnx:
-            cursor = cnx.cursor()
-            for table in tables:
+        for table in tables:
+            with client_for_table(table) as cnx:
+                cursor = cnx.cursor()
                 heartbeat.beat(f"purge {table}")
                 cursor.execute(
                     f"DELETE FROM {table} WHERE collection_dataset = %s "
                     f"AND extracted_by IN ({placeholders})",
                     (params.collection_dataset, *params.variants),
                 )
+                cnx.commit()
                 manticore_tables += 1
-            cnx.commit()
 
     log.info("[P_admin] %s: purged %s from %d ClickHouse and %d Manticore tables",
              params.collection_dataset, params.variants, purged_tables, manticore_tables)

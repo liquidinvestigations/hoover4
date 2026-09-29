@@ -26,7 +26,7 @@ deploy = _load_deploy()
 
 
 def _render(fixture_name):
-    cfg = deploy.Config(FIXTURES / fixture_name)
+    cfg = _config(fixture_name)
     writes = []
 
     def record_write(path, content):
@@ -112,7 +112,30 @@ def test_render_matches_fixture(fixture_name, expected):
 
 
 def _config(fixture_name):
-    return deploy.Config(FIXTURES / fixture_name)
+    cfg = deploy.Config(FIXTURES / fixture_name)
+    cfg.values["main_services"].update({
+        "manticore_mem_limit": "32G",
+        "manticore_vectors_mem_limit": "32G",
+    })
+    return cfg
+
+
+def test_manticore_memory_limits_are_required_and_rendered():
+    cfg = _config("settings-defaults.ini")
+    cfg.values["main_services"].pop("manticore_mem_limit")
+    with pytest.raises(deploy.DeployError, match="manticore_mem_limit.*32G"):
+        deploy.render_main_env(cfg)
+
+    cfg = _config("settings-defaults.ini")
+    cfg.values["main_services"]["manticore_vectors_mem_limit"] = ""
+    with pytest.raises(deploy.DeployError, match="manticore_vectors_mem_limit.*32G"):
+        deploy.render_main_env(cfg)
+
+    cfg = _config("settings-defaults.ini")
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        env = deploy.render_main_env(cfg)
+    assert env["MANTICORE_MEM_LIMIT"] == "32G"
+    assert env["MANTICORE_VECTORS_MEM_LIMIT_BYTES"] == "34359738368"
 
 
 def test_gpu_ner_requires_ai_tier():

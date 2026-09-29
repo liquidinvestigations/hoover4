@@ -18,6 +18,13 @@ If `docker ps` needs root on this host, run the script with `sudo`.
 
 Values of environment variables and ini keys whose names contain KEY, SECRET, PASSWORD or
 TOKEN are replaced with `<redacted>` in the copies. `--no-redact` keeps them.
+
+The report opens with a verdict, in `summary/verdict.txt` and at the top of `README.txt`.
+Each check there says PASS, FAIL or UNKNOWN, and names the file that holds its evidence.
+Most checks count only what happened after the deployment time. That time is the start of
+`hoover4-worker`, or the value of `--deployed-at`.
+
+The script works on Python 3.9 and later.
 """
 
 import argparse
@@ -46,7 +53,8 @@ PROJECTS = {"hoover4", "ai_services", "hoover4-devtools"}
 # Container names that the main compose file fixes with `container_name`. A container
 # with one of these names is collected even if its project label is missing.
 KNOWN_NAMES = {
-    "zookeeper", "manticore", "clickhouse", "temporal-cassandra", "temporal-elasticsearch",
+    "zookeeper", "manticore", "manticore-vectors", "clickhouse", "temporal-cassandra",
+    "temporal-elasticsearch",
     "temporal", "temporal-ui", "garage", "garage-init", "redis",
 }
 
@@ -63,18 +71,81 @@ TEMPORAL_ADDR = "temporal:7233"
 SECRET_NAME = re.compile(r"(KEY|SECRET|PASSWORD|PASSWD|TOKEN|CREDENTIAL)", re.I)
 
 # Log lines that point at a known failure. Each one is counted in every captured log.
+# `java.lang.OutOfMemoryError` and "messages were dropped" are the exact texts. The bare words
+# `OutOfMemory` and `Dropped` also match the JVM flag `HeapDumpOnOutOfMemoryError` and the
+# Cassandra table `dropped_columns`, which every start logs.
 SIGNATURES = [
     "mbind", "Operation not permitted", "shard status unknown", "GRPC Message too large",
     "GrpcMessageTooLarge", "message too large", "ResourceExhausted", "DeadlineExceeded",
     "context deadline exceeded", "Unavailable", "ShardOwnershipLost", "shard ownership lost",
     "Persistent store operation failure", "Operation timed out", "WriteTimeout",
-    "ReadTimeout", "NoHostAvailable", "OutOfMemory", "OOM", "Killed", "Traceback",
+    "ReadTimeout", "NoHostAvailable", "java.lang.OutOfMemoryError", "Killed", "Traceback",
     "Exception", "ERROR", "WARN", "heartbeat", "Heartbeat timeout", "timed out",
     "Connection refused", "No space left", "Too many open files", "GC pause",
-    "GCInspector", "Dropped", "DROPPED", "blocked", "history size exceeds",
+    "GCInspector", "messages were dropped", "blocked", "history size exceeds",
     "history count exceeds", "Workflow task failed", "Failing workflow task",
     "workflow task timed out", "non-determinism", "Nondeterminism",
+    "Segmentation fault", "core dumped", "corrupted", "panicked", "memory limit exceeded",
+    "MEMORY_LIMIT_EXCEEDED", "Potential deadlock", "CRC mismatch", "replay error",
+    "starting daemon", "exited with code -9", "ContainerFolderMissing",
+    "operation_failures", "circuit opened", "queue is full",
 ]
+
+# Signatures that the verdict counts after the deployment time, per log. A non-zero count
+# fails the check named beside it.
+VERDICT_LOG_SIGNATURES = [
+    ("ocr-pdf native crashes", "hoover4-ocr-pdf.log",
+     ("Segmentation fault", "core dumped", "corrupted", "Aborted")),
+    ("scanner panics", "hoover4-regex-entity-scanner.log", ("panicked",)),
+    ("failure capture writes", "hoover4-worker.log",
+     ("operation_failures ClickHouse is unreachable", "operation_failures insert of",
+      "parent_index")),
+    ("workflow deadlocks", "hoover4-worker.log", ("Potential deadlock",)),
+    ("worker OOM exits", "hoover4-worker.log", ("exited with code -9",)),
+    ("ClickHouse memory errors seen by the worker", "hoover4-worker.log",
+     ("memory limit exceeded", "Out of memory: allocation")),
+    ("Manticore refused by the worker", "hoover4-worker.log",
+     ("Can't connect to MySQL server on 'manticore",)),
+    ("Manticore refused by the website", "hoover4-website.log",
+     ("http://manticore:9308/sql): client error (Connect)",)),
+]
+
+# Code markers of the fixes that the production debug plan designs. A marker is a string
+# that the fixed file contains. The verdict reports each one as found or not found, so a
+# person can see which fixes the deployed checkout carries. A marker is a text search and
+# proves nothing about behaviour.
+FIX_MARKERS = [
+    ("manticore limit from the ini", "deploy.py", "manticore_mem_limit"),
+    ("clickhouse limit from the ini", "deploy.py", "clickhouse_mem_limit"),
+    ("ocr-pdf limit from the ini", "deploy.py", "ocr_pdf_mem_limit"),
+    ("manticore flush period", "main_services/ops/docker/docker-compose.yaml",
+     "searchd_rt_flush_period"),
+    ("ocr-pdf render process", "main_services/ocr_pdf/render_worker.py", "render"),
+    ("byte-bounded text reads", "main_services/processing/tasks/text_sources.py",
+     "def plan_text_batches"),
+    ("P6 retry policy", "main_services/processing/tasks/P6_index_data/workflows.py",
+     "MANTICORE_RETRY"),
+    ("failure-capture slots", "main_services/processing/tasks/operation_failure_tree.py",
+     "(1 << 23) - 1"),
+    ("error groups activity", "main_services/processing/tasks/P2_execute_plan/activities.py",
+     "record_processing_error_groups"),
+    ("member scan recovery", "main_services/processing/tasks/P3_parse_files/member_scan.py",
+     "vfs_files"),
+    ("scanner char boundary",
+     "main_services/regex_entity_scanner/src/rules/extras.rs", "label.get(from..)"),
+    ("1bit vector tables", "main_services/processing/database/manticore.py", "1bit"),
+    ("separate vectors container", "main_services/ops/docker/docker-compose.yaml",
+     "manticore-vectors"),
+]
+
+# The two Manticore containers. `manticore` holds the pages, vfs and entities tables, and
+# `manticore-vectors` holds the `_vectors` tables. Each gets its own folder in the report.
+MANTICORE_CONTAINERS = ("manticore", "manticore-vectors")
+
+# The terms of the vector memory budget. The RAM chunk limit is the Manticore default of each
+# table, and the reserve is a tenth of the limit of `manticore-vectors`.
+RAM_CHUNK_BYTES = 128 * 2**20
+BUDGET_WARN_RATIO = 0.85
 
 UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
 HEX_RE = re.compile(r"\b[0-9a-f]{12,}\b", re.I)
@@ -286,8 +357,13 @@ def collect_host(r, since):
          % shlex.quote(since_to_journal(since)))
     # Every OOM kill of the last 30 days. The cgroup path names the container id, and
     # engine/container-ids.txt maps the id to a name.
+    # A user outside the systemd-journal group reads no kernel entries at all, and then an
+    # empty kill list means nothing. The verdict reads this probe to tell the two apart.
+    r.sh(j + "journal-kernel-probe.txt", "journalctl -k -n 1 --no-pager 2>&1")
+    # ISO timestamps with the zone offset, so collect_oom_kills can compare a kill with the
+    # start time of a container. The default journal format has no year and no zone.
     r.sh(j + "journal-oom-kills-30d.txt",
-         "journalctl -k --no-pager --since '-30 days' 2>&1 | grep -E "
+         "journalctl -k --no-pager -o short-iso-precise --since '-30 days' 2>&1 | grep -E "
          "'invoked oom-killer|oom-kill:|Killed process|Memory cgroup out of memory' "
          "| tail -n 20000", timeout=300)
     r.sh(j + "journal-boots.txt", "journalctl --list-boots --no-pager 2>&1 | tail -n 20")
@@ -457,8 +533,11 @@ def collect_engine(r, engine):
     r.run(j + "networks.txt", [engine, "network", "ls"])
     r.run(j + "images.txt", [engine, "images", "--no-trunc", "--digests"])
     # Lifecycle events only. `exec_die` from health checks and from this script fills
-    # the unfiltered stream.
-    r.run(j + "events-7d.txt", [engine, "events", "--since", "168h", "--until", "0s",
+    # the unfiltered stream. The daemon keeps a bounded buffer of events, so this file can
+    # be empty on a host with many restarts. summary/oom-kills.json and the restart counts
+    # do not depend on it.
+    until = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    r.run(j + "events-7d.txt", [engine, "events", "--since", "168h", "--until", until,
                                 "--filter", "type=container", "--filter", "event=start",
                                 "--filter", "event=die", "--filter", "event=oom",
                                 "--filter", "event=kill", "--filter", "event=restart",
@@ -512,6 +591,19 @@ def _net_bytes(pid):
     except (OSError, ValueError, IndexError):
         return None, None
     return rx, tx
+
+
+def host_cgroup_dir(c):
+    """The cgroup v2 folder of a running container, read from the host, or None."""
+    pid = (c.get("State") or {}).get("Pid") or 0
+    if not pid:
+        return None
+    try:
+        with open("/proc/%d/cgroup" % pid) as f:
+            rel = [l.strip().split(":", 2)[2] for l in f if l.startswith("0::")]
+    except OSError:
+        return None
+    return ("/sys/fs/cgroup" + rel[0]) if rel else None
 
 
 def collect_timeseries(r, containers, seconds, interval):
@@ -606,7 +698,28 @@ def collect_container(r, engine, c, since, tail):
           timeout=300, max_bytes=400 * 1024 * 1024, merge=True)
     if not (c.get("State") or {}).get("Running"):
         return
+    # Read from the host, so a container with no shell (garage) and a container at its
+    # memory limit are read the same way, and no process starts inside the container.
+    cg = host_cgroup_dir(c)
+    if cg:
+        lines = []
+        for f in ("memory.max", "memory.current", "memory.peak", "memory.swap.max",
+                  "memory.events", "memory.pressure", "cpu.max", "cpu.stat", "pids.current",
+                  "pids.max", "memory.stat"):
+            try:
+                with open(os.path.join(cg, f)) as fh:
+                    lines += ["== " + f, fh.read().rstrip()]
+            except OSError:
+                pass
+        r.write_text(d + "cgroup-host.txt", "\n".join(lines) + "\n")
     ex = [engine, "exec", name]
+    has_shell = subprocess.run(ex + ["sh", "-c", "true"], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                               timeout=30).returncode == 0
+    if not has_shell:
+        r.run(d + "top.txt", [engine, "top", name], timeout=30)
+        r.note("%s has no shell: ps and cgroup come from `%s top` and the host" % (name, engine))
+        return
     r.run(d + "ps.txt", ex + ["sh", "-c",
           "ps aux 2>/dev/null || for p in /proc/[0-9]*; do "
           "printf '%s ' \"${p#/proc/}\"; tr '\\0' ' ' < $p/cmdline; echo; done"],
@@ -988,7 +1101,7 @@ def ch(r, name, query, timeout=180, fmt="TSVWithNames", capture=False):
     return r.run(name, argv, timeout=timeout, capture=capture)
 
 
-def collect_clickhouse(r, since_hours):
+def collect_clickhouse(r, since_hours, deployed_at):
     j = "clickhouse/"
     h = int(since_hours)
     ch(r, j + "version.tsv", "SELECT version(), uptime()")
@@ -1013,8 +1126,29 @@ def collect_clickhouse(r, since_hours):
        "SELECT metric, value FROM system.asynchronous_metrics WHERE metric LIKE 'OS%' "
        "OR metric LIKE 'Memory%' OR metric LIKE 'Load%' OR metric LIKE 'CGroup%' "
        "ORDER BY metric")
-    ch(r, j + "crash-log.tsv", "SELECT * FROM system.crash_log ORDER BY event_time DESC "
-       "LIMIT 50")
+    # The memory cap of the server and what it is computed from. With max_server_memory_usage
+    # at 0 the server takes the ratio of the memory it sees, and CGroupMemoryTotal is that
+    # memory inside a container.
+    ch(r, j + "memory-settings.tsv",
+       "SELECT name, value, changed FROM system.server_settings WHERE name IN "
+       "('max_server_memory_usage', 'max_server_memory_usage_to_ram_ratio', "
+       "'uncompressed_cache_size', 'mark_cache_size') UNION ALL "
+       "SELECT metric, toString(value), 0 FROM system.asynchronous_metrics WHERE metric IN "
+       "('CGroupMemoryTotal', 'CGroupMemoryUsed', 'OSMemoryTotal', 'MemoryResident')")
+    # The override file removes query_log and crash_log on the stacks deploy.py renders. Ask
+    # which exist, so a removed table is a note and not four failed steps.
+    present = ch(r, None, "SELECT name FROM system.tables WHERE database = 'system' AND "
+                 "name IN ('query_log', 'crash_log')", fmt="TSV", capture=True) or ""
+    present = set(present.split())
+    for table in ("query_log", "crash_log"):
+        if table not in present:
+            r.note("clickhouse: system.%s is not enabled on this server, so its queries are "
+                   "skipped" % table)
+    if "crash_log" in present:
+        ch(r, j + "crash-log.tsv", "SELECT * FROM system.crash_log ORDER BY event_time DESC "
+           "LIMIT 50")
+    if "query_log" not in present:
+        return collect_clickhouse_processing(r, h, deployed_at)
     ch(r, j + "query-exceptions.tsv",
        "SELECT exception_code, count() n, max(event_time) last, "
        "substring(any(exception),1,1500) ex, substring(any(query),1,800) q "
@@ -1033,7 +1167,57 @@ def collect_clickhouse(r, since_hours):
        "round(avgIf(query_duration_ms, type='QueryFinish')) avg_ms "
        "FROM system.query_log WHERE event_time > now() - INTERVAL %d HOUR "
        "GROUP BY hr ORDER BY hr" % h, timeout=300)
+    return collect_clickhouse_processing(r, h, deployed_at)
 
+
+# The root cause of a processing_errors row: the last `ApplicationError:` line of its chain,
+# or the head of the text when it has none, with hashes, temporary paths and numbers
+# replaced, so that rows with one cause fall in one group.
+ERROR_CAUSE_SQL = (
+    "replaceRegexpAll(replaceRegexpAll(replaceRegexpAll("
+    "if(length(extractAll(error_logs, 'ApplicationError: ([^\\r\\n]{1,160})')) > 0, "
+    "arrayElement(extractAll(error_logs, 'ApplicationError: ([^\\r\\n]{1,160})'), -1), "
+    "substring(error_logs, 1, 160)), "
+    "'[0-9a-f]{16,}', 'H'), '/tmp/[^ :\\'\"]+', '/tmp/F'), '[0-9]+', 'N')")
+
+
+def collect_vector_counts(r, dbs):
+    """Rows of `text_chunk_vectors` per collection and embedding model.
+
+    ClickHouse holds every vector, so the count exists also when Manticore does not answer.
+    `rows` is `count()` without FINAL, so it can include versions of a row that a merge has
+    not yet replaced. A collection with no vectors, or with no table, gets one row that says so.
+    """
+    head = ["collection", "embedding_model", "rows", "dims"]
+    out = ["\t".join(head)]
+    have = ch(r, None, "SELECT database FROM system.tables WHERE name = 'text_chunk_vectors' "
+              "AND database LIKE 'Hoover4_Collection_%'", fmt="TSV", capture=True)
+    have = set((have or "").split())
+    for db in sorted(dbs):
+        collection = db[len("Hoover4_Collection_"):]
+        if db not in have:
+            out.append("\t".join([collection, "(no table)", "0", ""]))
+            continue
+        # The row `(total)` comes back from every query that ran, so its absence means the
+        # query failed. A failed query writes nothing to stdout.
+        text = ch(r, None, "SELECT embedding_model, count() n, toString(any(dims)) d FROM "
+                  "{t} GROUP BY embedding_model UNION ALL SELECT '(total)', count(), '' "
+                  "FROM {t}".format(t=db + ".text_chunk_vectors"),
+                  fmt="TSV", capture=True, timeout=300)
+        rows = [l.split("\t") for l in (text or "").splitlines() if l.strip()]
+        if not any(row[0] == "(total)" for row in rows):
+            out.append("\t".join([collection, "(query failed)", "", ""]))
+            continue
+        rows = sorted(row for row in rows if row[0] != "(total)")
+        if not rows:
+            out.append("\t".join([collection, "(no vectors)", "0", ""]))
+        for row in rows:
+            out.append("\t".join([collection] + (row + ["", "", ""])[:3]))
+    r.write_text("clickhouse/vectors-by-collection.tsv", "\n".join(out) + "\n")
+
+
+def collect_clickhouse_processing(r, h, deployed_at):
+    j = "clickhouse/"
     p = "Hoover4_Processing."
     ch(r, j + "collections.tsv", "SELECT * FROM %scollections FINAL" % p)
     ch(r, j + "datasets.tsv", "SELECT * FROM %sdataset FINAL" % p)
@@ -1089,6 +1273,7 @@ def collect_clickhouse(r, since_hours):
        timeout=300)
     dbs = ch(r, None, "SELECT name FROM system.databases WHERE name LIKE 'Hoover4_Collection_%'",
              fmt="TSV", capture=True)
+    collect_vector_counts(r, (dbs or "").split())
     for db in (dbs or "").split():
         d = "clickhouse/collections/%s/" % db
         ch(r, d + "errors-by-task.tsv",
@@ -1096,6 +1281,18 @@ def collect_clickhouse(r, since_hours):
            "max(timestamp) last, max(attempt) max_attempt, "
            "substring(any(error_logs),1,1500) sample_error FROM %s.processing_errors "
            "GROUP BY collection_dataset, task_name ORDER BY n DESC" % db, timeout=300)
+        # Every error row grouped by root cause, so the causes are counted and not sampled.
+        ch(r, d + "errors-by-cause.tsv",
+           "SELECT task_name, %s AS cause, count() n, uniqExact(hash) docs, "
+           "min(timestamp) first, max(timestamp) last FROM %s.processing_errors "
+           "GROUP BY task_name, cause ORDER BY n DESC LIMIT 500" % (ERROR_CAUSE_SQL, db),
+           timeout=300)
+        ch(r, d + "errors-by-cause-since-deploy.tsv",
+           "SELECT task_name, %s AS cause, count() n, uniqExact(hash) docs, "
+           "min(timestamp) first, max(timestamp) last FROM %s.processing_errors "
+           "WHERE timestamp >= parseDateTimeBestEffort('%s') "
+           "GROUP BY task_name, cause ORDER BY n DESC LIMIT 500"
+           % (ERROR_CAUSE_SQL, db, deployed_at), timeout=300)
         ch(r, d + "errors-by-identity.tsv",
            "SELECT task_name, error_identity, count() n, uniqExact(hash) docs, "
            "max(timestamp) last, substring(any(error_logs),1,1500) sample_error "
@@ -1146,17 +1343,250 @@ def collect_clickhouse(r, since_hours):
 # Manticore, Garage, Redis, worker
 # --------------------------------------------------------------------------------------
 
-def collect_manticore(r):
-    j = "manticore/"
-    for name, sql in (("status", "SHOW STATUS"), ("tables", "SHOW TABLES"),
+def mysql_rows(text):
+    """The cells of each row of mysql client output, as a pipe table or as tab-separated."""
+    rows = []
+    for line in (text or "").splitlines():
+        s = line.strip()
+        if not s or s.startswith("+"):
+            continue
+        if s.startswith("|"):
+            cells = [x.strip() for x in s.strip("|").split("|")]
+        else:
+            cells = [x.strip() for x in s.split("\t")]
+        rows.append(cells)
+    return rows
+
+
+def manticore_data_dir(c):
+    """The host folder mounted at /var/lib/manticore, or None."""
+    for m in c.get("Mounts") or []:
+        if m.get("Destination") == "/var/lib/manticore":
+            return m.get("Source")
+    return None
+
+
+def parse_quantization(text):
+    """The `quantization` of a `SHOW CREATE TABLE` text: "1bit", "8bit", or None when absent.
+
+    Manticore 14.1.0 prints the value in capitals, `quantization='1BIT'`, so the case is
+    folded. Any other value raises ValueError. It is never read as float, because a float
+    reading counts a 1bit table at 8 times its size.
+    """
+    m = re.search(r"quantization\s*=\s*'([^']*)'", text or "", re.I)
+    if not m:
+        return None
+    value = m.group(1).strip().lower()
+    if value in ("1bit", "8bit"):
+        return value
+    raise ValueError("unrecognised quantization %r" % m.group(1))
+
+
+def parse_knn_setting(text, name):
+    """An integer KNN setting of a `SHOW CREATE TABLE` text, such as knn_dims, or None."""
+    m = re.search(r"\b%s\s*=\s*'(\d+)'" % name, text or "", re.I)
+    return int(m.group(1)) if m else None
+
+
+def hnsw_bytes_per_vector(dims, quantization, hnsw_m=16):
+    """Resident bytes of one vector in an HNSW index.
+
+    Data bytes (4, 1 or 1/8 byte a dimension) + 8 x hnsw_m + 40. Measured on 14.1.0 at 384
+    dimensions: float 1,684, 8bit 536, 1bit 213. The formula gives 1,704, 552 and 216.
+    """
+    if quantization == "1bit":
+        data = (dims + 7) // 8
+    elif quantization == "8bit":
+        data = dims
+    elif quantization is None:
+        data = 4 * dims
+    else:
+        raise ValueError("unrecognised quantization %r" % quantization)
+    return data + 8 * hnsw_m + 40
+
+
+def vector_budget(tables, limit):
+    """The vector memory budget of `manticore-vectors`, as (status, detail).
+
+    `tables` holds one dict for each `_vectors` table, with the text values of
+    vector-tables.tsv: indexed_documents, knn_dims, hnsw_m and quantization ("1bit", "8bit",
+    "none", or another text that is not read). `limit` is the memory limit in bytes, or None.
+
+    need = resident (the sum of vectors x bytes a vector) + tables x 128 MiB of RAM chunk
+         + the largest table (one merge) + a reserve of 10 % of the limit.
+    FAIL when need is above the limit, WARN above 85 % of it, PASS otherwise. UNKNOWN when a
+    term cannot be read.
+    """
+    if tables is None:
+        return "UNKNOWN", "no vector table list"
+    if not limit:
+        return "UNKNOWN", "manticore-vectors has no memory limit"
+    sizes = []
+    for t in tables:
+        quant = (t.get("quantization") or "").strip()
+        try:
+            n = int(t.get("indexed_documents") or "")
+            dims = int(t.get("knn_dims") or "")
+            m = int(t.get("hnsw_m") or 16)
+            if quant not in ("1bit", "8bit", "none"):
+                raise ValueError(quant or "no quantization read")
+            per = hnsw_bytes_per_vector(dims, None if quant == "none" else quant, m)
+        except ValueError as exc:
+            return "UNKNOWN", "%s: a term cannot be read (%s)" % (t.get("table"), exc)
+        sizes.append(n * per)
+    resident = sum(sizes)
+    ram_chunks = len(sizes) * RAM_CHUNK_BYTES
+    merge = max(sizes) if sizes else 0
+    reserve = limit // 10
+    need = resident + ram_chunks + merge + reserve
+    if need > limit:
+        status = "FAIL"
+    elif need > BUDGET_WARN_RATIO * limit:
+        status = "WARN"
+    else:
+        status = "PASS"
+    detail = ("need %d of %d bytes (%.0f%%): resident %d in %d tables, RAM chunks %d, "
+              "largest merge %d, reserve %d" % (need, limit, 100.0 * need / limit, resident,
+                                                len(sizes), ram_chunks, merge, reserve))
+    return status, detail
+
+
+def collect_manticore(r, c, name="manticore"):
+    """What one Manticore container holds and how it uses memory, with or without a daemon.
+
+    `name` is the container, `manticore` or `manticore-vectors`, and its files go into the
+    folder of that name. The data folder is read from the host, so a daemon that the kernel
+    kills during its start still gives the table sizes and the binlog it replays. The daemon
+    logs to stdout, which collect_container already captures.
+    """
+    j = name + "/"
+    data = manticore_data_dir(c) if c else None
+    running = bool(((c or {}).get("State") or {}).get("Running"))
+
+    def inventory(root, prefix):
+        q = shlex.quote(root)
+        r.run(j + "data-du.txt", prefix + ["sh", "-c", "du -sb %s/* 2>&1 | sort -n" % q],
+              timeout=300)
+        r.run(j + "binlog.txt", prefix + ["sh", "-c",
+              "ls -la --time-style=full-iso %s/binlog 2>&1; echo; du -sb %s/binlog 2>&1"
+              % (q, q)], timeout=60)
+        # Disk chunks per table: one .spa, .spc or .spd family per chunk. A table with many
+        # chunks is what OPTIMIZE merges.
+        r.run(j + "chunk-files.txt", prefix + ["sh", "-c",
+              "for t in %s/*/; do n=$(ls \"$t\" 2>/dev/null | grep -cE '\\.(spa|spc|spd)$'); "
+              "printf '%%s %%s\\n' \"$n\" \"$(basename \"$t\")\"; done | sort -n" % q],
+              timeout=120)
+        # Bytes of the HNSW files (.spknn) per table. Every HNSW index is held in anonymous
+        # memory, so these files give the resident size of the vector indexes on disk.
+        r.run(j + "spknn-bytes.txt", prefix + ["sh", "-c",
+              "for t in %s/*/; do b=$(ls -ln \"$t\" 2>/dev/null | "
+              "awk '/\\.spknn$/ {s+=$5} END {print s+0}'); "
+              "printf '%%s %%s\\n' \"$b\" \"$(basename \"$t\")\"; done | sort -n" % q],
+              timeout=120)
+
+    if data:
+        inventory(data, [])
+        refused = "Permission denied" in (r.root / j / "binlog.txt").read_text(errors="replace") \
+            if (r.root / j / "binlog.txt").exists() else True
+        if refused and running:
+            # The folder belongs to the container's user. Without root on the host, read it
+            # from inside, which works while the daemon runs and fails while it restarts.
+            r.note("%s: the host refused the data folder, so it is read inside the "
+                   "container. Run the script as root to read it while the daemon is down"
+                   % name)
+            inventory("/var/lib/manticore", [r.engine, "exec", name])
+    else:
+        r.note("%s: no mount at /var/lib/manticore found in `inspect`" % name)
+    # Memory from the host side, so it is read the same way whether the daemon answers.
+    pid = ((c or {}).get("State") or {}).get("Pid") or 0
+    if pid:
+        r.sh(j + "searchd-memory.txt",
+             "grep -E 'VmRSS|RssAnon|RssFile|Threads' /proc/%d/status; echo; "
+             "cat /proc/%d/smaps_rollup 2>&1" % (pid, pid), timeout=30)
+    mysql = [r.engine, "exec", name, "mysql", "-h127.0.0.1", "-P9306",
+             "--protocol=tcp", "-e"]
+    up = r.run(None, mysql + ["SELECT 1"], timeout=30, capture=True)
+    if not up:
+        r.note("%s: the daemon does not answer on 9306, so its SQL steps are skipped" % name)
+        return
+    for name, sql in (("status", "SHOW STATUS"),
                       ("threads", "SHOW THREADS OPTION format=all"),
                       ("settings", "SHOW SETTINGS"), ("variables", "SHOW VARIABLES")):
-        r.run(j + name + ".txt", [r.engine, "exec", "manticore", "mysql", "-h127.0.0.1",
-                                  "-P9306", "--protocol=tcp", "-e", sql], timeout=90)
-    r.run(j + "searchd-log.txt", [r.engine, "exec", "manticore", "sh", "-c",
-          "tail -n 20000 /var/log/manticore/searchd.log 2>&1"], timeout=90)
-    r.run(j + "query-log.txt", [r.engine, "exec", "manticore", "sh", "-c",
-          "tail -n 5000 /var/log/manticore/query.log 2>&1"], timeout=90)
+        r.run(j + name + ".txt", mysql + [sql], timeout=90)
+    # The client in the Manticore image prints a pipe table with `-e` even with `--batch`, and
+    # another client prints tab-separated rows. mysql_rows reads both.
+    tables = r.run(j + "tables.txt", mysql + ["SHOW TABLES"], timeout=60, capture=True)
+    with r.lock:
+        probe = next(entry for entry in reversed(r.manifest)
+                     if entry.get("file") == j + "tables.txt")
+    inventory = mysql_rows(tables)
+    if probe.get("exit_code") != 0 or not inventory or inventory[0][0] not in ("Index", "Table"):
+        r.note("%s: SHOW TABLES failed or returned no valid inventory" % j.rstrip("/"))
+        return
+    rows = []
+    for cells in inventory:
+        name = cells[0]
+        if not re.fullmatch(r"[A-Za-z0-9_]+", name) or name in ("Table", "Index"):
+            continue
+        text = r.run(None, mysql + ["SHOW TABLE %s STATUS" % name], timeout=60,
+                     capture=True) or ""
+        status = {}
+        for kv in mysql_rows(text):
+            if len(kv) >= 2 and kv[0] != "Variable_name":
+                status[kv[0]] = kv[1]
+        status["table"] = name
+        rows.append(status)
+    keys = ["table", "indexed_documents", "ram_bytes", "disk_bytes", "disk_mapped",
+            "disk_mapped_cached", "ram_chunk", "ram_chunk_segments_count", "disk_chunks",
+            "mem_limit", "mem_limit_rate", "killed_rate", "optimizing", "tid", "tid_saved"]
+    out = ["\t".join(keys)] + ["\t".join(str(row.get(k, "")) for k in keys) for row in rows]
+    r.write_text(j + "table-status.tsv", "\n".join(out) + "\n")
+    collect_vector_tables(r, j, mysql, rows)
+
+
+def collect_vector_tables(r, j, mysql, status_rows):
+    """One row for each `_vectors` table: its count, KNN settings and .spknn bytes.
+
+    `status_rows` are the `SHOW TABLE <t> STATUS` rows of the container. The quantization is
+    "none" when `SHOW CREATE TABLE` has no such attribute (a float table), the error text
+    "unrecognised quantization '<value>'" for a value that parse_quantization refuses, and
+    empty when `SHOW CREATE TABLE` gave no text.
+    """
+    spknn = {}
+    path = r.root / j / "spknn-bytes.txt"
+    if path.exists():
+        for line in path.read_text(errors="replace").splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[0].isdigit():
+                spknn[parts[1]] = parts[0]
+    keys = ["table", "indexed_documents", "knn_dims", "hnsw_m", "quantization", "spknn_bytes",
+            "bytes_per_vector", "resident_bytes"]
+    out = ["\t".join(keys)]
+    for status in status_rows:
+        table = status["table"]
+        if not table.endswith("_vectors"):
+            continue
+        text = r.run(None, mysql + ["SHOW CREATE TABLE %s" % table], timeout=60,
+                     capture=True) or ""
+        dims = parse_knn_setting(text, "knn_dims")
+        hnsw_m = parse_knn_setting(text, "hnsw_m") or 16
+        try:
+            quant = parse_quantization(text)
+            quant_text = quant or "none"
+        except ValueError as exc:
+            quant, quant_text = "?", str(exc)
+        if not text.strip():
+            quant, quant_text = "?", ""
+        per, resident = "", ""
+        n = status.get("indexed_documents", "")
+        if dims is not None and quant != "?":
+            per = hnsw_bytes_per_vector(dims, quant, hnsw_m)
+            if n.isdigit():
+                resident = int(n) * per
+        row = [table, n, "" if dims is None else dims, hnsw_m, quant_text,
+               spknn.get(table, ""), per, resident]
+        out.append("\t".join(str(x) for x in row))
+    r.write_text(j + "vector-tables.tsv", "\n".join(out) + "\n")
 
 
 def collect_garage(r):
@@ -1198,31 +1628,45 @@ def collect_worker(r, name):
           "cat /sys/fs/cgroup/memory.stat /sys/fs/cgroup/memory.events 2>&1"], timeout=30)
 
 
-LIFETIME_CONTAINERS = ("hoover4-ops", "hoover4-worker", "temporal", "hoover4-website",
-                       "temporal-cassandra")
 ERROR_WORDS = re.compile(r"Traceback|ERROR|Error|Exception|error=|level\":\"error|"
-                         r"failed|FAILED|Killed|OutOfMemory|timed out|Timeout")
+                         r"failed|FAILED|Killed|OutOfMemoryError|timed out|Timeout|"
+                         r"Segmentation fault|core dumped|panicked|corrupted|CRC mismatch")
 # Lines that repeat thousands of times an hour and carry no new fact after the first.
 SPAM = re.compile(r"GRPC Message too large|Unspecified task queue kind|mbind: Operation not "
                   r"permitted|Critical attempts processing workflow task|"
                   r"respond_workflow_task_failed retried")
 TIMELINE_SIGNATURES = ["GRPC Message too large", "shard status unknown", "Traceback",
-                       "OutOfMemory", "history size exceeds", "Persistent store operation",
+                       "java.lang.OutOfMemoryError", "history size exceeds",
+                       "Persistent store operation",
                        "Critical attempts processing workflow task", "mbind",
                        "context deadline exceeded", "no hosts available", "Heartbeat",
-                       "ERROR", "Startup complete"]
+                       "ERROR", "Startup complete", "starting daemon", "Segmentation fault",
+                       "panicked", "memory limit exceeded", "exited with code -9",
+                       "Potential deadlock", "Connection refused"]
 
 
-def collect_lifetime_logs(r, engine, running_names, max_lines):
-    """Read the whole log of each key container once, since the container started.
+def collect_lifetime_logs(r, engine, running_names, max_lines, deployed_at=None,
+                          watch_names=True):
+    """Read the whole log of each running project container once.
 
     Keep the lines that name a recent operation or dataset, and the error lines that are
     not repeats of a known flood. Count every timeline signature per hour of all lines.
+    Docker keeps only `container_log_max_files` files of `container_log_max_size`, so the
+    first line read says how far back the kept log reaches. It is recorded as `first_line`.
+
+    Count each `VERDICT_LOG_SIGNATURES` needle over every line at or after deployed_at, and
+    write the counts and the time of the first line read to `summary/verdict-log-counts.json`.
+    The verdict reads them, because `logs/<name>.log` holds only a tail of the log. A read
+    whose `logs` command does not exit 0 goes under `failed`, with no counts.
+
+    With `watch_names` false, ClickHouse is not asked for the recent operation names.
     """
     j = "lifetime-logs/"
-    text = ch(r, None, "SELECT DISTINCT op_id, collection_dataset FROM "
-              "Hoover4_Processing.operations FINAL WHERE started_at > now() - INTERVAL 14 DAY",
-              fmt="TSV", capture=True) or ""
+    text = ""
+    if watch_names:
+        text = ch(r, None, "SELECT DISTINCT op_id, collection_dataset FROM "
+                  "Hoover4_Processing.operations FINAL WHERE started_at > now() - "
+                  "INTERVAL 14 DAY", fmt="TSV", capture=True) or ""
     names = set()
     for line in text.splitlines():
         for part in line.split("\t"):
@@ -1231,13 +1675,21 @@ def collect_lifetime_logs(r, engine, running_names, max_lines):
                 names.add(part)
     r.write_json(j + "watched-names.json", sorted(names))
     watch = re.compile("|".join(re.escape(n) for n in sorted(names))) if names else None
+    needles_of = defaultdict(set)
+    for _check, log, needles in VERDICT_LOG_SIGNATURES:
+        needles_of[log[:-len(".log")]].update(needles)
+    verdict_counts = {}
+    failed = {}
     timeline = {}
-    for name in LIFETIME_CONTAINERS:
-        if name not in running_names:
-            continue
+    for name in sorted(running_names):
+        needles = sorted(needles_of.get(name, ()))
+        found = Counter()
+        rule = SinceDeploy(deployed_at)
+        complete = False
         hours = defaultdict(Counter)
         kept = 0
         total = 0
+        first_line = None
         spam_seen = Counter()
         started = time.time()
         try:
@@ -1249,6 +1701,12 @@ def collect_lifetime_logs(r, engine, running_names, max_lines):
                 for raw in proc.stdout:
                     total += 1
                     line = ANSI_RE.sub("", raw.decode("utf-8", errors="replace"))
+                    if first_line is None:
+                        first_line = line[:40]
+                    # The rule reads every line, because a line with no time takes the
+                    # time of the line before it.
+                    if rule.after(line):
+                        found.update(s for s in needles if s in line)
                     hour = line[:13]
                     for s in TIMELINE_SIGNATURES:
                         if s in line:
@@ -1263,12 +1721,26 @@ def collect_lifetime_logs(r, engine, running_names, max_lines):
                     if (watch is not None and watch.search(line)) or ERROR_WORDS.search(line):
                         out.write(line)
                         kept += 1
-            proc.wait(timeout=60)
+            code = proc.wait(timeout=60)
+            if code == 0:
+                complete = True
+            else:
+                failed[name] = "exit %s" % code
+                r.note("lifetime log of %s failed: `%s logs` exited %s" % (name, engine, code))
         except Exception as exc:
+            failed[name] = str(exc)[:200]
             r.note("lifetime log of %s failed: %s" % (name, exc))
+        if complete:
+            first_ts = parse_ts(first_line)
+            verdict_counts[name] = {
+                "first_line_time": first_ts.isoformat() if first_ts else None,
+                "lines_read": total, "needles": {s: found[s] for s in needles}}
         r.record({"file": j + name + ".log", "lines_read": total, "lines_kept": kept,
-                  "seconds": round(time.time() - started, 1)})
+                  "first_line": first_line, "seconds": round(time.time() - started, 1)})
         timeline[name] = {h: dict(c) for h, c in sorted(hours.items())}
+    r.write_json("summary/verdict-log-counts.json", {
+        "deployed_at": deployed_at.isoformat() if deployed_at else None,
+        "containers": verdict_counts, "failed": failed})
     r.write_json(j + "timeline-per-hour.json", timeline)
     lines = []
     for name, per_hour in timeline.items():
@@ -1338,6 +1810,513 @@ def collect_dataset_shape(r, budget_per_dataset):
 
 
 # --------------------------------------------------------------------------------------
+# Kernel OOM kills, per container
+# --------------------------------------------------------------------------------------
+
+_TS_PARTS = re.compile(
+    r"(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:[.,](\d+))?\s*(Z|[+-]\d{2}:?\d{2})?")
+
+
+def parse_ts(text):
+    """An ISO time with any fraction and zone, as an aware UTC datetime, or None.
+
+    Docker writes nanoseconds and `Z`, journalctl writes microseconds and `+02:00`, and
+    Python 3.9's `fromisoformat` accepts neither form of the first.
+    """
+    m = _TS_PARTS.search(text or "")
+    if not m:
+        return None
+    frac = (m.group(3) or "0")[:6].ljust(6, "0")
+    zone = m.group(4) or "Z"
+    if zone == "Z":
+        offset = datetime.timedelta(0)
+    else:
+        sign = 1 if zone[0] == "+" else -1
+        digits = zone[1:].replace(":", "")
+        offset = sign * datetime.timedelta(hours=int(digits[:2]), minutes=int(digits[2:]))
+    try:
+        naive = datetime.datetime.strptime("%s %s.%s" % (m.group(1), m.group(2), frac),
+                                           "%Y-%m-%d %H:%M:%S.%f")
+    except ValueError:
+        return None
+    return (naive - offset).replace(tzinfo=datetime.timezone.utc)
+
+
+MEMCG_RE = re.compile(r"task_memcg=\S*?(?:docker|libpod)-([0-9a-f]{12,64})\.scope\S*?,task=([^,]+)")
+KILLED_RE = re.compile(r"Killed process (\d+) \(([^)]+)\) total-vm:(\d+)kB, anon-rss:(\d+)kB")
+
+
+def collect_oom_kills(r, containers, deployed_at, engine, windows):
+    """Map every kernel OOM kill in the journal to its container and summarise it.
+
+    Docker's `State.OOMKilled` misses a kill of a process that Docker restarts, and misses
+    every kill of a child process. The kernel journal names the memory cgroup of each kill,
+    and the cgroup name holds the container id. For each container with a kill after the
+    deployment, the container log around the first and the last kills is saved, because
+    rotation removes that part of the log first.
+    """
+    path = r.root / "host" / "journal-oom-kills-30d.txt"
+    by_id = {(c.get("Id") or ""): container_name(c) for c in containers}
+    per = defaultdict(lambda: {"kills_30d": 0, "kills_since_deploy": 0, "first": None,
+                               "last": None, "max_anon_rss_mb": 0, "processes": Counter(),
+                               "since_deploy_times": []})
+    if path.exists():
+        pending = None
+        for line in path.read_text(errors="replace").splitlines():
+            m = MEMCG_RE.search(line)
+            if m:
+                cid = m.group(1)
+                name = next((n for i, n in by_id.items() if i.startswith(cid)), cid[:12])
+                pending = name
+                continue
+            k = KILLED_RE.search(line)
+            if not k or pending is None:
+                continue
+            ts = parse_ts(line)
+            row = per[pending]
+            row["kills_30d"] += 1
+            row["processes"][k.group(2)] += 1
+            row["max_anon_rss_mb"] = max(row["max_anon_rss_mb"], int(k.group(4)) // 1024)
+            if ts is not None:
+                iso = ts.strftime("%Y-%m-%dT%H:%M:%SZ")
+                row["first"] = row["first"] or iso
+                row["last"] = iso
+                if deployed_at is not None and ts >= deployed_at:
+                    row["kills_since_deploy"] += 1
+                    row["since_deploy_times"].append(ts)
+            pending = None
+    else:
+        r.note("oom kills: host/journal-oom-kills-30d.txt is missing")
+    out = {}
+    for name, row in per.items():
+        times = row.pop("since_deploy_times")
+        row["processes"] = dict(row["processes"])
+        out[name] = row
+        if engine and name in by_id.values() and times and windows > 0:
+            picked = times[:windows] + [t for t in times[-windows:] if t not in times[:windows]]
+            for n, t in enumerate(picked):
+                since = (t - datetime.timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                until = (t + datetime.timedelta(seconds=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                r.run("logs/oom-windows/%s-%02d.log" % (name, n),
+                      [engine, "logs", "--timestamps", "--since", since, "--until", until,
+                       name], timeout=120, merge=True, max_bytes=20 * 1024 * 1024)
+    r.write_json("summary/oom-kills.json", out)
+    return out
+
+
+# --------------------------------------------------------------------------------------
+# Verdict
+# --------------------------------------------------------------------------------------
+
+# processing_errors causes that name the platform rather than the file. One of these after
+# the deployment fails the verdict. Every other cause is reported as a per-file failure.
+INFRA_CAUSES = re.compile(
+    r"Can't connect to MySQL|Lost connection to MySQL|memory limit exceeded|Out of memory|"
+    r"queue is full|ContainerFolderMissing|Heartbeat timeout|attempts of the stage activity|"
+    r"circuit open|Connection refused|Gateway Timeout|renderer stopped with signal", re.I)
+
+
+def _read_tsv(path):
+    if not path.exists():
+        return None
+    lines = path.read_text(errors="replace").splitlines()
+    if not lines:
+        return []
+    head = lines[0].split("\t")
+    return [dict(zip(head, l.split("\t"))) for l in lines[1:]]
+
+
+class SinceDeploy:
+    """Decide for each line of a `--timestamps` log if it is at or after deployed_at.
+
+    Both log counts of the verdict use this one rule. A line with a parsable time counts when
+    that time is at or after deployed_at. A line with no parsable time, such as the next line
+    of a traceback, counts when the previous line with a time is at or after deployed_at. A
+    line with no time before any line with a time does not count. With no deployed_at, every
+    line counts.
+    """
+
+    def __init__(self, deployed_at):
+        self.deployed_at = deployed_at
+        self.last = None
+
+    def after(self, line):
+        if self.deployed_at is None:
+            return True
+        ts = parse_ts(line[:40])
+        if ts is not None:
+            self.last = ts
+        return self.last is not None and self.last >= self.deployed_at
+
+
+def _count_since(path, needles, deployed_at):
+    """Lines of a `--timestamps` log at or after deployed_at that hold any needle."""
+    if not path.exists():
+        return None
+    n = 0
+    rule = SinceDeploy(deployed_at)
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if rule.after(line) and any(s in line for s in needles):
+                n += 1
+    return n
+
+
+def _first_line_time(path):
+    """The time of the first line of a `--timestamps` log, or None."""
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        return parse_ts(fh.readline()[:40])
+
+
+def _read_misses_deploy(first_ts, amount_read, deployed_at):
+    """True when a log read cannot show every line at or after deployed_at.
+
+    That is so when the read is not empty and its first line is later than deployed_at, or
+    has no time. `amount_read` is a line count or a byte count, and only zero matters.
+    """
+    if deployed_at is None or not amount_read:
+        return False
+    return first_ts is None or first_ts > deployed_at
+
+
+def build_verdict(r, repo, containers, deployed_at, oom, expected_limits):
+    checks = []
+
+    def add(name, status, detail, evidence):
+        checks.append({"check": name, "status": status, "detail": detail,
+                       "evidence": evidence})
+
+    ours = [c for c in containers if container_name(c) != "garage-init"]
+    down = [container_name(c) for c in ours if not (c.get("State") or {}).get("Running")
+            or (c.get("State") or {}).get("Restarting")]
+    add("containers running", "FAIL" if down else "PASS",
+        "not running: %s" % ", ".join(down) if down else "all running",
+        "README.txt, engine/ps-all.txt")
+
+    # Compare whole seconds. The runbook gives deployed_at as the worker's own start time, as
+    # printed or cut to whole seconds, and that start is no restart after the deployment.
+    restarted = []
+    dep_s = deployed_at.replace(microsecond=0) if deployed_at is not None else None
+    for c in ours:
+        started = parse_ts((c.get("State") or {}).get("StartedAt"))
+        if c.get("RestartCount") and (dep_s is None or started is None
+                                      or started.replace(microsecond=0) > dep_s):
+            restarted.append("%s=%s (started %s)" % (
+                container_name(c), c.get("RestartCount"),
+                started.strftime("%Y-%m-%dT%H:%M:%SZ") if started else "unknown"))
+    add("restarts since deploy", "FAIL" if restarted else "PASS",
+        ", ".join(restarted) or "no restarts", "containers/*/summary.json")
+
+    killed = ["%s=%d (max anon %d MB)" % (n, row["kills_since_deploy"], row["max_anon_rss_mb"])
+              for n, row in sorted(oom.items()) if row["kills_since_deploy"]]
+    # The cgroup's own counter covers the life of the current container process tree, and
+    # it needs no journal access. It resets when the container restarts.
+    for c in ours:
+        p = r.root / "containers" / container_name(c) / "cgroup-host.txt"
+        if p.exists():
+            m = re.search(r"^oom_kill (\d+)$", p.read_text(errors="replace"), re.M)
+            if m and int(m.group(1)) and not (oom.get(container_name(c)) or {}).get(
+                    "kills_since_deploy"):
+                killed.append("%s=%s (cgroup counter)" % (container_name(c), m.group(1)))
+    probe = r.root / "host" / "journal-kernel-probe.txt"
+    readable = probe.exists() and "No entries" not in probe.read_text(errors="replace") \
+        and probe.read_text(errors="replace").strip() != ""
+    if killed:
+        status = "FAIL"
+    elif not readable:
+        status = "UNKNOWN"
+    else:
+        status = "PASS"
+    add("kernel OOM kills since deploy", status,
+        ", ".join(killed) or ("none" if readable else
+                              "the kernel journal returned no entries: run the script as root"),
+        "summary/oom-kills.json, containers/*/cgroup-host.txt, logs/oom-windows/")
+
+    limits = []
+    status = "PASS"
+    names = {container_name(c): c for c in containers}
+    for name in ("manticore", "manticore-vectors", "clickhouse", "hoover4-worker",
+                 "hoover4-ocr-pdf"):
+        c = names.get(name)
+        if not c:
+            # A container whose limit the person expects must exist.
+            if name in expected_limits:
+                status = "FAIL"
+                limits.append("%s=missing (expected >= %.1fG)"
+                              % (name, expected_limits[name] / 2**30))
+            continue
+        mem = (c.get("HostConfig") or {}).get("Memory") or 0
+        want = expected_limits.get(name)
+        ok = mem > 0 and (want is None or mem >= want)
+        status = status if ok else "FAIL"
+        limits.append("%s=%s%s" % (name, "%.1fG" % (mem / 2**30) if mem else "none",
+                                   "" if want is None else " (expected >= %.1fG)" % (want / 2**30)))
+    add("memory limits", status, ", ".join(limits), "containers/*/summary.json")
+
+    heads = []
+    status = "PASS"
+    unread = []
+    for c in ours:
+        name = container_name(c)
+        text = (r.root / "containers" / name / "cgroup-host.txt")
+        if not text.exists():
+            # The file the exec-based reader writes, from a report of the version before.
+            text = (r.root / "containers" / name / "cgroup.txt")
+        if not text.exists():
+            unread.append("%s: no cgroup file" % name)
+            continue
+        body = text.read_text(errors="replace")
+        mx = re.search(r"== memory.max\n(\d+)", body)
+        anon = re.search(r"^anon (\d+)$", body, re.M)
+        thp = re.search(r"^anon_thp (\d+)$", body, re.M)
+        if not mx or not anon or int(mx.group(1)) == 0:
+            unread.append("%s: memory.max or anon cannot be read" % name)
+            continue
+        ratio = int(anon.group(1)) / int(mx.group(1))
+        if ratio > 0.85:
+            status = "FAIL"
+        if ratio > 0.5 or container_name(c) in MANTICORE_CONTAINERS:
+            heads.append("%s anon %.0f%% of limit%s" % (
+                container_name(c), ratio * 100,
+                "" if not thp else ", huge pages %.1f GB" % (int(thp.group(1)) / 1e9)))
+    if unread and status != "FAIL":
+        status = "UNKNOWN"
+    add("memory headroom (anon over limit, fail above 85%)", status,
+        "; ".join(heads + unread) or "no container above 50%",
+        "containers/*/cgroup-host.txt")
+
+    for mname in MANTICORE_CONTAINERS:
+        if mname not in names:
+            why = "container %s not found" % mname
+            add("%s answers" % mname, "FAIL", why, "engine/ps-all.txt")
+            add("%s rt_flush_period set" % mname, "UNKNOWN", why, "engine/ps-all.txt")
+            add("%s binlog under 2 GB" % mname, "UNKNOWN", why, "engine/ps-all.txt")
+            continue
+        tables = r.root / mname / "table-status.tsv"
+        if tables.exists():
+            rows = _read_tsv(tables) or []
+            add("%s answers" % mname, "PASS", "%d tables" % len(rows),
+                "%s/table-status.tsv" % mname)
+            settings = (r.root / mname / "settings.txt")
+            flush = settings.exists() and "rt_flush_period" in settings.read_text(
+                errors="replace")
+            add("%s rt_flush_period set" % mname, "PASS" if flush else "FAIL",
+                "found in SHOW SETTINGS" if flush else "not in SHOW SETTINGS",
+                "%s/settings.txt" % mname)
+        else:
+            add("%s answers" % mname, "FAIL", "no SQL answer on 9306",
+                "%s/, logs/%s.log" % (mname, mname))
+        binlog = r.root / mname / "binlog.txt"
+        if binlog.exists():
+            body = binlog.read_text(errors="replace")
+            m = re.search(r"^(\d+)\s+\S*binlog\s*$", body, re.M)
+            if "Permission denied" in body or "No such file" in body:
+                add("%s binlog under 2 GB" % mname, "UNKNOWN",
+                    "the binlog folder could not be read", "%s/binlog.txt" % mname)
+            elif m:
+                size = int(m.group(1))
+                add("%s binlog under 2 GB" % mname, "PASS" if size < 2 * 2**30 else "FAIL",
+                    "%.2f GB" % (size / 2**30), "%s/binlog.txt" % mname)
+
+    # After the split the text container holds no `_vectors` table. The worker's migrate
+    # drops the old float tables from it at its start.
+    text_rows = _read_tsv(r.root / "manticore" / "table-status.tsv")
+    if text_rows is None:
+        add("no _vectors tables in the text container", "UNKNOWN",
+            "manticore/table-status.tsv missing, so the text container's tables were not read",
+            "manticore/table-status.tsv")
+    else:
+        stale = sorted(t.get("table") for t in text_rows
+                       if (t.get("table") or "").endswith("_vectors"))
+        add("no _vectors tables in the text container", "FAIL" if stale else "PASS",
+            ("%d on manticore: %s" % (len(stale), ", ".join(stale[:10])
+                                      + (", ..." if len(stale) > 10 else "")))
+            if stale else "none on manticore", "manticore/table-status.tsv")
+
+    vec_path = r.root / "manticore-vectors" / "vector-tables.tsv"
+    vec_rows = _read_tsv(vec_path)
+    source_rows = _read_tsv(r.root / "clickhouse" / "vectors-by-collection.tsv")
+    source_total = None
+    source_missing = []
+    if source_rows is not None:
+        try:
+            if any(not row.get("collection") for row in source_rows):
+                raise ValueError("missing collection")
+            source_total = sum(int(row["rows"]) for row in source_rows)
+        except (KeyError, TypeError, ValueError):
+            source_total = None
+    if source_total is not None and vec_rows is not None:
+        table_collections = set()
+        for row in vec_rows:
+            match = re.fullmatch(r"(.+)_\d+_vectors", row.get("table") or "")
+            if match:
+                table_collections.add(match.group(1))
+        source_missing = sorted({row["collection"] for row in source_rows
+                                 if int(row["rows"]) > 0
+                                 and row["collection"] not in table_collections})
+    if vec_rows is None:
+        why = ("container manticore-vectors not found" if "manticore-vectors" not in names
+               else "manticore-vectors/vector-tables.tsv missing, so the daemon did not answer")
+        add("vector tables quantized", "UNKNOWN", why, "manticore-vectors/vector-tables.tsv")
+    else:
+        not_1bit = ["%s=%s" % (t.get("table"), t.get("quantization"))
+                    for t in vec_rows if t.get("quantization") in ("none", "8bit")]
+        unread = ["%s=%s" % (t.get("table"), t.get("quantization") or "not read")
+                  for t in vec_rows if t.get("quantization") not in ("none", "8bit", "1bit")]
+        if not_1bit:
+            status, detail = "FAIL", "not 1bit: " + ", ".join(not_1bit)
+        elif unread:
+            status, detail = "UNKNOWN", "not read: " + ", ".join(unread)
+        elif source_total is None:
+            status, detail = "UNKNOWN", "durable vector count cannot be read"
+        elif source_missing:
+            status, detail = "FAIL", "no vector table for " + ", ".join(source_missing)
+        else:
+            status, detail = "PASS", "%d tables, all 1bit" % len(vec_rows)
+        add("vector tables quantized", status, detail, "manticore-vectors/vector-tables.tsv")
+
+    vc = names.get("manticore-vectors")
+    limit = ((vc or {}).get("HostConfig") or {}).get("Memory") or None
+    if vc is None:
+        status, detail = "UNKNOWN", "container manticore-vectors not found"
+    elif vec_rows is None:
+        status, detail = "UNKNOWN", "manticore-vectors/vector-tables.tsv missing"
+    elif source_total is None:
+        status, detail = "UNKNOWN", "durable vector count cannot be read"
+    elif source_missing:
+        status, detail = "FAIL", "no vector table for " + ", ".join(source_missing)
+    else:
+        status, detail = vector_budget(vec_rows, limit)
+    add("vector memory budget", status, detail,
+        "manticore-vectors/vector-tables.tsv, containers/manticore-vectors/summary.json")
+
+    # The counts over the whole log come from the lifetime log reader. A container it did
+    # not read completely falls back to the tail in logs/, and the detail says so. A read
+    # whose first line is later than deployed_at did not see every line since the
+    # deployment, so its check says UNKNOWN, unless it found a match.
+    full = {}
+    failed_reads = {}
+    counts_path = r.root / "summary" / "verdict-log-counts.json"
+    if counts_path.exists():
+        try:
+            counts = json.loads(counts_path.read_text(errors="replace"))
+            full = counts.get("containers") or {}
+            failed_reads = counts.get("failed") or {}
+        except (ValueError, AttributeError):
+            full = {}
+    for name, log, needles in VERDICT_LOG_SIGNATURES:
+        cname = log[:-len(".log")]
+        entry = full.get(cname)
+        if entry is not None:
+            n = sum(int((entry.get("needles") or {}).get(s) or 0) for s in needles)
+            detail = "%d matches since deploy in the whole log" % n
+            status = "FAIL" if n else "PASS"
+            if _read_misses_deploy(parse_ts(entry.get("first_line_time")),
+                                   entry.get("lines_read"), deployed_at):
+                detail += ", but the kept log starts at %s, after the deployment" % (
+                    entry.get("first_line_time") or "an unknown time")
+                status = "FAIL" if n else "UNKNOWN"
+            add(name, status, detail, "summary/verdict-log-counts.json, lifetime-logs/" + log)
+            continue
+        why = ("the whole-log read failed (%s), " % failed_reads[cname]
+               if cname in failed_reads else "")
+        path = r.root / "logs" / log
+        n = _count_since(path, needles, deployed_at)
+        if n is None:
+            add(name, "UNKNOWN", why + "log missing", "logs/" + log)
+            continue
+        first = _first_line_time(path)
+        detail = "%s%d lines since deploy, tail only" % (why, n)
+        status = "FAIL" if n else "PASS"
+        if _read_misses_deploy(first, path.stat().st_size, deployed_at):
+            detail += ", and the tail starts at %s, after the deployment" % (
+                first.strftime("%Y-%m-%dT%H:%M:%SZ") if first else "an unknown time")
+            status = "FAIL" if n else "UNKNOWN"
+        add(name, status, detail, "logs/" + log)
+
+    errs = _read_tsv(r.root / "clickhouse" / "errors.tsv")
+    if errs is None:
+        add("ClickHouse memory errors", "UNKNOWN", "clickhouse/errors.tsv missing",
+            "clickhouse/errors.tsv")
+    else:
+        hit = [e for e in errs if e.get("name") in ("MEMORY_LIMIT_EXCEEDED", "CANNOT_ALLOCATE_MEMORY")
+               and (deployed_at is None or (parse_ts(e.get("last_error_time", "")) or deployed_at)
+                    >= deployed_at)]
+        add("ClickHouse memory errors", "FAIL" if hit else "PASS",
+            ", ".join("%s=%s last %s" % (e["name"], e.get("value"), e.get("last_error_time"))
+                      for e in hit) or "none since deploy", "clickhouse/errors.tsv")
+
+    failed = r.root / "temporal" / "workflows-failed.json"
+    if failed.exists():
+        try:
+            rows = parse_json_lines(failed.read_text(errors="replace"))
+        except Exception:
+            rows = []
+        by_type = Counter(dig(w, "type", "name") or "?" for w in rows
+                          if deployed_at is None
+                          or (parse_ts(w.get("closeTime")) or deployed_at) >= deployed_at)
+        add("failed workflows since deploy", "FAIL" if by_type else "PASS",
+            ", ".join("%s=%d" % kv for kv in by_type.most_common()) or "none",
+            "temporal/workflows-failed.json")
+
+    ops = _read_tsv(r.root / "clickhouse" / "operations.tsv")
+    if ops is not None:
+        recent = [o for o in ops if deployed_at is None
+                  or (parse_ts(o.get("started_at", "") + "Z") or deployed_at) >= deployed_at]
+        states = Counter(o.get("state") for o in recent)
+        add("operations since deploy", "FAIL" if states.get("errored") else "PASS",
+            ", ".join("%s=%d" % kv for kv in states.most_common()) or "none",
+            "clickhouse/operations.tsv")
+
+    infra, per_file = Counter(), Counter()
+    cause_files = sorted((r.root / "clickhouse" / "collections").glob(
+        "*/errors-by-cause-since-deploy.tsv"))
+    for p in cause_files:
+        for row in _read_tsv(p) or []:
+            key = "%s: %s" % (row.get("task_name"), (row.get("cause") or "")[:100])
+            n = int(row.get("n") or 0)
+            (infra if INFRA_CAUSES.search(row.get("cause") or "") else per_file)[key] += n
+    add("platform causes in processing_errors since deploy",
+        "FAIL" if infra else ("PASS" if cause_files else "UNKNOWN"),
+        "; ".join("%d %s" % (n, k) for k, n in infra.most_common(8)) or "none",
+        "clickhouse/collections/*/errors-by-cause-since-deploy.tsv")
+    add("per-file causes in processing_errors since deploy", "INFO",
+        "; ".join("%d %s" % (n, k) for k, n in per_file.most_common(8)) or "none",
+        "clickhouse/collections/*/errors-by-cause-since-deploy.tsv")
+
+    for label, rel, needle in FIX_MARKERS:
+        p = repo / rel
+        try:
+            found = needle in p.read_text(errors="replace")
+        except OSError:
+            found = False
+        add("fix marker: " + label, "INFO", "found" if found else "not found", rel)
+
+    firsts = [("lifetime-logs/%s.log" % name, parse_ts(e.get("first_line_time")))
+              for name, e in sorted(full.items())]
+    if not full:
+        # No counts file: read the first lines that the manifest recorded.
+        firsts = [(m["file"], parse_ts(m.get("first_line"))) for m in r.manifest
+                  if m.get("first_line")]
+    if deployed_at is not None:
+        for f, ts in firsts:
+            if ts is not None and ts > deployed_at:
+                add("log reaches the deployment: " + f, "WARN",
+                    "the kept log starts at %s, after the deployment, so its counts start "
+                    "there" % ts.strftime("%Y-%m-%dT%H:%M:%SZ"), f)
+
+    order = {"FAIL": 0, "UNKNOWN": 1, "WARN": 2, "PASS": 3, "INFO": 4}
+    checks.sort(key=lambda x: order.get(x["status"], 5))
+    r.write_json("summary/verdict.json", {
+        "deployed_at": deployed_at.isoformat() if deployed_at else None, "checks": checks})
+    lines = ["deployed at: %s" % (deployed_at.isoformat() if deployed_at else "unknown"), ""]
+    for x in checks:
+        lines.append("%-7s %s: %s   [%s]" % (x["status"], x["check"], x["detail"], x["evidence"]))
+    r.write_text("summary/verdict.txt", "\n".join(lines) + "\n")
+    return checks
+
+
+# --------------------------------------------------------------------------------------
 # Log summaries
 # --------------------------------------------------------------------------------------
 
@@ -1397,20 +2376,29 @@ def summarise_logs(r):
     return table
 
 
-def write_readme(r, args, containers, sig_table, started):
+def write_readme(r, args, containers, sig_table, started, oom, checks):
     lines = ["hoover4 debug report", "",
              "created: %s" % datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat() + "Z",
              "host: %s" % socket.gethostname(),
              "python: %s" % platform.python_version(),
              "engine: %s" % r.engine,
              "arguments: %s" % " ".join(sys.argv[1:]),
-             "run time: %.0f s" % (time.time() - started), "",
-             "containers (hoover4 only):"]
+             "run time: %.0f s" % (time.time() - started), ""]
+    counts = Counter(x["status"] for x in checks)
+    lines += ["verdict: %s (summary/verdict.txt)" % ", ".join(
+        "%s=%d" % kv for kv in sorted(counts.items()))]
+    lines += ["  %-7s %s: %s" % (x["status"], x["check"], x["detail"][:160])
+              for x in checks if x["status"] in ("FAIL", "UNKNOWN", "WARN")]
+    lines += ["", "containers (hoover4 only). `docker_oom` is Docker's State.OOMKilled, and "
+              "`kernel_kills` counts the kernel's memory-cgroup kills since the deployment "
+              "(summary/oom-kills.json):"]
     for c in containers:
         s = container_summary(c)
-        lines.append("  %-40s %-10s health=%-9s restarts=%-4s oom=%-5s exit=%s started=%s" % (
-            s["name"], s["status"], s["health"], s["restart_count"], s["oom_killed"],
-            s["exit_code"], s["started_at"]))
+        kills = (oom.get(s["name"]) or {}).get("kills_since_deploy", 0)
+        lines.append("  %-40s %-10s health=%-9s restarts=%-4s docker_oom=%-5s kernel_kills=%-5s "
+                     "exit=%s started=%s" % (
+                         s["name"], s["status"], s["health"], s["restart_count"],
+                         s["oom_killed"], kills, s["exit_code"], s["started_at"]))
     lines += ["", "log signatures (non-zero):"]
     for name, row in sorted(sig_table.items()):
         interesting = {k: v for k, v in row["signatures"].items()
@@ -1460,7 +2448,24 @@ def main():
                     help="keep credential-like values in the copies")
     ap.add_argument("--keep-dir", action="store_true",
                     help="keep the staging folder beside the zip")
+    ap.add_argument("--deployed-at",
+                    help="the deployment time the verdict counts from, as an ISO time "
+                         "(default: the start time of hoover4-worker)")
+    ap.add_argument("--expect-limit", action="append", default=[], metavar="NAME=SIZE",
+                    help="a memory limit the verdict requires at least, such as "
+                         "manticore=64G. Repeat the flag for each container")
+    ap.add_argument("--oom-windows", type=int, default=3,
+                    help="log windows kept around the first and the last kernel OOM kills "
+                         "of each container since the deployment (default 3)")
     args = ap.parse_args()
+    expected_limits = {}
+    for item in args.expect_limit:
+        name, _, size = item.partition("=")
+        m = re.fullmatch(r"(\d+)\s*([KMGT]?)B?", size.strip(), re.I)
+        if not name or not m:
+            ap.error("--expect-limit takes NAME=SIZE, such as manticore=64G: %r" % item)
+        unit = {"": 1, "K": 2**10, "M": 2**20, "G": 2**30, "T": 2**40}[m.group(2).upper()]
+        expected_limits[name.strip()] = int(m.group(1)) * unit
 
     started = time.time()
     repo = find_repo(args.repo)
@@ -1496,11 +2501,21 @@ def main():
         hours = max(1, {"s": n // 3600, "m": n // 60, "h": n, "d": n * 24}[u])
 
     containers = []
+    deployed_at = parse_ts(args.deployed_at) if args.deployed_at else None
+    if args.deployed_at and deployed_at is None:
+        ap.error("--deployed-at is not an ISO time: %r" % args.deployed_at)
     tasks = [("host", lambda: collect_host(r, args.since)),
              ("repo", lambda: collect_repo(r, repo, r.engine))]
     if r.engine:
         all_containers = list_containers(r, r.engine)
         containers = sorted([c for c in all_containers if is_ours(c)], key=container_name)
+        if deployed_at is None:
+            worker = next((c for c in containers if container_name(c) == "hoover4-worker"), None)
+            deployed_at = parse_ts(((worker or {}).get("State") or {}).get("StartedAt"))
+        print("deployed at: %s" % (deployed_at.isoformat() if deployed_at else "unknown"))
+    deployed_iso = (deployed_at or datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+    if r.engine:
         r.write_json("engine/all-containers-summary.json",
                      [container_summary(c) for c in all_containers])
         names = {container_name(c) for c in containers}
@@ -1524,16 +2539,22 @@ def main():
         if args.sample_seconds > 0:
             tasks.insert(0, ("timeseries", lambda: collect_timeseries(
                 r, containers, args.sample_seconds, args.sample_interval)))
+        # The log checks of the verdict need the whole-log counts, so the reader runs also
+        # when ClickHouse is down. It then keeps no lines by operation name.
+        if args.lifetime_lines > 0:
+            tasks.append(("lifetime logs", lambda: collect_lifetime_logs(
+                r, r.engine, running, args.lifetime_lines, deployed_at,
+                watch_names="clickhouse" in running)))
         if "clickhouse" in running:
-            tasks.append(("clickhouse", lambda: collect_clickhouse(r, hours)))
-            if args.lifetime_lines > 0:
-                tasks.append(("lifetime logs", lambda: collect_lifetime_logs(
-                    r, r.engine, running, args.lifetime_lines)))
+            tasks.append(("clickhouse", lambda: collect_clickhouse(r, hours, deployed_iso)))
             if args.dataset_scan_seconds > 0 and "hoover4-worker" in running:
                 tasks.append(("dataset shape", lambda: collect_dataset_shape(
                     r, args.dataset_scan_seconds)))
-        if "manticore" in running:
-            tasks.append(("manticore", lambda: collect_manticore(r)))
+        # Also when it is not running: the data folder and the binlog are read from the host.
+        for mname in MANTICORE_CONTAINERS:
+            mc = next((c for c in containers if container_name(c) == mname), None)
+            if mc is not None:
+                tasks.append((mname, lambda mc=mc, mname=mname: collect_manticore(r, mc, mname)))
         if "garage" in running:
             tasks.append(("garage", lambda: collect_garage(r)))
         if "redis" in running:
@@ -1567,9 +2588,20 @@ def main():
             print("done: failing runs (%.0f s)" % (time.time() - started))
         except Exception:
             r.note("collector failing-runs failed: %s" % traceback.format_exc(limit=3))
+    oom = {}
+    try:
+        oom = collect_oom_kills(r, containers, deployed_at, r.engine, args.oom_windows)
+        print("done: oom kills (%.0f s)" % (time.time() - started))
+    except Exception:
+        r.note("collector oom-kills failed: %s" % traceback.format_exc(limit=3))
     sig_table = summarise_logs(r)
+    checks = []
+    try:
+        checks = build_verdict(r, repo, containers, deployed_at, oom, expected_limits)
+    except Exception:
+        r.note("verdict failed: %s" % traceback.format_exc(limit=3))
     r.write_json("manifest.json", r.manifest)
-    write_readme(r, args, containers, sig_table, started)
+    write_readme(r, args, containers, sig_table, started, oom, checks)
 
     zip_path = out_dir / (base + ".zip")
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED,

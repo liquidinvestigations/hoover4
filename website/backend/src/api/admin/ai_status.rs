@@ -484,7 +484,8 @@ async fn list_shard_dim_checks(probe_dim: u32) -> Vec<AiShardDimCheck> {
         .await
         .unwrap_or_default();
 
-    let manticore = std::env::var("MANTICORE_URL").unwrap_or_else(|_| "http://manticore:9308".into());
+    let manticore = std::env::var("MANTICORE_VECTORS_URL")
+        .unwrap_or_else(|_| "http://manticore-vectors:9308".into());
     let http = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(2))
         .timeout(Duration::from_secs(5))

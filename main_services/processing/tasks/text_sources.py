@@ -23,6 +23,48 @@ stage reads is a pipeline decision and nothing in the website depends on it.
 
 from typing import Collection, List, Optional, Tuple
 
+SegmentKey = tuple[str, str, int]
+
+#: One batch holds at most this many stored text bytes, except one large segment.
+TEXT_BATCH_BYTES = 32 * 1024 * 1024
+
+
+def plan_text_batches(keys: list[tuple[SegmentKey, int]],
+                      max_bytes: int = TEXT_BATCH_BYTES) -> list[list[SegmentKey]]:
+    """Group ordered segment keys into byte-bounded batches."""
+    batches: list[list[SegmentKey]] = []
+    current: list[SegmentKey] = []
+    size = 0
+    for key, text_bytes in keys:
+        if current and size + text_bytes > max_bytes:
+            batches.append(current)
+            current, size = [], 0
+        current.append(key)
+        size += text_bytes
+    if current:
+        batches.append(current)
+    return batches
+
+
+def fetch_text_batch(client, collection_dataset: str,
+                     batch: list[SegmentKey]) -> list[dict]:
+    """Read exactly the requested text segments from ``text_content FINAL``."""
+    if not batch:
+        return []
+    hashes = sorted({key[0] for key in batch})
+    return client.query_arrow("""
+        SELECT collection_dataset, file_hash, extracted_by, page_id, text
+        FROM text_content FINAL
+        WHERE collection_dataset = {collection_dataset:String}
+          AND file_hash IN {hashes:Array(String)}
+          AND (file_hash, extracted_by, page_id) IN {keys:Array(Tuple(String, String, UInt32))}
+        ORDER BY file_hash, extracted_by, page_id
+    """, {
+        "collection_dataset": collection_dataset,
+        "hashes": hashes,
+        "keys": batch,
+    }).to_pylist()
+
 #: The file's own bytes, decoded and segmented, with nothing interpreted. For a mail file
 #: that is the MIME envelope: header block, boundaries, base64 attachment payloads.
 RAW_TEXT = "raw_text"

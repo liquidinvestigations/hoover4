@@ -844,7 +844,7 @@ def reconcile_deleted_files(params: ReconcileDeletedFilesParams) -> ReconcileDel
     """
     from datetime import datetime, timezone
 
-    from database.manticore import get_manticore_client, list_shard_tables, vfs_table_name
+    from database.manticore import client_for_table, list_shard_tables, vfs_table_name
 
     cutoff = datetime.fromtimestamp(params.scan_started_at, timezone.utc).replace(tzinfo=None)
     with get_collection_client(params.collectionname) as client:
@@ -882,33 +882,31 @@ def reconcile_deleted_files(params: ReconcileDeletedFilesParams) -> ReconcileDel
             )
         """, {"cd": params.collection_dataset}).result_rows]
 
-        if orphaned:
-            client.command(
-                "DELETE FROM index_state WHERE collection_dataset = {cd:String} "
-                "AND file_hash IN {hashes:Array(String)}",
-                parameters={"cd": params.collection_dataset, "hashes": orphaned},
-            )
-
     deindexed = 0
     if orphaned:
         # The shard tables and the VFS tree, which are the tables keyed by file_hash. The
         # facet-term index is not: it holds one row per term, and a term stops being
         # searchable when its own reconciliation pass finds it gone from ClickHouse.
         tables = list_shard_tables(params.collectionname) + [vfs_table_name(params.collectionname)]
-        with get_manticore_client() as cnx:
-            cursor = cnx.cursor()
-            for table in tables:
+        for table in tables:
+            with client_for_table(table) as cnx:
+                cursor = cnx.cursor()
                 for chunk_start in range(0, len(orphaned), DEINDEX_HASH_BATCH):
                     chunk = orphaned[chunk_start:chunk_start + DEINDEX_HASH_BATCH]
                     placeholders = ",".join(["%s"] * len(chunk))
-                    # Identifiers come from list_collection_tables (regex-validated);
-                    # only the values are bound.
+                    # The table helpers validate identifiers. Bind only the values.
                     cursor.execute(
                         f"DELETE FROM {table} WHERE collection_dataset = %s "
                         f"AND file_hash IN ({placeholders})",
                         (params.collection_dataset, *chunk),
                     )
-            cnx.commit()
+                cnx.commit()
+        with get_collection_client(params.collectionname) as client:
+            client.command(
+                "DELETE FROM index_state WHERE collection_dataset = {cd:String} "
+                "AND file_hash IN {hashes:Array(String)}",
+                parameters={"cd": params.collection_dataset, "hashes": orphaned},
+            )
         deindexed = len(orphaned)
 
     log.info(

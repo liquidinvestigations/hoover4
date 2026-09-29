@@ -8,6 +8,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 echo clickhouse: $CLICKHOUSE_URL
 echo manticore: $MANTICORE_URL
+echo manticore vectors: $MANTICORE_VECTORS_URL
 
 # A hook called conditionally or inside a closure shifts every hook index after it on the
 # render that adds it and traps the WebAssembly runtime -- the page paints and then nothing
