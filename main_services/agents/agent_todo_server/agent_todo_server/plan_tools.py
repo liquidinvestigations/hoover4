@@ -8,6 +8,7 @@ Tools:
     ``edit_node``           the text of a node, the root included
     ``remove_node``         a node and its subtree
     ``read_plan_document``  one page of a prompt, report, review or final report
+    ``read_plan_report``    one page of the typed report of a section's sub-agent
 
 **Which plan.** The server reads the agent run id from `X-Hoover4-Agent-Run`, reads that
 run's `agent_runs` row under the owner from the other headers, and takes its `plan_run_id`.
@@ -38,6 +39,7 @@ The tree rules live in `database.agent_plans`, which the worker reads as well.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
@@ -46,6 +48,7 @@ from typing import Annotated, Any, Optional
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field, model_serializer
 
+from agent_common.result_pages import canonical_json
 from agent_todo_server.identity import Caller, CallerUnknown, agent_run_id, parse_caller
 from agent_todo_server.server import mcp
 from database import agent_plans, agent_runs
@@ -58,6 +61,18 @@ IDEMPOTENCY_HEADER = "x-hoover4-idempotency-key"
 
 #: The most characters `read_plan_document` returns in one call.
 DOCUMENT_PAGE_CHARS = 16_000
+
+#: The most bytes of one `read_plan_report` page, when the call has no smaller page share.
+REPORT_PAGE_BYTES = 16_000
+
+#: The longest text of one report unit. A longer text is several units.
+REPORT_TEXT_CHARS = 4_000
+
+#: The header that carries the page share of a call.
+PAGE_SHARE_HEADER = "x-hoover4-page-share"
+
+#: The evidence lists of a typed report, in the order a page shows them.
+REPORT_LISTS = ("documents_read", "citations", "notes", "artifacts", "documents_found")
 
 #: One lock for each plan run. An entry is never removed: a plan run id is small and the
 #: server restarts with each deployment.
@@ -117,6 +132,28 @@ class PlanDocumentPage(BaseModel):
     text: str = ""
     code: Optional[str] = None
     error: Optional[str] = None
+
+
+class PlanReportPage(BaseModel):
+    """One page of a typed report: its units in `items`, and `more`, the cursor of the
+    next page, when units remain."""
+
+    success: bool
+    node: str = ""
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    total: int = 0
+    more: Optional[str] = None
+    code: Optional[str] = None
+    error: Optional[str] = None
+
+    @model_serializer
+    def _slim_result(self) -> dict[str, Any]:
+        if not self.success:
+            return {"success": False, "code": self.code, "error": self.error}
+        out: dict[str, Any] = {"node": self.node, "items": self.items, "total": self.total}
+        if self.more:
+            out["more"] = self.more
+        return out
 
 
 @dataclass
@@ -336,19 +373,169 @@ async def read_plan_document(document_id: str = "",
     wanted = (document_id or "").strip()
     if not wanted:
         listing = "\n".join(f"{d.document_id} {d.kind} node {d.node_id} "
-                            f"{len(d.body)} characters" for d in documents)
+                            f"{d.body_bytes or len(d.body.encode())} bytes" for d in documents)
         return PlanDocumentPage(success=True, text=listing, total_chars=len(listing))
     doc = next((d for d in documents if d.document_id == wanted), None)
     if doc is None:
         return PlanDocumentPage(success=False, code="document_unknown",
                                 error="this plan has no document with that id")
     try:
+        body = await asyncio.to_thread(agent_plans.document_body, ctx.caller.username,
+                                       ctx.caller.session_id, doc)
+    except Exception as exc:  # noqa: BLE001 - a body or object store failure
+        log.warning("the document %s was not read: %s", doc.document_id, exc)
+        return PlanDocumentPage(success=False, code="document_unreadable",
+                                error="the document cannot be read now. Try again later.")
+    try:
         start = max(0, int(offset or 0))
     except (TypeError, ValueError):
         start = 0
-    end = min(len(doc.body), start + DOCUMENT_PAGE_CHARS)
+    end = min(len(body), start + DOCUMENT_PAGE_CHARS)
     return PlanDocumentPage(
         success=True, document_id=doc.document_id, kind=doc.kind, node_id=doc.node_id,
-        offset=start, next_offset=end if end < len(doc.body) else None,
-        total_chars=len(doc.body), text=doc.body[start:end],
+        offset=start, next_offset=end if end < len(body) else None,
+        total_chars=len(body), text=body[start:end],
     )
+
+
+def _chunks(text: str) -> list[str]:
+    text = text or ""
+    return [text[i:i + REPORT_TEXT_CHARS]
+            for i in range(0, len(text), REPORT_TEXT_CHARS)] or [""]
+
+
+def _text_units(part: str, text: str, **extra: Any) -> list[dict[str, Any]]:
+    chunks = _chunks(text)
+    units = []
+    for i, chunk in enumerate(chunks):
+        unit = {"part": part, **extra, "text": chunk}
+        if len(chunks) > 1:
+            unit.update(chunk=i + 1, chunks=len(chunks))
+        units.append(unit)
+    return units
+
+
+def report_units(report: dict[str, Any]) -> list[dict[str, Any]]:
+    """The units of a typed report in page order: the execution, the final answer, the
+    newest model texts, the diagnostics, then one unit for each evidence entry. A long
+    text is several units, so each unit fits a page."""
+    units: list[dict[str, Any]] = [{"part": "execution", **(report.get("execution") or {})}]
+    final = report.get("final_answer")
+    if isinstance(final, dict):
+        units += _text_units("final_answer", str(final.get("text") or ""),
+                             source=final.get("source"))
+    for text in report.get("recent_text") or []:
+        units += _text_units("recent_text", str(text.get("text") or ""),
+                             source=text.get("source"))
+    units.append({"part": "diagnostics", **(report.get("diagnostics") or {})})
+    for name in REPORT_LISTS:
+        units += [{"part": name, **entry} for entry in report.get(name) or []]
+    return units
+
+
+def report_digest(units: list[dict[str, Any]]) -> str:
+    """The first 16 hex characters of the SHA-256 of the canonical units."""
+    return hashlib.sha256(canonical_json(units).encode("utf-8")).hexdigest()[:16]
+
+
+def report_page(node: str, units: list[dict[str, Any]], start: int, limit: int,
+                digest: str | None = None) -> PlanReportPage:
+    """The page of `units` from `start` that fits `limit` bytes, with at least one unit.
+    `more` is `<digest>:<next unit>`.
+
+    The page is built forward: each unit adds its canonical bytes and one comma to the
+    bytes of an empty page with the longest cursor, so the page is serialized once."""
+    digest = digest or report_digest(units)
+    empty = PlanReportPage(success=True, node=node, items=[], total=len(units),
+                           more=f"{digest}:{len(units)}")
+    size = len(canonical_json(empty.model_dump()).encode("utf-8"))
+    end = start
+    while end < len(units):
+        added = len(canonical_json(units[end]).encode("utf-8")) + (1 if end > start else 0)
+        if end > start and size + added > limit:
+            break
+        size += added
+        end += 1
+    more = f"{digest}:{end}" if end < len(units) else None
+    return PlanReportPage(success=True, node=node, items=units[start:end],
+                          total=len(units), more=more)
+
+
+def _page_limit(headers: dict[str, str]) -> int:
+    lowered = {key.lower(): value for key, value in headers.items()}
+    try:
+        share = int(str(lowered.get(PAGE_SHARE_HEADER, "")).strip())
+    except ValueError:
+        return REPORT_PAGE_BYTES
+    return min(share, REPORT_PAGE_BYTES) if share > 0 else REPORT_PAGE_BYTES
+
+
+def _section_report(ctx: PlanContext, node_value: str) -> tuple[str, list[dict[str, Any]]]:
+    """The node id and the report units of the newest sub-agent thread of a plan node, or
+    `PlanRefused`. A thread with no typed report gives its text report as one legacy
+    text, and a thread with neither is refused."""
+    user, session = ctx.caller.username, ctx.caller.session_id
+    snapshot = _snapshot(ctx, _read_version(ctx.plan_run))
+    node = agent_plans.resolve_node(snapshot, node_value) if snapshot else None
+    if node is None:
+        raise PlanRefused("node_unknown", "no node of the plan has this id or number path. "
+                          "Read the tree with read_plan.")
+    threads = [row for row in agent_runs.read_plan_threads(user, session, ctx.plan_run.run_id)
+               if row.plan_node_id == node]
+    if not threads:
+        raise PlanRefused("no_report", "no sub-agent ran for this node")
+    first = threads[-1]
+    report = agent_plans.read_report_data(user, session, ctx.plan_run.run_id, first.run_id)
+    if report is not None:
+        return node, report_units(report)
+    wanted = agent_plans.document_id(first.run_id, "report")
+    legacy = next((d for d in agent_plans.read_documents(user, session, ctx.plan_run.run_id)
+                   if d.document_id == wanted), None)
+    if legacy is None:
+        raise PlanRefused("report_missing", "the sub-agent of this node has no report yet")
+    try:
+        body = agent_plans.document_body(user, session, legacy)
+    except Exception as exc:  # noqa: BLE001 - a body or object store failure
+        log.warning("the report %s was not read: %s", legacy.document_id, exc)
+        raise PlanRefused("report_unreadable", "the report of this node cannot be read now. "
+                          "Try again later.") from exc
+    return node, _text_units("legacy_text", body)
+
+
+@mcp.tool(
+    name="read_plan_report",
+    description=(
+        "Read one page of the report of the sub-agent of a plan node: how its run ended, "
+        "its final answer, its newest texts, and each document it read, cited or failed "
+        "to read, with its notes. Give node_id as a node id or a number path such as 1. "
+        "Give cursor from `more` to read the next page."
+    ),
+)
+async def read_plan_report(node_id: str = "", cursor: str = "") -> PlanReportPage:
+    # The whole read runs in a thread: the storage reads, the digest and the page build
+    # of a long report would hold the event loop that every run of the server shares.
+    return await asyncio.to_thread(_read_plan_report, _headers(), node_id, cursor)
+
+
+def _read_plan_report(headers: dict[str, str], node_id: str, cursor: str) -> PlanReportPage:
+    try:
+        ctx = _context(headers)
+        node, units = _section_report(ctx, node_id)
+    except PlanRefused as exc:
+        return PlanReportPage(success=False, code=exc.code, error=str(exc))
+    digest = report_digest(units)
+    start = 0
+    if (cursor or "").strip():
+        named, _, index = cursor.strip().partition(":")
+        if named != digest:
+            return PlanReportPage(success=False, code="report_changed",
+                                  error="the report changed after this cursor. Read it again "
+                                        "with no cursor.")
+        try:
+            start = int(index)
+        except ValueError:
+            start = -1
+        if not 0 <= start < len(units):
+            return PlanReportPage(success=False, code="invalid_cursor",
+                                  error="the cursor names no unit of the report")
+    return report_page(node, units, start, _page_limit(headers), digest)

@@ -32,9 +32,8 @@ EVERY_TOOL = frozenset().union(*PACKS.values())
 NARROW_TOOLS = PACKS["collections"] | PACKS["conversation"] | PACKS["skills"]
 PROFILES = sorted(ROLE_CONTEXT)
 
-#: The descriptions the classifier forms were calibrated on, byte for byte.
-CLASSIFIER_DESCRIPTIONS = {
-    "plan_first": "how to use a todo list for work with several steps",
+#: The descriptions of the general skills that the prompt lists.
+GENERAL_DESCRIPTIONS = {
     "search": "how to search document collections and use the query syntax",
     "thorough": "how to choose further searches when a question needs research",
     "citation": "how to cite the documents an answer relies on with cite_documents",
@@ -84,15 +83,15 @@ def test_the_store_holds_the_migrated_and_the_new_skills():
     assert groups == {
         "role": sorted(["method_chat_full", "method_chat_internal", "method_planner",
                         "method_organizer", "method_subagent"]),
-        "general": sorted(["plan_first", "search", "thorough", "citation"]),
+        "general": sorted(["search", "thorough", "citation"]),
         "technique": TECHNIQUE_SKILLS,
         "stumble": STUMBLE_SKILLS,
     }
 
 
-@pytest.mark.parametrize("name", sorted(CLASSIFIER_DESCRIPTIONS))
-def test_a_classifier_skill_keeps_its_calibrated_description(name):
-    assert load_skills()[name].description == CLASSIFIER_DESCRIPTIONS[name]
+@pytest.mark.parametrize("name", sorted(GENERAL_DESCRIPTIONS))
+def test_a_general_skill_keeps_its_description(name):
+    assert load_skills()[name].description == GENERAL_DESCRIPTIONS[name]
 
 
 def test_a_worker_citation_names_the_lead():
@@ -115,16 +114,37 @@ def test_a_skill_of_the_web_is_not_listed_without_the_web(tmp_path):
         )
     skills = load_skills(tmp_path)
     names = [s.name for s in listed_skills(context("internal_search", NARROW_TOOLS), skills)]
-    assert names == ["method_chat_internal", "search"]
+    assert names == ["search"]
     with_web = [s.name for s in listed_skills(context("internal_search", EVERY_TOOL), skills)]
     assert "web_research" in with_web
 
 
-def test_the_planner_lists_its_own_role_skill_and_no_other():
-    names = [s.name for s in listed_skills(context("planner"))]
-    roles = [n for n in names if skill_store.SKILLS[n].group == "role"]
-    assert roles == ["method_planner"]
-    assert names[0] == "method_planner"
+def test_no_run_lists_a_role_skill_and_each_profile_gets_its_own_role_text():
+    for profile, name in skill_store.ROLE_SKILLS.items():
+        listed = [s.name for s in listed_skills(context(profile))]
+        assert not [n for n in listed if skill_store.SKILLS[n].group == "role"]
+        body = skill_store.render_body(name, context(profile), strict=True)
+        assert skill_store.role_method(context(profile)) == body
+
+
+def test_the_planner_role_text_states_a_known_window_and_no_task_formula(monkeypatch):
+    from research_agent import compaction
+
+    monkeypatch.setattr(compaction, "context_window", lambda model_id: 131_072)
+    text = normalised(skill_store.role_method(context("planner", model_id="m")))
+    assert "context window of 131072 tokens" in text
+    assert "packing" not in text and "class" not in text
+    unknown = normalised(skill_store.role_method(context("planner")))
+    assert "context window" not in unknown
+
+
+@pytest.mark.parametrize("profile", sorted(skill_store.ROLE_SKILLS))
+def test_a_role_text_asks_for_no_search_heading_or_todo_update(profile):
+    """A role text gives the objective, the sources, the evidence rule and the role's duty.
+    It asks for no search before an answer, no report heading and no todo update."""
+    text = normalised(skill_store.role_method(context(profile))).lower()
+    for phrase in ("todo", "##", "search relevant", "identify the people"):
+        assert phrase not in text, (profile, phrase)
 
 
 # ------------------------------------------------------------------------- failure
@@ -234,7 +254,7 @@ def test_a_role_skill_holds_the_text_of_its_old_template_lines(name, tools):
     assert text.startswith(f"Skill `{name}`.")
     assert "insults or emotive words" not in text
     if name.startswith("method_chat"):
-        assert "A direct question can need no" in text
+        assert "can need no tool call" in text
 
 
 def test_the_search_and_citation_skills_hold_the_new_lines():

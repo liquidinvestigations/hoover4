@@ -5,8 +5,8 @@ They differ in which agent they reach and which queue they wait on, not in what 
 The website holds nothing open, so a browser reload, a website restart and a worker crash
 all cost the turn nothing.
 
-This module holds the short activities of `AgentRun`: open, nag, ending, fan-in, the todo
-read and the title. The step activities, one model call or one tool call each, are in
+This module holds the short activities of `AgentRun`: open, note, ending, fan-in and the
+title. The step activities, one model call or one tool call each, are in
 `steps.py`.
 
 The ACL travels with the task. These activities never resolve permissions themselves.
@@ -44,48 +44,6 @@ INTERNAL_AGENT_URL = os.getenv(
 def agent_url_for(internet_tools: bool) -> str:
     """The agent service a turn with these options belongs to."""
     return AGENT_URL if internet_tools else INTERNAL_AGENT_URL
-
-
-@dataclass
-class ReadTodoParams:
-    """Whose todo list to read."""
-
-    username: str
-    session_id: str
-    run_id: str = ""
-
-
-@activity.defn
-@with_heartbeat
-def read_chat_todo(params: ReadTodoParams) -> str:
-    """The run's todo list as JSON, for the workflow's nag loop.
-
-    An activity because the workflow cannot touch ClickHouse, and JSON because the
-    snapshot crosses a Temporal payload. `updated_at` is dropped: the loop asks whether
-    the plan is open and whether it moved, and a timestamp answers neither while being
-    the one field that will not serialise.
-
-    **Never raises.** A todo that cannot be read is reported as no todo at all, which
-    makes the loop stop nagging -- the alternative is failing a turn whose answer is
-    already written over a list that is only advisory.
-    """
-    from database import agent_runs, chat_todos
-
-    key = params.session_id
-    try:
-        if params.run_id:
-            run = agent_runs.read_run(params.username, params.session_id, params.run_id)
-            if run is not None:
-                key = chat_todos.key_for_run(run)
-        todo = chat_todos.read_todo(params.username, key)
-    except Exception:  # noqa: BLE001 - see the docstring: never worth the turn
-        log.warning("[P_agent] could not read the todo for %s", params.session_id, exc_info=True)
-        todo = chat_todos.empty_todo(key, params.username)
-    return json.dumps({
-        "version": int(todo["version"]),
-        "goal": todo["goal"],
-        "items": todo["items"],
-    })
 
 
 @dataclass
@@ -419,9 +377,6 @@ class AgentRunInput:
     plan_run_id: str = ""
     #: The decision row that started a planner round or an organizer step.
     decision_id: str = ""
-    #: JSON of the todo snapshot at the last nag, "" for none. A continue-as-new carries it,
-    #: because nothing else holds it.
-    todo_before_nag: str = ""
     #: The extra planner round for a plan with no section already ran.
     planner_retry_done: bool = False
 
@@ -479,7 +434,7 @@ def pending_calls(row, messages) -> list[CallRef]:
 
 @dataclass
 class OpenedRun:
-    """What `open_run` returns: `closed`, or the row's routing fields and nag counters."""
+    """What `open_run` returns: `closed`, or the row's routing fields and its steps."""
 
     state: str
     queue: str = ""
@@ -488,8 +443,6 @@ class OpenedRun:
     is_chat_lead: bool = False
     #: The run serves a plan run. No step reads this field.
     plan: bool = False
-    nags_this_turn: int = 0
-    nags_without_progress: int = 0
     #: For `closed` after a stop: a continuation that `fan_in` wrote, for the workflow to
     #: start. A stopped turn continues no run, so it is empty in practice.
     continuation_run_id: str = ""
@@ -499,13 +452,6 @@ class OpenedRun:
     continues: bool = False
     #: The unanswered calls of the thread, which the loop runs before its next model step.
     pending: list[CallRef] = field(default_factory=list)
-    #: The run starts a thread, so the loop writes its run-start reads before the first
-    #: model step (`preload.preload_reads`): no model step yet, a thread that holds only
-    #: its opening message, and a row that continues no other run.
-    preload: bool = False
-    #: What the classifier of the preload asks: `all` for the first turn of a chat,
-    #: `types` for a planner, else `none`.
-    preload_classify: str = "none"
 
 
 @dataclass
@@ -520,7 +466,8 @@ class RunSummary:
     batch_id: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
-    #: Empty for an answer. `step_budget` or `repeated_call` for a forced final answer.
+    #: Empty for an answer. `step_budget` or `empty_response` for a run that stopped
+    #: before an answer (`steps.write_incomplete`).
     end_reason: str = ""
     asked: bool = False
 
@@ -535,7 +482,8 @@ class Continuation:
 
 @dataclass
 class AppendNagParams:
-    """One nag or nag stop row. `message` is text this worker generates from the todo."""
+    """One note that starts a round. `message` is text that this worker holds: the citation
+    note or the note of the planner's extra round."""
 
     run_id: str
     username: str
@@ -543,10 +491,6 @@ class AppendNagParams:
     seq: int
     idx: int
     message: str
-    #: True for a nag that starts a round: the text also goes into the thread.
-    starts_round: bool
-    nags_this_turn: int = 0
-    nags_without_progress: int = 0
 
 
 @dataclass
@@ -610,20 +554,11 @@ def _opened(row) -> OpenedRun:
 
     messages = prepare_thread(
         agent_runs.read_messages(row.username, row.session_id, row.thread_id))
-    starts_thread = (row.model_steps == 0 and [m.role for m in messages] == ["human"]
-                     and not row.continues_run_id)
-    first_chat_turn = (
-        agent_runs.is_chat_lead(row) and starts_thread
-        and _earlier_user_rows(row.username, row.session_id, row.turn_seq) == 0
-    )
-    classify = "all" if first_chat_turn else "types" if row.kind == "planner" else "none"
     return OpenedRun(
         state=row.state, queue=row.queue, kind=row.kind, depth=row.depth,
         is_chat_lead=agent_runs.is_chat_lead(row), plan=bool(row.plan_run_id),
-        nags_this_turn=row.nags_this_turn, nags_without_progress=row.nags_without_progress,
         model_steps=row.model_steps, continues=bool(row.continues_run_id),
         pending=pending_calls(row, messages),
-        preload=starts_thread, preload_classify=classify if starts_thread else "none",
     )
 
 
@@ -786,6 +721,44 @@ def _organizer_sections(row) -> list[dict] | None:
             for e in entries]
 
 
+def _plan_node_paths(row) -> dict[str, str]:
+    """The number path of each node of the approved tree of the run's plan, or empty."""
+    if not row.plan_run_id:
+        return {}
+    from database import agent_plans
+
+    plan_run = agent_plans.read_plan_run(row.username, row.session_id, row.plan_run_id)
+    if plan_run is None or not plan_run.approved_version:
+        return {}
+    snapshot = agent_plans.read_snapshot(row.username, row.session_id, plan_run.plan_id,
+                                         plan_run.approved_version)
+    return agent_plans.node_paths(snapshot) if snapshot else {}
+
+
+def _report_reference(child, paths: dict[str, str]) -> dict:
+    """The report reference of a plan sub-agent in a continuation result: the node that
+    `read_plan_report` takes, and the counts of the typed report. The organizer reads the
+    evidence itself through the tool, so the result holds no evidence list."""
+    from database import agent_plans
+
+    out: dict = {"node": paths.get(child.plan_node_id or "", child.plan_node_id or "")}
+    data = agent_plans.read_report_data(child.username, child.session_id, child.plan_run_id,
+                                        child.run_id)
+    if data is None:
+        return out
+    diagnostics = data.get("diagnostics") or {}
+    out["evidence"] = {
+        "documents_read": sum(1 for e in data.get("documents_read") or []
+                              if e.get("status") != "error"),
+        "failed_items": int(diagnostics.get("failed_items") or 0),
+        "citations": sum(1 for e in data.get("citations") or [] if e.get("status") == "ok"),
+        "notes": len(data.get("notes") or []),
+    }
+    if not (child.result or "").strip() and data.get("recent_text"):
+        out["latest_text"] = str(data["recent_text"][-1].get("text") or "")
+    return out
+
+
 def _add_continuation_results(row, messages, chat_row):
     """The result of each `run_subagent` call of the continued run (`prepare_continuation`).
 
@@ -794,7 +767,9 @@ def _add_continuation_results(row, messages, chat_row):
     content is the canonical JSON `{"reports": [...], "refused": [...]}` from the child rows
     of that call and the continued run's `refused_json`. For the organizer of a plan it
     also holds `sections`, the state of each section from `sections_json`, which `open_run`
-    wrote for this step. For a run that writes the
+    wrote for this step. A report of a plan sub-agent adds its `end_reason`, the `node` that
+    `read_plan_report` takes, the counts of its typed report, and its newest model text when
+    the run has no result. For a run that writes the
     transcript, rewrite the call's row at `delegate_seq + i` with this JSON as its output.
     Returns the thread with the new messages.
     """
@@ -817,6 +792,7 @@ def _add_continuation_results(row, messages, chat_row):
     except ValueError:
         refused = []
     sections = _organizer_sections(row)
+    paths = _plan_node_paths(row)
     next_idx = max(m.idx for m in messages) + 1
     out = list(messages)
     for i, call in enumerate(calls):
@@ -834,6 +810,10 @@ def _add_continuation_results(row, messages, chat_row):
                 report["state"] = child.state
             if child.error:
                 report["error"] = child.error
+            if child.end_reason:
+                report["end_reason"] = child.end_reason
+            if child.plan_run_id:
+                report.update(_report_reference(child, paths))
             reports.append(report)
         result = {
             "reports": reports,
@@ -975,15 +955,23 @@ def _fan_in(username: str, session_id: str, run_id: str) -> Continuation:
 
     Returns nothing for a run with no parent, and while one row of the sibling set is not
     terminal. A continuation row copies its parent and batch, so it takes the place of the
-    run it continues in the set.
+    run it continues in the set. Before the continuation, each plan sub-agent thread of the
+    set that has no report documents gets them (`reports.ensure_reports`). That writes no
+    run state and runs no model or tool.
     """
     from database import agent_runs
 
     row = agent_runs.read_run(username, session_id, run_id)
     if row is None or not row.parent_run_id or not row.batch_id:
         return Continuation()
-    if not all(agent_runs.is_terminal(s) for s in _sibling_rows(row)):
+    siblings = _sibling_rows(row)
+    if not all(agent_runs.is_terminal(s) for s in siblings):
         return Continuation()
+    # A plan sub-agent whose ending stopped before its report documents gets them here,
+    # from its committed messages, before the parent reads the reports.
+    from tasks.P_agent import reports
+
+    reports.ensure_reports(siblings)
     return _continue_run(username, session_id, row.parent_run_id)
 
 
@@ -1016,8 +1004,7 @@ def _continue_run(username: str, session_id: str, parent_run_id: str) -> Continu
             state=agent_runs.RUNNING, tool_call_id=parent.tool_call_id,
             start_seq=parent.next_seq, next_seq=parent.next_seq,
             model_steps=parent.model_steps, prompt_tokens=parent.prompt_tokens,
-            completion_tokens=parent.completion_tokens, nags_this_turn=parent.nags_this_turn,
-            nags_without_progress=parent.nags_without_progress,
+            completion_tokens=parent.completion_tokens,
             subagent_share=parent.subagent_share,
         ))
     return Continuation(run_id=run_id, workflow_id=f"run-{run_id}")
@@ -1065,33 +1052,28 @@ def _finish_stream_rows_from(username: str, session_id: str, turn_uuid: str, seq
 @activity.defn
 @with_heartbeat
 def append_nag(params: AppendNagParams) -> int:
-    """Write a nag row at `seq`, and for a nag round, the nag text into the thread.
+    """Write a note that starts a round: a note row at `seq` for a run that writes the
+    transcript, and the note text into the thread at `idx`.
 
-    A nag round also writes the row's nag counters. Every key comes from the parameters, so
-    a retry writes the same rows. Returns the next free seq.
+    Every key comes from the parameters, so a retry writes the same rows. No counter is
+    written. Returns the next free seq.
     """
     from database import agent_runs
-    from tasks.P_agent import nagging
+    from tasks.P_agent.steps import NOTE_ROLE
 
     row = agent_runs.read_run(params.username, params.session_id, params.run_id)
     if row is None or agent_runs.is_terminal(row):
         return params.seq
     transcript = agent_runs.writes_transcript(row)
     if transcript:
-        _insert_chat_row(row.username, row.session_id, params.seq, nagging.NAG_ROLE,
+        _insert_chat_row(row.username, row.session_id, params.seq, NOTE_ROLE,
                          content=params.message)
-    changes: dict = {"next_seq": params.seq + int(transcript)}
-    if params.starts_round:
-        agent_runs.write_message(
-            row.username, row.session_id, row.thread_id, row.run_id,
-            agent_runs.RunMessageRow(idx=params.idx, role="human", content=params.message,
-                                     run_id=row.run_id),
-        )
-        changes.update(
-            nags_this_turn=params.nags_this_turn,
-            nags_without_progress=params.nags_without_progress,
-        )
-    agent_runs.write_run(row, **changes)
+    agent_runs.write_message(
+        row.username, row.session_id, row.thread_id, row.run_id,
+        agent_runs.RunMessageRow(idx=params.idx, role="human", content=params.message,
+                                 run_id=row.run_id),
+    )
+    agent_runs.write_run(row, next_seq=params.seq + int(transcript))
     return params.seq + int(transcript)
 
 
@@ -1137,12 +1119,22 @@ def _write_ending(params: WriteEndingParams) -> None:
     if x.plan_run_id:
         from tasks.P_agent import plan_runs
 
-        plan_runs.write_plan_ending(x, params.state, chain)
+        plan_runs.write_plan_ending(x, params.state, chain, params.error)
     for row in [x, *chain]:
         release_browser(row.run_id)
     next_seq = x.next_seq + (1 if params.state != agent_runs.COMPLETED
                              and agent_runs.writes_transcript(x) else 0)
     agent_runs.write_run_terminal(x, params.state, error=params.error, next_seq=next_seq)
+    if x.plan_run_id and x.depth >= 1:
+        # The report pair follows the terminal row, so a report failure cannot keep the
+        # run open. `fan_in` writes a missing pair from the stored messages.
+        from tasks.P_agent import reports
+
+        try:
+            reports.materialize(x, params.state, chain, params.error)
+        except Exception:  # noqa: BLE001 - `ensure_reports` in `fan_in` repairs it
+            log.exception("[P_agent] run %s: the report documents were not written, the "
+                          "fan-in writes them", x.run_id)
 
 
 @activity.defn
@@ -1153,9 +1145,11 @@ def write_ending(params: WriteEndingParams) -> None:
     Returns at once for a terminal row. Otherwise it writes the state into each earlier run
     of the chain, ends each open child of the run's own batch for a `cancelled` ending (the
     run's workflow never started them), writes the ending row for a run that owns the transcript, marks the turn's
-    stream rows final, releases the browsers, and writes this run's own row last. The row
-    is the completion marker, so a retry after a partial attempt runs every step again, and
-    every step writes the same keys.
+    stream rows final, releases the browsers, and writes this run's own row. The row is the
+    completion marker, so a retry after a partial attempt runs every step again, and every
+    step writes the same keys. After the row, a plan sub-agent thread gets its report
+    documents. A failure there is logged and does not fail the ending, and `fan_in` writes
+    the missing documents.
     """
     _write_ending(params)
 

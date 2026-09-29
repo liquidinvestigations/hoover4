@@ -169,16 +169,16 @@ warning for an `agent_packs_subagent` key and ignores it. The packs are
 `catalogue`, `skills`, `collections`, `conversation`, `plan`, `delegation`, `web` and
 `browser`. Every run kind gets the `skills` pack (`search_skills`, `read_skill`,
 `read_tool`, `ask_user` and `write_note`), also when its setting leaves it out, because
-every run reads its role skill with `read_skill`. Only the organizer receives the
+the system prompt of every run lists skills that the model can read with `read_skill`.
+Only the organizer receives the
 `delegation` pack. A sub-agent cannot call `ask_user`. The agent service sends all
 available tools with each model call and refuses an unknown pack name.
-`agent_max_page_tokens` and `agent_completion_reserve_tokens` switch the agents' result
-pages to token mode: each page takes at most `agent_max_page_tokens` tokens of content, and
-the allocation keeps `agent_completion_reserve_tokens` free for the answer. Token mode needs
-both keys. Empty keeps byte-safe mode, in which the results of one model step share 24,000
-bytes. `agent_catalogue_match_count` is how many names one `search_agent_tools` call returns,
-from 6 to 12. Empty means 6. `./deploy` refuses a value that is not a
-whole number in range. The tool limit probe selects these three values.
+The results of one model step share 24,000 bytes, and each call gets an equal part. No key
+changes that. `./deploy` prints a warning for an `agent_max_page_tokens` or
+`agent_completion_reserve_tokens` key and ignores it. `agent_catalogue_match_count` is how
+many names one `search_agent_tools` call returns, from 6 to 12. Empty means 6. `./deploy`
+refuses a value that is not a whole number in range. The tool limit probe selects this
+value.
 `full_research_agent_workers` is uvicorn worker processes on `hoover4-full-research-agent`.
 
 The timeout keys set the step limits of an agent run, in whole seconds. An empty key keeps the
@@ -204,7 +204,9 @@ for the later calls of the conversation. `agent_compaction_model` names the mode
 writes the record, and empty is the answering model.
 
 `agent_max_output_tokens` is the output cap of every agent model request, sent as
-`max_completion_tokens`. Empty sends no cap, and the templates set 32768.
+`max_completion_tokens`. Empty sends no cap, and the templates set 32768. The agent also
+reserves this many tokens of the context window for the reply when it sizes a request. With
+no cap, it reserves an estimate of 8,192 tokens and records that the reserve is an estimate.
 `llm_streaming` is token streaming of the agent's model calls, and empty is `true`.
 Thinking has no key. The "Thinking" checkbox on `/admin/llm` sets it in the
 `server_settings` row `llm_thinking`, and an absent row is on. The worker reads the row
@@ -381,7 +383,7 @@ is the map back to the group above that explains it.
 - `mcp_browser_mem_limit`, `full_research_agent_workers`
 - `agent_plan_run_budget`
 - `agent_packs_chat`, `agent_packs_planner`, `agent_packs_organizer`
-- `agent_max_page_tokens`, `agent_completion_reserve_tokens`, `agent_catalogue_match_count`
+- `agent_catalogue_match_count`
 - `agent_queue_wait_seconds`, `title_request_timeout_seconds`
 - `llm_request_timeout_seconds`
 - `agent_max_output_tokens`

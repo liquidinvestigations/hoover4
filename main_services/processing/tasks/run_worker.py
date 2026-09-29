@@ -723,22 +723,20 @@ async def run_chat_worker():
       continue_run,
       fan_in,
       open_run,
-      read_chat_todo,
       summarize_if_first_turn,
       write_ending,
   )
-  from .P_agent.preload import preload_reads
   from .P_agent.steps import (
+      check_citations,
       delegate_step,
       model_step,
-      needs_citations,
       plan_has_sections,
       prepare_continuation,
       record_step_failure,
       tool_call,
-      write_found_documents,
-      write_repeat_note,
       write_asked_answer,
+      write_empty_note,
+      write_incomplete,
   )
   from .P_agent.workflows import (
       AGENT_TOOL_TASK_QUEUE,
@@ -770,9 +768,9 @@ async def run_chat_worker():
         workflows=[AgentRun],
         activities=[
             open_run, append_nag, write_ending, summarize_if_first_turn, fan_in,
-            continue_run, read_chat_todo, delegate_step, prepare_continuation,
-            record_step_failure, plan_has_sections, needs_citations, preload_reads,
-            write_repeat_note, write_asked_answer, write_found_documents,
+            continue_run, delegate_step, prepare_continuation,
+            record_step_failure, plan_has_sections, check_citations,
+            write_empty_note, write_asked_answer, write_incomplete,
         ],
         activity_executor=activity_executor,
         max_concurrent_activities=low_latency_slots,

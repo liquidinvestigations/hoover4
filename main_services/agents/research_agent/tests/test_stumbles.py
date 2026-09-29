@@ -108,9 +108,8 @@ def test_a_json_error_with_no_text_gets_the_line_under_next():
     assert json.loads(out["content"])["next"] == line("todo_upkeep")
 
 
-def test_a_repeat_refusal_and_a_failed_backend_get_no_line():
-    for data in ({"success": False, "error": "repeated_call", "message": "not run"},
-                 {"success": False, "error": "tool_unavailable", "message": "down"}):
+def test_a_failed_backend_gets_no_line():
+    for data in ({"success": False, "error": "tool_unavailable", "message": "down"},):
         assert stumble_skill("read_documents", json.dumps(data), "error",
                              {"file_hash": "x.pdf"}) is None
 

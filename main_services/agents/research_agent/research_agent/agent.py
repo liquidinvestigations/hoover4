@@ -364,7 +364,7 @@ class MCPGatewayAgent:
             tools, allowed, kind,
             skill_store.SkillContext(
                 profile=profile, tool_names=frozenset(),
-                collections_hint=bool(allowed_collections),
+                collections_hint=bool(allowed_collections), model_id=model_id,
             ),
         )
         skill_context = snapshot.skill_context
@@ -382,6 +382,7 @@ class MCPGatewayAgent:
             skills=skill_store.listed_skills(skill_context),
             collections_hint=bool(allowed_collections),
             purpose=purpose,
+            model_id=model_id,
         )
 
         return AgentContext(

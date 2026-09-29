@@ -57,35 +57,37 @@ Not in compose, and not as string literals. One template, `research_agent/prompt
 renders the system prompt of every profile (`research_agent/prompts/__init__.py`).
 `SYSTEM_PROMPT` overrides the whole rendered text, and empty means "render the template".
 
-**The prompt lists, and the skills teach.** The prompt holds four parts. The role line of the
-profile, the run's skills by name and description, and the run's tools by name and summary
-come first. The todo rule follows when the run has the four todo tools. The summary of a tool
-is the first sentence of its description, at most 160 characters. `_create_context` renders
-the prompt once for each step context. The prompt cache holds the system text for the run.
+**The prompt holds the role, lists the rest, and the skills teach.** The prompt holds the
+role line of the profile and the role text of the run kind, which is the rendered role skill
+(`skill_store.role_method`). The run's skills by name and description and the run's tools by
+name and summary follow. The todo text follows when the run has the four todo tools. It says
+that the list is optional and that an open item does not stop an answer. The summary of a
+tool is the first sentence of its description, at most 160 characters. `_create_context`
+renders the prompt once for each step context. The prompt cache holds the system text for
+the run.
 
 The method text is in the skill store, `research_agent/skills/` (`skill_store.py`). Each
 skill is one `.md.j2` file with front matter (`name`, `group`, `description`, `tools`) and a
-Jinja body. The groups are `role`, `general`, `technique` and `stumble`. A run lists the role
-skill of its profile, and each other skill whose `tools` list is empty or names a tool of the
-run. The role skills (`method_chat_full`, `method_chat_internal`, `method_subagent`,
-`method_planner`, `method_organizer`) hold the research method of each role and the
-delegation text. The general skills (`search`, `thorough`, `citation`, `plan_first`) hold
-the search rules, the investigation rule, the citation protocol and the plan-first protocol.
-The technique skills (`browser_use`, `web_research`, `spreadsheets`, `emails`,
-`folders_and_files`, `passages`, `entities`, `plan_editing`, `deep_research`) teach the use
-of one group of tools. The stumble skills (`after_a_result`, `todo_upkeep`, `document_ids`,
-`call_arguments`, `collection_names`, `no_results`, `reviewing_a_report`) teach the fix of
-one kind of failed call. A technique or stumble skill stays under 2,600 characters. The
-A body names a tool only through `tool()`, and a sentence that names a tool renders only when
-`has()` finds that tool in the run. `tests/test_skill_store.py` fails when
-a skill names a tool that no pack holds.
+Jinja body. The groups are `role`, `general`, `technique` and `stumble`. The role skills
+(`method_chat_full`, `method_chat_internal`, `method_subagent`, `method_planner`,
+`method_organizer`) state the objective of the role, its sources, its evidence rule and its
+duty. They ask for no search before an answer, no report heading and no todo update. The
+planner's role text states the context window of the run's model when the catalog knows it.
+A run lists each skill of the other groups whose `tools` list is empty or names a tool of
+the run. The general skills (`search`, `thorough`, `citation`) hold the search rules, the
+investigation rule and the citation protocol. The technique skills (`browser_use`,
+`web_research`, `spreadsheets`, `emails`, `folders_and_files`, `passages`, `entities`,
+`plan_editing`, `deep_research`) teach the use of one group of tools. The stumble skills
+(`after_a_result`, `todo_upkeep`, `document_ids`, `call_arguments`, `collection_names`,
+`no_results`, `reviewing_a_report`) teach the fix of one kind of failed call. A technique or
+stumble skill stays under 2,600 characters. A body names a tool only through `tool()`, and a
+sentence that names a tool renders only when `has()` finds that tool in the run.
+`tests/test_skill_store.py` fails when a skill names a tool that no pack holds.
 
-The model finds a skill with `search_skills` and reads one with `read_skill`. The result of a
-read starts with the line ``Skill `name`.``. A skill of another profile is refused with
-`unknown_skill`. `always_read` gives the skills that a run reads at its start, in the order
-`search`, `thorough`, the role skill, `citation` and `plan_first`, each only when the run
-has its tools. The worker writes these reads into the thread before the first model call
-(`POST /preload` below).
+The model finds a skill with `search_skills` and reads one with `read_skill` when it chooses
+to. The result of a read starts with the line ``Skill `name`.``. A role skill and a skill of
+another profile are refused with `unknown_skill`. No run reads a skill before its first
+model call.
 
 The model receives each tool's schema with each call. It can read a fuller description
 with `read_tool`. The Manticore match syntax reaches the model through the skill `search` and
@@ -136,29 +138,25 @@ model call receives all callable tools in that snapshot. `read_tool` returns one
 description and schema. `search_agent_tools` finds tool names from words in a request.
 Both tools provide information and do not change which tools the model can call. The
 service returns `tool_unavailable` for a name outside the run's callable tools. The
-worker runs plan mutations in call order and other calls in parallel.
+worker runs the plan and todo calls of a reply in call order, the browser calls of a reply
+(`read_page` and every `browser_*` tool, `execution.is_browser_tool`) in call order in a
+second chain, and the other calls in parallel.
 
 ### The batch result budget and the call measure
 
-The result pages of all calls of one model reply share one budget. `/model_step` reserves
-the empty page of each call first, divides the rest by read weight, and gives each call entry its
-`page_share`. `/tool_call` sends the share in the `X-Hoover4-Page-Share` header. The connections' HTTP client factory
-(`page_share_client`) adds the header, because the MCP adapter opens one session for each
-call. The collection server's page broker sizes each page within that share, a later page
-of a stored window included.
-
-- **Safe mode** is the default. One turn's results share 24,000 UTF-8 bytes, or less when
-  the request bytes plus the completion reserve leave less of the context window.
-- **Token mode** needs `AGENT_MAX_PAGE_TOKENS` and `AGENT_COMPLETION_RESERVE_TOKENS`, and a
-  known context window. The service counts the request and the empty pages with the served
-  tokenizer and applies `result_pages.allocate`. It sends the token share as a byte share,
-  because a token covers at least one byte. A failed count keeps safe mode. When the empty
-  pages and the reserve do not fit, every call entry has `budget_exhausted`, and
-  `/tool_call` returns the empty `budget_exhausted` page with no call.
+The result pages of all calls of one model reply share one target of 24,000 UTF-8 bytes
+(`execution.batch_budget`). `/model_step` reserves the empty page of each call first, divides
+the rest into equal parts, and gives each call entry its `page_share`. The count of calls
+and the size of their empty pages set the shares. The length of the conversation does not,
+so no call is refused for the context. When the empty pages alone pass the target, each call
+keeps its empty page. `/tool_call` sends the share in the `X-Hoover4-Page-Share` header. The
+connections' HTTP client factory (`page_share_client`) adds the header, because the MCP
+adapter opens one session for each call. The collection server's page broker sizes each page
+within that share, a later page of a stored window included, and divides the share of a
+`read_documents` call among the documents that it reads.
 
 A page that the broker stored as a window is read on later pages with the share it was
 stored with, when not one unit fits the current share.
-`read_documents` gets one weight for each distinct document, up to ten weights.
 
 The broker returns the `build_page` measure of the page beside the page text, as an embedded
 resource. The adapter puts that block in the tool message artifact. `/tool_call` takes it out and
@@ -168,20 +166,18 @@ measure.
 ## The step requests
 
 The worker runs the agent loop in the `AgentRun` workflow. For each model call it sends
-`POST /model_step`, and for each tool call of a reply it sends `POST /tool_call`. A run that
-starts a thread first sends `POST /preload`. The service keeps no state of a run between two
-requests. Every request carries the run fields of
+`POST /model_step`, and for each tool call of a reply it sends `POST /tool_call`. The service
+keeps no state of a run between two requests. Every request carries the run fields of
 `StepRun` (`steps.py`): `run_id`, `kind`, `depth`, `purpose`, the caller's identity and
 collections, `llm_model` and `can_delegate`.
 
 ### `POST /model_step`
 
-The request adds `step_no` (1 for the first model call of the run thread), `mode` (`tools`
-or `final`), `thinking` (a required bool, the admin thinking
-switch), the run's thread as `messages`, and the earlier turns of the chat as `earlier`
+The request adds `step_no` (1 for the first model call of the run thread), `thinking` (a
+required bool, the admin thinking switch), the run's thread as `messages`, and the earlier turns of the chat as `earlier`
 (depth 0 only). `messages[0]` is the opening human message. Each message carries its stored
 key, `thread_id` and `idx`. `earlier` holds the stored threads of the earlier chat turns in
-full, with their tool calls and results. A call of an earlier turn that has no result, which
+full, with their tool calls and results. Every model call binds every tool of the run. A call of an earlier turn that has no result, which
 a stopped turn leaves, gets a `not_run` result in the request only. `run_messages.py` applies
 the stored `compaction` rows and rebuilds the messages into langchain messages, with the tool
 calls and the stored usage, so compaction can measure the thread before the model call.
@@ -193,7 +189,7 @@ The response is a stream of `data: {json}` frames, in this order:
 | `reasoning` | `content` | each reasoning delta |
 | `response` | `content` | each text delta |
 | `compaction` | `state` (`running`), `tokens_before`, `target`, `parts` (1 or 3) | once, before the summary requests, when this call compacts its input |
-| `model_turn` | `text`, `reasoning`, `tool_calls` (a list of call entries), `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`), `summarised`, `compaction` (the version 2 record of this call's compaction, or null), `note_warning` | once, after the reply ends |
+| `model_turn` | `model` (the model that answered), `text`, `reasoning`, `tool_calls` (a list of call entries), `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`, `request_size`, `citation_tool`: whether the call bound `cite_documents`, which the worker's citation check reads), `summarised`, `compaction` (the version 2 record of this call's compaction, or null), `note_warning` | once, after the reply ends |
 | `end` | `model`, `latency_ms`, `usage` (`prompt_tokens`, `completion_tokens`, `reasoning_tokens`) | once, last |
 | `error` | `error_class`, `retryable`, `content` | in place of `model_turn` and `end` |
 
@@ -211,9 +207,8 @@ A call entry is one call of the reply as the service classifies it:
 | `name`, `args` | the call as the model wrote it |
 | `kind` | `delegation` for a `run_subagent` call whose briefings can be read, `ordered` for a plan mutation, `parallel` for every other call |
 | `briefings` | the briefings of a delegation |
-| `page_share`, `budget_exhausted` | the call's share of the batch result budget, in bytes, for a `parallel` or `ordered` call |
+| `page_share` | the call's share of the batch result budget, in bytes, for a `parallel` or `ordered` call |
 | `retry` | false for the browser actions (`browser_navigate`, `browser_click`, `browser_type`, `browser_select_option`, `browser_press_key`). The worker gives such a call one attempt |
-| `args_digest` | the sha1 hex of the name, a newline and the canonical JSON of the arguments |
 
 While no frame is ready, the stream sends the SSE comment line `: keepalive` every 30 s
 (`KEEPALIVE_SECONDS` in `steps.py`). One model call can wait longer than the worker's 300 s
@@ -224,8 +219,7 @@ call.
 ### `POST /tool_call`
 
 The request adds `call` (the `id`, `name` and `args` of one stored call entry),
-`page_share`,
-`budget_exhausted` and `idempotency_key`. The service sends the key to the MCP server as
+`page_share` and `idempotency_key`. The service sends the key to the MCP server as
 `X-Hoover4-Idempotency-Key`, so a retried plan mutation changes the plan tree once. The
 response is JSON:
 
@@ -234,7 +228,7 @@ response is JSON:
 | `tool_call_id`, `name` | the call |
 | `content` | the result text that the model reads |
 | `status` | `ok` or `error` |
-| `error_class` | empty for `ok`. For `error`: `tool_error` (the tool raised or marked its result as an error), `tool_unavailable` (a name outside the run's tools), `invalid_arguments` (arguments that do not match the schema) or `budget_exhausted` |
+| `error_class` | empty for `ok`. For `error`: `tool_error` (the tool raised or marked its result as an error), `tool_unavailable` (a name outside the run's tools) or `invalid_arguments` (arguments that do not match the schema). A stored result of an older run can hold `budget_exhausted` |
 | `measure` | the call measure of a broker tool, or `null`. When the agent repaired the arguments, `argument_repairs` lists each repair |
 | `matched_names` | the names that a `search_agent_tools` result matched, or the name that a `read_tool` result described |
 
@@ -250,7 +244,7 @@ list names `search`, a refused todo call names `todo_upkeep`, a refused plan tre
 `plan_editing`, arguments that the schema refuses name `call_arguments`, and a browser error
 names `browser_use`. In a JSON object the sentence goes after the text of `message`, else of
 `error`, else under the key `next`. In other text it goes after a blank line. A result
-page, a result with no failure, and a repeat refusal get no sentence.
+page and a result with no failure get no sentence.
 
 **The arguments are repaired before the call.** The tool call parser of the model server
 can leave the model's string token `<|"|>` in a key or a value, a quote on a key (`id"`),
@@ -261,12 +255,24 @@ renames a key that the model wrote under another name, such as `collection` for
 `collectionname`, when the tool's schema has that name. Each repair is one line of the
 `argument_repairs` list in the measure of the call.
 
-### `POST /preload`
+### The size of a request
 
-The request includes the opening request and the skills read in earlier chat turns. The
-response gives synthetic reads of the role and general skills. Each read holds `name`,
-`args`, `content`, `status` and `error_class`. The worker assigns its call id. A preload
-failure leaves the run active.
+Before each model call, `/model_step` measures the whole request (`request_size.py`): the
+system text, the schemas of the bound tools, and every message of the list that the model
+receives, with the tool results that the worker stored after the previous reply. The billed
+tokens of the previous reply do not include those results, so they are telemetry and not
+the size of the next request. With a known context window, the served tokenizer
+(`POST .../tokenize`) counts the text, and each message adds 8 tokens. When the window is
+unknown or the tokenizer fails, the size is an estimate from the ratio of tokens to
+characters that the newest billed call gives. A failed tokenizer is not asked again for
+300 s. The safe input is the window less the output reserve. The reserve is
+`AGENT_MAX_OUTPUT_TOKENS` when it is set, because the request sends the same cap, and an
+estimate of 8,192 tokens otherwise. `model_turn` carries the size as `usage.request_size`:
+`tokens`, `method` (`tokenizer` or `estimate`), `model`, `window`, `window_known`,
+`output_reserve`, `reserve_source` (`configured` or `estimate`), `safe_input`, `fits`, and
+`error` when the tokenizer failed. A compacted call records the size after the compaction
+and the size before it (`before_compaction`). A request above the safe input is sent, and a
+warning is logged.
 
 ## Per-chat and per-run browser sessions
 
@@ -303,22 +309,22 @@ The thinking text arrives in the delta field `reasoning` from vLLM, and in
 `reasoning_content` from older servers and other providers. `chat_model.py` reads either
 field and gives the agent `reasoning_content`.
 
-## Stopping the model looping
+## The end of a run
 
-Small models are bad at deciding they are finished. Given results that fully answer the
-question, Qwen3.5-2B will still re-issue a search it has already run. The worker's agent
-loop stops such a run. It sends a `final` model step when the model
-repeats a call (the `args_digest` of a call entry makes the repeat visible) or when the run
-reaches its step budget. See
+The model decides when it is finished: a reply with no call is the answer. The worker adds
+no repeat check and no todo round. Its limits are the step limit of the run and one retry
+after a reply with no text and no call. At a limit, the worker ends the run with a result
+that code writes from the stored thread, and it sends no further model request. See
 `processing/tasks/Readme.md` for the loop.
 
 ## Context compaction: `AGENT_COMPACTION_FRACTION`
 
 A run grows because every result that it collected stays in the list of the next model call.
-`research_agent/compaction.py` compacts the list when the last call that the provider billed
-(prompt plus completion) reaches the trigger, a fraction of the model's stated context
-window. It plans the list to a target of a third of the trigger before the next model call,
-and replaces the older steps with one record.
+`research_agent/compaction.py` compacts the list when the measured size of the next request
+(see "The size of a request") reaches the trigger, a fraction of the model's stated context
+window. The trigger is never above the safe input, the window less the output reserve. It
+plans the list to a target of a third of the trigger before the next model call, and
+replaces the older steps with one record.
 
 | variable | default | meaning |
 |---|---|---|
@@ -497,17 +503,15 @@ The application is configured entirely via environment variables (rendered from
 
 - `LLM_BASE_URL`: Base URL for your LLM service
 - `LLM_MODEL`: Model name to use
-- `LLM_CLASSIFIER_URL`: the `systemone` route of the structured model server, which
-  `POST /preload` asks. `deploy.py` renders it for the selfhosted provider with the AI tier
-  present, and empty otherwise. Empty sends no classifier request.
 - `LLM_TEMPERATURE`: Temperature setting (default: 0.0)
 - `LLM_SEND_TEMPERATURE`: `false` leaves `temperature` out of every model request: the agent
   turns and the compaction summary. `deploy.py` renders it from the active provider's
   `send_temperature` key. Empty or unset is `true`. `research_agent/model_params.py` owns
   the rule, and the worker's title request mirrors it.
 - `AGENT_MAX_OUTPUT_TOKENS`: the output cap of every agent model request, which the model
-  client sends as `max_completion_tokens`. Empty sends no cap. The compaction summary keeps
-  its own ceiling.
+  client sends as `max_completion_tokens`. It is also the output reserve of the request size.
+  Empty sends no cap, and the reserve is then an estimate. The compaction summary keeps its
+  own ceiling.
 - `LLM_REQUEST_TIMEOUT_SECONDS`: the read timeout of one agent model call, with a 10 s
   connect timeout. When set, the model client does not retry, so a call that receives no
   data for this long fails once and is not sent again. It is also the read timeout of the compaction summary. Empty keeps the client
@@ -527,7 +531,6 @@ The application is configured entirely via environment variables (rendered from
 ### Agent steps
 - **POST** `/model_step` - Make one model call and stream it. See "The step requests" above.
 - **POST** `/tool_call` - Run one tool call. See "The step requests" above.
-- **POST** `/preload` - The reads of a run that starts a thread. See "The step requests" above.
 
 ### API Information
 - **GET** `/` - API information and configuration details

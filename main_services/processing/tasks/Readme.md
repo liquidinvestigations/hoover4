@@ -129,55 +129,44 @@ A turn with a stop row in `agent_turn_stops` closes in `open_run`.
 (`llm_request_timeout_seconds`) and a tool call 300 s. Each waits at most
 `agent_queue_wait_seconds` for a slot. A model step that waits longer fails the run with
 "The model queue wait passed ... s.", and a tool call that fails after its last attempt gets
-a stored `tool_unavailable` result, which the model reads. After 600 model steps one
-`final` step binds no tool, and the run ends `completed` with `end_reason` `step_budget`.
-**The repeat stop** (`P_agent/steps.py`, `repeat_sources`). A call runs 3 times with the
-same name and arguments, and the 4th does not run. Only a run whose result is not an error
-counts. A result whose JSON object says `"success": false` or names an `error` is an error
-too, because a tool server sends a refusal as a normal result. A run whose result a
-compaction evicted, summarised, dropped or cut does not count. A todo or plan write, a
-delegation and a run-start read keep 1 run. The key of a todo or plan write holds the
-store version, so the write runs again after another write of its store. The reads of the
-todo list, the plan tree and the page of the browser never repeat. The refused call gets a
-`repeated_call` result whose text depends on the earlier call: it found nothing, it has a
-result, it was a run-start read, or it was a delegation. A chat or sub-agent result also
-names a skill. The other calls of its reply run.
+a stored `tool_unavailable` result, which the model reads.
 
-After 3 model steps in a row that hold only refused calls and exempt reads, the exempt
-reads run, and the run gets one repeat note as a nag. The note lists the searches that
-found nothing, and for a chat lead the open todo items. The second time, the run gets one
-`final` step (`repeated_call`), and no todo nag follows it. A sub-agent whose forced answer
-is empty gets one more `final` step. When that answer is empty too,
-`write_found_documents` writes the documents that it read and found as its result. The first
-`tools` reply of a thread with no text and no call gets one nag, "Your last reply had no
-text and no tool call", and one more model step.
+**Every call of a reply runs.** No call is refused because it repeats an earlier call, and
+no call is refused for the length of the conversation. The agent service sizes the next
+model request after the results are stored (`research_agent/request_size.py`).
+
+**The run ends with no model call at a limit.** When the model steps of the thread reach
+600 (`RUN_MODEL_STEPS`), counted across continue-as-new and continuations, the calls of the
+last reply have their results, and `write_incomplete` ends the model steps. Its result is
+code text from the stored thread (`thread_facts.incomplete_text`): the reason, the newest
+text that the model wrote, the documents that the run read, the documents that its searches
+returned, and the searches that found nothing. A chat lead's transcript gets that text as
+its assistant row. The run ends `completed` with `end_reason` `step_budget`. The first reply
+of a thread with no text and no call gets `EMPTY_REPLY_TEXT` as a `human` row, whose usage
+holds the retry marker (`retry_marker: empty_reply`), and one more model step. A second such
+reply ends the run the same way, with `end_reason` `empty_response`. The marker holds no
+counter, and a thread from before the marker is read by its text.
 
 A model step that compacts writes one `compaction` chat row for a run that writes the
 transcript, at the first seq of the step, and every other row of the step moves one seq on.
 The row holds the running state when the `compaction` frame arrives, and the done state
 (`steps.compaction_line`, with `part_states`) after the `end` frame. A reply whose
 `model_turn` sets `note_warning` gets the note warning (`steps.NOTE_WARNING_TEXT`, a copy of
-the agent service's text) as a `human` row after its calls, and as a `nag` chat row.
+the agent service's text) as a `human` row after its calls, and as a `nag` chat row. The
+stored `ai` message holds the model that the service answered with (`model` of the
+`model_turn` frame) and the `request_size` of the request in its usage.
 
-The reply of a `final`
-step is the answer, and each call in it gets a `not_run` result. The calls of one reply to
-the plan tree and todo tools run one after the other, in the order of the reply. Every run
-starts with a normal model step. The workflow continues as new every 250 model steps, or past 30,000 history events. A planner
-that answers with no plan section gets one more round with a note, and then fails.
+The calls of one reply to the plan tree and todo tools run one after the other, in the
+order of the reply. The calls of one reply to the browser server (`read_page` and
+every `browser_*` tool it can list, `steps.is_browser_tool`) run one after the other in a
+second chain,
+because they drive the one browser of the run. The other calls run beside both chains. A
+browser action gets one attempt. Every run starts with a normal model step, which binds the
+run's tools. The workflow continues as new every 250 model steps, or past 30,000 history
+events. A planner that answers with no plan section gets one more round with a note, and
+then fails.
 
-**The run-start reads** (`P_agent/preload.py`). A run that starts a thread runs one
-`preload_reads` activity on `chat-queue` before its first model
-step: no model step yet, a thread that holds only its opening message, and a row that
-continues no other run. The activity sends `POST /preload` to the agent service and writes
-the reads as one synthetic `ai` message with a `tool` result for each read. A chat turn
-after the first sends the skills that earlier turns read, and the agent leaves them out.
-Every thread row goes in
-one insert (`agent_runs.write_messages`), after the late-write guard. A synthetic `ai`
-message has empty text, and `synthetic` true and `step_no` 0 in its usage. The activity has
-one attempt of 30 s. A failure writes its
-`agent_step_events` row with step `preload`, and the turn goes on without the reads.
-
-**Each attempt of a model step, a tool step, a preload and a title call writes one row of
+**Each attempt of a model step, a tool step and a title call writes one row of
 `agent_step_events`** (`database/agent_step_events.py`). The row holds the queue wait, the
 duration, the status, the error class and the tokens. The step activities write it from a `finally`
 block through the buffer of `task_timing.py`. A step that returns a stored result writes no
@@ -186,7 +175,8 @@ An attempt that the worker cancels with the reason `timed_out` compares its elap
 with its start-to-close limit. At the limit its row has the class `start_to_close_timeout`.
 Before the limit it lost its heartbeat and writes no row. `record_step_failure` writes the
 row of a step that never started or lost its heartbeat, with `attempt` 0 and the `mode` of a
-model step. The table keeps 90 days.
+model step, which is `tools`. Older rows can hold the step `preload` and the modes `final`
+and `plan`. The table keeps 90 days.
 
 **Thinking.** `model_step` reads `server_settings.llm_thinking` before each model call and
 sends `thinking` in the request. Only the value `off` turns it off, and a failed read sends
@@ -240,23 +230,37 @@ deploys before the website**: a workflow addressed to a queue nothing polls wait
 with no error anywhere. A `chat-model-queue` slot is one agent run in flight, not one model
 call, and a delegated turn takes one slot for each running sub-agent.
 
-`nagging.py` is why a chat turn is a loop rather than one call. An agent stops when the
-model stops calling tools, which is not the same as the work being done, so `AgentRun` reads
-the session's todo afterwards and runs the agent again (under its own `nag` role in the
-transcript) while items are still open. Before the first nag, a chat answer that names a
-document (a `[Dn]` handle, a file hash, or a path or file name that a tool of the turn
-returned) in a turn with no `cite_documents` call gets one citation round. Its note asks for
-the citations and then the answer again, and the reply of that round replaces the answer
-when it has text (`steps.needs_citations`, `nagging.needs_citation_round`). The nag follows
-the answer, so it asks only for the todo marks. The reply of a nag round writes no answer row when the turn has an answer,
-and the reason the nags stop goes to the worker log only. The answer row never holds the
-model's reasoning. `append_nag` writes the nag row, the nag text into the thread and the
-counters into the run row. **The counters live in the run row, not in the
-agent**, because they have to outlive an agent process that restarts mid-turn. Two nags
-while the plan is not moving, five in the whole turn, and each buys a fixed extra tool
-budget rather than resetting it. What counts as the plan moving is
-`database/chat_todos.py`'s question and not a second copy of it: a status flip is not
-progress, or a model could keep a turn alive for ever by toggling one row.
+**After an answer.** An answer ends the run, whatever the state of the run's todo list, and
+an open item stays open. Two rounds can follow an answer, and each starts with a note,
+which is written as a `nag` chat row and into the thread. The answer or the question of every
+run kind whose model had `cite_documents` (`citation_tool` in the reply's usage) gets the
+citation check (`AgentRun._finish_citations`, `steps.check_citations`,
+`citations.needs_repair`). The check compares the `[Dn]` labels of the text with the
+successful `cite_documents` results of the whole session, so a failed call does not satisfy
+it and an earlier valid handle does. An unresolved label, a label that results give for two
+documents, or a document name with no label (a file hash, or a path or file name that a
+tool of the thread returned) gets one repair round. Its note names the labels, and asks for
+the citations and then the answer again. The reply of that round replaces the answer when
+it has text. The note is the marker of the round (`repair_marker` in its usage, with the
+check), so a logical thread gets one. After a question, the reply of the round is the
+question the person reads, and the planner's plan check does not apply to it. A planner
+that answers with no plan section gets one round with `PLANNER_NO_SECTION_NOTE`. A run that
+ended at a limit gets no round. The answer row never holds the model's reasoning.
+
+**Evidence and reports.** `_write_tool_result` stores the typed evidence of each result
+(`reports.normalize`) in the `evidence` list of the usage of its `tool` message, at every
+run depth: reads with their page or byte span, failed items, documents that searches found,
+citations, notes and artifacts. Each entry is keyed by the thread, the message index and the
+item, so a continuation keeps its identity. `reports.project` makes the report of a thread
+from its committed messages: the ending, the final answer, the latest three texts of the
+model, the evidence lists and the diagnostics, with the model text apart from what code
+wrote. The ending of a plan sub-agent thread, in every state, writes it as the `report`
+text and the `report_data` JSON documents of the thread's first run
+(`plan_runs.write_plan_ending`). `fan_in` writes the pair of a finished thread that has none
+before the parent continues (`reports.ensure_reports`), with no model call, no tool call
+and no change of state. `reports.read_run_report` projects any run of the owner, a chat run
+included. A body above 256 KiB is a required artifact (`agent_plans.write_document`). The nag counter columns of
+`agent_runs` stay for older rows, and no code writes them.
 
 `trajectory.py` turns the agent's raw event list into transcript rows, and
 `stream_writer.py` mirrors the same events live while they arrive. The two must agree, and
@@ -465,7 +469,8 @@ Workers are split into dedicated queues to control throughput and resource usage
   rows that are older than its own start. Two runs at once can delete each other's rows.
 - `chat-queue`, `AgentRun` plus `open_run`, `append_nag`, `write_ending`, `fan_in`,
   `continue_run`, `delegate_step`, `prepare_continuation`, `record_step_failure`,
-  `plan_has_sections`, `needs_citations`, todo reads and session titles (`main.py worker chat`, concurrency
+  `plan_has_sections`, `check_citations`, `write_empty_note`, `write_incomplete`,
+  `write_asked_answer` and session titles (`main.py worker chat`, concurrency
   from `chat_low_latency_concurrency`).
 - `chat-model-queue`, `model_step` for those chat turns and their sub-agents
   (`chat_model_concurrency`, 3 slots). A slot is one model call in flight.

@@ -1,8 +1,5 @@
 """The first model step accepts the opening human message and the run tools."""
 
-import pytest
-from pydantic import ValidationError
-
 from research_agent.steps import ModelStepRequest
 
 
@@ -15,10 +12,7 @@ def request(**changes):
     return ModelStepRequest(**body)
 
 
-def test_the_first_step_uses_the_normal_tool_mode():
-    assert request().mode == "tools"
-
-
-def test_the_old_planning_mode_is_refused():
-    with pytest.raises(ValidationError):
-        request(mode="plan")
+def test_a_step_request_has_no_mode():
+    """Every model step binds the run's tools. An older worker's `mode` field is ignored."""
+    assert "mode" not in ModelStepRequest.model_fields
+    assert request(mode="final").step_no == 1

@@ -853,16 +853,23 @@ class CompactionPlan:
 def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *,
                     system_text: str = "", schemas_json: str = "", model_id: str = "",
                     window: Optional[int] = None, fraction: Optional[float] = None,
-                    estimator: Optional[Estimator] = None) -> Optional[CompactionPlan]:
+                    estimator: Optional[Estimator] = None, measured: Optional[int] = None,
+                    safe_input: int = 0) -> Optional[CompactionPlan]:
     """The plan of a compaction, with no model call. `None` when the trigger does not fire or
     nothing is outside the keep set and the window.
 
     `applied` is the list after the stored compactions, `rows` the stored thread.
+    `measured` is the size of the next request (`request_size.measure`), with the results
+    that the previous reply's calls stored. Without it, the size is the billed tokens of the
+    newest billed call. `safe_input` is the window less the output reserve. The trigger is
+    never above it.
     """
     applied = list(applied)
     resolved = context_window(model_id) if window is None else int(window)
     trigger = threshold_tokens(resolved, fraction)
-    billed = last_billed(applied)
+    if trigger > 0 and safe_input > 0:
+        trigger = min(trigger, safe_input)
+    billed = last_billed(applied) if measured is None else int(measured)
     if trigger <= 0 or billed < trigger:
         return None
     target = target_tokens(trigger)

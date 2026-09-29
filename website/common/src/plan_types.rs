@@ -96,7 +96,8 @@ pub struct PlanView {
     /// `corrections`, `defect_classes` and `failed`. Empty before execution.
     pub sections_json: String,
     /// The `end_reason` of the newest agent run of a terminal plan run that has one:
-    /// `step_budget` or `repeated_call`. Empty for a live plan run.
+    /// `step_budget` or `empty_response`, or `repeated_call` in an older run. Empty for a
+    /// live plan run.
     #[serde(default)]
     pub end_reason: String,
 }
@@ -117,6 +118,7 @@ impl PlanView {
         }
         match self.end_reason.as_str() {
             "step_budget" => return Some("the step budget ran out"),
+            "empty_response" => return Some("the model returned two empty replies"),
             "repeated_call" => return Some("a repeated call"),
             _ => {}
         }
@@ -224,6 +226,10 @@ mod tests {
         assert_eq!(view("completed", 1, "[]", "").stop_reason(), Some("no section ran"));
         assert_eq!(view("completed", 1, one_ran, "step_budget").stop_reason(), Some("the step budget ran out"));
         assert_eq!(view("failed", 1, one_ran, "repeated_call").stop_reason(), Some("a repeated call"));
+        assert_eq!(
+            view("completed", 1, one_ran, "empty_response").stop_reason(),
+            Some("the model returned two empty replies")
+        );
         assert_eq!(view("completed", 1, one_ran, "").stop_reason(), None);
         assert_eq!(view("cancelled", 1, none_ran, "").stop_reason(), None, "a person stopped it");
         assert_eq!(view("executing", 1, none_ran, "").stop_reason(), None, "the run is live");

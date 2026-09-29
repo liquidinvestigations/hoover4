@@ -86,10 +86,10 @@ def test_plan_runs_go_to_the_research_queue():
 
 
 def test_short_agent_activities_go_to_the_low_latency_queue():
-    for activity in ("open_run", "append_nag", "write_ending", "read_chat_todo",
+    for activity in ("open_run", "append_nag", "write_ending",
                      "summarize_if_first_turn", "delegate_step", "prepare_continuation",
                      "record_step_failure", "plan_has_sections",
-                     "needs_citations"):
+                     "check_citations", "write_empty_note", "write_incomplete"):
         queues = [
             _name(_kwarg(call, "task_queue"))
             for call in _iter_execute_activity()

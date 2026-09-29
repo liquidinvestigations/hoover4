@@ -164,6 +164,15 @@ def _row(run_id, node, purpose, state="completed", minute=0, briefing=None, dept
         started_at=datetime(2026, 1, 1) + timedelta(minutes=minute))
 
 
+def _no_messages(monkeypatch):
+    """The report of an ending reads a thread with no message and a session with no
+    citation result."""
+    from database import agent_runs
+
+    monkeypatch.setattr(agent_runs, "read_messages", lambda *args: [])
+    monkeypatch.setattr(agent_runs, "read_session_tool_messages", lambda *args: {})
+
+
 def test_one_correction_of_two_sections_gives_an_entry_for_each(monkeypatch):
     """Sections A and B each ran once. Correction C names both and writes one report under
     A, and both sections read that report."""
@@ -179,10 +188,18 @@ def test_one_correction_of_two_sections_gives_an_entry_for_each(monkeypatch):
     a, b = ids["A"], ids["B"]
     written = []
     monkeypatch.setattr(ap, "write_document", lambda *args, **kw: written.append(args))
+    _no_messages(monkeypatch)
     c = _row("c", a, "correct", minute=5, briefing={"sections": [a, b]})
+    from tasks.P_agent import reports
+
     plan_runs.write_plan_ending(c, "completed", [])
-    [(_, _, _, run_id, node, role, kind, body)] = written
+    assert written == []
+    reports.materialize(c, "completed", [])
+    [(_, _, _, run_id, node, role, kind, body), data] = written
     assert (run_id, node, role, kind) == ("c", a, "executor", "report")
+    assert body.startswith("report of c")
+    assert data[3:7] == ("c", a, "executor", "report_data")
+    assert json.loads(data[7])["final_answer"]["text"] == "report of c"
 
     docs = [ap.PlanDocument(ap.document_id(r, "report"), n, "executor", "report", 0, "x",
                             None) for r, n in (("ra", a), ("rb", b), ("c", a))]
@@ -210,8 +227,11 @@ def test_an_off_tree_briefing_writes_its_report_at_the_plan_root(monkeypatch):
         "p", plan_id, "u", "s", approved_version=snap.version))
     monkeypatch.setattr(ap, "read_snapshot", lambda *args: snap)
     monkeypatch.setattr(ap, "write_document", lambda *args, **kw: written.append(args))
+    _no_messages(monkeypatch)
     row = _row("off-tree", None, "")
-    plan_runs.write_plan_ending(row, "completed", [])
+    from tasks.P_agent import reports
+
+    reports.materialize(row, "completed", [])
     assert written[0][4] == ap.root_node_id(plan_id)
     assert written[0][6] == "report"
     monkeypatch.setattr(ap, "read_documents", lambda *args: [ap.PlanDocument(

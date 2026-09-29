@@ -1,5 +1,9 @@
 """The quote check and the handle table behind `cite_documents`."""
 
+import json
+
+import pytest
+
 from collection_search_server.acl import CallerAcl
 from collection_search_server.citations import (
     HandleTable,
@@ -389,3 +393,214 @@ class TestHashStart:
         monkeypatch.setattr(srv, "_caller", _acl)
         assert srv.full_hashes("secret", [self.FULL[:12]]) == [self.FULL[:12]]
         assert asked == []
+
+
+# ---------------------------------------------------------------- durable handles
+
+from collection_search_server import binding_store  # noqa: E402
+from collection_search_server.citations import (  # noqa: E402
+    BindingStore,
+    CitationNotStored,
+    LoadedBindings,
+    candidate_passage,
+    merge_legacy,
+)
+
+
+class MemoryStore(BindingStore):
+    """A store that keeps the bindings of every table that uses it, as the artifact rows
+    keep them across a restart. `fail` makes the next persist raise, after or before it
+    stores."""
+
+    def __init__(self):
+        self.rows: dict[tuple[str, str], dict[tuple[str, str], str]] = {}
+        self.legacy: dict[tuple[str, str], list] = {}
+        self.fail = ""
+        self.loads = 0
+
+    def load(self, owner, session_id):
+        self.loads += 1
+        return merge_legacy(dict(self.rows.get((owner, session_id), {})),
+                            self.legacy.get((owner, session_id), []))
+
+    def persist(self, owner, session_id, collectionname, file_hash, handle):
+        if self.fail == "before":
+            self.fail = ""
+            raise RuntimeError("the store did not answer")
+        self.rows.setdefault((owner, session_id), {})[(collectionname, file_hash)] = handle
+        if self.fail == "after":
+            self.fail = ""
+            raise RuntimeError("the read back did not answer")
+
+
+class TestDurableHandles:
+    def test_a_new_process_keeps_the_stored_handles_and_numbers_after_them(self):
+        store = MemoryStore()
+        first = HandleTable(store=store)
+        assert first.handle_for("s1", "c", "h1", owner="ann") == "[D1]"
+        assert first.handle_for("s1", "c", "h2", owner="ann") == "[D2]"
+        restarted = HandleTable(store=store)
+        assert restarted.handle_for("s1", "c", "h2", owner="ann") == "[D2]"
+        assert restarted.handle_for("s1", "c", "h3", owner="ann") == "[D3]"
+        assert restarted.handle_for("s1", "c", "h1", owner="ann") == "[D1]"
+
+    def test_a_failed_store_returns_no_handle_and_reuses_no_number(self):
+        store = MemoryStore()
+        table = HandleTable(store=store)
+        store.fail = "before"
+        with pytest.raises(CitationNotStored):
+            table.handle_for("s1", "c", "h1", owner="ann")
+        assert store.rows == {}
+        assert table.handle_for("s1", "c", "h2", owner="ann") == "[D1]"
+
+    def test_an_uncertain_store_reloads_and_keeps_the_stored_handle(self):
+        """The row was written but its read back failed. The next call loads the session
+        again, finds the handle, and gives the next document the next number."""
+        store = MemoryStore()
+        table = HandleTable(store=store)
+        store.fail = "after"
+        with pytest.raises(CitationNotStored):
+            table.handle_for("s1", "c", "h1", owner="ann")
+        loads = store.loads
+        assert table.handle_for("s1", "c", "h1", owner="ann") == "[D1]"
+        assert store.loads == loads + 1
+        assert table.handle_for("s1", "c", "h2", owner="ann") == "[D2]"
+
+    def test_two_owners_of_one_session_id_number_apart(self):
+        table = HandleTable(store=MemoryStore())
+        assert table.handle_for("s1", "c", "h1", owner="ann") == "[D1]"
+        assert table.handle_for("s1", "c", "h9", owner="bob") == "[D1]"
+
+    def test_unambiguous_legacy_handles_are_imported(self):
+        store = MemoryStore()
+        store.legacy[("ann", "s1")] = [("[D1]", ("c", "h1")), ("[D2]", ("c", "h2")),
+                                       ("[D1]", ("c", "h1"))]
+        table = HandleTable(store=store)
+        assert table.handle_for("s1", "c", "h2", owner="ann") == "[D2]"
+        assert table.handle_for("s1", "c", "h3", owner="ann") == "[D3]"
+
+    def test_a_legacy_handle_of_two_documents_is_reserved_and_bound_to_neither(self):
+        store = MemoryStore()
+        store.legacy[("ann", "s1")] = [("[D1]", ("c", "h1")), ("[D1]", ("c", "h2"))]
+        table = HandleTable(store=store)
+        assert table.handle_for("s1", "c", "h1", owner="ann") == "[D2]"
+        assert table.handle_for("s1", "c", "h2", owner="ann") == "[D3]"
+        assert table.conflicts("s1", owner="ann") == [
+            {"handle": "[D1]", "documents": [("c", "h1"), ("c", "h2")]}]
+
+    def test_merge_reserves_every_number_and_lets_a_stored_binding_win(self):
+        loaded = merge_legacy({("c", "h1"): "[D1]"},
+                              [("[D1]", ("c", "h9")), ("[D4]", ("c", "h4")),
+                               ("[D5]", ("c", "h4"))], {7})
+        assert loaded.bindings == {("c", "h1"): "[D1]"}
+        assert loaded.reserved == {1, 4, 5, 7}
+        assert {"handle": "[D1]", "documents": [("c", "h1"), ("c", "h9")]} in loaded.conflicts
+        assert {"document": ["c", "h4"], "handles": ["[D4]", "[D5]"]} in loaded.conflicts
+
+    def test_cite_one_returns_a_citation_error_when_the_handle_is_not_stored(self, monkeypatch):
+        import collection_search_server.server as srv
+
+        store = MemoryStore()
+        store.fail = "before"
+        monkeypatch.setattr(srv, "_HANDLES", HandleTable(store=store))
+        monkeypatch.setattr(srv, "get_http_headers", lambda: {"x-hoover4-user": "ann"})
+        TestCiteOne()._stub_pages(monkeypatch, ["The board approved the transfer on 3 March."])
+        result = _cite_one(_acl(), "s1", Citation(
+            collectionname="testdata", file_hash=HASH, quote="approved the transfer on 3 March"))
+        assert result.handle == ""
+        assert result.quote_verified
+        assert "not stored" in result.error
+
+
+class TestBindingStore:
+    def test_a_binding_is_a_required_artifact_with_a_fixed_id(self, monkeypatch):
+        written = []
+        monkeypatch.setattr(binding_store.artifacts, "write_required",
+                            lambda request, artifact_id, key, body, ct: written.append(
+                                (request, artifact_id, key, json.loads(body))))
+        store = binding_store.ArtifactBindingStore()
+        store.persist("ann", "s1", "c", HASH, "[D2]")
+        store.persist("ann", "s1", "c", HASH, "[D2]")
+        (request, artifact_id, key, body), again = written
+        assert artifact_id == key == again[1]
+        assert artifact_id == binding_store.binding_id("ann", "s1", "c", HASH)
+        assert (request.kind, request.title, request.username) == (
+            "citation_binding", "[D2]", "ann")
+        assert body == {"owner": "ann", "session_id": "s1", "collectionname": "c",
+                        "file_hash": HASH, "handle": "[D2]"}
+
+    def test_a_call_with_no_session_or_owner_stores_nothing(self, monkeypatch):
+        monkeypatch.setattr(binding_store.artifacts, "write_required",
+                            lambda *a: pytest.fail("stored"))
+        monkeypatch.setattr(binding_store, "clickhouse_query", lambda *a, **k: pytest.fail("read"))
+        store = binding_store.ArtifactBindingStore()
+        store.persist("", "s1", "c", HASH, "[D1]")
+        store.persist("ann", binding_store.NO_SESSION, "c", HASH, "[D1]")
+        assert store.load("", "s1") == LoadedBindings()
+
+    def test_a_load_reads_stored_rows_transcript_refs_and_run_evidence(self, monkeypatch):
+        other = "b" * 64
+
+        def fake_query(sql, database, params=None):
+            if "chat_artifacts" in sql:
+                return [{"title": "[D1]",
+                         "detail": json.dumps({"collectionname": "c", "file_hash": HASH})}]
+            if "chat_messages" in sql:
+                return [{"doc_refs": json.dumps([
+                    {"handle": "[D2]", "collectionname": "c", "file_hash": other},
+                    {"handle": "[D3]", "collectionname": "", "file_hash": "c" * 16}])}]
+            if "agent_run_messages" in sql:
+                return [
+                    {"content": "{}", "usage_json": json.dumps({"evidence": [
+                        {"kind": "citation", "status": "ok",
+                         "reference": {"handle": "[D4]", "collectionname": "c",
+                                       "file_hash": "d" * 64}}]})},
+                    {"content": json.dumps({"citations": [{"handle": "[D6]"}]}),
+                     "usage_json": json.dumps({"status": "ok"})},
+                ]
+            raise AssertionError(sql)
+
+        monkeypatch.setattr(binding_store, "clickhouse_query", fake_query)
+        loaded = binding_store.ArtifactBindingStore().load("ann", "s1")
+        assert loaded.bindings == {("c", HASH): "[D1]", ("c", other): "[D2]",
+                                   ("c", "d" * 64): "[D4]"}
+        assert loaded.reserved == {1, 2, 3, 4, 6}
+        assert loaded.conflicts == []
+
+
+# -------------------------------------------------------------- candidate passage
+
+
+class TestCandidatePassage:
+    PAGE = ("Minutes of the meeting. The board approved the transfer of the lease on "
+            "3 March 2019, after a short discussion. The next item was the budget.")
+
+    def test_a_near_quote_gets_an_exact_passage_with_its_span(self):
+        quote = "The board approved the transfer of the property on 3 March 2019"
+        found = candidate_passage(quote, [("raw_text", 1, "Title page."),
+                                          ("raw_text", 2, self.PAGE)])
+        assert found is not None
+        assert found["text"] in self.PAGE
+        assert self.PAGE[found["start"]:found["end"]] == found["text"]
+        assert (found["extracted_by"], found["page_id"]) == ("raw_text", 2)
+        assert "approved the transfer" in found["text"]
+        assert len(found["text"]) <= 400
+
+    def test_a_quote_with_no_part_in_the_text_gets_none(self):
+        assert candidate_passage("an entirely different sentence about the weather today",
+                                 [("raw_text", 1, self.PAGE)]) is None
+
+    def test_cite_one_keeps_the_quote_unverified_and_adds_the_candidate(self, monkeypatch):
+        TestCiteOne()._stub_pages(monkeypatch, [self.PAGE])
+        quote = "The board approved the transfer of the property on 3 March 2019"
+        result = _cite_one(_acl(), "s-candidate", Citation(
+            collectionname="testdata", file_hash=HASH, quote=quote))
+        assert not result.quote_verified
+        assert result.quote_reason == QUOTE_REASON_ABSENT
+        assert result.quote == quote
+        assert result.candidate["text"] in self.PAGE
+        assert result.candidate["page_id"] == 1
+        # The candidate verifies when it is cited as the quote.
+        again = _cite_one(_acl(), "s-candidate", Citation(
+            collectionname="testdata", file_hash=HASH, quote=result.candidate["text"]))
+        assert again.quote_verified and again.candidate is None

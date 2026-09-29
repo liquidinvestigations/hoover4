@@ -140,3 +140,23 @@ class TestDecode:
 
     def test_prose_with_no_payload_is_none(self):
         assert read_page._decode("### Result\nundefined\n") is None
+
+
+def test_the_rendered_page_shape_matches_the_worker_parser():
+    """`tasks/P_agent/reports.py` reads this shape to record one evidence entry for each
+    page: the separator, the URL on the second line of a section, the failure lines and the
+    cut line. The worker cannot import this module, so the worker test holds the same
+    literals."""
+    text = read_page.render(ReadResult(pages=[
+        PageRead(url="https://example.org/a", title="A", final_url="https://example.org/a",
+                 text="x" * 10, full_chars=50, truncated=True),
+        PageRead(url="https://example.org/b", error="timeout"),
+    ]))
+    first, second = text.split("\n\n---\n\n")
+    assert first.split("\n")[1] == "https://example.org/a"
+    assert "[cut: this call read 10 of the page's 50 characters." in first
+    assert second.endswith("\n\nCOULD NOT READ: timeout")
+    assert read_page.BOT_CHECK_LABEL == "BLOCKED BY A BOT CHECK"
+    from browser_use_server.server import ARTIFACT_MARKER
+
+    assert ARTIFACT_MARKER == "[hoover4:artifacts]"

@@ -1,4 +1,4 @@
-"""The first model step, earlier chat turns, compaction rows and the final step.
+"""The first model step, earlier chat turns, compaction rows and the index after a reply.
 
 The database writers are the lists of `test_agent_run.store`, and the agent stream is a
 list of frames. No Temporal server is needed.
@@ -27,7 +27,7 @@ def _plan_frames(entries):
 def test_the_first_turn_sends_a_normal_model_step(store, monkeypatch):
     _serve(monkeypatch, store, _frames(text="The answer."))
     result = _step()
-    assert store["requests"][0]["mode"] == "tools"
+    assert "mode" not in store["requests"][0]
     assert result.outcome == "answered"
     assert store["messages"][-1].is_final == 1
 
@@ -78,20 +78,6 @@ def test_a_compaction_row_follows_its_reply_and_moves_the_results_one_up(store, 
     assert result.calls[0].ai_idx == 1
 
 
-# ---------------------------------------------------------------- the final step
-
-
-def test_a_final_reply_with_a_call_is_the_answer_and_ends_the_loop(store, monkeypatch):
-    _serve(monkeypatch, store, _frames(
-        text="The answer.", entries=[_entry("x", "search_collections", {"query": "x"})]))
-    result = _step(mode="final", reason="step_budget")
-    assert result.outcome == "answered"
-    results = [m for m in store["messages"] if m.role == "tool" and m.tool_call_id == "x"]
-    assert len(results) == 1 and json.loads(results[0].content)["error"] == "not_run"
-    assert [r["role"] for r in store["chat"]] == ["assistant"]
-    assert "The answer." in store["chat"][0]["content"]
-
-
 # ---------------------------------------------------------------- the index after a reply
 
 
@@ -114,44 +100,34 @@ def _two_calls():
             _entry("b", "search_collections", {"query": "b"})]
 
 
-@pytest.mark.parametrize("mode, reason, entries, compaction, expected_rows, next_idx", [
+@pytest.mark.parametrize("entries, compaction, expected_rows, next_idx", [
     # An answer with no call and a compaction row.
-    ("tools", "", [], True, [(0, "human"), (1, "ai"), (2, "compaction")], 3),
-    # A `final` `repeated_call` reply with 2 calls and no compaction.
-    ("final", "repeated_call", _two_calls(), False,
-     [(0, "human"), (1, "ai"), (2, "tool"), (3, "tool")], 4),
-    # A `final` reply with 1 call and a compaction row.
-    ("final", "repeated_call", _two_calls()[:1], True,
-     [(0, "human"), (1, "ai"), (2, "compaction"), (3, "tool")], 4),
-    # A reply with 2 calls in mode `tools`. The results are written by the tool steps.
-    ("tools", "", _two_calls(), False, [(0, "human"), (1, "ai")], 4),
+    ([], True, [(0, "human"), (1, "ai"), (2, "compaction")], 3),
+    # A reply with 2 calls. The results are written by the tool steps.
+    (_two_calls(), False, [(0, "human"), (1, "ai")], 4),
+    # A reply with 1 call and a compaction row.
+    (_two_calls()[:1], True, [(0, "human"), (1, "ai"), (2, "compaction")], 4),
     # An answer with no call and no compaction.
-    ("tools", "", [], False, [(0, "human"), (1, "ai")], 2),
+    ([], False, [(0, "human"), (1, "ai")], 2),
 ])
 def test_the_next_index_is_the_index_after_the_last_row_of_the_reply(
-        store, monkeypatch, mode, reason, entries, compaction, expected_rows, next_idx):
-    if mode == "final":
-        # The reason's human message is already the last row, so the reply takes index 1.
-        store["messages"][0].content = steps.FINAL_TEXT[reason]
-    _serve(monkeypatch, store, _reply_frames("The answer." if not entries or mode == "final"
-                                             else "", entries, compaction))
-    result = _step(mode=mode, reason=reason)
+        store, monkeypatch, entries, compaction, expected_rows, next_idx):
+    _serve(monkeypatch, store, _reply_frames("" if entries else "The answer.", entries,
+                                             compaction))
+    result = _step()
     assert [(m.idx, m.role) for m in store["messages"]] == expected_rows
-    for m in store["messages"]:
-        if m.role == "tool":
-            assert json.loads(m.content)["error"] == "not_run"
     assert result.next_idx == next_idx
     assert result.next_idx == steps.reply_end_idx(store["messages"][1])
 
 
-def test_a_nag_after_a_compacted_answer_keeps_the_compaction_row(store, monkeypatch):
+def test_a_note_after_a_compacted_answer_keeps_the_compaction_row(store, monkeypatch):
     monkeypatch.setattr(agent_runs, "write_run", lambda row, **changes: None)
     _serve(monkeypatch, store, _reply_frames("The answer.", [], True))
     result = _step()
     assert result.next_idx == 3
     activities.append_nag(activities.AppendNagParams(
         run_id=RUN_ID, username="u", session_id="s", seq=result.next_seq,
-        idx=result.next_idx, message="nag", starts_round=True))
+        idx=result.next_idx, message="nag"))
     rows = {m.idx: m for m in store["messages"]}
     assert rows[2].role == "compaction" and json.loads(rows[2].content) == COMPACTION
     assert (rows[3].role, rows[3].content) == ("human", "nag")

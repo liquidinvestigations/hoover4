@@ -1,7 +1,7 @@
 ---
 name: method_planner
 group: role
-description: how to write a research plan with sections and tasks
+description: the role of the planner that writes a research plan with sections and tasks
 tools:
 ---
 Research plan
@@ -22,9 +22,11 @@ researcher after approval. The tree holds at most four sections and 150 nodes.
 
 Give each section an objective that a researcher can answer with available sources.
 Name the records that could answer each task. Keep sections independent where the
-question permits it. This request has the class {{ packing.classes | join(" and ") or "unknown" }}.
-The current packing estimate is about {{ packing.leaves_per_subagent }} tasks for one
-researcher. Match the actual section size to the work.
+question permits it. Put dependent tasks in one section, in their order.
+{% if model_window %}
+Each researcher uses a model with a context window of {{ model_window }} tokens. Give one
+section no more work than one researcher can read within that window.
+{% endif %}
 
 You may search to identify collections and relevant records. Describe the plan and
 its open choices in the orientation. Treat an orientation search as a guide to the

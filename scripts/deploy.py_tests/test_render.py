@@ -257,26 +257,21 @@ def test_both_research_agents_receive_the_pack_keys():
         assert not any(line.startswith("AGENT_PACKS_SUBAGENT=") for line in environment)
 
 
-@pytest.mark.parametrize(("fixture_name", "expected"), [
-    pytest.param("llm-selfhosted-tier.ini", "http://127.0.0.1:21963/v1/systemone",
-                 id="selfhosted-with-tier"),
-    pytest.param("llm-selfhosted.ini", "", id="selfhosted-without-tier"),
-    pytest.param("llm-cloud.ini", "", id="cloud"),
-])
-def test_the_classifier_url_follows_the_selfhosted_provider(fixture_name, expected):
-    assert _env(fixture_name)["LLM_CLASSIFIER_URL"] == expected
-
-
 @pytest.mark.parametrize("fixture_name", sorted(
     p.name for p in FIXTURES.glob("*.ini") if p.name != "cassandra-memory-refused.ini"))
-def test_every_rendered_env_holds_the_classifier_key(fixture_name):
-    assert "LLM_CLASSIFIER_URL" in _env(fixture_name)
+def test_no_rendered_env_holds_a_retired_agent_key(fixture_name):
+    env = _env(fixture_name)
+    for key in ("LLM_CLASSIFIER_URL", "AGENT_MAX_PAGE_TOKENS",
+                "AGENT_COMPLETION_RESERVE_TOKENS"):
+        assert key not in env, (fixture_name, key)
 
 
-def test_both_research_agents_receive_the_classifier_url():
+def test_no_research_agent_receives_a_retired_agent_key():
     agents = dict(_compose_documents())["research-agents.yaml"]["services"]
     for name in ("hoover4-internal-search-agent", "hoover4-full-research-agent"):
-        assert "LLM_CLASSIFIER_URL=${LLM_CLASSIFIER_URL:-}" in agents[name]["environment"]
+        for line in agents[name]["environment"]:
+            assert not line.startswith(("LLM_CLASSIFIER_URL=", "AGENT_MAX_PAGE_TOKENS=",
+                                        "AGENT_COMPLETION_RESERVE_TOKENS=")), (name, line)
 
 
 def test_the_subagent_budgets_default_to_6_and_5():
@@ -842,25 +837,31 @@ def test_start_refuses_the_path():
     assert "[storage] volumes_path" in str(refused.value)
 
 
-PROBE_KEYS = ("AGENT_MAX_PAGE_TOKENS", "AGENT_COMPLETION_RESERVE_TOKENS",
-              "AGENT_CATALOGUE_MATCH_COUNT")
+PROBE_KEYS = ("AGENT_CATALOGUE_MATCH_COUNT",)
 
 
 def test_absent_probe_keys_render_empty():
     env = _env("settings-defaults.ini")
-    assert [env[key] for key in PROBE_KEYS] == ["", "", ""]
+    assert [env[key] for key in PROBE_KEYS] == [""]
 
 
 def test_the_probe_keys_are_rendered():
     env = _env("agent-probe-keys.ini")
-    assert [env[key] for key in PROBE_KEYS] == ["12000", "8192", "8"]
+    assert [env[key] for key in PROBE_KEYS] == ["8"]
+
+
+def test_a_retired_result_page_key_is_ignored_with_a_warning(capsys):
+    cfg = deploy.Config(FIXTURES / "agent-probe-keys.ini")
+    env = deploy.agent_probe_env(cfg)
+    assert "AGENT_MAX_PAGE_TOKENS" not in env
+    warnings = capsys.readouterr().err
+    assert "agent_max_page_tokens is ignored" in warnings
+    assert "agent_completion_reserve_tokens is ignored" in warnings
 
 
 @pytest.mark.parametrize("key, value", [
     ("agent_catalogue_match_count", "5"),
     ("agent_catalogue_match_count", "13"),
-    ("agent_max_page_tokens", "0"),
-    ("agent_completion_reserve_tokens", "many"),
 ])
 def test_an_out_of_range_probe_key_is_refused(key, value):
     cfg = deploy.Config(FIXTURES / "agent-probe-keys.ini")

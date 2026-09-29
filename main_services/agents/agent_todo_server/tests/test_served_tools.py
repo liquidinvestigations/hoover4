@@ -23,6 +23,7 @@ PLAN_TOOLS = {
     "edit_node",
     "remove_node",
     "read_plan_document",
+    "read_plan_report",
 }
 
 PROBE = """

@@ -2,9 +2,8 @@
 
 Each test runs one `Worker` for each queue of the loop, on task queues of its own, with the
 real workflow and the real activities. The agent service and the browser server are
-replaced by one local HTTP stub. It answers `/model_step` from a script of replies,
-`/tool_call` from a script of tool results, and `/preload` from a function, so the rows each
-case writes are known. Every
+replaced by one local HTTP stub. It answers `/model_step` from a script of replies and
+`/tool_call` from a script of tool results, so the rows each case writes are known. Every
 case uses a username of its own and deletes its rows at the end.
 
 The worker runs the workflow unsandboxed, so the test can point the module's queue names
@@ -32,7 +31,7 @@ from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
 from database import agent_plans, agent_runs, chat_todos
 from database.clickhouse import get_global_client
-from tasks.P_agent import activities, plan_runs, preload, steps, stream_writer, workflows
+from tasks.P_agent import activities, plan_runs, steps, stream_writer, workflows
 from tasks.run_worker import STEP_HEARTBEAT_THROTTLE, WORKFLOW_FAILURE_EXCEPTION_TYPES
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(240)]
@@ -65,8 +64,7 @@ def _reply(request, text="", calls=()):
             "args": args, "kind": kind,
             "briefings": args.get("tasks") if kind == "delegation" else None,
             "page_share": None if kind == "delegation" else 24000,
-            "budget_exhausted": False, "retry": not name.startswith("browser_"),
-            "args_digest": steps.args_digest(name, args)})
+            "retry": not name.startswith("browser_")})
     frames = [_frame("response", content=text)] if text else []
     return frames + [
         _frame("model_turn", text=text, reasoning="", tool_calls=entries,
@@ -93,21 +91,14 @@ def _ok_tool(request, n):
                  "measure": {"sha256": f"digest-{call['id'][-6:]}"}, "error_class": ""}
 
 
-def _no_reads(request, n):
-    return 200, {"request_classes": [], "class_scores": {}, "picks": {}, "reads": [],
-                 "todo_item_text": "", "classifier": {"state": "off", "error": "", "ms": 0}}
-
-
 class _Stub:
     """The agent service and the browser server, as one scripted HTTP server."""
 
-    def __init__(self, script, tool=None, preload=None):
+    def __init__(self, script, tool=None):
         self.script = script
         self.tool = tool or _ok_tool
-        self.preload = preload or _no_reads
         self.requests: list[dict] = []
         self.tool_requests: list[dict] = []
-        self.preload_requests: list[dict] = []
         #: Each tool request as `(name, args, started, ended)`.
         self.tool_log: list[tuple] = []
         self.released: list[str] = []
@@ -127,16 +118,6 @@ class _Stub:
                     self._send(200, {})
                     return
                 request = json.loads(body)
-                if self.path == "/preload":
-                    with stub.lock:
-                        stub.preload_requests.append(request)
-                        n = len(stub.preload_requests)
-                    status, answer = stub.preload(request, n)
-                    try:
-                        self._send(status, answer)
-                    except OSError:
-                        pass
-                    return
                 if self.path == "/tool_call":
                     with stub.lock:
                         stub.tool_requests.append(request)
@@ -177,9 +158,6 @@ class _Stub:
         self.server.daemon_threads = True
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
-
-    def modes(self):
-        return [r["mode"] for r in self.requests]
 
     def close(self):
         self.server.shutdown()
@@ -230,17 +208,10 @@ class _Case:
 
 
 async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
-                    model_worker=True, plan=False, preload_reads=None):
+                    model_worker=True, plan=False):
     """Run `body(client, case, stub, queue, titled)` with a worker on each queue of the
-    loop, all of them the case's own. Run-start reads run when `preload_reads`
-    answers `/preload`."""
-    stub = _Stub(script, tool, preload_reads)
-    opened = activities._opened
-    off = {}
-    if preload_reads is None:
-        off["preload"] = False
-    if off:
-        monkeypatch.setattr(activities, "_opened", lambda row: replace(opened(row), **off))
+    loop, all of them the case's own."""
+    stub = _Stub(script, tool)
     case = _Case()
     suffix = uuid.uuid4().hex[:8]
     chat_queue, model_queue = f"w19-chat-{suffix}", f"w19-model-{suffix}"
@@ -256,11 +227,10 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
     monkeypatch.setattr(activities, "title_session", lambda p: titled.append(p) or "")
     client = None
     acts = [activities.open_run, activities.append_nag, activities.write_ending,
-            activities.summarize_if_first_turn, activities.read_chat_todo, activities.fan_in,
+            activities.summarize_if_first_turn, activities.fan_in,
             activities.continue_run, steps.delegate_step, steps.prepare_continuation,
-            steps.record_step_failure, steps.plan_has_sections, steps.needs_citations,
-            steps.write_repeat_note, steps.write_asked_answer,
-            steps.write_found_documents, preload.preload_reads]
+            steps.record_step_failure, steps.plan_has_sections, steps.check_citations,
+            steps.write_empty_note, steps.write_asked_answer, steps.write_incomplete]
     try:
         client = await Client.connect("temporal:7233")
         with ThreadPoolExecutor(max_workers=32) as executor:
@@ -476,83 +446,63 @@ def test_a_lost_tool_ends_after_its_limit_with_a_stored_result(monkeypatch):
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
-def _repeat_script(answer_mode="final", answer="Forced."):
-    """A model that sends the same search in every `tools` step, and answers `answer` in
-    the steps of `answer_mode`."""
+def _searching(request, n):
+    """A model that sends a new search in every step and never answers."""
+    return _reply(request, calls=[_call("search_collections", {"query": f"q{n}"})])
+
+
+def test_identical_searches_of_one_reply_all_run(monkeypatch):
+    """The same search three times in one reply, after three earlier runs of it. Every call
+    runs, and no result is written in place of a call."""
     def script(request, n):
-        if request["mode"] == answer_mode:
-            return _reply(request, answer)
-        return _reply(request, calls=[_call("search_collections", {"query": "a"})])
-    return script
-
-
-#: The `tools` steps before the forced answer: the runs of the call, then two limits.
-RUNS_THEN_TWO_LIMITS = steps.REPEAT_RUNS_ALLOWED + 2 * steps.REPEAT_STEP_LIMIT
-
-
-def test_the_repeat_note_then_the_second_limit_forces_one_answer(monkeypatch):
-    """A chat lead with an open todo item: the call runs 3 times, 3 repeat steps give the
-    note as a nag, 3 more give the forced answer, and no todo nag follows it."""
+        if n <= 3:
+            return _reply(request, calls=[_call("search_collections", {"query": "a"})])
+        if n == 4:
+            return _reply(request, calls=[_call("search_collections", {"query": "a"})] * 3)
+        return _reply(request, "Answer.")
 
     async def body(client, case, stub, queue, titled):
-        chat_todos.write_todo(case.username, case.session_id, "read the reports",
-                              [{"id": "1", "text": "read report one", "status": "pending"}])
         assert await (await _start(client, case, queue)).result() == "completed"
-        assert stub.modes() == ["tools"] * RUNS_THEN_TWO_LIMITS + ["final"]
-        assert len(stub.tool_requests) == steps.REPEAT_RUNS_ALLOWED
+        assert [r["call"]["args"] for r in stub.tool_requests] == [{"query": "a"}] * 6
         tools = [m for m in case.messages() if m.role == "tool"]
-        assert [json.loads(t.content).get("error") for t in tools[3:]] == [
-            steps.REPEATED_CALL_CLASS] * (2 * steps.REPEAT_STEP_LIMIT)
-        notes = [m for m in case.messages() if m.role == "human"
-                 and m.content.startswith(steps.REPEAT_NOTE_HEAD)]
-        assert len(notes) == 1 and '- 1 "read report one"' in notes[0].content
-        roles = [r[1] for r in case.chat_rows()]
-        assert roles.count("nag") == 1 and roles[-1] == "assistant"
-        assert [r[2] for r in case.chat_rows() if r[1] == "nag"] == [notes[0].content]
+        assert len(tools) == 6 and all("repeated_call" not in m.content for m in tools)
         row = case.run_row()
-        assert (row.state, row.end_reason, row.result) == ("completed", "repeated_call", "Forced.")
-        assert row.nags_this_turn == 1
-
-    asyncio.run(_run_case(monkeypatch, _repeat_script(), body))
-
-
-def test_a_chat_lead_that_answers_after_the_repeat_note_gets_no_forced_step(monkeypatch):
-    def script(request, n):
-        if any(m["role"] == "human" and m["content"].startswith(steps.REPEAT_NOTE_HEAD)
-               for m in request["messages"]):
-            return _reply(request, "Answer after the note.")
-        return _reply(request, calls=[_call("search_collections", {"query": "a"})])
-
-    async def body(client, case, stub, queue, titled):
-        assert await (await _start(client, case, queue)).result() == "completed"
-        limit = steps.REPEAT_RUNS_ALLOWED + steps.REPEAT_STEP_LIMIT
-        assert stub.modes() == ["tools"] * (limit + 1)
-        row = case.run_row()
-        assert (row.end_reason, row.result, row.nags_this_turn) == (
-            "", "Answer after the note.", 1)
-        roles = [r[1] for r in case.chat_rows()]
-        assert roles[-2:] == ["nag", "assistant"]
+        assert (row.end_reason, row.result, row.model_steps) == ("", "Answer.", 5)
+        assert "nag" not in [r[1] for r in case.chat_rows()]
 
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
-def test_a_repeat_limit_step_runs_its_exempt_read_before_the_note(monkeypatch):
+def test_browser_calls_of_one_reply_run_in_call_order_beside_a_search(monkeypatch):
     def script(request, n):
-        if n == steps.REPEAT_RUNS_ALLOWED + steps.REPEAT_STEP_LIMIT:
-            return _reply(request, calls=[_call("search_collections", {"query": "a"}),
-                                          _call("read_todo", {})])
-        if n > steps.REPEAT_RUNS_ALLOWED + steps.REPEAT_STEP_LIMIT:
-            return _reply(request, "Answer.")
-        return _reply(request, calls=[_call("search_collections", {"query": "a"})])
+        if n == 1:
+            return _reply(request, calls=[
+                _call("browser_navigate", {"url": "https://example.org/"}),
+                _call("search_collections", {"query": "q"}),
+                _call("browser_click", {"ref": "e1"}),
+                _call("read_page", {"urls": ["https://example.org/a"]})])
+        return _reply(request, "done")
+
+    def tool(request, n):
+        # The first browser call is the slowest, so a parallel run would end it last.
+        name = request["call"]["name"]
+        time.sleep(1.5 if name == "browser_navigate" else 0.8 if name == "search_collections"
+                   else 0.1)
+        return _ok_tool(request, n)
 
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
-        assert [r["call"]["name"] for r in stub.tool_requests][-1] == "read_todo"
-        last = stub.requests[-1]["messages"]
-        assert [m["role"] for m in last[-4:]] == ["ai", "tool", "tool", "human"]
-        assert last[-1]["content"].startswith(steps.REPEAT_NOTE_HEAD)
+        spans = {name: (s, e) for name, _, s, e in stub.tool_log}
+        chain = [spans[n] for n in ("browser_navigate", "browser_click", "read_page")]
+        for (_, end), (start, _) in zip(chain, chain[1:]):
+            assert end <= start, chain
+        search = spans["search_collections"]
+        assert search[0] < chain[0][1], "the search did not overlap the browser chain"
+        # A browser action gets one attempt.
+        entries = next(m for m in case.messages() if m.role == "ai").tool_calls
+        assert [e["retry"] for e in entries] == [False, True, False, True]
 
-    asyncio.run(_run_case(monkeypatch, script, body))
+    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
 def _delegating_lead(child_script):
@@ -572,92 +522,35 @@ def _child(case):
     return next(r for r in _turn_rows(case) if r.depth == 1)
 
 
-def test_a_sub_agent_with_an_empty_forced_answer_ends_with_the_listing(monkeypatch):
+def test_a_sub_agent_at_the_step_limit_ends_with_its_evidence(monkeypatch):
+    """A sub-agent that never answers reaches the step limit. Its result is the text that
+    code writes from its thread, the lead's continuation reads it, and no model call binds
+    no tool."""
+    monkeypatch.setattr(workflows, "RUN_MODEL_STEPS", 3)
+
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "delegated"
-        await _wait_terminal(case, _child(case).run_id)
-        child = _child(case)
-        assert (child.state, child.end_reason) == ("completed", "repeated_call")
-        assert child.result.startswith("This researcher wrote no report.")
-        modes = [r["mode"] for r in stub.requests if r["kind"] == "subagent"]
-        assert modes == ["tools"] * RUNS_THEN_TWO_LIMITS + ["final", "final"]
-        human = [m.content for m in case.messages(child.thread_id) if m.role == "human"]
-        assert sum(h.startswith(steps.REPEAT_NOTE_HEAD) for h in human) == 1
-        assert human[-2] == steps.FINAL_TEXT["repeated_call"] + "\n\nBring back: the facts"
-        assert human[-1] == steps.EMPTY_ANSWER_TEXT + "\n\nBring back: the facts"
-        # A sub-agent writes no transcript row, so the note is no chat row.
+        child = await _wait_terminal(case, _child(case).run_id)
+        assert (child.state, child.end_reason) == ("completed", "step_budget")
+        assert child.result.startswith(
+            "This run stopped before a final answer, because it reached its limit of 3")
+        assert "Searches that found nothing" not in child.result
+        assert len([r for r in stub.requests if r["kind"] == "subagent"]) == 3
+        # The results of the child's last reply are stored, and no step ran after them.
+        messages = case.messages(child.thread_id)
+        assert [m.role for m in messages][-2:] == ["ai", "tool"]
+        lead = await _wait_terminal(case, seconds=90)
+        assert lead.state == "completed" and lead.result == "The lead answer."
         assert "nag" not in [r[1] for r in case.chat_rows()]
 
-    asyncio.run(_run_case(monkeypatch, _delegating_lead(_repeat_script(answer="")), body))
-
-
-def test_a_forced_empty_answer_whose_listing_fails_fails_the_sub_agent(monkeypatch):
-    from tasks.P_agent import thread_facts
-
-    def broken(messages):
-        raise RuntimeError("the listing failed")
-    monkeypatch.setattr(thread_facts, "found_documents_text", broken)
-
-    async def body(client, case, stub, queue, titled):
-        assert await (await _start(client, case, queue)).result() == "delegated"
-        child = await _wait_terminal(case, _child(case).run_id, seconds=150)
-        assert child.state == "failed" and "the listing failed" in child.error
-
-    asyncio.run(_run_case(monkeypatch, _delegating_lead(_repeat_script(answer="")), body))
-
-
-def test_a_stop_during_the_repeat_note_ends_the_run_cancelled(monkeypatch):
-    started = threading.Event()
-    note_text = steps.repeat_note_text
-
-    def slow(messages, todo):
-        started.set()
-        time.sleep(20)
-        return note_text(messages, todo)
-    monkeypatch.setattr(steps, "repeat_note_text", slow)
-
-    async def body(client, case, stub, queue, titled):
-        handle = await _start(client, case, queue)
-        deadline = time.monotonic() + 60
-        while not started.is_set() and time.monotonic() < deadline:
-            await asyncio.sleep(0.2)
-        assert started.is_set(), "the note did not start"
-        agent_runs.write_turn_stop(case.username, case.session_id, case.turn_seq)
-        await handle.cancel()
-        lead = await _wait_terminal(case, seconds=60)
-        assert lead.state == "cancelled"
-        assert "final" not in stub.modes()
-
-    asyncio.run(_run_case(monkeypatch, _repeat_script(), body))
-
-
-def test_a_repeated_call_runs_the_other_calls_of_its_reply(monkeypatch):
-    runs = steps.REPEAT_RUNS_ALLOWED
-
-    def script(request, n):
-        if n <= runs:
-            return _reply(request, calls=[_call("search_collections", {"query": "a"})])
-        if n == runs + 1:
-            return _reply(request, calls=[_call("search_collections", {"query": "a"}),
-                                          _call("search_collections", {"query": "b"})])
-        return _reply(request, "Answer.")
-
-    async def body(client, case, stub, queue, titled):
-        assert await (await _start(client, case, queue)).result() == "completed"
-        assert stub.modes() == ["tools"] * (runs + 2)
-        assert [r["call"]["args"] for r in stub.tool_requests] == [{"query": "a"}] * runs + [
-            {"query": "b"}]
-        assert case.run_row().end_reason == ""
-
-    asyncio.run(_run_case(monkeypatch, script, body))
+    asyncio.run(_run_case(monkeypatch, _delegating_lead(_searching), body))
 
 
 # ------------------------------------------------------------------------ the empty reply
 
 
 def _empty_rows(case, thread_id=None):
-    return [m for m in case.messages(thread_id)
-            if m.role == "human" and m.content == steps.EMPTY_REPLY_TEXT]
+    return [m for m in case.messages(thread_id) if steps.is_retry_marker(m)]
 
 
 def test_an_empty_third_step_gets_one_nudge_and_a_fourth_step(monkeypatch):
@@ -677,12 +570,15 @@ def test_an_empty_third_step_gets_one_nudge_and_a_fourth_step(monkeypatch):
                              ("assistant", "The answer after the nudge.")]
         assert "(the assistant returned an empty answer)" not in [r[1] for r in rows]
         row = case.run_row()
-        assert (row.result, row.nags_this_turn) == ("The answer after the nudge.", 1)
+        assert (row.result, row.end_reason) == ("The answer after the nudge.", "")
+        assert (row.nags_this_turn, row.nags_without_progress) == (0, 0)
+        assert json.loads(_empty_rows(case)[0].usage_json) == {
+            steps.RETRY_MARKER_KEY: steps.EMPTY_RETRY_MARKER}
 
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
-def test_a_second_empty_step_ends_the_turn_with_the_empty_answer(monkeypatch):
+def test_a_second_empty_step_ends_the_turn_incomplete_with_its_evidence(monkeypatch):
     def script(request, n):
         if n <= 2:
             return _reply(request, calls=[_call("search_collections", {"query": f"q{n}"})])
@@ -692,8 +588,13 @@ def test_a_second_empty_step_ends_the_turn_with_the_empty_answer(monkeypatch):
         assert await (await _start(client, case, queue)).result() == "completed"
         assert len(stub.requests) == 4 and len(_empty_rows(case)) == 1
         rows = [(r[1], r[2]) for r in case.chat_rows()]
-        assert rows[-1] == ("assistant", "(the assistant returned an empty answer)")
+        assert rows[-1][0] == "assistant"
+        assert rows[-1][1].startswith("This run stopped before a final answer, because the "
+                                      "model returned two replies")
         assert [r[0] for r in rows].count("nag") == 1
+        row = case.run_row()
+        assert (row.state, row.end_reason, row.result) == (
+            "completed", "empty_response", rows[-1][1])
 
     asyncio.run(_run_case(monkeypatch, script, body))
 
@@ -752,29 +653,45 @@ def test_read_todo_twice_forces_no_answer(monkeypatch):
 
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
-        assert stub.modes() == ["tools", "tools", "tools"]
+        assert len(stub.requests) == 3 and len(stub.tool_requests) == 2
         assert case.run_row().end_reason == ""
 
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
-def test_the_step_budget_ends_with_one_final_step(monkeypatch):
+def test_the_step_budget_ends_with_no_model_call(monkeypatch):
+    """At the step limit, the calls of the last reply run, and the run ends with the result
+    that code writes from the thread. No model call follows."""
     monkeypatch.setattr(workflows, "RUN_MODEL_STEPS", 3)
-
-    def script(request, n):
-        if request["mode"] == "final":
-            return _reply(request, "Budget answer.")
-        return _reply(request, calls=[_call("search_collections", {"query": f"q{n}"})])
 
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
-        assert stub.modes() == ["tools", "tools", "tools", "final"]
+        assert len(stub.requests) == 3 and len(stub.tool_requests) == 3
+        assert all("mode" not in r for r in stub.requests)
         row = case.run_row()
-        assert (row.state, row.end_reason, row.model_steps) == ("completed", "step_budget", 4)
-        human = [m.content for m in case.messages() if m.role == "human"]
-        assert human[-1] == steps.FINAL_TEXT["step_budget"]
+        assert (row.state, row.end_reason, row.model_steps) == ("completed", "step_budget", 3)
+        assert row.result.startswith("This run stopped before a final answer")
+        assert [m.role for m in case.messages()][-2:] == ["ai", "tool"]
+        rows = [(r[1], r[2]) for r in case.chat_rows()]
+        assert rows[-1] == ("assistant", row.result)
+        assert "nag" not in [r[0] for r in rows]
 
-    asyncio.run(_run_case(monkeypatch, script, body))
+    asyncio.run(_run_case(monkeypatch, _searching, body))
+
+
+def test_the_step_limit_holds_across_continue_as_new(monkeypatch):
+    monkeypatch.setattr(workflows, "CONTINUE_AS_NEW_STEPS", 2)
+    monkeypatch.setattr(workflows, "RUN_MODEL_STEPS", 5)
+
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        assert await handle.result() == "completed"
+        assert len(stub.requests) == 5
+        row = case.run_row()
+        assert (row.end_reason, row.model_steps) == ("step_budget", 5)
+        assert [r[1] for r in case.chat_rows()].count("assistant") == 1
+
+    asyncio.run(_run_case(monkeypatch, _searching, body))
 
 
 def test_continue_as_new_every_two_steps(monkeypatch):
@@ -856,48 +773,22 @@ def test_a_stop_during_a_tool_call_cancels_it(monkeypatch):
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
-def test_one_forced_answer_with_an_open_todo(monkeypatch):
-    monkeypatch.setattr(workflows, "RUN_MODEL_STEPS", 3)
-
-    def script(request, n):
-        if request["mode"] == "final":
-            return _reply(request, "Forced answer.")
-        return _reply(request, calls=[_call("search_collections", {"query": f"q{n}"})])
-
+def test_an_answer_with_open_todo_items_ends_the_turn(monkeypatch):
+    """The answer is final. The worker writes no note and marks no item."""
     async def body(client, case, stub, queue, titled):
         chat_todos.write_todo(case.username, case.session_id, "read the reports",
                               [{"id": "1", "text": "read report one", "status": "pending"},
                                {"id": "2", "text": "read report two", "status": "pending"}])
         assert await (await _start(client, case, queue)).result() == "completed"
-        assert stub.modes().count("final") == 1
+        assert len(stub.requests) == 1
         roles = [r[1] for r in case.chat_rows()]
         assert "nag" not in roles and roles.count("assistant") == 1
-        assert case.run_row().end_reason == "step_budget"
+        row = case.run_row()
+        assert (row.end_reason, row.result, row.nags_this_turn) == ("", "Answer 1.", 0)
+        todo = chat_todos.read_todo(case.username, case.session_id)
+        assert [i["status"] for i in todo["items"]] == ["pending", "pending"]
 
-    asyncio.run(_run_case(monkeypatch, script, body))
-
-
-def test_a_retried_final_step_writes_one_human_message(monkeypatch):
-    monkeypatch.setattr(workflows, "RUN_MODEL_STEPS", 1)
-    finals = []
-
-    def script(request, n):
-        if request["mode"] == "final":
-            finals.append(n)
-            if len(finals) == 1:
-                return [_frame("response", content="cut")]
-            return _reply(request, "Forced.")
-        return _reply(request, calls=[_call("search_collections", {"query": "q"})])
-
-    async def body(client, case, stub, queue, titled):
-        assert await (await _start(client, case, queue)).result() == "completed"
-        messages = case.messages()
-        assert [m.content for m in messages if m.role == "human"].count(
-            steps.FINAL_TEXT["step_budget"]) == 1
-        assert [m.content for m in messages if m.role == "ai"][-1] == "Forced."
-        assert len(finals) == 2
-
-    asyncio.run(_run_case(monkeypatch, script, body))
+    asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, f"Answer {n}."), body))
 
 
 def test_a_model_step_retry_after_its_write_makes_no_second_call(monkeypatch):
@@ -946,32 +837,8 @@ def test_an_agent_error_ends_the_run_as_failed(monkeypatch):
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
-def test_an_open_todo_nags_twice_then_stops(monkeypatch):
-    def script(request, n):
-        return _reply(request, f"Answer {n}.")
-
-    async def body(client, case, stub, queue, titled):
-        chat_todos.write_todo(case.username, case.session_id, "read the reports",
-                              [{"id": "1", "text": "read report one", "status": "pending"}])
-        handle = await _start(client, case, queue)
-        assert await handle.result() == "completed"
-        # The replies of the nag rounds and the stop reason write no row, so the answer
-        # of the first round stays the answer of the turn.
-        roles = [(r[0], r[1]) for r in case.chat_rows()]
-        assert roles == [(1, "user"), (2, "assistant"), (3, "nag"), (4, "nag")]
-        assert case.chat_rows()[1][2] == "Answer 1."
-        assert len(stub.requests) == 3
-        assert [m["role"] for m in stub.requests[1]["messages"]] == ["human", "ai", "human"]
-        assert "mark_todo" in stub.requests[1]["messages"][-1]["content"]
-        row = case.run_row()
-        assert (row.nags_this_turn, row.state, row.next_seq) == (2, "completed", 5)
-        assert row.result == "Answer 1."
-
-    asyncio.run(_run_case(monkeypatch, script, body))
-
-
 def test_an_uncited_answer_that_names_a_document_gets_one_citation_round(monkeypatch):
-    from tasks.P_agent import nagging
+    from tasks.P_agent import citations
 
     def script(request, n):
         if n == 1:
@@ -985,16 +852,96 @@ def test_an_uncited_answer_that_names_a_document_gets_one_citation_round(monkeyp
         handle = await _start(client, case, queue)
         assert await handle.result() == "completed"
         assert len(stub.requests) == 3
-        assert stub.requests[1]["messages"][-1]["content"] == nagging.CITATION_NOTE
+        note = stub.requests[1]["messages"][-1]["content"]
+        assert note.startswith("Your answer uses citation labels") and "[D1]" in note
         rows = [(r[1], r[2], r[3]) for r in case.chat_rows()]
         assert [r[0] for r in rows] == ["user", "assistant", "nag", "tool", "assistant"]
-        assert rows[2][1] == nagging.CITATION_NOTE and rows[3][2] == "cite_documents"
+        assert rows[2][1] == note and rows[3][2] == "cite_documents"
         assert rows[4][1] == "The memo sets the budget [D1], cited."
         row = case.run_row()
         assert (row.state, row.nags_this_turn) == ("completed", 0)
         assert row.result == "The memo sets the budget [D1], cited."
 
     asyncio.run(_run_case(monkeypatch, script, body))
+
+
+def _citation_tool(frames):
+    """The frames of a reply whose model had `cite_documents`."""
+    out = []
+    for frame in frames:
+        if '"type": "model_turn"' in frame:
+            data = json.loads(frame[len("data: "):])
+            data["usage"]["citation_tool"] = True
+            frame = "data: " + json.dumps(data) + "\n\n"
+        out.append(frame)
+    return out
+
+
+def test_a_failed_citation_call_does_not_stop_the_label_check(monkeypatch):
+    """The model calls `cite_documents`, the call fails, and the answer uses the label it
+    wanted. The check reads the failed result, finds no successful one, and asks once."""
+    def script(request, n):
+        if n == 1:
+            return _citation_tool(_reply(request, calls=[_call("cite_documents", {
+                "citations": [{"source": "memo.txt"}]})]))
+        if n == 2:
+            return _citation_tool(_reply(request, "The memo sets the budget [D1]."))
+        return _citation_tool(_reply(request, "The memo sets the budget."))
+
+    def tool(request, n):
+        call = request["call"]
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "error",
+                     "content": json.dumps({"success": False, "error": "invalid_arguments",
+                                            "message": "citations is not valid"}),
+                     "measure": None, "error_class": "invalid_arguments"}
+
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        assert await handle.result() == "completed"
+        assert len(stub.requests) == 3
+        [cite] = [m for m in case.messages() if m.role == "tool"]
+        assert [e["status"] for e in cite.usage["evidence"]] == ["error"]
+        notes = [m for m in case.messages() if m.usage.get("repair_marker") == "citation"]
+        assert len(notes) == 1
+        assert notes[0].usage["citation_check"]["unresolved"] == ["[D1]"]
+        assert case.run_row().result == "The memo sets the budget."
+
+    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
+
+
+def test_a_planner_question_with_a_label_is_checked_with_no_plan_failure(monkeypatch):
+    """A planner asks about a document before it writes a tree. The question's label has no
+    citation result, so it gets the repair round. The planner asks again, and the run ends
+    with the question and no empty-plan failure."""
+    prid = str(uuid.uuid4())
+    first = "Is [D1] the lease you mean?"
+    second = "Is the 2019 lease the one you mean?"
+
+    def script(request, n):
+        question = first if n == 1 else second
+        return _citation_tool(_reply(request, calls=[
+            _call("ask_user", {"question": question, "options": ["yes", "no"]})]))
+
+    def tool(request, n):
+        call = request["call"]
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "ok",
+                     "content": json.dumps({"success": True, "asked": True, **call["args"]}),
+                     "measure": None, "error_class": ""}
+
+    async def body(client, case, stub, queue, titled):
+        handle = await client.start_workflow(
+            workflows.AgentRun.run, _plan_input(case, prid), id=f"plan-{prid}-r0",
+            task_queue=queue, id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE)
+        assert await handle.result() == "completed"
+        assert len(stub.requests) == 2
+        assert "[D1]" in stub.requests[1]["messages"][-1]["content"]
+        row = case.run_row()
+        assert (row.state, row.result) == ("completed", second)
+        assert [r[2] for r in case.chat_rows() if r[1] == "assistant"] == [first, second]
+        plan_run = agent_plans.read_plan_run(case.username, case.session_id, prid)
+        assert plan_run.state == "awaiting_review"
+
+    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
 # ---------------------------------------------------------------------------- delegation
@@ -1351,10 +1298,14 @@ def test_a_flat_plan_is_reviewed_rejected_approved_and_completed(monkeypatch):
 
         inp = _decide(case, prid, "approve", 3)
         await _run_plan(client, queue, inp, f"plan-{prid}-o1")
+        # `_write_ending` writes the plan state before the run's own row, which is the
+        # completion marker, so the test waits for both.
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             plan_run = agent_plans.read_plan_run(case.username, case.session_id, prid)
-            if agent_plans.is_terminal(plan_run):
+            rows = agent_runs.read_turn_runs(case.username, case.session_id, inp.turn_seq)
+            if agent_plans.is_terminal(plan_run) and rows and all(
+                    agent_runs.is_terminal(r) for r in rows):
                 break
             await asyncio.sleep(0.5)
         assert (plan_run.state, plan_run.approved_version) == ("completed", 3)
@@ -1362,7 +1313,8 @@ def test_a_flat_plan_is_reviewed_rejected_approved_and_completed(monkeypatch):
         assert (section["node_id"], section["tasks"], section["failed"]) == (root, 2, False)
         kinds = sorted(d.kind for d in agent_plans.read_documents(
             case.username, case.session_id, prid))
-        assert kinds == ["final", "prompt", "prompt", "report", "report"]
+        assert kinds == ["final", "prompt", "prompt", "report", "report", "report_data",
+                         "report_data"]
         rows = agent_runs.read_turn_runs(case.username, case.session_id, inp.turn_seq)
         assert rows and all(agent_runs.is_terminal(r) for r in rows)
         final = [r for r in case.chat_rows() if r[1] == "assistant"][-1]
@@ -1374,6 +1326,158 @@ def test_a_flat_plan_is_reviewed_rejected_approved_and_completed(monkeypatch):
         assert all(s["state"] for step in steps for s in step["sections"])
 
     asyncio.run(_run_case(monkeypatch, script, body))
+
+
+def test_a_section_that_fails_before_prose_keeps_its_report_and_evidence(monkeypatch):
+    """The section's sub-agent reads one document and then fails. Its ending writes the
+    report pair with the failure and the read. The organizer continuation gets the failed
+    state, the node and the evidence counts, and the report text is not needed."""
+    prid = str(uuid.uuid4())
+    plan_id = plan_runs.plan_id_for(prid)
+    root = agent_plans.root_node_id(plan_id)
+    page = json.dumps({"items": [{"collectionname": "testdata", "file_hash": "a" * 16,
+                                  "page": 1, "path": "/lease.txt", "text": "The lease."}]})
+
+    def script(request, n):
+        if request["kind"] == "planner":
+            agent_plans.mutate(request["username"], request["session_id"], plan_id,
+                               "append_node", text="Read the lease")
+            return _answer_frames(request, "Review this plan.")
+        if request["kind"] == "subagent":
+            if len(request["messages"]) == 1:
+                return _reply(request, calls=[_call("read_documents", {
+                    "collectionname": "testdata", "file_hash": ["a" * 16]})])
+            return [_frame("error", error_class="other", retryable=False,
+                           content="model unavailable")]
+        if not _is_continuation(request):
+            return _delegate_frames(request, [("d1", [dict(_briefing("read the lease"),
+                                                        plan_node_id=root,
+                                                        purpose="execute")])])
+        return _answer_frames(request, "Final report.")
+
+    def tool(request, n):
+        call = request["call"]
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "ok",
+                     "content": page, "measure": None, "error_class": "",
+                     "doc_refs": [{"collectionname": "testdata", "file_hash": "a" * 64,
+                                   "path": "/lease.txt", "page_id": 1}]}
+
+    async def body(client, case, stub, queue, titled):
+        await _run_plan(client, queue, _plan_input(case, prid), f"plan-{prid}-r0")
+        inp = _decide(case, prid, "approve", 2)
+        await _run_plan(client, queue, inp, f"plan-{prid}-o1")
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            plan_run = agent_plans.read_plan_run(case.username, case.session_id, prid)
+            if agent_plans.is_terminal(plan_run):
+                break
+            await asyncio.sleep(0.5)
+        [child] = [r for r in agent_runs.read_turn_runs(case.username, case.session_id,
+                                                        inp.turn_seq) if r.depth == 1]
+        assert child.state == "failed"
+        data = agent_plans.read_report_data(case.username, case.session_id, prid,
+                                            child.run_id)
+        assert data["execution"]["state"] == "failed"
+        assert "model unavailable" in data["execution"]["error"]
+        assert [e["reference"]["file_hash"] for e in data["documents_read"]] == ["a" * 64]
+        assert data["final_answer"] is None
+        report = json.loads([r for r in stub.requests if r["kind"] == "organizer"
+                             and _is_continuation(r)][0]["messages"][-1]["content"])
+        [entry] = report["reports"]
+        assert entry["state"] == "failed" and entry["node"] == "root"
+        assert entry["evidence"]["documents_read"] == 1
+
+    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
+
+
+def test_a_report_failure_leaves_the_child_terminal_and_the_fan_in_writes_it(monkeypatch):
+    """The report pair of a sub-agent ending fails. The child still ends `completed`, the
+    fan-in writes the pair from the stored messages, and the organizer continues."""
+    from tasks.P_agent import reports
+
+    prid = str(uuid.uuid4())
+    plan_id = plan_runs.plan_id_for(prid)
+    root = agent_plans.root_node_id(plan_id)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("the report store did not answer")
+
+    monkeypatch.setattr(reports, "materialize", fail)
+
+    def script(request, n):
+        if request["kind"] == "planner":
+            agent_plans.mutate(request["username"], request["session_id"], plan_id,
+                               "append_node", text="Read the lease")
+            return _answer_frames(request, "Review this plan.")
+        if request["kind"] == "subagent":
+            return _answer_frames(request, "The lease is from 2019.")
+        if not _is_continuation(request):
+            return _delegate_frames(request, [("d1", [dict(_briefing("read the lease"),
+                                                        plan_node_id=root,
+                                                        purpose="execute")])])
+        return _answer_frames(request, "Final report.")
+
+    async def body(client, case, stub, queue, titled):
+        await _run_plan(client, queue, _plan_input(case, prid), f"plan-{prid}-r0")
+        inp = _decide(case, prid, "approve", 2)
+        await _run_plan(client, queue, inp, f"plan-{prid}-o1")
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            plan_run = agent_plans.read_plan_run(case.username, case.session_id, prid)
+            if agent_plans.is_terminal(plan_run):
+                break
+            await asyncio.sleep(0.5)
+        assert plan_run.state == "completed"
+        [child] = [r for r in agent_runs.read_turn_runs(case.username, case.session_id,
+                                                        inp.turn_seq) if r.depth == 1]
+        assert child.state == "completed"
+        data = agent_plans.read_report_data(case.username, case.session_id, prid,
+                                            child.run_id)
+        assert data["final_answer"]["text"] == "The lease is from 2019."
+        assert data["execution"]["state"] == "completed"
+
+    asyncio.run(_run_case(monkeypatch, script, body))
+
+
+def test_a_fan_in_writes_the_missing_report_of_a_child(monkeypatch):
+    """A child ended with no report documents, as after a worker stop between its terminal
+    row and its documents. The fan-in writes them from the committed messages, once, and
+    changes no run state."""
+    prid = str(uuid.uuid4())
+
+    async def body(client, case, stub, queue, titled):
+        plan_id = plan_runs.plan_id_for(prid)
+        agent_plans.create_plan_run(agent_plans.PlanRunRow(
+            run_id=prid, plan_id=plan_id, username=case.username, session_id=case.session_id,
+            state=agent_plans.EXECUTING))
+        root = agent_plans.root_node_id(plan_id)
+        parent = agent_runs.RunRow(
+            run_id=case.run_id, username=case.username, session_id=case.session_id,
+            thread_id=case.run_id, kind="organizer", plan_run_id=prid,
+            state=agent_runs.RUNNING)
+        agent_runs.create_run(parent)
+        batch = agent_runs.batch_id_for(case.run_id)
+        child_id = agent_runs.child_run_id(batch, 0)
+        agent_runs.create_run(agent_runs.RunRow(
+            run_id=child_id, username=case.username, session_id=case.session_id,
+            thread_id=child_id, parent_run_id=case.run_id, batch_id=batch, depth=1,
+            kind="subagent", plan_run_id=prid, plan_node_id=root, purpose="execute",
+            state=agent_runs.COMPLETED, result="The lease is from 2019."))
+        agent_runs.write_messages(case.username, case.session_id, child_id, child_id, [
+            agent_runs.RunMessageRow(idx=0, role="human", content="Read the lease."),
+            agent_runs.RunMessageRow(idx=1, role="ai", content="The lease is from 2019.")])
+        before = agent_runs.read_run(case.username, case.session_id, child_id)
+        activities._fan_in(case.username, case.session_id, child_id)
+        activities._fan_in(case.username, case.session_id, child_id)
+        docs = agent_plans.read_documents(case.username, case.session_id, prid)
+        assert sorted(d.kind for d in docs) == ["report", "report_data"]
+        data = agent_plans.read_report_data(case.username, case.session_id, prid, child_id)
+        assert data["final_answer"]["text"] == "The lease is from 2019."
+        after = agent_runs.read_run(case.username, case.session_id, child_id)
+        assert (after.state, after.state_version) == (before.state, before.state_version)
+        assert stub.requests == [] and stub.tool_requests == []
+
+    asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, "unused"), body))
 
 
 def test_a_stop_after_an_approval_closes_the_organizer_in_open_run(monkeypatch):
@@ -1503,46 +1607,7 @@ PLAN = {"goal": "Find what the reports say.", "steps": ["Search", "Read", "Cite"
 
 
 
-# ------------------------------------------------------------------- the run-start reads
-
-def _preload_answer(request, n):
-    """The skill reads of `/preload`."""
-    reads = [
-        {"id": "", "name": "read_skill", "args": {"name": "search"},
-         "content": "Skill `search`.\n\nSearch first.", "status": "ok", "error_class": ""},
-    ]
-    return 200, {"request_classes": ["topic"], "class_scores": {"topic": 0.9},
-                 "picks": {"technique": [], "stumble": []}, "reads": reads,
-                 "classifier": {"state": "ok", "error": "", "ms": 300}}
-
-
-def _todo_server(request, n):
-    """The todo server of the case: `write_todo` and `mark_todo` change the stored list."""
-    call = request["call"]
-    user, session = request["username"], request["session_id"]
-    if call["name"] == "write_todo":
-        todo = chat_todos.write_steps(user, session, call["args"]["goal"], call["args"]["steps"])
-    elif call["name"] == "mark_todo":
-        todo = chat_todos.mark_steps(user, session, call["args"]["ids"], call["args"]["status"])
-    else:
-        return _ok_tool(request, n)
-    return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "ok",
-                 "content": json.dumps({"items": todo["items"]}, default=str), "measure": None,
-                 "error_class": ""}
-
-
-def test_a_first_turn_starts_with_preload_and_a_normal_model_step(monkeypatch):
-    async def body(client, case, stub, queue, titled):
-        handle = await _start(client, case, queue)
-        assert await handle.result() == "completed"
-        assert stub.modes() == ["tools"]
-        assert len(stub.preload_requests) == 1
-        assert stub.preload_requests[0]["classify"] == "all"
-        assert [r["name"] for r in _preload_answer({}, 0)[1]["reads"]] == ["read_skill"]
-
-    asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, "done"), body,
-                          preload_reads=_preload_answer))
-
+# ------------------------------------------------------------------- the question
 
 def test_ask_user_ends_after_all_calls_without_a_todo_nag(monkeypatch):
     questions = ["Bigger or smaller than 50?", "Which range?"]
@@ -1625,49 +1690,6 @@ def test_organizer_question_after_delegated_child_ends_the_turn(monkeypatch):
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
-
-
-def test_a_failed_preload_is_recorded_once_and_the_turn_answers(monkeypatch):
-    from database import agent_step_events
-
-    recorded = []
-    monkeypatch.setattr(agent_step_events, "record", recorded.append)
-
-    async def body(client, case, stub, queue, titled):
-        handle = await _start(client, case, queue)
-        assert await handle.result() == "completed"
-        assert len(stub.preload_requests) == 1
-        assert _roles(case) == [(0, "human"), (1, "ai")]
-        assert [(r[1], r[2]) for r in case.chat_rows()][-1] == ("assistant", "done")
-        rows = [e for e in recorded if e.step == "preload"]
-        assert [(e.ok, e.name) for e in rows] == [(False, "systemone")]
-
-    asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, "done"), body,
-                          preload_reads=lambda request, n: (500, {"detail": "down"})))
-
-
-def test_a_stop_during_the_preload_ends_the_run_cancelled(monkeypatch):
-    def slow(request, n):
-        time.sleep(15)
-        return _preload_answer(request, n)
-
-    async def body(client, case, stub, queue, titled):
-        handle = await _start(client, case, queue)
-        deadline = time.monotonic() + 30
-        while not stub.preload_requests and time.monotonic() < deadline:
-            await asyncio.sleep(0.2)
-        assert stub.preload_requests, "the preload did not start"
-        agent_runs.write_turn_stop(case.username, case.session_id, case.turn_seq)
-        await handle.cancel()
-        lead = await _wait_terminal(case, seconds=60)
-        assert lead.state == "cancelled"
-        with pytest.raises(WorkflowFailureError):
-            await handle.result()
-        assert stub.requests == []
-        assert [m.role for m in case.messages()] == ["human"]
-
-    asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, "done"), body,
-                          preload_reads=slow))
 
 
 # ------------------------------------------------------------------- the compaction line

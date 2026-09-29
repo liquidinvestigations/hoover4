@@ -25,6 +25,7 @@ pub mod operations_types;
 pub mod pdf_search_results;
 pub mod plan_types;
 pub mod processing_types;
+pub mod report_types;
 pub mod search_const;
 pub mod search_query;
 pub mod search_result;

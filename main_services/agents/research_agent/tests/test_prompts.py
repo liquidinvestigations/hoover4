@@ -67,8 +67,8 @@ def rendered(profile, packs="all", tools=None, skills=None, **kwargs):
 
 
 def all_skills(profile):
-    """The listed skills of a run that has every tool: its role skill and every general,
-    technique and stumble skill of the store."""
+    """The listed skills of a run that has every tool: every general, technique and stumble
+    skill of the store. The role skill is in the prompt text and is not listed."""
     return listed_skills(SkillContext(profile=profile, tool_names=EVERY_TOOL))
 
 
@@ -81,12 +81,12 @@ def listed_lines(text):
 
 def test_the_full_chat_lead_lists_every_tool_and_every_skill():
     skills = all_skills("full_research")
-    assert len(skills) == 21
+    assert len(skills) == 19
     text = rendered("full_research", skills=skills)
     names = listed_lines(text)
     tools = [n for n in names if n in EVERY_TOOL]
     assert sorted(tools) == sorted(EVERY_TOOL - PACKS["delegation"])
-    assert len(tools) == 51
+    assert len(tools) == 52
     assert [n for n in names if n not in EVERY_TOOL] == [s.name for s in skills]
 
 
@@ -227,6 +227,8 @@ async def test_the_system_text_is_the_same_for_each_model_step(monkeypatch):
     first = context.system_text_for(("doc_email",))
     second = context.system_text_for(("table_page", "pdf_search"))
     assert first == second
-    assert "Skills" in first and "`method_chat_full`" in first
+    assert "Skills" in first and "`citation`" in first
+    # The role text is in the prompt, and the role skill is not listed.
+    assert "Your role" in first and "`method_chat_full`" not in first
     assert context.skill_context.profile == "full_research"
     assert context.skill_context.tool_names == frozenset(context.snapshot.tools_by_name)

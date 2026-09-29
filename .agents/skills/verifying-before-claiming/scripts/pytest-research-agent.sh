@@ -18,6 +18,9 @@
 # One test is deselected by default: test_agent_interactive_chat opens a connection to the
 # live LLM endpoint, so it is an integration test in a unit directory and fails with a
 # ConnectError wherever that endpoint is not reachable. Pass a target to override.
+#
+# The exit status is the status of the failing step: 2 when pytest cannot be installed,
+# else the pytest status. The complete pytest output is printed.
 set -uo pipefail
 target="${1:-tests}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
@@ -33,9 +36,20 @@ fi
 
 # `sh -c`, never `sh -lc`: the interpreter is a virtualenv that PATH is the only thing
 # pointing at, and a login shell rebuilds PATH from /etc/profile.
+# The inner script writes each step's output to a file and exits with that step's own
+# status, because `sh` in the image has no `pipefail` and a pipe into `tail` returns the
+# status of `tail`.
 docker run --rm -v "${agent_dir}":/src:ro -v "${common_dir}":/common/agent_common:ro \
-    -e PYTHONPATH=/common -w /src hoover4-research-agent:local sh -c "
-    pip install --quiet pytest pytest-asyncio 2>&1 | tail -1
-    python -m pytest ${target} -q --asyncio-mode=auto -p no:cacheprovider \
-        --deselect tests/test_agent.py::test_agent_interactive_chat 2>&1 | tail -20
-"
+    -e PYTHONPATH=/common -w /src hoover4-research-agent:local sh -c '
+    log=$(mktemp)
+    if ! pip install --quiet pytest pytest-asyncio > "$log" 2>&1; then
+        cat "$log"
+        echo "FAIL: pytest could not be installed"
+        exit 2
+    fi
+    python -m pytest "$1" -q --asyncio-mode=auto -p no:cacheprovider \
+        --deselect tests/test_agent.py::test_agent_interactive_chat > "$log" 2>&1
+    status=$?
+    cat "$log"
+    exit "$status"
+' sh "${target}"

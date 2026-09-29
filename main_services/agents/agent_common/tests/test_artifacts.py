@@ -152,3 +152,32 @@ def test_read_range_refuses_a_start_past_the_end(monkeypatch):
             read_range("alice", "s1", "a1", start, 1)
     with pytest.raises(ArtifactRangeRefused):
         read_range("alice", "s1", "a1", -1, 1)
+
+
+def test_a_citation_binding_keeps_its_handle_and_document_in_the_row(monkeypatch):
+    """The collection server loads the bindings of a session from rows alone, so the row
+    holds the handle in `title` and the document in `detail`."""
+    body = b'{"handle": "[D3]"}'
+    rows: list[dict] = []
+    monkeypatch.setattr(artifacts.s3_store, "get_s3_client", lambda: object())
+    monkeypatch.setattr(artifacts.s3_store, "put_bytes", lambda key, data, ct, client=None: len(data))
+    monkeypatch.setattr(artifacts, "insert_row", lambda row: rows.append(row.as_json_row()))
+    monkeypatch.setattr(artifacts, "_read_back_body_sha256",
+                        lambda username, artifact_id: hashlib.sha256(body).hexdigest())
+    request = artifacts.ArtifactRequest(
+        session_id="s1", username="alice", kind=artifacts.KIND_CITATION_BINDING,
+        tool_name="cite_documents", title="[D3]",
+        detail='{"collectionname":"c","file_hash":"' + "a" * 64 + '"}')
+    artifacts.write_required(request, "binding-1", "binding-1", body, "application/json")
+    [row] = rows
+    assert (row["kind"], row["title"]) == ("citation_binding", "[D3]")
+    assert '"collectionname":"c"' in row["detail"]
+
+
+def test_the_artifact_key_matches_the_worker_copy():
+    """`database.agent_plans.artifact_key` in the worker writes plan document bodies at this
+    key. The worker cannot import this package, so both tests compare the same literal."""
+    from agent_common import s3_store
+
+    assert (s3_store.artifact_key("s-1", "doc-1", "detail.json")
+            == "derived/chat-artifacts/s-1/doc-1/detail.json")

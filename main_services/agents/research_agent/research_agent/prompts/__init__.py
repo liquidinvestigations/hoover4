@@ -1,13 +1,14 @@
 """The system prompt of every run kind, rendered from the run's snapshot and skills.
 
 One template, `agent.md.j2`, renders for every profile. It holds the role line of the
-profile, the listed skills by name and description, and the tools of the run's snapshot by
-name and summary in one list. The method text is in the skill store
-(`research_agent.skill_store`), which the model reads with `read_skill`.
+profile, the role text of the profile (the rendered role skill, `skill_store.role_method`),
+the listed skills by name and description, and the tools of the run's snapshot by name and
+summary in one list. The other method texts are in the skill store
+(`research_agent.skill_store`), which the model reads with `read_skill` when it chooses to.
 
-The prompt depends on the profile, the purpose, `collections_hint` and the snapshot. None of
-these changes during a run, so the step context renders it once, and the prompt cache of the
-system text holds for the whole run.
+The prompt depends on the profile, the purpose, `collections_hint`, the model and the
+snapshot. None of these changes during a run, so the step context renders it once, and the
+prompt cache of the system text holds for the whole run.
 
 `SYSTEM_PROMPT` overrides the rendered text outright, which is what an experiment wants. It
 does not change the tool list, which the tool packs of the run kind decide
@@ -35,6 +36,7 @@ from research_agent.skill_store import (
     UnboundToolError,
     environment,
     render_skill,
+    role_method,
 )
 
 log = logging.getLogger(__name__)
@@ -130,13 +132,15 @@ def render(
     skills: Sequence[Skill],
     collections_hint: bool = True,
     purpose: Optional[str] = None,
+    model_id: str = "",
     strict: bool = False,
 ) -> str:
     """Render the system prompt of one profile for one run.
 
     `snapshot` is the run's `CatalogueSnapshot`, and `skills` are its listed skills
     (`skill_store.listed_skills`). `purpose` is the purpose of an organizer's briefing
-    (`execute` or `correct`). No text of the template reads it now.
+    (`execute` or `correct`). No text of the template reads it now. `model_id` is the run's
+    model, whose context window the planner's role text states.
 
     `strict` raises `UnboundToolError` when a listed skill names a tool that no pack holds,
     in its front matter or in its text. The tests render strict, and the running agent does
@@ -146,10 +150,10 @@ def render(
     if name not in ROLE_LINES:
         raise KeyError(f"unknown agent profile: {profile!r}")
     tool_names = frozenset(snapshot.tools_by_name)
+    ctx = SkillContext(profile=name, tool_names=tool_names,
+                       collections_hint=bool(collections_hint), model_id=model_id or "")
     if strict:
         by_name = {skill.name: skill for skill in skills}
-        ctx = SkillContext(profile=name, tool_names=tool_names,
-                           collections_hint=bool(collections_hint))
         for skill in skills:
             unknown = [t for t in skill.tools if pack_of(t) is None]
             if unknown:
@@ -160,6 +164,7 @@ def render(
     ).strip()
     return _environment().get_template(AGENT_TEMPLATE).render(
         role_line=role_line,
+        role_method=role_method(ctx, strict=strict),
         skills=list(skills),
         tools=_pairs(snapshot, snapshot.callable_names()),
         catalogue_search="search_agent_tools" in tool_names,

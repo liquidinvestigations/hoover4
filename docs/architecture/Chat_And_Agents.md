@@ -94,6 +94,17 @@ second is what turns an answer into a pile of links.
 
 Each citation carries a handle (`[D1]`, `[D2]`) allocated per chat **session** by the
 collection-search MCP server, so a handle from the first turn still resolves in the ninth.
+The server stores each new handle as an artifact before it returns it, so a restart of the
+server keeps the numbering. When an answer or a question uses a label that no successful
+citation result of the session gives, or a label that results give for two documents, the
+worker asks the model once for the citations and the answer again. A quote that is not in
+the text stays unverified, and the result gives an exact passage of the text near it.
+
+The worker stores the typed evidence of each tool result beside it: the reads with their
+spans, the failed items, the citations, the notes and the artifacts. A plan sub-agent
+thread gets a text report and a typed report when it ends, in every state, and the
+organizer reads the typed report with `read_plan_report`. The typed report keeps the model
+text apart from what code wrote. `website/common/src/report_types.rs` reads it.
 `markdown_text.rs` renders a bare `[Dn]` in the prose as a chip that scrolls the strip's
 entry into view and flashes it; `[D3](https://…)` is still a link, because the handle arm
 only fires when no `(` follows the `]`. The anchor id is minted by `source_anchor_id` and
@@ -207,8 +218,8 @@ Three rules that are commonly broken and hard to notice:
   nothing in the website.** `ChatPollResult` carries `active`. A turn is open while the
   last user row has no assistant/error row after it (`db_chat::turn_boundaries`), or while
   a run of that turn in `agent_runs` is `running` or `waiting_for_children`. The second
-  test keeps a nag round and a delegation open, because both follow an assistant or tool
-  row. `active` also needs the stream rows or the run rows to have moved recently. There is deliberately no registry of runs the
+  test keeps a citation round and a delegation open, because both follow an assistant or
+  tool row. `active` also needs the stream rows or the run rows to have moved recently. There is deliberately no registry of runs the
   website is holding, because there are none: a registry would empty on a restart while
   the turns themselves carried on, and every one of them would read as interrupted.
 - **A turn always keeps exactly one non-final stream row open**, from before the agent

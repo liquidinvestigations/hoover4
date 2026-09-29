@@ -2,9 +2,10 @@
 """Measure the result page and catalogue limits that the served model handles.
 
 The probe sends synthetic agent turns to an OpenAI-compatible chat endpoint and writes one
-JSONL record for each sample. It selects values for three `hoover4.ini` keys:
-`agent_max_page_tokens`, `agent_completion_reserve_tokens` (the completion allowance of
-the series) and `agent_catalogue_match_count`. It writes no configuration.
+JSONL record for each sample. It selects a value for the `hoover4.ini` key
+`agent_catalogue_match_count`. The page arm measures the page tokens that the model handles
+for a completion allowance. No key reads that measurement: the research agent divides a
+fixed batch target among the calls of a reply. The probe writes no configuration.
 
 Two arms:
 

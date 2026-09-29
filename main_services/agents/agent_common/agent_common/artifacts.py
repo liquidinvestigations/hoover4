@@ -41,15 +41,17 @@ CLICKHOUSE_TIMEOUT = float(os.getenv("ARTIFACT_CLICKHOUSE_TIMEOUT", "10"))
 #: Recognised `kind` values. Not enforced by the schema (LowCardinality(String) takes
 #: anything) but enumerated here so the writers and the UI agree. `search_detail` and
 #: `page_capture` are best-effort, written through `write()`. `agent_raw_result`,
-#: `agent_plan_document` and `agent_continuation` are required, written through
-#: `write_required()`: the caller gets a raised error rather than a silently missing
-#: artifact id. `agent_continuation` holds the encoded continuation that a `more` handle
-#: of a result page names.
+#: `agent_plan_document`, `agent_continuation` and `citation_binding` are required,
+#: written through `write_required()`: the caller gets a raised error rather than a
+#: silently missing artifact id. `agent_continuation` holds the encoded continuation that
+#: a `more` handle of a result page names. `citation_binding` holds one citation handle of
+#: a chat session, with the handle in `title` and the document in `detail`.
 KIND_SEARCH_DETAIL = "search_detail"
 KIND_PAGE_CAPTURE = "page_capture"
 KIND_AGENT_RAW_RESULT = "agent_raw_result"
 KIND_AGENT_PLAN_DOCUMENT = "agent_plan_document"
 KIND_AGENT_CONTINUATION = "agent_continuation"
+KIND_CITATION_BINDING = "citation_binding"
 
 STATUS_OK = "ok"
 STATUS_TOO_LARGE = "too_large"

@@ -104,13 +104,15 @@ class RunRow:
     next_seq: int = 0
     tool_turns_used: int = 0
     extra_tool_turns: int = 0
+    #: The nag counters of older runs. No code writes them now.
     nags_this_turn: int = 0
     nags_without_progress: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
     #: The model calls of the run thread so far. A continuation copies it.
     model_steps: int = 0
-    #: Empty for an answer. `step_budget` or `repeated_call` for a forced final answer.
+    #: Empty for an answer. `step_budget` or `empty_response` for a run that stopped before
+    #: an answer (`steps.write_incomplete`). Older rows can hold `repeated_call`.
     end_reason: str = ""
     started_at: datetime | None = None
     state_version: int = 1
@@ -392,6 +394,41 @@ def read_messages(username: str, session_id: str, thread_id: str) -> list[RunMes
     ]
 
 
+def read_plan_threads(username: str, session_id: str, plan_run_id: str) -> list[RunRow]:
+    """The first run of each sub-agent thread of a plan run, oldest first. A continuation
+    is left out, so each row names one thread and the id its report documents use."""
+    with _client() as client:
+        rows = client.query(
+            f"SELECT {', '.join(RUN_COLUMNS)} FROM agent_runs FINAL "
+            "WHERE username = {u:String} AND session_id = {s:String} "
+            "AND plan_run_id = {p:UUID} AND depth >= 1 AND continues_run_id IS NULL "
+            "ORDER BY started_at, run_id",
+            parameters={"u": username, "s": session_id, "p": plan_run_id},
+        ).result_rows
+    return [_from_db(r) for r in rows]
+
+
+def read_session_tool_messages(username: str, session_id: str,
+                               tool_name: str) -> dict[str, list[RunMessageRow]]:
+    """The final `tool` messages of one tool in every thread of a chat session, by thread
+    id, each list in `idx` order."""
+    with _client() as client:
+        rows = client.query(
+            "SELECT toString(thread_id), idx, role, content, reasoning, tool_calls_json, "
+            "tool_call_id, tool_name, usage_json, is_final, run_id FROM agent_run_messages "
+            "FINAL WHERE username = {u:String} AND session_id = {s:String} "
+            "AND role = 'tool' AND tool_name = {n:String} AND is_final = 1 "
+            "ORDER BY thread_id, idx",
+            parameters={"u": username, "s": session_id, "n": tool_name},
+        ).result_rows
+    out: dict[str, list[RunMessageRow]] = {}
+    for thread, i, role, content, reasoning, calls, call_id, name, usage, final, run in rows:
+        out.setdefault(str(thread), []).append(RunMessageRow(
+            int(i), role, content, reasoning, calls, call_id, name, usage, int(final),
+            str(run)))
+    return out
+
+
 def read_earlier_threads(username: str, session_id: str, turn_seq: int) -> list[str]:
     """The thread ids of the chat turns of the session before `turn_seq`, in turn order.
 
@@ -448,7 +485,7 @@ __all__ = [
     "RUN_ID_NAMESPACE", "RunMessageRow", "RunRow", "RunRowWriter", "TERMINAL_STATES",
     "WAITING_FOR_CHILDREN", "batch_id_for", "child_run_id", "continuation_run_id",
     "create_run", "is_chat_lead", "is_terminal", "iter_thread_tool_seqs",
-    "read_earlier_threads", "read_messages",
+    "read_earlier_threads", "read_messages", "read_plan_threads", "read_session_tool_messages",
     "read_run", "read_turn_runs", "turn_is_stopped", "write_message", "write_messages",
     "write_run",
     "write_run_terminal", "write_turn_stop", "writes_transcript",

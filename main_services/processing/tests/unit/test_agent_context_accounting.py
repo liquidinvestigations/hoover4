@@ -104,3 +104,24 @@ def test_both_session_writers_name_the_same_columns():
         source = inspect.getsource(fn)
         for column in COLUMNS:
             assert f'"{column}"' in source, f"{fn.__name__} does not write {column}"
+
+
+# ------------------------------------------------ the model that answered sizes the row
+
+from test_agent_run import _frames, _serve, _step, step_events, store  # noqa: E402,F401
+
+
+def test_the_answer_row_takes_the_window_of_the_model_that_answered(store, monkeypatch):
+    """The transcript row names the model of the `model_turn` frame, and its context window
+    is that model's window, not the window of the environment default."""
+    from tasks.P_agent import stream_writer
+
+    windows = {"selected-model": 131_072, "test-model": 8_192}
+    monkeypatch.setattr(stream_writer, "context_window_for", lambda model: windows.get(model, 0))
+    _serve(monkeypatch, store, _frames(
+        text="The answer.", model="selected-model",
+        usage={"input_tokens": 900, "output_tokens": 40, "total_tokens": 940}))
+    _step()
+    [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
+    assert (answer["model"], answer["context_window"], answer["context_tokens"]) == (
+        "selected-model", 131_072, 900)

@@ -1,5 +1,5 @@
-"""The rows of `agent_step_events`: one for each attempt of an agent model call, tool call,
-run-start preload and title call.
+"""The rows of `agent_step_events`: one for each attempt of an agent model call, tool call
+and title call. Older rows also hold the run-start preload of a removed step.
 
 The step activities build a `StepEvent` in their `finally` block and hand it to `record`,
 which buffers the row on the timing daemon of `tasks/task_timing.py`. Each attempt that
@@ -47,17 +47,17 @@ class StepEvent:
     run_id: str
     #: `chat`, `subagent`, `planner`, `organizer` or `title`.
     run_kind: str
-    #: `model`, `tool`, `preload` or `title`.
+    #: `model`, `tool` or `title`. Older rows can hold `preload`.
     step: str
-    #: The tool name of a tool step, the model id of a model or title step, `systemone` for
-    #: a preload.
+    #: The tool name of a tool step, the model id of a model or title step. An older
+    #: preload row holds `systemone`.
     name: str
     task_queue: str
     #: The Temporal attempt, 1 for the first. 0 when the workflow writes the row.
     attempt: int
     ok: bool
-    #: `tools`, `final` or `plan` for a model step. For a preload, the state of its
-    #: classifier: `off`, `ok`, `partial` or `failed`.
+    #: `tools` for a model step. Older rows can hold `final` or `plan`, and an older preload
+    #: row the state of its classifier.
     mode: str = ""
     tool_call_id: str = ""
     queue_wait_ms: int = 0

@@ -214,3 +214,136 @@ def test_a_number_path_names_the_parent_and_an_unknown_one_lists_the_nodes(heade
     assert (refused.success, refused.code, refused.version) == (False, "invalid_plan_change", 3)
     assert "no node has the id or number path '3'" in refused.error
     assert "1 " in refused.error and "(Survey)" in refused.error
+
+
+# ------------------------------------------------------------------ read_plan_report
+
+
+def _report(entries=40, final="The lease is from 2019. " * 400):
+    """A typed report with a long final answer and `entries` read entries."""
+    return {
+        "version": 1, "thread_id": "t", "first_run_id": "first-run",
+        "execution": {"state": "completed", "end_reason": "", "incomplete": False, "error": ""},
+        "final_answer": {"source": {"thread_id": "t", "message_idx": 9}, "text": final},
+        "recent_text": [{"source": {"thread_id": "t", "message_idx": 9}, "text": "Short."}],
+        "documents_read": [
+            {"version": 1, "source": {"thread_id": "t", "message_idx": i, "item_key": f"read:{i}"},
+             "kind": "document_read", "status": "ok",
+             "reference": {"collectionname": "c", "file_hash": f"{i:064d}", "path": f"/doc{i}.txt"},
+             "range": {"page": 1}} for i in range(entries)],
+        "citations": [], "notes": [], "artifacts": [], "documents_found": [],
+        "diagnostics": {"failed_items": 0},
+    }
+
+
+@pytest.fixture
+def reports_store(store, monkeypatch):
+    """The plan is executing, one sub-agent thread served the root section, and its report
+    documents are in `state.report_docs`."""
+    root = agent_plans.root_node_id(PLAN_ID)
+    store.plan_run.state = agent_plans.EXECUTING
+    store.plan_run.approved_version = 1
+    store.report = _report()
+    thread = SimpleNamespace(run_id="first-run", plan_node_id=root)
+    monkeypatch.setattr(agent_runs, "read_plan_threads", lambda u, s, p: [thread])
+    monkeypatch.setattr(agent_plans, "read_report_data",
+                        lambda u, s, p, first: store.report if first == "first-run" else None)
+    return store
+
+
+def test_a_report_is_read_in_bounded_pages_to_its_end(headers, reports_store):
+    items, cursor, pages = [], "", 0
+    while True:
+        page = call(plan_tools.read_plan_report, node_id="root", cursor=cursor)
+        assert page.success, page.error
+        assert len(plan_tools.canonical_json(page.model_dump()).encode()) <= plan_tools.REPORT_PAGE_BYTES
+        items += page.items
+        pages += 1
+        if not page.more:
+            break
+        cursor = page.more
+    assert pages > 1
+    assert [i["part"] for i in items[:2]] == ["execution", "final_answer"]
+    assert "".join(i["text"] for i in items if i["part"] == "final_answer") == (
+        reports_store.report["final_answer"]["text"])
+    assert [i["reference"]["path"] for i in items if i["part"] == "documents_read"] == [
+        f"/doc{i}.txt" for i in range(40)]
+    assert len(items) == page.total
+
+
+def test_a_page_share_header_makes_the_pages_smaller(headers, reports_store):
+    headers["X-Hoover4-Page-Share"] = "4000"
+    page = call(plan_tools.read_plan_report, node_id="root")
+    assert len(plan_tools.canonical_json(page.model_dump()).encode()) <= 4000 + plan_tools.REPORT_TEXT_CHARS
+
+
+def test_a_changed_report_refuses_the_old_cursor(headers, reports_store):
+    first = call(plan_tools.read_plan_report, node_id="root")
+    reports_store.report = _report(entries=41)
+    refused = call(plan_tools.read_plan_report, node_id="root", cursor=first.more)
+    assert (refused.success, refused.code) == (False, "report_changed")
+    assert call(plan_tools.read_plan_report, node_id="root").success
+
+
+@pytest.mark.parametrize("cursor", ["nonsense", "0000000000000000:3"])
+def test_a_cursor_of_another_report_is_refused(headers, reports_store, cursor):
+    refused = call(plan_tools.read_plan_report, node_id="root", cursor=cursor)
+    assert not refused.success and refused.code in ("report_changed", "invalid_cursor")
+
+
+def test_a_report_with_no_typed_document_reads_as_legacy_text(headers, reports_store, monkeypatch):
+    reports_store.report = None
+    monkeypatch.setattr(agent_plans, "document_body", lambda u, s, doc: doc.body)
+    monkeypatch.setattr(agent_plans, "read_documents", lambda u, s, r: [
+        agent_plans.PlanDocument(agent_plans.document_id("first-run", "report"),
+                                 agent_plans.root_node_id(PLAN_ID), "executor", "report", 0,
+                                 "The old report.")])
+    page = call(plan_tools.read_plan_report, node_id="root")
+    assert page.items == [{"part": "legacy_text", "text": "The old report."}]
+
+
+def test_a_node_with_no_sub_agent_or_an_unknown_node_is_refused(headers, reports_store,
+                                                                   monkeypatch):
+    assert call(plan_tools.read_plan_report, node_id="9").code == "node_unknown"
+    monkeypatch.setattr(agent_runs, "read_plan_threads", lambda u, s, p: [])
+    assert call(plan_tools.read_plan_report, node_id="root").code == "no_report"
+
+
+def test_a_report_read_keeps_the_caller_check(headers, reports_store):
+    headers["X-Hoover4-Agent-Run"] = "chat-run"
+    assert call(plan_tools.read_plan_report, node_id="root").code == "no_plan"
+
+
+def test_a_long_report_pages_in_linear_time_and_fits_each_page():
+    """A report of 2,000 read entries. The page is built forward and serialized once, so
+    all its pages take far less than a second on the test machine."""
+    units = plan_tools.report_units(_report(entries=2_000, final="short"))
+    started = time.monotonic()
+    start, seen, pages = 0, 0, 0
+    while True:
+        page = plan_tools.report_page("root", units, start, plan_tools.REPORT_PAGE_BYTES)
+        assert len(plan_tools.canonical_json(page.model_dump()).encode()) <= plan_tools.REPORT_PAGE_BYTES
+        assert page.items == units[start:start + len(page.items)]
+        seen += len(page.items)
+        pages += 1
+        if not page.more:
+            break
+        start = int(page.more.split(":")[1])
+    elapsed = time.monotonic() - started
+    assert seen == len(units) and pages > 10
+    assert elapsed < 1.0, elapsed
+
+
+def test_an_unreadable_legacy_report_is_refused(headers, reports_store, monkeypatch):
+    reports_store.report = None
+
+    def broken(u, s, doc):
+        raise agent_plans.DocumentBodyError("the object store did not answer")
+
+    monkeypatch.setattr(agent_plans, "document_body", broken)
+    monkeypatch.setattr(agent_plans, "read_documents", lambda u, s, r: [
+        agent_plans.PlanDocument(agent_plans.document_id("first-run", "report"),
+                                 agent_plans.root_node_id(PLAN_ID), "executor", "report", 0,
+                                 "", artifact_id="a1")])
+    page = call(plan_tools.read_plan_report, node_id="root")
+    assert (page.success, page.code) == (False, "report_unreadable")

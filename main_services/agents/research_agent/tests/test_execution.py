@@ -53,99 +53,43 @@ def test_a_failed_tool_row_is_rebuilt_as_an_error_result():
 # --------------------------------------------------------- the batch result budget
 
 
-def test_the_safe_budget_reserves_every_empty_page_first():
-    names = ["a", "table_search_cells", "c"]
-    budget = execution.safe_budget(names, request_tokens=0, window=0, reserve=8192)
+def test_the_budget_reserves_every_empty_page_and_divides_the_rest_equally():
+    names = ["a", "table_search_cells", "read_documents"]
+    budget = execution.batch_budget(names)
     empty = [len(execution.empty_page_text(n).encode("utf-8")) for n in names]
-    assert sum(budget.shares) <= SAFE_MODE_BATCH_BYTES
+    assert budget.total == sum(budget.shares) <= SAFE_MODE_BATCH_BYTES
     assert all(share > e for share, e in zip(budget.shares, empty))
     assert len({share - e for share, e in zip(budget.shares, empty)}) == 1
-    # The design's safe-mode case: 110,000 request tokens leave more than the batch bytes.
-    assert execution.safe_budget(names, 110_000, 262_144, 8192).total == SAFE_MODE_BATCH_BYTES
-    # A nearly full window cuts the batch.
-    assert execution.safe_budget(names, 250_000, 262_144, 8192).total == 262_144 - 8192 - 250_000
+    assert SAFE_MODE_BATCH_BYTES - budget.total < len(names)
 
 
-class CharCounter:
-    """A token counter that counts four bytes as one token."""
-
-    def count(self, text: str) -> int:
-        return len(text.encode("utf-8")) // 4
+def test_one_call_gets_the_whole_batch_target():
+    assert execution.batch_budget(["read_documents"]).shares == (SAFE_MODE_BATCH_BYTES,)
 
 
-def _long_thread(prompt_tokens: int) -> list:
-    """A thread of `prompt_tokens` billed tokens that holds four bytes of text per token,
-    so its byte count is larger than a 262,144-token window."""
-    return [
-        HumanMessage(content="x" * (4 * prompt_tokens)),
-        AIMessage(content="", usage_metadata={
-            "input_tokens": prompt_tokens, "output_tokens": 0, "total_tokens": prompt_tokens,
-        }),
-    ]
+def test_a_document_count_gives_no_extra_share():
+    """A call that reads ten documents gets the same share as a search beside it. The page
+    broker divides the call's share among its documents."""
+    budget = execution.batch_budget(["search_collections", "read_documents"])
+    empty = [len(execution.empty_page_text(n).encode()) for n in
+             ("search_collections", "read_documents")]
+    assert budget.shares[0] - empty[0] == budget.shares[1] - empty[1]
 
 
-@pytest.mark.parametrize("mode", ["bytes", "tokens"])
-def test_a_thread_of_109000_tokens_still_gets_a_full_page(monkeypatch, mode):
-    """A request of 109,000 tokens holds about 436,000 bytes. The budget subtracts the
-    request in tokens from the window in tokens, so a single call still gets a full page."""
-    monkeypatch.setenv("LLM_MODEL", "served-model")
-    monkeypatch.setattr(execution.compaction, "context_window", lambda model: 262_144)
-    monkeypatch.setattr(execution, "COMPLETION_RESERVE_TOKENS", 8192 if mode == "tokens" else None)
-    monkeypatch.setattr(execution, "MAX_PAGE_TOKENS", 30_000 if mode == "tokens" else None)
-    monkeypatch.setattr(execution, "TokenCounter", lambda *args: CharCounter())
-    names = ["read_documents"]
-    budget = execution.batch_budget([(name, {"file_hash": ["a"]}) for name in names],
-                                    _long_thread(109_000))
-    empty = len(execution.empty_page_text(names[0]).encode("utf-8"))
-    assert budget.mode == mode and not budget.exhausted
-    # The minimum page of a tool is its empty page plus one byte of content.
-    assert budget.shares[0] >= empty + 1
-    if mode == "bytes":
-        assert budget.shares[0] == SAFE_MODE_BATCH_BYTES
+def test_the_budget_does_not_read_the_conversation():
+    """The shares depend on the tool names only, so a long thread refuses no call."""
+    assert "messages" not in execution.batch_budget.__code__.co_varnames
+    assert not hasattr(execution, "request_tokens")
 
 
-def test_the_safe_budget_counts_the_bytes_after_the_last_billed_reply():
-    """Text that the model has not been billed for yet counts one token per byte."""
-    thread = _long_thread(100_000) + [HumanMessage(content="y" * 1000)]
-    assert execution.request_tokens(thread) == 100_000 + 1000
-    assert execution.request_tokens([HumanMessage(content="z" * 500)]) == 500
-
-
-def test_the_token_budget_applies_the_allocation():
-    messages = [HumanMessage(content="x" * 400), AIMessage(content="", usage_metadata={"input_tokens": 40000, "output_tokens": 0, "total_tokens": 40000})]
-    budget = execution.token_budget(["a", "b"], messages, 262_144, CharCounter(), 8192, 30_000, fraction=0.6)
-    empty = [CharCounter().count(execution.empty_page_text(n)) for n in ("a", "b")]
-    assert budget.mode == "tokens" and not budget.exhausted
-    content = (262_144 * 6 // 10 - 8192 - 8192 - 40_000 - sum(empty)) // 2
-    assert list(budget.shares) == [e + min(content, 30_000) for e in empty]
-    small = execution.token_budget(["a"] * 4, [AIMessage(content="", usage_metadata={"input_tokens": 50, "output_tokens": 0, "total_tokens": 50})], 166, CharCounter(), 20, None, fraction=0.6)
-    assert small.exhausted
-
-
-def test_read_weights_count_distinct_hashes_and_cap_at_ten():
-    assert execution.read_weight("search_collections", {"file_hash": ["a"]}) == 0
-    assert execution.read_weight("read_documents", {"file_hash": "a"}) == 1
-    assert execution.read_weight("read_documents", {"file_hash": ["a", "a", "b"]}) == 2
-    assert execution.read_weight("read_documents", {"file_hash": [str(n) for n in range(20)]}) == 10
-
-
-def test_safe_read_gets_four_shares_beside_a_search():
-    names = ["search_collections", "read_documents"]
-    empty = [len(execution.empty_page_text(name).encode()) for name in names]
-    budget = execution.safe_budget(names, 0, 0, 8192, weights=[0, 4])
-    assert budget.shares == (SAFE_MODE_BATCH_BYTES,
-                             empty[1] + 4 * (SAFE_MODE_BATCH_BYTES - empty[1]))
-    limited = execution.safe_budget(names, 70_000, 100_000, 8192, weights=[0, 10], limit=80_000)
-    assert sum(limited.shares) <= 2_000
-    assert all(share >= size for share, size in zip(limited.shares, empty))
-
-
-def test_token_read_gets_four_weighted_units():
-    from agent_common.result_pages import allocate
-
-    empty = [0, 0]
-    assert allocate(0, empty, 100_000, 0, 8_000, [0, 4]) == [8_000, 32_000]
-    assert allocate(80_000, empty, 100_000, 0, 8_000, [0, 4]) == [4_000, 16_000]
+def test_empty_pages_above_the_target_keep_every_empty_page():
+    """More calls than the target holds: each call keeps its empty page, and no call is
+    refused."""
+    names = ["search_collections"] * 200
+    empty = len(execution.empty_page_text(names[0]).encode())
+    budget = execution.batch_budget(names)
+    assert budget.shares == (empty,) * 200
+    assert budget.total > SAFE_MODE_BATCH_BYTES
 
 
 def test_the_client_factory_sends_the_share_of_the_current_call():
@@ -187,3 +131,15 @@ def test_the_ordered_tools_are_the_plan_tools_and_the_todo_tools():
         "append_node", "append_child", "move_node", "edit_node", "remove_node", "read_plan",
         "write_todo", "edit_todo", "mark_todo", "read_todo",
     })
+
+
+def test_every_tool_of_the_browser_server_is_a_browser_tool():
+    """The worker's `steps.is_browser_tool` has the same rule, and runs these calls of one
+    reply in call order. The rule covers the tools that `BROWSER_EXPOSED_TOOLS` can add."""
+    from agent_common.tool_packs import PACKS
+
+    for name in PACKS["browser"] | {"read_page", "browser_take_screenshot",
+                                     "browser_wait_for", "browser_navigate_back"}:
+        assert execution.is_browser_tool(name), name
+    for name in ("search_collections", "web_search", "read_documents", "read_more"):
+        assert not execution.is_browser_tool(name), name

@@ -50,8 +50,8 @@ PAGE_KEYS = frozenset({"items", "more", "columns"})
 CONNECT_TIMEOUT = float(os.getenv("AGENT_TOKENIZER_CONNECT_TIMEOUT", "30"))
 TOTAL_TIMEOUT = float(os.getenv("AGENT_TOKENIZER_TOTAL_TIMEOUT", "60"))
 
-#: The safe-mode aggregate, in UTF-8 bytes, for one parallel batch of results. Used until
-#: the probe confirms a token configuration, and whenever token counting fails. Equals the
+#: The batch target, in UTF-8 bytes, of the result pages of one model reply. The research
+#: agent divides it among the calls of the reply (`execution.batch_budget`). Equals the
 #: storage cut in `website/common/src/chat_types.rs::TOOL_PAYLOAD_CHARS`.
 SAFE_MODE_BATCH_BYTES = 24_000
 
@@ -200,7 +200,8 @@ class TokenCounter:
 
     Never falls back to a character estimate: a wrong count either wastes budget or
     overfills a request, and a failure states that plainly instead of guessing. A failure
-    raises, and the caller uses :class:`ByteLimit` (safe mode) instead.
+    raises `TokenCountFailed`. The research agent then records its own estimate of the
+    request size and says so (`research_agent/request_size.py`).
     """
 
     def __init__(self, base_url: str, model: str, api_key: str | None = None) -> None:
@@ -239,53 +240,6 @@ class TokenCounter:
 
 
 # --------------------------------------------------------------------------------------
-# Allocation
-# --------------------------------------------------------------------------------------
-
-
-def allocate(
-    fixed_request_tokens: int,
-    empty_message_tokens: list[int],
-    threshold: int,
-    completion_reserve: int,
-    max_page_tokens: int | None,
-    weights: Sequence[int] = (),
-) -> list[int] | None:
-    """One content token limit per parallel result, or `None` when even the empty
-    messages plus the completion reserve do not fit.
-
-    `threshold` is `H`, the compaction trigger (`floor(context_window *
-    compaction_fraction)`). `completion_reserve` is `R`. `fixed_request_tokens` is
-    `max(U, P)`: the larger of the previous call's billed prompt-plus-completion count and
-    the tokenizer count of the next request before the pending results. `A = H - R` is the
-    allocation ceiling, one reserve below the threshold, so a full allocation evicts
-    nothing on the next call (compaction fires at `H`, not at `A`). Reserving `R` a second
-    time inside the ceiling keeps the total request, once every result is filled, `R`
-    tokens below `H` rather than exactly at it.
-
-    Every one of the `K` empty (zero-content) messages is reserved before any page
-    receives content: `fixed = fixed_request_tokens + sum(empty_message_tokens)`. `None`
-    means the caller stores the `K` empty messages, makes no further model call, and ends
-    the turn.
-    """
-    k = len(empty_message_tokens)
-    if k == 0:
-        return []
-    ceiling = threshold - completion_reserve  # A
-    fixed = fixed_request_tokens + sum(empty_message_tokens)
-    if fixed + completion_reserve > ceiling:
-        return None
-    content_available = max(0, ceiling - completion_reserve - fixed)
-    units = [max(1, weight) for weight in weights] if weights else [1] * k
-    if len(units) != k:
-        raise ValueError("one weight is required for each result")
-    shares = [content_available * unit // sum(units) for unit in units]
-    if max_page_tokens is not None:
-        shares = [min(share, unit * max_page_tokens) for share, unit in zip(shares, units)]
-    return shares
-
-
-# --------------------------------------------------------------------------------------
 # Page limits
 # --------------------------------------------------------------------------------------
 
@@ -300,8 +254,8 @@ class TokenLimit:
 
 @dataclass(frozen=True)
 class ByteLimit:
-    """Size a page against a raw UTF-8 byte budget. Safe mode, and every fallback from a
-    failed token count."""
+    """Size a page against a raw UTF-8 byte budget. Every page of the research agent's
+    calls uses it."""
 
     max_bytes: int
 

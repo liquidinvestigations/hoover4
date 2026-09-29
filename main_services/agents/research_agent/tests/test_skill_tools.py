@@ -6,7 +6,7 @@ import pytest
 
 from agent_common.tool_packs import allowed_tools
 from research_agent import skill_tools, steps
-from research_agent.skill_store import SkillContext, always_read, listed_skills
+from research_agent.skill_store import SkillContext, listed_skills, role_method
 from research_agent.tool_catalogue import build_snapshot
 
 
@@ -94,12 +94,20 @@ async def test_read_tool_of_an_unknown_name_is_refused():
     ("subagent", "research_subagent"), ("planner", "planner"),
     ("organizer", "organizer"),
 ])
-def test_each_run_kind_lists_its_tools_and_reads_its_skills(kind, profile):
+def test_each_run_kind_lists_its_tools_and_has_its_role_text(kind, profile):
     snap = snapshot(kind, profile=profile)
     assert "read_skill" in snap.callable_names()
     assert "read_tool" in snap.callable_names()
-    assert always_read(snap.skill_context)
+    assert role_method(snap.skill_context)
     assert ("ask_user" in snap.callable_names()) == (kind != "subagent")
+
+
+async def test_the_role_skill_is_not_listed_and_is_not_read_with_read_skill():
+    """The role text is in the system prompt, so no run reads it as a skill."""
+    snap = snapshot(profile="full_research")
+    assert "method_chat_full" not in {s.name for s in listed_skills(snap.skill_context)}
+    status, content = await call(snap, "read_skill", name="method_chat_full")
+    assert status == "error" and json.loads(content)["error"] == "unknown_skill"
 
 
 async def test_ask_user_returns_the_question_and_options():

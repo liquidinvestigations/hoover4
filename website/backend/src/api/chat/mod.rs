@@ -519,7 +519,7 @@ impl Drop for HeldPollGuard {
 /// **Liveness comes from the transcript, the run rows and the stream table, and from
 /// nothing in this process.** A turn is unfinished when the last user row has no
 /// assistant or error row after it, or when a run of that turn is `running` or
-/// `waiting_for_children`. The second test holds a nag round and a delegation open,
+/// `waiting_for_children`. The second test holds a citation round and a delegation open,
 /// because both follow an assistant or tool row. The stream rows and the run rows say
 /// how recently something happened.
 ///
@@ -540,7 +540,7 @@ impl Drop for HeldPollGuard {
 /// heartbeat from the moment it is accepted, and the worker keeps it beating.
 async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTail> {
     let (last_user_seq, last_answer_seq) = db_chat::turn_boundaries(username, session_id).await?;
-    // The runs of the last turn. A nag round writes an assistant row and then runs again,
+    // The runs of the last turn. A citation round writes an assistant row and then runs again,
     // and a delegation waits for its sub-agents after its tool rows. In both cases the
     // transcript test below reads the turn as closed while a run of it is still open.
     let runs = match last_user_seq {
@@ -1098,7 +1098,7 @@ pub async fn poll_chat(
 ///
 /// A 404 from a cancellation counts as success, because the workflow ended before the
 /// request. The turn is found from the transcript and the run rows, so a stop during a
-/// nag round or a delegation finds it, although an assistant or tool row follows the user
+/// citation round or a delegation finds it, although an assistant or tool row follows the user
 /// row.
 ///
 /// `false` means nothing was in flight, which is the ordinary outcome of a stop that
@@ -1757,8 +1757,8 @@ mod tests {
     }
 
     #[test]
-    fn a_nag_round_keeps_the_turn_open() {
-        // A nag round: the assistant row at seq 3 follows the user row at seq 1, and the
+    fn a_citation_round_keeps_the_turn_open() {
+        // A citation round: the assistant row at seq 3 follows the user row at seq 1, and the
         // lead run is still running. The transcript test alone reads the turn as closed.
         let lead = run("lead", 0, "running");
         assert!(turn_is_open(Some(1), Some(3), &[lead]));

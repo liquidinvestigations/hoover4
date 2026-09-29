@@ -22,9 +22,10 @@ changes the row already holds writes nothing, so a retry changes nothing that th
 attempt wrote.
 
 **Section documents.** A sub-agent thread with a `plan_node_id` writes its briefing as a
-`prompt` document when its row is written, and the `completed` ending of the thread's last
-run writes the report as a `report` document. Both are keyed by the thread's first run and
-written under its `plan_node_id`. A correction names every section it corrects in the
+`prompt` document when its row is written. Every ending of the thread's last run, completed,
+failed or cancelled, writes the text report as a `report` document and the typed report as
+a `report_data` document (`reports.py`), after the run's terminal row. All three are keyed
+by the thread's first run and written under its `plan_node_id`. A correction names every section it corrects in the
 `sections` of its briefing, and its one report is under the first of them. The organizer
 writes the final report as a `final` document.
 """
@@ -229,26 +230,22 @@ def write_prompt_document(child, briefing_text: str) -> None:
     )
 
 
-def write_plan_ending(x, state: str, chain: list) -> None:
+def write_plan_ending(x, state: str, chain: list, error: str = "") -> None:
     """Write the plan state or report when an agent run ends.
 
-    `x` is the run that ends and `chain` the earlier runs of its thread, newest first.
+    `x` is the run that ends, `chain` the earlier runs of its thread, newest first, and
+    `error` the error of a failed ending. It writes nothing for a sub-agent thread: its
+    `report` and `report_data` documents follow its terminal row in
+    `activities._write_ending`, in every terminal state.
     """
     from database import agent_plans, agent_runs
 
     if not x.plan_run_id:
         return
     user, session, plan_run_id = x.username, x.session_id, x.plan_run_id
-    first = chain[-1] if chain else x
     if x.depth >= 1:
-        if state == agent_runs.COMPLETED:
-            node = first.plan_node_id
-            if not node:
-                plan_run = agent_plans.read_plan_run(user, session, plan_run_id)
-                node = agent_plans.root_node_id(plan_run.plan_id) if plan_run else plan_run_id
-            agent_plans.write_document(user, session, plan_run_id, first.run_id,
-                                       node, "executor", "report",
-                                       x.result, attempt=1 if first.purpose == "correct" else 0)
+        # A sub-agent thread's report pair is written by `_write_ending` after the run's
+        # terminal row (`reports.materialize`).
         return
     if x.kind == "planner":
         if state == agent_runs.COMPLETED:

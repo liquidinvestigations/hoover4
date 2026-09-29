@@ -1,15 +1,19 @@
 {# The system prompt of every run kind.
 
-   It holds a role line, the skills of the run by name and description, and the tools of
-   the run by name and summary. The method text is in the skills, which the
-   model reads with `read_skill`. Nothing here changes during a run, so the prompt cache of
-   the system text holds for the whole run.
+   It holds a role line, the role text of the profile, the skills of the run by name and
+   description, and the tools of the run by name and summary. The other method texts are in
+   the skills, which the model reads with `read_skill` when it chooses to. Nothing here
+   changes during a run, so the prompt cache of the system text holds for the whole run.
 
-   `role_line` is the rendered role line of the profile (`ROLE_LINES`). `skills` holds the
-   listed skills. `tools` holds (name, summary) pairs. `todo_rule` is true when
-   the run has the four todo tools.
+   `role_line` is the rendered role line of the profile (`ROLE_LINES`). `role_method` is the
+   rendered role skill of the profile, or empty. `skills` holds the listed skills. `tools`
+   holds (name, summary) pairs. `todo_rule` is true when the run has the four todo tools.
 #}
 {{ role_line }}
+{% if role_method %}
+
+{{ role_method }}
+{% endif %}
 
 Skills
 
@@ -38,6 +42,6 @@ with one question. Do not ask for a fact that a search can find.
 
 Your todo list
 
-Use the todo list for work that needs several steps. Update each item when its state changes.
-Use the ids that `read_todo` shows. A cancelled item needs a reason.
+You can use the todo list to track work that needs several steps. Use the ids that
+`read_todo` shows. A cancelled item needs a reason. An open item does not stop an answer.
 {% endif %}

@@ -118,6 +118,25 @@ which documents a search happened to return. Each citation names a document, a q
 one line of why, and gets back a handle (`[D1]`, `[D2]`) that the model writes into its
 prose; the reader sees the handle as a chip and the document beneath the answer.
 
+**A handle keeps its document after a restart** (`citations.HandleTable`,
+`binding_store.ArtifactBindingStore`). Handles are numbered for each owner and chat session.
+The first new handle of a session in a process loads the stored handles of the session,
+and a new handle takes the number after the highest reserved one. The server stores each
+new handle as a required `citation_binding` artifact, whose id derives from the owner, the
+session and the document, before it returns the handle. A handle that was not stored is
+not returned: the citation gets an error, and the next call loads the session again. The
+load also reads the handles of the committed `cite_documents` results of the session, from
+the transcript rows and from the typed evidence of the run messages. An unambiguous one is
+bound, and a handle that results give for two documents is reserved and bound to neither.
+The session lock orders the allocations of one process. The compose service runs one
+container with one server process, and more than one allocating process needs another
+authority.
+
+**A quote that is not in the text gets a candidate** (`citations.candidate_passage`). The
+citation keeps the quote it was given and stays unverified. Beside it, `candidate` holds an
+exact passage of the extracted text near the longest part of the quote that the text holds,
+with its page. A later citation whose quote is copied from the candidate verifies.
+
 **A file hash start names its document.** `read_documents` and `cite_documents` accept the
 first 12 or more characters of a file hash in place of the whole hash, in a collection that
 the caller can read (`server.full_hash`). A start that more than one document shares is

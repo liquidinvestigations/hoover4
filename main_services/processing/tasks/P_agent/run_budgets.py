@@ -37,8 +37,8 @@ from typing import Any
 #: `AGENT_PLAN_RUN_BUDGET` can lower it and never raise it.
 MAX_PLAN_SUBAGENTS = 5
 DEFAULT_PLAN_LIMIT = MAX_PLAN_SUBAGENTS
-#: The most sections of a plan. Mirrors `MAX_SECTIONS` in `database/agent_plans.py` and in
-#: the research agent's `packing.py`. The images share no module.
+#: The most sections of a plan. Mirrors `MAX_SECTIONS` in `database/agent_plans.py`. The
+#: skill `method_planner` of the research agent states the same number.
 MAX_PLAN_SECTIONS = 4
 
 #: The refusal reasons, as the model reads them in the continuation's tool result.

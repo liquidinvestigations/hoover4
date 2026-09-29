@@ -13,7 +13,10 @@ The tables are in migration `00031_agent_plans.sql`:
 `agent_plan_runs.run_id` is the plan run id, which every `agent_runs` row of the plan
 carries as `plan_run_id`. A document's `run_id` is that plan run id too, so every document
 of a plan is one prefix read. Its `document_id` is a `uuid5` of the agent run id and the
-kind, so a retry writes the same row.
+kind, so a retry writes the same row. The kinds are `prompt`, `report` (text) and
+`report_data` (the typed report of `tasks/P_agent/reports.py`) of a sub-agent thread, and
+`final` of the organizer. A body above `INLINE_BODY_BYTES` is a required artifact whose id
+is the document id, and the row keeps its id, size and digest (`document_body` reads it).
 
 Every read uses `FINAL` and the full owner prefix `(username, session_id)`.
 
@@ -45,8 +48,8 @@ MAX_NODE_TEXT = 120
 #: The most characters in a rejection comment.
 MAX_COMMENT_CHARS = 10_000
 #: The most sections of a plan. `apply` refuses a mutation that raises the count above it.
-#: Mirrors `MAX_PLAN_SECTIONS` in `tasks/P_agent/run_budgets.py` and `MAX_SECTIONS` in the
-#: research agent's `packing.py`. The images share no module.
+#: Mirrors `MAX_PLAN_SECTIONS` in `tasks/P_agent/run_budgets.py`. The skill
+#: `method_planner` of the research agent states the same number.
 MAX_SECTIONS = 4
 
 #: Plan run states.
@@ -586,35 +589,173 @@ class PlanDocument:
     role: str
     kind: str
     attempt: int
+    #: The inline body. Empty when the body is in the artifact `artifact_id`.
     body: str
     created_at: datetime | None = None
+    artifact_id: str = ""
+    body_bytes: int = 0
+    body_sha256: str = ""
+
+
+#: The largest body in bytes that a document row holds inline. A larger body is a required
+#: artifact of kind `agent_plan_document`, and the row keeps its id, size and digest.
+INLINE_BODY_BYTES = 262_144
+
+#: The `chat_artifacts` kind of a document body. Mirrors
+#: `agent_common.artifacts.KIND_AGENT_PLAN_DOCUMENT`, which the worker cannot import.
+ARTIFACT_KIND = "agent_plan_document"
+
+#: The object prefix of every chat artifact. Mirrors `agent_common.s3_store.DERIVED_PREFIX`.
+ARTIFACT_PREFIX = "derived/chat-artifacts"
+
+
+class DocumentBodyError(RuntimeError):
+    """A document body in an artifact was not written, or was not read with its digest."""
+
+
+def _safe_component(component: str) -> str:
+    """Mirrors `agent_common.s3_store._safe`: a path part that cannot leave the prefix."""
+    cleaned = "".join(c for c in (component or "") if c.isalnum() or c in "-_.")
+    return (cleaned.lstrip(".") or "unknown")[:128]
+
+
+def artifact_key(session_id: str, artifact_id: str) -> str:
+    """The object key of a document body. Mirrors `agent_common.s3_store.artifact_key`
+    with the file name `detail.json`, which `write_required` uses."""
+    return (f"{ARTIFACT_PREFIX}/{_safe_component(session_id)}/"
+            f"{_safe_component(artifact_id)}/detail.json")
+
+
+def _artifact_digest(username: str, session_id: str, artifact_id: str) -> str | None:
+    with _client() as client:
+        rows = client.query(
+            "SELECT body_sha256 FROM chat_artifacts FINAL WHERE username = {u:String} "
+            "AND session_id = {s:String} AND artifact_id = {a:String} AND is_deleted = 0 "
+            "AND status = 'ok'",
+            parameters={"u": username, "s": session_id, "a": artifact_id},
+        ).result_rows
+    return str(rows[0][0]) if rows else None
+
+
+def _write_body_artifact(username: str, session_id: str, artifact_id: str,
+                         data: bytes) -> None:
+    """Store a document body as a required artifact, by the contract of
+    `agent_common.artifacts.write_required`: the object first, then the row, then a read of
+    the row that confirms the digest. The id and every column come from the document, so a
+    retry writes the same object and row. Any failure raises `DocumentBodyError`."""
+    import io
+
+    from database import s3
+
+    digest = hashlib.sha256(data).hexdigest()
+    key = artifact_key(session_id, artifact_id)
+    try:
+        client = s3.get_s3_client()
+        if not client.bucket_exists(s3.SYSTEM_BUCKET):
+            client.make_bucket(s3.SYSTEM_BUCKET)
+        client.put_object(s3.SYSTEM_BUCKET, key, io.BytesIO(data), length=len(data),
+                          content_type="application/json")
+        _insert("chat_artifacts", [[
+            artifact_id, session_id, username, ARTIFACT_KIND, "plan_document", key,
+            len(data), "ok", digest, artifact_id,
+        ]], ["artifact_id", "session_id", "username", "kind", "tool_name", "body_key",
+             "body_bytes", "status", "body_sha256", "idempotency_key"])
+        stored = _artifact_digest(username, session_id, artifact_id)
+    except Exception as exc:  # noqa: BLE001 - one failure class for the caller
+        raise DocumentBodyError(f"the body of document {artifact_id} was not stored: "
+                                f"{exc}") from exc
+    if stored != digest:
+        raise DocumentBodyError(f"the body of document {artifact_id} read back with digest "
+                                f"{stored!r}, not {digest}")
 
 
 def write_document(username: str, session_id: str, plan_run_id: str, agent_run_id: str,
                    node_id: str, role: str, kind: str, body: str, attempt: int = 0) -> str:
-    """Write one document of a plan run. Returns its id. A retry writes the same row."""
+    """Write one document of a plan run. Returns its id. A retry writes the same row.
+
+    A body above `INLINE_BODY_BYTES` is stored first as a required artifact whose id is the
+    document id. The row then holds the artifact id, the size and the digest, and no body.
+    """
     doc_id = document_id(agent_run_id, kind)
     data = body.encode()
+    inline, artifact = body, ""
+    if len(data) > INLINE_BODY_BYTES:
+        _write_body_artifact(username, session_id, doc_id, data)
+        inline, artifact = "", doc_id
     _insert("agent_plan_documents", [[
         uuid.UUID(doc_id), uuid.UUID(plan_run_id), uuid.UUID(node_id), username, session_id,
-        role, kind, int(attempt), body, "", len(data), hashlib.sha256(data).hexdigest(),
-        _now(),
+        role, kind, int(attempt), inline, artifact, len(data),
+        hashlib.sha256(data).hexdigest(), _now(),
     ]], DOCUMENT_COLUMNS)
     return doc_id
 
 
 def read_documents(username: str, session_id: str, plan_run_id: str) -> list[PlanDocument]:
-    """Every document of a plan run, oldest first."""
+    """Every document of a plan run, oldest first. A body in an artifact is not read:
+    `document_body` reads it."""
     with _client() as client:
         rows = client.query(
             "SELECT toString(document_id), toString(node_id), role, kind, attempt, "
-            "body_inline, created_at FROM agent_plan_documents FINAL "
+            "body_inline, created_at, artifact_id, body_bytes, body_sha256 "
+            "FROM agent_plan_documents FINAL "
             "WHERE username = {u:String} AND session_id = {s:String} AND run_id = {r:UUID} "
             "ORDER BY created_at, document_id",
             parameters={"u": username, "s": session_id, "r": plan_run_id},
         ).result_rows
-    return [PlanDocument(d, n, role, kind, int(a), body, at)
-            for d, n, role, kind, a, body, at in rows]
+    return [PlanDocument(d, n, role, kind, int(a), body, at, str(art or ""), int(size or 0),
+                         str(sha or ""))
+            for d, n, role, kind, a, body, at, art, size, sha in rows]
+
+
+def document_body(username: str, session_id: str, document: PlanDocument) -> str:
+    """The whole body of a document of the owner. A body in an artifact is read from the
+    owner's artifact row and checked against the digest of the document row."""
+    if not document.artifact_id:
+        return document.body
+    from database import s3
+
+    with _client() as client:
+        rows = client.query(
+            "SELECT body_key FROM chat_artifacts FINAL WHERE username = {u:String} "
+            "AND session_id = {s:String} AND artifact_id = {a:String} AND is_deleted = 0 "
+            "AND status = 'ok'",
+            parameters={"u": username, "s": session_id, "a": document.artifact_id},
+        ).result_rows
+    if not rows:
+        raise DocumentBodyError(f"the body of document {document.document_id} has no "
+                                "artifact row of this owner")
+    response = s3.get_s3_client().get_object(s3.SYSTEM_BUCKET, str(rows[0][0]))
+    try:
+        data = response.read()
+    finally:
+        response.close()
+        response.release_conn()
+    if document.body_sha256 and hashlib.sha256(data).hexdigest() != document.body_sha256:
+        raise DocumentBodyError(f"the body of document {document.document_id} does not "
+                                "match its digest")
+    return data.decode("utf-8")
+
+
+def read_report_data(username: str, session_id: str, plan_run_id: str,
+                     first_run_id: str) -> dict | None:
+    """The typed report of a plan sub-agent thread from its `report_data` document, or
+    None when the thread has none, or when its body cannot be read or parsed. A report
+    from before the typed document has only the `report` text, which `read_documents`
+    returns."""
+    import logging
+
+    wanted = document_id(first_run_id, "report_data")
+    doc = next((d for d in read_documents(username, session_id, plan_run_id)
+                if d.document_id == wanted and d.kind == "report_data"), None)
+    if doc is None:
+        return None
+    try:
+        value = json.loads(document_body(username, session_id, doc))
+    except Exception as exc:  # noqa: BLE001 - a body, object store or parse failure
+        logging.getLogger(__name__).warning(
+            "the typed report %s was not read: %s", doc.document_id, exc)
+        return None
+    return value if isinstance(value, dict) else None
 
 
 # ----------------------------------------------------------------------- decisions
@@ -755,6 +896,7 @@ __all__ = [
     "PlanNode", "PlanRunRow", "PlanSnapshot", "REVISING", "SectionRun", "TERMINAL_STATES",
     "apply", "children_of", "create_plan", "create_plan_run", "document_id",
     "failed_sections_table", "failure_cause", "initial_snapshot", "is_terminal", "mutate", "nodes_json",
+    "DocumentBodyError", "INLINE_BODY_BYTES", "artifact_key", "document_body", "read_report_data",
     "parse_verdict", "read_decision", "read_documents", "read_plan_run", "read_snapshot",
     "node_paths", "render_tree", "resolve_node", "root_node_id", "section_ids", "section_states", "sections", "validate",
     "write_document", "write_plan_run", "write_snapshot",

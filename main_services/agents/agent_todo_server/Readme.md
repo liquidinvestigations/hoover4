@@ -34,8 +34,8 @@ select another list.
 ## The plan tools
 
 The same server serves the plan tools of a deep research plan, in `plan_tools.py`:
-`read_plan`, `append_node`, `append_child`, `move_node`, `edit_node`, `remove_node` and
-`read_plan_document`. The tree rules and the storage are in
+`read_plan`, `append_node`, `append_child`, `move_node`, `edit_node`, `remove_node`,
+`read_plan_document` and `read_plan_report`. The tree rules and the storage are in
 [`../../processing/database/agent_plans.py`](../../processing/database/agent_plans.py),
 which the worker reads as well.
 
@@ -60,6 +60,18 @@ releases the lock. This holds because the server runs as one process in one cont
 column of `agent_plan_snapshots`. A second change with that key writes nothing and returns
 that version. A change with no key, or with a value that is not a UUID, writes a new
 version each time.
+
+**A report is read in pages.** `read_plan_report(node_id, cursor)` reads the typed report
+(`report_data` document) of the newest sub-agent thread of a node, which the worker writes
+when the thread ends. The node is an id or a number path. The report is a list of units:
+how the run ended, the final answer, the newest model texts, the diagnostics, and one unit
+for each evidence entry. A long text is several units. A page holds the units that fit the
+call's page share, at most 16,000 bytes, and at least one unit. `more` is the cursor of the
+next page: the first 16 hex characters of the digest of the units, a colon, and the next
+unit. A cursor of a report that changed is refused, and the caller reads from the first
+page again. A thread with only a text `report` gives it as `legacy_text` units.
+`read_plan_document` reads a body that the worker stored as an artifact, with the owner
+and digest check of `agent_plans.document_body`.
 
 `read_todo` returns the goal and all steps. `write_todo` returns the version and step ids.
 `edit_todo` and `mark_todo` return open steps. Every result keeps the version.

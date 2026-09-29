@@ -7,8 +7,7 @@ its arguments and gives the name of one stumble or technique skill, or `None`.
 
 A result gets no line when it shows no failure, when it is a result page
 (`is_canonical_page`, whose bytes must not change), when the run does not list the skill, or when
-it holds the line already. A repeat refusal gets no line here, because the worker writes
-that text.
+it holds the line already.
 """
 
 from __future__ import annotations
@@ -28,7 +27,7 @@ NEXT_KEY = "next"
 
 TODO_TOOLS = frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"})
 PLAN_TOOLS = frozenset({"read_plan", "append_node", "append_child", "move_node", "edit_node",
-                        "remove_node", "read_plan_document"})
+                        "remove_node", "read_plan_document", "read_plan_report"})
 #: The tools whose `not_found` error means a document id that no readable dataset holds.
 DOCUMENT_TOOLS = frozenset({"read_documents", "list_document_entities"})
 
@@ -89,8 +88,6 @@ def _cause(name: str, content: str, args: Dict[str, Any]) -> Optional[str]:
     if not failed:
         return None
     low = (error + " " + message).lower()
-    if error in ("repeated_call", "not_run"):
-        return None
     if "No tool of this run is named" in message:
         return None
     if "transport failure" in message or error in ("tool_unavailable", "backend_unavailable"):

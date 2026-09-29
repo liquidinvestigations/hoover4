@@ -11,7 +11,7 @@ the prose the protocol exists to produce.
 import json
 
 from database import agent_runs
-from tasks.P_agent.steps import FINAL_TEXT, NOTE_WARNING_TEXT
+from tasks.P_agent.steps import NOTE_WARNING_TEXT
 from tasks.P_agent.stream_writer import round_view
 
 
@@ -74,27 +74,6 @@ def test_a_nag_starts_a_new_round_with_no_opening():
     prose, reasoning, in_opening = round_view(messages)
     assert prose == "" and in_opening is False
     assert "I should check the list" in reasoning and "Let me search" not in reasoning
-
-
-def test_the_human_message_of_a_final_step_does_not_start_a_round():
-    messages = _thread(("I understand the task as X.", ["read_todo"]),
-                       ("Let me search.", ["search_collections"]))
-    messages.append(agent_runs.RunMessageRow(idx=len(messages), role="human",
-                                             content=FINAL_TEXT["repeated_call"]))
-    prose, reasoning, _ = round_view(messages)
-    assert prose == "I understand the task as X."
-    assert "Let me search." in reasoning
-
-
-def test_the_final_text_with_its_bring_back_line_does_not_start_a_round():
-    messages = _thread(("I understand the task as X.", ["read_todo"]),
-                       ("Let me search.", ["search_collections"]))
-    messages.append(agent_runs.RunMessageRow(
-        idx=len(messages), role="human",
-        content=FINAL_TEXT["step_budget"] + "\n\nBring back: the dates of each payment"))
-    prose, reasoning, _ = round_view(messages)
-    assert prose == "I understand the task as X."
-    assert "Let me search." in reasoning
 
 
 def test_the_note_warning_does_not_start_a_round():

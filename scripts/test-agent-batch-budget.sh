@@ -30,7 +30,7 @@ import json
 import os
 import sys
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from agent_common.result_pages import SAFE_MODE_BATCH_BYTES, is_canonical_page
@@ -60,8 +60,7 @@ async def main() -> int:
         {"id": f"call-{i}", "name": TOOL, "args": {"collectionname": collections, "query": q}}
         for i, q in enumerate(queries)
     ]
-    messages = [HumanMessage(content="batch budget check"), AIMessage(content="", tool_calls=calls)]
-    budget = execution.batch_budget([TOOL] * len(calls), messages)
+    budget = execution.batch_budget([TOOL] * len(calls))
     failed = False
     total = 0
     for call, share in zip(calls, budget.shares):
@@ -71,7 +70,8 @@ async def main() -> int:
         finally:
             execution._PAGE_SHARE.reset(token)
         content = execution._text_of(result.content if isinstance(result, ToolMessage) else result)
-        measure, _ = execution.split_measure(result.artifact if isinstance(result, ToolMessage) else None)
+        measure, _, _ = execution.split_resources(
+            result.artifact if isinstance(result, ToolMessage) else None)
         size = len(content.encode("utf-8"))
         total += size
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()

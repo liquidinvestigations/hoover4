@@ -5,11 +5,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from agent_common import tool_packs
-from research_agent import preload, steps
+from research_agent import steps
 from research_agent.agent import build_agent
 from research_agent.prompts import active_profile, system_prompt_override
 from research_agent.run_messages import to_langchain
-from research_agent.preload import PreloadRequest
 from research_agent.steps import ModelStepRequest, ToolCallRequest
 
 
@@ -164,18 +163,6 @@ async def tool_call(request: ToolCallRequest) -> Dict[str, Any]:
     return await steps.run_tool_call(_agent(), request)
 
 
-@app.post("/preload")
-async def preload_reads(request: PreloadRequest) -> Dict[str, Any]:
-    """Return the reads of a run that starts a thread, and the answers of the classifier.
-
-    The reads are the run's always-read skills, then the picked technique and stumble
-    skills, then one `read_tool` for each picked tool. A failed classifier request gives
-    no picks, and the route still answers. The ids of the reads are empty, and the worker
-    sets them.
-    """
-    return await preload.run_preload(_agent(), request)
-
-
 def _require_langfuse(agent):
     """Return the Langfuse client, or 503 if tracing/feedback is not configured."""
     handler = getattr(agent, "langfuse_handler", None)
@@ -287,7 +274,6 @@ async def root():
             "health": "/health",
             "model_step": "/model_step",
             "tool_call": "/tool_call",
-            "preload": "/preload",
             "feedback_message": "/feedback/message",
             "feedback_session": "/feedback/session",
             "feedback_delete": "/feedback/{score_id}"

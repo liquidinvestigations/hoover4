@@ -485,28 +485,23 @@ class ToolCallWriter(ResearchStreamWriter):
 
 
 def _opens_round(content: Any) -> bool:
-    """False for the human text of a `final` step, with or without its "Bring back" text,
-    and for the note warning. Every other human message opens a round."""
-    from tasks.P_agent.steps import EMPTY_ANSWER_TEXT, FINAL_TEXT, NOTE_WARNING_TEXT
+    """False for the note warning. Every other human message opens a round."""
+    from tasks.P_agent.steps import NOTE_WARNING_TEXT
 
     text = content if isinstance(content, str) else ""
-    for final in (*FINAL_TEXT.values(), EMPTY_ANSWER_TEXT):
-        if text == final or text.startswith(final + "\n\nBring back: "):
-            return False
     return not text.startswith(NOTE_WARNING_TEXT.split("{pct}")[0])
 
 
 def round_view(messages) -> tuple[str, str, bool]:
     """The plan-first prose, the reasoning and the opening state of the current round.
 
-    The round starts after the last `human` message of the thread that is not the human
-    message of a `final` step, with or without its "Bring back" text, and is not the note
+    The round starts after the last `human` message of the thread that is not the note
     warning. No step keeps state, so each step derives these from the stored `ai` messages
     of the round:
 
     * the opening holds while every call so far is in `PLAN_FIRST_TOOLS`, and only in the
-      round that the first `human` message of the thread opens. A nag round has no
-      opening. The text of an `ai` message whose first call is inside the opening is plan
+      round that the first `human` message of the thread opens. A round that a note opens
+      has no opening. The text of an `ai` message whose first call is inside the opening is plan
       prose, which the answer shows (`ResearchStreamWriter._keeps_preamble` gives the rule).
     * the text of any other `ai` message with calls is narration, which moves to the
       reasoning. The reasoning of every `ai` message of the round is kept too.

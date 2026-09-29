@@ -8,9 +8,10 @@ organizer's setting, so it gets its parent's packs. The research agent sends, ru
 in its catalogue only the tools of the run's packs. A tool that an MCP server lists and no
 pack names is refused for every run.
 
-The `skills` pack holds the three skill tools and the notes tool `write_note` of the research
-agent. `packs_for` adds it to every run kind, also when the configured list omits it, because
-every run reads its role skill with `read_skill` at its start.
+The `skills` pack holds the three skill tools, `ask_user` and the notes tool `write_note` of
+the research agent. `packs_for` adds it to every run kind, also when the configured list
+omits it, because the system prompt of every run lists skills that the model can read with
+`read_skill`.
 
 Each tool name is in exactly one pack. A test in every MCP server image lists that server's
 tools with the server's own `list_tools` and checks this, so a new tool with no pack fails a
@@ -35,7 +36,7 @@ PACKS: Dict[str, FrozenSet[str]] = {
     }),
     "conversation": frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"}),
     "plan": frozenset({"read_plan", "append_node", "append_child", "move_node", "edit_node",
-                       "remove_node", "read_plan_document"}),
+                       "remove_node", "read_plan_document", "read_plan_report"}),
     "delegation": frozenset({"run_subagent"}),
     "web": frozenset({"web_search", "list_search_sources", "whois_lookup", "read_page"}),
     "browser": frozenset({"browser_navigate", "browser_snapshot", "browser_click",

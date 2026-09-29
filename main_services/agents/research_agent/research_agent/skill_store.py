@@ -6,15 +6,15 @@ Each skill is one file, `skills/<name>.md.j2`. The file starts with front matter
 * `name` is `[a-z_]{1,64}` and equals the file name.
 * `group` is `role`, `general`, `technique` or `stumble`.
 * `description` is one line of at most 200 characters. The system prompt lists it, and
-  `search_skills` searches it. The classifier forms of the preload read the same bytes, so
-  a change of a description changes what the classifier picks.
+  `search_skills` searches it.
 * `tools` is a comma list of tool names that a pack of `agent_common.tool_packs` holds, or
   empty. A skill is listed in a run when the list is empty or one of its names is a tool of
   the run.
 
-The role skill of a profile is listed for that profile only. `render_skill` renders a body
-with the context that its caller passes, and it keeps no state of its own. `has()` in a body
-reads every tool of the run.
+The role skill of a profile is not listed. The system prompt holds its text
+(`role_method`), so every run of the profile reads it before its first call, and no run reads
+it with `read_skill`. `render_skill` renders a body with the context that its caller passes,
+and it keeps no state of its own. `has()` in a body reads every tool of the run.
 """
 
 from __future__ import annotations
@@ -65,22 +65,6 @@ ROLE_CONTEXT = {
     "organizer": ("report", "reader"),
 }
 
-#: The place of the role skill in `GENERAL_ORDER`.
-ROLE = "role"
-
-#: The order of the skills that a run reads at its start.
-GENERAL_ORDER = ("search", "thorough", ROLE, "citation", "plan_first")
-
-#: The tools a run needs before it reads a general skill at its start: `any` of the names,
-#: or `all` of them.
-ALWAYS_READ_NEEDS: Dict[str, Tuple[str, FrozenSet[str]]] = {
-    "search": ("any", frozenset({"search_collections"})),
-    "thorough": ("any", frozenset({"search_collections", "web_search"})),
-    "citation": ("any", frozenset({"cite_documents"})),
-    "plan_first": ("all", frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"})),
-}
-
-
 class UnboundToolError(RuntimeError):
     """A text names a tool that no pack holds.
 
@@ -108,10 +92,7 @@ class SkillContext:
     profile: str  # one of the keys of ROLE_SKILLS
     tool_names: FrozenSet[str]  # every tool of the run's snapshot
     collections_hint: bool = True
-    # Empty in the step context. The preload passes a copy with the classes.
-    request_classes: Tuple[str, ...] = ()
-    # Empty in the step context. The preload of a planner run sets it, so the packing
-    # numbers use the stated window of the run's model.
+    # The model of the run. The planner's role text states its context window.
     model_id: str = ""
 
 
@@ -173,35 +154,16 @@ def _tools_rule(skill: Skill, tool_names: FrozenSet[str]) -> bool:
 
 
 def listed_skills(ctx: SkillContext, skills: Optional[Dict[str, Skill]] = None) -> List[Skill]:
-    """The skills of one run: the role skill of its profile, then the general, technique and
-    stumble skills whose `tools` rule holds, each group in file name order."""
+    """The skills that one run can read: the general, technique and stumble skills whose
+    `tools` rule holds, each group in file name order. The role skill is in the system
+    prompt (`role_method`)."""
     skills = SKILLS if skills is None else skills
     out: List[Skill] = []
-    role = skills.get(ROLE_SKILLS.get(ctx.profile, ""))
-    if role is not None:
-        out.append(role)
     for group in GROUPS[1:]:
         for name in sorted(skills):
             skill = skills[name]
             if skill.group == group and _tools_rule(skill, ctx.tool_names):
                 out.append(skill)
-    return out
-
-
-def always_read(ctx: SkillContext) -> List[str]:
-    """The skills a run reads at its start, in `GENERAL_ORDER`. A general skill is kept only
-    when the run has the tools of `ALWAYS_READ_NEEDS`."""
-    out: List[str] = []
-    for name in GENERAL_ORDER:
-        if name == ROLE:
-            role = ROLE_SKILLS.get(ctx.profile)
-            if role:
-                out.append(role)
-            continue
-        mode, needs = ALWAYS_READ_NEEDS[name]
-        test = all if mode == "all" else any
-        if test(tool in ctx.tool_names for tool in needs):
-            out.append(name)
     return out
 
 
@@ -244,27 +206,42 @@ def skill_variables(ctx: SkillContext, strict: bool = False) -> Dict[str, object
         "citation_resolver": resolver,
         "collections_hint": bool(ctx.collections_hint),
         "profile": ctx.profile,
-        "request_classes": list(ctx.request_classes),
-        "packing": _packing(ctx),
+        "model_window": _model_window(ctx),
     }
 
 
-def _packing(ctx: SkillContext):
-    """The packing numbers of `method_planner`. With no model id the window is 0, and
-    `packing_for` uses its default window with no catalogue query."""
-    from research_agent import compaction, packing
+def _model_window(ctx: SkillContext) -> int:
+    """The stated context window of the run's model, which the planner's role text gives.
+    0 when the model or its window is unknown. Only a planner reads the catalog."""
+    if ctx.profile != "planner" or not ctx.model_id:
+        return 0
+    from research_agent import compaction
 
-    window = compaction.context_window(ctx.model_id) if ctx.model_id else 0
-    return packing.packing_for(ctx.request_classes, window)
+    return compaction.context_window(ctx.model_id)
+
+
+def render_body(name: str, ctx: SkillContext, *, strict: bool = False,
+                skills: Optional[Dict[str, Skill]] = None) -> str:
+    """The rendered body of one skill for one run. An unknown name raises `KeyError`."""
+    skill = (SKILLS if skills is None else skills)[name]
+    return environment().from_string(skill.body).render(**skill_variables(ctx, strict)).strip()
 
 
 def render_skill(name: str, ctx: SkillContext, *, strict: bool = False,
                  skills: Optional[Dict[str, Skill]] = None) -> str:
     """The text of one skill for one run. The first line is ``Skill `name`.``, and a blank
     line follows it. An unknown name raises `KeyError`."""
-    skill = (SKILLS if skills is None else skills)[name]
-    body = environment().from_string(skill.body).render(**skill_variables(ctx, strict))
-    return f"Skill `{name}`.\n\n{body.strip()}"
+    return f"Skill `{name}`.\n\n{render_body(name, ctx, strict=strict, skills=skills)}"
+
+
+def role_method(ctx: SkillContext, *, strict: bool = False,
+                skills: Optional[Dict[str, Skill]] = None) -> str:
+    """The rendered role skill of the run's profile, for the system prompt, or empty when
+    the profile has none."""
+    name = ROLE_SKILLS.get(ctx.profile, "")
+    if name not in (SKILLS if skills is None else skills):
+        return ""
+    return render_body(name, ctx, strict=strict, skills=skills)
 
 
 # ---------------------------------------------------------------------- searching
@@ -326,8 +303,9 @@ def search_skills(query: str, ctx: SkillContext, limit: int = 6,
 
 
 __all__ = [
-    "ALWAYS_READ_NEEDS", "DEFAULT_PROFILE", "GENERAL_ORDER", "GROUPS", "ROLE_CONTEXT",
+    "DEFAULT_PROFILE", "GROUPS", "ROLE_CONTEXT",
     "ROLE_SKILLS", "RUN_KIND_PROFILES", "SKILLS", "SKILL_DIR", "Skill", "SkillContext",
-    "SkillFileError", "UnboundToolError", "always_read", "listed_skills", "load_skills",
-    "rank_matches", "render_skill", "search_skills", "skill_variables", "words",
+    "SkillFileError", "UnboundToolError", "listed_skills", "load_skills",
+    "rank_matches", "render_body", "render_skill", "role_method", "search_skills",
+    "skill_variables", "words",
 ]

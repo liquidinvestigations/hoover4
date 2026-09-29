@@ -244,10 +244,7 @@ DEFAULTS = {
         "agent_packs_chat": "all",
         "agent_packs_planner": "all",
         "agent_packs_organizer": "all",
-        # The result page limits and the catalogue match count that the probe selects.
-        # Empty keeps byte-safe mode and six matches.
-        "agent_max_page_tokens": "",
-        "agent_completion_reserve_tokens": "",
+        # The catalogue match count that the probe selects. Empty keeps six matches.
         "agent_catalogue_match_count": "",
         # The step limits of an agent run, in whole seconds. Empty keeps the code
         # defaults: no queue-wait limit, a 30 s title request, a 3,600 s model step in the
@@ -742,16 +739,21 @@ def backup_object_volume_bytes(cfg):
 #: The probe keys, their environment names, and the smallest and largest value each takes.
 #: `None` is no upper limit. The agent service refuses the same out-of-range values at import.
 AGENT_PROBE_KEYS = (
-    ("agent_max_page_tokens", "AGENT_MAX_PAGE_TOKENS", 1, None),
-    ("agent_completion_reserve_tokens", "AGENT_COMPLETION_RESERVE_TOKENS", 1, None),
     ("agent_catalogue_match_count", "AGENT_CATALOGUE_MATCH_COUNT", 6, 12),
 )
 
+#: Keys that no reader has now. A value set for one of them prints a warning.
+RETIRED_AGENT_KEYS = ("agent_max_page_tokens", "agent_completion_reserve_tokens")
+
 
 def agent_probe_env(cfg):
-    """The three probe keys for both agent services, validated. An empty key renders as
-    empty, which keeps byte-safe result pages and six catalogue matches. Result pages use
-    token mode only when both token keys are set."""
+    """The probe key for both agent services, validated. An empty key renders as empty,
+    which keeps six catalogue matches. The result pages of one model reply share a fixed
+    byte target in the agent service, and no key changes it."""
+    for key in RETIRED_AGENT_KEYS:
+        if key in cfg.extra.get("main_services", []):
+            print("warning: [main_services] %s is ignored. The agent divides a fixed batch "
+                  "target among the calls of a reply" % key, file=sys.stderr)
     env = {}
     for key, name, low, high in AGENT_PROBE_KEYS:
         raw = cfg.get("main_services", key)
@@ -1359,15 +1361,6 @@ def render_main_env(cfg):
         env["LLM_MODEL"] = ""
         env["LLM_PROVIDER_NAME"] = ""
         env["LLM_SEND_TEMPERATURE"] = "true"
-    # The classifier route of the structured model server, which the research agents ask
-    # at the start of a run. Only the selfhosted tier serves it, so a cloud provider or a
-    # missing AI tier renders it empty, and the agents then read no classifier picks.
-    if provider == "selfhosted" and _ai_tier_present(cfg):
-        env["LLM_CLASSIFIER_URL"] = "http://%s:%s/v1/systemone" % (
-            ai_host, cfg.get("ai_services", "vllm_structured_port"))
-    else:
-        env["LLM_CLASSIFIER_URL"] = ""
-
     env["TEMPORAL_UI_URL"] = "http://localhost:%s" % cfg.get(m, "temporal_ui_port")
     env["EXTERNAL_CLICKHOUSE_URL"] = "http://localhost:%s" % cfg.get(m, "clickhouse_http_port")
     # The identity hoover4-development-auth-backdoor asserts on every request it

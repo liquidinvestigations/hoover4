@@ -1,9 +1,9 @@
 """Facts that code reads from the stored thread of a run: the searches that found nothing,
 the documents that the searches returned, and the documents that the run read.
 
-The repeat stop reads `found_nothing` to pick the text of a refused call, the repeat note
-lists the searches that found nothing, and `write_found_documents` writes the listing of a
-sub-agent that answered with no text twice.
+`steps.write_incomplete` writes `incomplete_text` as the result of a run that stopped before
+an answer: at the step limit, or after a second reply with no text and no call. Code writes
+that result from the stored thread, and no model call is made.
 
 The agent service keeps its own copy of `found_nothing` and the documents read, in
 `research_agent/thread_index.py`, because the two images share no module. Change both
@@ -19,11 +19,23 @@ from typing import Any, Optional
 SEARCH_TOOLS = ("search_collections", "search_passages", "web_search")
 READ_DOCUMENTS = "read_documents"
 
-#: The most lines of one list in the listing of a sub-agent with no answer.
+#: The most lines of one list in the result of a run with no answer.
 LISTING_LINES = 30
 
-#: The first line of that listing.
-LISTING_HEAD = "This researcher wrote no report. Code wrote this list from its calls."
+#: The first paragraph of that result, by the `end_reason` of the run.
+INCOMPLETE_HEAD = {
+    "step_budget": ("This run stopped before a final answer, because it reached its limit of "
+                    "{limit} model steps."),
+    "empty_response": ("This run stopped before a final answer, because the model returned "
+                       "two replies with no text and no tool call."),
+}
+
+#: The paragraph before the newest text that the model wrote.
+LATEST_TEXT_HEAD = "The newest text that the model wrote in this run:"
+
+#: The paragraph before the lists. The lists name the documents of stored results, and a
+#: document that a search returned is not a document that the run read.
+LISTING_HEAD = "Code wrote the lists below from the stored results of the run."
 
 
 def json_object(content: Any) -> Optional[dict]:
@@ -176,17 +188,33 @@ def documents_returned(messages, cap: int) -> list[str]:
             for (c, h), (path, n) in ranked]
 
 
-def found_documents_text(messages) -> str:
-    """The listing that a sub-agent's report holds when it answered with no text twice:
-    the documents it read, the documents its searches returned, and the searches that
-    found nothing. A list with no line is left out."""
-    parts = [LISTING_HEAD]
+def latest_text(messages) -> str:
+    """The newest nonempty text of an `ai` message of the thread, without its reasoning."""
+    for m in reversed(list(messages)):
+        if m.role == "ai" and (m.content or "").strip():
+            return m.content.strip()
+    return ""
+
+
+def incomplete_text(messages, reason: str, limit: int) -> str:
+    """The result of a run that stopped before an answer: the reason, the newest text that
+    the model wrote, the documents it read, the documents that its searches returned, and
+    the searches that found nothing. A list with no line is left out."""
+    head = INCOMPLETE_HEAD.get(reason, "This run stopped before a final answer.")
+    parts = [head.format(limit=limit)]
+    latest = latest_text(messages)
+    if latest:
+        parts.append(f"{LATEST_TEXT_HEAD}\n\n{latest}")
+    lists = []
     for title, lines in (
             ("Documents read", documents_read(messages, LISTING_LINES)),
             ("Documents that the searches returned", documents_returned(messages, LISTING_LINES)),
             ("Searches that found nothing", empty_searches(messages, LISTING_LINES))):
         if lines:
-            parts.append(f"## {title}\n" + "\n".join(lines))
-    if len(parts) == 1:
-        parts.append("It read no document, and no search returned one.")
-    return "\n".join(parts)
+            lists.append(f"## {title}\n" + "\n".join(lines))
+    if lists:
+        parts.append(LISTING_HEAD)
+        parts.extend(lists)
+    else:
+        parts.append("The run read no document, and no search returned one.")
+    return "\n\n".join(parts)

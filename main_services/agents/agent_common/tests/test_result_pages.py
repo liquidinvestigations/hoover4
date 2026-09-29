@@ -161,36 +161,6 @@ class TestContinuation:
 
 
 # ----------------------------------------------------------------------------------
-# allocate()
-# ----------------------------------------------------------------------------------
-
-
-class TestAllocate:
-    """Allocation keeps one completion reserve below the compaction threshold.
-
-    H=157286, R=8192, max(U,P)=42000 and E=547. `allocate` derives A=H-R and uses
-    `content_available = max(0, A - R - fixed)`. For two results, the total is
-    42000 + 2*547 + 2*48904 + 8192 = 149094, which is 8192 below H.
-    """
-
-    def test_k_1(self):
-        assert rp.allocate(42000, [547], 157286, 8192, None) == [98355]
-
-    def test_k_2(self):
-        assert rp.allocate(42000, [547, 547], 157286, 8192, None) == [48904, 48904]
-
-    def test_k_3(self):
-        assert rp.allocate(42000, [547, 547, 547], 157286, 8192, None) == [32420, 32420, 32420]
-
-    def test_none_when_even_the_empty_messages_do_not_fit(self):
-        # H=100, R=20, max(U,P)=50, K=4, E=9: fixed+R = 50+36+20 = 106 > A(=80).
-        assert rp.allocate(50, [9, 9, 9, 9], 100, 20, None) is None
-
-    def test_max_page_tokens_clamps_the_share(self):
-        assert rp.allocate(42000, [547], 157286, 8192, 1000) == [1000]
-
-
-# ----------------------------------------------------------------------------------
 # build_page: rows / table
 # ----------------------------------------------------------------------------------
 

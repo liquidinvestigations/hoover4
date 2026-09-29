@@ -99,7 +99,6 @@ class FakeAgent:
 def model(monkeypatch):
     monkeypatch.setenv("LLM_STREAMING", "false")
     monkeypatch.delenv("LLM_MODEL", raising=False)
-    monkeypatch.setattr(execution, "MAX_PAGE_TOKENS", None)
     monkeypatch.setattr(steps.llm_events, "record_llm_call", lambda *a, **k: None)
     monkeypatch.setattr(steps.compaction, "record_compaction", lambda *a, **k: None)
     monkeypatch.setattr(steps.compaction, "plan_compaction", lambda *a, **k: None)
@@ -191,8 +190,8 @@ async def test_a_reply_with_three_calls_is_classified(model):
     assert [e["kind"] for e in entries] == ["parallel", "ordered", "delegation"]
     assert len(entries[2]["briefings"]) == 1 and entries[2]["page_share"] is None
     assert entries[0]["page_share"] + entries[1]["page_share"] <= SAFE_MODE_BATCH_BYTES
-    assert entries[0]["args_digest"] == hashlib.sha1(
-        b'search_collections\n{"query":"lease"}').hexdigest()
+    # No repeat key is sent: the worker compares no calls.
+    assert "args_digest" not in entries[0] and "budget_exhausted" not in entries[0]
 
 
 async def test_run_subagent_with_unreadable_briefings_is_a_parallel_call(model):
@@ -259,24 +258,38 @@ async def test_every_run_tool_is_available_without_a_search(model):
     assert "folder_list" in model.bound_log[-1]
 
 
-async def test_mode_final_binds_no_tool(model):
+async def test_every_model_step_binds_every_tool_of_the_run(model):
+    """No step mode binds no tool: a step at the step limit is not sent at all."""
     agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, [])], {"search_collections"})
     model.replies.append(AIMessage(content="The answer."))
-    frames = await frames_of(agent, step_request(mode="final"))
-    assert model.bound_log == []
+    frames = await frames_of(agent, step_request())
+    assert model.bound_log == [["search_collections"]]
     assert turn_of(frames)["text"] == "The answer."
+    assert not hasattr(steps.ModelStepRequest, "mode") and "mode" not in \
+        steps.ModelStepRequest.model_fields
 
 
-async def test_the_thinking_value_follows_the_request_in_each_mode(model):
+@pytest.mark.parametrize("names, bound", [
+    (("search_collections", "cite_documents"), True),
+    (("search_collections",), False),
+])
+async def test_the_reply_states_whether_the_citation_tool_was_bound(model, names, bound):
+    """The worker's citation check runs only for a model that had `cite_documents`."""
+    agent = FakeAgent([dict_tool(n, LIST_SCHEMA, []) for n in names], set(names))
+    model.replies.append(AIMessage(content="The answer [D1]."))
+    turn = turn_of(await frames_of(agent, step_request()))
+    assert turn["usage"]["citation_tool"] is bound
+
+
+async def test_the_thinking_value_follows_the_request(model):
     agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, [])], {"search_collections"})
-    model.replies.extend([AIMessage(content=str(i)) for i in range(4)])
-    for mode in ("tools", "final"):
-        await frames_of(agent, step_request(mode=mode, thinking=True))
-        await frames_of(agent, step_request(mode=mode, thinking=False))
+    model.replies.extend([AIMessage(content=str(i)) for i in range(2)])
+    await frames_of(agent, step_request(thinking=True))
+    await frames_of(agent, step_request(thinking=False))
     bodies = [k["extra_body"] for k in model.kwargs_log]
     on = {"chat_template_kwargs": {"enable_thinking": True}}
     off = {"chat_template_kwargs": {"enable_thinking": False}}
-    assert bodies == [on, off, on, off]
+    assert bodies == [on, off]
 
 
 def test_a_model_step_request_without_the_thinking_value_is_refused():
@@ -349,7 +362,7 @@ async def test_a_whole_reply_keeps_its_reasoning(monkeypatch):
     agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, [])], {"search_collections"},
                       llm_kwargs={"api_key": "k", "model": "stub-model",
                                   "base_url": "http://stub/v1", "http_async_client": client})
-    frames = await frames_of(agent, step_request(mode="final"))
+    frames = await frames_of(agent, step_request())
     turn = turn_of(frames)
     assert turn["reasoning"] == "r" and turn["text"] == "The answer."
     assert {"type": "reasoning", "content": "r"} in frames
@@ -481,13 +494,12 @@ async def test_a_call_with_no_repair_keeps_its_measure():
     assert result["measure"] is None
 
 
-async def test_an_exhausted_budget_runs_no_call():
+async def test_a_call_runs_whatever_the_request_says_about_the_context():
+    """An older worker sends `budget_exhausted`. The field is ignored, and the tool runs."""
     seen: List[Any] = []
     agent = FakeAgent([dict_tool("read_plan", EMPTY_SCHEMA, seen)], {"read_plan"}, kind="planner")
     result = await steps.run_tool_call(agent, tool_request("read_plan", budget_exhausted=True))
-    assert not seen
-    assert result["error_class"] == "budget_exhausted"
-    assert json.loads(result["content"])["error"] == "budget_exhausted"
+    assert seen and result["status"] == "ok" and result["error_class"] == ""
 
 
 async def test_a_search_result_returns_its_matches():
@@ -542,3 +554,101 @@ async def test_three_parallel_pages_share_one_safe_mode_budget(model):
         assert measure["page_share"] <= SAFE_MODE_BATCH_BYTES // 3 + 400
         assert "page_sha256" not in result["content"]
         assert len(json.loads(result["content"])["items"]) > 0
+
+
+# ------------------------------------------------------------------- request sizing
+
+
+class CharCounter:
+    """A token counter that counts one token for four characters, and records each text."""
+
+    def __init__(self, texts):
+        self.texts = texts
+
+    def count(self, text):
+        self.texts.append(text)
+        return len(text) // 4
+
+
+def _big_result_thread(result_chars):
+    """A thread whose last call has a stored result the previous reply was not billed for."""
+    return [
+        {"role": "human", "content": "Read the lease."},
+        {"role": "ai", "content": "", "usage": {"input_tokens": 100, "output_tokens": 10,
+                                                "total_tokens": 110},
+         "tool_calls": [{"id": "c1", "name": "read_documents", "args": {"file_hash": ["a"]}}]},
+        {"role": "tool", "content": "x" * result_chars, "tool_call_id": "c1",
+         "name": "read_documents"},
+    ]
+
+
+@pytest.fixture
+def sized(model, monkeypatch):
+    """A known window of 10,000 tokens, a counter of one token for four characters, and a
+    record of what the compaction plan received."""
+    from research_agent import request_size
+
+    texts, plans = [], []
+    monkeypatch.setattr(steps.compaction, "context_window", lambda model_id: 10_000)
+    monkeypatch.setattr(request_size, "_default_counter", lambda model_id: CharCounter(texts))
+    monkeypatch.setattr(request_size, "_tokenizer_down", {})
+    monkeypatch.delenv("AGENT_MAX_OUTPUT_TOKENS", raising=False)
+    monkeypatch.setattr(steps.compaction, "plan_compaction",
+                        lambda *a, **k: plans.append(k) or None)
+    return texts, plans
+
+
+async def test_the_request_size_counts_the_new_results_and_the_schemas(sized, model):
+    texts, plans = sized
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    model.replies.append(AIMessage(content="done"))
+    turn = turn_of(await frames_of(agent, step_request(_big_result_thread(40_000), step_no=2)))
+    size = turn["usage"]["request_size"]
+    # The stored result alone is 10,000 counted tokens, far above the 110 billed tokens.
+    assert size["method"] == "tokenizer" and size["tokens"] > 10_000
+    assert size["window"] == 10_000 and size["fits"] is False
+    assert (size["output_reserve"], size["reserve_source"]) == (8192, "estimate")
+    assert size["safe_input"] == 10_000 - 8192
+    assert '"read_documents"' in texts[0] or "read_documents" in texts[0]
+    # The compaction gets the measured size, and a trigger no higher than the safe input.
+    assert plans[0]["measured"] == size["tokens"] and plans[0]["safe_input"] == 1808
+    assert turn["model"] == "stub-model"
+
+
+async def test_a_configured_output_cap_is_the_reserve(sized, model, monkeypatch):
+    monkeypatch.setenv("AGENT_MAX_OUTPUT_TOKENS", "2000")
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    model.replies.append(AIMessage(content="done"))
+    size = turn_of(await frames_of(agent, step_request()))["usage"]["request_size"]
+    assert (size["output_reserve"], size["reserve_source"], size["safe_input"]) == (
+        2000, "configured", 8000)
+
+
+async def test_a_failed_tokenizer_gives_a_recorded_estimate_and_the_call(sized, model,
+                                                                        monkeypatch):
+    from research_agent import request_size
+
+    class Broken:
+        def count(self, text):
+            raise RuntimeError("no tokenizer route")
+
+    monkeypatch.setattr(request_size, "_default_counter", lambda model_id: Broken())
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    model.replies.append(AIMessage(content="", tool_calls=[
+        {"id": "a", "name": "read_documents", "args": {}}]))
+    turn = turn_of(await frames_of(agent, step_request(_big_result_thread(40_000), step_no=2)))
+    size = turn["usage"]["request_size"]
+    assert size["method"] == "estimate" and "no tokenizer route" in size["error"]
+    assert size["tokens"] > 10_000
+    # The reply's call is classified with an ordinary share. Nothing refuses it.
+    assert turn["tool_calls"][0]["page_share"] == SAFE_MODE_BATCH_BYTES
+    assert "budget_exhausted" not in turn["tool_calls"][0]
+
+
+async def test_an_unknown_window_records_the_fact_and_sends_the_request(model, monkeypatch):
+    monkeypatch.setattr(steps.compaction, "context_window", lambda model_id: 0)
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    model.replies.append(AIMessage(content="done"))
+    size = turn_of(await frames_of(agent, step_request()))["usage"]["request_size"]
+    assert (size["window_known"], size["safe_input"], size["fits"], size["method"]) == (
+        False, 0, True, "estimate")

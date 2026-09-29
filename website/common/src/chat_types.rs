@@ -57,7 +57,8 @@ impl Default for ChatOptions {
 /// point of showing a trajectory is being able to see what the agent actually did and
 /// where it failed.
 ///
-/// `Nag` is the turn prodding its own agent to finish an unresolved todo. It has its
+/// `Nag` is a note from the worker to its own agent: the note after an empty reply, the
+/// citation note, the note of the planner's extra round and the note warning. It has its
 /// own role for one reason: it must never look like the user speaking. Rendering it as
 /// a user bubble would put words in their mouth, and rendering it as an error would
 /// call a working protocol a failure.

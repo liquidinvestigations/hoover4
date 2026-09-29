@@ -38,9 +38,12 @@ from agent_common import embeddings as embeddings_client
 from agent_common import fusion, rerank as rerank_client
 from collection_search_server import vectors
 from collection_search_server.acl import AccessDenied, CallerAcl, parse_acl
+from collection_search_server.binding_store import ArtifactBindingStore
 from collection_search_server.citations import (
+    CitationNotStored,
     HandleTable,
     MIN_QUOTE_CHARS,
+    candidate_passage,
     citation_find_query,
     find_in_quote,
     QUOTE_MATCH_VERIFIED,
@@ -1440,6 +1443,10 @@ class CitationResult(BaseModel):
     #: The find query the card opens the document with: the `find` phrase in double
     #: quotes, or the quote in double quotes when `find` is empty or fails its check.
     find_query: str = ""
+    #: For a quote that is not in the text: an exact passage of the extracted text near
+    #: it, with `extracted_by`, `page_id`, `start` and `end` (`citations.candidate_passage`).
+    #: The citation keeps `quote` and stays unverified.
+    candidate: dict[str, Any] | None = None
     error: str | None = None
 
 
@@ -1463,6 +1470,9 @@ class CitationsResponse(BaseModel):
                 row["quote_verified"] = True
             if result.quote_reason:
                 row["quote_reason"] = result.quote_reason
+            if result.candidate:
+                row["candidate"] = {key: result.candidate[key]
+                                    for key in ("text", "page_id") if key in result.candidate}
             if result.error:
                 row["error"] = result.error
             citations.append(row)
@@ -1472,10 +1482,11 @@ class CitationsResponse(BaseModel):
         return out
 
 
-#: Handles live for the life of a chat session, keyed by the session header the website
-#: forwards. It carries no authority (the ACL is a different header), and is an
-#: isolation key only.
-_HANDLES = HandleTable()
+#: Handles live for the life of a chat session, keyed by the user and session headers the
+#: website forwards. The session carries no authority (the ACL is a different header), and
+#: is an isolation key only. Each new handle is stored before it is returned, so a handle
+#: keeps its document after a restart (`binding_store.py`).
+_HANDLES = HandleTable(store=ArtifactBindingStore())
 
 #: Citations one call may carry. A model that wants to cite more than this in one turn is
 #: listing its search results rather than choosing evidence.
@@ -1561,6 +1572,12 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
             "unverified. Re-read the document and quote it exactly rather than from "
             "memory."
         )
+    if any(r.candidate for r in results):
+        note_parts.append(
+            "A citation with `candidate` has an exact passage of the document near its "
+            "quote. Cite the document again with a quote copied from that passage to "
+            "verify it."
+        )
     if lookup_failed:
         note_parts.append(
             f"{lookup_failed} of {len(results)} documents could not be read for "
@@ -1587,7 +1604,7 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
         "collection_dataset": result.collection_dataset, "file_hash": result.file_hash,
         "path": result.path, "quote": result.quote, "why": result.why,
         "quote_verified": result.quote_verified, "quote_reason": result.quote_reason,
-        "find_query": result.find_query,
+        "find_query": result.find_query, "candidate": result.candidate,
     } for result in results])
     return CitationsResponse(
         success=True, citations=results, note=" ".join(note_parts)
@@ -1627,7 +1644,14 @@ def _as_citation_list(value: Any) -> list[Citation] | None:
 
 
 def _extracted_pages(collectionname: str, file_hash: str, collection_dataset: str):
-    """Yield extracted page texts in `extracted_by, page_id` order, one query batch at a time.
+    """Yield extracted page texts in `extracted_by, page_id` order (`_extracted_page_rows`)."""
+    for _, _, text in _extracted_page_rows(collectionname, file_hash, collection_dataset):
+        yield text
+
+
+def _extracted_page_rows(collectionname: str, file_hash: str, collection_dataset: str):
+    """Yield `(extracted_by, page_id, text)` in `extracted_by, page_id` order, one query
+    batch at a time.
 
     Each batch continues after the `(extracted_by, page_id)` key of the last page read, so
     a batch costs the same at the end of a long document as at its start. An empty
@@ -1654,7 +1678,8 @@ def _extracted_pages(collectionname: str, file_hash: str, collection_dataset: st
         if not rows:
             break
         for row in rows:
-            yield row.get("text") or ""
+            yield (row.get("extracted_by") or "", int(row.get("page_id") or 0),
+                   row.get("text") or "")
         if len(rows) < VERIFY_PAGE_BATCH:
             break
         after = (rows[-1].get("extracted_by") or "", int(rows[-1].get("page_id") or 0))
@@ -1736,9 +1761,20 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
     result.quote_verified = match == QUOTE_MATCH_VERIFIED
     if match != QUOTE_MATCH_VERIFIED:
         result.quote_reason = match
-    result.handle = _HANDLES.handle_for(
-        session, citation.collectionname, citation.file_hash
-    )
+    if match == QUOTE_REASON_ABSENT:
+        try:
+            result.candidate = candidate_passage(citation.quote, _extracted_page_rows(
+                citation.collectionname, citation.file_hash, dataset))
+        except Exception as exc:  # noqa: BLE001, the candidate is optional
+            log.warning("no candidate passage for %s: %s", citation.file_hash, exc)
+    owner = {k.lower(): v for k, v in get_http_headers().items()}.get("x-hoover4-user", "")
+    try:
+        result.handle = _HANDLES.handle_for(
+            session, citation.collectionname, citation.file_hash, owner=owner
+        )
+    except CitationNotStored as exc:
+        log.warning("citation handle of %s not stored: %s", citation.file_hash, exc)
+        result.error = f"the citation handle was not stored, so none is given: {exc}"
     return result
 
 

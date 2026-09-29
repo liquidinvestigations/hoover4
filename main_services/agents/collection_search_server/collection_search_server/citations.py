@@ -18,6 +18,16 @@ marker is a fact the reader can act on.
 still resolve in the ninth, because the answer that used it is still on screen and the
 reader can still click it. Per-turn numbering is cheaper and renumbers the reader's
 evidence underneath them.
+
+**Handles survive a restart.** `HandleTable` stores each new handle through its
+`BindingStore` before it returns it, and loads the stored handles of a session before its
+first new handle. The server's store (`binding_store.py`) also reads the handles of the
+committed `cite_documents` results of the session, so a handle from before the store
+stays reserved. One process allocates, and its session lock orders the allocations.
+
+**A quote that does not verify gets a candidate.** `candidate_passage` returns an exact
+passage of the extracted text near the quote, with its source and span, beside the
+unverified citation. The citation keeps the quote it was given.
 """
 
 from __future__ import annotations
@@ -25,6 +35,7 @@ from __future__ import annotations
 import re
 import threading
 import unicodedata
+from dataclasses import dataclass, field
 
 #: Chat sessions whose handle tables are kept in memory at once.
 #:
@@ -180,46 +191,262 @@ class _FoldedWindow:
         return False
 
 
+class CitationNotStored(RuntimeError):
+    """A new handle was not stored. The caller returns a citation error and no handle."""
+
+
+@dataclass
+class LoadedBindings:
+    """The committed handles of one session, as `BindingStore.load` finds them.
+
+    `bindings` maps a document `(collectionname, file_hash)` to its handle. `reserved`
+    holds the number of every handle that a committed result used, conflicting ones
+    included, so a new handle never takes one. `conflicts` lists each handle that committed
+    results give for more than one document, and each document that they give more than
+    one handle. No document is bound to a handle of `conflicts` from the legacy results.
+    """
+
+    bindings: dict[tuple[str, str], str] = field(default_factory=dict)
+    reserved: set[int] = field(default_factory=set)
+    conflicts: list[dict] = field(default_factory=list)
+
+
+class BindingStore:
+    """The durable handles of the sessions. The default keeps nothing, so a table with this
+    store numbers each session from `[D1]` in each process."""
+
+    def load(self, owner: str, session_id: str) -> LoadedBindings:
+        return LoadedBindings()
+
+    def persist(self, owner: str, session_id: str, collectionname: str, file_hash: str,
+                handle: str) -> None:
+        return None
+
+
+def handle_number(handle: str) -> int:
+    """The number of a `[Dn]` handle, or 0 for another text."""
+    match = re.fullmatch(r"\[D(\d+)\]", handle or "")
+    return int(match.group(1)) if match else 0
+
+
+def merge_legacy(persisted: dict[tuple[str, str], str],
+                 legacy: list[tuple[str, tuple[str, str]]],
+                 reserved_only: set[int] = frozenset()) -> LoadedBindings:
+    """The bindings of a session from its stored bindings and the handles of its committed
+    `cite_documents` results.
+
+    `persisted` holds the stored bindings, which win. `legacy` holds `(handle, document)`
+    pairs from the committed results. A legacy handle that gives one document, for a document
+    that has one handle, is bound. Every other legacy handle is reserved and listed in
+    `conflicts`. `reserved_only` holds the numbers of handles whose document is not known.
+    """
+    out = LoadedBindings(bindings=dict(persisted),
+                         reserved={handle_number(h) for h in persisted.values()}
+                         | set(reserved_only))
+    by_handle: dict[str, set[tuple[str, str]]] = {}
+    by_document: dict[tuple[str, str], set[str]] = {}
+    for handle, document in legacy:
+        if not handle_number(handle):
+            continue
+        by_handle.setdefault(handle, set()).add(document)
+        by_document.setdefault(document, set()).add(handle)
+        out.reserved.add(handle_number(handle))
+    bound = {handle: document for document, handle in persisted.items()}
+    for handle, documents in sorted(by_handle.items()):
+        if len(documents) > 1:
+            out.conflicts.append({"handle": handle, "documents": sorted(documents)})
+            continue
+        document = next(iter(documents))
+        if handle in bound and bound[handle] != document:
+            out.conflicts.append({"handle": handle,
+                                  "documents": sorted({document, bound[handle]})})
+            continue
+        if len(by_document[document]) > 1:
+            continue
+        out.bindings.setdefault(document, handle)
+    for document, handles in sorted(by_document.items()):
+        if len(handles) > 1:
+            out.conflicts.append({"document": list(document), "handles": sorted(handles)})
+    return out
+
+
+@dataclass
+class _Session:
+    bindings: dict[tuple[str, str], str]
+    next_number: int
+    conflicts: list[dict]
+
+
 class HandleTable:
     """Per-session `[Dn]` allocation, stable for the life of the conversation.
 
     The same document cited twice keeps its first handle. That is why the handle is
     allocated per session rather than per call: two paragraphs of one answer citing the
     same file must point at one card.
+
+    The table is a cache of the `store`. The first use of a session in a process loads its
+    committed handles. A new handle takes the number after the highest reserved number, is
+    stored, and only then is returned. The session lock covers the load, the choice, the
+    store and the cache update. A store that fails drops the session from the cache, so the
+    next call loads again and finds a handle that the failed call did store. Handles are
+    keyed by owner and session.
     """
 
-    def __init__(self, max_sessions: int = MAX_SESSIONS) -> None:
+    def __init__(self, max_sessions: int = MAX_SESSIONS,
+                 store: BindingStore | None = None) -> None:
         self._lock = threading.Lock()
         self._max_sessions = max_sessions
+        self._store = store or BindingStore()
         # Insertion-ordered, so the oldest session is the first key.
-        self._sessions: dict[str, dict[tuple[str, str], str]] = {}
+        self._sessions: dict[tuple[str, str], _Session] = {}
+        self._session_locks: dict[tuple[str, str], threading.Lock] = {}
 
-    def handle_for(self, session_id: str, collectionname: str, file_hash: str) -> str:
+    def _session_lock(self, key: tuple[str, str]) -> threading.Lock:
+        with self._lock:
+            lock = self._session_locks.get(key)
+            if lock is None:
+                lock = self._session_locks[key] = threading.Lock()
+            return lock
+
+    def _loaded(self, key: tuple[str, str]) -> _Session:
+        with self._lock:
+            state = self._sessions.get(key)
+        if state is not None:
+            return state
+        loaded = self._store.load(*key)
+        state = _Session(dict(loaded.bindings), max(loaded.reserved, default=0) + 1,
+                         list(loaded.conflicts))
+        with self._lock:
+            if len(self._sessions) >= self._max_sessions:
+                oldest = next(iter(self._sessions))
+                del self._sessions[oldest]
+            self._sessions[key] = state
+        return state
+
+    def _forget(self, key: tuple[str, str]) -> None:
+        with self._lock:
+            self._sessions.pop(key, None)
+
+    def handle_for(self, session_id: str, collectionname: str, file_hash: str,
+                   owner: str = "") -> str:
         """The handle for one document in one session, allocating if it is new.
 
         Returns an empty string once the session's budget is spent, which the caller
         reports rather than hiding: a citation with no handle is still a citation, and
         silently reusing `[D200]` for a different document would corrupt the ones already
-        on screen.
+        on screen. Raises `CitationNotStored` when a new handle was not stored.
         """
-        key = (collectionname, file_hash)
-        with self._lock:
-            table = self._sessions.get(session_id)
-            if table is None:
-                if len(self._sessions) >= self._max_sessions:
-                    oldest = next(iter(self._sessions))
-                    del self._sessions[oldest]
-                table = {}
-                self._sessions[session_id] = table
-            existing = table.get(key)
+        key = (owner, session_id)
+        document = (collectionname, file_hash)
+        with self._session_lock(key):
+            state = self._loaded(key)
+            existing = state.bindings.get(document)
             if existing:
                 return existing
-            if len(table) >= MAX_HANDLES_PER_SESSION:
+            if state.next_number > MAX_HANDLES_PER_SESSION:
                 return ""
-            handle = f"[D{len(table) + 1}]"
-            table[key] = handle
+            handle = f"[D{state.next_number}]"
+            try:
+                self._store.persist(owner, session_id, collectionname, file_hash, handle)
+            except Exception as exc:  # noqa: BLE001 - an unstored handle is never returned
+                self._forget(key)
+                raise CitationNotStored(f"the handle was not stored: {exc}") from exc
+            state.bindings[document] = handle
+            state.next_number += 1
             return handle
+
+    def conflicts(self, session_id: str, owner: str = "") -> list[dict]:
+        """The conflicts that the load of a session found, or empty when it is not loaded."""
+        with self._lock:
+            state = self._sessions.get((owner, session_id))
+        return list(state.conflicts) if state else []
 
     def session_count(self) -> int:
         with self._lock:
             return len(self._sessions)
+
+
+# ------------------------------------------------------------------- candidate passage
+
+#: The longest candidate passage, in characters.
+CANDIDATE_CHARS = 400
+
+#: The word counts of the quote parts that the candidate search looks for, longest first.
+ANCHOR_WORDS = (8, 5, 3)
+
+#: The most parts of each length that the search tries.
+ANCHORS_PER_LENGTH = 6
+
+#: The most extracted pages that the candidate search reads.
+CANDIDATE_MAX_PAGES = 400
+
+
+def _anchors(quote: str) -> list[tuple[int, int, re.Pattern]]:
+    """The quote parts to look for: `(words, chars before the part, pattern)`, the longest
+    first. A pattern matches the words of the part with any whitespace between them, with
+    case and typographic punctuation folded."""
+    words = normalise_for_match(quote).split(" ")
+    out = []
+    for size in ANCHOR_WORDS:
+        if len(words) < size:
+            continue
+        starts = sorted({round(i * (len(words) - size) / max(1, ANCHORS_PER_LENGTH - 1))
+                         for i in range(ANCHORS_PER_LENGTH)})
+        for start in starts:
+            part = words[start:start + size]
+            before = len(" ".join(words[:start])) + (1 if start else 0)
+            pattern = re.compile(r"\s+".join(re.escape(w) for w in part), re.IGNORECASE)
+            out.append((size, before, pattern))
+    return out
+
+
+def _fold_same_length(text: str) -> str:
+    """Typographic punctuation folded one character for one character, so an offset in the
+    result is an offset in `text`."""
+    for fancy, plain in _PUNCTUATION_FOLDS:
+        text = text.replace(fancy, plain)
+    return text
+
+
+def candidate_passage(quote: str, pages) -> dict | None:
+    """An exact passage of the extracted text near a quote that did not verify, or None.
+
+    `pages` yields `(extracted_by, page_id, text)` in the order of verification. The search
+    looks for the longest part of the quote that the text holds, and returns the text of
+    that page around it, as long as the quote and at most `CANDIDATE_CHARS`, cut at
+    whitespace. The passage is a copy of the stored text, with its source and character
+    span. It is not verified: a later citation whose quote passes the check verifies it.
+    """
+    anchors = _anchors(quote)
+    if not anchors:
+        return None
+    best = None
+    for count, (extracted_by, page_id, text) in enumerate(pages):
+        if count >= CANDIDATE_MAX_PAGES:
+            break
+        folded = _fold_same_length(text or "")
+        for size, before, pattern in anchors:
+            if best is not None and size <= best[0]:
+                break
+            match = pattern.search(folded)
+            if match:
+                best = (size, before, match.start(), extracted_by, page_id, text or "")
+                break
+        if best is not None and best[0] == anchors[0][0]:
+            break
+    if best is None:
+        return None
+    _, before, at, extracted_by, page_id, text = best
+    length = min(CANDIDATE_CHARS, max(len(quote), 40))
+    start = max(0, at - before)
+    end = min(len(text), start + length)
+    while start > 0 and not text[start - 1].isspace() and at - start < length // 2:
+        start -= 1
+    while end < len(text) and not text[end].isspace() and end - start < CANDIDATE_CHARS:
+        end += 1
+    passage = text[start:end].strip()
+    if not passage:
+        return None
+    offset = text.index(passage, start)
+    return {"text": passage, "extracted_by": str(extracted_by or ""), "page_id": page_id,
+            "start": offset, "end": offset + len(passage)}

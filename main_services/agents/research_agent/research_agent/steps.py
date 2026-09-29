@@ -15,16 +15,21 @@ carries `note_warning`, true when the worker writes the warning to save notes.
 A failed call sends one `error` frame in place of `model_turn` and `end`. While no frame is ready,
 the stream sends the SSE comment line `KEEPALIVE_LINE` every `KEEPALIVE_SECONDS`.
 
+Before the model call, `/model_step` measures the whole request (`request_size.py`) with the
+tool results that the worker stored after the previous reply, and gives that size to the
+compaction. `model_turn` carries the size in its usage as `request_size`, the model that
+answered as `model`, and in `citation_tool` whether the call bound `cite_documents`, which
+the worker's citation check reads.
+
 `/tool_call` runs one call and returns its result as JSON. It refuses an unavailable name,
-a `run_subagent` call, arguments that do not match the tool's schema,
-and every call of a reply whose budget is exhausted. A failed result that shows a known
-stumble ends with a sentence that names the skill of the fix (`stumbles.py`).
+a `run_subagent` call, and arguments that do not match the tool's schema. The length of the
+conversation never refuses a call. A failed result that shows a known stumble ends with a
+sentence that names the skill of the fix (`stumbles.py`).
 """
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
@@ -35,11 +40,11 @@ import openai
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, Field, model_validator
 
-from research_agent import compaction, llm_events, skill_store, stumbles
+from research_agent import compaction, llm_events, request_size, skill_store, stumbles
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.execution import (
     DELEGATION_TOOL, ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
-    batch_budget, empty_page_text, split_resources, validation_error,
+    batch_budget, split_resources, validation_error,
 )
 from research_agent.run_messages import (
     RunMessage, ToolCallRecord, apply_compactions, close_unanswered, to_langchain,
@@ -95,7 +100,6 @@ class StepRun(BaseModel):
 
 class ModelStepRequest(StepRun):
     step_no: int = Field(description="1 for the first model call of the run thread")
-    mode: Literal["tools", "final"] = "tools"
     thinking: bool = Field(
         description="The admin thinking switch, read by the worker before this call"
     )
@@ -116,7 +120,6 @@ class ModelStepRequest(StepRun):
 class ToolCallRequest(StepRun):
     call: ToolCallRecord
     page_share: Optional[int] = Field(default=None, description="bytes, None: the tool's default")
-    budget_exhausted: bool = False
     idempotency_key: str
 
 
@@ -129,9 +132,7 @@ class CallEntry(BaseModel):
     kind: Literal["parallel", "ordered", "delegation"]
     briefings: Optional[List[Dict[str, Any]]] = None
     page_share: Optional[int] = None
-    budget_exhausted: bool = False
     retry: bool = True
-    args_digest: str
 
 
 # ------------------------------------------------------------------------ model step
@@ -140,12 +141,6 @@ class CallEntry(BaseModel):
 def thinking_body(request: ModelStepRequest) -> Dict[str, Any]:
     """The request body of the thinking switch for one model step."""
     return thinking.thinking_body(request.thinking)
-
-
-def args_digest(name: str, args: Any) -> str:
-    """The sha1 hex of the name, a newline, and the canonical JSON of the arguments."""
-    canonical = json.dumps(args, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha1(f"{name}\n{canonical}".encode("utf-8")).hexdigest()
 
 
 def call_ids(calls: Sequence[Dict[str, Any]], step_no: int, earlier_ids: set) -> List[str]:
@@ -166,9 +161,9 @@ def classify_calls(
     calls: Sequence[Dict[str, Any]],
     step_no: int,
     thread: Sequence[RunMessage],
-    budget_messages: Sequence[BaseMessage],
 ) -> List[CallEntry]:
-    """Classify the calls of one reply, give each its id and its page share."""
+    """Classify the calls of one reply, give each its id and its page share. The shares
+    depend on the calls of the reply only (`execution.batch_budget`)."""
     earlier_ids = {c.id for m in thread if m.role == "ai" for c in m.tool_calls}
     ids = call_ids(calls, step_no, earlier_ids)
     entries: List[CallEntry] = []
@@ -186,14 +181,13 @@ def classify_calls(
             kind = "parallel"
         entries.append(CallEntry(
             id=call_id, name=name, args=args, kind=kind, briefings=briefings,
-            retry=name not in BROWSER_ACTIONS, args_digest=args_digest(name, args),
+            retry=name not in BROWSER_ACTIONS,
         ))
     budgeted = [e for e in entries if e.kind != "delegation"]
     if budgeted:
-        budget = batch_budget([(e.name, e.args) for e in budgeted], budget_messages)
+        budget = batch_budget([e.name for e in budgeted])
         for entry, share in zip(budgeted, budget.shares):
             entry.page_share = int(share)
-            entry.budget_exhausted = bool(budget.exhausted)
     return entries
 
 
@@ -310,7 +304,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
               if m.role != "compaction"]
     names = snapshot.callable_names()
     system_text = context.system_text_for(names)
-    bound_tools = snapshot.tools_for() if request.mode == "tools" else []
+    bound_tools = snapshot.tools_for()
     schemas_json = json.dumps([tool_schema(t) for t in bound_tools], default=str)
 
     # What the compaction returns goes to the model only. The stored thread keeps every
@@ -321,15 +315,31 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
             applied, system_text, schemas_json, window):
         log.warning("the system text, the tool schemas and the user messages of run %s pass "
                     "the compaction target", request.run_id)
+    # The size of this request, with the results that the worker stored after the previous
+    # reply. The billed tokens of that reply do not include them.
+    size = await asyncio.to_thread(
+        request_size.measure, system_text, schemas_json, applied,
+        model_id=context.model_id, window=window)
     pending = await asyncio.to_thread(
         compaction.plan_compaction, applied, rows, system_text=system_text,
-        schemas_json=schemas_json, model_id=context.model_id, window=window)
+        schemas_json=schemas_json, model_id=context.model_id, window=window,
+        measured=size.tokens, safe_input=size.safe_input)
     report = None
     compacted = applied
     if pending is not None:
         yield compaction_frame(pending)
         compacted, report = await asyncio.to_thread(compaction.finish_compaction, pending)
-    history = to_langchain(applied)
+        before = size.tokens
+        size = await asyncio.to_thread(
+            request_size.measure, system_text, schemas_json, compacted,
+            model_id=context.model_id, window=window)
+        sent_size = {**size.record(), "before_compaction": before}
+    else:
+        sent_size = size.record()
+    if not size.fits:
+        log.warning("the request of run %s step %s is %d tokens (%s), above the safe input "
+                    "of %d tokens", request.run_id, request.step_no, size.tokens, size.method,
+                    size.safe_input)
     record = compaction_record(report) if report is not None else None
     if report is not None:
         await asyncio.to_thread(
@@ -344,8 +354,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
         disable_streaming=not llm_streaming_enabled(),
         extra_body=thinking_body(request),
     )
-    if request.mode == "tools":
-        llm = llm.bind_tools(bound_tools)
+    llm = llm.bind_tools(bound_tools)
     config = _callbacks_config(agent, request)
 
     timer = llm_events.CallTimer()
@@ -378,9 +387,8 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
         {"id": c.get("id"), "name": c.get("name"), "args": c.get("args")}
         for c in (getattr(message, "tool_calls", None) or [])
     ]
-    budget_messages = history + [message]
     entries = await asyncio.to_thread(
-        classify_calls, snapshot, names, calls, request.step_no, thread, budget_messages
+        classify_calls, snapshot, names, calls, request.step_no, thread
     )
 
     provider = llm_events.provider_from_base_url()
@@ -415,6 +423,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     usage = getattr(message, "usage_metadata", None) or {}
     yield {
         "type": "model_turn",
+        "model": context.model_id,
         "text": _text(message.content),
         "reasoning": _reasoning(message),
         "tool_calls": [e.model_dump() for e in entries],
@@ -423,6 +432,10 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
             "output_tokens": int(usage.get("output_tokens") or 0),
             "total_tokens": int(usage.get("total_tokens") or 0),
             "reasoning_tokens": int(stats.reasoning_tokens or 0),
+            "request_size": sent_size,
+            # The worker's citation check runs only for a model that had the tool.
+            "citation_tool": any(getattr(t, "name", "") == "cite_documents"
+                                 for t in bound_tools),
         },
         "summarised": report is not None,
         "compaction": record,
@@ -519,8 +532,6 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     name = request.call.name
     allowed = snapshot.callable_names()
 
-    if request.budget_exhausted:
-        return _tool_response(request, empty_page_text(name), "error", "budget_exhausted")
     if name == DELEGATION_TOOL and name in allowed:
         # A readable delegation never reaches this endpoint, because the worker delegates it.
         return _tool_response(request, _error(
@@ -592,7 +603,7 @@ def _with_repairs(measure: Optional[Dict[str, Any]], repairs: List[str]) -> Opti
 
 __all__ = [
     "BROWSER_ACTIONS", "CallEntry", "KEEPALIVE_LINE", "KEEPALIVE_SECONDS", "ModelStepRequest",
-    "StepRun", "ToolCallRequest", "args_digest",
+    "StepRun", "ToolCallRequest",
     "build_model_input", "call_ids", "classify_calls", "compaction_frame",
     "compaction_record", "model_input_rows",
     "classify_error", "llm_streaming_enabled", "run_model_step", "run_tool_call",

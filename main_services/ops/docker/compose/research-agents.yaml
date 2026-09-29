@@ -54,9 +54,6 @@ services:
       - AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
-      # The classifier of the run-start reads, rendered by deploy.py for the selfhosted
-      # provider only. Empty sends no classifier request.
-      - LLM_CLASSIFIER_URL=${LLM_CLASSIFIER_URL:-}
       - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
       - AGENT_PROFILE=internal_search
       # The tool packs of each kind of agent run, rendered by deploy.py from
@@ -64,9 +61,7 @@ services:
       - AGENT_PACKS_CHAT=${AGENT_PACKS_CHAT:-all}
       - AGENT_PACKS_PLANNER=${AGENT_PACKS_PLANNER:-all}
       - AGENT_PACKS_ORGANIZER=${AGENT_PACKS_ORGANIZER:-all}
-      # The probe keys. Empty keeps byte-safe result pages and six catalogue matches.
-      - AGENT_MAX_PAGE_TOKENS=${AGENT_MAX_PAGE_TOKENS:-}
-      - AGENT_COMPLETION_RESERVE_TOKENS=${AGENT_COMPLETION_RESERVE_TOKENS:-}
+      # The probe key. Empty keeps six catalogue matches.
       - AGENT_CATALOGUE_MATCH_COUNT=${AGENT_CATALOGUE_MATCH_COUNT:-}
       # Left EMPTY on purpose, and emptier than it looks: the prompt is not a constant
       # this could hold. It is rendered per graph from the tools that graph actually
@@ -152,9 +147,6 @@ services:
       - AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
-      # The classifier of the run-start reads, rendered by deploy.py for the selfhosted
-      # provider only. Empty sends no classifier request.
-      - LLM_CLASSIFIER_URL=${LLM_CLASSIFIER_URL:-}
       - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
       # Only an organizer run receives `run_subagent`. A `run_subagent` call ends the
       # agent's stream with a `delegate` event. The Temporal worker then writes each
@@ -166,9 +158,7 @@ services:
       - AGENT_PACKS_CHAT=${AGENT_PACKS_CHAT:-all}
       - AGENT_PACKS_PLANNER=${AGENT_PACKS_PLANNER:-all}
       - AGENT_PACKS_ORGANIZER=${AGENT_PACKS_ORGANIZER:-all}
-      # The probe keys. Empty keeps byte-safe result pages and six catalogue matches.
-      - AGENT_MAX_PAGE_TOKENS=${AGENT_MAX_PAGE_TOKENS:-}
-      - AGENT_COMPLETION_RESERVE_TOKENS=${AGENT_COMPLETION_RESERVE_TOKENS:-}
+      # The probe key. Empty keeps six catalogue matches.
       - AGENT_CATALOGUE_MATCH_COUNT=${AGENT_CATALOGUE_MATCH_COUNT:-}
       # As above: empty means "render this profile's templates against the bound tools".
       # The collection MCP server contributes the MATCH syntax through its own

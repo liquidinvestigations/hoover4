@@ -177,8 +177,8 @@ pub struct PlanAgentRun {
     pub depth: u8,
     pub turn_seq: u32,
     pub started_ms: i64,
-    /// Empty for a run that answered. `step_budget` or `repeated_call` for a run that
-    /// was forced to a final answer.
+    /// Empty for a run that answered. `step_budget` or `empty_response` for a run that
+    /// stopped before an answer. An older run can hold `repeated_call`.
     pub end_reason: String,
 }
 
@@ -226,4 +226,94 @@ pub async fn read_snapshot(
         .fetch_all::<(u64, String)>()
         .await?;
     Ok(rows.into_iter().next())
+}
+
+/// One report document of a plan run: the text `report` or the typed `report_data` of a
+/// sub-agent thread. A body above the worker's inline limit is in the artifact
+/// `artifact_id`, and `body_inline` is empty.
+#[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
+pub struct PlanReportDocument {
+    pub did: String,
+    pub nid: String,
+    pub kind: String,
+    pub attempt: u8,
+    pub body_inline: String,
+    pub artifact_id: String,
+    pub created_ms: i64,
+}
+
+/// Every `report` and `report_data` document of a plan run, oldest first.
+pub async fn read_report_documents(
+    username: &str,
+    session_id: &str,
+    plan_run_id: &str,
+) -> anyhow::Result<Vec<PlanReportDocument>> {
+    let rows = get_global_client()
+        .query(
+            "SELECT toString(document_id) AS did, toString(node_id) AS nid, kind, attempt, \
+             body_inline, artifact_id, toUnixTimestamp64Milli(created_at) AS created_ms \
+             FROM agent_plan_documents FINAL WHERE username = ? AND session_id = ? \
+             AND run_id = toUUID(?) AND kind IN ('report', 'report_data') \
+             ORDER BY created_at, document_id",
+        )
+        .bind(username)
+        .bind(session_id)
+        .bind(plan_run_id)
+        .fetch_all::<PlanReportDocument>()
+        .await?;
+    Ok(rows)
+}
+
+/// The whole body of a report document of the owner. A body in an artifact is read only
+/// when the artifact row has the same owner and session.
+async fn report_body(
+    username: &str,
+    session_id: &str,
+    doc: &PlanReportDocument,
+) -> anyhow::Result<String> {
+    if doc.artifact_id.is_empty() {
+        return Ok(doc.body_inline.clone());
+    }
+    let Some(row) = crate::db_chat::artifacts::get_artifact(&doc.artifact_id).await? else {
+        anyhow::bail!("the body of report {} has no artifact row", doc.did);
+    };
+    if row.username != username || row.session_id != session_id || row.body_key.is_empty() {
+        anyhow::bail!("the body of report {} belongs to another owner", doc.did);
+    }
+    let bytes = crate::server_extra::chat_artifact::fetch_artifact_object(&row.body_key).await?;
+    Ok(String::from_utf8(bytes)?)
+}
+
+/// The newest report of each section node of a plan run, typed when the `report_data`
+/// document parses, else the text report. A node whose documents are both missing is
+/// not listed.
+pub async fn read_section_reports(
+    username: &str,
+    session_id: &str,
+    plan_run_id: &str,
+) -> anyhow::Result<Vec<(String, common::report_types::SectionReport)>> {
+    let docs = read_report_documents(username, session_id, plan_run_id).await?;
+    let mut nodes: Vec<String> = Vec::new();
+    for doc in &docs {
+        if !nodes.contains(&doc.nid) {
+            nodes.push(doc.nid.clone());
+        }
+    }
+    let mut out = Vec::new();
+    for node in nodes {
+        let newest = |kind: &str| docs.iter().filter(|d| d.nid == node && d.kind == kind).last();
+        let data = match newest("report_data") {
+            Some(doc) => Some(report_body(username, session_id, doc).await?),
+            None => None,
+        };
+        let text = match newest("report") {
+            Some(doc) => Some(report_body(username, session_id, doc).await?),
+            None => None,
+        };
+        out.push((
+            node,
+            common::report_types::parse_section_report(data.as_deref(), text.as_deref()),
+        ));
+    }
+    Ok(out)
 }

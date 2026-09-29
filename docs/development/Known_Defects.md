@@ -196,16 +196,6 @@ Requiring per-document success would mean a messy corpus never finishes. The ope
 renders the failure counts on the finished row instead, so a reader still has to check them
 beside the green status.
 
-### A nag can produce bookkeeping instead of work
-
-A nag against a capable model can mark items resolved and restate a previous answer instead
-of doing new work or revising the plan, without breaking the loop's own rules. A five-nag cap
-bounds how much bookkeeping one stall can produce.
-
-```
-grep -n "nag_number\|five nags" main_services/processing/tasks/P_agent/nagging.py main_services/processing/tasks/P_agent/workflows.py
-```
-
 ### Two collections are restricted and must be flipped by hand
 
 No code is involved. Recorded here so the fact is not rediscovered.

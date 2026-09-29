@@ -52,14 +52,18 @@ Every part of this decides whether the write lands in the right place:
 * **A failed artifact never fails the tool.** The search still happened; the page was still
   read. `write()` returns `None` and logs, and the caller omits the id.
 
-`write()` covers `search_detail` and `page_capture`. Two more kinds, `agent_raw_result` and
-`agent_plan_document`, go through **`write_required()`** instead: a required write, for a
+`write()` covers `search_detail` and `page_capture`. Four more kinds, `agent_raw_result`,
+`agent_plan_document`, `agent_continuation` and `citation_binding`, go through
+**`write_required()`** instead: a required write, for a
 body the caller has already decided must have a working link. It raises
 `ArtifactWriteFailed` rather than returning `None`, and it takes the artifact id and an
 idempotency key from the caller so a retry after a partial failure lands on the same object
 key and the same row. It stores the object, inserts the row with the body's SHA-256 in
 `body_sha256`, then reads the row back `FINAL` and confirms the digest before returning the
 id. `body_sha256` and `idempotency_key` are empty on every row `write()` produces.
+The worker image has no `agent_common`, so the worker writes an `agent_plan_document` body
+with its own copy of this contract (`database/agent_plans.py::_write_body_artifact`), at the
+same object key.
 
 `read_range()` reads a byte range of one stored body for the collection server's page
 broker. It checks the owner the way the website's artifact route does: the caller must be the
