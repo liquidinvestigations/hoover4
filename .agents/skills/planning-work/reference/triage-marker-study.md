@@ -48,5 +48,5 @@ Phrase matching misses concepts written with other words. It can match incidenta
 harness samples are not independent project samples. Several marker and harness combinations have
 fewer than three matches. Association does not show causation.
 
-The result supports a semantic checklist. It does not support a literal automatic trigger. An
-organizer must name the concrete task relationship that justifies each point.
+The result supports inspecting the actual task relationships. It does not establish a role quota,
+an automatic trigger, or a required point score.

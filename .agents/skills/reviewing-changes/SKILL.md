@@ -1,247 +1,32 @@
 ---
 name: reviewing-changes
-description: Reviews a diff against the invariants that this specific repository breaks silently, meaning the ones a compiler, a linter and a passing test suite all miss. Use before committing, when asked to "review my changes", "check this over", "does this look right", "anything wrong with this diff", or after a sub-agent reports work done. Covers the cross-language mirrored constants, the text-page and extractor-key writer contracts, the migration runner's naive statement split, ClickHouse and Temporal wire-format traps that fail as silence rather than as errors, Dioxus hook ordering, the storage-key permission rule, and the specification row that must move in the same patch as the code.
+description: Review a repository diff for correctness, scope, and cross-component contracts. Use for a requested review or before committing changes.
 allowed-tools: Bash, Read, Grep, Glob
 ---
 
-# Reviewing changes in this repository
+# Reviewing changes
 
-The defects worth looking for here are the ones that **do not raise**. Everything that raises
-is already found by `cargo check`, the unit tests and a page load. Read the diff for the
-list below, in this order.
+Read the actual diff against the agreed baseline and requirements.
+Follow affected callers and storage contracts where needed. An executor's report does not replace the diff.
 
-## First, read the diff: all of it
+Report concrete defects with their location, observable consequence, and necessary verification.
+A blocking finding identifies a correctness fault, requirement violation, unsafe behavior, or missing evidence needed for acceptance.
+Keep preferences and unrelated improvements non-blocking.
 
-```
-git diff HEAD              # or the range the work covers
-git status --short         # what would actually be staged
-.agents/skills/reviewing-changes/scripts/check-diff-comments.sh
-```
+Use [the repository checklist](reference/checklist.md) for affected boundaries.
+Pay particular attention to mirrored Python and Rust behavior, writer identities, migrations, Temporal payloads, and access checks.
+Review frontend hook ordering and real interaction evidence when visible behavior changes.
 
-A report of what changed is not a review. So is a summary written by whoever made the change.
+Recommend a refactor only when it resolves a demonstrated defect or simplifies the requested change.
+An abstraction with one implementation, a private test helper, or repeated conditions alone do not establish a defect.
+Do not turn a review into a new architecture investigation without evidence that the requested outcome requires it.
 
-## The silent-failure checklist
+Read captured checks and verify that they cover the changed code and relevant environment.
+Rerun when edits, failures, or uncertainty invalidate the evidence. A new review turn alone does not invalidate it.
 
-**Mirrored constants moved on one side only.** `STAGE_INDEX` and its siblings are stored
-values in `processing_eta_samples` *and* Rust constants in
-`website/common/src/processing_types.rs`. Both sides move together or the admin processing
-page loses a bar with no error anywhere.
+Give the smallest sufficient correction. The organizer chooses its execution structure and role.
+Do not count defect classes to prescribe batches, new passes, or stopping conditions.
+When a defect repeats, diagnose its cause.
 
-**`insert_text_pages` called more than once for one `(file, extracted_by)`.** It trims rows
-above the highest page it writes, so a second call for the same variant silently deletes the
-first call's pages. It must be called once, with the complete page list.
-
-**`text_content.page_id` written as 0.** It is a real 1-based page number for paged formats
-and a 1-based segment ordinal otherwise. Never 0.
-
-**`extracted_by` formatted ad hoc.** It is a storage key and a user-visible label at once.
-The convention is implemented twice on purpose (once in Python, once in Rust), and neither
-runtime may depend on the other being right. Call the shared formatter; never build the
-string in a component.
-
-**A bucket rebuilt from the environment instead of read from the row.** Blob storage is a
-bucket per collection. Readers take the bucket out of `blobs.s3_path`; a reader that
-reconstructs it from its own configuration works on one collection and fails on the next.
-
-**A storage id treated as a capability.** A `chat_artifacts` id reaches the backend through a
-tool payload written by a model. Every read resolves it to its owner and enforces
-owner-or-admin, and someone else's id is a **403, not a 404**. Collapsing the two hides a
-real permission failure behind an apparent missing row.
-
-**A migration whose statements do not survive the runner's split.** The runner splits on `;`
-without parsing SQL. Three ways to break it, none of which name the file or line in the
-error: a semicolon inside a `COMMENT '...'` literal, a semicolon inside a `--` comment, and
-prose after the final terminator, which reaches the server as an empty query. Put explanatory
-comments **above** the statement they describe.
-
-**A Temporal activity argument that lost its annotation.** Temporal deserialises into the
-*annotated* type; an unannotated parameter arrives as a dict and the feature quietly does
-nothing.
-
-**A ClickHouse `Enum8` written by name and read as a number.** Insert takes the name, read
-returns the ordinal. Also: a result row matches by **column name**, an alias shadows the
-column it is derived from, and an aggregate returns a row even over an empty match, so
-"there is a row" is not "there is data".
-
-**A Dioxus hook behind a condition.** It traps the WebAssembly runtime on the render that
-adds it and leaves the page painted and inert. `cargo check` is clean; a release build says
-only `unreachable`. `dx check --package frontend` names the site.
-
-**A structure query routed through the search cache.** The collection's tree changes while
-ingestion runs, so it is read uncached deliberately. A stale tree is worse than a slow one.
-
-**A field name on a wire that both type checks accept.** A Temporal dispatch shipped here
-naming a conflict-policy field the HTTP API rejects outright. `cargo check` and `dx check` were
-both green over it; it failed as an error string in a database row, and the feature had never
-worked. **A call across a wire is verified by making the call**, never by the build.
-
-**A retried activity repeats a write.** Temporal runs the whole activity again after a failure.
-An insert before the failure can run twice. Ask for each write's idempotency key or the
-immutable input used by a count.
-
-**Two writers replace one row.** A writer that reads a whole row and writes it back can erase
-another writer's update. Name every writer and require a per-column update or one writer.
-
-**Workflow history grows with input.** A history stops at 51,200 events. Require a hand
-calculation of events per unit times the largest unit count, and a split when it exceeds the
-limit.
-
-**A check and insert use separate statements.** Two callers can pass the read. Require an
-atomic statement or a lock.
-
-**An identifier uses a one-second clock without another unique part.** Two calls in one second
-can repeat the value. Require the clock resolution, call rate and random or sequence part.
-
-**Retry and heartbeat settings disagree.** Two components can disagree on when one activity
-has failed. Name the attempt count and timeout in each component and its setting file.
-
-**A gate that cannot fail.** A verification function was called in a `|| true` list, which
-discarded its return, so the run printed *all checks passed* over a check that had aborted at
-its first step. Note that `if ! f` does **not** fix this. Inverting a return value suppresses
-`set -e` inside the body exactly as a `||` list does. The accuracy has to live in the function:
-every failure path records a failure before returning.
-
-**An aggregate field that claims more than it knows.** A "which queries found this hit" list
-repeated the same query, because one query's ranking can carry a page more than once across
-shards, so the field asserted corroboration that did not exist, **inverting the meaning of the
-only signal it added**. Every unit test and both type checks passed. Check that a derived
-signal cannot report the opposite of the truth.
-
-**A comment made false by the change.** The most common real defect in this tree. Fix it in
-the same patch: `writing-project-docs`.
-
-**An edit inside an already-applied migration.** The runner records an md5 of the whole file,
-comments included, so correcting a stale word in one makes it refuse to start on every
-deployment that already ran it. A prose sweep that reaches the migration directories has gone
-too far.
-
-## Reviewing against the plan
-
-The checklist above covers whether the code is right. This section covers whether the code is
-what the plan asked for, which is a different question and a short one to answer, because the
-tree already holds the fixed point. A work package stamps the commit it was written against,
-and a plan folder holds the scope it agreed.
-
-Read the scope list against the diff, and report, item by item, what the diff did not do. Keep
-this separate from the silent-failure checklist above, which is about defects rather than about
-scope.
-
-## Review batches and corrections
-
-The reviewer gives each finding a defect class that names its failure mechanism. Use the same
-class for the same mechanism throughout a review batch. One batch contains two or three
-original passes and one review of their combined diff. A correction runs only when the review
-rejects the batch, and a batch has at most two. The initial review can record the first
-occurrence of a class. End the batch when one class occurs a second time, even if the correction
-limit remains. The organizer starts no more correction for another item in that batch.
-
-After a stop, record each unresolved finding as `move` when a later existing pass owns it,
-`insert` when it needs a new prerequisite pass, or `observe` when evidence is insufficient.
-A later inserted pass starts a new batch. A dependent pass stays closed until its required
-invariant or acceptance case is resolved. Independent work can continue.
-
-**A correction package carries blocking findings only.** The organizer copies each
-non-blocking finding into the plan's `TODO.md`, and no correction carries it.
-
-**A review of a correction reads that correction's diff** and the findings the correction was
-sent to close. It reports whether each of those findings is closed, and whether the correction's
-own diff is correct. A defect it sees outside that diff is a non-blocking finding with the action
-`observe`, and it cannot reject the correction.
-
-**A defect class that occurs a third time in one plan**, counted across every batch, goes to
-the person when it blocks the current work. The organizer stops that line of work and asks. In an
-unattended run it writes the question into `OPEN_QUESTIONS.md`. A third occurrence that does not
-block the current work goes into the plan's `TODO.md` and the final report, and the work
-continues.
-
-The report contains these sections in order.
-
-1. **Verdict.** Give `accept` or `reject`, the passes and the commit ranges read.
-2. **Blocking findings.** Give the defect class, `path:line`, fault and condition that would
-   make it wrong in practice for each finding.
-3. **Non-blocking findings.** Use the same columns.
-4. **Shape tests.** Report each of the four tests below.
-5. **Traced paths.** Follow each acceptance behavior from entry point to final write, with
-   one `path:line` per step.
-6. **Checks.** Separate checks the reviewer ran from results taken from a pass report.
-7. **Correction package.** On `reject`, write the complete work package from
-   [`prompt-template.md`](../planning-work/reference/prompt-template.md) for `executor-heavy`.
-   It carries the blocking findings and no others.
-
-The reviewer runs no Git write command. A correction addresses each blocking finding at its
-cause and reports any finding it did not fix. The organizer starts no dependent pass while
-blocking findings remain.
-
-## The four shape tests
-
-These read the design rather than the defect, so they also apply when a plan is deciding how to
-structure something. `planning-work` loads this skill for that.
-
-**1. A file that crossed a size threshold by a large delta.** Ask whether the code should be
-decomposed before the change lands, and ask it **only when the growth is large**. Measured over
-one fortnight here, nine files crossed 1000 lines in nine commits. Three deserved a yes, and they
-were the ones that gained a whole new responsibility: a shared type file whose growth is why one
-feature needs mirrored edits in two languages, a worker entry point that absorbed an entire
-operations layer, and an indexing module that gained a graph builder. The other six gained 40 to
-140 lines and crossed an arbitrary line. **Trigger on the delta, not on the total.** One useful
-finding for two false alarms is below the rate at which a reviewer stops reading the output.
-
-**2. A repeated conditional that signals a missing model.** The same branch written three times
-over the same value is a type that was never named. Found here as a progress counter that could
-never reach its own total, because a purge counted the telemetry rows it wrote about itself. Two
-populations, one counter, no type separating them.
-
-**3. An abstraction that adds indirection and buys nothing.** Ask what it removes. Found here as
-a compaction step that made the context bigger, evicting a 91-character result to insert a
-127-character placeholder. **One adapter is hypothetical and two are real**: a layer with a
-single implementation is a guess about a second one.
-
-**4. A module that has to be tested past its interface.** If a test reaches inside to set up a
-case the interface cannot express, the interface is the wrong shape. This is the cheapest of the
-four to check, because the test file says so directly.
-
-## The demanding pass
-
-Ordinary review reads the diff for the checklist above. **A demanding pass is a second reading
-with a different question: what would have to be true for this to be wrong.** Take it when the
-change touches a wire format, a permission, a migration, or a counter that someone will trust.
-
-Three rules make it worth the second reading.
-
-- **Open every location before repeating a finding.** A report that a location is wrong is a
-  claim, including your own from ten minutes ago. Expect three failure classes: behaviour that is
-  by design reported as a fault, a real finding attributed to the wrong file, and the same
-  finding counted twice.
-- **Say which checks you ran and which you took on trust.** Collapsing the two is how an
-  unverified claim reaches the tree.
-- **Write down what you considered and rejected**, one line each, in the rejection register at
-  the bottom of `plans/TODO.md` and `plans/DEFECTS.md`. Without it the next pass raises the same
-  item, which this repository's archive shows happening repeatedly.
-
-## Then the standing checks
-
-- **The specification moved with the code.** A change that adds, removes or re-scopes a
-  capability edits its row in `docs/technical-specification/` in the same patch. A capability
-  with no row was never agreed; a row with no code is false.
-- **The `Readme.md` beside the code is true again**, and the patch to it is as small as the
-  code patch that prompted it.
-- **Model instructions match the task and tool contracts.** Run
-  `.agents/check-prompt-restrictions.py` and review each sentence it prints. The script
-  reports possible restrictions and always exits 0.
-- **No private infrastructure detail** anywhere in the diff, no hostname, address, port
-  identifying a real host, credential, or description of an authentication boundary. Those
-  live only in the gitignored `INFRASTRUCTURE_INVENTORY.md`.
-- **No scratch-folder reference, no date, no history of the work** in any added prose. That
-  includes a bare tag coined in a plan folder (`D22`, `S13`) in a comment or a `Readme.md`;
-  `.agents/check-doc-ids.py` names them, and the fix is to state the fact instead.
-- **A new configuration key has a consumer in the same change**, or is written down as
-  not-yet-implemented. A key that is rendered and read by nothing is false.
-- **The commit message is one lowercase line** under about fifty characters, and nothing
-  else. It holds no plan tag in any letter case, such as `w1`, `W2.3` or `D22`, because a tag
-  has no meaning outside its plan folder.
-
-## References
-
-- `reference/checklist.md`, the same list as a run-through, with the command that settles
-  each item.
-- `scripts/check-operation-kind-mirror.py`, compares the Python and Rust operation registries.
+State unresolved findings and limits of the review. A self-review is not an independent review.
+Executors and reviewers run no Git write commands.

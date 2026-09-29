@@ -1,19 +1,17 @@
-# An unresponsive host
+# Host load
 
-`uptime` plus `ps -eo user,ni,pcpu,args --sort=-pcpu | head` names the cause in one step.
+Inspect load, process ownership, CPU use, memory pressure, and I/O wait.
+Do not infer the cause from load average alone.
 
-Three things that are commonly got wrong:
+```sh
+uptime
+ps -eo user,ni,pcpu,args --sort=-pcpu | head
+```
 
-- **Check the owner column.** More than one account runs its own rootless podman here, so
-  the process at the top of the list is not necessarily yours, and killing your own work
-  will not help when it is not.
-- **Prefer `renice -n 19` on an in-flight build's process tree over killing it.** A build
-  most of the way through has already paid for gigabytes of wheel downloads; renicing
-  restores interactive responsiveness without discarding that.
-- **Load average stays high after the fix**. It counts runnable tasks, so it lags. Judge by
-  `%CPU` of the top processes and by whether the desktop responds, not by the number.
+Identify project-owned work before changing priorities or stopping a process.
+A priority reduction can preserve an active build when CPU contention is the cause.
+Verify the result against the resource that limited responsiveness.
 
-Image builds bound their own parallelism through the `BUILD_JOBS` build arg (default 6),
-which feeds every backend's own spelling of it: `MAX_JOBS`, `MAKEFLAGS`,
-`CMAKE_BUILD_PARALLEL_LEVEL`, `CARGO_BUILD_JOBS`, and the `OMP`/`MKL` thread caps. Missing
-one of them loses the bound, which is why they are set as a group.
+Build parallelism uses `BUILD_JOBS` across the supported build tools.
+Verify the rendered values for make, CMake, Cargo, and numerical-library thread settings.
+Do not assume the configured default matches the running process.

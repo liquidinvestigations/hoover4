@@ -1,18 +1,17 @@
-# JVM memory is not container memory
+# JVM and container memory
 
-A JVM sized with `-Xms == -Xmx` commits its whole heap at boot, so the container's RSS sits
-just under the cgroup limit from the first second of uptime whether it is doing anything or
-not. Cassandra with `MAX_HEAP_SIZE=4G` reports ~5.7 GiB of a 5.86 GiB limit while using
-1.3 GB of that 4 GB heap. Reading that as "about to OOM" is wrong every time, and the same
-applies to Elasticsearch and any other JVM here.
+Verify that the affected process is a JVM before applying these checks.
+Heap configuration, committed memory, resident memory, and container accounting measure different values.
 
-Ask the runtime instead:
+For Cassandra, inspect heap usage, garbage collection, and dropped messages with the available runtime tools.
 
-    nodetool info      # Heap Memory (MB): used / max
-    nodetool gcstats   # GC time against uptime
-    nodetool tpstats   # dropped messages
+```sh
+nodetool info
+nodetool gcstats
+nodetool tpstats
+```
 
-A healthy node is a low heap fraction, GC well under 1 % of wall time, and zero drops.
-
-The container-side number worth reading is `anon` in `/sys/fs/cgroup/memory.stat`, never
-the `docker stats` total, which counts reclaimable page cache as usage.
+Compare those results with cgroup memory statistics and OOM events.
+Inspect anonymous memory and reclaimable file cache separately.
+A large container total alone does not establish heap exhaustion.
+Use the process's actual settings and workload when judging available capacity.

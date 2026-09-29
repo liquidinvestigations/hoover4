@@ -1,121 +1,18 @@
-# Closing a work folder
+# Archiving a work folder
 
-The scratch folder is wiped. Anything worth keeping has to be somewhere else **before** that
-happens, written so it makes sense to someone who never saw the work.
+Archive a completed folder when the task calls for it.
+Move it under `plans/old/<DDMMYYYY>/`. Do not delete its only local copy.
 
-## The lift
+Preserve the request, decisions, outcomes, and evidence needed to understand unfinished work.
+Move durable implementation knowledge into the affected documentation as current behavior.
+Do not add a new skill or rule automatically for every finding.
 
-Walk the folder's reports and sort every finding into one of four destinations:
+Record remaining requested work and material questions where the next reader can find them.
+Do not turn archiving into a review of every unrelated backlog item.
+Verify a claimed current defect before publishing it as a product limitation.
 
-| finding | goes to |
-|---|---|
-| how a piece of code behaves now | the `Readme.md` beside that code |
-| how a subsystem is shaped, and why | a page under `docs/architecture/` |
-| a procedure someone will repeat | a page under `docs/operations/` or `docs/development/` |
-| a trap that cost hours | the skill or rule that fires in the situation where it bites |
-| **work that was wanted and not built** | **`plans/TODO.md`**, one standing file, features as sentences |
-| **a defect or limitation still true today** | **`plans/DEFECTS.md`**, then `docs/development/Known_Defects.md` once re-verified |
-| **an agent decision from an unattended run that a person has not ratified** | **`plans/DECISIONS.md`**, with its question and provisional status |
+Verify links from live documents before moving the folder.
+Copy required source records into the dependent folder when a move would break its references.
+Link those copies and preserve their wording. A separate summary is optional.
 
-Everything else (what was tried, what order things happened in, who decided what) is
-deliberately dropped. `git log` and `git blame` already hold it, and they hold it correctly.
-
-**The standing files retain work that an archived folder cannot settle.** Keep unbuilt work
-in `TODO.md`, unverified defects in `DEFECTS.md` and provisional unattended decisions in
-`DECISIONS.md`. Append to each applicable file before archiving. Do not replace an earlier
-decision with a new summary. Keep its original question, choice and reversal path.
-
-**A defect goes to `plans/DEFECTS.md` first, not straight into the tree.** A finding lifted
-from a report is a claim, and later work often fixed it incidentally. Re-verify against the
-running stack, delete what is fixed, and only then write the survivors into
-`docs/development/Known_Defects.md` as present-tense truth. Say plainly, at the top of the
-scratch file, that it is unverified.
-
-## Rewriting a finding for the tree
-
-A report says *what happened*. The tree says *what is true*. The transform is mechanical:
-
-> Report: "The loop stalled for 26 minutes because a synchronous call ran on the event-loop
-> thread; we moved it to a thread pool in the third attempt."
->
-> Tree: "A synchronous call on the event-loop thread stalls this activity indefinitely while
-> heartbeats keep flowing, so it is never retried."
-
-No date, no attempt count, no plan reference. The standing property, and the failure it
-prevents.
-
-## Then archive
-
-Move the folder to `plans/old/<DDMMYYYY>/`. The date lives in the archive directory's name,
-never in a document's filename and never in the tree.
-
-## A folder that is staying needs the one that is going
-
-The tracked tree is not the only thing that points at a plan folder. **A live plan folder
-routinely depends on an archived one**, for a specification it did not restate, a decision it
-cites, a scope table it continues. Archiving under it leaves it naming work that no longer
-exists anywhere.
-
-Copy what it depends on **into** it, in an `inherited/` subfolder, verbatim, and repoint its
-links there. Verbatim rather than summarised: a specification is the thing being preserved, and
-a paraphrase of a design is a new design nobody reviewed. Those copies are transcribed, not
-authored. Leave the old tags in them and let the tag checker skip the folder.
-
-Then write **one prose document** in the live folder describing that inherited work with no
-tags at all, so the folder can be read without opening the copies. The copies are the record;
-the prose is the thing a person actually reads.
-
-## Reconcile the standing files first
-
-`TODO.md` and `DEFECTS.md` accumulate. Entries are added by every pass and removed by nobody, so
-the list drifts from the tree and a later plan picks work that is already done. Measured here, a
-two-entry sample of a 31-entry defect list had one entry already delivered, and `DEFECTS.md`
-carries its own header admitting that a good part of it is probably fixed.
-
-**Reconciling is a procedure, not a read.** For every entry:
-
-1. **Reproduce it against the running stack**, or find the commit that fixed it. An entry nobody
-   has tried to reproduce is not open, it is unknown.
-2. **Delete what is fixed.** Do not mark it fixed and leave it. The list is the value.
-3. **Give every survivor one status word** from `open`, `verified`, `fixed` or `rejected`, and
-   the command that reproduced it. A defect with no reproduction command costs the next reader
-   the same hour it cost you.
-4. **Move the survivors that are real limitations into `docs/development/Known_Defects.md`** as
-   present-tense statements. `plans/` is gitignored, so a defect list that lives only there is
-   one command from gone.
-
-**Then add a rejection register at the bottom of both files.** One line per thing considered and
-dropped, with the reason. Without it the next pass raises the same item, which this archive shows
-happening repeatedly across three folders.
-
-Reconcile before archiving, because the entries are accurate while the work is fresh and
-guesswork afterwards.
-
-## The check
-
-Before archiving, search for every reference to the folder you are about to retire (its path,
-its number, and any phase or part label it invented) in **three** places:
-
-1. the tracked tree, including source comments;
-2. **every other plan folder that is staying**;
-3. the two standing files, `plans/TODO.md` and `plans/DEFECTS.md`.
-
-Every hit is a link that is about to break. `.agents/check-doc-ids.py` finds the tag-shaped
-ones; the rest is a scoped grep.
-
-Then verify the folders that are staying still stand alone: run the checker over each, and
-confirm every relative link in them resolves.
-
-## When to do this
-
-At the end of a sprint large enough that its folders are no longer being read, which in
-practice means when a new pass starts and nobody has opened the last one in a week. Doing it
-per-folder as each finishes is better than a periodic sweep, because the lift is accurate while
-the work is fresh and guesswork afterwards.
-
-A sweep across several folders at once is a different job and costs more than it looks: the
-folders will have invented colliding tags, their defect lists will overlap, and deciding what
-is still true takes longer than writing it did.
-
-**Never delete.** `plans/` is gitignored, so an archived folder exists only on this disk and is
-not recoverable from git. Moving is safe; deleting is not.
+Tracked files do not cite local working plans.

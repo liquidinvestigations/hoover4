@@ -127,5 +127,58 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
 
 
+class BudgetHookTests(unittest.TestCase):
+    """Verify opt-in counting through the hook's public input and output."""
+
+    def invoke(self, directory, budget=None, payload=None):
+        env = dict(os.environ, XDG_RUNTIME_DIR=directory)
+        env.pop("HOOVER4_TOOL_BUDGET", None)
+        if budget is not None:
+            env["HOOVER4_TOOL_BUDGET"] = budget
+        result = subprocess.run(
+            [sys.executable, str(ROOT / ".agents/hooks/warn-tool-call-budget.py")],
+            input=json.dumps(payload if payload is not None else {"agent_id": "worker"}),
+            env=env, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout
+
+    def test_default_and_invalid_budgets_are_silent(self):
+        for value in (None, "", "0", "-1", "invalid"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as directory:
+                self.assertEqual(self.invoke(directory, value), "")
+                self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_explicit_budget_warns_at_thresholds_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = [self.invoke(directory, "20") for _ in range(21)]
+            self.assertEqual([i + 1 for i, text in enumerate(output) if text], [16, 19])
+            event = json.loads(output[15])["hookSpecificOutput"]
+            self.assertEqual(event["hookEventName"], "PostToolUse")
+            self.assertIn("4 left", event["additionalContext"])
+
+    def test_missing_agent_id_does_not_create_counter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.invoke(directory, "20", {"session_id": "root"}), "")
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_agents_have_separate_counters(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.invoke(directory, "2", {"agent_id": "first"}),
+                             self.invoke(directory, "2", {"agent_id": "second"}))
+            self.assertEqual(self.invoke(directory, "2", {"agent_id": "first"}), "")
+
+    def test_orientation_preserves_compaction_signal(self):
+        result = subprocess.run(
+            ["bash", str(ROOT / ".agents/hooks/session-start-orientation.sh")],
+            input='{"source":"compact"}', capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        event = json.loads(result.stdout)["hookSpecificOutput"]
+        self.assertEqual(event["hookEventName"], "SessionStart")
+        self.assertIn("Context was just compacted.", event["additionalContext"])
+        self.assertIn("AGENTS.md", event["additionalContext"])
+
+
 if __name__ == "__main__":
     unittest.main()

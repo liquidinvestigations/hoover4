@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# Route changed paths to the gates a change owes.
+# Route changed paths to candidate verification commands.
 #
-# It never selects inside a suite. The fast tier is 1,494 Python tests in
-# about 17 seconds, so nothing in it is worth trimming, and the Rust suites
-# are compilation-bound, so filtering them saves nothing either. What is
-# worth routing is the three gates that cost minutes to tens of minutes, plus
-# the couplings no language server can see. See ../reference/suites.md for
-# the measurements and ../../reviewing-changes/SKILL.md for the couplings.
+# The output lists candidate checks for changed paths.
+# Select relevant coverage from the changed behavior and its dependencies.
+# Verify that each test process loads the intended source before interpreting its result.
 #
 # Usage:
 #   gate-map.sh [path ...]     Route the named paths.
@@ -27,12 +24,21 @@ V=".agents/skills/verifying-before-claiming/scripts"
 route_path() {
     local p="$1" matched=0
 
-    if [[ "$p" == main_services/agents/*.py ]]; then
+    if [[ "$p" == main_services/agents/research_agent/*.py ]]; then
         matched=1
-        printf 'GATE\trebuild this agent'"'"'s image first (rule 2: the agent code is baked into it, so a source edit that skips the rebuild leaves the suite testing the old image and passing), then the fast tier: %s/pytest-unit.sh, %s/pytest-agents.sh (the agent suite)\n' "$V" "$V"
+        printf 'GATE\t%s/pytest-research-agent.sh (mounts current research-agent and shared source)\n' "$V"
+    elif [[ "$p" == main_services/agents/agent_common/*.py ]]; then
+        matched=1
+        printf 'GATE\t%s/pytest-research-agent.sh and %s/pytest-agents.sh for shared consumers; verify their loaded source\n' "$V" "$V"
+    elif [[ "$p" == main_services/agents/*.py ]]; then
+        matched=1
+        printf 'GATE\t%s/pytest-agents.sh against affected images; verify their loaded source or rebuild first\n' "$V"
+    elif [[ "$p" == main_services/processing/*.py ]]; then
+        matched=1
+        printf 'GATE\t%s/pytest-unit.sh for the affected worker behavior\n' "$V"
     elif [[ "$p" == main_services/*.py || "$p" == ai_services/*.py ]]; then
         matched=1
-        printf 'GATE\tthe fast tier: %s/pytest-unit.sh, %s/pytest-agents.sh\n' "$V" "$V"
+        printf 'HAND\tSelect the affected service test runner and verify its loaded source\n'
     fi
 
     if [[ "$p" == *.rs ]]; then
@@ -110,6 +116,7 @@ self_check() {
     for cmd in \
         "$V/pytest-unit.sh" \
         "$V/pytest-agents.sh" \
+        "$V/pytest-research-agent.sh" \
         "$V/cargo-check.sh" \
         "$V/dx-check.sh" \
         "website/run-stack-tests.sh" \
@@ -187,7 +194,7 @@ for p in "${paths[@]}"; do
     done < <(route_path "$p")
 done
 
-echo "Gates owed:"
+echo "Candidate checks:"
 if [[ "${#gates[@]}" -eq 0 ]]; then
     echo "  none"
 else

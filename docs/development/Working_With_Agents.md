@@ -106,30 +106,25 @@ are and can read them as ordinary files.
 
 ## Skills
 
-A skill is a procedure that the agent loads on demand. The repository has sixteen skills.
+A skill is a procedure that the agent loads on demand. The repository has twelve skill entrypoints.
 
 | skill | it answers |
 |---|---|
-| `planning-work` | how work is planned, staged and archived in this repo |
-| `running-consecutive-subagents` | one sub-agent at a time, waited on, self-timeboxed, with a written work package |
-| `verifying-before-claiming` | which evidence backs which claim, and how to wait on a long job without disturbing it |
+| `planning-work` | how work is planned, handed over, and archived |
+| `running-consecutive-subagents` | one authorized subagent at a time, with a bounded assignment |
+| `verifying-before-claiming` | which tests and evidence support the changed behavior |
 | `writing-project-docs` | present-tense truth, small patches, accurate doc comments |
 | `reviewing-changes` | what a review of *this* repo checks |
-| `finding-code` | locate before reading: symbol overview, references, implementations |
-| `editing-code` | the edit tools and symbol operations instead of stream editors |
 | `deploying-the-stack` | `./deploy`, its flags, and why `up -d` is not a deployment |
 | `debugging-the-stack` | mechanism-not-wording, reproduce inside the container, the silent-failure traps |
 | `tuning-the-pipeline` | Temporal concurrency, `gather` barriers, the heartbeat-as-slot-lease effect |
 | `querying-the-datastores` | the recurring ClickHouse, Manticore and Garage diagnostics |
 | `operating-remote-hosts` | the demo box and the GPU box, see [Remote hosts](../operations/Remote_Hosts.md) |
 | `driving-the-browser` | the browser MCP surface, screenshots, typing into a Dioxus input |
-| `writing-tests` | which tests a source change puts at risk and where a new test belongs |
-| `writing-handoffs` | how to record incomplete work for another session |
 | `running-unattended` | how to run a complete plan when no person can answer during the run |
 
-The `description` field is the whole trigger mechanism: a skill that does not describe the
-*situation* in the words a request uses does not load, and nothing downstream recovers from
-that. Write descriptions in the second person, naming the symptom and the request phrasing.
+A skill description identifies its relevant task. Load the procedure when it adds repository-specific knowledge.
+Ordinary navigation and editing use the shared instructions without another skill.
 
 Skill scripts are referenced by repo-relative path first and by the harness variable second,
 because only one harness substitutes that variable and the others run the literal string:
@@ -173,8 +168,8 @@ Each rule also appears in `AGENTS.md`.
 | unscoped recursive search | `PreToolUse(Bash)` | a recursive `grep`/`ugrep` over `.` or a build-bearing directory with no `--include`/`--exclude-dir`. A scoped search at one small directory passes |
 | long commit message | `PreToolUse(Bash)` | `git commit -m` with a multi-line or over-length message |
 | register | `PreToolUse(Edit\|Write\|MultiEdit)` or Codex `apply_patch` | added text that contains a phrase from `AGENTS.md`, "How to write", or an em dash. The hook checks the documented file types and preserves its path exemptions |
-| orientation | `SessionStart`, including `compact` | denies nothing; injects the invariants and the routing table, and re-injects them after a compaction |
-| tool-call budget | `PostToolUse(*)` | denies nothing; names the calls used and the calls left at 80% and 95% of a sub-agent's budget. A call whose payload carries no `agent_id` was made by the session that launched the pass, and is not counted |
+| orientation | `SessionStart`, including `compact` | denies nothing; points to the shared instructions and restores the current-task reminder after compaction |
+| tool-call budget | `PostToolUse(*)` | denies nothing; reports calls at 80% and 95% only when an explicit positive budget is configured. A call whose payload carries no `agent_id` was made by the session that launched the pass, and is not counted |
 
 Codex requires review for each non-managed hook definition. It records trust against the
 current definition hash. A changed definition does not run until a person trusts it again.
@@ -287,48 +282,23 @@ default. Claude Code resolves it in this order: the `CLAUDE_CODE_SUBAGENT_MODEL`
 variable, then the model given in the call, then the definition's `model` field, then the main
 conversation's model.
 
-**One agent's prompt is capped**, at 250,000 tokens for a pass that writes source and 150,000 for
-one that only reads. The reason for the first is cost: every turn re-sends the whole prompt, so a
-turn taken at 600,000 tokens of carried context costs about seven times the same turn taken below
-100,000. The reason for the second is the long-context literature, which puts accuracy loss
-between 32,000 and 100,000 tokens.
+Use actual platform limits and budgets explicitly set by the person.
+There is no default pass cap or tool-call budget.
 
-**The cap is written into a work package as a tool-call count rather than as a token count**,
-because a pass cannot see its own context at all. Where a harness supplies a live token warning
-it fires against the window, not against a budget a plan chose. Two mechanisms carry the budget
-when attention does not: `maxTurns` in the agent definition, which the harness enforces, and a
-`PostToolUse` hook that puts the number back in front of the pass at 80% and 95% of it.
+The budget hook is advisory and remains silent unless `HOOVER4_TOOL_BUDGET` contains a positive integer.
+It counts subagent calls whose payload includes `agent_id`.
+It reports progress at 80 percent and 95 percent of the configured budget.
+It does not block a tool or create another assignment.
 
-**A pass cannot count its own tool calls either.** One measured pass reported 79 calls and had
-made 103, an undercount of 23%, so the hook's count is the evidence and the pass's own tally is
-not. Tell a pass to trust the hook.
+The configured environment supplies the budget for participating subagents.
+A package can state an explicit user budget without changing unrelated harness permissions.
+A harness without the required event identity cannot use this counter.
+Preserve unfinished required work when the actual session limit requires a handoff.
 
-**The hook counts a sub-agent and nothing else, and no step is needed before a launch.** The
-payload carries `agent_id` and `agent_type` on a sub-agent's tool call. It carries neither key
-on a call from the session that launched the pass. Every other field is the same for both,
-including the session id, the transcript path and the whole environment. The count is keyed on
-the agent id, so each pass starts at zero on its own.
+Which model fills which role is recorded in [Choosing a model](Choosing_A_Model.md).
 
-**The organizer has no tool-call budget.** It is bounded by its context and hands over when
-that ends. A count of a coordinator's calls does not measure the work it has left, because it
-reads diffs and launches passes. A budget on the organizer ends a run while items are still
-unstarted, and that is the failure this removes.
-
-**The hook warns at 96 for every sub-agent**, because the payload does not carry the number a
-work package chose. A package that sets a smaller budget, such as 58 for a read-only pass, is
-carried by the package's own instruction and by `maxTurns`. The hook speaks later than both.
-`HOOVER4_TOOL_BUDGET` changes the hook's number for a whole session.
-
-Codex does not run the budget hook. Its tool event does not include the sub-agent identifier
-that the counter requires. The project config permits one sub-agent thread and does not set a
-rollout budget.
-
-Which model fills which role, and how one qualifies, is in
-[`Choosing_A_Model.md`](Choosing_A_Model.md).
-
-`allowed-tools` in skill frontmatter is one harness's spelling and is ignored by the others,
-so the skills carry it and no per-harness transform exists. A transform would be a second
-copy that drifts.
+`allowed-tools` in skill frontmatter is harness-specific metadata. Other harnesses can ignore it.
+The shared skill files preserve that metadata without a separate transform.
 
 ## Editing discipline is a setting, not a virtue
 

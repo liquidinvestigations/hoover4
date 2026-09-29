@@ -94,6 +94,11 @@ if [ -f "$h/deny-unscoped-search.py" ]; then
     [[ "$b4" == *"19 left"* ]] \
         && ok "budget hook configuration reports the remaining tool calls" \
         || no "budget hook configuration output is wrong: $b4"
+    if python3 "$REPO_ROOT/.agents/test-harnesses.py" BudgetHookTests; then
+        ok "budget hook requires an explicit budget and orientation preserves compaction"
+    else
+        no "budget hook or orientation behavior is incorrect"
+    fi
 
     bash_payload=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"grep -rn foo ."},"cwd":"'"$REPO_ROOT"'"}' \
         | python3 "$h/deny-unscoped-search.py")

@@ -1,213 +1,32 @@
 ---
 name: running-consecutive-subagents
-description: Runs sub-agents the way this repository requires, one at a time, waited on, self-timeboxed, each with a hand-written work package and a report file of its own. Use before delegating anything to a sub-agent, and whenever asked to "fan out", "delegate", "coordinate", "run agents in parallel", "spawn a swarm", "organize this", or "have an agent do X". Covers what belongs in a work package, how to review a pass (read its diff, never its report), and the two cases where a sub-agent is the wrong tool entirely.
+description: Delegate an authorized repository task to another agent in the shared checkout. Use only when delegation is requested or permitted for the current work.
 allowed-tools: Task, Read, Write, Edit, Glob, Grep, Bash
 ---
 
-# Running consecutive sub-agents
+# Running consecutive subagents
 
-The rule is not a style preference. Parallel unsupervised agents on this stack produce work
-that has to be read anyway, on a live system that only tolerates one deploy at a time, and
-whose failures are indistinguishable from each other in the logs.
+Delegate a bounded task that benefits from a separate context. Do not delegate when the person asked for direct work.
+Run one subagent at a time in the shared checkout. Wait for it before launching the next.
+Do not edit its owned paths while it runs.
 
-## The rule
+Give the agent its role, requested outcome, relevant decisions, owned paths, checks, and report destination.
+Link existing design and evidence. Do not require the agent to repeat settled research.
+Use the [package template](reference/work-package-template.md) when the assignment needs a file.
+Keep model and effort selection in the harness role mapping.
 
-**One at a time. Waited on. Self-timeboxed. Hand-written work package. Report to a file.**
+A material uncertainty can block dependent work. Routine implementation choices do not require a new interview.
+A subagent cannot expand the objective or authorize commits, deployment, or external communication.
+Executors and reviewers run no Git write commands.
 
-- **One at a time**, never a swarm, never a parallel fan-out. Two agents editing this tree
-  produce a merge you did not plan and a stack you cannot attribute a failure in.
-- **Waited on.** The launching agent blocks on the result and reviews it before the next
-  pass starts. A pass that is not reviewed before the next one begins compounds its mistakes.
-  In Codex, call `wait_agent` once with the pass's p50 forecast as the timeout. Do not run a
-  status loop. If the forecast exceeds the tool maximum, use maximum-duration waits until the
-  forecast expires. Read the result when the wait ends.
-- **Self-timeboxed**. The pass reports what it did not reach rather than running until it is
-  stopped. **A self-timebox is a budget of effort and attention, not a clock**: passes
-  reporting they had "roughly doubled" a one-hour box had used twenty-four minutes of it, and
-  one reporting a "2.5× overrun" had used forty-seven. Ask a pass what it did not reach, never
-  how long it took. An agent's sense of its own elapsed time is a feeling, and wall clock has
-  to come from outside it.
-- **About three tasks per pass**, given as an ordered list with the command that settles each
-  one on its own line. A task is what one check settles, it costs about 80 tool calls when it
-  is the first in a pass and 45 then 22 after that, and a pass costs 29 before it does any
-  work. A brief listing five different items with no check per line has been measured to
-  deliver one.
-- **Every pass also costs its coordinator 38 tool calls and $9.00**, spent writing the package
-  and reading the diff, and paid again for every pass. A pass starts with a fresh context, so
-  that cost never enters its own budget. **The efficiency floor is 60 percent of a plan's calls
-  spent on work**: a one-task pass comes out at 55 percent and fails it, and a two-task pass
-  reaches 65. Three tasks is the ceiling too, unless the package names the task it hands over,
-  because four is 197 calls against a packing target of 183.
-  **It is best effort**: when the work does not exist, a thinner pass is correct and says in
-  one line what stopped it filling. **A pass may open with a review of earlier work and
-  continue into related development**, which turns two half-empty passes into one, and it
-  never reviews its own work.
-  **Items of the same shape are one task.** One rule applied across a tree is one pass however
-  many directories it touches, and a pass here has been measured changing 515 files inside one
-  context without compacting.
+Use actual session limits or a budget explicitly set by the person.
+There is no default tool-call budget, task quota, or extension limit.
+Resume the same assignment when useful work remains. A continuation needs updated context, not another full package.
 
-## Resume rather than replace
+Read the resulting diff and relevant evidence before accepting the report.
+Correct a concrete blocking defect within the existing scope. Select the correction role from its actual risk.
+Repeated defects require diagnosis. Their count does not create another pass or review batch.
+Reuse valid checks for unchanged code and environment.
 
-A pass that runs out of attention with its item half-done is **resumed**, not replaced: it
-costs no slot, it keeps the context it has already paid for, and the work is finishing rather
-than starting. Three of five briefs in the last sprint needed one, so budget half a pass for
-every item that is not a single mechanical change.
-
-A resume still gets **a written work package** rather than a paragraph. It is a new file
-beside the first, answering the questions the pass raised and naming what it must not
-revisit.
-- **A hand-written work package.** This is a file, written before launch, and never a
-  paragraph typed into the call. See `planning-work`'s prompt template.
-- **A report file** beside the prompt, so the pair is visible in the directory listing.
-
-**A pass with context left is given the next item rather than replaced.** One agent here took
-four work packages into one context. The first cost 62 minutes because it read the corpus. The
-second, third and fourth cost 25.6, 12.5 and 12.3 minutes, because they did not have to read it
-again. A fresh pass pays that reading back every time, and it pays it out of the same budget the
-work needs.
-
-## When a sub-agent is the wrong tool
-
-- **To avoid thinking.** If you cannot write the work package, you do not understand the task
-  well enough to delegate it, and the sub-agent will not understand it either.
-- **For a task whose result you cannot check.** Delegating something you have no way to
-  verify converts an unknown into a confident-sounding claim.
-
-Broad read-only search over many files is the case where delegation genuinely pays: the
-answer is small, the reading is large, and a wrong answer is cheap to detect.
-
-## The work package
-
-Every pass needs all of this, because it starts with none of your context:
-
-1. **Role and scope**. Name `organizer`, `executor-light`, `executor-heavy` or `reviewer`.
-   State what it owns and what it must not touch. The harness selects model and effort.
-2. **What to read first**, by path, and which decisions are settled and closed.
-3. **What is true now**. Anything that has changed since the documents it will read were
-   written.
-4. **The deliverable**, the exact output path and its required section list.
-5. **The checks**, as runnable commands, with what their output must show.
-6. **The prohibitions, each with its reason**, especially anything unrecoverable: pushing,
-   publishing, deleting, or deploying over live work.
-
-Construct exactly what it needs. It does not inherit your session, and a package that assumes
-it does is a package with a hole in it.
-
-Launch with the logical role and no model override. Executors and reviewers run no Git write
-command. The organizer owns Git writes and stages reviewed paths by explicit path.
-Send every correction to `executor-heavy` with a new package that names the review's blocking
-findings and no others. A correction runs only when a review rejects its batch, and a plan does
-not schedule one in advance.
-
-**Inside a plan folder the package is the pass document**, which `planning-work` defines. The
-executor is launched on that file, and nothing is transcribed into a second one. It adds the
-item's provenance and a dated copy of the text the item came from, in front of the six
-sections above. Before launch, confirm its commit stamp and re-check every fact it dates.
-
-## Sizing the pass against its context
-
-A pass runs out of context long after it runs out of tasks, which is why it is given several.
-Across the 185 passes recorded here the median peak prompt of an implementation pass was
-185,042 tokens and the p90 was 288,230, against a window of 1,000,000. Eight of 150 measurable
-passes compacted. The largest pass recorded here reached 732,644 tokens, produced a 515-file
-change and survived review.
-
-**Two limits apply and the lower binds.** 60% of the window, and an absolute cap of 250,000
-tokens for a pass that writes source or 150,000 for one that only reads. On a one-million-token
-model the cap binds; on a 262,000-token model the 60% figure does, at 157,000.
-
-The cap is a cost rule. A turn taken at 600,000 tokens of carried context costs about 6.8 times
-the same turn taken below 100,000, measured over 20,405 turns, because every turn re-sends the
-whole prompt.
-
-**Give the pass the budget in tool calls, because it cannot see its own context.** At the
-measured median growth of 1,489 tokens a call, the 300,000 cap on a pass that writes is 202
-calls and the 150,000 cap on one that only reads is 101. Counting the first-turn prompt of
-27,179 tokens moves those to 183 and 83, which is what a plan packs to, and the difference is
-the slack a pass spends when one task runs long.
-
-**The counter needs nothing from you.** `.agents/hooks/warn-tool-call-budget.py` counts a
-pass's calls under the `agent_id` the hook payload carries, which is present on a sub-agent's
-call and absent on the organizer's. A pass therefore starts at zero because its counter does
-not exist yet, and nothing has to be armed before a launch or put back after it. A pass
-resumed under the same agent id continues its own count, which is correct, because a resume is
-the same context carrying on. The budget comes from the `agent_type` on the launch call, being
-the read-only figure for an agent type that only reads and the writing figure for every
-other.
-
-**When the cap and the merge rule disagree, the plan stays merged and the context splits.** One
-pass owns the whole job and restarts with a written handover carrying the rule it derived. Losing
-that rule is what the merge rule exists to prevent, and a handover keeps it for about 19,000
-tokens, which is the measured median first-turn prompt.
-
-**Tasks that fit inside one context are one pass, whether or not one check settles them all.**
-One check settling two tasks makes them one task, which is a different question and is answered
-in the same reference.
-
-These figures are pinned in `.agents/skills/planning-work/reference/estimating.md`, where every
-row carries its sample count. Plan against them as they stand, and leave re-deriving them to a
-person who asks for it.
-
-## A worktree does not isolate a pass here
-
-Every check in this repository runs `docker exec` against a named container with the repository
-bind-mounted at `/app`. A git worktree lives at a different path on the host, and that path is
-not mounted into any container. **A pass working in a worktree therefore has no type check, no
-unit tests, no frontend check and no stack verification**, and it would report success against
-commands that never saw its code.
-
-This is the difference between this repository and the ones that external skills assume. There,
-worktree isolation is free because the toolchain runs on the host.
-
-The isolation that is available instead is the one already in force: **one pass in the main tree
-at a time, on its own branch, waited on, and its diff read before the next pass starts.** Accept
-a branch by squashing it into the working branch under one lowercase line, so the executor's
-intermediate messages do not reach the log. Read the diff with `git diff main...<branch>` rather
-than checking out the base, because whatever branch is checked out is what the containers serve,
-and switching invalidates every check the pass just ran.
-
-**Run no git write command while a pass is live.** One tree means one index. The archive records
-this failing once: a push during a live pass interleaved commits and sent unreviewed work to the
-remote.
-
-## Resolving a conflict
-
-The one shape this tree produces is the working branch moving under a live pass. Before
-touching a hunk, read the intent of both sides, because intent is the input the model
-otherwise lacks.
-
-**Resolve what the intent settles. Stop and ask on what it does not**, unless otherwise stated,
-for example an unattended pass, where the reading that keeps the plan's checks runnable is taken
-and both readings are recorded in `OPEN_QUESTIONS.md`. The best models
-measured on 7,938 real conflict hunks resolve under 60% correctly, and a preserved conflict is
-worth more than a confident wrong merge.
-
-Then run the checks the change owes. `writing-tests`'s `scripts/gate-map.sh` names them.
-
-## Reviewing a pass
-
-**Read the diff. The report is a claim, not evidence.** A pass reporting success on a check
-it did not run reads exactly like a pass reporting success on a check it did run.
-The review report uses the verdict, finding classes, traced paths and correction package in
-`reviewing-changes`.
-
-- `git diff` the whole range the pass touched, and read it.
-- Re-run at least one check the report names, yourself.
-- Look for the two things no check catches: private infrastructure detail, and prose that
-  records the work instead of describing the system.
-- Confirm the prohibitions held. A pass that pushed, deployed or deleted against instruction
-  is a finding regardless of how good its output is.
-
-Assume a real error rate. Passes have been confidently wrong about a code path that did not
-exist and about a violation count off by two orders of magnitude.
-
-## Reporting on a pass you ran
-
-Say which checks you re-ran yourself, and which you took on the pass's word. Those are
-different levels of evidence and collapsing them is how an unverified claim reaches the
-tree.
-
-## References
-
-- `reference/work-package-template.md`, the skeleton, and the sections that are always got
-  wrong.
+Record delivered behavior, remaining requirements, and necessary next actions in the plan.
+If work must stop, preserve current state and the next action using the planning handoff guidance.

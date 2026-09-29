@@ -22,23 +22,20 @@ entry there.
 
 ## How work happens here
 
-- **Everything runs in containers.** The host has almost no tooling. Run python, servers and
-  every stack command inside the right container with `docker exec`. Inspect the
-  infrastructure before you start, rather than assuming which container owns a job.
-- **Read the `Readme.md` beside the code before you change it, and correct it as you go.**
-  Fix what your change makes untrue, and leave the rest alone. Keep documentation patches as
-  small as the code patch that prompted them.
-- **Sub-agents run one at a time**, waited on, self-timeboxed, each with a hand-written work
-  package. Do not run a swarm, do not fan out in parallel, and do not use a sub-agent to
-  avoid thinking.
-- **Plans select one of four roles for each pass.** The roles are `organizer`,
-  `executor-light`, `executor-heavy` and `reviewer`. Apply the rule in `planning-work`.
-  A launch names the role and gives no model or effort value.
-- **Planning uses a `plans/<n>-<slug>/` folder.** Keep the plan and its pass reports there.
-  Do not use a harness planning-mode artifact in place of the folder.
-- **Verify with the stack.** Do not verify from memory. This system's errors routinely name
-  the wrong half of the problem, so confirm what a process actually received before you edit
-  the file that an error points at.
+Deliver the requested outcome with the simplest complete implementation. Preserve explicit requirements.
+Reuse existing code when its contract fits. Add supporting work only when the requested outcome depends on it.
+Record unrelated findings without implementing them. Stop adding work when the agreed acceptance checks pass.
+
+- Run application tooling and stack checks in the appropriate containers. Inspect the actual environment before choosing commands.
+- Read the documentation beside affected code and correct the contract made false by the change.
+- Use scoped `rg` searches. Exclude build roots or name the relevant paths and extensions.
+- Prefer context-aware edits or symbol tools when available. Verify mechanical edits and fail on stale matches.
+- Ask about material product, scope, risk, and irreversible choices. Decide ordinary implementation details within accepted requirements.
+- Preserve existing authorization across turns. A recommendation or unattended mode does not authorize an objective change.
+- Use `plans/<n>-<slug>/` for multi-stage work. Keep one plan unless separate documents have a concrete use.
+- Delegate only when authorized. Run subagents one at a time in the shared checkout and do not edit their owned paths.
+- Select `organizer`, `executor-light`, `executor-heavy`, or `reviewer` by responsibility and risk. The harness supplies model and effort settings.
+- Use explicit user budgets and actual session limits. Historical measurements do not impose task quotas or default call budgets.
 
 ## How to write
 
@@ -118,161 +115,43 @@ edit that adds one.
 
 ## Invariants
 
-- **A commit message is one lowercase line under ~50 characters.** No body, no trailers, and
-  no explanation anywhere in git. `git log --oneline` is a table of contents, and a changelog
-  does not belong there. The message never holds a plan tag in any letter case, such as `w1`,
-  `W2.3` or `D22`. A tag has no meaning outside its plan folder, so name the change itself.
-- **Executors and reviewers run no Git write command.** The organizer stages reviewed owned
-  paths by explicit path. The organizer commits only work the person authorised.
-- **Documentation and comments state what is true now.** No dates, no history of the work,
-  nothing aspirational, and never a reference to `plans/`, which is local scratch that gets
-  wiped. Keep the lesson, drop the anecdote.
-- **Never search recursively without scoping it.** `grep` here is ugrep and does not skip
-  `website/target`. Name the extensions or exclude the build roots. A search that has not
-  returned within seconds is wrong. Stop it and scope it.
-- **Evidence before claims.** Never say something builds, passes, or is fixed unless you ran
-  the check in this turn and read its output. Say which you fixed, the cause or the symptom.
-- **Anything you need from a person is asked, in full, where you say you need it**, unless
-  otherwise stated, for example an unattended pass, where it is written into that plan
-  folder's `OPEN_QUESTIONS.md` instead. Never
-  name a count, such as "three things", "a few decisions" or "some open questions", and then
-  leave the content somewhere else. A request that cannot be acted on from where it is
-  written has not been made. The reader now knows they owe an answer, and does not know what
-  it is. Either write the questions out, or link to the exact section that holds them. This
-  applies hardest at the end of a long reply, where a summary tends to compress them away.
-- **An assumption written into a deliverable is a question that was not asked.** A person's
-  answer often creates the next decision, and that decision belongs in the round that is
-  still open. Naming the assumption in a report does not settle it, because the report is
-  read after the work it governs was written. Before you close a round, read what you are
-  about to write and ask about every value you chose that a person could have chosen. Say
-  the frontier is empty only after that read. Ask with the asking tool, and never in the
-  closing prose of a reply. Unless otherwise stated, for example an unattended pass, where
-  nobody is available to answer, so the question, the choice taken and how to undo it go into
-  `OPEN_QUESTIONS.md` and the run carries on. A question at the end of a message defers its
-  answer by a whole turn, and by then the work it governs is written.
-- **A fact about the environment is checked before it is written into a mechanism.**
-  Repository visibility, a host's owner, a path's tracked status, and a remote's name are all
-  one command away. A default stated in someone's documentation is what a system assumes, and
-  never what is true here. Assert it only after running the check, and name the check beside
-  the assertion.
-- **A new refusal is a decision a person takes.** This covers a hook, a permission rule, a
-  turn limit, and every other mechanism that stops an action the agent could take before.
-  Write it as a question. It lands after a person answers. Three rules bound what may be
-  proposed at all. A repeated instruction becomes evidence only after it is counted in both
-  directions across the whole history, with both counts shown. A rule that carries "unless",
-  "yet" or "for this task" keeps that condition, and no mechanism may remove it. Text the
-  agent wrote, in a handoff, a report or a plan, is never a person asking for something. That
-  holds when a person pastes it back into the conversation.
-- **The organizer changes execution structure inside the approved objective, and a person
-  changes the objective.** The organizer can split, merge, reorder, move, insert or defer passes.
-  Before it starts affected work, it records the change in the plan, package, estimate,
-  coordinator log and `OPEN_QUESTIONS.md`. It keeps the old plan row marked superseded.
-  Adding, dropping or re-scoping an item needs a grilling round first, unless otherwise stated,
-  for example an unattended pass. An unattended change and its reason go into
-  `OPEN_QUESTIONS.md` and stay provisional until a person reads them. The answer goes into the
-  plan folder's answers file. A scope change with no answer behind it is a plan defect.
-- **Reach for the Edit/Write tools or serena's symbol operations first** when changing code.
-  `sed -i` cannot fail loudly on a stale match. It silently changes nothing, while Edit
-  refuses and tells you. Bash editing stays available for the cases where it is genuinely
-  the practical tool. The rule is about which one you try first.
-- **Change the comment in the same patch that changes what it describes.** A stale comment
-  outlives the code it lied about. **An already-applied migration is the exception, because
-  editing one is a breaking change, comments included.** The runner records an md5 of the
-  whole file, so correcting a stale word in one makes it refuse to start on every deployment
-  that already ran it. Ordinary work therefore does not touch `db_global_migrations/` or
-  `db_collection_migrations/`, and the fix belongs in a new numbered file or beside the code
-  that reads the table. Editing one is a decision the repository owner takes, and it comes
-  with resetting every deployment that applied it. When that decision is taken, the register
-  applies to those files like any other.
-- **A change that adds, removes or re-scopes a capability edits its row in
-  `docs/technical-specification/` in the same patch**, never in a follow-up. A capability
-  with no row was never agreed. A row with no code is false. Read the affected rows before
-  you change the feature.
-
-- **A plan costs work in passes, never in developer days.** A pass is one sub-agent
-  invocation, and its cost comes from a measured reference class. Nothing here has ever been
-  measured in developer days, and no estimate in that unit has ever been checked against an
-  outcome. Every plan that schedules work carries an estimate table, and the final report
-  restates it with an actuals column. That column stops the next estimate being copied from
-  the last guess. **The pass count is the number to get right.** An estimate that costs ten
-  passes correctly and needed one is wrong by ten. Items that share one procedure, one check
-  and one context are one task before any of that. **A plan names the role of each pass and its
-  harness.** The model a role maps to moves the cost of the same work by up to fifty times.
-  `planning-work` carries the method.
-- **A task is not a pass, and a pass carries about three tasks.** A task is what one check
-  settles. Measured here: a pass spends 29 tool calls on being a pass before it does any work,
-  its first task costs 80, and a later task in the same context costs 45 and then 22. Three
-  tasks is 175 calls against a packing target of 183, and a hook warns from 162. A plan whose
-  passes each hold one task has bought the fixed part of a pass once for every task, and it is
-  wrong by the number of passes that arithmetic removes.
-- **A pass also costs its coordinator 38 tool calls and $9.00 before it runs**, spent writing
-  the package and reading the diff, and paid again for every pass. A pass starts with a fresh
-  context, so that cost never enters its own budget. It is what packing removes: nine tasks
-  cost 1,319 tool calls as nine passes and 639 as three.
-- **The efficiency floor is 60 percent of a plan's calls spent on work**, being the marginal
-  calls over the pass's calls plus its coordinator's. A one-task pass comes out at 55 percent
-  and fails it. A two-task pass reaches 65. Compute the fraction and write it in the estimate
-  table. **Three tasks is the ceiling too**, unless the package names the task it hands over
-  on reaching the budget, because four is 197 calls and past the target.
-- **The efficiency rule is best effort, and a pass short of work says so.** When the work does
-  not exist, a thinner pass is correct and it carries one line naming what stopped it filling.
-  What is refused is a thin pass nobody noticed. **A pass may open with a review of earlier
-  work and continue into related development**, which is how two half-empty passes become one.
-  Such a pass never reviews its own work, because a reader who is also the author is not a
-  second reader.
-- **There is no verification adder.** Every figure in the reference class already contains the
-  checks the sampled passes ran, so adding a stack verification or a browser walk on top
-  counts those minutes twice. Only a container rebuild and a full stack reset stay additive,
-  and a rebuild is paid once per pass rather than once per task.
-- **A plan carries the text of every item it schedules.** An item taken from a standing list,
-  a defect list or an archived folder is copied into the plan. The copy carries its date and a
-  link back to the source. Those sources are rewritten on their own
-  schedule and can be deleted, so a link on its own is a promise the plan cannot keep. **Copy
-  across a folder boundary, and link inside one**, because two copies of one sentence in one
-  folder drift apart with nobody noticing. `planning-work` carries the method.
-- **The tag letters are fixed, and a plan does not invent its own.** `W1` a work pass, `W1.1`
-  a task inside it, `G1` a scope item, `C1` a cut, `Q1` a question, `D1` a decision. **`P`,
-  `S`, `H` and `E` are forbidden**, because `P0` to `P7` are the pipeline stages, `S3` is the
-  object store, `H1` to `H6` are heading levels and `E5` is the embedding model. The full list
-  of look-alike tokens this tree owns is the `NOT_TAGS` set in `.agents/check-doc-ids.py`, and
-  a tag that appears there is silently excused by the checker. A plan that needs a class this
-  list does not have adds a row to the table in `planning-work` in the same patch.
-- **A short tag never leaves the plan folder that defined it.** Inside one plan folder,
-  letter-and-number tags let a scope table and a result table line up. Outside that folder
-  they are unreadable, so refer to another pass's item by naming it and linking to it. A
-  bare tag in `docs/`, in `.agents/`, or in a `Readme.md` beside code is always wrong.
-- **A document that uses tags opens with a `## Key` table** that gives every tag it
-  mentions, what the tag is, and a link to where it is defined. Expand each tag at its first
-  mention in the body. After that the bare tag is fine, in the way an acronym works. A
-  document whose references cannot be resolved without opening another file has not been
-  written yet. `.agents/check-doc-ids.py` enforces both rules and names every unresolvable
-  tag.
-
-Hooks refuse an unscoped recursive search, a long or multi-line `git commit -m`, and an edit
-that adds a banned phrase or an em dash. The rest hold because you hold them. All of these
-are re-injected after every compaction.
+- A commit message is one lowercase line under about 50 characters, without a body, trailer, or plan tag.
+- Executors and reviewers run no Git write commands. The organizer stages reviewed owned paths explicitly.
+- Commits, pushes, deployments, and external communication require authorization that covers the action.
+- Tracked documentation describes current behavior. Keep working history and proposals in local plans.
+- Tracked files never cite working plans. Preserve durable knowledge in the affected documentation.
+- A claim needs evidence tied to the relevant code, input, and environment. Reuse captured evidence while those conditions remain valid.
+- Run new checks when edits, failures, or uncertainty invalidate that evidence. Distinguish compilation, runtime, browser, and model-behavior claims.
+- Ask material questions in full through the available asking tool. Continue independent work while an answer is pending.
+- A new refusal or capability restriction needs the person's decision. Preserve conditions attached to existing authorization.
+- The organizer may reorder or split implementation inside the accepted objective. Record material execution changes once in the plan.
+- Adding, dropping, or changing a requested capability needs the person's decision, including during unattended work.
+- Verify environment facts before relying on them. Do not treat documentation defaults as observed state.
+- Change affected comments with the code they describe.
+- Do not edit an applied migration, including comments. The runner verifies a checksum of the complete file.
+- Use a new migration or change the reader unless the owner explicitly authorized resetting deployments that applied the migration.
+- A capability change updates its row in `docs/technical-specification/` in the same patch.
+- Preserve shared constants, storage identities, access checks, idempotency, and cancellation contracts when simplifying code.
+- Keep plan tags inside their defining folder. Define each short tag in a Key table when using tags.
+- Preserve local plan evidence when archiving. A gitignored folder may have no recoverable copy.
 
 ## Skills
 
-Skills live in `.agents/skills/<name>/SKILL.md`. `.claude/skills` symlinks to that
-directory. If your harness does not follow symlinks, read that literal path and load the
-skill yourself. Rules in `.agents/rules/` load on their own when you open a file they cover.
+Skills provide repository-specific procedures when relevant. Load only the procedure needed for the current task.
+They live in `.agents/skills/<name>/SKILL.md`. `.claude/skills` links to that directory.
+Rules in `.agents/rules/` apply beside the code they govern.
 
-| when you are about to | invoke |
+| Task | Relevant skill |
 |---|---|
-| find a symbol, a caller, a config key, or a section of a long Readme | `finding-code` |
-| change code, rename something, apply one edit across files | `editing-code` |
-| write a test, fix a bug, or find out what a change endangers | `writing-tests` |
-| say it works, is fixed, or passes (build, test, check, browser pass) | `verifying-before-claiming` |
-| start or archive an epic, write a prompt/report pair, fan out artefacts | `planning-work` |
-| hand work to a sub-agent | `running-consecutive-subagents` |
-| run out of room, pause unfinished work, or hand a job to a fresh session | `writing-handoffs` |
-| run a whole plan folder overnight, headless, with nobody to ask | `running-unattended` |
-| write or fix a `Readme.md`, a docstring, or a comment | `writing-project-docs` |
-| review a diff before committing | `reviewing-changes` |
-| deploy, rebuild, reset, or wait on a long job | `deploying-the-stack` |
-| chase a hang, a connection failure, an OOM, an empty result | `debugging-the-stack` |
-| make ingestion or search faster, or tune Temporal | `tuning-the-pipeline` |
-| query ClickHouse, Manticore or Garage | `querying-the-datastores` |
-| work on the demo box or the GPU box | `operating-remote-hosts` |
-| take a screenshot or click through the UI | `driving-the-browser` |
+| Plan multi-stage work or prepare a handoff. | Use `planning-work`. |
+| Delegate an authorized assignment. | Use `running-consecutive-subagents`. |
+| Run explicitly unattended work. | Use `running-unattended`. |
+| Review a diff. | Use `reviewing-changes`. |
+| Select tests or verify a result. | Use `verifying-before-claiming`. |
+| Update documentation or comments. | Use `writing-project-docs`. |
+| Diagnose a runtime failure. | Use `debugging-the-stack`. |
+| Deploy or restart an authorized service. | Use `deploying-the-stack`. |
+| Verify a page or interaction. | Use `driving-the-browser`. |
+| Inspect stored data. | Use `querying-the-datastores`. |
+| Work on an authorized remote deployment. | Use `operating-remote-hosts`. |
+| Improve measured pipeline performance. | Use `tuning-the-pipeline`. |

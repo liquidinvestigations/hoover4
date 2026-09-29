@@ -1,130 +1,29 @@
 ---
 name: deploying-the-stack
-description: Brings the stack up, rebuilds it, resets it, and waits on the long jobs that result. Use when asked to "deploy", "redeploy", "rebuild", "bring it up", "restart the stack", "reset", "wipe the data", "apply the config change", or when a change to a Dockerfile, a compose file or the configuration has to take effect. Covers `./deploy` and every flag, the configuration flow from the one ini file into the generated environment files, why bringing containers up is not a deployment, the flag combination that silently does not rebuild, restarting a single container under Podman, and how to run a long build without losing its output or killing something already in flight.
+description: Deploy or restart the authorized part of the hoover4 stack, with configuration generation and worker drain handling.
 allowed-tools: Bash, Read, Grep, Glob
 ---
 
 # Deploying the stack
 
-`./deploy` at the repository root is the only entry point. It renders configuration, then
-drives the container runtime.
+Inspect the target containers and active jobs before starting.
+Use the local infrastructure inventory for the target environment.
+Confirm the authorized deployment scope and preserve unrelated services.
 
-```
-./deploy                    # main stack up
-./deploy --build            # build images first, then up
-./deploy --ai-services      # the standalone GPU tier instead
-./deploy --down             # stop the selected side
-./deploy --reset            # down, then empty the side's volume folders
-./deploy --reset-caches     # with --reset: also wipe the model caches
-./deploy --reset-temporal   # drop Temporal's history and visibility stores only
-./deploy --print-env        # render the environment files and show them, start nothing
-./deploy --print-command    # show the compose invocation, run nothing
-```
+`hoover4.ini` owns configuration. The deployment generates environment files.
+Read [deploy flags](reference/deploy-flags.md) before selecting a build or reset operation.
+A normal bring-up does not prove that an image was rebuilt.
 
-## Before you deploy anything
+Use `scripts/deploy-logged.sh` to preserve output and the deployment exit status.
+Verify the source or image that the changed service actually loads.
+Keep build parallelism within the configured resource limit.
 
-**Check what is in flight.** A deploy restarts containers, and the end-to-end verification
-runs for tens of minutes inside the worker. Restarting it kills the run outright. Batch
-your fixes so one restart serves several.
+Restart a worker through `main_services/restart-worker.sh` so it receives the intended drain period.
+A bare container restart can interrupt active work.
+For a single Compose service, use `--no-deps` when dependency recreation is outside the requested change.
+On Podman, an exited init dependency can prevent restart. Verify whether the old container remained running.
 
-```
-docker ps --format '{{.Names}}\t{{.Status}}'
-uptime                      # someone else's build may already own the machine
-```
-
-## Configuration flows one way
-
-`hoover4.ini` (gitignored, and the two templates beside it are `hoover4.ini.release`, the
-default, and `hoover4.ini.development`, which turns on a container that bypasses
-sign-in) is the single source. `deploy.py` renders it into the generated `.env` files
-next to the compose files.
-**Never hand-edit a generated `.env`**. The next deploy overwrites it, and the change looks
-like it worked until then.
-
-- **Ports are configuration keys, not literals.** Read the key; never hard-code the number.
-- **Secrets are files outside the repository**, bind-mounted read-only. No key value ever
-  goes into a tracked file, a script, or a log line.
-- **A key that is rendered and read by nothing is false.** When you add one, grep for its
-  consumer in the same change, or write it down as not-yet-implemented.
-
-## Four things that behave differently from how they read
-
-**`up -d` is a no-op with opinions rather than a deployment.** It reuses existing images and
-containers, so a broken build context, a changed ignore file and new environment all stay
-invisible until something forces a rebuild or a recreate. After changing anything that feeds
-a build, run `--build` and *read the output*.
-
-**`--reset --build` does not rebuild.** The reset path returns before the build path is
-reached. It is two commands: `./deploy --reset`, then `./deploy --build`.
-
-**Restarting one container fails under Podman when a sibling has legitimately exited.** The
-compose condition `service_completed_successfully` becomes a Podman container dependency.
-`docker restart <name>` then refuses because the init container is `Exited (0)`, which is its
-correct final state. The error reads `some dependencies of container <id> are not started:
-<id>: container state improper`, and the second id is the init container. Podman refuses before
-it stops anything, so the container keeps its old code. `docker stop <name>` followed by
-`docker start <name>` works, and the start runs the init container again.
-
-**Bringing one service up recreates its whole dependency chain**, and has taken the fleet down
-doing it. `--no-deps` is required whenever a single service is the target.
-
-**A backend change needs the website container stopped and started before it is being served.**
-The type check passes against the source on disk; the running server keeps answering from what
-it already loaded. The symptom is a request behaving the way it did before your patch, which
-reads as your patch being wrong. One pass caught this only because a dispatch it had just
-rewritten still did the old thing.
-
-**`stop_grace_period` is honoured only when the runtime is itself the process stopping the
-container.** It is not written onto the container and cannot be set afterwards, so the
-container carries the runtime's own ten-second default however the compose file is configured.
-A deploy prints the number really in force. **Restart the worker with
-`main_services/restart-worker.sh`**, which passes the period explicitly. A bare stop or
-restart cuts the drain short, silently, and a cut drain is how in-flight activities are lost.
-
-**Relative paths in a compose file resolve against the project directory** (the first `-f`
-file's directory) not against the file that declares them. An overlay in a subdirectory
-therefore points somewhere else entirely from where it reads as pointing.
-`docker compose … config` renders absolute paths; use it whenever an overlay is added or
-moved.
-
-## Reading a build
-
-Never judge a build from the last fifty lines. Redirect the full output to a file and grep
-it:
-
-```
-.agents/skills/deploying-the-stack/scripts/deploy-logged.sh --build
-```
-
-It writes the whole run to a file, prints the exit status on its own line, and shows the
-error context if there is any. A truncated log has cost a full rebuild cycle here more than
-once.
-
-**Build parallelism is bounded by one build argument**, which feeds every backend's own
-spelling of it. The make, cmake, cargo and thread-cap variables are set as a group.
-Missing one of them loses the bound and takes the machine down with it.
-
-## Waiting on it
-
-Background the run and keep working. A monitor that emits only on failure signatures beats
-polling, but make sure its filter would fire on a crash, because silence must not be
-indistinguishable from success. See `reference/long-jobs.md`.
-
-## After a deploy
-
-Confirm from **inside** the network, not from the host: a service being up on the host proves
-nothing about whether the container that needs it can reach it.
-
-```
-docker exec hoover4-worker curl -sS --max-time 5 http://<service>:<port>/health
-.agents/skills/verifying-before-claiming/scripts/stack-status.sh
-```
-
-If something is wrong, `debugging-the-stack` routes by symptom.
-
-## References
-
-- `reference/deploy-flags.md`, what each flag actually does, what a reset preserves, and
-  the order the pieces come up in.
-- `reference/long-jobs.md`, backgrounding, monitoring on failure signatures, and not
-  disturbing a verification.
+Use rendered Compose configuration to verify relative paths.
+Verify service reachability from the consuming container after the change.
+Read [long jobs](reference/long-jobs.md) when the operation continues beyond one tool call.
+Keep communicating while it runs and do not disturb another active verification.

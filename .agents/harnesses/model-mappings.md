@@ -1,7 +1,7 @@
 # Model mappings
 
 These names match the project role definitions. Update this table when a configured model
-changes. The gates in `docs/development/Choosing_A_Model.md` define how a model qualifies.
+changes. `docs/development/Choosing_A_Model.md` describes how to assess a proposed change.
 
 ## The mappings
 
@@ -31,26 +31,11 @@ can retain role definitions that changed on disk. Start a fresh session to use c
 Claude accepts a per-invocation model value that takes precedence over the role file. The
 organizer omits that value. Codex role files point to the Claude role instructions. Cursor
 role files are generated from the Claude role files with Cursor model identifiers.
-Claude and Codex executor models have a one-million-token window in the recorded model data.
-Cursor has not published a Composer 2.5 context window. Apply the lower of the 60 percent
-window limit and the pass cap when sizing a package.
+Verify actual context limits when changing a model mapping.
+A configured context limit does not create a default tool-call budget.
 
-## Four things the table does not make clear
+## Comparing models
 
-**Composer 2.5 has an unpublished context window.** Use it only when the pass peak is known
-to fit.
-
-**Antigravity uses the Flash line for both candidates.** The current Flash line leads the Pro
-line on the published coding benchmarks cited in the model selection research.
-
-**Kimi's executor has a 262K window.** Its 60 percent budget is about 157,000 tokens.
-That value is below the 250,000 pass cap, so the lower limit applies.
-
-**A model whose whole window equals the pass cap fails the context gate.** This excludes the
-cheapest model in several families by calculation.
-
-## Reading a leaderboard
-
-Benchmark results differ across harnesses, scaffolds, reasoning settings and collection dates.
-A single-patch score gives limited evidence for a pass that uses many tools against a live stack.
-Qualify a model with the acceptance trial in `docs/development/Choosing_A_Model.md`.
+Benchmark results differ across harnesses, reasoning settings, and workloads.
+Use representative repository tasks when a model comparison is requested.
+The model-selection guidance describes what to measure without imposing a fixed pass cap.
