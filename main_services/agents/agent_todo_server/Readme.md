@@ -34,32 +34,37 @@ select another list.
 ## The plan tools
 
 The same server serves the plan tools of a deep research plan, in `plan_tools.py`:
-`read_plan`, `append_node`, `append_child`, `move_node`, `edit_node`, `remove_node`,
-`read_plan_document` and `read_plan_report`. The tree rules and the storage are in
+`read_plan`, `write_plan`, `read_plan_document` and `read_plan_report`. The tree rules and the storage are in
 [`../../processing/database/agent_plans.py`](../../processing/database/agent_plans.py),
 which the worker reads as well.
 
 The server reads the agent run id from `X-Hoover4-Agent-Run`, reads that run's
 `agent_runs` row under the owner from the other two headers, and takes its `plan_run_id`.
-A sub-agent row copies the `plan_run_id`, so the sub-agents of a planner reach the plan too.
+A sub-agent row copies the `plan_run_id`, so the sub-agents of a plan reach the plan too.
 **No role check exists.** The plan run state is the only rule: a change is accepted only in
 `planning` or `revising`. After approval `read_plan` returns the approved version.
 
-`read_plan` shows each node with its outline number (`root`, `1`, `1.2`).
-Every node argument accepts that number or the stored id. A refusal lists numbers and text.
-Each mutation takes the version of the last plan result. Calls of one reply can give the same
-version. A call is refused if a later change moved or removed a node that its number names.
+`read_plan` shows each node with its outline number (`root`, `1`, `1.2`). Each top-level
+node is a section, which one researcher runs with every node under it.
 
-**One change of a plan at a time.** Each version is one row, so two parallel changes that
-read the same version would lose one of them. The server holds one `asyncio.Lock` for each
-plan run. A change takes the lock, reads the newest version, writes version plus one, and
-releases the lock. This holds because the server runs as one process in one container.
+**A whole tree for each write.** `write_plan(version, children)` takes the root's children as
+nested nodes. Each node has `text`, `children`, and optionally `node_id`: the stored id or the
+outline number of a node of the current tree, which keeps that node's identity. A node with no
+`node_id` gets a new id from the write key and its place in the tree. A node that the call
+leaves out is removed. The root keeps its id and its text. The tree holds at most 4 sections
+and 150 nodes.
 
-**One version for each mutation key.** A change that carries a UUID in
+**One writer at a time, at the exact version.** Each version is one row. The server holds one
+`asyncio.Lock` for each plan run. A write takes the lock, reads the newest version, and writes
+version plus one only when the call names the newest version. A call that names another
+version gets `stale_version` with the current tree, and nothing is written. This holds because
+the server runs as one process in one container.
+
+**One version for each write key.** A write that carries a UUID in
 `X-Hoover4-Idempotency-Key` stores it on the version it writes, in the `idempotency_key`
-column of `agent_plan_snapshots`. A second change with that key writes nothing and returns
-that version. A change with no key, or with a value that is not a UUID, writes a new
-version each time.
+column of `agent_plan_snapshots`. A second write with that key returns that version before
+the version test, and writes nothing. A write with no key, or with a value that is not a
+UUID, needs the current version.
 
 **A report is read in pages.** `read_plan_report(node_id, cursor)` reads the typed report
 (`report_data` document) of the newest sub-agent thread of a node, which the worker writes

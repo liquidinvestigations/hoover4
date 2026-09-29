@@ -324,10 +324,8 @@ def test_the_served_schema_of_a_todo_tool_is_the_designed_one(name):
     assert got["properties"] == want["properties"]
 
 
-def test_the_plan_tool_positions_are_whole_numbers_from_0():
+def test_the_plan_document_offset_is_a_whole_number_from_0():
     schemas = served_schemas()
-    assert schemas["move_node"]["properties"]["position"] == {
-        "type": "integer", "minimum": 0, "default": 0}
     assert schemas["read_plan_document"]["properties"]["offset"] == {
         "type": "integer", "minimum": 0, "default": 0}
 

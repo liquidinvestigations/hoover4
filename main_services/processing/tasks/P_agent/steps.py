@@ -11,10 +11,10 @@ and result hold ids, counts and tool names.
   the call, a `compaction` row follows the `ai` message.
 * `tool_call` sends `POST /tool_call` for one stored call and writes its `tool` message and
   its finished tool row.
-* `delegate_step` writes the children of the `run_subagent` calls of the last reply.
-* `prepare_continuation` adds the children's reports to the thread of a continuation.
+* `prepare_continuation` adds the outcome of each section to the thread of a continued
+  organizer.
 * `record_step_failure` stores a `tool_unavailable` result for a tool step that failed.
-* `plan_has_sections` answers whether the planner wrote a plan section.
+* `plan_has_sections` answers whether the planner's tree has a section: a child of the root.
 * `check_citations` checks the citation labels of an answer or a question, and writes the
   note of its one repair round when the check asks for one.
 * `write_empty_note` writes the note after the first reply with no text and no call. The
@@ -45,8 +45,8 @@ from temporalio.exceptions import CancelledError
 
 from tasks.heartbeat import with_heartbeat
 from tasks.P_agent.activities import (
-    DELEGATION_TOOL, CallRef, RunSummary, _add_continuation_results, _delegate,
-    _finish_stream_rows_from, _insert_chat_row, agent_url_for, call_refs, canonical_json,
+    CallRef, _add_section_reports, _finish_stream_rows_from, _insert_chat_row, agent_url_for,
+    call_refs, canonical_json,
 )
 from tasks.P_agent import thread_facts
 from tasks.P_agent.model_timeouts import STEP_HEARTBEAT_SECONDS
@@ -70,7 +70,7 @@ RETRY_MARKER_KEY = "retry_marker"
 EMPTY_RETRY_MARKER = "empty_reply"
 
 #: The chat role of a note to the model that the transcript shows: the empty-reply note,
-#: the note warning, the citation note and the note of the planner's extra round. It is not
+#: the citation note and the note of the planner's extra round. It is not
 #: the user speaking. Mirrored as `ChatRole::Nag` in `website/common/src/chat_types.rs`.
 NOTE_ROLE = "nag"
 
@@ -78,8 +78,7 @@ NOTE_ROLE = "nag"
 #: these tools run one after the other, in the order of the reply, because each one reads
 #: the state that the call before it wrote.
 STATE_TOOLS = frozenset({
-    "append_node", "append_child", "move_node", "edit_node", "remove_node", "read_plan",
-    "write_todo", "edit_todo", "mark_todo", "read_todo",
+    "write_plan", "read_plan", "write_todo", "edit_todo", "mark_todo", "read_todo",
 })
 
 
@@ -122,14 +121,6 @@ SUMMARY_NOTICE = (
 )
 
 
-#: The note warning, written as a `human` row after a reply whose `model_turn` frame sets
-#: `note_warning`. Mirrors `NOTE_WARNING_TEXT` in the research agent's `compaction.py`,
-#: which decides when the warning is due and finds it by its start. The images share no
-#: module, so a test compares the two strings.
-NOTE_WARNING_TEXT = (
-    "Your context is at {pct} percent of its limit. The older steps of this run will soon "
-    "be replaced by a record. Save each fact that you need later with `write_note` now."
-)
 #: The chat role of the compaction line: one row for each compaction of a run that writes
 #: the transcript, at the first seq of its step.
 COMPACTION_ROLE = "compaction"
@@ -217,9 +208,10 @@ class StepFailure(StepRef):
 def tool_idx(ai, position: int) -> int:
     """The thread index of the `tool` message of call `position` of the `ai` message.
 
-    The calls that are not delegations take the indexes after the `ai` message in reply
-    order, and the delegations follow them. When the reply has a `compaction` row, the row
-    takes the index after the `ai` message, and the results start one index later.
+    The calls take the indexes after the `ai` message in reply order. A stored reply of an
+    older run placed its `delegation` calls after the others. When the reply has a
+    `compaction` row, the row takes the index after the `ai` message, and the results start
+    one index later.
     """
     entries = ai.tool_calls
     first = ai.idx + 1 + (1 if ai.usage.get("compaction") else 0)
@@ -258,14 +250,10 @@ def _step_run(row, params: StepRef) -> dict[str, Any]:
         "run_id": row.run_id,
         "kind": row.kind,
         "depth": row.depth,
-        # The purpose of a plan sub-agent. The agent service takes `execute` and `correct`
-        # only, so a `review` row of an older plan run sends none.
-        "purpose": row.purpose if row.purpose in ("execute", "correct") else None,
         "username": row.username,
         "session_id": row.session_id,
         "allowed_collections": list(params.allowed_collections or []),
         "llm_model": params.llm_model or _chat_model(),
-        "can_delegate": row.kind == "organizer" and row.depth == 0,
     }
 
 
@@ -416,8 +404,10 @@ def _write_compaction(row, ai, record: dict) -> None:
 def compaction_line(record: dict, tokens_after: int, parts: int = 0) -> dict:
     """The done content of the compaction line, from the stored record of the reply.
 
-    `parts` is the count of summary parts that the `compaction` frame gave. `part_states`
-    holds `ok` or `failed` for each part, from the record.
+    A version 3 record gives `summary_state`, `ok` or `failed`, and its summary as `record`.
+    A version 2 record gives `part_states`, `ok` or `failed` for each summary part, and its
+    handoff as `record`. `parts` is the count of summary requests that the `compaction`
+    frame gave.
     """
     states = [str(s) for s in record.get("parts") or []]
     return {"state": "done", "tokens_before": int(record.get("tokens_before") or 0),
@@ -425,7 +415,8 @@ def compaction_line(record: dict, tokens_after: int, parts: int = 0) -> dict:
             "tokens_after": int(tokens_after or 0),
             "steps_summarised": int(record.get("steps_summarised") or 0),
             "target_reached": bool(record.get("target_reached")),
-            "record": str(record.get("handoff") or ""), "part_states": states}
+            "record": str(record.get("summary") or record.get("handoff") or ""),
+            "part_states": states, "summary_state": str(record.get("status") or "")}
 
 
 def _stored_compaction(messages, ai) -> Optional[dict]:
@@ -437,32 +428,6 @@ def _stored_compaction(messages, ai) -> Optional[dict]:
             except ValueError:
                 return None
     return None
-
-
-def note_warning_text(ai) -> str:
-    """The note warning for a reply. The percent is the reply's tokens against the stated
-    window of its model, and 0 when the catalogue states none."""
-    from tasks.P_agent.stream_writer import context_window_for
-
-    used = int(ai.usage.get("input_tokens") or 0) + int(ai.usage.get("output_tokens") or 0)
-    window = context_window_for(str(ai.usage.get("model") or ""))
-    return NOTE_WARNING_TEXT.format(pct=round(100 * used / window) if window else 0)
-
-
-def _write_note_warning(row, ai, seq: int) -> int:
-    """The note warning as a `human` row at `reply_end_idx(ai)`, and for a run that writes
-    the transcript, as a `nag` chat row at `seq`. Returns the next free seq."""
-    from database import agent_runs
-
-    text = note_warning_text(ai)
-    agent_runs.write_message(
-        row.username, row.session_id, row.thread_id, row.run_id,
-        agent_runs.RunMessageRow(idx=reply_end_idx(ai), role="human", content=text,
-                                 run_id=row.run_id))
-    if not agent_runs.writes_transcript(row):
-        return seq
-    _insert_chat_row(row.username, row.session_id, seq, NOTE_ROLE, content=text)
-    return seq + 1
 
 
 def _read_row(params: StepRef):
@@ -526,10 +491,6 @@ def _write_calls(row, params: ModelStepParams, ai, writer, stream) -> ModelStepR
         stream.tool_rows(entries)
     calls_end = max([row.next_seq] + [int(e.get("seq") or 0) + 1 for e in entries])
     next_seq, next_idx = calls_end, reply_end_idx(ai)
-    if ai.usage.get("note_warning"):
-        # The seq after the calls is the same on a retry, so the rows are the same.
-        next_seq = max(row.next_seq, _write_note_warning(row, ai, calls_end))
-        next_idx += 1
     writer.write(next_seq=next_seq, model_steps=max(row.model_steps, params.step_no),
                  **_step_tokens(row, params.step_no, ai.usage))
     return ModelStepResult(outcome="calls", calls=call_refs(ai), next_seq=next_seq,
@@ -650,8 +611,7 @@ def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str,
     `model` is the model that the service answered with, or the model of the request.
 
     Each call entry gets its `position` in the reply and its transcript `seq`. The seqs
-    start at `seq0`, else at the row's `next_seq`, in call order, and the delegations take
-    the last ones, so the seqs of one delegation batch are consecutive.
+    start at `seq0`, else at the row's `next_seq`, in call order.
     """
     from database import agent_runs
 
@@ -661,15 +621,13 @@ def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str,
         entry["position"] = position
         entries.append(entry)
     seq = row.next_seq if seq0 is None else seq0
-    for entry in ([e for e in entries if e.get("kind") != "delegation"]
-                  + [e for e in entries if e.get("kind") == "delegation"]):
+    for entry in entries:
         entry["seq"] = seq
         seq += 1
     usage = dict(turn.get("usage") or {})
     usage.update(step_no=params.step_no,
                  summarised=bool(turn.get("summarised")), model=model,
-                 compaction=bool(turn.get("compaction")),
-                 note_warning=bool(turn.get("note_warning")))
+                 compaction=bool(turn.get("compaction")))
     ai = agent_runs.RunMessageRow(
         idx=idx, role="ai", content=str(turn.get("text") or ""),
         reasoning=str(turn.get("reasoning") or ""), tool_calls_json=json.dumps(entries),
@@ -714,9 +672,9 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
     5. A `compaction` frame of a run that writes the transcript writes the compaction line
        at `row.next_seq` in its running state, and every later seq of the step moves up by
        one. The `end` frame rewrites the line in its done state (`compaction_line`).
-    6. A reply with calls gets its seqs (delegations last), the `ai` message, the
-       `compaction` row when the service sent one, one live tool row for each call, the
-       note warning when the `model_turn` frame asks for it, and the run row. Every call
+    6. A reply with calls gets its seqs, the `ai` message, the
+       `compaction` row when the service sent one, one live tool row for each call, and the
+       run row. Every call
        of the reply runs. A reply with no call gets the `ai` message, the answer row and
        the run row with the result. A reply with no text and no call writes no answer and
        gives `empty` or `empty_again`.
@@ -1006,56 +964,22 @@ def record_step_failure(params: StepFailure) -> None:
 
 @activity.defn
 @with_heartbeat
-def delegate_step(params: StepRef) -> Optional[RunSummary]:
-    """Write the children of the `run_subagent` calls of the last reply, and the waiting
-    state. Returns None when no delegation call is left unanswered."""
-    from database import agent_runs
-
-    row = _read_row(params)
-    if agent_runs.is_terminal(row):
-        return RunSummary(outcome="closed", next_seq=row.next_seq)
-    messages = _read_thread(row)
-    last_ai = _last_ai(messages)
-    if last_ai is None:
-        return None
-    entries = [e for e in last_ai.tool_calls
-               if e.get("kind") == "delegation" and e.get("name") == DELEGATION_TOOL
-               and _answer_of(messages, str(e.get("id") or "")) is None]
-    if not entries:
-        return None
-    calls = [(str(e.get("id") or ""),
-              [b for b in (e.get("briefings") or []) if isinstance(b, dict)]) for e in entries]
-    seqs = [int(e.get("seq") or 0) for e in entries]
-    summary = _delegate(row, calls, seqs, agent_runs.RunRowWriter(row), _chat_row(row))
-    if agent_runs.writes_transcript(row):
-        _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid, min(seqs))
-    return summary
-
-
-@activity.defn
-@with_heartbeat
-def prepare_continuation(params: StepRef) -> CallRef | None:
-    """Add the result of each `run_subagent` call of the continued run to the thread.
-    Return the successful question from that reply, when it has one."""
+def prepare_continuation(params: StepRef) -> None:
+    """Add the outcome of each section to the thread of a continued organizer
+    (`activities._add_section_reports`). A retry writes the message once."""
     from database import agent_runs
 
     row = _read_row(params)
     if agent_runs.is_terminal(row) or not row.continues_run_id:
-        return None
-    messages = _add_continuation_results(row, _read_thread(row), _chat_row(row))
-    ai = _last_ai(messages)
-    if ai is None:
-        return None
-    return next((call for call in call_refs(ai)
-                 if call.name == "ask_user" and (answer := _answer_of(messages, call.call_id))
-                 and answer.usage.get("status") == "ok"), None)
+        return
+    _add_section_reports(row, _read_thread(row))
 
 
 @activity.defn
 @with_heartbeat
 def plan_has_sections(params: StepRef) -> bool:
     """Whether the newest snapshot of the planner's plan has a section, by the rule of
-    `agent_plans.sections`: a node with at least one leaf child, the root included."""
+    `agent_plans.sections`: a direct child of the root."""
     from database import agent_plans
 
     row = _read_row(params)
@@ -1227,7 +1151,7 @@ __all__ = [
     "INCOMPLETE_REASONS", "IncompleteParams", "ModelRequestRejected", "ModelStepParams",
     "ModelStepResult", "NOTE_ROLE", "STEP_BUDGET", "StepFailure", "StepRef",
     "ToolCallParams", "ToolCallResult", "canonical_json", "check_citations",
-    "CitationCheckParams", "CitationRepair", "delegate_step",
+    "CitationCheckParams", "CitationRepair",
     "is_browser_tool", "is_retry_marker", "model_step", "plan_has_sections",
     "prepare_continuation", "record_step_failure", "runs_in_browser", "runs_in_order",
     "tool_call", "tool_idx", "write_asked_answer", "write_empty_note", "write_incomplete",

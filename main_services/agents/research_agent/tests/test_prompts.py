@@ -85,8 +85,8 @@ def test_the_full_chat_lead_lists_every_tool_and_every_skill():
     text = rendered("full_research", skills=skills)
     names = listed_lines(text)
     tools = [n for n in names if n in EVERY_TOOL]
-    assert sorted(tools) == sorted(EVERY_TOOL - PACKS["delegation"])
-    assert len(tools) == 52
+    assert sorted(tools) == sorted(EVERY_TOOL)
+    assert len(tools) == 48
     assert [n for n in names if n not in EVERY_TOOL] == [s.name for s in skills]
 
 
@@ -157,9 +157,10 @@ def test_a_run_with_no_todo_writers_has_no_todo_rule():
     assert "Your todo list" in rendered("full_research")
 
 
-def test_no_purpose_renders_a_verdict_block():
-    for purpose in ("execute", "correct"):
-        assert "verdict" not in rendered("research_subagent", purpose=purpose)
+def test_no_role_renders_a_verdict_block_or_a_delegation_tool():
+    for profile in ("research_subagent", "organizer", "planner"):
+        text = rendered(profile)
+        assert "verdict" not in text and "run_subagent" not in text
 
 
 def test_no_readable_collection_is_said_plainly():

@@ -3,10 +3,11 @@
 A pack is a named set of tool names. Configuration gives the chat lead, the planner and the
 organizer a set of packs each (`AGENT_PACKS_CHAT`, `AGENT_PACKS_PLANNER`,
 `AGENT_PACKS_ORGANIZER`, rendered by `deploy.py` from `hoover4.ini`). A sub-agent has no
-setting of its own. Only the organizer starts sub-agents, and a sub-agent reads the
-organizer's setting, so it gets its parent's packs. The research agent sends, runs and lists
-in its catalogue only the tools of the run's packs. A tool that an MCP server lists and no
-pack names is refused for every run.
+setting of its own. The sub-agents of a plan run its sections, so a sub-agent reads the
+organizer's setting. No run kind can start a sub-agent: the worker starts one for each
+section of an approved plan. The research agent sends, runs and lists in its catalogue only
+the tools of the run's packs. A tool that an MCP server lists and no pack names is refused
+for every run.
 
 The `skills` pack holds the three skill tools, `ask_user` and the notes tool `write_note` of
 the research agent. `packs_for` adds it to every run kind, also when the configured list
@@ -35,9 +36,7 @@ PACKS: Dict[str, FrozenSet[str]] = {
         "folder_list", "folder_search", "read_more",
     }),
     "conversation": frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"}),
-    "plan": frozenset({"read_plan", "append_node", "append_child", "move_node", "edit_node",
-                       "remove_node", "read_plan_document", "read_plan_report"}),
-    "delegation": frozenset({"run_subagent"}),
+    "plan": frozenset({"read_plan", "write_plan", "read_plan_document", "read_plan_report"}),
     "web": frozenset({"web_search", "list_search_sources", "whois_lookup", "read_page"}),
     "browser": frozenset({"browser_navigate", "browser_snapshot", "browser_click",
                           "browser_type", "browser_select_option", "browser_press_key"}),
@@ -54,6 +53,10 @@ ALL = "all"
 
 #: The pack that every run kind gets, whatever its setting says.
 ALWAYS_PACK = "skills"
+
+#: Pack names that a setting can still hold and that select nothing: `delegation` held
+#: `run_subagent`, which no run kind has now.
+RETIRED_PACKS = frozenset({"delegation"})
 
 
 def env_name(kind: str) -> str:
@@ -73,24 +76,23 @@ def packs_for(kind: str, configured: str) -> FrozenSet[str]:
     """Return the pack names of one run kind.
 
     `configured` is a comma list of pack names, or `all`. An empty value means `all`,
-    because compose renders an unset key as an empty string. An unknown pack name or an
-    unknown run kind raises `ValueError`. The result always holds `ALWAYS_PACK`.
+    because compose renders an unset key as an empty string. A name of `RETIRED_PACKS` is
+    left out. An unknown pack name or an unknown run kind raises `ValueError`. The result
+    always holds `ALWAYS_PACK`.
     """
     if kind not in RUN_KINDS:
         raise ValueError(f"unknown agent run kind {kind!r}, expected one of {RUN_KINDS}")
     value = (configured or "").strip()
     if not value or value == ALL:
-        names = frozenset(PACKS)
-        return names if kind == "organizer" else names - {"delegation"}
+        return frozenset(PACKS)
     names = frozenset(part.strip() for part in value.split(",") if part.strip())
-    unknown = sorted(names - set(PACKS))
+    unknown = sorted(names - set(PACKS) - RETIRED_PACKS)
     if unknown:
         raise ValueError(
             f"{env_name(kind)} names unknown tool packs {unknown}. "
             f"The packs are {sorted(PACKS)}, or {ALL!r}."
         )
-    selected = names | {ALWAYS_PACK}
-    return selected if kind == "organizer" else selected - {"delegation"}
+    return (names - RETIRED_PACKS) | {ALWAYS_PACK}
 
 
 def allowed_tools(kind: str, configured: str) -> FrozenSet[str]:

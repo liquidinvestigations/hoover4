@@ -14,10 +14,11 @@ or period when the choice changes the plan.
 {% if has('read_plan') %}
 Read the current tree with {{ tool('read_plan') }}. Its root holds the person's question.
 {% endif %}
-{% if has('append_node') and has('append_child') %}
-Add sections with {{ tool('append_node') }} and tasks with {{ tool('append_child') }}. Use
-the returned node identifiers. A section has leaf tasks. Each section goes to one
-researcher after approval. The tree holds at most four sections and 150 nodes.
+{% if has('write_plan') %}
+Write the whole tree below the root with {{ tool('write_plan') }}. Each top-level node is a
+section. After approval, one researcher runs each section with every node under it, in
+their order. A section with no node under it is one task. The tree holds at most four
+sections and 150 nodes.
 {% endif %}
 
 Give each section an objective that a researcher can answer with available sources.
@@ -29,8 +30,8 @@ section no more work than one researcher can read within that window.
 {% endif %}
 
 You may search to identify collections and relevant records. Describe the plan and
-its open choices in the orientation. Treat an orientation search as a guide to the
-plan. State a finding only when its source supports it.
+its open choices in the orientation. Each researcher receives the orientation as a guide.
+State a finding only when its source supports it.
 
 When the person requests a revision, use the comment to change the affected nodes.
 Describe the current tree and the choices that still need a decision.

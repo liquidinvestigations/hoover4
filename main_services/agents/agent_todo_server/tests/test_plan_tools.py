@@ -4,10 +4,11 @@ Storage is replaced with dicts, so no ClickHouse is needed. The tree rules that 
 real ones in `database.agent_plans`. Each store call sleeps briefly, so two mutations that
 did not take the lock would read the same version and one change would be lost.
 
-Cases: `frozen-plan` (no mutation after approval, and `read_plan` shows the approved
-version), two parallel mutations that land as consecutive versions, a sub-agent of the
-planner that changes the plan (no role check), and the refusals for a missing header, a
-run with no plan, and a terminal plan run.
+Cases: `frozen-plan` (no write after approval, and `read_plan` shows the approved version),
+two parallel writes of one version (one lands, the other gets the current tree), a stale
+write that names an unchanged node, a retried write key, a sub-agent of the planner that
+changes the plan (no role check), and the refusals for a missing header, a run with no plan,
+and a terminal plan run.
 """
 
 from __future__ import annotations
@@ -99,61 +100,100 @@ def store(monkeypatch):
     return state
 
 
-def test_two_parallel_mutations_land_as_consecutive_versions(headers, store):
+def _node(text, *children, node_id=""):
+    out = {"text": text, "children": list(children)}
+    if node_id:
+        out["node_id"] = node_id
+    return out
+
+
+def write(version, *children):
+    return call(plan_tools.write_plan, version=version,
+                children=[plan_tools.PlanChild(**c) for c in children])
+
+
+def test_two_parallel_writes_of_one_version_land_once(headers, store):
     async def both():
-        return await asyncio.gather(plan_tools.append_node.fn(version=1, text="A"),
-                                    plan_tools.append_node.fn(version=1, text="B"))
+        return await asyncio.gather(
+            plan_tools.write_plan.fn(version=1, children=[plan_tools.PlanChild(text="A")]),
+            plan_tools.write_plan.fn(version=1, children=[plan_tools.PlanChild(text="B")]))
 
     first, second = asyncio.run(both())
-    assert first.success and second.success
-    assert sorted([first.version, second.version]) == [2, 3]
-    newest = store.snapshots[3]
-    assert sorted(n.text for n in newest.nodes if n.parent_id) == ["A", "B"]
+    assert sorted([first.success, second.success]) == [False, True]
+    refused = first if not first.success else second
+    assert (refused.code, refused.version) == ("stale_version", 2)
+    assert sorted(store.snapshots) == [1, 2]
 
 
-def test_stale_number_is_refused_after_renumbering(headers, store):
-    call(plan_tools.append_node, version=1, text="A")
-    call(plan_tools.append_node, version=2, text="B")
-    call(plan_tools.remove_node, version=3, node_id="1")
-    refused = call(plan_tools.edit_node, version=3, node_id="1", text="Changed")
-    assert (refused.success, refused.code, refused.version) == (False, "stale_version", 4)
-    assert "B" in refused.tree
+def test_a_stale_write_that_names_an_unchanged_node_returns_the_current_tree(headers, store):
+    assert write(1, _node("A"), _node("B")).version == 2
+    assert write(2, _node("A changed", node_id="1"), _node("B", node_id="2")).version == 3
+    refused = write(2, _node("A again", node_id="1"), _node("B", node_id="2"))
+    assert (refused.success, refused.code, refused.version) == (False, "stale_version", 3)
+    assert "A changed" in refused.tree and "A again" not in refused.tree
+    assert "version 3" in refused.error
+    assert sorted(store.snapshots) == [1, 2, 3]
+
+
+def test_a_number_path_is_accepted_as_a_json_number_at_every_depth(headers, store):
+    assert write(1, _node("A", _node("A1")), _node("B")).version == 2
+    children = [plan_tools.PlanChild.model_validate(c) for c in (
+        {"text": "A kept", "node_id": 1, "children": [{"text": "A1 kept", "node_id": 1.1}]},
+        {"text": "B kept", "node_id": 2})]
+    assert [c.node_id for c in children] == ["1", "2"]
+    result = call(plan_tools.write_plan, version=2, children=children)
+    assert result.success and result.version == 3
+    assert [n.node_id for n in store.snapshots[3].nodes] == [
+        n.node_id for n in store.snapshots[2].nodes]
+    assert "A1 kept" in result.tree
+
+
+def test_a_nested_write_gives_the_sections_and_their_tasks(headers, store):
+    result = write(1, _node("Owners", _node("Deeds", _node("1990s deeds"))), _node("Tenants"))
+    assert result.success and result.version == 2
+    assert [(s.title, s.tasks) for s in result.sections] == [
+        ("Owners", ["1990s deeds"]), ("Tenants", ["Tenants"])]
+    assert result.tree.splitlines() == [
+        "root. What happened?", "  1. Owners", "    1.1. Deeds", "      1.1.1. 1990s deeds",
+        "  2. Tenants"]
 
 
 def test_plan_result_exposes_outline_tree_only(headers, store):
-    result = call(plan_tools.append_node, version=1, text="A")
+    result = write(1, _node("A"))
     assert result.model_dump() == {"plan_state": "planning", "version": 2,
                                    "tree": "root. What happened?\n  1. A"}
 
 
 def test_a_sub_agent_of_the_planner_changes_the_plan_with_no_role_check(headers, store):
     headers["X-Hoover4-Agent-Run"] = "helper-run"
-    result = call(plan_tools.append_node, version=1, text="From a helper")
+    result = write(1, _node("From a helper"))
     assert result.success and result.version == 2
     assert [s.tasks for s in result.sections] == [["From a helper"]]
 
 
-def test_frozen_plan_refuses_every_mutation_and_reads_the_approved_version(headers, store):
-    assert call(plan_tools.append_node, version=1, text="A").version == 2
-    assert call(plan_tools.append_node, version=2, text="B").version == 3
+def test_frozen_plan_refuses_every_write_and_reads_the_approved_version(headers, store):
+    assert write(1, _node("A")).version == 2
+    assert write(2, _node("A", node_id="1"), _node("B")).version == 3
     store.plan_run.state = agent_plans.EXECUTING
     store.plan_run.approved_version = 2
-    root = agent_plans.root_node_id(PLAN_ID)
-    for tool, args in [(plan_tools.append_node, {"text": "C"}),
-                       (plan_tools.edit_node, {"node_id": root, "text": "x"}),
-                       (plan_tools.remove_node, {"node_id": root})]:
-        result = call(tool, version=3, **args)
-        assert (result.success, result.code, result.version) == (False, "plan_frozen", 2)
+    result = write(3, _node("C"))
+    assert (result.success, result.code, result.version) == (False, "plan_frozen", 2)
     assert max(store.snapshots) == 3
     read = call(plan_tools.read_plan)
     assert (read.success, read.version, read.plan_state) == (True, 2, "executing")
     assert "B" not in read.tree
 
 
-def test_an_invalid_change_is_refused_with_the_tree(headers, store):
-    result = call(plan_tools.remove_node, version=1, node_id=agent_plans.root_node_id(PLAN_ID))
+@pytest.mark.parametrize("children, rule", [
+    ([_node("A"), _node("B"), _node("C"), _node("D"), _node("E")], "at most 4"),
+    ([_node("x", node_id="nope")], "names no node"),
+    ([_node("")], "empty"),
+])
+def test_an_invalid_tree_is_refused_with_the_tree(headers, store, children, rule):
+    result = write(1, *children)
     assert (result.success, result.code, result.version) == (False, "invalid_plan_change", 1)
-    assert "cannot be removed" in result.error
+    assert rule in result.error
+    assert sorted(store.snapshots) == [1]
 
 
 @pytest.mark.parametrize("change, code", [
@@ -169,7 +209,7 @@ def test_a_call_without_a_plan_run_is_refused(headers, store, change, code):
 
 def test_a_terminal_plan_run_is_closed(headers, store):
     store.plan_run.state = agent_plans.CANCELLED
-    assert call(plan_tools.append_node, version=1, text="A").code == "run_closed"
+    assert write(1, _node("A")).code == "run_closed"
 
 
 def test_a_document_is_read_one_page_at_a_time(headers, store):
@@ -181,39 +221,38 @@ def test_a_document_is_read_one_page_at_a_time(headers, store):
     assert listing.text.startswith("doc-1 report")
 
 
-def test_a_mutation_repeated_with_one_key_writes_one_version(headers, store):
+def test_a_write_repeated_with_one_key_returns_its_first_version(headers, store):
     headers["X-Hoover4-Idempotency-Key"] = "0b7c6f2e-3a4d-5e6f-8a9b-1c2d3e4f5a6b"
-    first = call(plan_tools.append_node, version=1, text="A")
-    second = call(plan_tools.append_node, version=1, text="A")
+    first = write(1, _node("A"))
+    # The retry names the version it first named. It is not stale: the key comes first.
+    second = write(1, _node("A"))
     assert first.version == 2
     assert second.model_dump() == first.model_dump()
     assert sorted(store.snapshots) == [1, 2]
 
 
-def test_a_mutation_with_no_key_writes_a_version_each_time(headers, store):
-    assert call(plan_tools.append_node, version=1, text="A").version == 2
-    assert call(plan_tools.append_node, version=1, text="A").version == 3
+def test_a_write_with_no_key_needs_the_current_version(headers, store):
+    assert write(1, _node("A")).version == 2
+    assert write(1, _node("A")).code == "stale_version"
+    assert write(2, _node("A", node_id="1")).version == 3
 
 
 def test_a_malformed_key_is_read_as_no_key(headers, store):
     headers["X-Hoover4-Idempotency-Key"] = "not-a-uuid"
-    assert call(plan_tools.append_node, version=1, text="A").version == 2
-    assert call(plan_tools.append_node, version=1, text="A").version == 3
+    assert write(1, _node("A")).version == 2
+    assert write(2, _node("A", node_id="1")).version == 3
     assert store.keys == {}
 
 
-def test_a_number_path_names_the_parent_and_an_unknown_one_lists_the_nodes(headers, store):
-    # The calls of one planner reply that used numbers as parent ids.
-    assert call(plan_tools.append_node, version=1, text="Survey").success
-    child = call(plan_tools.append_child, version=2, parent_id="1", text="Search every collection")
-    assert child.success
-    assert [(s.title, s.tasks) for s in child.sections] == [("Survey", ["Search every collection"])]
-    assert "  1. Survey" in child.tree and "    1.1. Search every collection" in child.tree
-    assert "[" not in child.tree
-    refused = call(plan_tools.append_child, version=3, parent_id="3", text="Count per collection")
-    assert (refused.success, refused.code, refused.version) == (False, "invalid_plan_change", 3)
-    assert "no node has the id or number path '3'" in refused.error
-    assert "1 " in refused.error and "(Survey)" in refused.error
+def test_the_listed_schema_holds_the_node_shape():
+    """The research agent decodes and checks a call by the schema that this tool lists."""
+    schema = asyncio.run(plan_tools.mcp.get_tools())["write_plan"].parameters
+    assert sorted(schema["required"]) == ["children", "version"]
+    node = schema["properties"]["children"]["items"]
+    if "$ref" in node:
+        node = schema["$defs"][node["$ref"].rsplit("/", 1)[1]]
+    assert set(node["properties"]) == {"text", "node_id", "children"}
+    assert node["properties"]["children"]["items"]["type"] == "object"
 
 
 # ------------------------------------------------------------------ read_plan_report

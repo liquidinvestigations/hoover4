@@ -12,19 +12,25 @@ The tables are in migration `00031_agent_plans.sql`:
 
 `agent_plan_runs.run_id` is the plan run id, which every `agent_runs` row of the plan
 carries as `plan_run_id`. A document's `run_id` is that plan run id too, so every document
-of a plan is one prefix read. Its `document_id` is a `uuid5` of the agent run id and the
-kind, so a retry writes the same row. The kinds are `prompt`, `report` (text) and
-`report_data` (the typed report of `tasks/P_agent/reports.py`) of a sub-agent thread, and
-`final` of the organizer. A body above `INLINE_BODY_BYTES` is a required artifact whose id
-is the document id, and the row keeps its id, size and digest (`document_body` reads it).
+of a plan is one prefix read. Its `document_id` is a `uuid5` of an id and the kind, so a
+retry writes the same row. The kinds are `prompt`, `report` (text) and `report_data` (the
+typed report of `tasks/P_agent/reports.py`) of a sub-agent thread, keyed by the thread's
+first run, `final` of the organizer, and `execution_settings` of the plan run, keyed by the
+plan run id. A body above `INLINE_BODY_BYTES` is a required artifact whose id is the
+document id, and the row keeps its id, size and digest (`document_body` reads it).
 
 Every read uses `FINAL` and the full owner prefix `(username, session_id)`.
 
 **The tree.** A plan is a versioned whole-tree snapshot. A node has an immutable UUID, a
 parent, an ordinal and one line of text. The root node's id derives from the plan id, its
-parent is null, and it cannot move or go. Every other node has a parent. A **section** is a
-node with at least one leaf child, and its tasks are those leaves. A flat plan of top-level
-leaves is one section, the root's.
+parent is null, and it cannot move or go. Every other node has a parent. `replace_tree`
+writes a whole new tree from nested input at the exact current version.
+
+**Sections.** A **section** is a direct child of the root, and its assignment is its whole
+subtree. A child of the root with no children is a section of one task. The
+`execution_settings` document holds `plan_contract` `PLAN_CONTRACT`, which marks a plan of
+this rule. A plan run with no such document is older: its section was a node with leaf
+children, and its stored `sections_json` keeps that meaning.
 """
 
 from __future__ import annotations
@@ -47,10 +53,18 @@ MAX_NODES = 150
 MAX_NODE_TEXT = 120
 #: The most characters in a rejection comment.
 MAX_COMMENT_CHARS = 10_000
-#: The most sections of a plan. `apply` refuses a mutation that raises the count above it.
-#: Mirrors `MAX_PLAN_SECTIONS` in `tasks/P_agent/run_budgets.py`. The skill
+#: The most sections of a plan: direct children of the root. `replace_tree` refuses a tree
+#: with more. Mirrors `MAX_PLAN_SECTIONS` in `website/common/src/plan_types.rs`. The skill
 #: `method_planner` of the research agent states the same number.
 MAX_SECTIONS = 4
+
+#: The plan contract of a plan whose sections are the direct children of the root. The
+#: `execution_settings` document of the plan run holds it. A plan run with no such document
+#: is older, and its section was a node with leaf children.
+PLAN_CONTRACT = 2
+
+#: The document kind of the frozen execution settings of a plan run.
+EXECUTION_SETTINGS_KIND = "execution_settings"
 
 #: Plan run states.
 PLANNING = "planning"
@@ -64,8 +78,9 @@ TERMINAL_STATES = (COMPLETED, FAILED, CANCELLED)
 #: The states in which the plan tools accept a mutation.
 MUTABLE_STATES = (PLANNING, REVISING)
 
-#: The briefing purposes of an organizer's sub-agent.
-PURPOSES = ("execute", "correct")
+#: The purpose of the sub-agent that the controller starts for a section. Older plan runs
+#: also hold `correct` and `review` rows.
+EXECUTE = "execute"
 #: The defect class of a review whose report has no valid verdict block. Plan runs from
 #: before the review purpose went can hold such reports.
 NO_VERDICT = "no-verdict"
@@ -200,17 +215,19 @@ def children_of(snapshot: PlanSnapshot, parent_id: str) -> list[PlanNode]:
 
 
 def sections(snapshot: PlanSnapshot) -> list[tuple[PlanNode, list[PlanNode]]]:
-    """Each section in tree order, with its tasks: a node with at least one leaf child.
+    """Each section in tree order, with its tasks. A section is a direct child of the root.
+    Its tasks are the leaves of its subtree, or the section itself when it has no child.
 
-    The root counts. The Rust copy is `has_section` in `website/common/src/plan_types.rs`.
-    The two copies are one rule and change in one patch.
+    The Rust copy is `section_count` in `website/common/src/plan_types.rs`. The two copies
+    are one rule and change in one patch.
     """
     parents = {n.parent_id for n in snapshot.nodes if n.parent_id is not None}
+    ordered = _ordered(snapshot.nodes)
     out = []
-    for node in _ordered(snapshot.nodes):
-        leaves = [c for c in children_of(snapshot, node.node_id) if c.node_id not in parents]
-        if leaves:
-            out.append((node, leaves))
+    for node in children_of(snapshot, snapshot.root_id):
+        below = _subtree(snapshot, node.node_id) - {node.node_id}
+        leaves = [n for n in ordered if n.node_id in below and n.node_id not in parents]
+        out.append((node, leaves or [node]))
     return out
 
 
@@ -218,11 +235,8 @@ def section_ids(snapshot: PlanSnapshot) -> set[str]:
     return {node.node_id for node, _ in sections(snapshot)}
 
 
-#: The number path of the root in `render_tree` and in a parent argument.
+#: The number path of the root in `render_tree` and in a node argument.
 ROOT_PATH = "root"
-
-#: The most nodes that the refusal of an unknown parent lists.
-MAX_LISTED_NODES = 40
 
 
 def node_paths(snapshot: PlanSnapshot) -> dict[str, str]:
@@ -238,11 +252,15 @@ def node_paths(snapshot: PlanSnapshot) -> dict[str, str]:
     return paths
 
 
-def render_tree(snapshot: PlanSnapshot) -> str:
-    """The tree as indented lines, with one number path per node."""
+def render_tree(snapshot: PlanSnapshot, node_id: str | None = None) -> str:
+    """The tree as indented lines, with one number path per node. With `node_id`, only
+    the subtree of that node."""
     paths = node_paths(snapshot)
+    keep = _subtree(snapshot, node_id) if node_id else None
     lines = []
     for node in _ordered(snapshot.nodes):
+        if keep is not None and node.node_id not in keep:
+            continue
         path = paths[node.node_id]
         level = 0 if path == ROOT_PATH else path.count(".") + 1
         lines.append(f"{'  ' * level}{path}. {node.text}")
@@ -251,31 +269,6 @@ def render_tree(snapshot: PlanSnapshot) -> str:
 
 def _clean_text(text: Any) -> str:
     return str(text if text is not None else "").strip()
-
-
-def _renumber(nodes: list[PlanNode], parent_id: str | None,
-              order: list[str] | None = None) -> list[PlanNode]:
-    """Give the children of `parent_id` ordinals from one, in `order` or their current one."""
-    kids = sorted((n for n in nodes if n.parent_id == parent_id), key=lambda n: n.ordinal)
-    ids = order if order is not None else [n.node_id for n in kids]
-    position = {node_id: i + 1 for i, node_id in enumerate(ids)}
-    return [replace(n, ordinal=position[n.node_id]) if n.parent_id == parent_id else n
-            for n in nodes]
-
-
-def _new_node_id(plan_id: str, version: int) -> str:
-    """The id of the node that the mutation writing `version` adds. One mutation adds at
-    most one node, so the id is unique and a retry computes the same id."""
-    return str(uuid.uuid5(PLAN_NAMESPACE, f"node:{plan_id}:{version}"))
-
-
-def _find(snapshot: PlanSnapshot, node_id: Any) -> PlanNode:
-    wanted = _clean_text(node_id)
-    resolved = resolve_node(snapshot, wanted)
-    for node in snapshot.nodes:
-        if node.node_id == resolved:
-            return node
-    raise PlanError(f"no node has the id or number path {wanted!r}. Call read_plan to see the tree.")
 
 
 def resolve_node(snapshot: PlanSnapshot, value: Any) -> str | None:
@@ -288,35 +281,6 @@ def resolve_node(snapshot: PlanSnapshot, value: Any) -> str | None:
         if node.node_id == wanted or paths[node.node_id] == wanted:
             return node.node_id
     return None
-
-
-def _find_parent(snapshot: PlanSnapshot, parent: Any) -> PlanNode:
-    """The node that a parent argument names: a node id, or a number path of
-    `render_tree` (`root`, `1`, `1.2`, a last dot allowed). A value that names no node is
-    refused with the path, id and text of the nodes, so the next call can name one."""
-    wanted = _clean_text(parent)
-    resolved = resolve_node(snapshot, wanted)
-    for node in snapshot.nodes:
-        if node.node_id == resolved:
-            return node
-    listed = [f"{node_path} ({_short(text)})"
-              for node_path, node_id, text in _listing(snapshot)[:MAX_LISTED_NODES]]
-    more = len(snapshot.nodes) - len(listed)
-    tail = f", and {more} more. Call read_plan to see them all." if more > 0 else "."
-    raise PlanError(
-        f"no node has the id or number path {wanted!r}. Give a number path from this tree. "
-        f"The nodes are: {', '.join(listed)}{tail}"
-    )
-
-
-def _short(text: str, limit: int = 60) -> str:
-    return text if len(text) <= limit else text[: limit - 3] + "..."
-
-
-def _listing(snapshot: PlanSnapshot) -> list[tuple[str, str, str]]:
-    """`(path, node_id, text)` of each node, in tree order."""
-    paths = node_paths(snapshot)
-    return [(paths[n.node_id], n.node_id, n.text) for n in _ordered(snapshot.nodes)]
 
 
 def _subtree(snapshot: PlanSnapshot, node_id: str) -> set[str]:
@@ -338,68 +302,76 @@ def initial_snapshot(plan_id: str, query: str) -> PlanSnapshot:
                                               first[:MAX_NODE_TEXT]),))
 
 
-def apply(snapshot: PlanSnapshot, operation: str, **args: Any) -> PlanSnapshot:
-    """Apply one mutation to `snapshot` and return the validated next version.
+class StaleVersion(PlanError):
+    """A tree write named a version that is not the current one. `current` is the tree
+    as it stands, which the caller returns in place of a write."""
 
-    | operation | arguments | rule |
-    |---|---|---|
-    | `append_node` | `text` | a new child of the root, last |
-    | `append_child` | `parent_id`, `text` | a new child of the parent, last. The parent is an id or a number path |
-    | `move_node` | `node_id`, `new_parent_id`, `position` | refuses the root and a move under its own subtree. The parent is an id or a number path |
-    | `edit_node` | `node_id`, `text` | accepts the root |
-    | `remove_node` | `node_id` | removes the subtree, refuses the root |
+    def __init__(self, current: PlanSnapshot, named: Any):
+        super().__init__(
+            f"The plan is at version {current.version}, and this call names version "
+            f"{named}. Read the tree below and send the whole tree again with version "
+            f"{current.version}.")
+        self.current = current
 
-    A mutation that raises the section count above `MAX_SECTIONS` is refused. A tree that
-    already holds more sections accepts a mutation that keeps or lowers the count.
+
+def _new_node_id(plan_id: str, key: str, path: str) -> str:
+    """The id of a new node at number path `path` of the tree that the write with `key`
+    submits. A retry of the same write computes the same ids."""
+    return str(uuid.uuid5(PLAN_NAMESPACE, f"node:{plan_id}:{key}:{path}"))
+
+
+def build_tree(current: PlanSnapshot, children: Any, key: str) -> PlanSnapshot:
+    """The validated next version of `current` from nested input. Raises `PlanError`.
+
+    `children` is the list of the root's children. Each child is a mapping with `text`, an
+    optional `node_id` and optional `children` of the same shape. The parent and the
+    ordinal of each node come from its place in the input. A `node_id` keeps the identity
+    of a node of `current`, and it may be a number path of `current`. A node with no
+    `node_id` gets a new id from `key` and its place. The root keeps its id and its text.
     """
-    version = snapshot.version + 1
-    nodes = list(snapshot.nodes)
-    root_id = snapshot.root_id
-    if operation in ("append_node", "append_child"):
-        parent = (root_id if operation == "append_node"
-                  else _find_parent(snapshot, args.get("parent_id")).node_id)
-        siblings = children_of(snapshot, parent)
-        nodes.append(PlanNode(_new_node_id(snapshot.plan_id, version), parent,
-                              len(siblings) + 1, _clean_text(args.get("text"))))
-    elif operation == "edit_node":
-        node = _find(snapshot, args.get("node_id"))
-        nodes = [replace(n, text=_clean_text(args.get("text"))) if n.node_id == node.node_id
-                 else n for n in nodes]
-    elif operation == "remove_node":
-        node = _find(snapshot, args.get("node_id"))
-        if node.node_id == root_id:
-            raise PlanError("the root node cannot be removed. Edit its text instead.")
-        gone = _subtree(snapshot, node.node_id)
-        nodes = _renumber([n for n in nodes if n.node_id not in gone], node.parent_id)
-    elif operation == "move_node":
-        node = _find(snapshot, args.get("node_id"))
-        if node.node_id == root_id:
-            raise PlanError("the root node cannot be moved")
-        target = _find_parent(snapshot, args.get("new_parent_id") or root_id).node_id
-        if target in _subtree(snapshot, node.node_id):
-            raise PlanError("a node cannot move under itself or its own subtree")
-        try:
-            position = int(args.get("position") or 0)
-        except (TypeError, ValueError):
-            raise PlanError("position must be a whole number from 1") from None
-        old_parent = node.parent_id
-        nodes = _renumber([n for n in nodes if n.node_id != node.node_id], old_parent)
-        order = [n.node_id for n in sorted((n for n in nodes if n.parent_id == target),
-                                           key=lambda n: n.ordinal)]
-        position = max(1, min(position or len(order) + 1, len(order) + 1))
-        order.insert(position - 1, node.node_id)
-        nodes.append(replace(node, parent_id=target, ordinal=0))
-        nodes = _renumber(nodes, target, order)
-    else:
-        raise PlanError(f"unknown plan operation {operation!r}")
-    new = PlanSnapshot(snapshot.plan_id, version, tuple(nodes))
+    if children is None:
+        children = []
+    if not isinstance(children, list):
+        raise PlanError("children must be a list of nodes, each with text and children")
+    root = next(n for n in current.nodes if n.parent_id is None)
+    nodes: list[PlanNode] = [root]
+    used: set[str] = {root.node_id}
+
+    def walk(items: list, parent_id: str, prefix: str) -> None:
+        for ordinal, item in enumerate(items, start=1):
+            if len(nodes) >= MAX_NODES:
+                raise PlanError(
+                    f"the plan has more than {MAX_NODES} nodes, the root included. Merge "
+                    "or remove nodes.")
+            if not isinstance(item, dict):
+                raise PlanError("each node must be an object with text and children")
+            path = f"{prefix}{ordinal}"
+            named = _clean_text(item.get("node_id"))
+            if named:
+                node_id = resolve_node(current, named)
+                if node_id is None or node_id == root.node_id:
+                    raise PlanError(
+                        f"node_id {named!r} names no node of version {current.version} "
+                        "other than the root. Leave node_id out for a new node.")
+            else:
+                node_id = _new_node_id(current.plan_id, key, path)
+            if node_id in used:
+                raise PlanError(f"node_id {named or node_id!r} appears twice in the tree")
+            used.add(node_id)
+            nodes.append(PlanNode(node_id, parent_id, ordinal, _clean_text(item.get("text"))))
+            kids = item.get("children") or []
+            if not isinstance(kids, list):
+                raise PlanError("children must be a list of nodes")
+            walk(kids, node_id, f"{path}.")
+
+    walk(children, root.node_id, "")
+    new = PlanSnapshot(current.plan_id, current.version + 1, tuple(nodes))
     validate(new)
-    before, after = len(sections(snapshot)), len(sections(new))
-    if after > MAX_SECTIONS and after > before:
-        raise PlanError(f"This change makes {after} sections, and a plan has at most "
-                        f"{MAX_SECTIONS}. A node with leaf children is a section, and the root "
-                        "counts when a leaf sits under it. Add the task to a section that "
-                        "exists, or merge two top-level nodes.")
+    count = len(children_of(new, new.root_id))
+    if count > MAX_SECTIONS:
+        raise PlanError(f"The tree has {count} top-level nodes, and a plan has at most "
+                        f"{MAX_SECTIONS}. Each top-level node is a section that one "
+                        "researcher runs. Merge sections, or put tasks under a section.")
     return new
 
 
@@ -478,17 +450,26 @@ def create_plan(username: str, session_id: str, plan_id: str, query: str) -> Pla
     return snapshot
 
 
-def mutate(username: str, session_id: str, plan_id: str, operation: str, *,
-           idempotency_key: uuid.UUID | None = None, **args: Any) -> PlanSnapshot:
-    """Read the newest version, apply one operation, and write version plus one.
+def replace_tree(username: str, session_id: str, plan_id: str, children: Any, *,
+                 version: int, idempotency_key: uuid.UUID | None = None) -> PlanSnapshot:
+    """Write the whole tree `children` as the version after `version`.
 
-    The caller holds the plan run's lock, so the next holder reads the version this wrote.
-    `idempotency_key` goes into the snapshot row, see [`write_snapshot`].
+    A write whose `idempotency_key` already wrote a version returns that version first,
+    whatever the current version is. Otherwise `version` must equal the current version,
+    or `StaleVersion` carries the current tree and nothing is written. The caller holds the
+    plan run's lock, so the next holder reads the version this wrote.
     """
+    if idempotency_key is not None:
+        stored = snapshot_by_key(username, session_id, plan_id, idempotency_key)
+        if stored is not None:
+            return stored
     current = read_snapshot(username, session_id, plan_id)
     if current is None:
         raise PlanError("this plan has no tree yet")
-    new = apply(current, operation, **args)
+    if version != current.version:
+        raise StaleVersion(current, version)
+    key = str(idempotency_key) if idempotency_key is not None else f"v{current.version + 1}"
+    new = build_tree(current, children, key)
     write_snapshot(username, session_id, new, idempotency_key)
     return new
 
@@ -758,6 +739,35 @@ def read_report_data(username: str, session_id: str, plan_run_id: str,
     return value if isinstance(value, dict) else None
 
 
+def execution_settings_id(plan_run_id: str) -> str:
+    """The id of the `execution_settings` document of a plan run."""
+    return document_id(plan_run_id, EXECUTION_SETTINGS_KIND)
+
+
+def write_execution_settings(username: str, session_id: str, plan_run_id: str,
+                             root_id: str, settings: dict[str, Any]) -> None:
+    """Write the frozen execution settings of a plan run. A retry writes the same row."""
+    body = json.dumps(settings, sort_keys=True, ensure_ascii=False)
+    write_document(username, session_id, plan_run_id, plan_run_id, root_id, "controller",
+                   EXECUTION_SETTINGS_KIND, body)
+
+
+def read_execution_settings(username: str, session_id: str,
+                            plan_run_id: str) -> dict[str, Any] | None:
+    """The frozen execution settings of a plan run, or None for a plan run from before
+    them: `{"model", "internet_tools", "plan_contract", "model_source"}`."""
+    wanted = execution_settings_id(plan_run_id)
+    doc = next((d for d in read_documents(username, session_id, plan_run_id)
+                if d.document_id == wanted and d.kind == EXECUTION_SETTINGS_KIND), None)
+    if doc is None:
+        return None
+    try:
+        value = json.loads(document_body(username, session_id, doc))
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
 # ----------------------------------------------------------------------- decisions
 
 
@@ -811,64 +821,69 @@ def parse_verdict(report: str) -> tuple[str, list[str]]:
 
 @dataclass
 class SectionRun:
-    """One section's share of the first run of a sub-agent thread, as `section_states`
-    reads it.
+    """The sub-agent thread of one section, as `section_states` reads it.
 
-    `state` is the state of the thread's newest run. `run_id` is the thread's first run,
-    whose report the ending writes, and `report_node` the node the report is written under.
-    A correction gives one entry for each section it names, all with the same `run_id` and
-    `report_node`.
+    `state`, `end_reason` and `error` are those of the thread's newest run. `run_id` is the
+    thread's first run, which keys its report documents. `report` is `typed` for a
+    `report_data` document, `text` for a `report` document alone, and empty for none.
+    `incomplete` is the `execution.incomplete` flag of the typed report.
     """
 
     node_id: str
-    purpose: str
     state: str
-    started_at: datetime
     run_id: str = ""
-    report_node: str = ""
+    end_reason: str = ""
+    error: str = ""
+    report: str = ""
+    incomplete: bool = False
 
 
-def _has_report(documents: list[PlanDocument], run: SectionRun) -> bool:
-    """Whether the run wrote its report. A correction's report is under its first section,
-    and counts for every section that it names."""
-    want = document_id(run.run_id, "report") if run.run_id else ""
-    return bool(want) and any(
-        d.document_id == want and d.kind == "report" and d.node_id == run.report_node
-        for d in documents)
+def section_cause(run: SectionRun | None) -> str:
+    """Why a section failed, or empty when it did not. The outcome of the thread and its
+    report decide it: no run, a run that did not complete, a run that stopped at a limit,
+    a report that states incomplete execution, or no report."""
+    if run is None:
+        return "no run"
+    if run.state != "completed":
+        return f"the run ended {run.state}" + (f": {run.error}" if run.error else "")
+    if run.end_reason:
+        return f"the run stopped before an answer ({run.end_reason})"
+    if not run.report:
+        return "no report"
+    if run.incomplete:
+        return "the report states incomplete execution"
+    return ""
 
 
-def section_states(snapshot: PlanSnapshot, runs: list[SectionRun],
-                   documents: list[PlanDocument]) -> list[dict[str, Any]]:
-    """The `sections_json` entries of an approved tree.
-
-    For each section: the state of its newest `execute` or `correct` run, the count of
-    corrections, and whether it failed. A section is failed when it has no such run, when
-    that run did not end `completed`, or when that run wrote no report. `review` stays empty
-    and `defect_classes` stays empty, so old readers find the same keys.
-    """
+def section_states(snapshot: PlanSnapshot, runs: list[SectionRun]) -> list[dict[str, Any]]:
+    """The `sections_json` entries of an approved tree: for each section, the state of its
+    sub-agent thread, whether it failed, and the cause. `corrections`, `review` and
+    `defect_classes` stay at their empty values, so older readers find the same keys."""
+    by_node = {run.node_id: run for run in runs}
     out = []
     for node, tasks in sections(snapshot):
-        mine = sorted((r for r in runs if r.node_id == node.node_id),
-                      key=lambda r: r.started_at)
-        work = [r for r in mine if r.purpose in ("execute", "correct")]
-        newest = work[-1] if work else None
-        failed = (newest is None or newest.state != "completed"
-                  or not _has_report(documents, newest))
+        run = by_node.get(node.node_id)
+        cause = section_cause(run)
         out.append({
             "node_id": node.node_id,
             "title": node.text,
             "tasks": len(tasks),
-            "state": newest.state if newest else "",
-            "corrections": sum(1 for r in mine if r.purpose == "correct"),
+            "state": run.state if run else "",
+            "end_reason": run.end_reason if run else "",
+            "corrections": 0,
             "review": "",
             "defect_classes": [],
-            "failed": failed,
+            "failed": bool(cause),
+            "cause": cause,
         })
     return out
 
 
 def failure_cause(entry: dict[str, Any]) -> str:
-    """Why a failed section failed: no run, the state its run ended in, or no report."""
+    """Why a failed section failed. An entry from before `cause` derives it from its
+    state: no run, the state its run ended in, or no report."""
+    if entry.get("cause"):
+        return str(entry["cause"])
     state = str(entry.get("state") or "")
     if not state:
         return "no run"
@@ -890,14 +905,17 @@ def failed_sections_table(entries: list[dict[str, Any]]) -> str:
 
 
 __all__ = [
-    "AWAITING_REVIEW", "CANCELLED", "COMPLETED", "EXECUTING", "FAILED", "MAX_COMMENT_CHARS",
-    "MAX_NODES", "MAX_SECTIONS", "MAX_NODE_TEXT", "MUTABLE_STATES", "NO_VERDICT",
-    "PLANNING", "PLAN_NAMESPACE", "PURPOSES", "PlanDecision", "PlanDocument", "PlanError",
-    "PlanNode", "PlanRunRow", "PlanSnapshot", "REVISING", "SectionRun", "TERMINAL_STATES",
-    "apply", "children_of", "create_plan", "create_plan_run", "document_id",
-    "failed_sections_table", "failure_cause", "initial_snapshot", "is_terminal", "mutate", "nodes_json",
-    "DocumentBodyError", "INLINE_BODY_BYTES", "artifact_key", "document_body", "read_report_data",
-    "parse_verdict", "read_decision", "read_documents", "read_plan_run", "read_snapshot",
-    "node_paths", "render_tree", "resolve_node", "root_node_id", "section_ids", "section_states", "sections", "validate",
-    "write_document", "write_plan_run", "write_snapshot",
+    "AWAITING_REVIEW", "CANCELLED", "COMPLETED", "DocumentBodyError", "EXECUTE",
+    "EXECUTING", "EXECUTION_SETTINGS_KIND", "FAILED", "INLINE_BODY_BYTES",
+    "MAX_COMMENT_CHARS", "MAX_NODES", "MAX_NODE_TEXT", "MAX_SECTIONS", "MUTABLE_STATES",
+    "NO_VERDICT", "PLANNING", "PLAN_CONTRACT", "PLAN_NAMESPACE", "PlanDecision",
+    "PlanDocument", "PlanError", "PlanNode", "PlanRunRow", "PlanSnapshot", "REVISING",
+    "SectionRun", "StaleVersion", "TERMINAL_STATES", "artifact_key", "build_tree",
+    "children_of", "create_plan", "create_plan_run", "document_body", "document_id",
+    "execution_settings_id", "failed_sections_table", "failure_cause", "initial_snapshot",
+    "is_terminal", "node_paths", "nodes_json", "parse_verdict", "read_decision",
+    "read_documents", "read_execution_settings", "read_plan_run", "read_report_data",
+    "read_snapshot", "render_tree", "replace_tree", "resolve_node", "root_node_id",
+    "section_cause", "section_ids", "section_states", "sections", "validate",
+    "write_document", "write_execution_settings", "write_plan_run", "write_snapshot",
 ]

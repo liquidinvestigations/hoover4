@@ -15,16 +15,7 @@ import sys
 import pytest
 
 TODO_TOOLS = {"read_todo", "write_todo", "edit_todo", "mark_todo"}
-PLAN_TOOLS = {
-    "read_plan",
-    "append_node",
-    "append_child",
-    "move_node",
-    "edit_node",
-    "remove_node",
-    "read_plan_document",
-    "read_plan_report",
-}
+PLAN_TOOLS = {"read_plan", "write_plan", "read_plan_document", "read_plan_report"}
 
 PROBE = """
 import asyncio, json, runpy, sys

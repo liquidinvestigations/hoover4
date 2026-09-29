@@ -1,15 +1,14 @@
-"""The index of a compaction record, the token estimate, and the plan of a compaction.
+"""The index of a compaction record and the token estimate.
 
-Every function here is pure. The tests build stored threads with `Thread` and plan them with a
-fixed estimator of 0.25 tokens a character, so a size in tokens is known by hand.
+Every function here is pure. The tests build stored threads with `Thread`, and the
+compaction tests import it, with a fixed estimator of 0.25 tokens a character, so a size in
+tokens is known by hand.
 """
 
 import json
 
 from research_agent import compaction, thread_index
-from research_agent.compaction import (
-    CUT_MARK, Estimator, RECORD_HEADER, Sizer, initial_layout, plan_compaction, shrink,
-)
+from research_agent.compaction import Estimator
 from research_agent.run_messages import RunMessage, ToolCallRecord
 
 THREAD = "t1"
@@ -91,6 +90,15 @@ def _index_thread():
                           "path": "/maildir/kean-s/sent/12", "page": 1},
                          {"collectionname": "enron", "file_hash": "5e8bb0ff3822761c",
                           "path": "/maildir/kean-s/sent/12", "page": 2}]}))
+    t.step(ok("cite_documents", {"citations": [{"file_hash": "5e8b"}]},
+              {"citations": [{"file_hash": "5e8bb0ff3822761c", "handle": "[D1]"},
+                             {"file_hash": "a5ee8d51b5bc1579", "error": "not_found"}]}))
+    t.step(ok("read_page", {"urls": ["https://a.example/lease"]},
+              "## Lease\nhttps://a.example/lease\n\ntext\n\n[cut: this call read 9,000 of the "
+              "page's 61,020 characters. Call read_page with offset 9000 for the next part]"
+              "\n\n---\n\n## Notice\nhttps://b.example/notice\n\nwhole text"))
+    t.step(ok("search_passages", {"query": "lease clause"},
+              {"items": [{"file_hash": "c" * 16}], "more": "c7f3a91b0d2e"}))
     t.step(ok("read_skill", {"name": "thorough"}, "Skill `thorough`.\ntext"))
     t.step(ok("read_tool", {"name": "search_histogram"}, {"tool": "search_histogram"}))
     return t
@@ -104,7 +112,14 @@ def test_the_index_lists_the_searches_the_documents_and_the_removed_texts():
     assert '- search_passages "LJM2 board" filters {}' in text
     assert '## Searches that found documents\n- search_passages ["Fastow memo"]: 2 documents' in text
     assert "- enron/5e8bb0ff3822761c /maildir/kean-s/sent/12. pages 1, 2" in text
-    assert text.endswith("Texts removed whole: skill `thorough`, tool `search_histogram`. Read "
+    assert "## Citation labels\n- [D1] 5e8bb0ff3822761c\n\n" in text
+    assert "a5ee8d51b5bc1579" not in text.split("## Citation labels")[1].split("##")[0]
+    assert ("## Pages read\n- https://a.example/lease. next offset 9000\n"
+            "- https://b.example/notice\n\n") in text
+    assert ('## Results that continue\n- search_passages {"queries": ["Fastow memo"]}: more '
+            'c7f3a91b0d2e\n- search_passages {"query": "lease clause"}: more c7f3a91b0d2e'
+            ) in text
+    assert text.endswith("Texts removed: skill `thorough`, tool `search_histogram`. Read "
                          "one again with `read_skill` or `read_tool` when you need it.")
 
 
@@ -139,108 +154,3 @@ def test_the_estimate_calibrates_on_the_last_billed_call_and_clamps():
     est = Estimator.calibrate(t.rows[:1] + [t.rows[1].model_copy(
         update={"usage": {"input_tokens": 1}})], system_text="s" * 100)
     assert est.ratio == 1 / 6 and est.fixed == 18
-
-
-# ------------------------------------------------------------------------ the plan
-
-
-def test_no_billed_usage_and_no_window_give_no_compaction():
-    t = Thread()
-    t.human("q")
-    t.step(ok("doc_metadata", {"h": 1}, chars(30_000)))
-    assert plan_compaction(t.rows, t.rows, window=DGEMMA, estimator=EST) is None
-    t.step(billed=250_000)
-    assert plan_compaction(t.rows, t.rows, window=0, estimator=EST) is None
-    assert plan_compaction(t.rows, t.rows, window=DGEMMA, fraction=0.8, estimator=EST)
-
-
-def test_a_thread_of_40_groups_fits_a_target_of_333_and_keeps_its_state():
-    t = Thread()
-    t.human("Find the memo.")
-    t.step(ok("write_todo", {"steps": ["a"]}, {"version": 1}))
-    t.step(ok("write_todo", {"steps": ["b"]}, {"version": 2}))
-    t.step(ok("append_node", {"text": "s"}, {"version": 5}))
-    t.step(ok("cite_documents", {"file_hash": ["a"]}, {"citations": [{"handle": "[D1]"}]}))
-    t.step(text="The memo [D1] says so.")
-    for n in range(35):
-        t.step(ok("doc_metadata", {"n": n}, chars(40)))
-    t.human("And the date?")
-    t.step(ok("doc_metadata", {"n": 99}, chars(20)), billed=1_200)
-    out, report = compaction.compact(t.rows, t.rows, window=3_000, fraction=1 / 3,
-                                     estimator=EST, summariser=stub)
-    assert report is not None and report.target == 333
-    assert report.est_after <= 333 and report.target_reached
-    contents = [m.content for m in out]
-    assert "Find the memo." in contents and "And the date?" in contents
-    assert json.dumps({"version": 2}) in contents                     # the newest todo
-    assert json.dumps({"version": 1}) not in contents
-    assert json.dumps({"version": 5}) in contents                     # the plan result
-    assert any("[D1]" in c and "citations" in c for c in contents)
-    assert "The memo [D1] says so." in contents
-    assert out[1].content.startswith(RECORD_HEADER)
-
-
-def _report_thread(reports=8, other=6_000):
-    t = Thread()
-    t.human(chars(other))
-    for n in range(reports):
-        t.step(ok("run_subagent", {"tasks": [{"objective": str(n)}]}, chars(5_000)))
-    for n in range(5):
-        t.step(ok("doc_metadata", {"n": n}, chars(3_000)))
-    t.step(ok("doc_metadata", {"n": 9}, chars(100)), billed=210_000)
-    return t
-
-
-def test_a_keep_set_over_its_cap_moves_the_oldest_report_out():
-    t = _report_thread()
-    sizer = Sizer(t.rows, EST)
-    layout = initial_layout(t.rows, EST, 69_905)
-    assert 37_000 < sizer.keep_outside_window(layout) < 39_000
-    layout = shrink(layout, sizer, 69_905)
-    assert layout.steps == ["report"]
-    assert sizer.keep_outside_window(layout) <= compaction.KEEP_CAP_TOKENS
-    first_report = t.rows[2].idx
-    kept, _blank, gone, _drop = layout.classify()
-    assert first_report in gone and t.rows[4].idx in kept
-
-
-def test_a_newest_group_larger_than_the_target_is_cut_to_fit():
-    t = Thread()
-    t.human("q")
-    for n in range(3):
-        t.step(ok("doc_metadata", {"n": n}, chars(1_000)))
-    t.step(ok("read_page", {"url": "u"}, chars(100_000)), billed=210_000)
-    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
-                                     summariser=stub)
-    newest = out[-1]
-    assert newest.content.endswith(CUT_MARK)
-    assert EST.tokens(newest) >= compaction.NEWEST_MIN_TOKENS
-    assert "newest" in report.steps and report.est_after <= report.target
-
-
-def test_user_messages_past_the_target_give_target_reached_false():
-    t = Thread()
-    t.human(chars(80_000))
-    t.step(ok("doc_metadata", {"n": 1}, chars(1_000)))
-    t.human(chars(1_000))
-    t.step(ok("doc_metadata", {"n": 2}, chars(1_000)), billed=210_000)
-    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
-                                     summariser=stub)
-    assert report.target_reached is False and report.row["target_reached"] is False
-    assert report.row["sizes"]["user"] > report.target
-    humans = [m.content for m in out if m.role == "human"]
-    assert t.rows[0].content in humans and t.rows[3].content in humans
-
-
-def test_a_skill_read_twice_keeps_the_newer_read():
-    t = Thread()
-    t.human("q")
-    t.step(ok("read_skill", {"name": "thorough"}, "Skill `thorough`.\nold"))
-    t.step(ok("doc_metadata", {"n": 1}, chars(1_000)))
-    t.step(ok("read_skill", {"name": "thorough"}, "Skill `thorough`.\nnew"))
-    for n in range(4):
-        t.step(ok("doc_metadata", {"n": n}, chars(20_000)))
-    t.step(ok("doc_metadata", {"n": 9}, chars(10)), billed=210_000)
-    layout = initial_layout(t.rows, EST, 69_905)
-    kept, _blank, _gone, drop = layout.classify()
-    assert 2 in drop and 6 in kept

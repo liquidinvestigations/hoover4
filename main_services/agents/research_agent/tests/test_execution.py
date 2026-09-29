@@ -128,8 +128,7 @@ def test_the_ordered_tools_are_the_plan_tools_and_the_todo_tools():
     """The worker runs `STATE_TOOLS` of `processing/tasks/P_agent/steps.py` in reply order.
     This list is the same set, so the stored kind says what the worker does."""
     assert execution.ORDERED_TOOLS == frozenset({
-        "append_node", "append_child", "move_node", "edit_node", "remove_node", "read_plan",
-        "write_todo", "edit_todo", "mark_todo", "read_todo",
+        "write_plan", "read_plan", "write_todo", "edit_todo", "mark_todo", "read_todo",
     })
 
 

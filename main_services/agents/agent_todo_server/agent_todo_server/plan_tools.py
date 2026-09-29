@@ -1,37 +1,34 @@
-"""The plan tools: read and change the plan tree of a deep-research plan run.
+"""The plan tools: read and write the plan tree of a deep-research plan run.
 
 Tools:
-    ``read_plan``           the tree with the number path and the id of each node, and its sections
-    ``append_node``         a new top-level node
-    ``append_child``        a new child of a node
-    ``move_node``           a node to a new parent and position
-    ``edit_node``           the text of a node, the root included
-    ``remove_node``         a node and its subtree
-    ``read_plan_document``  one page of a prompt, report, review or final report
+    ``read_plan``           the tree with the number path of each node, and its sections
+    ``write_plan``          the whole tree below the root, at the current version
+    ``read_plan_document``  one page of a prompt, report or final report
     ``read_plan_report``    one page of the typed report of a section's sub-agent
 
 **Which plan.** The server reads the agent run id from `X-Hoover4-Agent-Run`, reads that
 run's `agent_runs` row under the owner from the other headers, and takes its `plan_run_id`.
-A child row copies the `plan_run_id`, so the sub-agents of a planner reach the plan too. No
+A child row copies the `plan_run_id`, so the sub-agents of a plan reach the plan too. No
 tool argument names a plan, a run or an owner.
 
 **No role check.** Every run kind of the plan may call every plan tool. The plan run state
-is the only rule: a mutation is valid only in `planning` or `revising`. After approval the
+is the only rule: a write is valid only in `planning` or `revising`. After approval the
 tree is frozen, and `read_plan` returns the approved version.
 
-**A parent by id or by number path.** `append_child` and `move_node` accept the parent as a
-node id or as the number path that `read_plan` shows (`root`, `1`, `1.2`). A value that names
-no node is refused with the path, id and text of the nodes. Every other node argument takes
-the id only, so a wrong number never edits or removes a node.
+**A whole tree for each write.** `write_plan` takes the children of the root as nested
+nodes, each with its text, an optional `node_id` and its own children. The parent and the
+order of each node come from its place in the input. A `node_id`, or a number path of the
+current tree, keeps a node's identity. A node with no `node_id` is new.
 
-**One writer at a time.** Parallel runs can change one plan, and each version is one row.
-The server holds one `asyncio.Lock` for each plan run. A mutation takes the lock, reads the
-newest version, applies the change, writes version plus one, and releases the lock, so the
-next holder reads the new version. This holds because the server runs as one process.
+**One writer at a time, at the exact version.** Parallel runs can change one plan, and each
+version is one row. The server holds one `asyncio.Lock` for each plan run. A write takes the
+lock, reads the newest version, and writes version plus one only when the call names the
+newest version. A call that names another version gets the current tree and writes
+nothing. This holds because the server runs as one process.
 
-**One version for each mutation key.** A mutation that carries `X-Hoover4-Idempotency-Key`
-stores the key on the version it writes. A second call with that key writes nothing and
-returns that version. A mutation with no key writes a new version each time.
+**One version for each write key.** A write that carries `X-Hoover4-Idempotency-Key` stores
+the key on the version it writes. A second call with that key writes nothing and returns
+that version, before the version test. A write with no key writes a new version each time.
 
 The tree rules live in `database.agent_plans`, which the worker reads as well.
 """
@@ -46,7 +43,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Optional
 
 from fastmcp.server.dependencies import get_http_headers
-from pydantic import BaseModel, Field, model_serializer
+from pydantic import BaseModel, Field, field_validator, model_serializer
 
 from agent_common.result_pages import canonical_json
 from agent_todo_server.identity import Caller, CallerUnknown, agent_run_id, parse_caller
@@ -98,6 +95,30 @@ class PlanSection(BaseModel):
     node_id: str
     title: str
     tasks: list[str] = Field(default_factory=list)
+
+
+class PlanChild(BaseModel):
+    """One top-level node of a `write_plan` tree. The nodes under it have the same three
+    fields at every depth. The schema lists them as plain objects, because FastMCP inlines
+    a schema reference, and a node that names its own model has no finite schema.
+    `agent_plans.build_tree` checks every level."""
+
+    text: str = Field(description="One line of at most 120 characters")
+    node_id: str | int = Field(
+        default="",
+        description="The id or number path of this node in the current tree, to keep it. "
+                    "Leave it empty for a new node.")
+    children: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="The nodes under this node, in their order. Each has text, node_id and "
+                    "children, as this node has.")
+
+    @field_validator("node_id")
+    @classmethod
+    def _node_id_text(cls, value: str | int) -> str:
+        """A number path sent as a JSON number, such as 2, is the text "2", as it is in a
+        nested node, which `agent_plans.build_tree` reads as text."""
+        return str(value)
 
 
 class PlanResponse(BaseModel):
@@ -224,7 +245,7 @@ def idempotency_key(headers: dict[str, str]) -> uuid.UUID | None:
         return None
 
 
-async def _mutate(operation: str, **args: Any) -> PlanResponse:
+async def _write(version: int, children: list[dict[str, Any]]) -> PlanResponse:
     headers = _headers()
     key = idempotency_key(headers)
     try:
@@ -242,19 +263,8 @@ async def _mutate(operation: str, **args: Any) -> PlanResponse:
                 agent_plans.snapshot_by_key, ctx.caller.username, ctx.caller.session_id,
                 ctx.plan_run.plan_id, key)
             if stored is not None:
-                # A retry of a mutation that landed: answer with the version it wrote.
+                # A retry of a write that landed: answer with the version it wrote.
                 return _response(ctx, stored)
-        current = await asyncio.to_thread(_snapshot, ctx)
-        named = args.pop("version")
-        if current is not None and named != current.version:
-            seen = await asyncio.to_thread(_snapshot, ctx, named) if 0 < named < current.version else None
-            values = [args[field] for field in ("node_id", "parent_id", "new_parent_id")
-                      if args.get(field)]
-            if seen is None or any(agent_plans.resolve_node(seen, value) !=
-                                   agent_plans.resolve_node(current, value) for value in values):
-                return _response(ctx, current, PlanRefused(
-                    "stale_version", f"The plan is at version {current.version}, and this call names "
-                    f"version {named}. Read the tree below and name its nodes again."))
         if ctx.plan_run.state not in agent_plans.MUTABLE_STATES:
             refused = PlanRefused(
                 "plan_frozen",
@@ -265,12 +275,14 @@ async def _mutate(operation: str, **args: Any) -> PlanResponse:
                 _snapshot, ctx, _read_version(ctx.plan_run)), refused)
         try:
             new = await asyncio.to_thread(
-                agent_plans.mutate, ctx.caller.username, ctx.caller.session_id,
-                ctx.plan_run.plan_id, operation, idempotency_key=key, **args)
+                agent_plans.replace_tree, ctx.caller.username, ctx.caller.session_id,
+                ctx.plan_run.plan_id, children, version=version, idempotency_key=key)
+        except agent_plans.StaleVersion as exc:
+            return _response(ctx, exc.current, PlanRefused("stale_version", str(exc)))
         except agent_plans.PlanError as exc:
             return _response(ctx, await asyncio.to_thread(_snapshot, ctx),
                              PlanRefused("invalid_plan_change", str(exc)))
-    log.info("%s user=%s session=%s plan=%s v%s", operation, ctx.caller.username,
+    log.info("write_plan user=%s session=%s plan=%s v%s", ctx.caller.username,
              ctx.caller.session_id, ctx.plan_run.plan_id, new.version)
     return _response(ctx, new)
 
@@ -279,10 +291,10 @@ async def _mutate(operation: str, **args: Any) -> PlanResponse:
     name="read_plan",
     description=(
         "Read the plan tree of this research plan: every node with its number path, "
-        "indented under its parent. The root has the path root, a "
-        "top-level node a number such as 2, and its children 2.1 and 2.2. A section is a "
-        "node with at least one leaf child, the root included, and its tasks are those "
-        "leaves. After approval this returns the approved version."
+        "indented under its parent. The root has the path root, a top-level node a number "
+        "such as 2, and its children 2.1 and 2.2. Each top-level node is a section, and "
+        "one researcher runs it with every node under it. After approval this returns "
+        "the approved version."
     ),
 )
 async def read_plan() -> PlanResponse:
@@ -295,70 +307,26 @@ async def read_plan() -> PlanResponse:
 
 
 @mcp.tool(
-    name="append_node",
+    name="write_plan",
     description=(
-        "Add a top-level node to the plan, as the last child of the root. Give version "
-        "from the last plan result. Several calls of one reply can give the same version."
+        "Write the whole plan tree below the root. `children` holds the top-level nodes in "
+        "order. Each node has `text` (one line of at most 120 characters), `children` (the "
+        "nodes under it) and, to keep a node of the current tree, its `node_id` or number "
+        "path. Each top-level node is a section that one researcher runs with all its "
+        "nodes. A plan has at most 4 sections and 150 nodes. Give `version` from the last "
+        "plan result. A call that names another version writes nothing and returns the "
+        "current tree."
     ),
 )
-async def append_node(version: int, text: str = "") -> PlanResponse:
-    return await _mutate("append_node", version=version, text=text)
-
-
-@mcp.tool(
-    name="append_child",
-    description=(
-        "Add a node as the last child of `parent_id`. `parent_id` is the id of a node, or "
-        "its number path from read_plan, such as 1 or 1.2. `text` is one line of at most "
-        "120 characters. A node with leaf children is a section, and the leaves are its tasks. "
-        "Give version from the last plan result. Calls of one reply can give the same version."
-    ),
-)
-async def append_child(version: int, parent_id: str = "", text: str = "") -> PlanResponse:
-    return await _mutate("append_child", version=version, parent_id=parent_id, text=text)
-
-
-@mcp.tool(
-    name="move_node",
-    description=(
-        "Move a node and its subtree under `new_parent_id` at `position` (1 is first). "
-        "`new_parent_id` is a node id or a number path such as 1.2. "
-        "An empty `new_parent_id` means the root. The root cannot move. "
-        "A position of 0 puts the node last. Give version from the last plan result. "
-        "Calls of one reply can give the same version."
-    ),
-)
-async def move_node(version: int, node_id: str = "", new_parent_id: str = "",
-                    position: Annotated[int, Field(ge=0)] = 0) -> PlanResponse:
-    return await _mutate("move_node", version=version, node_id=node_id, new_parent_id=new_parent_id,
-                         position=position)
-
-
-@mcp.tool(
-    name="edit_node",
-    description=("Replace the text of one node, the root included. Give node_id as an outline "
-                 "number such as 1.2. Give version from the last plan result. "
-                 "Calls of one reply can give the same version."),
-)
-async def edit_node(version: int, node_id: str = "", text: str = "") -> PlanResponse:
-    return await _mutate("edit_node", version=version, node_id=node_id, text=text)
-
-
-@mcp.tool(
-    name="remove_node",
-    description=("Remove one node and its whole subtree. The root cannot be removed. "
-                 "Give node_id as an outline number such as 1.2. Give version from the last "
-                 "plan result. Calls of one reply can give the same version."),
-)
-async def remove_node(version: int, node_id: str = "") -> PlanResponse:
-    return await _mutate("remove_node", version=version, node_id=node_id)
+async def write_plan(version: int, children: list[PlanChild]) -> PlanResponse:
+    return await _write(version, [child.model_dump() for child in children or []])
 
 
 @mcp.tool(
     name="read_plan_document",
     description=(
-        "Read one page of a document of this plan: a sub-agent's prompt, report or "
-        "review, or the final report. Give `offset` from `next_offset` to read on. With no "
+        "Read one page of a document of this plan: a sub-agent's prompt or report, or "
+        "the final report. Give `offset` from `next_offset` to read on. With no "
         "`document_id`, the result lists the documents in `text`, one a line."
     ),
 )

@@ -706,12 +706,12 @@ async def run_chat_worker():
   research run cannot take a chat model slot.
 
   `chat-queue` carries `AgentRun` and its short activities (open, nag, ending, fan-in,
-  delegation, continuation, step failure, plan check, todo read, title, run-start reads).
+  section dispatch, continuation, step failure, plan check, title, run-start reads).
   `chat-model-queue` carries `model_step` for a chat turn and its sub-agents.
   `research-queue` carries `model_step` for a run whose row names that queue: the
   planner and organizer runs of a deep-research plan, and their sub-agents.
   `agent-tool-queue` carries `tool_call` for every run. A slot is one model call or one
-  tool call in flight, not one agent run. A delegation takes no tool slot.
+  tool call in flight, not one agent run. A section dispatch takes no tool slot.
 
   The four queues are not the ingestion queue. An ingestion backlog delaying a person
   waiting at a screen is the failure a shared queue guarantees, and these four make it
@@ -721,6 +721,7 @@ async def run_chat_worker():
   from .P_agent.activities import (
       append_nag,
       continue_run,
+      dispatch_sections,
       fan_in,
       open_run,
       summarize_if_first_turn,
@@ -728,7 +729,6 @@ async def run_chat_worker():
   )
   from .P_agent.steps import (
       check_citations,
-      delegate_step,
       model_step,
       plan_has_sections,
       prepare_continuation,
@@ -768,7 +768,7 @@ async def run_chat_worker():
         workflows=[AgentRun],
         activities=[
             open_run, append_nag, write_ending, summarize_if_first_turn, fan_in,
-            continue_run, delegate_step, prepare_continuation,
+            continue_run, dispatch_sections, prepare_continuation,
             record_step_failure, plan_has_sections, check_citations,
             write_empty_note, write_asked_answer, write_incomplete,
         ],

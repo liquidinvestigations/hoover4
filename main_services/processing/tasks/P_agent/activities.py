@@ -5,8 +5,8 @@ They differ in which agent they reach and which queue they wait on, not in what 
 The website holds nothing open, so a browser reload, a website restart and a worker crash
 all cost the turn nothing.
 
-This module holds the short activities of `AgentRun`: open, note, ending, fan-in and the
-title. The step activities, one model call or one tool call each, are in
+This module holds the short activities of `AgentRun`: open, section dispatch, note, ending,
+fan-in and the title. The step activities, one model call or one tool call each, are in
 `steps.py`.
 
 The ACL travels with the task. These activities never resolve permissions themselves.
@@ -351,7 +351,8 @@ class AgentRunInput:
     other field from the input of the run that starts them, except `plan_run_id` and
     `decision_id`, which are empty. The row has no columns for `allowed_collections`,
     `llm_model`, `internet_tools` and `turn_uuid`. Their row already exists, written by the
-    run that created them.
+    run that created them. A run of a plan takes `llm_model` and `internet_tools` from the
+    plan's execution settings (`OpenedRun`), whatever its input holds.
     """
 
     run_id: str
@@ -379,6 +380,9 @@ class AgentRunInput:
     decision_id: str = ""
     #: The extra planner round for a plan with no section already ran.
     planner_retry_done: bool = False
+    #: How the website resolved `llm_model` for a plan run from before the execution
+    #: settings: `legacy_planner` or `configured_default`. Empty for every other start.
+    model_source: str = ""
 
     def __post_init__(self):
         if self.allowed_collections is None:
@@ -395,7 +399,7 @@ class CallRef:
     call_id: str
     #: A tool name.
     name: str
-    #: `parallel`, `ordered` or `delegation`.
+    #: `parallel` or `ordered`. A stored call of an older run can hold `delegation`.
     kind: str
     #: The transcript seq of the call's tool row.
     seq: int
@@ -419,17 +423,15 @@ def call_refs(message) -> list[CallRef]:
 def pending_calls(row, messages) -> list[CallRef]:
     """The calls of the last `ai` message of the thread that have no `tool` message.
 
-    When another run wrote that message, its `delegation` calls are left out. They are the
-    `run_subagent` calls that the continued run delegated, and `prepare_continuation`
-    answers them. A new run has none.
+    A stored `delegation` call of an older run is left out. It was a `run_subagent` call,
+    which no tool answers now.
     """
     last_ai = next((m for m in reversed(messages) if m.role == "ai"), None)
     if last_ai is None:
         return []
     answered = {m.tool_call_id for m in messages if m.role == "tool" and m.idx > last_ai.idx}
     return [c for c in call_refs(last_ai)
-            if c.call_id not in answered
-            and not (c.kind == "delegation" and last_ai.run_id != row.run_id)]
+            if c.call_id not in answered and c.kind != "delegation"]
 
 
 @dataclass
@@ -452,6 +454,15 @@ class OpenedRun:
     continues: bool = False
     #: The unanswered calls of the thread, which the loop runs before its next model step.
     pending: list[CallRef] = field(default_factory=list)
+    #: The model and the internet switch of a run of a plan, from the plan's execution
+    #: settings. `frozen` is true when the plan has settings. The switch then replaces the
+    #: input switch, and a model that is not empty replaces the input model. A run of no
+    #: plan keeps its input.
+    frozen: bool = False
+    llm_model: str = ""
+    internet_tools: bool = False
+    #: The run is an organizer that starts the sections of its plan before any model call.
+    dispatch: bool = False
 
 
 @dataclass
@@ -482,8 +493,8 @@ class Continuation:
 
 @dataclass
 class AppendNagParams:
-    """One note that starts a round. `message` is text that this worker holds: the citation
-    note or the note of the planner's extra round."""
+    """One note that starts a round. `message` is text that this worker holds: the note of
+    the planner's extra round."""
 
     run_id: str
     username: str
@@ -552,13 +563,22 @@ def _opened(row) -> OpenedRun:
     from database import agent_runs
     from tasks.P_agent.stream_writer import prepare_thread
 
+    from tasks.P_agent import plan_runs
+
     messages = prepare_thread(
         agent_runs.read_messages(row.username, row.session_id, row.thread_id))
+    settings = plan_runs.frozen_settings(row.username, row.session_id,
+                                         row.plan_run_id or "") or {}
     return OpenedRun(
         state=row.state, queue=row.queue, kind=row.kind, depth=row.depth,
         is_chat_lead=agent_runs.is_chat_lead(row), plan=bool(row.plan_run_id),
         model_steps=row.model_steps, continues=bool(row.continues_run_id),
         pending=pending_calls(row, messages),
+        frozen=bool(settings),
+        llm_model=str(settings.get("model") or ""),
+        internet_tools=bool(settings.get("internet_tools")),
+        dispatch=(row.kind == "organizer" and row.depth == 0 and bool(row.plan_run_id)
+                  and not row.continues_run_id and row.state == agent_runs.RUNNING),
     )
 
 
@@ -569,14 +589,16 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
 
     1. For a top-level run whose row does not exist, write the opening message at `idx` 0
        and then the row. Both keys come from the run id, so a retry writes the same rows.
-       For a planner or organizer, first write the plan run state (`plan_runs`).
+       For a planner or organizer, first write the plan run state and the plan's execution
+       settings (`plan_runs`).
     2. A terminal row returns `closed`.
     3. When the turn has a stop row, write the `cancelled` ending and run `fan_in` here, and
        return `closed`, so a workflow that starts after a stop never calls the agent.
     4. An organizer at depth 0 writes the plan run's `sections_json` from the rows, so each
        organizer step starts from the sections as they stand.
-    5. Return the row's routing fields, `model_steps`, and the unanswered calls of the
-       thread (`pending_calls`), so a continue-as-new or a restarted run resumes there.
+    5. Return the row's routing fields, `model_steps`, the unanswered calls of the thread
+       (`pending_calls`), so a continue-as-new or a restarted run resumes there, and for a
+       run of a plan the frozen model and internet switch.
     """
     from database import agent_runs
     from tasks.P_agent import plan_runs
@@ -616,34 +638,12 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
     return _opened(row)
 
 
-# ------------------------------------------------------------------------- delegation
-
-DELEGATION_TOOL = "run_subagent"
+# ---------------------------------------------------------------------- the sections
 
 
 def canonical_json(value) -> str:
     """One text for one value, so a retry writes the same bytes."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
-def render_briefing(briefing: dict) -> str:
-    """The opening message of a sub-agent, in the form the in-process worker receives.
-
-    The same text as `briefing_text` in `research_agent/subagents.py`. Two copies, because
-    the two run in different images. They are one rule and move together.
-    """
-    parts = [f"Objective: {str(briefing.get('objective') or '').strip()}"]
-    known = str(briefing.get("known") or "").strip()
-    bring_back = str(briefing.get("bring_back") or "").strip()
-    if known:
-        parts.append(f"Already established, do not re-derive:\n{known}")
-    if bring_back:
-        parts.append(f"Bring back:\n{bring_back}")
-    parts.append(
-        "Answer this objective only. Write your report as prose, and cite the documents "
-        "you relied on with `cite_documents` before you finish."
-    )
-    return "\n\n".join(parts)
 
 
 def _read_rows(where: str, parameters: dict):
@@ -661,7 +661,7 @@ def _read_rows(where: str, parameters: dict):
 
 
 def _batch_children(row, batch_id: str):
-    """The sub-agent rows of a batch in briefing order. Continuations are left out."""
+    """The sub-agent rows of a batch in section order. Continuations are left out."""
     from database import agent_runs
 
     rows = _read_rows(
@@ -680,47 +680,6 @@ def _sibling_rows(row):
     )
 
 
-def _delegation_rows(username: str, session_id: str, seq: int):
-    """The `tool_input` of the transcript row at `seq`."""
-    from database.clickhouse import get_global_client
-
-    with get_global_client() as client:
-        rows = client.query(
-            "SELECT tool_input FROM chat_messages FINAL WHERE username = {u:String} "
-            "AND session_id = {s:String} AND seq = {q:UInt32}",
-            parameters={"u": username, "s": session_id, "q": seq},
-        ).result_rows
-    return str(rows[0][0]) if rows else ""
-
-
-#: The fields of a `sections_json` entry that the organizer reads in a continuation.
-ORGANIZER_SECTION_FIELDS = ("node_id", "title", "state", "review", "corrections",
-                            "defect_classes", "failed")
-
-
-def _organizer_sections(row) -> list[dict] | None:
-    """The section states of the organizer's plan run, or `None` for any other run.
-
-    The organizer chooses which sections to correct. The rule of a failed section (its
-    newest work run did not complete or wrote no report) is in `sections_json`, so the
-    organizer reads the same state that the final report and the card read.
-    """
-    if not (row.kind == "organizer" and row.depth == 0 and row.plan_run_id):
-        return None
-    from database import agent_plans
-
-    plan_run = agent_plans.read_plan_run(row.username, row.session_id, row.plan_run_id)
-    try:
-        entries = json.loads(plan_run.sections_json or "[]") if plan_run else []
-    except ValueError:
-        entries = []
-    snapshot = agent_plans.read_snapshot(row.username, row.session_id, plan_run.plan_id,
-                                         plan_run.approved_version) if plan_run else None
-    paths = agent_plans.node_paths(snapshot) if snapshot else {}
-    return [{"node": paths.get(e.get("node_id"), ""), "state": e.get("state", "")}
-            for e in entries]
-
-
 def _plan_node_paths(row) -> dict[str, str]:
     """The number path of each node of the approved tree of the run's plan, or empty."""
     if not row.plan_run_id:
@@ -735,223 +694,140 @@ def _plan_node_paths(row) -> dict[str, str]:
     return agent_plans.node_paths(snapshot) if snapshot else {}
 
 
-def _report_reference(child, paths: dict[str, str]) -> dict:
-    """The report reference of a plan sub-agent in a continuation result: the node that
-    `read_plan_report` takes, and the counts of the typed report. The organizer reads the
-    evidence itself through the tool, so the result holds no evidence list."""
-    from database import agent_plans
-
-    out: dict = {"node": paths.get(child.plan_node_id or "", child.plan_node_id or "")}
-    data = agent_plans.read_report_data(child.username, child.session_id, child.plan_run_id,
-                                        child.run_id)
-    if data is None:
-        return out
-    diagnostics = data.get("diagnostics") or {}
-    out["evidence"] = {
-        "documents_read": sum(1 for e in data.get("documents_read") or []
-                              if e.get("status") != "error"),
-        "failed_items": int(diagnostics.get("failed_items") or 0),
-        "citations": sum(1 for e in data.get("citations") or [] if e.get("status") == "ok"),
-        "notes": len(data.get("notes") or []),
-    }
-    if not (child.result or "").strip() and data.get("recent_text"):
-        out["latest_text"] = str(data["recent_text"][-1].get("text") or "")
-    return out
+#: The usage key of the message that gives an organizer the outcome of its sections. Its
+#: value is the batch id, so a retry finds the message and writes it once.
+SECTION_REPORTS_KEY = "section_reports"
 
 
-def _add_continuation_results(row, messages, chat_row):
-    """The result of each `run_subagent` call of the continued run (`prepare_continuation`).
+def _add_section_reports(row, messages):
+    """The message that gives a continued organizer the outcome of each section
+    (`prepare_continuation`).
 
-    The thread ends with the continued run's `ai` message, whose `run_subagent` calls have
-    no `tool` message. For each such call, write one `tool` message at the next index. Its
-    content is the canonical JSON `{"reports": [...], "refused": [...]}` from the child rows
-    of that call and the continued run's `refused_json`. For the organizer of a plan it
-    also holds `sections`, the state of each section from `sections_json`, which `open_run`
-    wrote for this step. A report of a plan sub-agent adds its `end_reason`, the `node` that
-    `read_plan_report` takes, the counts of its typed report, and its newest model text when
-    the run has no result. For a run that writes the
-    transcript, rewrite the call's row at `delegate_seq + i` with this JSON as its output.
-    Returns the thread with the new messages.
+    The continued run started one sub-agent for each section of its plan. This writes one
+    `human` message at the next index: `plan_runs.SECTIONS_ENDED_TEXT`, then the canonical
+    JSON `{"sections": [...]}` with the outcome of each section in tree order
+    (`plan_runs.section_outcome`), its `failed` flag and its cause from `sections_json`.
+    Returns the thread with the message. A thread that holds the message already is
+    returned as it is.
     """
     from database import agent_runs
-    from tasks.P_agent.trajectory import truncate_json
+    from tasks.P_agent import plan_runs
 
     continued = agent_runs.read_run(row.username, row.session_id, row.continues_run_id)
-    last_ai = next((m for m in reversed(messages) if m.role == "ai"), None)
-    if continued is None or last_ai is None or last_ai.run_id != continued.run_id:
+    if continued is None or continued.kind != "organizer" or not continued.delegated_batch_id:
         return messages
-    answered = {m.tool_call_id for m in messages if m.role == "tool" and m.idx > last_ai.idx}
-    calls = [c for c in last_ai.tool_calls
-             if c.get("name") == DELEGATION_TOOL and str(c.get("id") or "") not in answered]
-    if not calls:
+    batch_id = continued.delegated_batch_id
+    if any(m.usage.get(SECTION_REPORTS_KEY) == batch_id for m in messages):
         return messages
-    batch_id = continued.delegated_batch_id or ""
-    children = _batch_children(continued, batch_id) if batch_id else []
-    try:
-        refused = json.loads(continued.refused_json or "[]")
-    except ValueError:
-        refused = []
-    sections = _organizer_sections(row)
     paths = _plan_node_paths(row)
-    next_idx = max(m.idx for m in messages) + 1
-    out = list(messages)
-    for i, call in enumerate(calls):
-        call_id = str(call.get("id") or "")
-        reports = []
-        for child in children:
-            if child.tool_call_id != call_id:
-                continue
-            try:
-                task = json.loads(child.briefing or "{}").get("objective", "")
-            except ValueError:
-                task = ""
-            report = {"task": task, "report": child.result}
-            if child.state != "completed":
-                report["state"] = child.state
-            if child.error:
-                report["error"] = child.error
-            if child.end_reason:
-                report["end_reason"] = child.end_reason
-            if child.plan_run_id:
-                report.update(_report_reference(child, paths))
-            reports.append(report)
-        result = {
-            "reports": reports,
-            "refused": [{"objective": r.get("objective", ""), "reason": r.get("reason", "")}
-                        for r in refused if r.get("tool_call_id") == call_id],
-        }
-        if sections is not None:
-            result["sections"] = sections
-        content = canonical_json(result)
-        seq = continued.delegate_seq + i
-        message = agent_runs.RunMessageRow(
-            idx=next_idx, role="tool", content=content, tool_call_id=call_id,
-            tool_name=DELEGATION_TOOL, run_id=row.run_id,
-            usage_json=json.dumps({"chat_seq": seq, "status": "ok"}),
-        )
-        agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id,
-                                 message)
-        if agent_runs.writes_transcript(row):
-            chat_row(seq, "tool", tool_name=DELEGATION_TOOL,
-                     tool_input=_delegation_rows(row.username, row.session_id, seq),
-                     tool_output=truncate_json(content),
-                     content=canonical_json({"state": "reported"}))
-        out.append(message)
-        next_idx += 1
-    return out
+    causes = {e.get("node_id"): e for e in plan_runs.section_entries(
+        row.username, row.session_id, row.plan_run_id or "")}
+    outcomes = []
+    for child in _batch_children(continued, batch_id):
+        outcome = plan_runs.section_outcome(child, paths)
+        entry = causes.get(child.plan_node_id) or {}
+        outcome["failed"] = bool(entry.get("failed"))
+        if entry.get("cause"):
+            outcome["cause"] = entry["cause"]
+        outcomes.append(outcome)
+    content = f"{plan_runs.SECTIONS_ENDED_TEXT}\n\n{canonical_json({'sections': outcomes})}"
+    message = agent_runs.RunMessageRow(
+        idx=max(m.idx for m in messages) + 1, role="human", content=content,
+        run_id=row.run_id, usage_json=json.dumps({SECTION_REPORTS_KEY: batch_id}))
+    agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, message)
+    return [*messages, message]
 
 
-def _delegate(row, calls, seqs, writer, chat_row) -> "RunSummary":
-    """Write the delegation of a run whose last reply called `run_subagent`.
+def _dispatch_sections(row, collections: list[str], writer) -> "RunSummary":
+    """Start the sections of an approved plan: one sub-agent for each direct child of the
+    approved root, before the organizer's first model call.
 
-    `calls` holds `(call_id, briefings)` for each delegation call in reply order, and `seqs`
-    the transcript seq of each call's tool row. First it reads the row under the writer
-    lock. A terminal row returns `closed`, and nothing below is written. A row that already
-    waits for this batch returns its children, so a retry starts no second batch.
+    First it reads the row under the writer lock. A terminal row returns `closed`, and
+    nothing below is written. A row that already waits for its batch returns its children,
+    so a retry starts no second set.
 
-    1. For a run that writes the transcript, write one `tool` row for each call at its seq,
-       with the briefings, the call id and the batch id as `tool_input`.
-    2. Apply the budgets of `run_budgets` to the briefings in call order.
-    3. Write each accepted child's row and its opening message.
-    4. Write this run's waiting state.
+    1. Prepare every assignment (`plan_runs.section_briefings`) from the approved version
+       that `open_plan_run` froze.
+    2. For each section at index `i`, write the child's opening message, its `prompt`
+       document and its row, with the run id `child_run_id(batch_id_for(run_id), i)`. A
+       child row that exists is not written again.
+    3. Write this run's waiting state.
 
-    Every key comes from the run id, so a retry writes the same rows. The children are
-    written before the waiting state.
+    No model call and no `run_subagent` call is written. Every key comes from the run id and
+    the section index, and the organizer's workflow id is fixed for its plan run, so a
+    retry and a competing start write the same rows.
     """
     from database import agent_runs
-    from tasks.P_agent import run_budgets
+    from tasks.P_agent import plan_runs
 
     current = writer.read()
     if current is None or agent_runs.is_terminal(current):
-        log.info("[P_agent] run %s ended before its delegation, no child is written",
-                 row.run_id)
         return RunSummary(outcome="closed", next_seq=current.next_seq if current else 0)
     if current.state == agent_runs.WAITING_FOR_CHILDREN and current.delegated_batch_id:
         children = [c.run_id for c in _batch_children(current, current.delegated_batch_id)]
         return RunSummary(outcome="delegated", next_seq=current.next_seq, children=children,
-                          batch_id=current.delegated_batch_id,
-                          prompt_tokens=current.prompt_tokens,
-                          completion_tokens=current.completion_tokens)
+                          batch_id=current.delegated_batch_id)
+    settings = plan_runs.frozen_settings(row.username, row.session_id,
+                                         row.plan_run_id or "") or {}
     batch_id = agent_runs.batch_id_for(row.run_id)
-    delegate_seq = min(seqs) if seqs else current.next_seq
-    next_seq = max([current.next_seq] + [s + 1 for s in seqs])
-    if agent_runs.writes_transcript(row) and chat_row is not None:
-        for (call_id, briefings), seq in zip(calls, seqs):
-            chat_row(seq, "tool", tool_name=DELEGATION_TOOL,
-                     tool_input=canonical_json({"briefings": briefings, "tool_call_id": call_id,
-                                                "batch_id": batch_id}),
-                     tool_output="", content=canonical_json({"state": "delegated"}))
-
-    used, limit = 0, 0
-    if row.depth == 0:
-        used = run_budgets.count_used(row.username, row.session_id, turn_seq=row.turn_seq,
-                                      plan_run_id=row.plan_run_id, own_batch_id=batch_id)
-        limit = run_budgets.limit_for(row.plan_run_id)
-    sections, section_runs = set(), {}
-    if row.kind == "organizer" and row.plan_run_id:
-        from tasks.P_agent import plan_runs
-        from database import agent_plans
-
-        sections = plan_runs.approved_sections(row.username, row.session_id, row.plan_run_id)
-        plan_run = agent_plans.read_plan_run(row.username, row.session_id, row.plan_run_id)
-        snapshot = agent_plans.read_snapshot(row.username, row.session_id, plan_run.plan_id,
-                                             plan_run.approved_version) if plan_run else None
-        if snapshot:
-            calls = [(call_id, [{**briefing, "plan_node_id":
-                                 agent_plans.resolve_node(snapshot, briefing.get("plan_node_id"))
-                                 or briefing.get("plan_node_id")}
-                                for briefing in briefings]) for call_id, briefings in calls]
-        section_runs = run_budgets.count_section_runs(
-            row.username, row.session_id, plan_run_id=row.plan_run_id, own_batch_id=batch_id)
-    # A sub-agent of a plan does not delegate, so a plan's deepest caller is depth 0.
-    decision = run_budgets.decide(calls, depth=row.depth, used=used, limit=limit,
-                                  own_share=row.subagent_share, kind=row.kind,
-                                  sections=sections, section_runs=section_runs,
-                                  in_plan=bool(row.plan_run_id))
-
+    assignments = plan_runs.section_briefings(row.username, row.session_id,
+                                              row.plan_run_id or "", collections, settings)
     children = []
-    for i, accepted in enumerate(decision.accepted):
+    for i, (node_id, briefing, text) in enumerate(assignments):
         child_id = agent_runs.child_run_id(batch_id, i)
         children.append(child_id)
-        text = render_briefing(accepted.briefing)
+        if agent_runs.read_run(row.username, row.session_id, child_id) is not None:
+            continue
         agent_runs.write_message(
             row.username, row.session_id, child_id, child_id,
-            agent_runs.RunMessageRow(idx=0, role="human", run_id=child_id, content=text),
-        )
-        # A child of a plan section copies the section and the purpose from its briefing.
-        # The plan rule in `run_budgets` accepted both, and removed them from any other
-        # briefing.
+            agent_runs.RunMessageRow(idx=0, role="human", run_id=child_id, content=text))
         child = agent_runs.RunRow(
             run_id=child_id, username=row.username, session_id=row.session_id,
             turn_seq=row.turn_seq, thread_id=child_id, parent_run_id=row.run_id,
             batch_id=batch_id, depth=row.depth + 1, kind="subagent",
-            plan_run_id=row.plan_run_id,
-            plan_node_id=accepted.briefing.get("plan_node_id") or None,
-            purpose=str(accepted.briefing.get("purpose") or ""), queue=row.queue,
-            workflow_id=f"run-{child_id}", state=agent_runs.RUNNING,
-            briefing=canonical_json(accepted.briefing), tool_call_id=accepted.tool_call_id,
-            subagent_share=accepted.share,
-        )
-        if agent_runs.read_run(row.username, row.session_id, child_id) is None:
-            if child.plan_node_id:
-                from tasks.P_agent import plan_runs
-
-                plan_runs.write_prompt_document(child, text)
-            agent_runs.create_run(child)
-
+            plan_run_id=row.plan_run_id, plan_node_id=node_id, purpose=briefing["purpose"],
+            queue=row.queue, workflow_id=f"run-{child_id}", state=agent_runs.RUNNING,
+            briefing=canonical_json(briefing))
+        plan_runs.write_prompt_document(child, text)
+        agent_runs.create_run(child)
     writer.write(state=agent_runs.WAITING_FOR_CHILDREN, delegated_batch_id=batch_id,
-                 delegate_seq=delegate_seq, next_seq=next_seq,
-                 refused_json=canonical_json(decision.refused),
-                 subagent_share=decision.caller_share)
-    log.info("[P_agent] run %s delegated: %d children, %d refused, batch %s",
-             row.run_id, len(children), len(decision.refused), batch_id)
-    return RunSummary(outcome="delegated", next_seq=next_seq, children=children,
-                      batch_id=batch_id, prompt_tokens=current.prompt_tokens,
-                      completion_tokens=current.completion_tokens)
+                 delegate_seq=current.next_seq, refused_json="[]")
+    log.info("[P_agent] organizer %s started %d sections, batch %s", row.run_id,
+             len(children), batch_id)
+    return RunSummary(outcome="delegated", next_seq=current.next_seq, children=children,
+                      batch_id=batch_id)
+
+
+@dataclass
+class DispatchParams:
+    """The organizer run whose sections start, and the collections of its input."""
+
+    run_id: str
+    username: str
+    session_id: str
+    allowed_collections: list[str] | None = field(default_factory=list)
+
+
+@activity.defn
+@with_heartbeat
+def dispatch_sections(params: DispatchParams) -> RunSummary:
+    """Start the sections of the organizer's approved plan (`_dispatch_sections`). A turn
+    with a stop row ends the organizer as `cancelled` here and starts nothing."""
+    from database import agent_runs
+
+    row = agent_runs.read_run(params.username, params.session_id, params.run_id)
+    if row is None or agent_runs.is_terminal(row):
+        return RunSummary(outcome="closed", next_seq=row.next_seq if row else 0)
+    if agent_runs.turn_is_stopped(row.username, row.session_id, row.turn_seq):
+        _write_ending(WriteEndingParams(row.run_id, row.username, row.session_id,
+                                        agent_runs.CANCELLED))
+        return RunSummary(outcome="closed", next_seq=row.next_seq)
+    return _dispatch_sections(row, list(params.allowed_collections or []),
+                              agent_runs.RunRowWriter(row))
 
 
 def _fan_in(username: str, session_id: str, run_id: str) -> Continuation:
-    """Design section 7.7: continue the parent when the last sibling ends.
+    """Continue the parent when the last sibling ends.
 
     Returns nothing for a run with no parent, and while one row of the sibling set is not
     terminal. A continuation row copies its parent and batch, so it takes the place of the
@@ -976,7 +852,7 @@ def _fan_in(username: str, session_id: str, run_id: str) -> Continuation:
 
 
 def _continue_run(username: str, session_id: str, parent_run_id: str) -> Continuation:
-    """Design section 7.7: write the continuation of a parent in `waiting_for_children`.
+    """Write the continuation of a parent in `waiting_for_children`.
 
     A parent in another state returns nothing. A stopped turn ends the parent as `cancelled`
     and runs `fan_in` for it, up to depth 0. Up to three writers create the same row, two
@@ -1020,7 +896,7 @@ def fan_in(ref: RunRef) -> Continuation:
 @activity.defn
 @with_heartbeat
 def continue_run(ref: RunRef) -> Continuation:
-    """Continue a run that delegated and had no briefing accepted."""
+    """Continue an organizer whose approved plan gave no section to start."""
     return _continue_run(ref.username, ref.session_id, ref.run_id)
 
 
@@ -1100,8 +976,8 @@ def _write_ending(params: WriteEndingParams) -> None:
     for row in chain:
         agent_runs.write_run(row, state=params.state, error=params.error, result=x.result)
     if params.state == agent_runs.CANCELLED:
-        # A stop that lands while `_delegate` writes this run's children ends the run before
-        # its workflow starts them. Each open child of its own batch then has no workflow,
+        # A stop that lands while `_dispatch_sections` writes this run's children ends the
+        # run before its workflow starts them. Each open child of its own batch then has no workflow,
         # and it ends here with the run.
         for child in _batch_children(x, agent_runs.batch_id_for(x.run_id)):
             if not agent_runs.is_terminal(child):

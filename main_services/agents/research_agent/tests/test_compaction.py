@@ -1,4 +1,5 @@
-"""Context compaction: the trigger, the record, its summary parts, and the version 2 row.
+"""Context compaction: the trigger, the prefix and the recent steps, the one summary, the
+version 3 record, and the explicit failures.
 
 The tests pass their own summariser. A test that reached a real model would test the model.
 The threads come from `Thread` of `test_thread_index`, with a fixed estimator of 0.25 tokens
@@ -6,16 +7,16 @@ a character, so each size in tokens is known by hand.
 """
 
 import json
-import threading
 
 import pytest
 
 from research_agent import compaction, steps
 from research_agent.compaction import (
-    DEFAULT_COMPACTION_FRACTION, EVICTION_PLACEHOLDER, PART_FAILED, PREVIOUS_RECORD_LINE,
-    RECORD_HEADER, compaction_fraction, last_billed, threshold_tokens,
+    CONTEXT_SIZE, DEFAULT_COMPACTION_FRACTION, EXTRACT_MARK, PREVIOUS_SUMMARY_LINE,
+    RECORD_HEADER, SUMMARY_TOKENS, ContextError, compaction_fraction, last_billed,
+    threshold_tokens,
 )
-from research_agent.run_messages import RunMessage, ToolCallRecord, apply_compactions
+from research_agent.run_messages import RunMessage, apply_compactions
 from test_thread_index import DGEMMA, EST, THREAD, TODAY_EMPTY, Thread, chars, ok
 
 
@@ -27,19 +28,54 @@ def _clean_env(monkeypatch):
 
 
 class Recorder:
-    """A summariser that records each prompt and its cap. `fail` names a part that raises."""
+    """A summariser that records each prompt and its cap. `fail` makes it raise, and
+    `empty` makes it give no text."""
 
-    def __init__(self, fail=None):
+    def __init__(self, fail=False, empty=False, text="## Findings\nthe summary"):
         self.calls = []
         self.fail = fail
-        self.lock = threading.Lock()
+        self.empty = empty
+        self.text = text
 
     def __call__(self, prompt, cap):
-        with self.lock:
-            self.calls.append((prompt, cap))
-        if self.fail and f"part {self.fail} of" in prompt:
+        self.calls.append((prompt, cap))
+        if self.fail:
             raise RuntimeError("the model server closed the stream")
-        return "## Goal\nthe summary"
+        return "" if self.empty else self.text
+
+
+def _plan(t, **kw):
+    kw.setdefault("window", DGEMMA)
+    kw.setdefault("estimator", EST)
+    return compaction.plan_compaction(t.rows, t.rows, **kw)
+
+
+def _thread(results, size, *, before=(), billed=210_000):
+    """A human message, the steps of `before`, then `results` results of `size` tokens,
+    then a small newest step over the trigger."""
+    t = Thread()
+    t.human("Who approved the lease?")
+    for call in before:
+        t.step(call)
+    for n in range(results):
+        t.step(ok("doc_metadata", {"n": n}, chars(size)))
+    t.step(ok("doc_metadata", {"n": "last"}, chars(10)), billed=billed)
+    return t
+
+
+def _store(t, report):
+    """Store the report's record after the newest `ai` message, as the worker does."""
+    ai = max(m.idx for m in t.rows if m.role == "ai")
+    t.rows.insert(ai + 1, RunMessage(role="compaction", content=json.dumps(report.row),
+                                     thread_id=THREAD, idx=ai + 1))
+    for m in t.rows[ai + 2:]:
+        m.idx += 1
+
+
+def _pairs_complete(messages):
+    asked = sorted(c.id for m in messages if m.role == "ai" for c in m.tool_calls)
+    answered = sorted(m.tool_call_id for m in messages if m.role == "tool")
+    return asked == answered
 
 
 # --------------------------------------------------------------- the trigger
@@ -76,164 +112,298 @@ def test_the_trigger_reads_prompt_plus_completion_of_the_newest_billed_call():
     assert last_billed(t.rows) == 170_010
 
 
-# --------------------------------------------------------------- the record
+def test_no_billed_usage_and_no_window_give_no_compaction():
+    t = _thread(40, 4_000, billed=0)
+    assert _plan(t) is None
+    t = _thread(40, 4_000)
+    assert _plan(t, window=0) is None
+    assert _plan(t) is not None
 
 
-def _thread(results, size, *, before=()):
-    """A human message, the steps of `before`, then `results` results of `size` tokens,
-    then a small newest step over the trigger."""
-    t = Thread()
-    t.human("Who approved the lease?")
-    for call in before:
-        t.step(call)
-    for n in range(results):
-        t.step(ok("doc_metadata", {"n": n}, chars(size)))
-    t.step(ok("doc_metadata", {"n": "last"}, chars(10)), billed=210_000)
-    return t
+def test_a_thread_that_fits_the_target_gives_no_compaction():
+    assert _plan(_thread(4, 1_000)) is None
 
 
-def test_a_compacted_part_over_30000_tokens_sends_3_requests_of_666_tokens():
-    t = _thread(14, 4_000, before=[ok("search_collections", {"queries": ["Raptor"]},
-                                      TODAY_EMPTY)])
+def test_the_measured_size_of_new_results_fires_the_trigger():
+    # The billed call is small. The results stored after it are the size of the request.
+    t = _thread(20, 4_000, billed=1_000)
+    assert _plan(t) is None
+    assert _plan(t, measured=210_000) is not None
+
+
+def test_the_trigger_is_never_above_the_safe_input():
+    t = _thread(20, 4_000, billed=1_000)
+    plan = _plan(t, measured=150_000, safe_input=140_000)
+    assert plan.trigger == 140_000 and plan.target == 46_666
+
+
+# --------------------------------------------------------------- the projection
+
+
+def test_one_older_prefix_is_summarised_once_and_the_newest_groups_stay():
+    t = _thread(40, 4_000)
     stub = Recorder()
     out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
                                      summariser=stub)
-    assert len(stub.calls) == 3
-    assert [cap for _p, cap in stub.calls] == [666, 666, 666]
-    record = report.row["handoff"]
-    assert record.startswith(RECORD_HEADER + "## Searches that found nothing\n")
-    assert record.index("## Searches that found nothing") < record.index("Part 1 of 3:")
-    assert report.row["parts"] == ["ok", "ok", "ok"]
-    assert out[1].content == record
-    assert report.row["version"] == 2 and report.row["layer"] == "record"
+    assert len(stub.calls) == 1 and stub.calls[0][1] == SUMMARY_TOKENS
+    row = report.row
+    assert (row["version"], row["layer"], row["status"]) == (3, "prefix", "ok")
+    assert report.est_after <= report.target and row["target_reached"]
+    # The record replaces the prefix at its first key. The user message keeps its place.
+    assert out[0].content == "Who approved the lease?"
+    assert out[1].content.startswith(RECORD_HEADER) and out[1].content == row["summary"]
+    assert (out[1].thread_id, out[1].idx) == tuple(row["source"][0])
+    # The recent steps are the suffix after the retained boundary, whole.
+    start = next(i for i, m in enumerate(t.rows) if (m.thread_id, m.idx) ==
+                 tuple(row["retained_from"]))
+    assert [m.content for m in out[2:]] == [m.content for m in t.rows[start:]]
+    assert _pairs_complete(out)
+    # The largest suffix: one more group would pass the target with the summary reserve.
+    group = EST.list_size(t.rows[start - 2:start])
+    reserve = SUMMARY_TOKENS + EST.tokens_text(RECORD_HEADER)
+    sizes = row["sizes"]
+    assert sizes["user"] + sizes["retained"] + reserve <= report.target
+    assert sizes["user"] + sizes["retained"] + reserve + group > report.target
+    assert row["sizes"]["retained"] > 0 and row["sizes"]["summary_input"] > 0
 
 
-def test_a_compacted_part_of_29000_tokens_sends_1_request():
-    t = _thread(15, 2_900)
-    stub = Recorder()
-    plan = compaction.plan_compaction(t.rows, t.rows, window=DGEMMA, estimator=EST)
-    assert 25_000 < sum(b[1] for b in plan.blocks) <= compaction.PARTS_ABOVE_TOKENS
-    _out, report = compaction.finish_compaction(plan, stub)
-    assert len(stub.calls) == 1 and report.row["parts"] == ["ok"]
-    assert "part 1 of" not in stub.calls[0][0]
-
-
-def test_a_second_compaction_summarises_the_first_record_again():
-    t = _thread(14, 4_000)
-    _out, first = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+def test_the_stored_row_replays_the_list_that_the_compacting_call_sent():
+    t = _thread(40, 4_000)
+    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
                                      summariser=Recorder())
-    ai = t.rows[-2]
-    t.rows.insert(ai.idx + 1, RunMessage(role="compaction", content=json.dumps(first.row),
-                                         thread_id=THREAD, idx=ai.idx + 1))
-    for m in t.rows[ai.idx + 2:]:
-        m.idx += 1
-    for n in range(14):
+    _store(t, report)
+    assert [(m.role, m.content) for m in apply_compactions(t.rows)] == [
+        (m.role, m.content) for m in out]
+
+
+def test_a_multi_call_batch_leaves_or_stays_whole():
+    t = Thread()
+    t.human("Compare the two leases.")
+    for n in range(12):
+        t.step(ok("read_documents", {"n": n}, chars(3_000)),
+               ok("search_passages", {"q": n}, chars(3_000)),
+               ok("doc_metadata", {"h": n}, chars(2_000)))
+    t.step(ok("read_documents", {"n": "a"}, chars(10)), ok("read_documents", {"n": "b"},
+                                                           chars(10)), billed=210_000)
+    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+                                     summariser=Recorder())
+    assert report.row["status"] == "ok"
+    assert _pairs_complete(out)
+    source = {tuple(k) for k in report.row["source"]}
+    for m in t.rows:
+        if m.role == "ai":
+            members = {(THREAD, m.idx)} | {(THREAD, r.idx) for r in t.rows
+                                           if r.tool_call_id in {c.id for c in m.tool_calls}}
+            assert members <= source or not members & source
+    assert [c.id for c in out[-3].tool_calls] == [c.id for c in t.rows[-3].tool_calls]
+
+
+def test_every_user_message_stays_in_its_place():
+    t = Thread()
+    t.human("Find the lease approvals.")
+    for n in range(10):
+        t.step(ok("doc_metadata", {"n": n}, chars(4_000)))
+    t.human("Only the 2001 approvals, and name the signer.")
+    for n in range(10):
+        t.step(ok("doc_metadata", {"m": n}, chars(4_000)))
+    t.step(ok("doc_metadata", {"n": "last"}, chars(10)), billed=210_000)
+    out, _report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+                                      summariser=Recorder())
+    humans = [m.content for m in out if m.role == "human"]
+    assert humans[0] == "Find the lease approvals."
+    assert humans[1].startswith(RECORD_HEADER)
+    assert "Only the 2001 approvals, and name the signer." in humans
+
+
+def test_the_summary_contract_asks_for_findings_contradictions_work_and_sources():
+    t = _thread(40, 4_000, before=[ok("search_collections", {"queries": ["Raptor"]},
+                                      TODAY_EMPTY)])
+    stub = Recorder()
+    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+                                      summariser=stub)
+    prompt = stub.calls[0][0]
+    for section in ("## Findings", "## Contradictions", "## Outstanding work",
+                    "## Sources to read again"):
+        assert section in prompt
+    assert "`write_note`" in prompt and "Who approved the lease?" in prompt
+    record = report.row["summary"]
+    assert record.startswith(RECORD_HEADER + "## Searches that found nothing\n")
+    assert record.index("## Searches that found nothing") < record.index("## Findings")
+    assert "Read a source again before you quote it." in RECORD_HEADER
+
+
+def test_a_second_compaction_extends_the_previous_summary():
+    t = _thread(40, 4_000)
+    _out, first = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+                                     summariser=Recorder(text="## Findings\nFIRST FACT"))
+    _store(t, first)
+    for n in range(40):
         t.step(ok("doc_metadata", {"m": n}, chars(4_000)))
     t.step(ok("doc_metadata", {"m": "last"}, chars(10)), billed=210_000)
     rows, applied = steps.model_input_rows([], t.rows)
-    stub = Recorder()
-    _out, second = compaction.compact(applied, rows, window=DGEMMA, estimator=EST,
-                                      summariser=stub)
-    assert second is not None
-    prompts = "\n".join(p for p, _c in stub.calls)
-    assert PREVIOUS_RECORD_LINE in prompts
-    assert "[earlier record]\n" + RECORD_HEADER in prompts
-
-
-def test_a_failed_part_gives_its_failure_line_and_the_planned_size_holds():
-    t = _thread(14, 4_000)
-    plan = compaction.plan_compaction(t.rows, t.rows, window=DGEMMA, estimator=EST)
-    out, report = compaction.finish_compaction(plan, Recorder(fail=2))
-    assert report.row["parts"] == ["ok", "failed", "ok"]
-    assert PART_FAILED.format(n=2, k=3) in report.row["handoff"]
-    assert report.est_after <= report.target
-    assert EST.list_size(out) <= plan.sizer.rest(plan.layout) + plan.layout.budget
-
-
-# ------------------------------------------------------- skill and tool texts
+    stub = Recorder(text="## Findings\nSECOND FACT")
+    out, second = compaction.compact(applied, rows, window=DGEMMA, estimator=EST,
+                                     summariser=stub)
+    prompt = stub.calls[0][0]
+    assert PREVIOUS_SUMMARY_LINE in prompt and "[previous summary]\n" in prompt
+    assert "FIRST FACT" in prompt
+    # The previous record is in the new source, so one record stays after the replay.
+    assert first.row["source"][0] in second.row["source"]
+    _store(t, second)
+    replayed = apply_compactions(t.rows)
+    records = [m for m in replayed if compaction.is_record(m)]
+    assert len(records) == 1 and "SECOND FACT" in records[0].content
+    assert [m.content for m in replayed] == [m.content for m in out]
 
 
 def test_skill_and_tool_texts_never_reach_the_summariser():
-    t = _thread(12, 4_000, before=[
+    t = _thread(40, 4_000, before=[
         ok("read_skill", {"name": "search"}, "Skill `search`.\nSEARCH TEXT"),
-        ok("read_skill", {"name": "thorough"}, "Skill `thorough`.\nOLD THOROUGH"),
-        ok("read_skill", {"name": "thorough"}, "Skill `thorough`.\nNEW THOROUGH"),
         ok("read_tool", {"name": "search_histogram"}, '{"tool": "search_histogram"}'),
     ])
     stub = Recorder()
-    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
-                                     summariser=stub)
-    prompts = "\n".join(p for p, _c in stub.calls)
-    for text in ("SEARCH TEXT", "OLD THOROUGH", "NEW THOROUGH", "search_histogram",
-                 "read_skill(", "read_tool("):
-        assert text not in prompts
-    assert report.row["dropped"] == [[THREAD, 4], [THREAD, 8]]
-    contents = [m.content for m in out]
-    assert "Skill `search`.\nSEARCH TEXT" in contents
-    assert "Skill `thorough`.\nNEW THOROUGH" in contents
-    assert "Texts removed whole: tool `search_histogram`." in report.row["handoff"]
+    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+                                      summariser=stub)
+    prompt = stub.calls[0][0]
+    for text in ("SEARCH TEXT", "search_histogram", "read_skill(", "read_tool("):
+        assert text not in prompt
+    assert ("Texts removed: skill `search`, tool `search_histogram`."
+            in report.row["summary"])
 
 
-def test_the_skill_cap_of_25000_moves_the_oldest_skill_out_of_the_list():
-    skills = [ok("read_skill", {"name": f"s{n}"}, f"Skill `s{n}`.\n" + chars(5_000))
-              for n in range(6)]
-    t = _thread(12, 4_000, before=skills)
+def test_citation_labels_of_the_prefix_are_in_the_index():
+    t = _thread(40, 4_000, before=[
+        ok("cite_documents", {"citations": []},
+           {"citations": [{"file_hash": "5e8bb0ff3822761c", "handle": "[D4]"}]}),
+    ])
+    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+                                      summariser=Recorder())
+    assert "## Citation labels\n- [D4] 5e8bb0ff3822761c" in report.row["summary"]
+
+
+# --------------------------------------------------------------- summary input size
+
+
+def test_a_larger_legacy_result_goes_to_the_summary_as_a_bounded_extract():
+    big = "HEAD " + "y" * len(chars(60_000)) + " TAIL-continuation=c7f3a91b0d2e"
+    t = Thread()
+    t.human("Who approved the lease?")
+    for n in range(20):
+        t.step(ok("doc_metadata", {"n": n}, chars(500)))
+    t.step(ok("read_page", {"url": "u"}, big))
+    for n in range(6):
+        t.step(ok("doc_metadata", {"m": n}, chars(11_000)))
+    t.step(ok("doc_metadata", {"n": "last"}, chars(10)), billed=210_000)
     stub = Recorder()
+    plan = _plan(t, summary_window=32_000)
+    assert plan.extracts == 1
+    _out, report = compaction.finish_compaction(plan, stub)
+    prompt = stub.calls[0][0]
+    assert EST.tokens_text(prompt) + SUMMARY_TOKENS <= 32_000
+    assert "[result of read_page(" in prompt and "HEAD " in prompt
+    assert "TAIL-continuation=c7f3a91b0d2e" in prompt
+    assert EXTRACT_MARK.format(chars=len(big)) in prompt
+    # Every small result stays whole in the summary request.
+    assert prompt.count(chars(500)) == 20
+    assert report.row["sizes"]["extracts"] == 1
+
+
+def test_a_prefix_that_fits_the_summary_model_goes_whole():
+    t = _thread(40, 4_000)
+    plan = _plan(t)
+    assert plan.extracts == 0
+    assert plan.prompt.count(chars(4_000)) == len(plan.source) // 2
+
+
+# --------------------------------------------------------------- the failures
+
+
+def test_fixed_input_past_the_safe_input_fails_without_a_summary():
+    t = Thread()
+    t.human(chars(240_000))
+    t.step(ok("doc_metadata", {"n": 1}, chars(1_000)))
+    t.step(ok("doc_metadata", {"n": 2}, chars(1_000)), billed=250_000)
+    with pytest.raises(ContextError) as err:
+        _plan(t, safe_input=229_376)
+    assert err.value.error_class == CONTEXT_SIZE
+    assert "The fixed input alone is about" in str(err.value)
+    assert "229,376 tokens of input" in str(err.value)
+
+
+def test_a_newest_batch_past_the_safe_input_fails_and_names_the_results():
+    t = Thread()
+    t.human("q")
+    t.step(ok("doc_metadata", {"n": 1}, chars(1_000)))
+    t.step(ok("read_page", {"url": "u"}, chars(230_000)), billed=210_000)
+    with pytest.raises(ContextError) as err:
+        _plan(t, safe_input=229_376)
+    assert "The newest tool results are about" in str(err.value)
+
+
+def test_user_messages_past_the_target_keep_the_run_and_report_the_target_missed():
+    t = Thread()
+    t.human(chars(80_000))
+    for n in range(10):
+        t.step(ok("doc_metadata", {"n": n}, chars(4_000)))
+    t.step(ok("doc_metadata", {"n": "last"}, chars(1_000)), billed=210_000)
+    out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+                                     summariser=Recorder())
+    assert report.row["status"] == "ok" and report.target_reached is False
+    assert report.row["sizes"]["user"] > report.target
+    assert out[0].content == t.rows[0].content
+
+
+def test_a_failed_summary_changes_no_message_and_is_not_asked_again():
+    t = _thread(40, 4_000)
+    stub = Recorder(fail=True)
     out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
                                      summariser=stub)
-    assert [THREAD, 2] in report.row["dropped"]
-    assert not any(m.content.startswith("Skill `s0`.") for m in out)
-    assert sum(m.content.startswith("Skill `s") for m in out) == 5
-    assert not any("Skill `s" in p for p, _c in stub.calls)
-    assert "Texts removed whole: skill `s0`." in report.row["handoff"]
+    row = report.row
+    assert (row["status"], row["summary"], row["steps_summarised"]) == ("failed", "", 0)
+    assert "the model server closed the stream" in row["error"]
+    assert [m.content for m in out] == [m.content for m in t.rows]
+    _store(t, report)
+    assert [m.content for m in apply_compactions(t.rows)] == [
+        m.content for m in t.rows if m.role != "compaction"]
+    # The same prefix: no second request over unchanged input.
+    rows, applied = steps.model_input_rows([], t.rows)
+    plan = compaction.plan_compaction(applied, rows, window=DGEMMA, estimator=EST)
+    assert plan.unchanged_failure and plan.parts == 0
+    again = Recorder()
+    _out, second = compaction.finish_compaction(plan, again)
+    assert again.calls == [] and second.row["status"] == "failed"
 
 
-# ------------------------------------------------------------------ the replay
+def test_an_empty_summary_is_a_failure():
+    t = _thread(40, 4_000)
+    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+                                      summariser=Recorder(empty=True))
+    assert report.row["status"] == "failed"
+    assert report.row["error"] == "the summary request gave no text"
 
 
-def test_a_version_1_eviction_row_and_a_later_version_2_row_replay():
-    def m(role, idx, content="", **kw):
-        return RunMessage(role=role, content=content, thread_id=THREAD, idx=idx, **kw)
-
-    def call(i):
-        return [ToolCallRecord(id=f"c{i}", name="doc_metadata", args={})]
-
-    thread = [
-        m("human", 0, "q"),
-        m("ai", 1, tool_calls=call(1)), m("tool", 2, "A" * 500, tool_call_id="c1", name="doc_metadata"),
-        m("ai", 3, tool_calls=call(3)), m("tool", 4, "B" * 500, tool_call_id="c3", name="doc_metadata"),
-        m("ai", 5, tool_calls=call(5)),
-        m("compaction", 6, json.dumps({"layer": "eviction", "evicted": [[THREAD, 2]],
-                                       "summarised": [], "handoff": ""})),
-        m("tool", 7, "C" * 500, tool_call_id="c5", name="doc_metadata"),
-        m("ai", 8, "keep me", tool_calls=call(8)),
-        m("compaction", 9, json.dumps({"version": 2, "layer": "record",
-                                       "summarised": [[THREAD, 3], [THREAD, 4]],
-                                       "text_removed": [], "dropped": [],
-                                       "cuts": [[THREAD, 7, 10]], "handoff": "RECORD"})),
-        m("tool", 10, "D", tool_call_id="c8", name="doc_metadata"),
-    ]
-    applied = apply_compactions(thread)
-    assert [(x.role, x.content) for x in applied] == [
-        ("human", "q"), ("ai", ""), ("tool", EVICTION_PLACEHOLDER), ("human", "RECORD"),
-        ("ai", ""), ("tool", "C" * 10 + compaction.CUT_MARK), ("ai", "keep me"), ("tool", "D")]
-    asked = [c.id for x in applied if x.role == "ai" for c in x.tool_calls]
-    answered = [x.tool_call_id for x in applied if x.role == "tool"]
-    assert sorted(asked) == sorted(answered)
+# --------------------------------------------------------------- provider refusals
 
 
-def test_a_dropped_result_takes_its_call_and_an_empty_ai_message_with_it():
-    thread = [
-        RunMessage(role="human", content="q", thread_id=THREAD, idx=0),
-        RunMessage(role="ai", content="", thread_id=THREAD, idx=1, tool_calls=[
-            ToolCallRecord(id="a", name="read_skill", args={"name": "x"})]),
-        RunMessage(role="tool", content="Skill `x`.", tool_call_id="a", name="read_skill",
-                   thread_id=THREAD, idx=2),
-        RunMessage(role="compaction", thread_id=THREAD, idx=3, content=json.dumps({
-            "version": 2, "summarised": [], "text_removed": [], "dropped": [[THREAD, 2]],
-            "cuts": [], "handoff": "R"})),
-    ]
-    assert [(x.role, x.content) for x in apply_compactions(thread)] == [("human", "q")]
+@pytest.mark.parametrize("status, text, stated", [
+    (400, "This model's maximum context length is 131072 tokens. However, you requested "
+          "140000 tokens", 131072),
+    (400, "prompt is too long", 0),
+    (413, "Request too large: input is too long for the context window", 0),
+    (400, "invalid tool schema", None),
+    (500, "maximum context length is 1", None),
+    (None, "maximum context length is 1", None),
+])
+def test_a_size_refusal_is_recognised_with_its_stated_limit(status, text, stated):
+    assert compaction.size_refusal(status, text) == stated
+
+
+def test_forget_window_makes_the_next_read_ask_the_catalog(monkeypatch):
+    compaction._window_cache["m"] = (10 ** 12, 1_000)
+    assert compaction.context_window("m") == 1_000
+    compaction.forget_window("m")
+    monkeypatch.delenv("CLICKHOUSE_URL", raising=False)
+    assert compaction.context_window("m") == 0
 
 
 # ---------------------------------------------------------------- the summariser request
@@ -286,6 +456,12 @@ def test_the_summariser_sends_thinking_off_and_the_cap_of_its_caller(monkeypatch
     assert seen["body"]["max_tokens"] == 666
     assert seen["body"]["chat_template_kwargs"] == {"enable_thinking": False}
     assert seen["timeout"] == (5.0, 3600.0)
+    assert seen["body"]["model"] == "m"
+
+
+def test_the_summariser_uses_the_compaction_model(monkeypatch):
+    seen = _summariser_request(monkeypatch, LLM_MODEL_COMPACTION="small")
+    assert seen["body"]["model"] == "small"
 
 
 def test_the_summariser_leaves_temperature_out_when_the_provider_refuses_it(monkeypatch):

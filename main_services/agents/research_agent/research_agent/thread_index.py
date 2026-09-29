@@ -1,22 +1,26 @@
 """The code-written index of a compaction record.
 
-A compaction replaces the older steps of a run with a record (`compaction.compact`). The
-record starts with lists that code writes from the stored thread, because a summary model
+A compaction replaces the older steps of a run with one summary (`compaction.py`). The
+summary starts with lists that code writes from the stored thread, because a summary model
 copies file hashes with errors. This module writes those lists.
 
 - "Searches that found nothing": each search call whose result holds no document.
 - "Searches that found documents": each other successful search call, with its count.
 - "Documents read": each document of a `read_documents` result, with its pages.
-- One line that names the skill and tool texts that left the list whole.
+- "Citation labels": each label of a `cite_documents` result, with its file hash.
+- "Pages read": each page of a `read_page` result, with the offset of its next part when the
+  result was cut.
+- "Results that continue": each result page with a `more` handle, with its call.
+- One line that names the skill and tool texts that left the list.
 
-Each list covers only the tool results that are not visible whole in the list after the
-compaction. The worker keeps its own copy of `found_nothing` and the documents read, because
+Each list covers only the tool results that are not in the list after the compaction. The worker keeps its own copy of `found_nothing` and the documents read, because
 the two images share no module. Change both copies together.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 #: The tools whose results the two search sections list.
@@ -24,10 +28,19 @@ SEARCH_TOOLS = ("search_collections", "search_passages", "web_search")
 READ_DOCUMENTS = "read_documents"
 READ_SKILL = "read_skill"
 READ_TOOL = "read_tool"
+CITE_DOCUMENTS = "cite_documents"
+READ_PAGE = "read_page"
+#: The cut line of a `read_page` result, which names the offset of the next part.
+NEXT_OFFSET = re.compile(r"Call read_page with offset (\d+) for the next part")
+#: The separator of the pages of one `read_page` result.
+PAGE_SEPARATOR = "\n\n---\n\n"
 
 NOTHING_LINES = 60
 FOUND_LINES = 40
 DOCUMENT_LINES = 60
+CITATION_LINES = 80
+PAGE_LINES = 40
+MORE_LINES = 40
 
 Key = Tuple[str, int]
 
@@ -160,6 +173,54 @@ def documents_read(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
     return lines[-DOCUMENT_LINES:]
 
 
+def citation_lines(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
+    """One line for each label that a hidden `cite_documents` result allocated: the label
+    and the file hash as the result gives it. The label stays valid for the chat session."""
+    labels: Dict[str, str] = {}
+    for m, name, _args in _results(rows):
+        if name != CITE_DOCUMENTS or _key(m) not in hidden:
+            continue
+        body = _json_object(m.content) or {}
+        for item in body.get("citations") or []:
+            if isinstance(item, dict) and item.get("handle") and item.get("file_hash"):
+                labels.pop(str(item["handle"]), None)
+                labels[str(item["handle"])] = str(item["file_hash"])
+    return [f"- {label} {file_hash}" for label, file_hash in labels.items()][-CITATION_LINES:]
+
+
+def pages_read(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
+    """One line for each page of a hidden `read_page` result: its URL, and the offset of its
+    next part when the result was cut. A later read of the same URL replaces the line."""
+    pages: Dict[str, str] = {}
+    for m, name, _args in _results(rows):
+        if name != READ_PAGE or _key(m) not in hidden or not isinstance(m.content, str):
+            continue
+        for block in m.content.split(PAGE_SEPARATOR):
+            lines = block.split("\n", 2)
+            if not block.startswith("## ") or len(lines) < 2 or not lines[1].strip():
+                continue
+            url = lines[1].strip()
+            match = NEXT_OFFSET.search(block)
+            pages.pop(url, None)
+            pages[url] = match.group(1) if match else ""
+    return [f"- {url}" + (f". next offset {offset}" if offset else "")
+            for url, offset in pages.items()][-PAGE_LINES:]
+
+
+def continued_results(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
+    """One line for each hidden result page that has a `more` handle: the call and the
+    handle that reads the next page."""
+    lines: List[str] = []
+    for m, name, args in _results(rows):
+        if _key(m) not in hidden:
+            continue
+        body = _json_object(m.content) or {}
+        more = body.get("more")
+        if isinstance(more, str) and more:
+            lines.append(f"- {name} {_dumps(args)}: more {more}")
+    return _newest(lines, MORE_LINES)
+
+
 def removed_texts(rows: Sequence[Any], present: Set[Key]) -> List[str]:
     """The skills and tools that the thread read with status ok and whose newest read is
     not in the list after the compaction, in thread order, each name once."""
@@ -178,19 +239,19 @@ def removed_texts(rows: Sequence[Any], present: Set[Key]) -> List[str]:
     return [label for label in order if newest[label] not in present]
 
 
-def render(rows: Sequence[Any], *, visible_after: Set[Key],
-           present_after: Optional[Set[Key]] = None) -> str:
+def render(rows: Sequence[Any], *, visible_after: Set[Key]) -> str:
     """The index of one compaction record.
 
     `rows` is the stored thread. `visible_after` holds the keys of the tool results that
-    stay whole in the list after the compaction. `present_after` holds the keys of every
-    tool result that stays, whole or cut, and defaults to `visible_after`.
+    stay in the list after the compaction.
     """
-    present = visible_after if present_after is None else present_after
     hidden = {k for m in rows if getattr(m, "role", "") == "tool"
               for k in [_key(m)] if k is not None and k not in visible_after}
     nothing, found = search_lines(rows, hidden)
     docs = documents_read(rows, hidden)
+    labels = citation_lines(rows, hidden)
+    pages = pages_read(rows, hidden)
+    more = continued_results(rows, hidden)
     sections = []
     if nothing:
         sections.append("## Searches that found nothing\n" + "\n".join(nothing))
@@ -198,16 +259,22 @@ def render(rows: Sequence[Any], *, visible_after: Set[Key],
         sections.append("## Searches that found documents\n" + "\n".join(found))
     if docs:
         sections.append("## Documents read\n" + "\n".join(docs))
-    removed = removed_texts(rows, present)
+    if labels:
+        sections.append("## Citation labels\n" + "\n".join(labels))
+    if pages:
+        sections.append("## Pages read\n" + "\n".join(pages))
+    if more:
+        sections.append("## Results that continue\n" + "\n".join(more))
+    removed = removed_texts(rows, visible_after)
     if removed:
         sections.append(
-            f"Texts removed whole: {', '.join(removed)}. Read one again with `read_skill` "
+            f"Texts removed: {', '.join(removed)}. Read one again with `read_skill` "
             "or `read_tool` when you need it."
         )
     return "\n\n".join(sections)
 
 
 __all__ = [
-    "SEARCH_TOOLS", "documents_read", "found_nothing", "item_count", "removed_texts",
-    "render", "search_lines",
+    "SEARCH_TOOLS", "citation_lines", "continued_results", "documents_read", "found_nothing",
+    "item_count", "pages_read", "removed_texts", "render", "search_lines",
 ]

@@ -148,10 +148,9 @@ services:
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
-      # Only an organizer run receives `run_subagent`. A `run_subagent` call ends the
-      # agent's stream with a `delegate` event. The Temporal worker then writes each
-      # sub-agent run and starts it as an `AgentRun` of its own, which calls this service
-      # again. A sub-agent reads AGENT_PACKS_ORGANIZER and never receives `run_subagent`.
+      # No run kind receives a delegation tool. The Temporal worker starts one sub-agent
+      # run for each section of an approved plan, as an `AgentRun` of its own, which
+      # calls this service again. A sub-agent reads AGENT_PACKS_ORGANIZER.
       - AGENT_PROFILE=full_research
       # The tool packs of each kind of agent run, rendered by deploy.py from
       # hoover4.ini. See agent_common/tool_packs.py.
@@ -173,9 +172,6 @@ services:
       # model's stated context window. Unset means the agent's shipped default.
       - AGENT_COMPACTION_FRACTION=${AGENT_COMPACTION_FRACTION:-}
       - LLM_MODEL_COMPACTION=${LLM_MODEL_COMPACTION:-}
-      # The briefings one `run_subagent` call may carry (research_agent/subagents.py).
-      # Unset means the shipped default of 5. The run budgets of a turn and of a plan
-      # are the worker's settings, in docker-compose.yaml.
       # Uvicorn worker processes. Each holds its own graph cache and MCP connections.
       # The citation HandleTable lives in hoover4-mcp-collections, so these workers
       # do not split a session's [Dn] handles.

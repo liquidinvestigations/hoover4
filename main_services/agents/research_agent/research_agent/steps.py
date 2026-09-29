@@ -7,22 +7,25 @@ state of a run.
 
 `/model_step` streams `data: {json}` frames: `reasoning` and `response` deltas, then one
 `model_turn` with the classified calls of the reply (`CallEntry`), then one `end`. When the
-call compacts its input, one `compaction` frame comes first, before the summary requests, and
-`model_turn` carries `compaction`, the version 2 record that the worker stores as a
-`compaction` row of the run thread (`run_messages.apply_compactions`). `model_turn` also
-carries `note_warning`, true when the worker writes the warning to save notes.
+call compacts its input, one `compaction` frame comes first, before the summary request, and
+`model_turn` carries `compaction`, the version 3 record that the worker stores as a
+`compaction` row of the run thread (`run_messages.apply_compactions`).
 
 A failed call sends one `error` frame in place of `model_turn` and `end`. While no frame is ready,
 the stream sends the SSE comment line `KEEPALIVE_LINE` every `KEEPALIVE_SECONDS`.
 
 Before the model call, `/model_step` measures the whole request (`request_size.py`) with the
 tool results that the worker stored after the previous reply, and gives that size to the
-compaction. `model_turn` carries the size in its usage as `request_size`, the model that
-answered as `model`, and in `citation_tool` whether the call bound `cite_documents`, which
-the worker's citation check reads.
+compaction. After a compaction it measures the request again. A request that still passes
+the safe input sends one `error` frame of class `context_size` or `context_preparation`,
+which the worker does not retry. When the provider refuses a request as too large before
+any output, the step reads the model's window again, compacts once more, and sends the new
+request only when it differs. `model_turn` carries the size in its usage as `request_size`,
+the model that answered as `model`, and in `citation_tool` whether the call bound
+`cite_documents`, which the worker's citation check reads.
 
-`/tool_call` runs one call and returns its result as JSON. It refuses an unavailable name,
-a `run_subagent` call, and arguments that do not match the tool's schema. The length of the
+`/tool_call` runs one call and returns its result as JSON. It refuses an unavailable name
+and arguments that do not match the tool's schema. The length of the
 conversation never refuses a call. A failed result that shows a known stumble ends with a
 sentence that names the skill of the fix (`stumbles.py`).
 """
@@ -43,13 +46,12 @@ from pydantic import BaseModel, Field, model_validator
 from research_agent import compaction, llm_events, request_size, skill_store, stumbles
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.execution import (
-    DELEGATION_TOOL, ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
+    ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
     batch_budget, split_resources, validation_error,
 )
 from research_agent.run_messages import (
     RunMessage, ToolCallRecord, apply_compactions, close_unanswered, to_langchain,
 )
-from research_agent.subagents import briefings_of
 from research_agent import thinking
 from research_agent.tool_args import decode_string_arguments, rename_aliases, repair_arguments
 from research_agent.tool_catalogue import SEARCH_TOOL, tool_schema
@@ -89,13 +91,11 @@ class StepRun(BaseModel):
 
     run_id: str = Field(description="The agent run id. It keys the context and the browser.")
     kind: Literal["chat", "subagent", "planner", "organizer"]
-    depth: int = Field(description="0 for a lead, 1 or 2 for a sub-agent")
-    purpose: Optional[Literal["execute", "correct"]] = None
+    depth: int = Field(description="0 for a lead, 1 for a sub-agent of a plan section")
     username: str
     session_id: str
     allowed_collections: List[str] = Field(default_factory=list)
     llm_model: Optional[str] = None
-    can_delegate: bool = True
 
 
 class ModelStepRequest(StepRun):
@@ -129,8 +129,7 @@ class CallEntry(BaseModel):
     id: str
     name: str
     args: Dict[str, Any]
-    kind: Literal["parallel", "ordered", "delegation"]
-    briefings: Optional[List[Dict[str, Any]]] = None
+    kind: Literal["parallel", "ordered"]
     page_share: Optional[int] = None
     retry: bool = True
 
@@ -170,23 +169,14 @@ def classify_calls(
     for call, call_id in zip(calls, ids):
         name = call.get("name") or ""
         args = call.get("args") or {}
-        briefings = None
-        if name == DELEGATION_TOOL and name in callable_names:
-            briefings = briefings_of(args)
-        if briefings is not None:
-            kind = "delegation"
-        elif name in ORDERED_TOOLS:
-            kind = "ordered"
-        else:
-            kind = "parallel"
         entries.append(CallEntry(
-            id=call_id, name=name, args=args, kind=kind, briefings=briefings,
+            id=call_id, name=name, args=args,
+            kind="ordered" if name in ORDERED_TOOLS else "parallel",
             retry=name not in BROWSER_ACTIONS,
         ))
-    budgeted = [e for e in entries if e.kind != "delegation"]
-    if budgeted:
-        budget = batch_budget([e.name for e in budgeted])
-        for entry, share in zip(budgeted, budget.shares):
+    if entries:
+        budget = batch_budget([e.name for e in entries])
+        for entry, share in zip(entries, budget.shares):
             entry.page_share = int(share)
     return entries
 
@@ -206,6 +196,8 @@ def _reasoning(message: Any) -> str:
 
 def classify_error(exc: BaseException) -> Tuple[str, bool]:
     """The class of a failed model call, and whether a retry can succeed."""
+    if isinstance(exc, compaction.ContextError):
+        return exc.error_class, False
     if isinstance(exc, (openai.APITimeoutError, httpx.TimeoutException, asyncio.TimeoutError)):
         return "read_timeout", True
     if isinstance(exc, (openai.APIConnectionError, httpx.ConnectError)):
@@ -238,8 +230,7 @@ def _callbacks_config(agent: Any, request: StepRun) -> Dict[str, Any]:
 async def _context(agent: Any, request: StepRun) -> Any:
     return await agent.context_for(
         request.username, request.allowed_collections, request.session_id,
-        request.llm_model, request.run_id, request.kind, request.can_delegate,
-        request.purpose,
+        request.llm_model, request.run_id, request.kind,
     )
 
 
@@ -285,16 +276,88 @@ def build_model_input(
 
 def compaction_record(report: compaction.CompactionReport,
                       applied: Sequence[RunMessage] = ()) -> Dict[str, Any]:
-    """The content of the `compaction` row of one report, a version 2 record. Each message
+    """The content of the `compaction` row of one report, a version 3 record. Each message
     is named by its stored key. A message with no key, such as a `not_run` result, is not
     named."""
     return dict(report.row)
 
 
 def compaction_frame(plan: compaction.CompactionPlan) -> Dict[str, Any]:
-    """The frame that the stream sends before the summary requests of a compaction."""
+    """The frame that the stream sends before the summary request of a compaction."""
     return {"type": "compaction", "state": "running", "tokens_before": plan.billed,
             "target": plan.target, "parts": plan.parts}
+
+
+def _provider_status(exc: BaseException) -> Optional[int]:
+    if isinstance(exc, openai.APIStatusError):
+        return exc.status_code
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code
+    return None
+
+
+def _same_request(a: Sequence[RunMessage], b: Sequence[RunMessage]) -> bool:
+    """Whether two model inputs hold the same messages."""
+    return [(m.role, m.content, m.tool_call_id) for m in a] == \
+        [(m.role, m.content, m.tool_call_id) for m in b]
+
+
+class Prepared(BaseModel):
+    """The model input of one step after the context preparation."""
+
+    messages: List[RunMessage]
+    size: Dict[str, Any]
+    #: The report of this step's compaction, or None.
+    report: Optional[Any] = None
+
+
+async def _prepare(request: ModelStepRequest, context: Any, system_text: str,
+                   schemas_json: str, rows: List[RunMessage], applied: List[RunMessage],
+                   window: int, *, force: bool = False) -> AsyncIterator[Any]:
+    """The context preparation of one model step: measure the request, compact it when the
+    trigger fires, and measure it again. Yields the `compaction` frame when one is planned,
+    and a `Prepared` last.
+
+    Raises `compaction.ContextError` when the request cannot fit: the fixed input and the
+    newest results pass the safe input, a failed summary leaves a list that does not fit,
+    or the list after the compaction still passes the safe input.
+    """
+    size = await asyncio.to_thread(
+        request_size.measure, system_text, schemas_json, applied,
+        model_id=context.model_id, window=window)
+    pending = await asyncio.to_thread(
+        compaction.plan_compaction, applied, rows, system_text=system_text,
+        schemas_json=schemas_json, model_id=context.model_id, window=window,
+        measured=size.tokens, safe_input=size.safe_input, force=force)
+    report = None
+    compacted = applied
+    sent_size = size.record()
+    if pending is not None:
+        yield compaction_frame(pending)
+        compacted, report = await asyncio.to_thread(compaction.finish_compaction, pending)
+        await asyncio.to_thread(
+            compaction.record_compaction, report,
+            username=request.username, session_id=request.session_id)
+        if report.status != "ok" and not size.fits:
+            raise compaction.ContextError(compaction.CONTEXT_PREPARATION, (
+                f"The summary of the older steps failed ({report.row.get('error')}), and "
+                f"the request of {size.tokens:,} tokens passes the model input of "
+                f"{size.safe_input:,} tokens. The run stops. The transcript keeps every "
+                "step."))
+        before = size.tokens
+        if report.status == "ok":
+            size = await asyncio.to_thread(
+                request_size.measure, system_text, schemas_json, compacted,
+                model_id=context.model_id, window=window)
+        sent_size = {**size.record(), "before_compaction": before}
+    if not size.fits:
+        raise compaction.ContextError(compaction.CONTEXT_SIZE, (
+            f"The next model request is {size.tokens:,} tokens ({size.method}), and the model "
+            f"accepts {size.safe_input:,} tokens of input. "
+            + ("The summary of the older steps did not make it fit. " if pending is not None
+               else "No complete older step is left to summarise. ")
+            + "The run stops. The transcript keeps every step."))
+    yield Prepared(messages=compacted, size=sent_size, report=report)
 
 
 async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIterator[Dict[str, Any]]:
@@ -311,42 +374,6 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     # tool result in full, and the `compaction` row of the reply records what was replaced.
     rows, applied = model_input_rows(request.earlier, request.messages)
     window = await asyncio.to_thread(compaction.context_window, context.model_id)
-    if request.step_no <= 1 and compaction.fixed_part_passes_target(
-            applied, system_text, schemas_json, window):
-        log.warning("the system text, the tool schemas and the user messages of run %s pass "
-                    "the compaction target", request.run_id)
-    # The size of this request, with the results that the worker stored after the previous
-    # reply. The billed tokens of that reply do not include them.
-    size = await asyncio.to_thread(
-        request_size.measure, system_text, schemas_json, applied,
-        model_id=context.model_id, window=window)
-    pending = await asyncio.to_thread(
-        compaction.plan_compaction, applied, rows, system_text=system_text,
-        schemas_json=schemas_json, model_id=context.model_id, window=window,
-        measured=size.tokens, safe_input=size.safe_input)
-    report = None
-    compacted = applied
-    if pending is not None:
-        yield compaction_frame(pending)
-        compacted, report = await asyncio.to_thread(compaction.finish_compaction, pending)
-        before = size.tokens
-        size = await asyncio.to_thread(
-            request_size.measure, system_text, schemas_json, compacted,
-            model_id=context.model_id, window=window)
-        sent_size = {**size.record(), "before_compaction": before}
-    else:
-        sent_size = size.record()
-    if not size.fits:
-        log.warning("the request of run %s step %s is %d tokens (%s), above the safe input "
-                    "of %d tokens", request.run_id, request.step_no, size.tokens, size.method,
-                    size.safe_input)
-    record = compaction_record(report) if report is not None else None
-    if report is not None:
-        await asyncio.to_thread(
-            compaction.record_compaction, report,
-            username=request.username, session_id=request.session_id,
-        )
-    model_input = [SystemMessage(content=system_text)] + to_langchain(compacted)
 
     llm: Any = ThinkingChatOpenAI(
         **context.llm_kwargs,
@@ -357,30 +384,66 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     llm = llm.bind_tools(bound_tools)
     config = _callbacks_config(agent, request)
 
-    timer = llm_events.CallTimer()
-    message: Any = None
-    if llm_streaming_enabled():
-        async for chunk in llm.astream(model_input, config or None):
-            # A client with no stream of its own sends one whole `AIMessage`.
-            if not isinstance(chunk, AIMessage):
-                continue
-            reasoning = _reasoning(chunk)
-            if reasoning:
-                yield {"type": "reasoning", "content": reasoning}
-            text = _text(chunk.content)
-            if text:
-                yield {"type": "response", "content": text}
-            message = chunk if message is None else message + chunk
-        if message is None:
-            message = AIMessage(content="")
-    else:
-        message = await llm.ainvoke(model_input, config or None)
-        reasoning = _reasoning(message)
-        if reasoning:
-            yield {"type": "reasoning", "content": reasoning}
-        text = _text(message.content)
-        if text:
-            yield {"type": "response", "content": text}
+    # A provider refusal of the size gives one more preparation, with the refreshed window
+    # and a forced compaction. An identical request is not sent again.
+    rejected: Optional[List[RunMessage]] = None
+    for attempt in (0, 1):
+        prepared: Optional[Prepared] = None
+        async for item in _prepare(request, context, system_text, schemas_json, rows, applied,
+                                   window, force=attempt > 0):
+            if isinstance(item, Prepared):
+                prepared = item
+            else:
+                yield item
+        assert prepared is not None
+        if rejected is not None and _same_request(prepared.messages, rejected):
+            raise compaction.ContextError(compaction.CONTEXT_SIZE, (
+                "The model provider refused the request as too large, and a new preparation "
+                "gave the same request. The run stops. The transcript keeps every step."))
+        compacted, report, sent_size = prepared.messages, prepared.report, prepared.size
+        model_input = [SystemMessage(content=system_text)] + to_langchain(compacted)
+
+        timer = llm_events.CallTimer()
+        message: Any = None
+        started = False
+        try:
+            if llm_streaming_enabled():
+                async for chunk in llm.astream(model_input, config or None):
+                    # A client with no stream of its own sends one whole `AIMessage`.
+                    if not isinstance(chunk, AIMessage):
+                        continue
+                    started = True
+                    reasoning = _reasoning(chunk)
+                    if reasoning:
+                        yield {"type": "reasoning", "content": reasoning}
+                    text = _text(chunk.content)
+                    if text:
+                        yield {"type": "response", "content": text}
+                    message = chunk if message is None else message + chunk
+                if message is None:
+                    message = AIMessage(content="")
+            else:
+                message = await llm.ainvoke(model_input, config or None)
+                started = True
+                reasoning = _reasoning(message)
+                if reasoning:
+                    yield {"type": "reasoning", "content": reasoning}
+                text = _text(message.content)
+                if text:
+                    yield {"type": "response", "content": text}
+        except Exception as exc:
+            stated = compaction.size_refusal(_provider_status(exc), str(exc))
+            if started or attempt > 0 or stated is None:
+                raise
+            log.warning("the provider refused the request of run %s step %s as too large: "
+                        "%s", request.run_id, request.step_no, exc)
+            compaction.forget_window(context.model_id)
+            window = await asyncio.to_thread(compaction.context_window, context.model_id)
+            if stated and (window <= 0 or stated < window):
+                window = stated
+            rejected = compacted
+            continue
+        break
     latency_ms = timer.elapsed_ms()
 
     calls = [
@@ -437,11 +500,9 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
             "citation_tool": any(getattr(t, "name", "") == "cite_documents"
                                  for t in bound_tools),
         },
-        "summarised": report is not None,
-        "compaction": record,
-        # The worker writes the warning to save notes before the next compaction.
-        "note_warning": compaction.note_warning_due(
-            rows, usage, bool(calls), window),
+        # True when a summary replaced older steps. A failed summary changes no message.
+        "summarised": report is not None and report.status == "ok",
+        "compaction": compaction_record(report) if report is not None else None,
     }
     yield {
         "type": "end",
@@ -532,13 +593,6 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     name = request.call.name
     allowed = snapshot.callable_names()
 
-    if name == DELEGATION_TOOL and name in allowed:
-        # A readable delegation never reaches this endpoint, because the worker delegates it.
-        return _tool_response(request, _error(
-            "invalid_arguments",
-            "tasks must be a list of 1 to 5 briefings, each with an objective",
-            tool=name,
-        ), "error", "invalid_arguments")
     if name not in allowed:
         return _tool_response(request, _error(
             "tool_unavailable", f"No tool of this run is named {name!r}. "

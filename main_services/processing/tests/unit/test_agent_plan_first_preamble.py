@@ -11,7 +11,6 @@ the prose the protocol exists to produce.
 import json
 
 from database import agent_runs
-from tasks.P_agent.steps import NOTE_WARNING_TEXT
 from tasks.P_agent.stream_writer import round_view
 
 
@@ -76,11 +75,18 @@ def test_a_nag_starts_a_new_round_with_no_opening():
     assert "I should check the list" in reasoning and "Let me search" not in reasoning
 
 
-def test_the_note_warning_does_not_start_a_round():
+#: A note warning as earlier versions stored it in a thread.
+STORED_NOTE_WARNING = (
+    "Your context is at 91 percent of its limit. The older steps of this run will soon be "
+    "replaced by a record. Save each fact that you need later with `write_note` now."
+)
+
+
+def test_a_stored_note_warning_does_not_start_a_round():
     messages = _thread(("I understand the task as X.", ["read_todo"]),
                        ("Let me search.", ["search_collections"]))
     messages.append(agent_runs.RunMessageRow(idx=len(messages), role="human",
-                                             content=NOTE_WARNING_TEXT.format(pct=91)))
+                                             content=STORED_NOTE_WARNING))
     prose, reasoning, _ = round_view(messages)
     assert prose == "I understand the task as X."
     assert "Let me search." in reasoning

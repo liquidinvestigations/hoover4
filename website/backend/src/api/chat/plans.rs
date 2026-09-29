@@ -7,17 +7,22 @@
 //! the one website process.
 //!
 //! 1. Read the plan run by owner, and the decision rows of the run. A decision id that
-//!    already has an accepted row returns `Duplicate` and starts nothing.
+//!    already has an accepted row returns `Duplicate` and starts nothing. An approve of a
+//!    plan run that already has an accepted approve returns `Duplicate` too, so one
+//!    organizer and one set of sections run.
 //! 2. A terminal run returns `Terminal`. For approve and reject, a `reviewed_version` other
 //!    than the run's returns `StaleVersion`, and a state other than `awaiting_review`
 //!    returns `WrongState`. An approve of a reviewed tree with no section returns
-//!    `EmptyPlan`. Cancel is accepted in every state that is not terminal.
+//!    `EmptyPlan`, and with more than `MAX_PLAN_SECTIONS` sections `TooManySections`. A
+//!    section is a direct child of the root. Cancel is accepted in every state that is not
+//!    terminal.
 //! 3. Approve and reject reserve a seq, write the user row and the empty stream row, write
 //!    the decision row, and start the run: a planner run `plan-{plan_run_id}-r{round}`
 //!    for a reject, an organizer run `plan-{plan_run_id}-o1` for an approve. The run reads
 //!    the comment and the version from the decision row, so the row is written before the
-//!    start. A failed start rewrites the row's outcome to `start_failed`, writes an `error`
-//!    row at the reserved seq, and returns `StartFailed`.
+//!    start. The start carries the plan's frozen model ([`frozen_model`]). A failed model
+//!    lookup or a failed start rewrites the row's outcome to `start_failed`, writes an
+//!    `error` row at the reserved seq, marks the stream final, and returns `StartFailed`.
 //! 4. A cancel in `awaiting_review` writes the plan run state `cancelled` and its ending
 //!    rows. When an accepted approve or reject has started a run that has not opened yet,
 //!    the cancel writes the stop row at that decision's turn and no plan state, and the run
@@ -28,8 +33,8 @@
 use common::chat_types::{ChatOptions, ChatRole};
 use common::current_user::CurrentUser;
 use common::plan_types::{
-    has_section, root_node_id, PlanAction, PlanDecisionOutcome, PlanDecisionRequest,
-    PlanNodeView, PlanView, MAX_PLAN_COMMENT_CHARS,
+    has_section, root_node_id, section_count, PlanAction, PlanDecisionOutcome,
+    PlanDecisionRequest, PlanNodeView, PlanView, MAX_PLAN_COMMENT_CHARS, MAX_PLAN_SECTIONS,
 };
 
 use super::{
@@ -88,7 +93,51 @@ fn check_decision(
             root_node_id: root_node_id(reviewed),
         });
     }
+    let sections = section_count(reviewed);
+    if action == PlanAction::Approve && sections > MAX_PLAN_SECTIONS {
+        return Some(PlanDecisionOutcome::TooManySections {
+            sections: sections as u64,
+            limit: MAX_PLAN_SECTIONS as u64,
+        });
+    }
     None
+}
+
+/// Whether the decisions of a plan run hold an accepted approve. A second approve then
+/// starts nothing, so one organizer and one set of sections run.
+fn has_accepted_approve(decisions: &[db_plans::DecisionRow]) -> bool {
+    decisions.iter().any(|d| {
+        d.action == PlanAction::Approve.as_str() && d.outcome == db_plans::OUTCOME_ACCEPTED
+    })
+}
+
+/// The model of a later run of a plan, and how it was chosen. A plan run with execution
+/// settings gives its frozen model, and the worker reads the same document. A plan run
+/// from before them gives the model of its newest planner answer (`legacy_planner`), or
+/// the configured default (`configured_default`). The worker then freezes that model for
+/// the plan with its source.
+async fn frozen_model(
+    username: &str,
+    session_id: &str,
+    session: &db_chat::ChatSessionRow,
+    run: &db_plans::PlanRunRow,
+) -> anyhow::Result<(String, &'static str)> {
+    if let Some(settings) =
+        db_plans::read_execution_settings(username, session_id, &run.rid).await?
+    {
+        return Ok((settings.model, ""));
+    }
+    if let Some(model) =
+        db_plans::recorded_planner_model(username, session_id, run.start_seq).await?
+    {
+        return Ok((model, "legacy_planner"));
+    }
+    let model = crate::api::admin::llm::resolve_chat_model(
+        None,
+        crate::api::admin::llm::ChatProfile::of(session.options()),
+    )
+    .await?;
+    Ok((model, "configured_default"))
 }
 
 /// Approve, reject or cancel a plan. See the module documentation for the steps.
@@ -119,6 +168,7 @@ pub async fn decide_plan(
     if decisions
         .iter()
         .any(|d| d.did == request.decision_id && d.outcome == db_plans::OUTCOME_ACCEPTED)
+        || (request.action == PlanAction::Approve && has_accepted_approve(&decisions))
     {
         return Ok(PlanDecisionOutcome::Duplicate {
             first: Box::new(PlanDecisionOutcome::Accepted),
@@ -145,6 +195,19 @@ pub async fn decide_plan(
             start_plan_round(user, &session, &run, &request, &comment).await
         }
     }
+}
+
+/// The start of step 3: the plan's frozen model, then the workflow start with it. A failed
+/// model lookup is a failed start, so both failures take the `start_failed` branch of
+/// [`start_plan_round`], and no workflow starts without a model.
+async fn start_with_frozen_model<L, S, F>(lookup: L, start: S) -> anyhow::Result<()>
+where
+    L: std::future::Future<Output = anyhow::Result<(String, &'static str)>>,
+    S: FnOnce(String, &'static str) -> F,
+    F: std::future::Future<Output = anyhow::Result<()>>,
+{
+    let (llm_model, model_source) = lookup.await?;
+    start(llm_model, model_source).await
 }
 
 /// Step 3: reserve the segment, write the decision row, and start the planner or the
@@ -216,26 +279,39 @@ async fn start_plan_round(
 
     let permitted = list_permitted_collections(user).await?;
     let allowed = intersect_collections(&session.collections, &permitted);
-    let started = start_agent_workflow(AgentWorkflowStart {
-        workflow_type: "AgentRun",
-        task_queue: CHAT_TASK_QUEUE,
-        workflow_id: &workflow_id,
-        input: serde_json::json!({
-            "run_id": new_run_id(),
-            "username": username,
-            "session_id": session_id,
-            "kind": kind,
-            "turn_seq": user_seq,
-            "start_seq": start_seq,
-            "turn_uuid": &turn_uuid,
-            "allowed_collections": &allowed,
-            "llm_model": "",
-            // The frozen switch of the conversation, never the request's.
-            "internet_tools": session.options().internet_tools,
-            "plan_run_id": &run.rid,
-            "decision_id": &request.decision_id,
-        }),
-    })
+    // References, so the `async move` start below borrows these and the failure branch
+    // can still use them.
+    let (workflow_ref, turn_ref, allowed_ref) = (&workflow_id, &turn_uuid, &allowed);
+    let started = start_with_frozen_model(
+        frozen_model(username, session_id, session, run),
+        |llm_model, model_source| async move {
+            start_agent_workflow(AgentWorkflowStart {
+                workflow_type: "AgentRun",
+                task_queue: CHAT_TASK_QUEUE,
+                workflow_id: workflow_ref,
+                input: serde_json::json!({
+                    "run_id": new_run_id(),
+                    "username": username,
+                    "session_id": session_id,
+                    "kind": kind,
+                    "turn_seq": user_seq,
+                    "start_seq": start_seq,
+                    "turn_uuid": turn_ref,
+                    "allowed_collections": allowed_ref,
+                    // The plan's frozen model. The worker runs every run of the plan with
+                    // the model of its execution settings.
+                    "llm_model": &llm_model,
+                    "model_source": model_source,
+                    // The frozen switch of the conversation, never the request's.
+                    "internet_tools": session.options().internet_tools,
+                    "plan_run_id": &run.rid,
+                    "decision_id": &request.decision_id,
+                }),
+            })
+            .await
+            .map(|_| ())
+        },
+    )
     .await;
     if let Err(e) = started {
         tracing::error!("could not start {workflow_id}: {e:#}");
@@ -431,10 +507,12 @@ fn lead_end_reason(runs: &[db_plans::PlanAgentRun]) -> String {
 ///
 /// `internet_tools` comes from `frozen`, the options that `lock_session_options` returned,
 /// and never from the request, so a request that sends a changed switch cannot move a
-/// conversation to the other agent service.
+/// conversation to the other agent service. `llm_model` is the resolved model, which the
+/// worker freezes for the whole plan.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn research_start_input(
     frozen: ChatOptions,
+    llm_model: &str,
     run_id: &str,
     plan_run_id: &str,
     username: &str,
@@ -452,7 +530,7 @@ pub(crate) fn research_start_input(
         "start_seq": user_seq + 1,
         "turn_uuid": turn_uuid,
         "allowed_collections": allowed,
-        "llm_model": "",
+        "llm_model": llm_model,
         "internet_tools": frozen.internet_tools,
         "plan_run_id": plan_run_id,
         "decision_id": "",
@@ -462,6 +540,36 @@ pub(crate) fn research_start_input(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_failed_model_lookup_is_a_failed_start_and_starts_nothing() {
+        let started = std::sync::atomic::AtomicBool::new(false);
+        let result = start_with_frozen_model(
+            async { Err(anyhow::anyhow!("no LLM provider is configured")) },
+            |_model, _source| async {
+                started.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await;
+        assert!(result.unwrap_err().to_string().contains("no LLM provider"));
+        assert!(!started.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn the_start_gets_the_frozen_model_and_its_failure_is_returned() {
+        let seen = std::sync::Mutex::new(None);
+        let result = start_with_frozen_model(
+            async { Ok(("dgemma".to_string(), "legacy_planner")) },
+            |model, source| {
+                *seen.lock().unwrap() = Some((model, source));
+                async { Err(anyhow::anyhow!("temporal refused")) }
+            },
+        )
+        .await;
+        assert_eq!(result.unwrap_err().to_string(), "temporal refused");
+        assert_eq!(*seen.lock().unwrap(), Some(("dgemma".to_string(), "legacy_planner")));
+    }
 
     fn run(state: &str, reviewed: u64) -> db_plans::PlanRunRow {
         db_plans::PlanRunRow {
@@ -606,6 +714,39 @@ mod tests {
     }
 
     #[test]
+    fn approve_of_a_nested_subtree_counts_its_root_children_and_five_are_refused() {
+        // Two sections: one with a nested subtree, one leaf child of the root.
+        let nested = [
+            plan_node("root", None),
+            plan_node("s1", Some("root")),
+            plan_node("t1", Some("s1")),
+            plan_node("t1a", Some("t1")),
+            plan_node("s2", Some("root")),
+        ];
+        assert_eq!(check_decision(&run("awaiting_review", 2), PlanAction::Approve, 2, &nested), None);
+        let mut five = vec![plan_node("root", None)];
+        for id in ["a", "b", "c", "d", "e"] {
+            five.push(plan_node(id, Some("root")));
+        }
+        assert_eq!(
+            check_decision(&run("awaiting_review", 2), PlanAction::Approve, 2, &five),
+            Some(PlanDecisionOutcome::TooManySections { sections: 5, limit: 4 })
+        );
+        // A reject of the same tree goes ahead, so the planner can revise it.
+        assert_eq!(check_decision(&run("awaiting_review", 2), PlanAction::Reject, 2, &five), None);
+    }
+
+    #[test]
+    fn a_second_approve_of_a_plan_is_a_duplicate() {
+        assert!(!has_accepted_approve(&[decision("reject", "accepted", 5)]));
+        assert!(!has_accepted_approve(&[decision("approve", "start_failed", 9)]));
+        assert!(has_accepted_approve(&[
+            decision("reject", "accepted", 5),
+            decision("approve", "accepted", 9)
+        ]));
+    }
+
+    #[test]
     fn approve_of_one_section_goes_ahead_and_an_empty_plan_can_be_rejected() {
         assert_eq!(
             check_decision(&run("awaiting_review", 2), PlanAction::Approve, 2, &one_section()),
@@ -629,9 +770,19 @@ mod tests {
             deep_research: true,
             ..Default::default()
         };
-        let input =
-            research_start_input(frozen, "run", "plan", "ann", "s1", 7, "t", &["c".into()]);
+        let input = research_start_input(
+            frozen,
+            "model-a",
+            "run",
+            "plan",
+            "ann",
+            "s1",
+            7,
+            "t",
+            &["c".into()],
+        );
         assert_eq!(input["internet_tools"], serde_json::json!(false));
+        assert_eq!(input["llm_model"], "model-a");
         assert_eq!(input["kind"], "planner");
         assert_eq!((input["turn_seq"].as_u64(), input["start_seq"].as_u64()), (Some(7), Some(8)));
         assert_eq!(planner_workflow_id("plan", 0), "plan-plan-r0");

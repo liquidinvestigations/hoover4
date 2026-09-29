@@ -484,18 +484,21 @@ class ToolCallWriter(ResearchStreamWriter):
                          tool_call_index=self.index)
 
 
-def _opens_round(content: Any) -> bool:
-    """False for the note warning. Every other human message opens a round."""
-    from tasks.P_agent.steps import NOTE_WARNING_TEXT
+#: The start of the note warning that earlier versions wrote as a `human` row. A stored
+#: thread can still hold one.
+LEGACY_NOTE_WARNING_HEAD = "Your context is at "
 
+
+def _opens_round(content: Any) -> bool:
+    """False for a stored note warning. Every other human message opens a round."""
     text = content if isinstance(content, str) else ""
-    return not text.startswith(NOTE_WARNING_TEXT.split("{pct}")[0])
+    return not text.startswith(LEGACY_NOTE_WARNING_HEAD)
 
 
 def round_view(messages) -> tuple[str, str, bool]:
     """The plan-first prose, the reasoning and the opening state of the current round.
 
-    The round starts after the last `human` message of the thread that is not the note
+    The round starts after the last `human` message of the thread that is not a stored note
     warning. No step keeps state, so each step derives these from the stored `ai` messages
     of the round:
 

@@ -9,12 +9,19 @@ The stored usage of the last `AIMessage` lets compaction measure the thread befo
 call, so a long thread is compacted on that call.
 
 A `compaction` row records one compaction that the service applied to an earlier model call.
-Its content is JSON. A version 1 row holds `layer`, `evicted` and `summarised` as lists of
-`[thread_id, idx]`, `handoff`, `tokens_before` and `threshold`. A version 2 row
-(`"version": 2`, written by `compaction.compact`) also holds `text_removed`, `dropped` and
-`cuts`. `apply_compactions` applies every such row before the next call measures the list, so
-the next call sends the compacted list again and not the full thread. The stored thread and
-the transcript keep every message in full.
+Its content is JSON, and `apply_compactions` applies every such row before the next call
+measures the list, so the next call sends the compacted list again and not the full thread.
+The stored thread and the transcript keep every message in full. Three versions exist, and
+each stays readable.
+
+- Version 3 (`"version": 3`, written by `compaction.finish_compaction`) holds `source`, the
+  keys `[thread_id, idx]` of the older prefix that the summary replaces, `retained_from`, the
+  key of the first message that stays, `summary`, the text of the record message, `status`
+  (`ok` or `failed`), and the measured sizes. A `failed` row changes no message.
+- Version 2 (`"version": 2`) holds `summarised`, `text_removed`, `dropped` and `cuts`, and
+  `handoff`, the text of the record message.
+- Version 1 (no version) holds `layer`, `evicted` and `summarised` as lists of keys,
+  `handoff`, `tokens_before` and `threshold`.
 """
 
 from __future__ import annotations
@@ -154,8 +161,30 @@ def _cuts(value: Any) -> Dict[Tuple[str, int], int]:
     return out
 
 
-def apply_record(messages: Sequence[RunMessage], record: Dict[str, Any]) -> List[RunMessage]:
-    """Apply one version 2 compaction record to a list with no `compaction` row.
+def _apply_prefix(messages: Sequence[RunMessage], record: Dict[str, Any]) -> List[RunMessage]:
+    """Apply one version 3 row. The `source` messages leave the list, and one `human`
+    message with the summary takes the place of the first of them, with its key. A row with
+    a status other than `ok`, or with no summary, changes no message."""
+    summary = str(record.get("summary") or "")
+    if record.get("status") != "ok" or not summary:
+        return list(messages)
+    gone = _keys(record.get("source"))
+    placed = False
+    out: List[RunMessage] = []
+    for message in messages:
+        key = _key(message)
+        if key is not None and key in gone:
+            if not placed:
+                out.append(RunMessage(role="human", content=summary,
+                                      thread_id=key[0], idx=key[1]))
+                placed = True
+            continue
+        out.append(message)
+    return _drop_unanswered_calls(_drop_orphan_results(out))
+
+
+def _apply_v2(messages: Sequence[RunMessage], record: Dict[str, Any]) -> List[RunMessage]:
+    """Apply one version 2 row.
 
     A `dropped` message leaves the list, and no record takes its place. The `summarised`
     messages leave the list, and one `human` message with the handoff takes the place of
@@ -192,43 +221,51 @@ def apply_record(messages: Sequence[RunMessage], record: Dict[str, Any]) -> List
     return _drop_unanswered_calls(_drop_orphan_results(out))
 
 
-def apply_compactions(messages: Sequence[RunMessage]) -> List[RunMessage]:
-    """Apply every `compaction` row of the list, in list order, and remove the rows.
+def _apply_v1(messages: Sequence[RunMessage], record: Dict[str, Any]) -> List[RunMessage]:
+    """Apply one version 1 row. An evicted `tool` message keeps its call and gets the
+    eviction placeholder. The summarised messages leave the list, and one `human` message
+    with the handoff takes the place of the first of them, with its key."""
+    evicted = _keys(record.get("evicted"))
+    summarised = _keys(record.get("summarised"))
+    handoff = str(record.get("handoff") or "")
+    placeholder = _placeholder()
+    out: List[RunMessage] = []
+    placed = False
+    for message in messages:
+        key = _key(message)
+        if key is not None and key in summarised and handoff:
+            if not placed:
+                out.append(RunMessage(role="human", content=handoff,
+                                      thread_id=key[0], idx=key[1]))
+                placed = True
+            continue
+        if key is not None and key in evicted and message.role == "tool":
+            message = message.model_copy(update={"content": placeholder})
+        out.append(message)
+    return _drop_orphan_results(out)
 
-    A version 2 row goes through `apply_record`. For a version 1 row, an evicted `tool`
-    message keeps its call and gets the eviction placeholder. The summarised messages leave
-    the list, and one `human` message with the handoff takes the place of the first of
-    them. It has the key of that message, so a later compaction can name it.
-    """
+
+def apply_record(messages: Sequence[RunMessage], record: Dict[str, Any]) -> List[RunMessage]:
+    """Apply one compaction record of any version to a list with no `compaction` row."""
+    version = record.get("version")
+    if version == 3:
+        return _apply_prefix(messages, record)
+    if version == 2:
+        return _apply_v2(messages, record)
+    return _apply_v1(messages, record)
+
+
+def apply_compactions(messages: Sequence[RunMessage]) -> List[RunMessage]:
+    """Apply every `compaction` row of the list, in list order, and remove the rows. A row
+    that is not a JSON object is skipped."""
     out = [m for m in messages if m.role != "compaction"]
     for row in (m for m in messages if m.role == "compaction"):
         try:
             record = json.loads(row.content or "{}")
         except ValueError:
             continue
-        if not isinstance(record, dict):
-            continue
-        if record.get("version") == 2:
+        if isinstance(record, dict):
             out = apply_record(out, record)
-            continue
-        evicted = _keys(record.get("evicted"))
-        summarised = _keys(record.get("summarised"))
-        handoff = str(record.get("handoff") or "")
-        placeholder = _placeholder()
-        next_out: List[RunMessage] = []
-        placed = False
-        for message in out:
-            key = _key(message)
-            if key is not None and key in summarised and handoff:
-                if not placed:
-                    next_out.append(RunMessage(role="human", content=handoff,
-                                               thread_id=key[0], idx=key[1]))
-                    placed = True
-                continue
-            if key is not None and key in evicted and message.role == "tool":
-                message = message.model_copy(update={"content": placeholder})
-            next_out.append(message)
-        out = _drop_orphan_results(next_out)
     return out
 
 

@@ -450,6 +450,10 @@ fn outcome_text(outcome: &PlanDecisionOutcome) -> Option<String> {
              planner writes it again."
                 .to_string(),
         ),
+        PlanDecisionOutcome::TooManySections { sections, limit } => Some(format!(
+            "This plan has {sections} top-level sections, and a plan can run at most {limit}. \
+             Reject it with a comment, and the planner merges the sections."
+        )),
     }
 }
 

@@ -59,12 +59,12 @@ def test_agent_run_and_its_activities_are_registered_on_their_queues():
     chat_workflows, chat_acts = workers["CHAT_TASK_QUEUE"]
     assert chat_workflows == ["AgentRun"]
     for name in ("open_run", "append_nag", "write_ending", "summarize_if_first_turn",
-                 "delegate_step", "prepare_continuation",
+                 "dispatch_sections", "prepare_continuation",
                  "record_step_failure", "plan_has_sections",
                  "check_citations", "write_empty_note", "write_incomplete"):
         assert name in chat_acts, name
     for removed in ("read_chat_todo", "preload_reads", "write_repeat_note",
-                    "write_found_documents"):
+                    "write_found_documents", "delegate_step"):
         assert removed not in chat_acts, removed
     assert workers["CHAT_MODEL_TASK_QUEUE"][1] == ["model_step"]
     assert workers["RESEARCH_TASK_QUEUE"][1] == ["model_step"]
@@ -125,7 +125,7 @@ def test_agent_run_input_holds_ids_and_settings_only():
     assert {f.name for f in fields(AgentRunInput)} == {
         "run_id", "username", "session_id", "kind", "turn_seq", "start_seq", "turn_uuid",
         "allowed_collections", "llm_model", "internet_tools", "plan_run_id", "decision_id",
-        "planner_retry_done",
+        "planner_retry_done", "model_source",
     }
     for params in (StepRef, ModelStepParams, ModelStepResult, ToolCallParams, StepFailure,
                    CallRef, RunRef, RunSummary, OpenedRun, WriteEndingParams):
@@ -248,39 +248,6 @@ def test_a_successful_question_writes_the_turn_answer(monkeypatch, store, kind, 
     assert store["run"][-1] == {"result": question, "next_seq": 7}
 
 
-def test_a_question_after_delegation_ends_the_continued_run(monkeypatch, store):
-    question = "Which collection should I read?"
-    parent_id = "parent"
-    store["row"] = _row(run_id="continued", kind="organizer", continues_run_id=parent_id,
-                        next_seq=8)
-    store["messages"].extend([
-        agent_runs.RunMessageRow(idx=1, role="ai", content="", run_id=parent_id,
-                                 tool_calls_json=json.dumps([
-                                     _entry("ask-1", "ask_user", {"question": question}),
-                                     _entry("child-1", "run_subagent", {"tasks": []},
-                                            kind="delegation")])),
-        agent_runs.RunMessageRow(idx=2, role="tool", content='{"asked":true}',
-                                 run_id=parent_id, tool_call_id="ask-1", tool_name="ask_user",
-                                 usage_json=json.dumps({"status": "ok"})),
-    ])
-    monkeypatch.setattr(steps, "_add_continuation_results", lambda row, messages, chat_row:
-                        messages + [agent_runs.RunMessageRow(
-                            idx=3, role="tool", content='{"reports":[]}', run_id="continued",
-                            tool_call_id="child-1", tool_name="run_subagent",
-                            usage_json=json.dumps({"status": "ok"}))])
-    monkeypatch.setattr(agent_runs, "write_run",
-                        lambda row, **changes: store["run"].append(changes))
-    ref = StepRef(run_id="continued", username="u", session_id="s")
-    asked = ActivityEnvironment().run(steps.prepare_continuation, ref)
-    assert asked is not None and asked.call_id == "ask-1"
-    next_seq = ActivityEnvironment().run(
-        steps.write_asked_answer,
-        steps.AskedAnswerParams(run_id="continued", username="u", session_id="s", call=asked))
-    assert next_seq == 9
-    assert store["chat"][-1]["content"] == question
-    assert store["run"][-1] == {"result": question, "next_seq": 9}
-
-
 def _frames(text="", entries=(), usage=None, reasoning="", model=None):
     turn = {"type": "model_turn", "text": text, "reasoning": reasoning,
             "tool_calls": list(entries),
@@ -332,23 +299,24 @@ def test_each_model_call_sends_the_thinking_switch_it_reads(store, monkeypatch):
     assert store["requests"][0]["thinking"] is False
 
 
-def test_a_reply_with_calls_takes_seqs_in_call_order_with_delegations_last(store, monkeypatch):
+def test_a_reply_with_calls_takes_seqs_in_call_order(store, monkeypatch):
     entries = [_entry(LONG_ID_A, "search_collections", {"query": "alpha"}),
-               _entry("d1", "run_subagent", {"tasks": []}, kind="delegation"),
-               _entry(LONG_ID_B, "append_node", {"text": "b"}, kind="ordered")]
+               _entry("t1", "read_todo", {}, kind="ordered"),
+               _entry(LONG_ID_B, "write_plan", {"version": 1, "children": []},
+                      kind="ordered")]
     _serve(monkeypatch, store, _frames(entries=entries))
     result = _step()
     assert result.outcome == "calls"
     assert [(c.call_id, c.kind, c.seq, c.position) for c in result.calls] == [
-        (LONG_ID_A, "parallel", 5, 0), ("d1", "delegation", 7, 1),
-        (LONG_ID_B, "ordered", 6, 2)]
+        (LONG_ID_A, "parallel", 5, 0), ("t1", "ordered", 6, 1),
+        (LONG_ID_B, "ordered", 7, 2)]
     ai = store["messages"][-1]
     assert (ai.idx, ai.role, ai.is_final) == (1, "ai", 1)
     assert json.loads(ai.usage_json)["step_no"] == 1
     assert store["run"][-1] == {"next_seq": 8, "model_steps": 1, "prompt_tokens": 7,
                                 "completion_tokens": 3}
     tool_rows = [a for a, k in store["stream"] if a[1] == "tool"]
-    assert [r[0] for r in tool_rows] == [5, 7, 6]
+    assert [r[0] for r in tool_rows] == [5, 6, 7]
     # The request sends the stored call entries as `id`, `name` and `args` only.
     assert store["requests"][0]["messages"] == [
         {"role": "human", "content": "q", "thread_id": RUN_ID, "idx": 0}]
@@ -828,7 +796,7 @@ def test_an_attempt_that_lost_its_heartbeat_writes_no_row(store, step_events, mo
     assert step_events == []
 
 
-def test_the_tool_index_puts_delegations_after_the_other_calls():
+def test_the_tool_index_of_an_older_reply_puts_delegations_after_the_other_calls():
     ai = agent_runs.RunMessageRow(idx=4, role="ai", tool_calls_json=json.dumps([
         {"kind": "delegation"}, {"kind": "parallel"}, {"kind": "ordered"}]))
     assert [steps.tool_idx(ai, p) for p in range(3)] == [7, 5, 6]
@@ -847,15 +815,14 @@ def test_run_message_sends_the_call_fields_and_the_tool_status():
 # ---------------------------------------------------------------- open_run
 
 
-def test_pending_calls_leave_out_the_delegations_of_a_continued_run():
+def test_pending_calls_leave_out_the_stored_delegations_of_an_older_run():
     ai = agent_runs.RunMessageRow(idx=1, role="ai", run_id="other", tool_calls_json=json.dumps([
         dict(_entry("s", "search_collections", {}), position=0, seq=5),
         dict(_entry("d", "run_subagent", {}, kind="delegation"), position=1, seq=6)]))
     messages = [agent_runs.RunMessageRow(idx=0, role="human"), ai]
     assert [c.call_id for c in activities.pending_calls(_row(), messages)] == ["s"]
     own = agent_runs.RunMessageRow(**{**ai.__dict__, "run_id": RUN_ID})
-    assert [c.call_id for c in activities.pending_calls(_row(), [messages[0], own])] == [
-        "s", "d"]
+    assert [c.call_id for c in activities.pending_calls(_row(), [messages[0], own])] == ["s"]
 
 
 # ---------------------------------------------------------------- payloads and writer

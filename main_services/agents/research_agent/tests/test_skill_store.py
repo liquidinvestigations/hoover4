@@ -194,7 +194,6 @@ def _old_variables(profile, tools):
         "has": lambda name: name in tools,
         "tool": lambda name: f"`{name}`",
         "web_enabled": "web_search" in tools,
-        "subagents_enabled": "run_subagent" in tools,
         "citation_artefact": artefact,
         "citation_resolver": resolver,
         "collections_hint": True,
@@ -293,7 +292,7 @@ def test_the_full_chat_lists_every_new_skill():
 
 def test_the_internal_chat_lists_no_browser_and_no_web_skill():
     internal = PACKS["collections"] | PACKS["conversation"] | PACKS["skills"] \
-        | PACKS["catalogue"] | PACKS["delegation"]
+        | PACKS["catalogue"]
     names = {s.name for s in listed_skills(context("internal_search", internal))}
     assert "browser_use" not in names and "web_research" not in names
     assert {"spreadsheets", "emails", "document_ids", "todo_upkeep"} <= names

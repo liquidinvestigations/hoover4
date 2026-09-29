@@ -806,21 +806,26 @@ fn CompactionLine(content: String, ring: String) -> Element {
     let after = value.get("tokens_after").and_then(|v| v.as_u64()).unwrap_or(0);
     let steps = value.get("steps_summarised").and_then(|v| v.as_u64()).unwrap_or(0);
     let reached = value.get("target_reached").and_then(|v| v.as_bool()).unwrap_or(true);
+    // A version 2 line lists the state of each summary part. A version 3 line has one
+    // summary, and `summary_state` is `failed` when it gave no text.
     let failed = value.get("part_states").and_then(|v| v.as_array()).map(|parts| {
         parts.iter().filter(|part| part.as_str() == Some("failed")).count()
     }).unwrap_or(0);
+    let summary_failed = value.get("summary_state").and_then(|v| v.as_str()) == Some("failed");
     let mut record_open = use_signal(|| false);
     let line = if state == "running" {
         format!("Compacting the context: {before} tokens to a target of {target}.")
+    } else if summary_failed {
+        format!("The summary of the earlier steps failed. The model received the earlier steps unchanged, {after} tokens.")
     } else {
         format!("Context compacted: {steps} steps summarised, {before} tokens to {after}.")
     };
     rsx! {
         div { class: "x-chat-compaction", style: "align-self: stretch; font-size: 12px; color: #475569; {ring}",
             "{line}"
-            if !reached { span { " The context stays above the target of {target}." } }
+            if !reached && !summary_failed { span { " The context stays above the target of {target}." } }
             if failed > 0 { span { " {failed} summary parts failed. The record holds the lists only." } }
-            if let Some(record) = value.get("record").and_then(|v| v.as_str()) {
+            if let Some(record) = value.get("record").and_then(|v| v.as_str()).filter(|r| !r.is_empty()) {
                 button {
                     style: "margin-left: 8px; background: none; border: none; color: #4F46E5; cursor: pointer; text-decoration: underline;",
                     onclick: move |_| {

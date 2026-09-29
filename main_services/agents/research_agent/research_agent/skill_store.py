@@ -201,7 +201,6 @@ def skill_variables(ctx: SkillContext, strict: bool = False) -> Dict[str, object
         "has": lambda name: name in names,
         "tool": tool_function(strict),
         "web_enabled": "web_search" in names,
-        "subagents_enabled": "run_subagent" in names,
         "citation_artefact": artefact,
         "citation_resolver": resolver,
         "collections_hint": bool(ctx.collections_hint),

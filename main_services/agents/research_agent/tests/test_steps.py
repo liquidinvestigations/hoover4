@@ -21,7 +21,7 @@ from mcp.types import EmbeddedResource, TextResourceContents
 
 from agent_common.result_pages import ByteLimit, PageInput, SAFE_MODE_BATCH_BYTES, build_page
 from agent_common.tool_packs import allowed_tools
-from research_agent import execution, steps, stumbles, subagents
+from research_agent import execution, steps, stumbles
 from research_agent.agent import AgentContext
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.skill_tools import SKILL_TOOLS
@@ -139,10 +139,6 @@ def turn_of(frames):
     return next(f for f in frames if f["type"] == "model_turn")
 
 
-def briefing(objective):
-    return {"objective": objective, "known": "", "bring_back": "the documents"}
-
-
 # ------------------------------------------------------------------------ model step
 
 
@@ -166,43 +162,37 @@ async def test_a_streamed_reply_sends_the_same_frames(model, monkeypatch):
 
 
 async def test_a_reply_with_three_calls_is_classified(model):
-    names = ["search_collections", "append_node"]
-    tools = [dict_tool(n, EMPTY_SCHEMA, []) for n in names] + [subagents.make_delegation_tool()]
-    agent = FakeAgent(tools, set(names) | {"run_subagent", "read_tool"}, kind="planner")
-    # The plan tools and `run_subagent` are deferred, so the thread binds them with
-    # `read_tool` first.
+    names = ["search_collections", "write_plan"]
+    tools = [dict_tool(n, EMPTY_SCHEMA, []) for n in names]
+    agent = FakeAgent(tools, set(names) | {"read_tool"}, kind="planner")
+    # The thread binds the plan tool with an earlier `read_tool` call.
     thread = [
         {"role": "human", "content": "Find the lease."},
         {"role": "ai", "content": "", "tool_calls": [
-            {"id": "r1", "name": "read_tool", "args": {"name": "append_node"}},
-            {"id": "r2", "name": "read_tool", "args": {"name": "run_subagent"}}]},
-        {"role": "tool", "content": '{"tool": "append_node"}', "tool_call_id": "r1",
-         "name": "read_tool"},
-        {"role": "tool", "content": '{"tool": "run_subagent"}', "tool_call_id": "r2",
+            {"id": "r1", "name": "read_tool", "args": {"name": "write_plan"}}]},
+        {"role": "tool", "content": '{"tool": "write_plan"}', "tool_call_id": "r1",
          "name": "read_tool"},
     ]
     model.replies.append(AIMessage(content="", tool_calls=[
         {"id": "a", "name": "search_collections", "args": {"query": "lease"}},
-        {"id": "b", "name": "append_node", "args": {}},
-        {"id": "d", "name": "run_subagent", "args": {"tasks": [briefing("A")]}},
+        {"id": "b", "name": "write_plan", "args": {}},
+        {"id": "c", "name": "run_subagent", "args": {"tasks": [{"objective": "A"}]}},
     ]))
     entries = turn_of(await frames_of(agent, step_request(thread, step_no=2)))["tool_calls"]
-    assert [e["kind"] for e in entries] == ["parallel", "ordered", "delegation"]
-    assert len(entries[2]["briefings"]) == 1 and entries[2]["page_share"] is None
-    assert entries[0]["page_share"] + entries[1]["page_share"] <= SAFE_MODE_BATCH_BYTES
+    # No call is a delegation: `run_subagent` is an ordinary name that no pack holds.
+    assert [e["kind"] for e in entries] == ["parallel", "ordered", "parallel"]
+    assert "briefings" not in entries[0]
+    assert sum(e["page_share"] for e in entries) <= SAFE_MODE_BATCH_BYTES
     # No repeat key is sent: the worker compares no calls.
     assert "args_digest" not in entries[0] and "budget_exhausted" not in entries[0]
 
 
-async def test_run_subagent_with_unreadable_briefings_is_a_parallel_call(model):
-    agent = FakeAgent([subagents.make_delegation_tool()], {"run_subagent"}, kind="organizer")
-    model.replies.append(AIMessage(content="", tool_calls=[
-        {"id": "d", "name": "run_subagent", "args": {"tasks": "not json"}}]))
-    entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
-    assert entries[0]["kind"] == "parallel" and entries[0]["briefings"] is None
+async def test_a_run_subagent_call_is_refused_as_an_unknown_tool(model):
+    agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, [])],
+                      {"search_collections"}, kind="organizer")
     result = await steps.run_tool_call(agent, tool_request(
-        "run_subagent", {"tasks": "not json"}))
-    assert (result["status"], result["error_class"]) == ("error", "invalid_arguments")
+        "run_subagent", {"tasks": [{"objective": "A"}]}))
+    assert (result["status"], result["error_class"]) == ("error", "tool_unavailable")
 
 
 async def test_a_joined_call_id_gets_a_new_id(model):
@@ -413,7 +403,7 @@ def refusal_of(result):
 async def test_a_plan_tool_of_a_planner_is_callable():
     seen: List[Any] = []
     agent = pack_agent("planner", "collections,web,plan", seen)
-    result = await steps.run_tool_call(agent, tool_request("append_node"))
+    result = await steps.run_tool_call(agent, tool_request("write_plan"))
     assert result["status"] == "ok" and seen
 
 
@@ -436,14 +426,14 @@ async def test_a_name_outside_every_pack_names_search_agent_tools_when_the_run_h
 def test_the_refusal_text_of_an_unavailable_tool_names_no_skill():
     for text in ("No tool of this run is named 'x'.",):
         content = json.dumps({"success": False, "message": text})
-        assert stumbles.stumble_skill("append_node", content, "error", {}) is None, text
+        assert stumbles.stumble_skill("write_plan", content, "error", {}) is None, text
 
 
 async def test_the_mcp_server_receives_the_idempotency_key_and_the_share():
     seen: List[Any] = []
-    agent = FakeAgent([dict_tool("append_node", EMPTY_SCHEMA, seen)], {"append_node"}, kind="planner")
+    agent = FakeAgent([dict_tool("write_plan", EMPTY_SCHEMA, seen)], {"write_plan"}, kind="planner")
     result = await steps.run_tool_call(
-        agent, tool_request("append_node", idempotency_key="K", page_share=5000))
+        agent, tool_request("write_plan", idempotency_key="K", page_share=5000))
     assert result["status"] == "ok"
     headers = seen[0][2]
     assert headers["x-hoover4-idempotency-key"] == "K"
@@ -602,17 +592,29 @@ async def test_the_request_size_counts_the_new_results_and_the_schemas(sized, mo
     texts, plans = sized
     agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
     model.replies.append(AIMessage(content="done"))
-    turn = turn_of(await frames_of(agent, step_request(_big_result_thread(40_000), step_no=2)))
-    size = turn["usage"]["request_size"]
-    # The stored result alone is 10,000 counted tokens, far above the 110 billed tokens.
-    assert size["method"] == "tokenizer" and size["tokens"] > 10_000
-    assert size["window"] == 10_000 and size["fits"] is False
+    frames = await frames_of(agent, step_request(_big_result_thread(4_000), step_no=2))
+    size = turn_of(frames)["usage"]["request_size"]
+    # The stored result alone is 1,000 counted tokens, far above the 110 billed tokens.
+    assert size["method"] == "tokenizer" and 1_000 < size["tokens"] < 1_808
+    assert size["window"] == 10_000 and size["fits"] is True
     assert (size["output_reserve"], size["reserve_source"]) == (8192, "estimate")
     assert size["safe_input"] == 10_000 - 8192
     assert '"read_documents"' in texts[0] or "read_documents" in texts[0]
     # The compaction gets the measured size, and a trigger no higher than the safe input.
     assert plans[0]["measured"] == size["tokens"] and plans[0]["safe_input"] == 1808
-    assert turn["model"] == "stub-model"
+    assert turn_of(frames)["model"] == "stub-model"
+
+
+async def test_a_request_past_the_safe_input_ends_with_a_context_size_error(sized, model):
+    _texts, plans = sized
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    model.replies.append(AIMessage(content="done"))
+    frames = await frames_of(agent, step_request(_big_result_thread(40_000), step_no=2))
+    assert [f["type"] for f in frames] == ["error"]
+    assert (frames[0]["error_class"], frames[0]["retryable"]) == ("context_size", False)
+    assert "and the model accepts 1,808 tokens of input" in frames[0]["content"]
+    # No model call was made.
+    assert model.inputs == [] and plans[0]["measured"] > 10_000
 
 
 async def test_a_configured_output_cap_is_the_reserve(sized, model, monkeypatch):
@@ -633,6 +635,7 @@ async def test_a_failed_tokenizer_gives_a_recorded_estimate_and_the_call(sized, 
             raise RuntimeError("no tokenizer route")
 
     monkeypatch.setattr(request_size, "_default_counter", lambda model_id: Broken())
+    monkeypatch.setattr(steps.compaction, "context_window", lambda model_id: 100_000)
     agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
     model.replies.append(AIMessage(content="", tool_calls=[
         {"id": "a", "name": "read_documents", "args": {}}]))
@@ -652,3 +655,133 @@ async def test_an_unknown_window_records_the_fact_and_sends_the_request(model, m
     size = turn_of(await frames_of(agent, step_request()))["usage"]["request_size"]
     assert (size["window_known"], size["safe_input"], size["fits"], size["method"]) == (
         False, 0, True, "estimate")
+
+
+# ------------------------------------------------------------------- context preparation
+
+
+def _long_thread(groups=12, result_chars=12_000):
+    """A thread of `groups` finished steps, with the usage of the last reply billed."""
+    thread = [{"role": "human", "content": "Find the lease.", "thread_id": "t1", "idx": 0}]
+    for n in range(groups):
+        idx = len(thread)
+        thread.append({"role": "ai", "content": "", "thread_id": "t1", "idx": idx,
+                       "usage": {"input_tokens": 100, "output_tokens": 10},
+                       "tool_calls": [{"id": f"c{n}", "name": "read_documents",
+                                       "args": {"n": n}}]})
+        thread.append({"role": "tool", "content": f"R{n} " + "x" * result_chars,
+                       "tool_call_id": f"c{n}", "name": "read_documents", "thread_id": "t1",
+                       "idx": idx + 1})
+    return thread
+
+
+#: The compaction plan before a fixture replaces it.
+_REAL_PLAN = steps.compaction.plan_compaction
+
+
+@pytest.fixture
+def compacting(model, monkeypatch):
+    """The real compaction plan over a window of 40,000 tokens, a counter of one token for
+    four characters, and a recorded summariser."""
+    from research_agent import compaction, request_size
+
+    monkeypatch.setattr(steps.compaction, "plan_compaction",
+                        lambda *a, **k: _REAL_PLAN(*a, **{**k, "summary_window": 40_000}))
+    windows = [40_000]
+    monkeypatch.setattr(steps.compaction, "context_window", lambda model_id: windows[0])
+    monkeypatch.setattr(request_size, "_default_counter", lambda model_id: CharCounter([]))
+    monkeypatch.setattr(request_size, "_tokenizer_down", {})
+    monkeypatch.setenv("AGENT_MAX_OUTPUT_TOKENS", "4000")
+    summaries = {"calls": [], "text": "## Findings\nR0 says the lease was approved."}
+
+    def summarise(prompt, *, model_id, max_tokens):
+        summaries["calls"].append(prompt)
+        return summaries["text"]
+
+    monkeypatch.setattr(compaction, "summarise_with_model", summarise)
+    return summaries, windows
+
+
+async def test_a_compacting_step_sends_the_frame_the_summary_and_a_version_3_record(
+        compacting, model):
+    summaries, _windows = compacting
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    model.replies.append(AIMessage(content="done"))
+    frames = await frames_of(agent, step_request(_long_thread(), step_no=13))
+    assert [f["type"] for f in frames][:1] == ["compaction"]
+    turn = turn_of(frames)
+    record = turn["compaction"]
+    assert (record["version"], record["status"], turn["summarised"]) == (3, "ok", True)
+    assert len(summaries["calls"]) == 1
+    size = turn["usage"]["request_size"]
+    assert size["fits"] and size["before_compaction"] > size["tokens"]
+    sent = [m.content for m in model.inputs[0]]
+    assert any(c.startswith(steps.compaction.RECORD_HEADER) for c in sent)
+    assert sent[-1].startswith("R11 ")
+    assert "note_warning" not in turn
+
+
+async def test_a_failed_summary_sends_the_previous_list_when_it_fits(compacting, model,
+                                                                    monkeypatch):
+    summaries, _windows = compacting
+    summaries["text"] = ""
+    # A trigger under the size of the list, and a safe input above it.
+    monkeypatch.setenv("AGENT_COMPACTION_FRACTION", "0.5")
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    model.replies.append(AIMessage(content="done"))
+    frames = await frames_of(agent, step_request(_long_thread(10), step_no=11))
+    turn = turn_of(frames)
+    assert turn["compaction"]["status"] == "failed" and turn["summarised"] is False
+    sent = [m.content for m in model.inputs[0]]
+    assert not any(c.startswith(steps.compaction.RECORD_HEADER) for c in sent)
+    assert len(sent) == 1 + 1 + 2 * 10
+
+
+async def test_a_failed_summary_of_a_list_that_does_not_fit_ends_the_run(compacting, model):
+    summaries, _windows = compacting
+    summaries["text"] = ""
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    model.replies.append(AIMessage(content="done"))
+    frames = await frames_of(agent, step_request(_long_thread(), step_no=13))
+    assert [f["type"] for f in frames] == ["compaction", "error"]
+    assert (frames[1]["error_class"], frames[1]["retryable"]) == ("context_preparation", False)
+    assert "The summary of the older steps failed" in frames[1]["content"]
+    assert model.inputs == []
+
+
+def _size_refusal(text="This model's maximum context length is 20000 tokens."):
+    request = httpx.Request("POST", "http://model.invalid/v1/chat/completions")
+    return openai.BadRequestError(text, response=httpx.Response(400, request=request),
+                                  body=None)
+
+
+async def test_a_provider_size_refusal_prepares_the_request_once_more(compacting, model):
+    summaries, _windows = compacting
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    # Under the trigger, so the first request is the whole list. The provider refuses it.
+    model.replies.extend([_size_refusal(), AIMessage(content="done")])
+    frames = await frames_of(agent, step_request(_long_thread(7), step_no=8))
+    turn = turn_of(frames)
+    assert len(model.inputs) == 2
+    assert len(model.inputs[1]) < len(model.inputs[0])
+    assert turn["compaction"]["status"] == "ok" and len(summaries["calls"]) == 1
+    # The stated limit of the refusal is the window of the new preparation.
+    assert turn["usage"]["request_size"]["window"] == 20_000
+
+
+async def test_an_identical_request_after_a_size_refusal_is_not_sent_again(compacting, model):
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    model.replies.extend([_size_refusal("prompt is too long"), AIMessage(content="done")])
+    # One step: nothing older can be summarised, so the new preparation is the same request.
+    frames = await frames_of(agent, step_request(_long_thread(1), step_no=2))
+    assert frames[-1]["type"] == "error" and frames[-1]["error_class"] == "context_size"
+    assert "gave the same request" in frames[-1]["content"]
+    assert len(model.inputs) == 1
+
+
+async def test_another_refusal_is_not_a_size_refusal(compacting, model):
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, [])], {"read_documents"})
+    model.replies.extend([_size_refusal("invalid tool schema"), AIMessage(content="done")])
+    frames = await frames_of(agent, step_request(_long_thread(1), step_no=2))
+    assert frames[-1]["type"] == "error" and frames[-1]["error_class"] == "http_400"
+    assert len(model.inputs) == 1

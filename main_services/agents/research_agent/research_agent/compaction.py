@@ -1,46 +1,50 @@
-"""Context compaction: replace the older steps of a run with a record.
+"""Context compaction: replace the older steps of a run with one summary.
 
 A run grows because every result that the model collected stays in the list of the next
-call. When the last billed call reaches the trigger, a fraction of the model's stated
-context window, `compact` plans a smaller list before the next model call, and meets a
-target of a third of the trigger.
+call. When the size of the next request reaches the trigger, a fraction of the model's stated
+context window, `plan_compaction` selects the older steps to replace, and `finish_compaction`
+replaces them with one summary before the model call. The list is planned to a target of a
+third of the trigger.
 
-The list after a compaction holds these parts.
+The list after a compaction holds these parts, in list order.
 
-- **The recent window.** The newest step groups (an `ai` message and its results), up to a
-  quarter of the target, and at least the newest group.
-- **The keep set.** Outside the window: every user message, the newest todo and plan
-  results, every `cite_documents` result and every `ai` text with a citation handle, the
-  newest read of each skill, every sub-agent report, the notes of `write_note`, and up to
-  three document reads again after the summary. Each class has a cap. A kept result keeps
-  its call.
-- **The record.** One `human` message in place of the first message that it replaces. Code
-  writes its first part, the index of `thread_index`: the searches, the documents read, and
-  the skill and tool texts that left the list. A model writes the rest from the compacted
-  part, in 1 or 3 requests.
+- **The user's messages.** Every `human` message that is not a record stays: the request,
+  the clarifications, and the notes that the worker writes. They are the fixed input of the
+  run, with the system text and the tool schemas.
+- **The summary.** One `human` message in place of the first message that it replaces. Code
+  writes its first part, the index of `thread_index`: the searches, the documents and pages
+  read, the continuation handles, the citation labels, and the skill and tool texts that
+  left the list. The summary model writes
+  the rest in one request: findings, contradictions, outstanding work, and the identifiers
+  that let the model read a source again.
+- **The recent steps.** The largest suffix of complete step groups (an `ai` message with all
+  its results) that fits the target with the fixed input and the summary. The newest group
+  always stays.
 
-A `read_skill` or `read_tool` result outside the window and the keep set leaves the list
-whole. No summary is made of a skill or a tool text, and the index names it, so the model
-can read it again.
+A compaction replaces one older prefix of complete groups. The prefix includes the previous
+summary, so the new summary extends it. A `read_skill` or `read_tool` result in the prefix
+does not go to the summary model, and the index names it, so the model can read it again.
 
-Four properties hold.
+Five properties hold.
 
 **Nothing is edited.** The compaction applies to the list on its way to the model. The worker
-stores the record as a version 2 `compaction` row (`CompactionReport.row`), and each later
+stores the record as a version 3 `compaction` row (`CompactionReport.row`), and each later
 call applies it with `run_messages.apply_record`. The transcript keeps every result in full.
-`compact` builds its own output with the same function, so a replay gives the same list.
+`finish_compaction` builds its own output with the same function, so a replay gives the same
+list. The readers of version 1 and 2 rows stay in `run_messages`.
 
-**Each call has one result.** A kept result keeps its `ai` message. A call whose result
-leaves the list leaves its `ai` message, and an `ai` message with no call and no text leaves
-the list. The provider refuses a request with a call and no result.
+**Each call has one result.** A step group leaves the list whole or stays whole.
 
 **An unknown context window never fires the trigger.** `llm_models.context_window` is 0 when
 the provider never stated one, and 0 means no compaction.
 
-**The plan meets the target before the model call.** The sizes are estimates from a ratio of
-tokens to characters that the last billed call gives (`Estimator`). When the list still
-passes the target, `shrink` makes it smaller in a fixed order. When the parts that
-are never compacted pass the target, the smallest list goes, and `target_reached` is false.
+**A request that cannot fit ends the run.** When the fixed input and the newest group pass
+the safe input of the model, no summary can help, and `plan_compaction` raises
+`ContextError` with the size of each part. The stored thread stays whole.
+
+**A failed summary is not retention.** When the summary request fails or gives no text, the
+record has the status `failed` and changes no message. The caller sends the previous list
+only when it fits. A later plan over the same prefix does not ask the summary model again.
 """
 
 from __future__ import annotations
@@ -52,9 +56,8 @@ import os
 import re
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import httpx
 
@@ -68,48 +71,18 @@ GLOBAL_DB = os.getenv("CLICKHOUSE_DATABASE", "Hoover4_Processing")
 #: Fraction of the model's context window at which compaction fires. Configuration
 #: (`AGENT_COMPACTION_FRACTION`) can change it.
 DEFAULT_COMPACTION_FRACTION = 0.80
-#: The target of a compaction is this share of the trigger.
-TARGET_SHARE = 1 / 3
-#: The recent window holds at most this share of the target, and at least one group.
-WINDOW_SHARE = 0.25
-#: The keep set outside the recent window, user messages included.
-KEEP_CAP_TOKENS = 35_000
-#: One sub-agent report in the keep set.
-REPORT_CAP_TOKENS = 4_000
-#: One skill text in the keep set, and all skill texts together.
-SKILL_CAP_TOKENS = 5_000
-SKILL_TOTAL_TOKENS = 25_000
-#: All notes of `write_note` together. The oldest note leaves first.
-NOTES_TOTAL_TOKENS = 4_000
-#: After a summary, this many `read_documents` results of the compacted part come back,
-#: each cut to this size, while the list stays at or under the target.
-REREAD_DOCS = 3
-REREAD_CAP_TOKENS = 5_000
-#: The completion budget of the record, and its smallest value.
-RECORD_BUDGET_TOKENS = 2_000
-RECORD_MIN_TOKENS = 1_000
-#: The results of the recent window are never cut below this size together.
-NEWEST_MIN_TOKENS = 500
-#: A compacted part above this size gets `PARTS` summary requests at once.
-PARTS_ABOVE_TOKENS = 30_000
-PARTS = 3
-#: The model step sets `note_warning` at this share of the trigger.
-NOTE_WARNING_SHARE = 0.90
-#: The warning row that the worker writes when `model_turn` sets `note_warning`, and its
-#: start. The worker keeps a copy, because the two images share no module.
-NOTE_WARNING_HEAD = "Your context is at"
-NOTE_WARNING_TEXT = (
-    NOTE_WARNING_HEAD + " {pct} percent of its limit. The older steps of this run will soon "
-    "be replaced by a record. Save each fact that you need later with `write_note` now."
-)
+#: The version of the record that this module writes.
+RECORD_VERSION = 3
+#: The completion cap of the summary request. The plan keeps this many tokens free for it.
+SUMMARY_TOKENS = 2_000
 #: The margin of the token estimate.
 MARGIN = 1.05
-#: What a cut tool result ends with.
+#: What a cut tool result ends with. Version 2 rows apply it.
 CUT_MARK = " [cut to save context]"
 #: The chars of one message that no content holds, such as the role.
 FRAME_CHARS = 24
 
-#: What an evicted tool result says in the model's place. A version 1 row applies it.
+#: What an evicted tool result says in the model's place. Version 1 rows apply it.
 EVICTION_PLACEHOLDER = (
     "[This tool result was evicted to reclaim context. It is unchanged in the "
     "conversation transcript. The call that produced it is shown above. Re-run the tool "
@@ -117,63 +90,57 @@ EVICTION_PLACEHOLDER = (
 )
 
 #: The start of each record. A `human` message that starts with it is a record, never a
-#: user message, and a later compaction summarises it again.
+#: user message, and a later compaction replaces it.
 RECORD_HEADER = (
-    "[Record of earlier steps. Code wrote the lists of searches and documents. "
-    "A model wrote the rest from the steps it replaces. The full steps are in the "
-    "transcript.]\n\n"
+    "[Summary of earlier steps. Code wrote the lists of searches, documents, pages, "
+    "continuations and citation labels. A model wrote the rest from the steps it replaces. "
+    "The full steps are in the transcript. Read a source again before you quote it.]\n\n"
 )
-#: The start of a record of a version 1 row.
+#: The starts of the records of version 2 and version 1 rows.
+_V2_RECORD_HEAD = "[Record of earlier steps. Code wrote the lists"
 _V1_RECORD_HEAD = "[Context handoff."
-
-#: The line of a summary part that failed, timed out or gave no text.
-PART_FAILED = ("Part {n} of {k}. The summary failed. The lists above name its searches and "
-               "documents.")
+_RECORD_HEADS = (RECORD_HEADER[:40], _V2_RECORD_HEAD, _V1_RECORD_HEAD)
 
 #: A citation handle as `cite_documents` allocates it and as the model writes it.
 CITATION_HANDLE = re.compile(r"\[D\d+\]")
 
-CITATION_TOOLS = frozenset({"cite_documents"})
-TODO_TOOLS = frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"})
-PLAN_TOOLS = frozenset({"read_plan", "append_node", "append_child", "move_node", "edit_node",
-                        "remove_node"})
-REPORT_TOOL = "run_subagent"
-NOTE_TOOL = "write_note"
-READ_SKILL = "read_skill"
-READ_TOOL = "read_tool"
-TEXT_TOOLS = frozenset({READ_SKILL, READ_TOOL})
-REREAD_TOOL = "read_documents"
+#: The results that never go to the summary model. The index names them.
+TEXT_TOOLS = frozenset({thread_index.READ_SKILL, thread_index.READ_TOOL})
 
-#: The request of one summary part. `{notes}` holds the line of a previous record and the
-#: line of a part, when they apply.
+#: The request of the summary. `{previous}` holds `PREVIOUS_SUMMARY_LINE` when the history
+#: starts with a previous summary.
 SUMMARY_PROMPT = """\
-You compress the working history of a research agent that continues its work after you. \
-The agent keeps its task, the user's messages, its latest todo and plan, and its newest \
-steps. The history below (its own older steps, its tool calls and their results) leaves \
-its context now, and your record replaces it. Code adds a list of the searches that found \
-nothing and of the documents read, so do not repeat those lists.
+You summarise the older steps of a research agent. The agent continues its work after you, \
+and your summary replaces these steps in its context. The agent keeps its task, the user's \
+messages and its newest steps. Code adds lists of the searches, the documents and pages \
+read, the continuation handles and the citation labels, so do not copy those lists.
 
 Use exactly these sections, in this order:
 
-## Goal
-The task and the sub-goals that the history shows, in 1 to 3 sentences.
-
 ## Findings
-One line for each fact that bears on the task. Give a short exact quote in quotation marks, \
-then its source: the collection name, the first 16 characters of the file hash, and the \
-path, or the URL, or the sub-agent. Copy every number, date, name, amount, count and \
-identifier exactly. A fact that a later step can need is a finding, also when it looks minor.
+One line for each fact that bears on the task. Quote each sentence of a source that states \
+such a fact, whole and word for word, in quotation marks, then give its source: the \
+collection name, the first 16 characters of the file hash and the path, or the URL, or the \
+report. Do not shorten a quote and do not merge two sources. Copy every number, date, name, \
+amount, count and identifier exactly. Include each note that the agent saved with \
+`write_note`.
 
-## Open items
-The questions that the history raised and did not answer, and the leads not yet followed, \
-each with the document or the query that raised it.
+## Contradictions
+Each pair of sources that disagree, with both claims and both sources. Write "none" when \
+the history shows no disagreement.
 
-## Next steps
-The steps the agent planned and did not yet do. Write "unknown" if the history does not say.
+## Outstanding work
+The parts of the task and of the user's requests that the history did not finish, the \
+questions it did not answer, and the leads not yet followed, each with the document or the \
+query that raised it. Add no work that the user or the agent did not state.
+
+## Sources to read again
+The identifiers that let the agent read a source again exactly: file hashes with pages, \
+URLs, cached file handles, continuation handles with their offsets, and report identifiers.
 
 Rules: report only what the history below says. Invent nothing. Do not answer the task. \
-Keep the record under {words} words.
-{notes}
+Keep the summary under {words} words.
+{previous}
 The agent's task:
 {task}
 
@@ -181,12 +148,13 @@ The agent's task:
 {transcript}
 --- end ---
 """
-PREVIOUS_RECORD_LINE = ("A previous record exists. Integrate every fact of it that still "
-                        "bears on the task.")
-PART_LINE = ("The history below is part {n} of {k} of the history being replaced, in order. "
-             "Records of the other parts are written apart.")
+PREVIOUS_SUMMARY_LINE = ("The history starts with the previous summary. Keep every fact of it "
+                         "that still bears on the task.")
 #: The task in the summary request is cut to this many characters.
 TASK_CHARS = 2_000
+#: The end of a result that the summary request holds in part.
+EXTRACT_MARK = ("\n[The summary request holds part of this result. It has {chars} characters "
+                "in the transcript. The call above and its continuation read it again.]\n")
 
 #: The (connect, read) timeout of a summary request when `LLM_REQUEST_TIMEOUT_SECONDS` is
 #: unset: the read timeout of a model call.
@@ -200,6 +168,20 @@ _window_cache: dict[str, tuple[float, int]] = {}
 Key = Tuple[str, int]
 #: A summariser takes the prompt and the completion cap, and returns the text.
 Summariser = Callable[[str, int], str]
+
+#: The error classes of `ContextError`.
+CONTEXT_SIZE = "context_size"
+CONTEXT_PREPARATION = "context_preparation"
+
+
+class ContextError(Exception):
+    """A model request that cannot be prepared within the model's input. The worker ends the
+    run with the text, and the stored thread stays whole. A repeat cannot help, so the
+    request is not retried."""
+
+    def __init__(self, error_class: str, message: str):
+        super().__init__(message)
+        self.error_class = error_class
 
 
 def summariser_timeout() -> tuple[float, float]:
@@ -238,6 +220,11 @@ def _clickhouse_url() -> str:
 
 def _auth() -> tuple[str, str]:
     return (os.getenv("CLICKHOUSE_USER") or "hoover4", os.getenv("CLICKHOUSE_PASSWORD") or "")
+
+
+def forget_window(model_id: str) -> None:
+    """Remove the cached context window of a model, so the next read asks the catalog."""
+    _window_cache.pop((model_id or "").strip(), None)
 
 
 def context_window(model_id: str, *, now: Optional[float] = None) -> int:
@@ -315,7 +302,8 @@ def msg_chars(m: RunMessage) -> int:
 
 @dataclass
 class Estimator:
-    """Token sizes before the model call, from a ratio that the last billed call gives."""
+    """Token sizes before the model call, from a ratio that the last billed call gives.
+    `request_size.measure` uses it when the tokenizer does not count."""
 
     ratio: float
     fixed: int
@@ -351,7 +339,7 @@ class Estimator:
         return max(0, int(tokens / (self.ratio * MARGIN)))
 
 
-# ------------------------------------------------------------------------- layout
+# ------------------------------------------------------------------------- groups
 
 
 def _key(m: RunMessage) -> Optional[Key]:
@@ -361,10 +349,8 @@ def _key(m: RunMessage) -> Optional[Key]:
 
 
 def is_record(m: RunMessage) -> bool:
-    """Whether a `human` message is a compaction record."""
-    text = m.content or ""
-    return m.role == "human" and (text.startswith(RECORD_HEADER[:40])
-                                  or text.startswith(_V1_RECORD_HEAD))
+    """Whether a `human` message is a compaction record of any version."""
+    return m.role == "human" and (m.content or "").startswith(_RECORD_HEADS)
 
 
 def step_groups(msgs: Sequence[RunMessage]) -> List[List[int]]:
@@ -383,91 +369,8 @@ def step_groups(msgs: Sequence[RunMessage]) -> List[List[int]]:
     return [sorted(v) for _, v in sorted(groups.items())]
 
 
-def recent_window(groups: Sequence[List[int]], msgs: Sequence[RunMessage], est: Estimator,
-                  target: int) -> int:
-    """The index of the first group of the recent window: the newest groups up to
-    `WINDOW_SHARE` of the target, and at least the newest group."""
-    start, used = len(groups), 0
-    for g in range(len(groups) - 1, -1, -1):
-        cost = sum(est.tokens(msgs[i]) for i in groups[g])
-        if start < len(groups) and used + cost > WINDOW_SHARE * target:
-            break
-        start, used = g, used + cost
-    return start
-
-
-@dataclass
-class Layout:
-    """The plan of one compaction, by index into the applied list."""
-
-    msgs: List[RunMessage]
-    groups: List[List[int]]
-    names: Dict[int, str]
-    window_start: int
-    #: Kept results outside the window: state, citations and notes.
-    fixed_keep: Set[int] = field(default_factory=set)
-    #: Kept reports and skills outside the window, oldest first.
-    reports: List[int] = field(default_factory=list)
-    skills: List[int] = field(default_factory=list)
-    rereads: List[int] = field(default_factory=list)
-    #: A cap in tokens for a kept `tool` result.
-    cuts: Dict[int, int] = field(default_factory=dict)
-    budget: int = RECORD_BUDGET_TOKENS
-    steps: List[str] = field(default_factory=list)
-    target_reached: bool = True
-
-    def window(self) -> Set[int]:
-        return {i for g in self.groups[self.window_start:] for i in g}
-
-    def classify(self) -> Tuple[Set[int], Set[int], List[int], List[int]]:
-        """(kept, text_removed, summarised, dropped) for the messages outside the window.
-        The window messages are kept."""
-        window = self.window()
-        results = set(self.fixed_keep) | set(self.reports) | set(self.skills) | set(self.rereads)
-        kept: Set[int] = set(window)
-        blank: Set[int] = set()
-        gone: List[int] = []
-        drop: List[int] = []
-        members = {g[0]: g for g in self.groups}
-        for i, m in enumerate(self.msgs):
-            if i in window:
-                continue
-            if m.role == "human":
-                (gone.append(i) if is_record(m) else kept.add(i))
-            elif m.role == "tool":
-                if i in results:
-                    kept.add(i)
-                elif self.names.get(i) in TEXT_TOOLS:
-                    drop.append(i)
-                else:
-                    gone.append(i)
-            elif m.role == "ai":
-                own = [j for j in members.get(i, [i]) if j != i]
-                handle = bool(CITATION_HANDLE.search(m.content or ""))
-                if handle or any(j in results for j in own):
-                    kept.add(i)
-                    if not handle and (m.content or "").strip():
-                        blank.add(i)
-                else:
-                    gone.append(i)
-        return kept, blank, gone, drop
-
-    def row(self, est: Estimator, handoff: str) -> Dict[str, Any]:
-        """The keys of a version 2 record for this layout."""
-        kept, blank, gone, drop = self.classify()
-
-        def keys(indexes) -> List[List[Any]]:
-            return [[k[0], k[1]] for i in sorted(indexes) for k in [_key(self.msgs[i])] if k]
-
-        cuts = []
-        for i in sorted(self.cuts):
-            k = _key(self.msgs[i])
-            chars = est.chars_for(self.cuts[i])
-            if k and i in kept and len(self.msgs[i].content or "") > chars:
-                cuts.append([k[0], k[1], chars])
-        return {"version": 2, "layer": "record", "summarised": keys(gone),
-                "text_removed": keys(blank), "dropped": keys(drop), "cuts": cuts,
-                "handoff": handoff}
+def _is_user(m: RunMessage) -> bool:
+    return m.role == "human" and not is_record(m)
 
 
 def _names(msgs: Sequence[RunMessage]) -> Dict[int, str]:
@@ -477,150 +380,18 @@ def _names(msgs: Sequence[RunMessage]) -> Dict[int, str]:
             if m.role == "tool"}
 
 
-def _ok(m: RunMessage) -> bool:
-    return m.status != "error"
-
-
-def _skill_name(msgs: Sequence[RunMessage], i: int) -> str:
-    call_id = msgs[i].tool_call_id
-    for m in msgs:
-        if m.role == "ai":
-            for c in m.tool_calls:
-                if c.id == call_id:
-                    return str((c.args or {}).get("name") or "")
-    return ""
-
-
-def initial_layout(msgs: List[RunMessage], est: Estimator, target: int,
-                   window_start: Optional[int] = None) -> Layout:
-    """The recent window and the keep set with its caps. With `window_start`, the window
-    starts at that group, else `recent_window` sets it."""
-    groups = step_groups(msgs)
-    names = _names(msgs)
-    start = recent_window(groups, msgs, est, target) if window_start is None else window_start
-    layout = Layout(msgs=msgs, groups=groups, names=names, window_start=start)
-    window = layout.window()
-    tools = [i for i, m in enumerate(msgs) if m.role == "tool"]
-    for family in (TODO_TOOLS, PLAN_TOOLS):
-        newest = [i for i in tools if names[i] in family and _ok(msgs[i])]
-        if newest and newest[-1] not in window:
-            layout.fixed_keep.add(newest[-1])
-    outside = [i for i in tools if i not in window]
-    layout.fixed_keep |= {i for i in outside if names[i] in CITATION_TOOLS}
-    layout.reports = [i for i in outside if names[i] == REPORT_TOOL]
-    for i in layout.reports:
-        layout.cuts[i] = REPORT_CAP_TOKENS
-    newest_skill: Dict[str, int] = {}
-    for i in tools:
-        if names[i] == READ_SKILL and _ok(msgs[i]):
-            newest_skill[_skill_name(msgs, i)] = i
-    layout.skills = sorted(i for i in newest_skill.values() if i not in window)
-    for i in layout.skills:
-        layout.cuts[i] = SKILL_CAP_TOKENS
-    while sum(min(est.tokens(msgs[i]), SKILL_CAP_TOKENS) for i in layout.skills) \
-            > SKILL_TOTAL_TOKENS:
-        layout.cuts.pop(layout.skills.pop(0), None)
-    notes = [i for i in outside if names[i] == NOTE_TOOL and _ok(msgs[i])]
-    while sum(est.tokens(msgs[i]) for i in notes) > NOTES_TOTAL_TOKENS:
-        notes.pop(0)
-    layout.fixed_keep |= set(notes)
-    return layout
-
-
-class Sizer:
-    """The sizes of a layout, from the list that its record gives."""
-
-    def __init__(self, rows: Sequence[RunMessage], est: Estimator):
-        self.rows = list(rows)
-        self.est = est
-
-    def index(self, layout: Layout) -> str:
-        kept, _blank, _gone, _drop = layout.classify()
-        cut_keys = {k for i in layout.cuts for k in [_key(layout.msgs[i])] if k}
-        present = {k for i in kept if layout.msgs[i].role == "tool"
-                   for k in [_key(layout.msgs[i])] if k}
-        return thread_index.render(self.rows, visible_after=present - cut_keys,
-                                   present_after=present)
-
-    def visible(self, layout: Layout, handoff: str) -> List[RunMessage]:
-        return apply_record(layout.msgs, layout.row(self.est, handoff))
-
-    def rest(self, layout: Layout) -> int:
-        """The fixed part, the kept messages, the window and the record without its body."""
-        visible = self.visible(layout, RECORD_HEADER + self.index(layout))
-        return self.est.fixed + self.est.list_size(visible)
-
-    def keep_outside_window(self, layout: Layout) -> int:
-        window = {k for i in layout.window() for k in [_key(layout.msgs[i])] if k}
-        visible = self.visible(layout, "")
-        return sum(self.est.tokens(m) for m in visible if _key(m) not in window)
-
-    def window_results(self, layout: Layout) -> List[int]:
-        return [i for i in sorted(layout.window()) if layout.msgs[i].role == "tool"]
-
-
-def shrink(layout: Layout, sizer: Sizer, target: int) -> Layout:
-    """Reach the target before any model call, in the shrink order.
-
-    1. The oldest groups of the recent window leave it, down to the newest group.
-    2. The oldest reports move to the compacted part, then the oldest skills leave the
-       list, while the list passes the target or the keep set passes its cap.
-    3. The record budget falls, down to `RECORD_MIN_TOKENS`.
-    4. The results of the newest group are cut, to at least `NEWEST_MIN_TOKENS`.
-    """
-    budget = RECORD_BUDGET_TOKENS
-    if sizer.rest(layout) + budget <= target \
-            and sizer.keep_outside_window(layout) <= KEEP_CAP_TOKENS:
-        layout.budget = budget
-        return layout
-    while len(layout.groups) - layout.window_start > 1 \
-            and sizer.rest(layout) + RECORD_MIN_TOKENS > target:
-        steps = layout.steps
-        layout = initial_layout(layout.msgs, sizer.est, target, layout.window_start + 1)
-        layout.steps = steps + ["window"]
-    while (layout.reports or layout.skills) and (
-            sizer.rest(layout) + RECORD_MIN_TOKENS > target
-            or sizer.keep_outside_window(layout) > KEEP_CAP_TOKENS):
-        if layout.reports:
-            layout.cuts.pop(layout.reports.pop(0), None)
-            layout.steps.append("report")
-        else:
-            layout.cuts.pop(layout.skills.pop(0), None)
-            layout.steps.append("skill")
-    rest = sizer.rest(layout)
-    if rest + RECORD_MIN_TOKENS <= target:
-        layout.budget = min(budget, target - rest)
-        if layout.budget < budget:
-            layout.steps.append("budget")
-        return layout
-    results = sizer.window_results(layout)
-    newest = sum(sizer.est.tokens(layout.msgs[i]) for i in results)
-    room = max(NEWEST_MIN_TOKENS, target - (rest - newest) - RECORD_MIN_TOKENS)
-    for i in results:
-        share = sizer.est.tokens(layout.msgs[i]) / max(newest, 1)
-        layout.cuts[i] = min(layout.cuts.get(i, room), max(1, int(room * share)))
-    layout.steps.append("newest")
-    layout.budget = RECORD_MIN_TOKENS
-    layout.steps.append("budget")
-    if sizer.rest(layout) + RECORD_MIN_TOKENS > target:
-        layout.target_reached = False
-    return layout
-
-
-def add_rereads(layout: Layout, sizer: Sizer, target: int) -> Layout:
-    """The newest `REREAD_DOCS` successful `read_documents` results of the
-    compacted part come back, newest first, each cut to `REREAD_CAP_TOKENS`. A result comes
-    back only when the list then stays at or under the target."""
-    _kept, _blank, gone, _drop = layout.classify()
-    candidates = [i for i in reversed(gone) if layout.msgs[i].role == "tool"
-                  and layout.names.get(i) == REREAD_TOOL and _ok(layout.msgs[i])]
-    for i in candidates[:REREAD_DOCS]:
-        layout.rereads.append(i)
-        layout.cuts[i] = REREAD_CAP_TOKENS
-        if sizer.rest(layout) + layout.budget > target:
-            layout.rereads.remove(i)
-            layout.cuts.pop(i, None)
-    return layout
+def _too_large_text(est_fixed: int, user: int, newest: int, limit: int) -> str:
+    """The text of a request whose fixed input and newest group pass the safe input."""
+    total = est_fixed + user + newest + SUMMARY_TOKENS
+    if est_fixed + user > limit:
+        part = (f"The fixed input alone is about {est_fixed + user:,} tokens: the system text "
+                f"and the tool schemas {est_fixed:,}, and the user's messages {user:,}.")
+    else:
+        part = (f"The newest tool results are about {newest:,} tokens, and the fixed input "
+                f"is about {est_fixed + user:,} tokens.")
+    return (f"The next model request needs about {total:,} tokens, and the model accepts "
+            f"{limit:,} tokens of input. {part} A summary of older steps cannot make it "
+            "fit, so the run stops. The transcript keeps every step.")
 
 
 # ------------------------------------------------------------------------ summary
@@ -630,105 +401,106 @@ def _call_text(name: str, args: Dict[str, Any]) -> str:
     return f"{name}({json.dumps(args or {}, ensure_ascii=False, sort_keys=True)})"
 
 
-def compacted_blocks(layout: Layout, est: Estimator) -> List[Tuple[str, int, bool]]:
-    """The compacted part as text blocks for the summariser, in list order: (text, tokens,
-    starts a group). No block holds a `read_skill` or `read_tool` call or result. An `ai`
-    message that keeps its place gives its text and its compacted calls."""
-    kept, blank, gone, _drop = layout.classify()
-    gone_set = set(gone)
-    results = {layout.msgs[i].tool_call_id: i for i in range(len(layout.msgs))
-               if layout.msgs[i].role == "tool"}
-    blocks: List[Tuple[str, int, bool]] = []
-    for i in sorted(gone_set | blank):
-        m = layout.msgs[i]
+@dataclass
+class Block:
+    """One message of the prefix as text for the summary request."""
+
+    text: str
+    #: The characters of a tool result, 0 for another message. Only a result is cut.
+    result_chars: int = 0
+    head: str = ""
+
+
+def summary_blocks(msgs: Sequence[RunMessage], prefix: Sequence[int]) -> List[Block]:
+    """The prefix as blocks for the summary request, in list order. A previous record gives
+    its text. No block holds a `read_skill` or `read_tool` call or result."""
+    names = _names(msgs)
+    calls = {c.id: c for m in msgs if m.role == "ai" for c in m.tool_calls}
+    blocks: List[Block] = []
+    for i in prefix:
+        m = msgs[i]
         if m.role == "tool":
-            call = next((c for x in layout.msgs if x.role == "ai" for c in x.tool_calls
-                         if c.id == m.tool_call_id), None)
-            head = _call_text(call.name, call.args) if call else (m.name or "tool")
-            text = f"[result of {head}]\n{m.content}"
-        elif m.role == "ai":
-            calls = [c for c in m.tool_calls if c.name not in TEXT_TOOLS
-                     and results.get(c.id) in gone_set]
-            label = "assistant"
-            if calls:
-                label += " calling " + ", ".join(_call_text(c.name, c.args) for c in calls)
-            content = (m.content or "").strip()
-            if not calls and not content:
+            if names.get(i) in TEXT_TOOLS:
                 continue
-            text = f"[{label}]\n{content}".rstrip()
-        else:
-            text = f"[earlier record]\n{m.content}"
-        blocks.append((text, est.tokens_text(text) + est.tokens_text(" " * FRAME_CHARS),
-                       m.role != "tool"))
+            call = calls.get(m.tool_call_id or "")
+            head = f"[result of {_call_text(call.name, call.args) if call else (m.name or 'tool')}]\n"
+            blocks.append(Block(text=m.content or "", result_chars=len(m.content or ""),
+                                head=head))
+        elif m.role == "ai":
+            shown = [c for c in m.tool_calls if c.name not in TEXT_TOOLS]
+            content = (m.content or "").strip()
+            if not shown and not content:
+                continue
+            label = "assistant"
+            if shown:
+                label += " calling " + ", ".join(_call_text(c.name, c.args) for c in shown)
+            blocks.append(Block(text=f"[{label}]\n{content}".rstrip()))
+        elif is_record(m):
+            blocks.append(Block(text=f"[previous summary]\n{m.content}"))
     return blocks
 
 
-def split_at_groups(blocks: Sequence[Tuple[str, int, bool]], k: int) -> List[List[str]]:
-    """`k` pieces in order, of about equal tokens, each starting at a group."""
-    total = sum(b[1] for b in blocks)
-    pieces: List[List[str]] = [[]]
-    acc = 0
-    for text, tokens, starts in blocks:
-        if starts and pieces[-1] and len(pieces) < k and acc >= total * len(pieces) / k:
-            pieces.append([])
-        pieces[-1].append(text)
-        acc += tokens
-    return pieces
+def extract(text: str, chars: int) -> str:
+    """A bounded extract of a result: its start and its end, which often holds the
+    continuation handle, with `EXTRACT_MARK` between them."""
+    if len(text) <= chars:
+        return text
+    mark = EXTRACT_MARK.format(chars=len(text))
+    room = max(0, chars - len(mark))
+    tail = room // 5
+    return text[:room - tail] + mark + (text[-tail:] if tail else "")
 
 
-def render_prompt(piece: Sequence[str], task: str, n: int, k: int, max_tokens: int,
-                  previous: bool) -> str:
-    """The request of one summary part."""
-    notes = []
-    if previous:
-        notes.append(PREVIOUS_RECORD_LINE)
-    if k > 1:
-        notes.append(PART_LINE.format(n=n, k=k))
+def fit_blocks(blocks: Sequence[Block], budget_chars: int) -> Tuple[List[str], int]:
+    """The texts of the blocks within `budget_chars`, and the count of results cut.
+
+    The results share the room that the other blocks leave. A result under the share stays
+    whole, and each larger result is cut to one equal cap (`extract`).
+    """
+    # Each block is joined to the next with a blank line.
+    fixed = sum(len(b.head) + len(b.text) for b in blocks if not b.result_chars)
+    fixed += sum(len(b.head) for b in blocks if b.result_chars) + 2 * len(blocks)
+    sizes = sorted(b.result_chars for b in blocks if b.result_chars)
+    room = max(0, budget_chars - fixed)
+    if sum(sizes) <= room:
+        return [b.head + b.text for b in blocks], 0
+    cap, left = 0, room
+    for n, size in enumerate(sizes):
+        share = left // (len(sizes) - n)
+        if size > share:
+            cap = share
+            break
+        left -= size
+    texts, cut = [], 0
+    for b in blocks:
+        if b.result_chars > cap and b.result_chars:
+            texts.append(b.head + extract(b.text, cap))
+            cut += 1
+        else:
+            texts.append(b.head + b.text)
+    return texts, cut
+
+
+def render_prompt(texts: Sequence[str], task: str, max_tokens: int, previous: bool) -> str:
+    """The summary request."""
     return SUMMARY_PROMPT.format(
         words=max(100, int(0.6 * max_tokens)),
-        notes=("\n" + "\n".join(notes) + "\n") if notes else "",
+        previous=("\n" + PREVIOUS_SUMMARY_LINE + "\n") if previous else "",
         task=(task or "")[:TASK_CHARS],
-        transcript="\n\n".join(piece),
+        transcript="\n\n".join(texts),
     )
 
 
-def summarise_parts(blocks: Sequence[Tuple[str, int, bool]], *, task: str, budget: int,
-                    summariser: Summariser, previous: bool = False
-                    ) -> Tuple[str, List[str]]:
-    """One request for a compacted part up to `PARTS_ABOVE_TOKENS`, else
-    `PARTS` requests at once, each with a third of the budget as its completion cap. A part
-    that fails, raises or gives no text gets the `PART_FAILED` line. Returns the body and
-    the state of each part, `ok` or `failed`."""
-    total = sum(b[1] for b in blocks)
-    k = PARTS if total > PARTS_ABOVE_TOKENS else 1
-    pieces = split_at_groups(blocks, k)
-    k = len(pieces)
-    cap = max(1, budget // k)
-    prompts = [render_prompt(piece, task, n + 1, k, cap, previous)
-               for n, piece in enumerate(pieces)]
-
-    def one(prompt: str) -> str:
-        try:
-            return (summariser(prompt, cap) or "").strip()
-        except Exception as exc:  # noqa: BLE001 -- a failed part is a line of the record
-            log.warning("a summary part failed: %s", exc)
-            return ""
-
-    with ThreadPoolExecutor(max_workers=k) as pool:
-        texts = list(pool.map(one, prompts))
-    states = ["ok" if t else "failed" for t in texts]
-    parts = [t or PART_FAILED.format(n=i + 1, k=k) for i, t in enumerate(texts)]
-    body = parts[0] if k == 1 else "\n\n".join(
-        f"Part {i + 1} of {k}:\n{p}" for i, p in enumerate(parts))
-    return body, states
+def summary_model(model_id: str) -> str:
+    """The model of the summary request: `LLM_MODEL_COMPACTION`, else the answering model."""
+    return (os.getenv("LLM_MODEL_COMPACTION") or "").strip() or model_id
 
 
 def summarise_with_model(prompt: str, *, model_id: str, max_tokens: int) -> str:
-    """Ask the compaction model for one summary part. An empty string on any failure.
+    """Ask the compaction model for the summary. An empty string on any failure.
 
-    `LLM_MODEL_COMPACTION` names the model, else the answering model. Thinking is off: a
-    thinking model given a transcript reasons about its content and starts to answer the
-    task (`research_agent/thinking.py`).
+    Thinking is off: a thinking model given a transcript reasons about its content and
+    starts to answer the task (`research_agent/thinking.py`).
     """
     base = (os.getenv("LLM_BASE_URL") or "").rstrip("/")
     if not base:
@@ -739,14 +511,13 @@ def summarise_with_model(prompt: str, *, model_id: str, max_tokens: int) -> str:
         if key_file and os.path.exists(key_file):
             with open(key_file) as handle:
                 api_key = handle.read().strip()
-    model = (os.getenv("LLM_MODEL_COMPACTION") or "").strip() or model_id
     try:
         with httpx.Client(timeout=summariser_timeout()) as client:
             response = client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
                 json={
-                    "model": model,
+                    "model": summary_model(model_id),
                     # `temperature` only when the provider accepts it. The output cap of
                     # `sampling_params` is left out, because this body sets its own.
                     **_without_cap(model_params.sampling_params(0)),
@@ -777,8 +548,6 @@ def summarise_list(messages: Sequence[RunMessage]) -> str:
         detail = ""
         if m.role == "tool":
             detail = f" result of {m.name or '?'}"
-            if (m.content or "").endswith(CUT_MARK):
-                detail += " CUT"
         if m.tool_calls:
             detail = " calls " + ", ".join(c.name for c in m.tool_calls)
         lines.append(f"  {i:3d} {m.role}{detail} [{len(m.content or '')} chars]")
@@ -800,7 +569,9 @@ class CompactionReport:
     """What one compaction did: the row that the worker stores, and the trail row."""
 
     compaction_id: str = ""
-    layer: str = "record"
+    layer: str = "prefix"
+    #: `ok`, or `failed` when the summary gave no text. A failed record changes no message.
+    status: str = "ok"
     tokens_before: int = 0
     tokens_after: int = 0
     context_window: int = 0
@@ -808,8 +579,6 @@ class CompactionReport:
     target: int = 0
     est_after: int = 0
     target_reached: bool = True
-    steps: List[str] = field(default_factory=list)
-    parts: List[str] = field(default_factory=list)
     steps_summarised: int = 0
     sizes: Dict[str, int] = field(default_factory=dict)
     messages_before: int = 0
@@ -824,7 +593,7 @@ class CompactionReport:
     handles: List[str] = field(default_factory=list)
     list_before: str = ""
     list_after: str = ""
-    #: The content of the version 2 `compaction` row.
+    #: The content of the version 3 `compaction` row.
     row: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -833,36 +602,73 @@ class CompactionPlan:
     """A compaction planned before any model call. `finish_compaction` summarises it."""
 
     applied: List[RunMessage]
-    rows: List[RunMessage]
-    layout: Layout
     est: Estimator
-    sizer: Sizer
-    index: str
-    blocks: List[Tuple[str, int, bool]]
     model_id: str
     window: int
     trigger: int
     target: int
     billed: int
+    #: The keys of the prefix that the summary replaces, in list order.
+    source: List[Key]
+    #: The key of the first message of the recent steps.
+    retained_from: Optional[Key]
+    index: str
+    prompt: str
+    steps_summarised: int
+    #: The estimated sizes of the parts of the planned list, and of the summary request.
+    sizes: Dict[str, int]
+    #: The count of prefix results that the summary request holds as extracts.
+    extracts: int = 0
+    #: True when the newest stored record failed over the same prefix. No summary request
+    #: is sent again.
+    unchanged_failure: bool = False
 
     @property
     def parts(self) -> int:
-        return PARTS if sum(b[1] for b in self.blocks) > PARTS_ABOVE_TOKENS else 1
+        """The count of summary requests, for the `compaction` frame."""
+        return 0 if self.unchanged_failure else 1
+
+
+def _record_rows(rows: Sequence[RunMessage]) -> List[Dict[str, Any]]:
+    out = []
+    for m in rows:
+        if m.role != "compaction":
+            continue
+        try:
+            record = json.loads(m.content or "{}")
+        except ValueError:
+            continue
+        if isinstance(record, dict):
+            out.append(record)
+    return out
+
+
+def _source_keys(record: Dict[str, Any]) -> List[Key]:
+    out = []
+    for item in record.get("source") or []:
+        if isinstance(item, (list, tuple)) and len(item) == 2:
+            out.append((str(item[0]), int(item[1])))
+    return out
 
 
 def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *,
                     system_text: str = "", schemas_json: str = "", model_id: str = "",
                     window: Optional[int] = None, fraction: Optional[float] = None,
                     estimator: Optional[Estimator] = None, measured: Optional[int] = None,
-                    safe_input: int = 0) -> Optional[CompactionPlan]:
+                    safe_input: int = 0, force: bool = False,
+                    summary_window: Optional[int] = None) -> Optional[CompactionPlan]:
     """The plan of a compaction, with no model call. `None` when the trigger does not fire or
-    nothing is outside the keep set and the window.
+    no complete group is older than the newest one that must stay.
 
     `applied` is the list after the stored compactions, `rows` the stored thread.
     `measured` is the size of the next request (`request_size.measure`), with the results
     that the previous reply's calls stored. Without it, the size is the billed tokens of the
     newest billed call. `safe_input` is the window less the output reserve. The trigger is
-    never above it.
+    never above it. `force` plans a compaction under the trigger, after the provider refused
+    the request as too large. `summary_window` is the window of the summary model, read from
+    the catalog when it is not given.
+
+    Raises `ContextError` when the fixed input and the newest group pass the safe input.
     """
     applied = list(applied)
     resolved = context_window(model_id) if window is None else int(window)
@@ -870,70 +676,133 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
     if trigger > 0 and safe_input > 0:
         trigger = min(trigger, safe_input)
     billed = last_billed(applied) if measured is None else int(measured)
-    if trigger <= 0 or billed < trigger:
+    if trigger <= 0 or (billed < trigger and not force):
         return None
     target = target_tokens(trigger)
+    limit = safe_input or resolved
     est = estimator or Estimator.calibrate(applied, system_text, schemas_json)
-    sizer = Sizer(rows, est)
-    layout = shrink(initial_layout(applied, est, target), sizer, target)
-    _kept, _blank, gone, _drop = layout.classify()
-    if not gone:
-        log.warning("compaction threshold %d crossed at %d tokens, and nothing is outside "
-                    "the keep set and the recent window", trigger, billed)
+
+    groups = step_groups(applied)
+    steps = [g for g in groups if not (len(g) == 1 and _is_user(applied[g[0]]))]
+    user = sum(est.tokens(m) for m in applied if _is_user(m))
+    fixed = est.fixed + user
+    sizes = [sum(est.tokens(applied[i]) for i in g) for g in steps]
+    newest = sizes[-1] if sizes else 0
+    header = est.tokens_text(RECORD_HEADER) + SUMMARY_TOKENS
+    if fixed + newest + (header if len(steps) > 1 else 0) > limit:
+        raise ContextError(CONTEXT_SIZE, _too_large_text(est.fixed, user, newest, limit))
+    if len(steps) < 2:
         return None
-    layout = add_rereads(layout, sizer, target)
-    return CompactionPlan(applied=applied, rows=list(rows), layout=layout, est=est,
-                          sizer=sizer, index=sizer.index(layout),
-                          blocks=compacted_blocks(layout, est), model_id=model_id or "",
-                          window=resolved, trigger=trigger, target=target, billed=billed)
+
+    def index_for(start: int) -> str:
+        hidden = {k for g in steps[:start] for i in g if applied[i].role == "tool"
+                  for k in [_key(applied[i])] if k}
+        visible = {k for m in applied if m.role == "tool"
+                   for k in [_key(m)] if k and k not in hidden}
+        return thread_index.render(rows, visible_after=visible)
+
+    # The largest suffix of complete groups that fits the target with the fixed input and
+    # the summary, and at least the newest group.
+    start, used = len(steps) - 1, newest
+    while start > 0 and fixed + header + used + sizes[start - 1] <= target:
+        start -= 1
+        used += sizes[start]
+    if start == 0:
+        log.warning("compaction threshold %d crossed at %d tokens, and every step fits the "
+                    "target of %d", trigger, billed, target)
+        return None
+    index = index_for(start)
+    while start < len(steps) - 1 and fixed + header + est.tokens_text(index) + used > target:
+        used -= sizes[start]
+        start += 1
+        index = index_for(start)
+
+    prefix = [i for g in steps[:start] for i in g]
+    source = [k for i in prefix for k in [_key(applied[i])] if k]
+    retained_from = _key(applied[steps[start][0]])
+    previous = any(is_record(applied[i]) for i in prefix)
+    task = next((m.content for m in applied if _is_user(m)), "")
+
+    s_window = summary_window
+    if s_window is None:
+        name = summary_model(model_id)
+        s_window = resolved if name == model_id else (context_window(name) or resolved)
+    skeleton = render_prompt([], task, SUMMARY_TOKENS, previous)
+    budget = max(0, int(s_window) - SUMMARY_TOKENS - est.tokens_text(skeleton))
+    texts, extracts = fit_blocks(summary_blocks(applied, prefix), est.chars_for(budget))
+    prompt = render_prompt(texts, task, SUMMARY_TOKENS, previous)
+
+    failed_before = next((r for r in reversed(_record_rows(rows))
+                          if r.get("version") == RECORD_VERSION), None)
+    unchanged = bool(failed_before and failed_before.get("status") == "failed"
+                     and _source_keys(failed_before) == source)
+    return CompactionPlan(
+        applied=applied, est=est, model_id=model_id or "", window=resolved, trigger=trigger,
+        target=target, billed=billed, source=source, retained_from=retained_from,
+        index=index, prompt=prompt,
+        steps_summarised=sum(1 for i in prefix if applied[i].role == "ai"),
+        sizes={"fixed": est.fixed, "user": user, "retained": used,
+               "index": est.tokens_text(index), "summary_input": est.tokens_text(prompt),
+               "summary_window": int(s_window)},
+        extracts=extracts, unchanged_failure=unchanged)
 
 
 def finish_compaction(plan: CompactionPlan, summariser: Optional[Summariser] = None
                       ) -> Tuple[List[RunMessage], CompactionReport]:
-    """The summary, the record, the list and the report of a planned compaction."""
-    layout, est = plan.layout, plan.est
+    """The summary, the record, the list and the report of a planned compaction.
+
+    A summary that fails or gives no text gives a record with the status `failed`, which
+    changes no message. The caller decides whether the previous list fits.
+    """
+    est = plan.est
     call = summariser or (lambda prompt, cap: summarise_with_model(
         prompt, model_id=plan.model_id, max_tokens=cap))
-    task = next((m.content for m in plan.applied if m.role == "human" and not is_record(m)), "")
-    _kept, _blank, gone, _drop = layout.classify()
-    previous = any(plan.applied[i].role == "human" for i in gone)
-    body, states = summarise_parts(plan.blocks, task=task, budget=layout.budget,
-                                   summariser=call, previous=previous)
-    record = RECORD_HEADER + plan.index + ("\n\n" + body if body else "")
-    row = layout.row(est, record)
+    text, error = "", ""
+    if plan.unchanged_failure:
+        error = "the summary of this prefix failed before, and the prefix did not change"
+    else:
+        try:
+            text = (call(plan.prompt, SUMMARY_TOKENS) or "").strip()
+        except Exception as exc:  # noqa: BLE001 -- a failed summary is a record state
+            log.warning("the summary request failed: %s", exc)
+            error = f"{type(exc).__name__}: {exc}"[:300]
+        if not text and not error:
+            error = "the summary request gave no text"
+    status = "ok" if text else "failed"
+    record = RECORD_HEADER + plan.index + ("\n\n" if plan.index else "") + text if text else ""
+    row: Dict[str, Any] = {
+        "version": RECORD_VERSION, "layer": "prefix", "status": status,
+        "source": [[k[0], k[1]] for k in plan.source],
+        "retained_from": list(plan.retained_from) if plan.retained_from else None,
+        "summary": record, "error": error,
+    }
     out = apply_record(plan.applied, row)
     est_after = est.fixed + est.list_size(out)
-    window_keys = {k for i in layout.window() for k in [_key(plan.applied[i])] if k}
-    user = sum(est.tokens(m) for m in out if m.role == "human" and not is_record(m))
-    window_size = sum(est.tokens(m) for m in out if _key(m) in window_keys)
-    record_size = sum(est.tokens(m) for m in out if is_record(m))
-    sizes = {"fixed": est.fixed, "user": user,
-             "keep": max(0, est.list_size(out) - user - window_size - record_size),
-             "window": window_size, "index": est.tokens_text(plan.index)}
     reached = est_after <= plan.target
-    steps_summarised = sum(1 for i in gone if plan.applied[i].role == "ai")
+    sizes = {**plan.sizes, "summary": est.tokens_text(record), "after": est_after,
+             "extracts": plan.extracts}
     row.update({
         "tokens_before": plan.billed, "threshold": plan.trigger, "target": plan.target,
-        "est_after": est_after, "target_reached": reached, "steps": list(layout.steps),
-        "parts": states, "steps_summarised": steps_summarised, "sizes": sizes,
+        "est_after": est_after, "target_reached": reached,
+        "steps_summarised": plan.steps_summarised if text else 0, "sizes": sizes,
     })
     report = CompactionReport(
-        compaction_id=uuid.uuid4().hex, tokens_before=plan.billed,
+        compaction_id=uuid.uuid4().hex, status=status, tokens_before=plan.billed,
         context_window=plan.window, threshold_tokens=plan.trigger, target=plan.target,
-        est_after=est_after, target_reached=reached, steps=list(layout.steps), parts=states,
-        steps_summarised=steps_summarised, sizes=sizes,
+        est_after=est_after, target_reached=reached,
+        steps_summarised=row["steps_summarised"], sizes=sizes,
         messages_before=len(plan.applied), messages_after=len(out),
         chars_before=sum(len(m.content or "") for m in plan.applied),
         chars_after=sum(len(m.content or "") for m in out), model_id=plan.model_id,
-        summary=record, summarised_count=len(row["summarised"]),
+        summary=record, summarised_count=len(plan.source) if text else 0,
         preserved_count=max(0, len(out) - 1), handles=issued_citations(plan.applied),
         list_before=summarise_list(plan.applied), list_after=summarise_list(out), row=row,
     )
-    log.info("compacted context %s: %d tokens over trigger %d, target %d, estimate after %d, "
-             "steps %s, parts %s\nmodel-visible list AFTER:\n%s", report.compaction_id,
-             plan.billed, plan.trigger, plan.target, est_after, layout.steps or "none",
-             states, report.list_after)
-    if not reached:
+    log.info("compacted context %s: status %s, %d tokens over trigger %d, target %d, "
+             "estimate after %d, %d results as extracts\nmodel-visible list AFTER:\n%s",
+             report.compaction_id, status, plan.billed, plan.trigger, plan.target, est_after,
+             plan.extracts, report.list_after)
+    if text and not reached:
         log.warning("compaction %s did not reach the target %d: sizes %s",
                     report.compaction_id, plan.target, sizes)
     return out, report
@@ -953,37 +822,6 @@ def compact(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *,
     return finish_compaction(plan, summariser)
 
 
-def fixed_part_passes_target(applied: Sequence[RunMessage], system_text: str,
-                             schemas_json: str, window: int) -> bool:
-    """Whether the system text, the schemas and the user messages pass the target, at 3
-    characters a token. The first model step of a run logs a warning when they do."""
-    target = target_tokens(threshold_tokens(window))
-    if target <= 0:
-        return False
-    chars = len(system_text or "") + len(schemas_json or "") + sum(
-        len(m.content or "") for m in applied if m.role == "human" and not is_record(m))
-    return chars / 3 > target
-
-
-def note_warning_due(rows: Sequence[RunMessage], usage: Dict[str, Any], has_calls: bool,
-                     window: int) -> bool:
-    """Whether the worker writes the note warning after this reply.
-
-    The reply's input plus output tokens are at or above `NOTE_WARNING_SHARE` of the
-    trigger, the reply has calls, and no warning follows the newest `compaction` row.
-    """
-    trigger = threshold_tokens(window)
-    used = int(usage.get("input_tokens") or 0) + int(usage.get("output_tokens") or 0)
-    if trigger <= 0 or not has_calls or used < NOTE_WARNING_SHARE * trigger:
-        return False
-    for m in reversed(list(rows)):
-        if m.role == "compaction":
-            return True
-        if m.role == "human" and (m.content or "").startswith(NOTE_WARNING_HEAD):
-            return False
-    return True
-
-
 def record_compaction(report: CompactionReport, *, username: Optional[str],
                       session_id: Optional[str]) -> None:
     """Best-effort insert of the compaction trail. Never raises.
@@ -1000,7 +838,7 @@ def record_compaction(report: CompactionReport, *, username: Optional[str],
         "username": (username or "").strip() or "guest",
         "session_id": session_id or "",
         "model_id": report.model_id,
-        "layer": report.layer or "record",
+        "layer": report.layer or "prefix",
         "context_window": int(report.context_window),
         "threshold_tokens": int(report.threshold_tokens),
         "tokens_before": int(report.tokens_before),
@@ -1034,6 +872,22 @@ def record_compaction(report: CompactionReport, *, username: Optional[str],
         log.warning("chat_compactions insert failed: %s", exc)
 
 
+#: The words of a provider refusal that says the request passes the model's input.
+_SIZE_REFUSAL = re.compile(
+    r"context length|context window|maximum context|too many tokens|prompt is too long|"
+    r"input is too long|exceeds the model|longer than the model", re.IGNORECASE)
+_STATED_LIMIT = re.compile(r"maximum context length is (\d+)", re.IGNORECASE)
+
+
+def size_refusal(status: Optional[int], text: str) -> Optional[int]:
+    """For a provider refusal of a request that is too large, the context length that the
+    refusal states, else 0. None when the refusal is of another kind."""
+    if status not in (400, 413) or not _SIZE_REFUSAL.search(text or ""):
+        return None
+    match = _STATED_LIMIT.search(text or "")
+    return int(match.group(1)) if match else 0
+
+
 def describe() -> str:
     """One line for the startup log, so a deployment says what its trigger is."""
     fraction = compaction_fraction()
@@ -1043,5 +897,5 @@ def describe() -> str:
     return (
         # `:g`, because a test lowers the fraction, and "0%" would read as off.
         f"context compaction: at {fraction * 100:g}% of the model's stated context window, "
-        f"to a third of that, with a record summarised by {summariser}"
+        f"to a third of that, with one summary of the older steps by {summariser}"
     )

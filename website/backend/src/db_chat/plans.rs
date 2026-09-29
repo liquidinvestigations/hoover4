@@ -317,3 +317,58 @@ pub async fn read_section_reports(
     }
     Ok(out)
 }
+
+/// The frozen execution settings of a plan run: the `execution_settings` document that the
+/// worker writes before the first planner model call. `None` for a plan run from before
+/// the settings.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct ExecutionSettings {
+    pub model: String,
+    #[serde(default)]
+    pub internet_tools: bool,
+    #[serde(default)]
+    pub plan_contract: u64,
+    #[serde(default)]
+    pub model_source: String,
+}
+
+/// The execution settings of a plan run, or `None` when the plan run has none. The body is
+/// small, so the document holds it inline.
+pub async fn read_execution_settings(
+    username: &str,
+    session_id: &str,
+    plan_run_id: &str,
+) -> anyhow::Result<Option<ExecutionSettings>> {
+    let rows = get_global_client()
+        .query(
+            "SELECT body_inline FROM agent_plan_documents FINAL WHERE username = ? \
+             AND session_id = ? AND run_id = toUUID(?) AND kind = 'execution_settings' \
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(username)
+        .bind(session_id)
+        .bind(plan_run_id)
+        .fetch_all::<String>()
+        .await?;
+    Ok(rows.first().and_then(|body| serde_json::from_str(body).ok()))
+}
+
+/// The model of the newest assistant row of a plan run that names one, or `None`. A plan
+/// run from before the execution settings freezes this model at its next start.
+pub async fn recorded_planner_model(
+    username: &str,
+    session_id: &str,
+    start_seq: u32,
+) -> anyhow::Result<Option<String>> {
+    let rows = get_global_client()
+        .query(
+            "SELECT model FROM chat_messages FINAL WHERE username = ? AND session_id = ? \
+             AND seq >= ? AND role = 'assistant' AND model != '' ORDER BY seq DESC LIMIT 1",
+        )
+        .bind(username)
+        .bind(session_id)
+        .bind(start_seq)
+        .fetch_all::<String>()
+        .await?;
+    Ok(rows.into_iter().next())
+}

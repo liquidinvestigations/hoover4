@@ -274,22 +274,18 @@ def test_no_research_agent_receives_a_retired_agent_key():
                                         "AGENT_COMPLETION_RESERVE_TOKENS=")), (name, line)
 
 
-def test_the_subagent_budgets_default_to_6_and_5():
-    env = _env("settings-defaults.ini")
-    assert env["AGENT_PLAN_RUN_BUDGET"] == "5"
-    assert "AGENT_SUBAGENT_MAX_PER_TURN" not in env
-
-
-def test_a_set_subagent_budget_is_rendered_and_an_empty_one_is_the_default():
+def test_the_retired_plan_budget_is_not_rendered_and_a_set_value_warns(capsys):
+    assert "AGENT_PLAN_RUN_BUDGET" not in _env("settings-defaults.ini")
+    assert "agent_plan_run_budget" not in capsys.readouterr().err
     env = _env("agent-budgets.ini")
-    assert env["AGENT_PLAN_RUN_BUDGET"] == "5"
-    assert "AGENT_SUBAGENT_MAX_PER_TURN" not in env
+    assert "AGENT_PLAN_RUN_BUDGET" not in env
+    assert "agent_plan_run_budget is ignored" in capsys.readouterr().err
 
 
-def test_the_worker_receives_the_subagent_budgets():
+def test_the_worker_receives_no_plan_budget():
     main = dict(_compose_documents())["docker-compose.yaml"]["services"]
     environment = main["hoover4-worker"]["environment"]
-    assert "AGENT_PLAN_RUN_BUDGET=${AGENT_PLAN_RUN_BUDGET:-5}" in environment
+    assert not any("AGENT_PLAN_RUN_BUDGET" in value for value in environment)
     assert not any("AGENT_SUBAGENT_MAX_PER_TURN" in value for value in environment)
 
 

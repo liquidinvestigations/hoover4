@@ -11,6 +11,10 @@ use serde::{Deserialize, Serialize};
 /// The most characters in a rejection comment.
 pub const MAX_PLAN_COMMENT_CHARS: usize = 10_000;
 
+/// The most sections of a plan: direct children of the root. The Python copy is
+/// `MAX_SECTIONS` in `main_services/processing/database/agent_plans.py`.
+pub const MAX_PLAN_SECTIONS: usize = 4;
+
 /// The plan run states, as `agent_plan_runs.state` holds them.
 pub const PLAN_TERMINAL_STATES: [&str; 3] = ["completed", "failed", "cancelled"];
 
@@ -58,8 +62,11 @@ pub enum PlanDecisionOutcome {
     /// The run start failed after the readiness gate. The transcript holds an error row.
     StartFailed { error: String },
     /// The reviewed version has no section, so an approve is refused.
-    /// `sections` is empty, and `root_node_id` names the root.
+    /// `root_node_id` names the root.
     EmptyPlan { root_node_id: String },
+    /// The reviewed version has more sections than [`MAX_PLAN_SECTIONS`], so an approve is
+    /// refused. A plan from before the section rule of direct root children can hold more.
+    TooManySections { sections: u64, limit: u64 },
 }
 
 /// The `plan_reference_json` of a planner's answer row: the plan the card shows.
@@ -93,7 +100,8 @@ pub struct PlanView {
     pub version: u64,
     pub nodes: Vec<PlanNodeView>,
     /// For each section of the approved tree: `node_id`, `title`, `tasks`, `state`,
-    /// `corrections`, `defect_classes` and `failed`. Empty before execution.
+    /// `end_reason`, `failed` and `cause`, and `corrections` and `defect_classes`, which a
+    /// plan from before the controller's section start can hold. Empty before execution.
     pub sections_json: String,
     /// The `end_reason` of the newest agent run of a terminal plan run that has one:
     /// `step_budget` or `empty_response`, or `repeated_call` in an older run. Empty for a
@@ -110,8 +118,7 @@ impl PlanView {
     /// Why a terminal research run stopped short, as the transcript says it, or `None`.
     ///
     /// A cancelled plan run has none, because a person stopped it. "no section ran" means
-    /// an approved plan whose sections recorded no run, which is what a run whose
-    /// briefings were all refused leaves.
+    /// an approved plan whose sections recorded no run.
     pub fn stop_reason(&self) -> Option<&'static str> {
         if !self.is_terminal() || self.state == "cancelled" {
             return None;
@@ -130,21 +137,25 @@ impl PlanView {
     }
 }
 
-/// Whether a tree has a section: a node with at least one leaf child. The root counts.
-/// The Python copy is `sections` in `main_services/processing/database/agent_plans.py`.
-/// The two copies are one rule and change in one patch.
-///
-/// A root whose children are all leaves is one section, with those leaves as its tasks.
+/// The sections of a tree: the direct children of the root. One researcher runs each
+/// section with its whole subtree, and a child of the root with no children is a section of
+/// one task. The Python copy is `sections` in
+/// `main_services/processing/database/agent_plans.py`. The two copies are one rule and
+/// change in one patch.
+pub fn section_count(nodes: &[PlanNodeView]) -> usize {
+    let root = root_node_id(nodes);
+    if root.is_empty() {
+        return 0;
+    }
+    nodes
+        .iter()
+        .filter(|n| n.parent_id.as_deref() == Some(root.as_str()))
+        .count()
+}
+
+/// Whether a tree has a section: a direct child of the root.
 pub fn has_section(nodes: &[PlanNodeView]) -> bool {
-    let parents: std::collections::HashSet<&str> =
-        nodes.iter().filter_map(|n| n.parent_id.as_deref()).collect();
-    // A node with a parent is a child. A child that is not a parent is a leaf, and its
-    // parent is a section. The Python copy also requires the parent to be in the tree.
-    let ids: std::collections::HashSet<&str> = nodes.iter().map(|n| n.node_id.as_str()).collect();
-    nodes.iter().any(|n| {
-        !parents.contains(n.node_id.as_str())
-            && n.parent_id.as_deref().is_some_and(|parent| ids.contains(parent))
-    })
+    section_count(nodes) > 0
 }
 
 /// The node id of the root of a tree: the node with no parent. Empty when there is none.
@@ -188,13 +199,39 @@ mod tests {
     }
 
     #[test]
-    fn a_root_with_only_leaf_children_is_a_section() {
+    fn each_child_of_the_root_is_a_section_with_its_subtree() {
         let nodes = [
             node("root", None),
             node("s1", Some("root")),
             node("s2", Some("root")),
+            node("t1", Some("s2")),
+            node("t2", Some("t1")),
         ];
         assert!(has_section(&nodes));
+        assert_eq!(section_count(&nodes), 2);
+        assert_eq!(section_count(&[node("root", None)]), 0);
+        assert_eq!(section_count(&[]), 0);
+    }
+
+    #[test]
+    fn a_plan_view_of_an_older_backend_and_new_section_keys_deserialize() {
+        // No `end_reason` field, and entries with the older and the newer keys.
+        let text = r#"{"run_id":"r","plan_id":"p","state":"completed","reviewed_version":2,
+            "approved_version":2,"review_round":0,"version":2,"nodes":[],
+            "sections_json":"[{\"node_id\":\"a\",\"corrections\":1,\"failed\":false},{\"node_id\":\"b\",\"state\":\"failed\",\"end_reason\":\"\",\"cause\":\"the run ended failed\",\"failed\":true}]"}"#;
+        let view: PlanView = serde_json::from_str(text).unwrap();
+        assert_eq!(view.end_reason, "");
+        let sections: Vec<serde_json::Value> = serde_json::from_str(&view.sections_json).unwrap();
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[1]["cause"], "the run ended failed");
+    }
+
+    #[test]
+    fn a_too_many_sections_outcome_round_trips() {
+        let outcome = PlanDecisionOutcome::TooManySections { sections: 5, limit: 4 };
+        let text = serde_json::to_string(&outcome).unwrap();
+        assert_eq!(text, r#"{"outcome":"too_many_sections","sections":5,"limit":4}"#);
+        assert_eq!(serde_json::from_str::<PlanDecisionOutcome>(&text).unwrap(), outcome);
     }
 
     #[test]

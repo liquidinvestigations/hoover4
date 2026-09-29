@@ -1,10 +1,8 @@
 """The tool `write_note`: a fact that the model saves for later in the run.
 
-A compaction replaces the older steps of a run with a record (`compaction.compact`). The
-result of each `write_note` call stays in the list through a compaction, in the keep class
-`note`, up to `compaction.NOTES_TOTAL_TOKENS` for all notes together. When a reply reaches
-`compaction.NOTE_WARNING_SHARE` of the trigger, the worker writes a warning that tells the
-model to save its notes now.
+A compaction replaces the older steps of a run with one summary (`compaction.py`). A note
+in those steps goes to the summary request, and the summary prompt asks the summary model to
+include each note.
 
 The tool is local to the agent service, like the skill tools, and
 `tool_catalogue.build_snapshot` builds it for each step context. It is in the `skills` pack.
@@ -26,8 +24,8 @@ WRITE_NOTE = "write_note"
 NOTE_MAX_CHARS = 2_000
 
 DESCRIPTION = (
-    "Save a fact that you need later. Notes stay when the older steps of this run are "
-    "replaced by a record."
+    "Save a fact that you need later, with its source. When the older steps of this run are "
+    "summarised, the summary request asks for each note."
 )
 REFUSAL = json.dumps({"success": False, "error": "invalid_arguments",
                       "message": "A note holds 1 to 2,000 characters."})

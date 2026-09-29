@@ -26,7 +26,7 @@ def _window(monkeypatch):
     for name in ("AGENT_COMPACTION_FRACTION", "CLICKHOUSE_URL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(compaction, "context_window", lambda model_id: WINDOW)
-    monkeypatch.setattr(compaction, "summarise_with_model", lambda prompt, **k: "## Goal\nx")
+    monkeypatch.setattr(compaction, "summarise_with_model", lambda prompt, **k: "## Findings\nx")
 
 
 def _tokens(messages) -> int:
@@ -72,8 +72,9 @@ def test_the_first_call_over_the_threshold_compacts_and_writes_a_row():
     rows = [m for m in thread if m.role == "compaction"]
     assert len(rows) == 1
     record = json.loads(rows[0].content)
-    assert record["version"] == 2 and record["layer"] == "record"
-    assert record["summarised"] and all(k[0] == THREAD for k in record["summarised"])
+    assert (record["version"], record["layer"], record["status"]) == (3, "prefix", "ok")
+    assert record["source"] and all(k[0] == THREAD for k in record["source"])
+    assert record["retained_from"][0] == THREAD
     assert record["threshold"] == THRESHOLD
     assert record["target"] == THRESHOLD // 3
 

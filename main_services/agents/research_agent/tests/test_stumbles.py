@@ -56,7 +56,7 @@ def test_each_cause_names_its_skill():
         ("search_collections", {"success": False, "error": "invalid_argument",
                                 "message": "the collection x is outside the permitted collections"},
          {}, "collection_names"),
-        ("append_child", {"success": False, "error": "no node 9"}, {}, "plan_editing"),
+        ("write_plan", {"success": False, "error": "names no node"}, {}, "plan_editing"),
         ("table_page", {"success": False, "error": "invalid_arguments",
                         "message": "row_start: 'x' is not of type 'integer'"}, {}, "call_arguments"),
         ("doc_email", {"success": False, "error": "not_found", "message": "no dataset holds it"},

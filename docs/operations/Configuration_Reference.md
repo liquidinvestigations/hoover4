@@ -158,20 +158,19 @@ slots, 1 by default. The email graph runs in one more process of its own, on
 
 `browser_max_contexts` is live Chromium processes on `hoover4-mcp-browser`, one per chat.
 `mcp_browser_mem_limit` is that container's memory ceiling.
-`agent_plan_run_budget` (default `5`) is how many sub-agent runs one research plan may
-start. The organizer can use them for sections, corrections and off-tree briefings.
-The worker refuses the briefings past a budget by name, and the model reads the refusals.
+A research plan starts one sub-agent for each of its sections, and has at most 4 sections.
+No key changes that. `./deploy` prints a warning for an `agent_plan_run_budget` key and
+ignores it.
 `agent_packs_chat`, `agent_packs_planner` and `agent_packs_organizer` give the tool packs
 of the chat lead, the planner and the organizer, as a comma list of pack names or `all`.
-The default is `all` for each of them. A sub-agent has no key of its own. It gets the packs
-of `agent_packs_organizer`, because only the organizer starts sub-agents. `deploy.py` prints a
+The default is `all` for each of them. A sub-agent has no key of its own. It runs one
+section of a plan and gets the packs of `agent_packs_organizer`. `deploy.py` prints a
 warning for an `agent_packs_subagent` key and ignores it. The packs are
-`catalogue`, `skills`, `collections`, `conversation`, `plan`, `delegation`, `web` and
-`browser`. Every run kind gets the `skills` pack (`search_skills`, `read_skill`,
+`catalogue`, `skills`, `collections`, `conversation`, `plan`, `web` and `browser`. A setting
+that names the retired `delegation` pack gets nothing from that name. Every run kind gets the `skills` pack (`search_skills`, `read_skill`,
 `read_tool`, `ask_user` and `write_note`), also when its setting leaves it out, because
 the system prompt of every run lists skills that the model can read with `read_skill`.
-Only the organizer receives the
-`delegation` pack. A sub-agent cannot call `ask_user`. The agent service sends all
+A sub-agent cannot call `ask_user`. The agent service sends all
 available tools with each model call and refuses an unknown pack name.
 The results of one model step share 24,000 bytes, and each call gets an equal part. No key
 changes that. `./deploy` prints a warning for an `agent_max_page_tokens` or
@@ -198,10 +197,11 @@ bounds do not have keys either: the agent's keepalive line every 30 s, the worke
 read of the agent stream and the website's 180 s stall window.
 
 `agent_compaction_fraction` is the fraction of the model's stated context window at which
-the agent compacts the context of a model call, to a third of that size. The templates and
-the code default set 0.80. An empty key keeps the code default. The compacted list is kept
-for the later calls of the conversation. `agent_compaction_model` names the model that
-writes the record, and empty is the answering model.
+the agent compacts the context of a model call, to a third of that size. It replaces one
+older prefix of steps with one summary. The templates and the code default set 0.80. An
+empty key keeps the code default. The compacted list is kept for the later calls of the
+conversation. `agent_compaction_model` names the model that writes the summary, and empty is
+the answering model. The summary request must fit the stated window of that model.
 
 `agent_max_output_tokens` is the output cap of every agent model request, sent as
 `max_completion_tokens`. Empty sends no cap, and the templates set 32768. The agent also
@@ -381,7 +381,6 @@ is the map back to the group above that explains it.
 - `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`, `agent_tool_concurrency`
 - `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
 - `mcp_browser_mem_limit`, `full_research_agent_workers`
-- `agent_plan_run_budget`
 - `agent_packs_chat`, `agent_packs_planner`, `agent_packs_organizer`
 - `agent_catalogue_match_count`
 - `agent_queue_wait_seconds`, `title_request_timeout_seconds`

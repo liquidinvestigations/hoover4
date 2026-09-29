@@ -39,8 +39,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(240)]
 LONG_ID_A = "chatcmpl-tool-a5ca7d0e11f2" * 9
 LONG_ID_B = "chatcmpl-tool-b71c3e9d04aa" * 9
 
-#: The kinds that the agent service gives, by tool name.
-ORDERED = ("append_node", "append_child", "edit_node", "move_node", "remove_node")
+#: The tools that the agent service gives the kind `ordered`.
+ORDERED = ("write_plan",)
 
 
 def _frame(kind, **fields):
@@ -57,13 +57,10 @@ def _reply(request, text="", calls=()):
     service classifies them, and `end`."""
     entries = []
     for position, (name, args, call_id) in enumerate(calls):
-        kind = ("delegation" if name == "run_subagent"
-                else "ordered" if name in ORDERED else "parallel")
+        kind = "ordered" if name in ORDERED else "parallel"
         entries.append({
             "id": call_id or f"call-{request['step_no']}-{position}", "name": name,
-            "args": args, "kind": kind,
-            "briefings": args.get("tasks") if kind == "delegation" else None,
-            "page_share": None if kind == "delegation" else 24000,
+            "args": args, "kind": kind, "page_share": 24000,
             "retry": not name.startswith("browser_")})
     frames = [_frame("response", content=text)] if text else []
     return frames + [
@@ -77,11 +74,6 @@ def _reply(request, text="", calls=()):
 
 def _answer_frames(request, text):
     return _reply(request, text)
-
-
-def _delegate_frames(request, calls):
-    """A reply with `run_subagent` calls. `calls` holds `(call_id, briefings)`."""
-    return _reply(request, calls=[_call("run_subagent", {"tasks": b}, c) for c, b in calls])
 
 
 def _ok_tool(request, n):
@@ -228,7 +220,7 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
     client = None
     acts = [activities.open_run, activities.append_nag, activities.write_ending,
             activities.summarize_if_first_turn, activities.fan_in,
-            activities.continue_run, steps.delegate_step, steps.prepare_continuation,
+            activities.continue_run, activities.dispatch_sections, steps.prepare_continuation,
             steps.record_step_failure, steps.plan_has_sections, steps.check_citations,
             steps.write_empty_note, steps.write_asked_answer, steps.write_incomplete]
     try:
@@ -358,8 +350,10 @@ def test_two_parallel_calls_overlap_and_keep_their_rows(monkeypatch):
 def test_plan_tree_calls_keep_their_order_and_a_search_overlaps_them(monkeypatch):
     def script(request, n):
         if n == 1:
-            return _reply(request, calls=[_call("append_node", {"text": "A"}),
-                                          _call("append_node", {"text": "B"}),
+            return _reply(request, calls=[_call("write_plan", {"version": 1, "children": [
+                                              {"text": "A"}]}),
+                                          _call("write_plan", {"version": 2, "children": [
+                                              {"text": "B"}]}),
                                           _call("search_collections", {"query": "q"})])
         return _reply(request, "done")
 
@@ -370,8 +364,8 @@ def test_plan_tree_calls_keep_their_order_and_a_search_overlaps_them(monkeypatch
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
         log = {(name, json.dumps(args)): (s, e) for name, args, s, e in stub.tool_log}
-        a = log[("append_node", '{"text": "A"}')]
-        b = log[("append_node", '{"text": "B"}')]
+        a = log[("write_plan", '{"version": 1, "children": [{"text": "A"}]}')]
+        b = log[("write_plan", '{"version": 2, "children": [{"text": "B"}]}')]
         search = log[("search_collections", '{"query": "q"}')]
         assert a[1] <= b[0], "B started before A ended"
         assert search[0] < a[1] or search[0] < b[1], "the search overlapped neither"
@@ -505,32 +499,21 @@ def test_browser_calls_of_one_reply_run_in_call_order_beside_a_search(monkeypatc
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
-def _delegating_lead(child_script):
-    """A lead that sends one briefing and answers from the report, and a child that
-    follows `child_script`."""
-    def script(request, n):
-        if request["kind"] == "subagent":
-            return child_script(request, n)
-        if _is_continuation(request):
-            return _reply(request, "The lead answer.")
-        return _reply(request, calls=[_call("run_subagent", {"tasks": [_briefing("alpha")]},
-                                            "d1")])
-    return script
-
-
-def _child(case):
-    return next(r for r in _turn_rows(case) if r.depth == 1)
+def _child(case, turn_seq=None):
+    return next(r for r in _turn_rows(case, turn_seq) if r.depth == 1)
 
 
 def test_a_sub_agent_at_the_step_limit_ends_with_its_evidence(monkeypatch):
-    """A sub-agent that never answers reaches the step limit. Its result is the text that
-    code writes from its thread, the lead's continuation reads it, and no model call binds
-    no tool."""
+    """A section's sub-agent that never answers reaches the step limit. Its result is the
+    text that code writes from its thread, its section fails with that cause, and the
+    organizer's continuation reads it."""
     monkeypatch.setattr(workflows, "RUN_MODEL_STEPS", 3)
+    prid = str(uuid.uuid4())
 
     async def body(client, case, stub, queue, titled):
-        assert await (await _start(client, case, queue)).result() == "delegated"
-        child = await _wait_terminal(case, _child(case).run_id)
+        inp, result = await _run_organizer(client, case, queue, prid)
+        assert result == "delegated"
+        child = await _wait_terminal(case, _child(case, inp.turn_seq).run_id)
         assert (child.state, child.end_reason) == ("completed", "step_budget")
         assert child.result.startswith(
             "This run stopped before a final answer, because it reached its limit of 3")
@@ -539,11 +522,16 @@ def test_a_sub_agent_at_the_step_limit_ends_with_its_evidence(monkeypatch):
         # The results of the child's last reply are stored, and no step ran after them.
         messages = case.messages(child.thread_id)
         assert [m.role for m in messages][-2:] == ["ai", "tool"]
-        lead = await _wait_terminal(case, seconds=90)
-        assert lead.state == "completed" and lead.result == "The lead answer."
+        plan_run = await _wait_plan(case, prid, inp)
+        [section] = json.loads(plan_run.sections_json)
+        assert (section["failed"], section["end_reason"]) == (True, "step_budget")
+        organizer = [r for r in stub.requests if r["kind"] == "organizer"]
+        [outcome] = _sections_of(organizer[0])
+        assert (outcome["end_reason"], outcome["failed"]) == ("step_budget", True)
         assert "nag" not in [r[1] for r in case.chat_rows()]
 
-    asyncio.run(_run_case(monkeypatch, _delegating_lead(_searching), body))
+    asyncio.run(_run_case(monkeypatch, _plan_script(prid, ["Read the lease"], _searching),
+                          body))
 
 
 # ------------------------------------------------------------------------ the empty reply
@@ -944,20 +932,7 @@ def test_a_planner_question_with_a_label_is_checked_with_no_plan_failure(monkeyp
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
-# ---------------------------------------------------------------------------- delegation
-
-
-def _briefing(objective):
-    return {"objective": objective, "known": "", "bring_back": "the facts"}
-
-
-def _is_continuation(request):
-    last = request["messages"][-1]
-    return last["role"] == "tool" and last.get("name") == "run_subagent"
-
-
-def _objective(request):
-    return request["messages"][0]["content"].splitlines()[0].removeprefix("Objective: ")
+# ---------------------------------------------------------------------------- the plan layer
 
 
 async def _wait_terminal(case, run_id=None, seconds=90):
@@ -970,248 +945,14 @@ async def _wait_terminal(case, run_id=None, seconds=90):
     raise AssertionError(f"run {run_id or case.run_id} did not end")
 
 
-def _turn_rows(case):
-    return agent_runs.read_turn_runs(case.username, case.session_id, case.turn_seq)
-
-
-@workflow.defn(sandboxed=False)
-class _StartTwice:
-    @workflow.run
-    async def run(self, child: activities.AgentRunInput) -> list:
-        workflow_id = f"run-{child.run_id}"
-        return [await workflows.start_run(child, workflow_id),
-                await workflows.start_run(child, workflow_id)]
-
-
-def test_a_duplicate_child_start_is_refused_and_counts_as_started(monkeypatch):
-    """`temporalio` 1.16 raises `WorkflowAlreadyStartedError` for a duplicate child id, and
-    `start_run` treats it as a start."""
-
-    async def body(client, case, stub, queue, titled):
-        agent_runs.create_run(agent_runs.RunRow(
-            run_id=case.run_id, username=case.username, session_id=case.session_id,
-            turn_seq=case.turn_seq, thread_id=case.run_id, queue="q", workflow_id="w"))
-        agent_runs.write_run_terminal(case.run_row(), "completed")
-        result = await client.execute_workflow(
-            _StartTwice.run, case.input(), id=f"w7-twice-{case.run_id}", task_queue=queue)
-        assert result == [True, False]
-
-    asyncio.run(_run_case(monkeypatch, lambda r, n: [], body, extra_workflows=[_StartTwice]))
-
-
-def test_a_child_that_starts_after_a_stop_continues_its_parent_as_cancelled(monkeypatch):
-    """`open_run` of a stopped child writes `cancelled` and runs `fan_in`, so the waiting
-    lead ends as `cancelled` too."""
-
-    def script(request, n):
-        agent_runs.write_turn_stop(request["username"], request["session_id"], 1)
-        return _delegate_frames(request, [("d1", [_briefing("alpha")])])
-
-    async def body(client, case, stub, queue, titled):
-        handle = await _start(client, case, queue)
-        try:
-            await handle.result()
-        except WorkflowFailureError:
-            pass
-        lead = await _wait_terminal(case)
-        assert lead.state == "cancelled"
-        rows = _turn_rows(case)
-        assert {r.state for r in rows if r.depth == 1} <= {"cancelled"}
-        assert not [r for r in rows if r.continues_run_id]
-        assert len(stub.requests) == 1
-        assert case.chat_rows()[-1][1:3] == ("error", "This turn was stopped.")
-
-    asyncio.run(_run_case(monkeypatch, script, body))
-
-
-def test_the_sweep_fails_a_run_with_no_workflow_and_continues_its_parent(monkeypatch):
-    """`collector-sweep`, with rows whose workflows do not exist: the sweep writes `failed`
-    for the child, and `fan_in` continues the waiting lead, which then completes."""
-    from tasks.P_agent import supervise
-
-    def script(request, n):
-        return _reply(request, "Answer after the sweep.")
-
-    async def body(client, case, stub, queue, titled):
-        batch = agent_runs.batch_id_for(case.run_id)
-        child = agent_runs.child_run_id(batch, 0)
-        entry = {"id": "d1", "name": "run_subagent", "args": {"tasks": [_briefing("x")]},
-                 "kind": "delegation", "briefings": [_briefing("x")], "position": 0, "seq": 2}
-        for idx, role, calls in ((0, "human", "[]"), (1, "ai", json.dumps([entry]))):
-            agent_runs.write_message(case.username, case.session_id, case.run_id, case.run_id,
-                                     agent_runs.RunMessageRow(idx=idx, role=role, content="q",
-                                                              tool_calls_json=calls,
-                                                              run_id=case.run_id))
-        agent_runs.create_run(agent_runs.RunRow(
-            run_id=case.run_id, username=case.username, session_id=case.session_id,
-            turn_seq=case.turn_seq, thread_id=case.run_id, queue=agent_runs.LEAD_QUEUES["chat"],
-            workflow_id=f"w7-absent-{case.run_id}", state="waiting_for_children",
-            delegated_batch_id=batch, delegate_seq=2, start_seq=2, next_seq=3))
-        agent_runs.create_run(agent_runs.RunRow(
-            run_id=child, username=case.username, session_id=case.session_id,
-            turn_seq=case.turn_seq, thread_id=child, parent_run_id=case.run_id, batch_id=batch,
-            depth=1, kind="subagent", queue=agent_runs.LEAD_QUEUES["chat"],
-            workflow_id=f"run-{child}", tool_call_id="d1",
-            briefing=json.dumps(_briefing("x"))))
-        later = supervise._now() + timedelta(seconds=300)
-        counts = await supervise.sweep(client, later, username=case.username)
-        assert counts == {"ended": 1, "continued": 1}
-        failed = agent_runs.read_run(case.username, case.session_id, child)
-        assert failed.state == "failed" and failed.error == supervise.WORKFLOW_ABSENT
-        lead = await _wait_terminal(case)
-        assert (lead.state, lead.result) == ("completed", "Answer after the sweep.")
-        report = json.loads(stub.requests[0]["messages"][-1]["content"])
-        assert [r["state"] for r in report["reports"]] == ["failed"]
-        assert await supervise.sweep(client, later, username=case.username) == {
-            "ended": 0, "continued": 0}
-
-    asyncio.run(_run_case(monkeypatch, script, body))
-
-
-# ------------------------------------------------------------------------- stop and orphans
-
-#: A filler frame longer than the 512 bytes that `iter_lines` reads at a time, so each one
-#: reaches the attempt as it is written.
-_FILLER = "." * 600
-
-
-@pytest.mark.parametrize("stop_after", [3.0, 21.0])
-def test_a_stop_during_the_stream_writes_nothing_after_the_ending(monkeypatch, stop_after):
-    """A stop cancels `model_step`, and the workflow waits for the attempt to end. The stub
-    keeps sending frames after the stop and then a delegation. The attempt stops at the
-    first frame after the cancellation, so no child row exists and the ending row is last.
-    """
-
-    def script(request, n):
-        def frames():
-            yield _frame("response", content="Working")
-            deadline = time.monotonic() + 150
-            while time.monotonic() < deadline:
-                time.sleep(0.5)
-                yield _frame("response", content=_FILLER)
-            yield from _delegate_frames(request, [("d1", [_briefing("alpha")])])
-        return frames()
-
-    async def body(client, case, stub, queue, titled):
-        handle = await _start(client, case, queue)
-        deadline = time.monotonic() + 30
-        while len(stub.sent) < 4 and time.monotonic() < deadline:
-            await asyncio.sleep(0.2)
-        assert len(stub.sent) >= 4, "the stream did not start"
-        await asyncio.sleep(stop_after)
-        agent_runs.write_turn_stop(case.username, case.session_id, case.turn_seq)
-        stopped_at = time.monotonic()
-        await handle.cancel()
-        lead = await _wait_terminal(case, seconds=150)
-        latency = time.monotonic() - stopped_at
-        print(f"stop latency: {latency:.1f} s from the cancel call to the ending row, "
-              f"stop {stop_after:.0f} s into the stream")
-        assert latency <= STOP_LATENCY_LIMIT_SECONDS, f"stop latency {latency:.1f} s"
-        with pytest.raises(WorkflowFailureError):
-            await handle.result()
-        assert lead.state == "cancelled"
-        assert [r for r in _turn_rows(case) if r.parent_run_id] == []
-        rows = case.chat_rows()
-        ending = max(rows, key=lambda r: r[0])
-        assert (ending[1], ending[2]) == ("error", "This turn was stopped.")
-        assert [r for r in rows if r[1] == "error"] == [ending]
-        assert len(stub.requests) == 1
-
-    asyncio.run(_run_case(monkeypatch, script, body))
-
-
-def test_the_sweep_ends_the_children_of_a_failed_parent(monkeypatch):
-    """Every attempt of `delegate_step` writes the child rows and fails before the waiting
-    state, and the lead ends `failed` with its children `running`. The sweep ends every
-    child, and the turn holds no open run."""
-    from tasks.P_agent import supervise
-
-    def script(request, n):
-        return _delegate_frames(request, [("d1", [_briefing("alpha"), _briefing("beta")])])
-
-    real_write = agent_runs.RunRowWriter.write
-
-    def write(self, **changes):
-        if changes.get("state") == agent_runs.WAITING_FOR_CHILDREN:
-            raise RuntimeError("the attempt ends before the waiting state")
-        return real_write(self, **changes)
-
-    monkeypatch.setattr(agent_runs.RunRowWriter, "write", write)
-
-    async def body(client, case, stub, queue, titled):
-        handle = await _start(client, case, queue)
-        with pytest.raises(WorkflowFailureError):
-            await handle.result()
-        assert len(stub.requests) == 1
-        lead = case.run_row()
-        assert lead.state == "failed" and "before the waiting state" in lead.error
-        children = [r for r in _turn_rows(case) if r.parent_run_id == case.run_id]
-        assert len(children) == 2 and {r.state for r in children} == {"running"}
-
-        counts = await supervise.sweep(client, username=case.username, grace_seconds=0)
-        assert counts == {"ended": 2, "continued": 0}
-        rows = _turn_rows(case)
-        assert {r.state for r in rows if r.parent_run_id} == {"failed"}
-        assert [r for r in rows if not agent_runs.is_terminal(r)] == []
-
-    asyncio.run(_run_case(monkeypatch, script, body))
-
-
-def test_a_stop_during_the_delegation_ends_every_row_of_the_turn(monkeypatch):
-    """The stop lands while `delegate_step` writes the child rows. The lead ends
-    `cancelled`, and each child row it wrote ends `cancelled` with it, within
-    `STOP_LATENCY_LIMIT_SECONDS` of the stop and with no sweep."""
-
-    def script(request, n):
-        return _delegate_frames(request, [("d1", [_briefing("alpha"), _briefing("beta")])])
-
-    real_create = agent_runs.create_run
-
-    def create_run(run_row):
-        real_create(run_row)
-        if run_row.kind == "subagent":
-            # Holds the delegation open, so the stop lands between the child rows.
-            time.sleep(2.0)
-
-    monkeypatch.setattr(agent_runs, "create_run", create_run)
-
-    async def body(client, case, stub, queue, titled):
-        handle = await _start(client, case, queue)
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline:
-            if [r for r in _turn_rows(case) if r.parent_run_id]:
-                break
-            await asyncio.sleep(0.1)
-        agent_runs.write_turn_stop(case.username, case.session_id, case.turn_seq)
-        stopped_at = time.monotonic()
-        await handle.cancel()
-        deadline = stopped_at + STOP_LATENCY_LIMIT_SECONDS
-        rows = _turn_rows(case)
-        while time.monotonic() < deadline:
-            rows = _turn_rows(case)
-            if rows and all(agent_runs.is_terminal(r) for r in rows):
-                break
-            await asyncio.sleep(0.2)
-        latency = time.monotonic() - stopped_at
-        print(f"stop latency during the delegation: {latency:.1f} s")
-        children = [r for r in rows if r.parent_run_id]
-        assert children, "no child row was written"
-        assert [(r.run_id, r.state) for r in rows if not agent_runs.is_terminal(r)] == []
-        assert latency <= STOP_LATENCY_LIMIT_SECONDS, f"stop latency {latency:.1f} s"
-        assert {r.state for r in rows} == {"cancelled"}
-        assert [r for r in rows if r.continues_run_id] == []
-        assert case.chat_rows()[-1][1:3] == ("error", "This turn was stopped.")
-        assert len(stub.requests) == 1
-
-    asyncio.run(_run_case(monkeypatch, script, body))
-
-
-# ---------------------------------------------------------------------------- the plan layer
+def _turn_rows(case, turn_seq=None):
+    return agent_runs.read_turn_runs(case.username, case.session_id, turn_seq or case.turn_seq)
 
 
 def _decide(case, plan_run_id, action, version, comment="", seq=None):
     """Write the decision row and the user row as `decide_plan` does, and return the input
-    of the run it starts. The website's checks are tested in `api/chat/plans.rs`."""
+    of the run it starts. The input has no model, so the run takes the plan's frozen model.
+    The website's checks are tested in `api/chat/plans.rs`."""
     decision_id = str(uuid.uuid4())
     seq = seq or max(r[0] for r in case.chat_rows()) + 1
     activities._insert_chat_row(case.username, case.session_id, seq, "user",
@@ -1239,41 +980,198 @@ async def _run_plan(client, queue, inp, workflow_id):
     return handle, await handle.result()
 
 
+#: The model of the first planner request, which the plan freezes.
+PLAN_MODEL = "plan-model-a"
+
+
 def _plan_input(case, plan_run_id):
     inp = case.input()
-    inp.kind, inp.plan_run_id = "planner", plan_run_id
+    inp.kind, inp.plan_run_id, inp.llm_model = "planner", plan_run_id, PLAN_MODEL
     return inp
 
 
-def test_a_flat_plan_is_reviewed_rejected_approved_and_completed(monkeypatch):
-    """`flat-plan`, `unbounded-rejection`, `review-idle` and `terminal-run`.
+def _node(text, *children):
+    return {"text": text, "children": list(children)}
 
-    Round 0 writes a flat plan and waits for review with no workflow open. A rejection
-    starts round 1, which reads the comment. An approval starts the organizer, which
-    executes and corrects the root section, and the plan run completes.
-    """
+
+def _write_plan(request, plan_run_id, *children):
+    """What a planner's `write_plan` call writes: the whole tree at the current version."""
+    username, session = request["username"], request["session_id"]
+    plan_id = plan_runs.plan_id_for(plan_run_id)
+    current = agent_plans.read_snapshot(username, session, plan_id)
+    agent_plans.replace_tree(username, session, plan_id, list(children),
+                             version=current.version)
+
+
+def _sections_of(request):
+    """The section outcomes that a continued organizer's request holds, or None."""
+    for message in request["messages"]:
+        content = message.get("content") or ""
+        if message["role"] == "human" and content.startswith(plan_runs.SECTIONS_ENDED_TEXT):
+            return json.loads(content.split("\n\n", 1)[1])["sections"]
+    return None
+
+
+def _plan_script(plan_run_id, sections, child_script, organizer_script=None):
+    """A planner that writes `sections` as the root's children and answers, sub-agents that
+    follow `child_script`, and an organizer that follows `organizer_script` or answers."""
+    def script(request, n):
+        if request["kind"] == "planner":
+            _write_plan(request, plan_run_id, *[_node(t) for t in sections])
+            return _answer_frames(request, "Orientation.")
+        if request["kind"] == "subagent":
+            return child_script(request, n)
+        if organizer_script is not None:
+            return organizer_script(request, n)
+        return _answer_frames(request, "Final report.")
+    return script
+
+
+async def _run_organizer(client, case, queue, plan_run_id):
+    """Planner round 0, then an approval of version 2 and the organizer's first run.
+    Returns the organizer's input and its result."""
+    await _run_plan(client, queue, _plan_input(case, plan_run_id), f"plan-{plan_run_id}-r0")
+    inp = _decide(case, plan_run_id, "approve", 2)
+    _, result = await _run_plan(client, queue, inp, f"plan-{plan_run_id}-o1")
+    return inp, result
+
+
+async def _wait_plan(case, plan_run_id, inp, seconds=120):
+    """The plan run once it and every run of the organizer's turn are terminal.
+    `_write_ending` writes the plan state before the run's own row, which is the completion
+    marker, so the wait reads both."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        plan_run = agent_plans.read_plan_run(case.username, case.session_id, plan_run_id)
+        rows = _turn_rows(case, inp.turn_seq)
+        if agent_plans.is_terminal(plan_run) and rows and all(
+                agent_runs.is_terminal(r) for r in rows):
+            return plan_run
+        await asyncio.sleep(0.5)
+    raise AssertionError(f"plan run {plan_run_id} did not end")
+
+
+@workflow.defn(sandboxed=False)
+class _StartTwice:
+    @workflow.run
+    async def run(self, child: activities.AgentRunInput) -> list:
+        workflow_id = f"run-{child.run_id}"
+        return [await workflows.start_run(child, workflow_id),
+                await workflows.start_run(child, workflow_id)]
+
+
+def test_a_duplicate_child_start_is_refused_and_counts_as_started(monkeypatch):
+    """`temporalio` 1.16 raises `WorkflowAlreadyStartedError` for a duplicate child id, and
+    `start_run` treats it as a start."""
+
+    async def body(client, case, stub, queue, titled):
+        agent_runs.create_run(agent_runs.RunRow(
+            run_id=case.run_id, username=case.username, session_id=case.session_id,
+            turn_seq=case.turn_seq, thread_id=case.run_id, queue="q", workflow_id="w"))
+        agent_runs.write_run_terminal(case.run_row(), "completed")
+        result = await client.execute_workflow(
+            _StartTwice.run, case.input(), id=f"w7-twice-{case.run_id}", task_queue=queue)
+        assert result == [True, False]
+
+    asyncio.run(_run_case(monkeypatch, lambda r, n: [], body, extra_workflows=[_StartTwice]))
+
+
+def test_the_frozen_internet_switch_applies_when_the_frozen_model_is_empty(monkeypatch):
+    """A plan frozen with no model and the internet switch off runs every step on the
+    internal agent, although the organizer's input asks for the internet."""
     prid = str(uuid.uuid4())
-    plan_id = plan_runs.plan_id_for(prid)
-    root = agent_plans.root_node_id(plan_id)
+    switches = []
+
+    def url_for(internet_tools):
+        switches.append(internet_tools)
+        return activities.INTERNAL_AGENT_URL
+
+    monkeypatch.setattr(steps, "agent_url_for", url_for)
+    monkeypatch.setattr(stream_writer, "_chat_model", lambda: "")
+
+    async def body(client, case, stub, queue, titled):
+        planner = _plan_input(case, prid)
+        planner.llm_model, planner.internet_tools = "", False
+        await _run_plan(client, queue, planner, f"plan-{prid}-r0")
+        settings = plan_runs.frozen_settings(case.username, case.session_id, prid)
+        assert (settings["model"], settings["internet_tools"]) == ("", False)
+        inp = _decide(case, prid, "approve", 2)
+        inp.internet_tools = True
+        _, result = await _run_plan(client, queue, inp, f"plan-{prid}-o1")
+        assert result == "delegated"
+        plan_run = await _wait_plan(case, prid, inp)
+        assert plan_run.state == "completed"
+        assert {r["kind"] for r in stub.requests} >= {"planner", "subagent", "organizer"}
+        assert switches and not any(switches)
+
+    asyncio.run(_run_case(monkeypatch, _plan_script(
+        prid, ["Owners"], lambda r, n: _answer_frames(r, "Report.")), body))
+
+
+def test_a_nested_plan_runs_one_researcher_a_section_with_the_frozen_model(monkeypatch):
+    """`nested-subtree`, `root-child-leaf` and `frozen-model`. The planner writes one section
+    with a nested subtree and one leaf section. The approval starts one sub-agent for each,
+    with its whole subtree, before any organizer model call, and one continuation combines
+    the reports. Every request of the plan names the planner's model, although the approval
+    input names none."""
+    prid = str(uuid.uuid4())
 
     def script(request, n):
-        opening = request["messages"][0]["content"]
         if request["kind"] == "planner":
-            username, session = request["username"], request["session_id"]
-            agent_plans.mutate(username, session, plan_id, "append_node", text=f"Task {n}")
+            _write_plan(request, prid, _node("Owners", _node("Deeds", _node("1990s deeds"))),
+                        _node("Tenants"))
+            return _answer_frames(request, "Orientation: the leases are in testdata.")
+        if request["kind"] == "subagent":
+            return _answer_frames(request, f"Report {n}.")
+        assert _sections_of(request) is not None, "the organizer ran before its sections"
+        return _answer_frames(request, "Final report.")
+
+    async def body(client, case, stub, queue, titled):
+        inp, result = await _run_organizer(client, case, queue, prid)
+        assert result == "delegated"
+        plan_run = await _wait_plan(case, prid, inp)
+        assert (plan_run.state, plan_run.approved_version) == ("completed", 2)
+        children = sorted((r for r in _turn_rows(case, inp.turn_seq) if r.depth == 1),
+                          key=lambda r: json.loads(r.briefing)["section"])
+        assert [(json.loads(c.briefing)["section"], c.purpose, c.tool_call_id)
+                for c in children] == [("1", "execute", ""), ("2", "execute", "")]
+        openings = [case.messages(c.thread_id)[0].content for c in children]
+        assert "1. Owners" in openings[0] and "1.1.1. 1990s deeds" in openings[0]
+        assert "2. Tenants" in openings[1] and "Deeds" not in openings[1]
+        assert "Orientation: the leases are in testdata." in openings[0]
+        organizer = [r for r in stub.requests if r["kind"] == "organizer"]
+        assert len(organizer) == 1
+        assert [s["node"] for s in _sections_of(organizer[0])] == ["1", "2"]
+        # No model call wrote a delegation: the organizer's thread holds no ai message
+        # before the section outcomes.
+        thread = case.messages(inp.run_id)
+        assert [m.role for m in thread][:2] == ["human", "human"]
+        assert {r["llm_model"] for r in stub.requests} == {PLAN_MODEL}
+        entries = json.loads(plan_run.sections_json)
+        assert [(e["title"], e["tasks"], e["failed"]) for e in entries] == [
+            ("Owners", 1, False), ("Tenants", 1, False)]
+        final = [r for r in case.chat_rows() if r[1] == "assistant"][-1]
+        assert final[2] == "Final report."
+        kinds = sorted(d.kind for d in agent_plans.read_documents(
+            case.username, case.session_id, prid))
+        assert kinds == ["execution_settings", "final", "prompt", "prompt", "report",
+                         "report", "report_data", "report_data"]
+
+    asyncio.run(_run_case(monkeypatch, script, body))
+
+
+def test_a_plan_is_reviewed_rejected_approved_and_completed(monkeypatch):
+    """`unbounded-rejection`, `review-idle` and `terminal-run`. Round 0 writes a tree and
+    waits for review with no workflow open. A rejection starts round 1, which reads the
+    comment and writes the whole tree again. An approval runs the sections."""
+    prid = str(uuid.uuid4())
+
+    def script(request, n):
+        if request["kind"] == "planner":
+            _write_plan(request, prid, *[_node(f"Task {i}") for i in range(1, n + 1)])
             return _answer_frames(request, f"Orientation {n}.")
         if request["kind"] == "subagent":
-            assert request["can_delegate"] is False
-            return _answer_frames(request, f"Report on the section, {request['purpose']}.")
-        if not _is_continuation(request):
-            assert opening.startswith("Run the approved plan, version")
-            return _delegate_frames(request, [("x1", [dict(_briefing("do the tasks"),
-                                                        plan_node_id=root,
-                                                        purpose="execute")])])
-        if sum(1 for m in request["messages"] if m.get("name") == "run_subagent") == 1:
-            return _delegate_frames(request, [("x2", [dict(_briefing("correct the tasks"),
-                                                        plan_node_id=root,
-                                                        purpose="correct")])])
+            return _answer_frames(request, "Report on the section.")
         return _answer_frames(request, "Final report.")
 
     async def body(client, case, stub, queue, titled):
@@ -1294,66 +1192,35 @@ def test_a_flat_plan_is_reviewed_rejected_approved_and_completed(monkeypatch):
         assert (result, plan_run.state, plan_run.review_round, plan_run.reviewed_version) == (
             "completed", "awaiting_review", 1, 3)
         opening = agent_runs.read_messages(case.username, case.session_id, inp.run_id)[0]
-        assert opening.content == "The person rejected plan version 2. Their comment:\n\nAdd a second task."
+        assert opening.content == ("The person rejected plan version 2. Their comment:\n\n"
+                                   "Add a second task.")
 
         inp = _decide(case, prid, "approve", 3)
         await _run_plan(client, queue, inp, f"plan-{prid}-o1")
-        # `_write_ending` writes the plan state before the run's own row, which is the
-        # completion marker, so the test waits for both.
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            plan_run = agent_plans.read_plan_run(case.username, case.session_id, prid)
-            rows = agent_runs.read_turn_runs(case.username, case.session_id, inp.turn_seq)
-            if agent_plans.is_terminal(plan_run) and rows and all(
-                    agent_runs.is_terminal(r) for r in rows):
-                break
-            await asyncio.sleep(0.5)
+        plan_run = await _wait_plan(case, prid, inp)
         assert (plan_run.state, plan_run.approved_version) == ("completed", 3)
-        [section] = json.loads(plan_run.sections_json)
-        assert (section["node_id"], section["tasks"], section["failed"]) == (root, 2, False)
-        kinds = sorted(d.kind for d in agent_plans.read_documents(
-            case.username, case.session_id, prid))
-        assert kinds == ["final", "prompt", "prompt", "report", "report", "report_data",
-                         "report_data"]
-        rows = agent_runs.read_turn_runs(case.username, case.session_id, inp.turn_seq)
-        assert rows and all(agent_runs.is_terminal(r) for r in rows)
-        final = [r for r in case.chat_rows() if r[1] == "assistant"][-1]
-        assert final[2] == "Final report."
-        # Each organizer continuation reads the section states beside the reports.
-        steps = [json.loads(r["messages"][-1]["content"]) for r in stub.requests
-                 if r["kind"] == "organizer" and _is_continuation(r)]
-        assert [[s["node"] for s in step["sections"]] for step in steps] == [["root"], ["root"]]
-        assert all(s["state"] for step in steps for s in step["sections"])
+        assert [e["title"] for e in json.loads(plan_run.sections_json)] == ["Task 1", "Task 2"]
+        assert {r["llm_model"] for r in stub.requests} == {PLAN_MODEL}
 
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
-def test_a_section_that_fails_before_prose_keeps_its_report_and_evidence(monkeypatch):
-    """The section's sub-agent reads one document and then fails. Its ending writes the
-    report pair with the failure and the read. The organizer continuation gets the failed
-    state, the node and the evidence counts, and the report text is not needed."""
+def test_a_failed_section_and_a_completed_one_complete_the_plan_with_one_failure(monkeypatch):
+    """`partial-plan`. One section's sub-agent reads a document and then fails before prose,
+    and the other answers. Its report keeps the failure and the read. The organizer gets both
+    outcomes, the plan completes, and the answer names the failed section."""
     prid = str(uuid.uuid4())
-    plan_id = plan_runs.plan_id_for(prid)
-    root = agent_plans.root_node_id(plan_id)
     page = json.dumps({"items": [{"collectionname": "testdata", "file_hash": "a" * 16,
                                   "page": 1, "path": "/lease.txt", "text": "The lease."}]})
 
-    def script(request, n):
-        if request["kind"] == "planner":
-            agent_plans.mutate(request["username"], request["session_id"], plan_id,
-                               "append_node", text="Read the lease")
-            return _answer_frames(request, "Review this plan.")
-        if request["kind"] == "subagent":
-            if len(request["messages"]) == 1:
-                return _reply(request, calls=[_call("read_documents", {
-                    "collectionname": "testdata", "file_hash": ["a" * 16]})])
-            return [_frame("error", error_class="other", retryable=False,
-                           content="model unavailable")]
-        if not _is_continuation(request):
-            return _delegate_frames(request, [("d1", [dict(_briefing("read the lease"),
-                                                        plan_node_id=root,
-                                                        purpose="execute")])])
-        return _answer_frames(request, "Final report.")
+    def child(request, n):
+        if "1. Read the lease" not in request["messages"][0]["content"]:
+            return _answer_frames(request, "The deed names Ann.")
+        if len(request["messages"]) == 1:
+            return _reply(request, calls=[_call("read_documents", {
+                "collectionname": "testdata", "file_hash": ["a" * 16]})])
+        return [_frame("error", error_class="other", retryable=False,
+                       content="model unavailable")]
 
     def tool(request, n):
         call = request["call"]
@@ -1363,31 +1230,52 @@ def test_a_section_that_fails_before_prose_keeps_its_report_and_evidence(monkeyp
                                    "path": "/lease.txt", "page_id": 1}]}
 
     async def body(client, case, stub, queue, titled):
-        await _run_plan(client, queue, _plan_input(case, prid), f"plan-{prid}-r0")
-        inp = _decide(case, prid, "approve", 2)
-        await _run_plan(client, queue, inp, f"plan-{prid}-o1")
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            plan_run = agent_plans.read_plan_run(case.username, case.session_id, prid)
-            if agent_plans.is_terminal(plan_run):
-                break
-            await asyncio.sleep(0.5)
-        [child] = [r for r in agent_runs.read_turn_runs(case.username, case.session_id,
-                                                        inp.turn_seq) if r.depth == 1]
-        assert child.state == "failed"
+        inp, _ = await _run_organizer(client, case, queue, prid)
+        plan_run = await _wait_plan(case, prid, inp)
+        assert plan_run.state == "completed"
+        failed = next(r for r in _turn_rows(case, inp.turn_seq)
+                      if r.depth == 1 and r.state == "failed")
         data = agent_plans.read_report_data(case.username, case.session_id, prid,
-                                            child.run_id)
+                                            failed.run_id)
         assert data["execution"]["state"] == "failed"
         assert "model unavailable" in data["execution"]["error"]
         assert [e["reference"]["file_hash"] for e in data["documents_read"]] == ["a" * 64]
         assert data["final_answer"] is None
-        report = json.loads([r for r in stub.requests if r["kind"] == "organizer"
-                             and _is_continuation(r)][0]["messages"][-1]["content"])
-        [entry] = report["reports"]
-        assert entry["state"] == "failed" and entry["node"] == "root"
-        assert entry["evidence"]["documents_read"] == 1
+        [organizer] = [r for r in stub.requests if r["kind"] == "organizer"]
+        outcomes = _sections_of(organizer)
+        assert [(o["node"], o["state"], o["failed"]) for o in outcomes] == [
+            ("1", "failed", True), ("2", "completed", False)]
+        assert outcomes[0]["evidence"]["documents_read"] == 1
+        assert outcomes[1]["report"] == "The deed names Ann."
+        entries = json.loads(plan_run.sections_json)
+        assert [e["failed"] for e in entries] == [True, False]
+        final = [r for r in case.chat_rows() if r[1] == "assistant"][-1][2]
+        assert final.startswith("Final report.\n\n## Failed sections")
+        assert "| Read the lease | the run ended failed" in final
 
-    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
+    asyncio.run(_run_case(monkeypatch, _plan_script(prid, ["Read the lease", "Read the deed"],
+                                                    child), body, tool=tool))
+
+
+def test_an_organizer_failure_fails_the_plan_and_keeps_the_reports(monkeypatch):
+    prid = str(uuid.uuid4())
+
+    def organizer(request, n):
+        return [_frame("error", error_class="other", retryable=False, content="model down")]
+
+    async def body(client, case, stub, queue, titled):
+        inp, _ = await _run_organizer(client, case, queue, prid)
+        plan_run = await _wait_plan(case, prid, inp)
+        assert plan_run.state == "failed"
+        [child] = [r for r in _turn_rows(case, inp.turn_seq) if r.depth == 1]
+        data = agent_plans.read_report_data(case.username, case.session_id, prid,
+                                            child.run_id)
+        assert data["final_answer"]["text"] == "The lease is from 2019."
+        assert [e["failed"] for e in json.loads(plan_run.sections_json)] == [False]
+
+    asyncio.run(_run_case(monkeypatch, _plan_script(
+        prid, ["Read the lease"], lambda r, n: _answer_frames(r, "The lease is from 2019."),
+        organizer), body))
 
 
 def test_a_report_failure_leaves_the_child_terminal_and_the_fan_in_writes_it(monkeypatch):
@@ -1396,47 +1284,27 @@ def test_a_report_failure_leaves_the_child_terminal_and_the_fan_in_writes_it(mon
     from tasks.P_agent import reports
 
     prid = str(uuid.uuid4())
-    plan_id = plan_runs.plan_id_for(prid)
-    root = agent_plans.root_node_id(plan_id)
 
     def fail(*args, **kwargs):
         raise RuntimeError("the report store did not answer")
 
     monkeypatch.setattr(reports, "materialize", fail)
 
-    def script(request, n):
-        if request["kind"] == "planner":
-            agent_plans.mutate(request["username"], request["session_id"], plan_id,
-                               "append_node", text="Read the lease")
-            return _answer_frames(request, "Review this plan.")
-        if request["kind"] == "subagent":
-            return _answer_frames(request, "The lease is from 2019.")
-        if not _is_continuation(request):
-            return _delegate_frames(request, [("d1", [dict(_briefing("read the lease"),
-                                                        plan_node_id=root,
-                                                        purpose="execute")])])
-        return _answer_frames(request, "Final report.")
-
     async def body(client, case, stub, queue, titled):
-        await _run_plan(client, queue, _plan_input(case, prid), f"plan-{prid}-r0")
-        inp = _decide(case, prid, "approve", 2)
-        await _run_plan(client, queue, inp, f"plan-{prid}-o1")
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            plan_run = agent_plans.read_plan_run(case.username, case.session_id, prid)
-            if agent_plans.is_terminal(plan_run):
-                break
-            await asyncio.sleep(0.5)
+        inp, _ = await _run_organizer(client, case, queue, prid)
+        plan_run = await _wait_plan(case, prid, inp)
         assert plan_run.state == "completed"
-        [child] = [r for r in agent_runs.read_turn_runs(case.username, case.session_id,
-                                                        inp.turn_seq) if r.depth == 1]
+        [child] = [r for r in _turn_rows(case, inp.turn_seq) if r.depth == 1]
         assert child.state == "completed"
         data = agent_plans.read_report_data(case.username, case.session_id, prid,
                                             child.run_id)
         assert data["final_answer"]["text"] == "The lease is from 2019."
         assert data["execution"]["state"] == "completed"
+        assert [e["failed"] for e in json.loads(plan_run.sections_json)] == [False]
 
-    asyncio.run(_run_case(monkeypatch, script, body))
+    asyncio.run(_run_case(monkeypatch, _plan_script(
+        prid, ["Read the lease"], lambda r, n: _answer_frames(r, "The lease is from 2019.")),
+        body))
 
 
 def test_a_fan_in_writes_the_missing_report_of_a_child(monkeypatch):
@@ -1480,18 +1348,37 @@ def test_a_fan_in_writes_the_missing_report_of_a_child(monkeypatch):
     asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, "unused"), body))
 
 
+def test_a_competing_organizer_start_starts_no_second_set_of_sections(monkeypatch):
+    """`competing-approval`. A second start of the plan's organizer workflow id is refused,
+    and the plan runs one set of sections."""
+    prid = str(uuid.uuid4())
+
+    async def body(client, case, stub, queue, titled):
+        inp, result = await _run_organizer(client, case, queue, prid)
+        assert result == "delegated"
+        second = _decide(case, prid, "approve", 2)
+        with pytest.raises(WorkflowAlreadyStartedError):
+            await _run_plan(client, queue, second, f"plan-{prid}-o1")
+        await _wait_plan(case, prid, inp)
+        rows = agent_runs.read_turn_runs(case.username, case.session_id, second.turn_seq)
+        assert rows == []
+        assert len([r for r in _turn_rows(case, inp.turn_seq) if r.depth == 1]) == 1
+        assert len([r for r in stub.requests if r["kind"] == "subagent"]) == 1
+
+    asyncio.run(_run_case(monkeypatch, _plan_script(
+        prid, ["Read the lease"], lambda r, n: _answer_frames(r, "Report.")), body))
+
+
 def test_a_stop_after_an_approval_closes_the_organizer_in_open_run(monkeypatch):
     """`cancel_plan` in `awaiting_review` after an accepted approval whose run has not opened
     writes the stop row at the decision's turn and no plan state. The organizer then closes
     in `open_run`: it ends `cancelled`, no child row exists, the plan run ends `cancelled`,
     and the transcript ends with the stop row."""
     prid = str(uuid.uuid4())
-    plan_id = plan_runs.plan_id_for(prid)
 
     def script(request, n):
         if request["kind"] == "planner":
-            agent_plans.mutate(request["username"], request["session_id"], plan_id,
-                               "append_node", text="The only task")
+            _write_plan(request, prid, _node("The only task"))
             return _answer_frames(request, "Orientation.")
         raise AssertionError("no agent call after the stop")
 
@@ -1516,49 +1403,259 @@ def test_a_stop_after_an_approval_closes_the_organizer_in_open_run(monkeypatch):
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
-def test_a_second_correction_of_a_plan_is_refused(monkeypatch):
-    """`correction-bound`: the delegation accepts one correction of a plan and refuses the
-    rest. The correction's report makes the section complete, so the final report lists
-    no failed section."""
+def test_a_child_that_starts_after_a_stop_continues_its_parent_as_cancelled(monkeypatch):
+    """The stop lands after the dispatch wrote the child rows and before a child opened.
+    `open_run` of each child writes `cancelled` and runs `fan_in`, so the waiting organizer
+    ends `cancelled`, and no continuation and no organizer model call follow."""
     prid = str(uuid.uuid4())
-    plan_id = plan_runs.plan_id_for(prid)
-    root = agent_plans.root_node_id(plan_id)
+    real_create = agent_runs.create_run
+
+    def create_run(run_row):
+        real_create(run_row)
+        if run_row.kind == "subagent":
+            agent_runs.write_turn_stop(run_row.username, run_row.session_id, run_row.turn_seq)
+
+    monkeypatch.setattr(agent_runs, "create_run", create_run)
+
+    async def body(client, case, stub, queue, titled):
+        inp, result = await _run_organizer(client, case, queue, prid)
+        assert result == "delegated"
+        organizer = await _wait_terminal(case, inp.run_id)
+        assert organizer.state == "cancelled"
+        rows = _turn_rows(case, inp.turn_seq)
+        assert {r.state for r in rows if r.depth == 1} == {"cancelled"}
+        assert not [r for r in rows if r.continues_run_id]
+        assert [r["kind"] for r in stub.requests] == ["planner"]
+        assert case.chat_rows()[-1][1:3] == ("error", "This turn was stopped.")
+        plan_run = await _wait_plan(case, prid, inp)
+        assert plan_run.state == "cancelled"
+
+    asyncio.run(_run_case(monkeypatch, _plan_script(
+        prid, ["Read the lease", "Read the deed"],
+        lambda r, n: pytest.fail("a child ran after the stop")), body))
+
+
+def test_a_stop_that_races_the_last_child_starts_no_organizer_step(monkeypatch):
+    """The stop lands while the only section's sub-agent answers. The child ends, the
+    fan-in reads the stop, and the organizer ends `cancelled` with no model call."""
+    prid = str(uuid.uuid4())
+
+    def child(request, n):
+        agent_runs.write_turn_stop(request["username"], request["session_id"],
+                                   agent_runs.read_run(request["username"],
+                                                       request["session_id"],
+                                                       request["run_id"]).turn_seq)
+        return _answer_frames(request, "The lease is from 2019.")
+
+    async def body(client, case, stub, queue, titled):
+        inp, _ = await _run_organizer(client, case, queue, prid)
+        plan_run = await _wait_plan(case, prid, inp)
+        assert plan_run.state == "cancelled"
+        organizer = agent_runs.read_run(case.username, case.session_id, inp.run_id)
+        assert organizer.state == "cancelled"
+        assert [r["kind"] for r in stub.requests] == ["planner", "subagent"]
+        assert not [r for r in _turn_rows(case, inp.turn_seq) if r.continues_run_id]
+
+    asyncio.run(_run_case(monkeypatch, _plan_script(prid, ["Read the lease"], child), body))
+
+
+def test_the_sweep_fails_a_run_with_no_workflow_and_continues_its_parent(monkeypatch):
+    """`collector-sweep`, with rows whose workflows do not exist: the sweep writes `failed`
+    for the section's child, and `fan_in` continues the waiting organizer, which then
+    completes with the failed section."""
+    from tasks.P_agent import supervise
+
+    prid = str(uuid.uuid4())
 
     def script(request, n):
-        if request["kind"] == "planner":
-            agent_plans.mutate(request["username"], request["session_id"], plan_id,
-                               "append_node", text="The only task")
-            return _answer_frames(request, "Orientation.")
-        if request["kind"] == "subagent":
-            return _answer_frames(request, "Corrected.")
-        if _is_continuation(request):
-            return _answer_frames(request, "Final report.")
-        fixes = [dict(_briefing(f"fix {i}"), plan_node_id=root, purpose="correct")
-                 for i in range(3)]
-        return _delegate_frames(request, [("c1", fixes)])
+        return _reply(request, "Answer after the sweep.")
+
+    async def body(client, case, stub, queue, titled):
+        plan_id = plan_runs.plan_id_for(prid)
+        agent_plans.create_plan_run(agent_plans.PlanRunRow(
+            run_id=prid, plan_id=plan_id, username=case.username, session_id=case.session_id,
+            state=agent_plans.EXECUTING, approved_version=2))
+        snapshot = agent_plans.build_tree(agent_plans.initial_snapshot(plan_id, "q"),
+                                          [_node("Read the lease")], "k")
+        agent_plans.write_snapshot(case.username, case.session_id, snapshot)
+        agent_plans.write_execution_settings(
+            case.username, case.session_id, prid, snapshot.root_id,
+            {"version": 1, "plan_contract": 2, "model": PLAN_MODEL,
+             "model_source": "request", "internet_tools": False})
+        section = agent_plans.sections(snapshot)[0][0].node_id
+        batch = agent_runs.batch_id_for(case.run_id)
+        child = agent_runs.child_run_id(batch, 0)
+        agent_runs.write_message(case.username, case.session_id, case.run_id, case.run_id,
+                                 agent_runs.RunMessageRow(idx=0, role="human", content="q",
+                                                          run_id=case.run_id))
+        agent_runs.create_run(agent_runs.RunRow(
+            run_id=case.run_id, username=case.username, session_id=case.session_id,
+            turn_seq=case.turn_seq, thread_id=case.run_id, kind="organizer",
+            plan_run_id=prid, queue=agent_runs.LEAD_QUEUES["organizer"],
+            workflow_id=f"w7-absent-{case.run_id}", state="waiting_for_children",
+            delegated_batch_id=batch, delegate_seq=2, start_seq=2, next_seq=2))
+        agent_runs.create_run(agent_runs.RunRow(
+            run_id=child, username=case.username, session_id=case.session_id,
+            turn_seq=case.turn_seq, thread_id=child, parent_run_id=case.run_id, batch_id=batch,
+            depth=1, kind="subagent", plan_run_id=prid, plan_node_id=section,
+            purpose="execute", queue=agent_runs.LEAD_QUEUES["organizer"],
+            workflow_id=f"run-{child}", briefing="{}"))
+        later = supervise._now() + timedelta(seconds=300)
+        counts = await supervise.sweep(client, later, username=case.username)
+        assert counts == {"ended": 1, "continued": 1}
+        failed = agent_runs.read_run(case.username, case.session_id, child)
+        assert failed.state == "failed" and failed.error == supervise.WORKFLOW_ABSENT
+        plan_run = await _wait_plan(case, prid, SimpleNamespace(turn_seq=case.turn_seq))
+        assert plan_run.state == "completed"
+        [outcome] = _sections_of(stub.requests[0])
+        assert (outcome["state"], outcome["failed"]) == ("failed", True)
+        assert stub.requests[0]["llm_model"] == PLAN_MODEL
+        assert await supervise.sweep(client, later, username=case.username) == {
+            "ended": 0, "continued": 0}
+
+    asyncio.run(_run_case(monkeypatch, script, body))
+
+
+# ------------------------------------------------------------------------- stop and orphans
+
+#: A filler frame longer than the 512 bytes that `iter_lines` reads at a time, so each one
+#: reaches the attempt as it is written.
+_FILLER = "." * 600
+
+
+@pytest.mark.parametrize("stop_after", [3.0, 21.0])
+def test_a_stop_during_the_stream_writes_nothing_after_the_ending(monkeypatch, stop_after):
+    """A stop cancels `model_step`, and the workflow waits for the attempt to end. The stub
+    keeps sending frames after the stop and then a tool call. The attempt stops at the first
+    frame after the cancellation, so no tool row exists and the ending row is last.
+    """
+
+    def script(request, n):
+        def frames():
+            yield _frame("response", content="Working")
+            deadline = time.monotonic() + 150
+            while time.monotonic() < deadline:
+                time.sleep(0.5)
+                yield _frame("response", content=_FILLER)
+            yield from _reply(request, calls=[_call("search_collections", {"query": "late"})])
+        return frames()
+
+    async def body(client, case, stub, queue, titled):
+        handle = await _start(client, case, queue)
+        deadline = time.monotonic() + 30
+        while len(stub.sent) < 4 and time.monotonic() < deadline:
+            await asyncio.sleep(0.2)
+        assert len(stub.sent) >= 4, "the stream did not start"
+        await asyncio.sleep(stop_after)
+        agent_runs.write_turn_stop(case.username, case.session_id, case.turn_seq)
+        stopped_at = time.monotonic()
+        await handle.cancel()
+        lead = await _wait_terminal(case, seconds=150)
+        latency = time.monotonic() - stopped_at
+        print(f"stop latency: {latency:.1f} s from the cancel call to the ending row, "
+              f"stop {stop_after:.0f} s into the stream")
+        assert latency <= STOP_LATENCY_LIMIT_SECONDS, f"stop latency {latency:.1f} s"
+        with pytest.raises(WorkflowFailureError):
+            await handle.result()
+        assert lead.state == "cancelled"
+        rows = case.chat_rows()
+        ending = max(rows, key=lambda r: r[0])
+        assert (ending[1], ending[2]) == ("error", "This turn was stopped.")
+        assert [r for r in rows if r[1] == "error"] == [ending]
+        assert [r for r in rows if r[1] == "tool"] == []
+        assert stub.tool_requests == []
+        assert len(stub.requests) == 1
+
+    asyncio.run(_run_case(monkeypatch, script, body))
+
+
+def test_the_sweep_ends_the_children_of_a_failed_parent(monkeypatch):
+    """Every attempt of `dispatch_sections` writes the child rows and fails before the
+    waiting state, and the organizer ends `failed` with its children `running`. The sweep
+    ends every child, and the turn holds no open run."""
+    from tasks.P_agent import supervise
+
+    prid = str(uuid.uuid4())
+    real_write = agent_runs.RunRowWriter.write
+
+    def write(self, **changes):
+        if changes.get("state") == agent_runs.WAITING_FOR_CHILDREN:
+            raise RuntimeError("the attempt ends before the waiting state")
+        return real_write(self, **changes)
+
+    monkeypatch.setattr(agent_runs.RunRowWriter, "write", write)
 
     async def body(client, case, stub, queue, titled):
         await _run_plan(client, queue, _plan_input(case, prid), f"plan-{prid}-r0")
         inp = _decide(case, prid, "approve", 2)
-        await _run_plan(client, queue, inp, f"plan-{prid}-o1")
-        organizer = await _wait_terminal(case, inp.run_id)
-        refused = json.loads(organizer.refused_json)
-        assert [(r["objective"], r["reason"]) for r in refused] == [
-            ("fix 1", "correction_limit"), ("fix 2", "correction_limit")]
-        children = [r for r in agent_runs.read_turn_runs(case.username, case.session_id,
-                                                         inp.turn_seq) if r.depth == 1]
-        assert [(c.purpose, c.plan_node_id) for c in children] == [("correct", root)]
-        deadline = time.monotonic() + 90
-        while time.monotonic() < deadline:
-            plan_run = agent_plans.read_plan_run(case.username, case.session_id, prid)
-            if agent_plans.is_terminal(plan_run):
-                break
-            await asyncio.sleep(0.5)
-        assert plan_run.state == "completed"
-        final = [r for r in case.chat_rows() if r[1] == "assistant"][-1][2]
-        assert final.startswith("Final report.") and "## Failed sections" not in final
+        with pytest.raises(WorkflowFailureError):
+            await _run_plan(client, queue, inp, f"plan-{prid}-o1")
+        assert [r["kind"] for r in stub.requests] == ["planner"]
+        organizer = agent_runs.read_run(case.username, case.session_id, inp.run_id)
+        assert organizer.state == "failed" and "before the waiting state" in organizer.error
+        children = [r for r in _turn_rows(case, inp.turn_seq) if r.parent_run_id == inp.run_id]
+        assert len(children) == 2 and {r.state for r in children} == {"running"}
 
-    asyncio.run(_run_case(monkeypatch, script, body))
+        counts = await supervise.sweep(client, username=case.username, grace_seconds=0)
+        assert counts == {"ended": 2, "continued": 0}
+        rows = _turn_rows(case, inp.turn_seq)
+        assert {r.state for r in rows if r.parent_run_id} == {"failed"}
+        assert [r for r in rows if not agent_runs.is_terminal(r)] == []
+
+    asyncio.run(_run_case(monkeypatch, _plan_script(
+        prid, ["Read the lease", "Read the deed"], lambda r, n: _answer_frames(r, "x")), body))
+
+
+def test_a_stop_during_the_dispatch_ends_every_row_of_the_turn(monkeypatch):
+    """The stop lands while `dispatch_sections` writes the child rows. The organizer ends
+    `cancelled`, and each child row it wrote ends `cancelled` with it, within
+    `STOP_LATENCY_LIMIT_SECONDS` of the stop and with no sweep."""
+    prid = str(uuid.uuid4())
+    real_create = agent_runs.create_run
+
+    def create_run(run_row):
+        real_create(run_row)
+        if run_row.kind == "subagent":
+            # Holds the dispatch open, so the stop lands between the child rows.
+            time.sleep(2.0)
+
+    monkeypatch.setattr(agent_runs, "create_run", create_run)
+
+    async def body(client, case, stub, queue, titled):
+        await _run_plan(client, queue, _plan_input(case, prid), f"plan-{prid}-r0")
+        inp = _decide(case, prid, "approve", 2)
+        handle = await client.start_workflow(
+            workflows.AgentRun.run, inp, id=f"plan-{prid}-o1", task_queue=queue,
+            id_reuse_policy=WorkflowIDReusePolicy.REJECT_DUPLICATE)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if [r for r in _turn_rows(case, inp.turn_seq) if r.parent_run_id]:
+                break
+            await asyncio.sleep(0.1)
+        agent_runs.write_turn_stop(case.username, case.session_id, inp.turn_seq)
+        stopped_at = time.monotonic()
+        await handle.cancel()
+        deadline = stopped_at + STOP_LATENCY_LIMIT_SECONDS
+        rows = _turn_rows(case, inp.turn_seq)
+        while time.monotonic() < deadline:
+            rows = _turn_rows(case, inp.turn_seq)
+            if rows and all(agent_runs.is_terminal(r) for r in rows):
+                break
+            await asyncio.sleep(0.2)
+        latency = time.monotonic() - stopped_at
+        print(f"stop latency during the dispatch: {latency:.1f} s")
+        children = [r for r in rows if r.parent_run_id]
+        assert children, "no child row was written"
+        assert [(r.run_id, r.state) for r in rows if not agent_runs.is_terminal(r)] == []
+        assert latency <= STOP_LATENCY_LIMIT_SECONDS, f"stop latency {latency:.1f} s"
+        assert {r.state for r in rows} == {"cancelled"}
+        assert [r for r in rows if r.continues_run_id] == []
+        assert case.chat_rows()[-1][1:3] == ("error", "This turn was stopped.")
+        assert [r["kind"] for r in stub.requests] == ["planner"]
+
+    asyncio.run(_run_case(monkeypatch, _plan_script(
+        prid, ["Read the lease", "Read the deed"],
+        lambda r, n: pytest.fail("a child ran after the stop")), body))
 
 
 def test_a_planner_with_no_section_gets_one_more_round_then_fails(monkeypatch):
@@ -1586,25 +1683,6 @@ def test_a_planner_with_no_section_gets_one_more_round_then_fails(monkeypatch):
         assert plan_run.state == "failed"
 
     asyncio.run(_run_case(monkeypatch, script, body))
-
-
-# ------------------------------------------------------------------- the planning call
-
-PLAN = {"goal": "Find what the reports say.", "steps": ["Search", "Read", "Cite", "Answer"]}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ------------------------------------------------------------------- the question
@@ -1640,26 +1718,14 @@ def test_ask_user_ends_after_all_calls_without_a_todo_nag(monkeypatch):
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
-def test_organizer_question_after_delegated_child_ends_the_turn(monkeypatch):
-    plan_run_id = str(uuid.uuid4())
-    plan_id = plan_runs.plan_id_for(plan_run_id)
-    root = agent_plans.root_node_id(plan_id)
+def test_the_organizer_can_ask_after_its_sections_end(monkeypatch):
+    prid = str(uuid.uuid4())
     question = "Which report should the next round use?"
 
-    def script(request, n):
-        if request["kind"] == "planner":
-            agent_plans.mutate(request["username"], request["session_id"], plan_id,
-                               "append_node", text="Read the reports")
-            return _answer_frames(request, "Review this plan.")
-        if request["kind"] == "subagent":
-            return _answer_frames(request, "The child report is ready.")
-        assert request["kind"] == "organizer"
-        assert not _is_continuation(request), "the question started another model call"
+    def organizer(request, n):
+        assert _sections_of(request) is not None
         return _reply(request, calls=[
-            _call("run_subagent", {"tasks": [dict(_briefing("read the reports"),
-                                                  plan_node_id=root, purpose="execute")]}, "d1"),
-            _call("ask_user", {"question": question, "options": ["first", "second"]}, "q1"),
-        ])
+            _call("ask_user", {"question": question, "options": ["first", "second"]}, "q1")])
 
     def tool(request, n):
         call = request["call"]
@@ -1669,49 +1735,38 @@ def test_organizer_question_after_delegated_child_ends_the_turn(monkeypatch):
                      "measure": None, "error_class": ""}
 
     async def body(client, case, stub, queue, titled):
-        _, result = await _run_plan(client, queue, _plan_input(case, plan_run_id),
-                                    f"plan-{plan_run_id}-r0")
-        assert result == "completed"
-        inp = _decide(case, plan_run_id, "approve", 2)
-        _, result = await _run_plan(client, queue, inp, f"plan-{plan_run_id}-o1")
+        inp, result = await _run_organizer(client, case, queue, prid)
         assert result == "delegated"
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
-            if any(row[1:3] == ("assistant", question) for row in case.chat_rows()):
-                break
-            await asyncio.sleep(0.5)
+        await _wait_plan(case, prid, inp)
         assert [row[2] for row in case.chat_rows() if row[1] == "assistant"][-1] == question
-        assert [row[3] for row in case.chat_rows() if row[1] == "tool"].count("ask_user") == 1
-        assert len([request for request in stub.requests if request["kind"] == "organizer"]) == 1
-        children = [row for row in agent_runs.read_turn_runs(case.username, case.session_id,
-                                                               inp.turn_seq) if row.depth == 1]
-        assert len(children) == 1 and children[0].state == "completed"
+        assert len([r for r in stub.requests if r["kind"] == "organizer"]) == 1
 
-    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
-
-
+    asyncio.run(_run_case(monkeypatch, _plan_script(
+        prid, ["Read the reports"], lambda r, n: _answer_frames(r, "The child report."),
+        organizer), body, tool=tool))
 
 
 # ------------------------------------------------------------------- the compaction line
 
-#: The version 2 record of a compaction whose second summary part failed.
+#: The version 3 record of a compaction.
 COMPACTION_RECORD = {
-    "version": 2, "layer": "record", "summarised": [], "text_removed": [], "dropped": [],
-    "cuts": [], "handoff": "The record of the older steps.", "tokens_before": 212004,
+    "version": 3, "layer": "prefix", "status": "ok", "source": [], "retained_from": None,
+    "summary": "The record of the older steps.", "error": "", "tokens_before": 212004,
     "threshold": 209715, "target": 69905, "est_after": 60000, "target_reached": True,
-    "steps": [], "parts": ["ok", "failed", "ok"], "steps_summarised": 31, "sizes": {},
+    "steps_summarised": 31, "sizes": {},
 }
 
 
-def _compacted(request, text="", calls=(), end=True, note_warning=False):
+def _compacted(request, text="", calls=(), end=True, record=None):
     """A model step that compacts first: the `compaction` frame, then the reply, whose
     `model_turn` carries the record."""
+    record = COMPACTION_RECORD if record is None else record
     frames = _reply(request, text, calls)
     turn = next(i for i, f in enumerate(frames) if '"type": "model_turn"' in f)
     data = json.loads(frames[turn][len("data: "):])
-    data.update(compaction=COMPACTION_RECORD, summarised=True, note_warning=note_warning)
+    data.update(compaction=record, summarised=record["status"] == "ok")
     frames[turn] = "data: " + json.dumps(data) + "\n\n"
-    start = _frame("compaction", state="running", tokens_before=212004, target=69905, parts=3)
+    start = _frame("compaction", state="running", tokens_before=212004, target=69905, parts=1)
     return [start] + (frames if end else frames[:-1])
 
 
@@ -1731,10 +1786,10 @@ def test_a_compaction_line_is_the_first_row_of_its_step(monkeypatch):
         [(seq, content)] = _line(case)
         assert seq == case.start_seq
         assert content == {
-            "state": "done", "tokens_before": 212004, "target": 69905, "parts": 3,
+            "state": "done", "tokens_before": 212004, "target": 69905, "parts": 1,
             "tokens_after": 11, "steps_summarised": 31, "target_reached": True,
-            "record": "The record of the older steps.",
-            "part_states": ["ok", "failed", "ok"]}
+            "record": "The record of the older steps.", "part_states": [],
+            "summary_state": "ok"}
         rows = [(r[0], r[1]) for r in case.chat_rows() if r[0] >= case.start_seq]
         assert rows == [(case.start_seq, "compaction"), (case.start_seq + 1, "tool"),
                         (case.start_seq + 2, "assistant")]
@@ -1743,21 +1798,18 @@ def test_a_compaction_line_is_the_first_row_of_its_step(monkeypatch):
 
 
 def test_a_sub_agent_compaction_writes_no_chat_row(monkeypatch):
-    def script(request, n):
-        if request["kind"] == "subagent":
-            return _compacted(request, "Report.")
-        if _is_continuation(request):
-            return _answer_frames(request, "Final.")
-        return _delegate_frames(request, [("d1", [_briefing("look")])])
+    prid = str(uuid.uuid4())
 
     async def body(client, case, stub, queue, titled):
-        assert await (await _start(client, case, queue)).result() == "delegated"
-        child = await _wait_terminal(case, _child(case).run_id)
+        inp, result = await _run_organizer(client, case, queue, prid)
+        assert result == "delegated"
+        child = await _wait_terminal(case, _child(case, inp.turn_seq).run_id)
         assert child.state == "completed"
         assert "compaction" in [m.role for m in case.messages(child.thread_id)]
         assert _line(case) == []
 
-    asyncio.run(_run_case(monkeypatch, script, body))
+    asyncio.run(_run_case(monkeypatch, _plan_script(
+        prid, ["Look"], lambda r, n: _compacted(r, "Report.")), body))
 
 
 def test_a_compaction_step_retried_after_its_ai_row_keeps_the_answer_seq(monkeypatch):
@@ -1792,7 +1844,27 @@ def test_a_stream_that_ends_after_the_compaction_frame_writes_the_line_again(mon
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
-def test_a_note_warning_before_compaction_writes_a_human_row_and_a_nag_row(monkeypatch):
+def test_a_failed_summary_line_says_so_and_the_answer_gets_no_notice(monkeypatch):
+    failed = {**COMPACTION_RECORD, "status": "failed", "summary": "", "steps_summarised": 0,
+              "error": "the summary request gave no text"}
+
+    def script(request, n):
+        return _compacted(request, "Written.", record=failed)
+
+    async def body(client, case, stub, queue, titled):
+        assert await (await _start(client, case, queue)).result() == "completed"
+        [(seq, content)] = _line(case)
+        assert (content["summary_state"], content["record"]) == ("failed", "")
+        answers = [r[2] for r in case.chat_rows() if r[1] == "assistant"]
+        assert answers == ["Written."]
+        # The failed record is stored, and it changes no message of a later request.
+        stored = [m for m in case.messages() if m.role == "compaction"]
+        assert json.loads(stored[0].content)["status"] == "failed"
+
+    asyncio.run(_run_case(monkeypatch, script, body))
+
+
+def test_a_note_warning_field_writes_no_row(monkeypatch):
     def script(request, n):
         if n == 1:
             frames = _reply(request, calls=[_call("search_collections", {"query": "q"})])
@@ -1804,15 +1876,10 @@ def test_a_note_warning_before_compaction_writes_a_human_row_and_a_nag_row(monke
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
         messages = case.messages()
-        warning = [m for m in messages if m.role == "human"
-                   and m.content.startswith("Your context is at")]
-        assert [m.idx for m in warning] == [3]
-        assert "`write_note` now" in warning[0].content
-        assert [m.role for m in messages][:5] == ["human", "ai", "tool", "human", "ai"]
+        assert not [m for m in messages if m.role == "human"
+                    and m.content.startswith("Your context is at")]
+        assert [m.role for m in messages][:4] == ["human", "ai", "tool", "ai"]
         rows = [(r[0], r[1]) for r in case.chat_rows() if r[0] >= case.start_seq]
-        assert rows == [(case.start_seq, "tool"), (case.start_seq + 1, "nag"),
-                        (case.start_seq + 2, "assistant")]
-        # The second request carries the warning as its last message.
-        assert stub.requests[1]["messages"][-1]["content"].startswith("Your context is at")
+        assert rows == [(case.start_seq, "tool"), (case.start_seq + 1, "assistant")]
 
     asyncio.run(_run_case(monkeypatch, script, body))

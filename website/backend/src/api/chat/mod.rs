@@ -1239,6 +1239,15 @@ pub async fn start_research_task(
     )
     .await?;
 
+    // The model of the whole plan: the default of the conversation's profile. The worker
+    // freezes it in the plan's execution settings. Resolved before any row is written, as
+    // in `send_message`, so a failure leaves no open turn.
+    let llm_model = crate::api::admin::llm::resolve_chat_model(
+        None,
+        crate::api::admin::llm::ChatProfile::of(frozen),
+    )
+    .await?;
+
     let is_first_turn = db_chat::list_messages(username, &session_id).await?.is_empty();
     let turn_uuid = crate::db_auth::sessions::generate_session_id();
     let user_seq = db_chat::next_seq(username, &session_id).await?;
@@ -1286,6 +1295,7 @@ pub async fn start_research_task(
         workflow_id: &plans::planner_workflow_id(&plan_run_id, 0),
         input: plans::research_start_input(
             frozen,
+            &llm_model,
             &new_run_id(),
             &plan_run_id,
             username,

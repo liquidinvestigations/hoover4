@@ -53,7 +53,8 @@ LEAD_QUEUES = {
 
 
 def batch_id_for(run_id: str) -> str:
-    """The delegation batch id of a run. A run delegates at most once, so it is unique."""
+    """The batch id of the sub-agents that a run starts. An organizer starts one batch, the
+    sections of its plan, so the id is unique."""
     return str(uuid.uuid5(RUN_ID_NAMESPACE, f"{run_id}:batch"))
 
 

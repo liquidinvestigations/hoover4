@@ -22,10 +22,10 @@ from langfuse.langchain import CallbackHandler
 
 from agent_common import tool_packs
 from agent_common.result_pages import is_canonical_page
-from research_agent import compaction, model_params, prompts, skill_store, subagents
+from research_agent import compaction, model_params, prompts, skill_store
 from research_agent.execution import page_share_client
 from research_agent.tool_args import decode_string_arguments, rename_aliases, repair_arguments
-from research_agent.tool_catalogue import DELEGATION_TOOL, CatalogueSnapshot, build_snapshot
+from research_agent.tool_catalogue import CatalogueSnapshot, build_snapshot
 
 
 def recurse_json_decode(d):
@@ -221,12 +221,11 @@ class MCPGatewayAgent:
         llm_model: Optional[str] = None,
         run_id: Optional[str] = None,
         kind: str = "chat",
-        can_delegate: bool = True,
     ) -> str:
         # Sorted so that ["a","b"] and ["b","a"] share one cached context.
         #
-        # `run_id` is part of the key because the MCP headers carry it, and `kind` and
-        # `can_delegate` because they decide which tools the context holds.
+        # `run_id` is part of the key because the MCP headers carry it, and `kind` because
+        # it decides which tools the context holds.
         #
         # `session_id` is part of the key because the MCP connection headers carry it,
         # and those headers are fixed when the context is built. Two chats by the same
@@ -239,7 +238,6 @@ class MCPGatewayAgent:
         acl = f"{username or ''}|{','.join(sorted(allowed_collections or []))}"
         return (
             f"{acl}|{session_id or ''}|{llm_model or ''}|{run_id or ''}|{kind}"
-            f"|{'d' if can_delegate else 'n'}"
         )
 
     def _resolve_model(self, llm_model: Optional[str] = None) -> str:
@@ -257,22 +255,16 @@ class MCPGatewayAgent:
         llm_model: Optional[str] = None,
         run_id: Optional[str] = None,
         kind: str = "chat",
-        can_delegate: bool = True,
-        purpose: Optional[str] = None,
     ) -> AgentContext:
         """Return the cached context of one run, or build it."""
-        # `purpose` is not in the key: the key holds the run id, and a run has one purpose.
         model = self._resolve_model(llm_model)
-        key = self._acl_key(
-            username, allowed_collections, session_id, model, run_id, kind, can_delegate
-        )
+        key = self._acl_key(username, allowed_collections, session_id, model, run_id, kind)
         if key in self._contexts:
             self._contexts.move_to_end(key)
             return self._contexts[key]
 
         context = await self._create_context(
-            username, allowed_collections, session_id, model, run_id, kind, can_delegate,
-            purpose,
+            username, allowed_collections, session_id, model, run_id, kind,
         )
         self._contexts[key] = context
         while len(self._contexts) > MAX_CACHED_GRAPHS:
@@ -288,13 +280,10 @@ class MCPGatewayAgent:
         llm_model: Optional[str] = None,
         run_id: Optional[str] = None,
         kind: str = "chat",
-        can_delegate: bool = True,
-        purpose: Optional[str] = None,
     ) -> AgentContext:
         """Build the step context of one run, scoped to one caller's ACL.
 
-        `kind` selects the tool packs (`agent_common.tool_packs`). `can_delegate` false
-        removes `run_subagent` from the packs.
+        `kind` selects the tool packs (`agent_common.tool_packs`).
         """
         # The ACL travels as connection headers so the MCP server enforces it on every
         # tool call. The model cannot widen its own permissions, because it never sees or
@@ -339,20 +328,12 @@ class MCPGatewayAgent:
         log.info("%s", compaction.describe())
 
         # The tool packs of this run kind decide what the context runs and lists in
-        # its catalogue. `run_subagent` is a pack tool like the others, so the packs
-        # decide whether this run delegates. A run that may not delegate loses it here.
-        # A sub-agent reads the organizer's setting, so it gets its parent's packs.
+        # its catalogue. A sub-agent reads the organizer's setting, so it gets the packs
+        # of the organizer of its plan.
         configured = tool_packs.configured_packs(kind)
         allowed = tool_packs.allowed_tools(kind, configured)
         if kind == "subagent":
             allowed = allowed - {"ask_user"}
-        if kind != "organizer" or not can_delegate:
-            allowed = allowed - {DELEGATION_TOOL}
-
-        # `run_subagent` is sent for its schema. Its body never runs, because the worker
-        # delegates a readable call and `/tool_call` refuses the others.
-        if DELEGATION_TOOL in allowed:
-            tools = list(tools) + [subagents.make_delegation_tool()]
 
         # One snapshot for this context. `/model_step` and `/tool_call` use its tools.
         # The run kind selects the profile, and a chat lead
@@ -381,7 +362,6 @@ class MCPGatewayAgent:
             snapshot=snapshot,
             skills=skill_store.listed_skills(skill_context),
             collections_hint=bool(allowed_collections),
-            purpose=purpose,
             model_id=model_id,
         )
 

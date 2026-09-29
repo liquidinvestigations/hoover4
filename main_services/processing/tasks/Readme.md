@@ -150,10 +150,12 @@ counter, and a thread from before the marker is read by its text.
 A model step that compacts writes one `compaction` chat row for a run that writes the
 transcript, at the first seq of the step, and every other row of the step moves one seq on.
 The row holds the running state when the `compaction` frame arrives, and the done state
-(`steps.compaction_line`, with `part_states`) after the `end` frame. A reply whose
-`model_turn` sets `note_warning` gets the note warning (`steps.NOTE_WARNING_TEXT`, a copy of
-the agent service's text) as a `human` row after its calls, and as a `nag` chat row. The
-stored `ai` message holds the model that the service answered with (`model` of the
+(`steps.compaction_line`) after the `end` frame. The done state of a version 3 record holds
+`summary_state`, `ok` or `failed`, and the summary as `record`. A version 2 record of an
+older thread gives `part_states`. The service ends a request that cannot fit with an `error`
+frame of class `context_size` or `context_preparation`, and the step does not retry it, so
+the run ends `failed` with that text and the stored thread stays whole. The stored `ai`
+message holds the model that the service answered with (`model` of the
 `model_turn` frame) and the `request_size` of the request in its usage.
 
 The calls of one reply to the plan tree and todo tools run one after the other, in the
@@ -190,27 +192,34 @@ old worker still up, until the count of running `AgentRun` workflows is 0. The T
 in the `temporal` container needs `--address` with the address that the worker connects to,
 because the default address of the CLI has no server.
 
-**Delegation runs through run rows.** A reply with `run_subagent` calls runs its other
-calls first. `delegate_step` then writes one `tool` row for each delegation call, applies
-the budgets of `run_budgets.py`, writes a child row and an opening message for each accepted
-briefing, and puts its own row in `waiting_for_children`. The workflow starts one abandoned
-child `AgentRun` for each child, with the parent's collections, model and internet switch in
-its input, and returns. When a run ends, `fan_in` reads its sibling set. When every sibling
-is terminal, `continue_run` writes a continuation row of the parent, and the workflow starts
-it. The continuation's `prepare_continuation` adds one `tool` result for each `run_subagent`
-call and rewrites its transcript row. The result gives each accepted task's report.
-It gives refusal reasons without call ids. An organizer also receives section states by outline number.
-`write_ending` of a continuation writes its state into every run it continues. Child and
-continuation ids are `uuid5` values, so a retry and a second writer write the same rows, and
-a refused duplicate workflow start counts as started. Only the organizer can delegate.
+**Sections run through run rows.** An organizer's first run makes no model call. Its
+`dispatch_sections` reads the approved tree and writes, for each direct child of the root at
+index `i`, a sub-agent row `child_run_id(batch_id_for(organizer), i)` with purpose
+`execute`, its opening message (the briefing of `plan_runs.section_briefings`) and its
+`prompt` document, and then puts the organizer's row in `waiting_for_children`. A turn with a
+stop row ends the organizer as `cancelled` there and writes no child. The workflow starts
+one abandoned child `AgentRun` for each child, with the organizer's collections, model and
+internet switch in its input, and returns. When a run ends, `fan_in` reads its sibling set.
+When every sibling is terminal, it writes the missing report documents
+(`reports.ensure_reports`), and `continue_run` writes a continuation row of the organizer
+unless the turn has a stop row, and the workflow starts it. The continuation's
+`prepare_continuation` adds one `human` message with the outcome of each section
+(`activities._add_section_reports`), marked by its batch id so a retry writes it once. The
+organizer cannot start a sub-agent. `write_ending` of a continuation writes its state into
+every run it continues. Child and continuation ids are `uuid5` values, and the organizer's
+workflow id is fixed for its plan run, so a retry and a second writer write the same rows,
+and a refused duplicate workflow start counts as started.
 
-`AGENT_PLAN_RUN_BUDGET` limits the sub-agent runs of a plan (default 5). The worker refuses
-surplus briefings by name in the continuation's result. A retry keeps the original count.
+**Every run of a plan uses its execution settings.** The first planner run writes the
+plan's `execution_settings` document: the model of its input, or the configured default,
+and the internet switch. `open_run` of every later run of the plan returns them, and the
+workflow replaces the model and the switch of its input with them, so its children and
+continuations copy them too. A plan run from before the document gets one at its next
+start, with the model that the website resolved and the source in `model_source`.
 
-An organizer can run an `execute` sub-agent for each section and one `correct` sub-agent.
-A correction briefing names every section it corrects in `sections`. A briefing without
-a section writes its report under the root and appears in `sections_json` there. A section
-fails when its newest run did not complete or wrote no report.
+A section fails when its run did not complete, stopped at a limit, wrote no report or
+reports incomplete execution (`agent_plans.section_states`). A plan run from before the
+execution settings keeps its stored `sections_json`.
 
 **The agent run sweep** (`supervise.py`) runs on `operations-queue` after the operation sweep
 of each `CollectEtaSamples` pass. It ends a running row whose workflow closed or does not
@@ -228,7 +237,7 @@ None of the three queues is the ingestion queue. An ingestion backlog delaying
 somebody waiting at a screen is the one failure a shared queue guarantees. **The worker
 deploys before the website**: a workflow addressed to a queue nothing polls waits for ever
 with no error anywhere. A `chat-model-queue` slot is one agent run in flight, not one model
-call, and a delegated turn takes one slot for each running sub-agent.
+call, and a running plan takes one slot for each running sub-agent.
 
 **After an answer.** An answer ends the run, whatever the state of the run's todo list, and
 an open item stays open. Two rounds can follow an answer, and each starts with a note,
@@ -468,7 +477,7 @@ Workers are split into dedicated queues to control throughput and resource usage
   MUST run at exactly one worker process of one slot. A run deletes its collection's
   rows that are older than its own start. Two runs at once can delete each other's rows.
 - `chat-queue`, `AgentRun` plus `open_run`, `append_nag`, `write_ending`, `fan_in`,
-  `continue_run`, `delegate_step`, `prepare_continuation`, `record_step_failure`,
+  `continue_run`, `dispatch_sections`, `prepare_continuation`, `record_step_failure`,
   `plan_has_sections`, `check_citations`, `write_empty_note`, `write_incomplete`,
   `write_asked_answer` and session titles (`main.py worker chat`, concurrency
   from `chat_low_latency_concurrency`).
@@ -477,7 +486,7 @@ Workers are split into dedicated queues to control throughput and resource usage
 - `research-queue`, `model_step` of a plan run (`research_concurrency`, 3 slots), outside
   the chat-model slots.
 - `agent-tool-queue`, `tool_call` of every agent run (`agent_tool_concurrency`, 16 slots).
-  A slot is one tool call in flight. A delegation takes no tool slot.
+  A slot is one tool call in flight. A section dispatch takes no tool slot.
 
 ### How the numbers are chosen
 

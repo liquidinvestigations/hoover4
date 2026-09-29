@@ -6,8 +6,8 @@ A FastAPI-based research agent with MCP (Model Context Protocol) tool integratio
 
 One image, two containers, different tool sets, and the difference is deliberate. A third
 profile, `research_subagent`, has no container of its own: it is the profile of a sub-agent
-run. See "Delegation" below. The `planner` and `organizer` profiles are the profiles of the
-two run kinds of a deep research plan.
+run. See "Sub-agents of a plan" below. The `planner` and `organizer` profiles are the
+profiles of the two run kinds of a deep research plan.
 
 | | `hoover4-internal-search-agent` (21936) | `hoover4-full-research-agent` (21937) |
 |---|---|---|
@@ -94,27 +94,16 @@ with `read_tool`. The Manticore match syntax reaches the model through the skill
 the descriptions of the search tools. The collection MCP server also renders it into its
 `instructions`, which this agent does not pass to the model.
 
-## Delegation
+## Sub-agents of a plan
 
-The organizer has `run_subagent` when its packs include `delegation`. Chat, planner and
-sub-agent runs do not receive that pack. The organizer sends each briefing to a fresh run.
-`/model_step` gives a `run_subagent` call whose briefings can be read the kind
-`delegation`, with its briefings (`steps.py`). The worker runs every other call of that
-reply, and then writes one sub-agent run for each accepted briefing, and each runs as an `AgentRun` of its own, with the
-`research_subagent` profile. When the last one ends, a continuation of the delegating run
-sends the thread back with one `tool` result for each call, and the model continues. A
-sub-agent cannot delegate. The worker applies the plan budget. See
-`processing/tasks/Readme.md` for the runs and the budget.
-
-The agent service excludes `run_subagent` when the run cannot delegate. It returns
-`tool_unavailable` if the run calls that name.
-
-**A plan briefing names its section.** An organizer's briefing carries `plan_node_id`, a
-section of the approved tree, and `purpose`: `execute` or `correct`. A `correct` briefing
-also carries `sections`, every section it corrects, and `plan_node_id` is the first of them.
-The worker refuses a section briefing from another run kind, a second run of a section,
-a second correction, and a `review` briefing. An organizer can send a briefing without
-a section. Its report is stored under the plan root.
+No run kind has a delegation tool. The worker starts one sub-agent for each section of an
+approved plan before the organizer's first model call, and each runs as an `AgentRun` of its
+own with the `research_subagent` profile. Its opening message is the briefing of its
+section: the whole subtree, the person's request, the clarifications, the planner's
+orientation and documents, and the permitted collections. When the last one ends, a
+continuation of the organizer receives the outcome of each section in one message and
+combines the reports. See `processing/tasks/Readme.md` for the runs. A call to the older
+name `run_subagent` gets `tool_unavailable`, as any name outside the run's packs does.
 
 **Sub-agents share the conversation's session header, and that is the citation contract.**
 Citation handles are allocated per chat session by the collection-search server, keyed by
@@ -124,10 +113,11 @@ the session header. Every run of a turn sends the conversation's session id, so 
 ## Tool packs and the catalogue
 
 A tool pack is a named set of tools (`agent_common/tool_packs.py`): `catalogue`,
-`skills`, `collections`, `conversation`, `plan`, `delegation`, `web` and `browser`. The
+`skills`, `collections`, `conversation`, `plan`, `web` and `browser`. The
 `chat`, `planner` and `organizer` runs get the packs that `AGENT_PACKS_CHAT`,
 `AGENT_PACKS_PLANNER` and `AGENT_PACKS_ORGANIZER` name, as a comma list or `all`. A
-`subagent` run reads `AGENT_PACKS_ORGANIZER`, so it gets its parent's packs. Every run kind
+`subagent` run reads `AGENT_PACKS_ORGANIZER`, so it gets the packs of its plan's organizer.
+A setting that names the retired `delegation` pack gets nothing from that name. Every run kind
 also gets the `skills` pack (`search_skills`, `read_skill`, `read_tool`, `ask_user`,
 `write_note`), whatever its setting says. `deploy.py` renders them from `hoover4.ini`. The
 service refuses to start on an unknown pack name. A tool that an MCP server lists and no pack
@@ -168,8 +158,9 @@ measure.
 The worker runs the agent loop in the `AgentRun` workflow. For each model call it sends
 `POST /model_step`, and for each tool call of a reply it sends `POST /tool_call`. The service
 keeps no state of a run between two requests. Every request carries the run fields of
-`StepRun` (`steps.py`): `run_id`, `kind`, `depth`, `purpose`, the caller's identity and
-collections, `llm_model` and `can_delegate`.
+`StepRun` (`steps.py`): `run_id`, `kind`, `depth`, the caller's identity and
+collections, and `llm_model`. The worker sends the plan's frozen model for every run of a
+plan.
 
 ### `POST /model_step`
 
@@ -188,16 +179,17 @@ The response is a stream of `data: {json}` frames, in this order:
 |---|---|---|
 | `reasoning` | `content` | each reasoning delta |
 | `response` | `content` | each text delta |
-| `compaction` | `state` (`running`), `tokens_before`, `target`, `parts` (1 or 3) | once, before the summary requests, when this call compacts its input |
-| `model_turn` | `model` (the model that answered), `text`, `reasoning`, `tool_calls` (a list of call entries), `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`, `request_size`, `citation_tool`: whether the call bound `cite_documents`, which the worker's citation check reads), `summarised`, `compaction` (the version 2 record of this call's compaction, or null), `note_warning` | once, after the reply ends |
+| `compaction` | `state` (`running`), `tokens_before`, `target`, `parts` (1, or 0 when a failed summary of the same prefix is not sent again) | once, before the summary request, when this call compacts its input |
+| `model_turn` | `model` (the model that answered), `text`, `reasoning`, `tool_calls` (a list of call entries), `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`, `request_size`, `citation_tool`: whether the call bound `cite_documents`, which the worker's citation check reads), `summarised`, `compaction` (the version 3 record of this call's compaction, or null) | once, after the reply ends |
 | `end` | `model`, `latency_ms`, `usage` (`prompt_tokens`, `completion_tokens`, `reasoning_tokens`) | once, last |
 | `error` | `error_class`, `retryable`, `content` | in place of `model_turn` and `end` |
 
-`error_class` is `read_timeout`, `connect_error`, `http_<status>` or `other`. `retryable` is
-false only for an HTTP 4xx status other than 408 and 429. `summarised` is true when this call
-compacted its input. The worker then adds the summary notice to the answer. `note_warning`
-is true when the worker writes the warning to save notes (see
-[Context compaction](#context-compaction-agent_compaction_fraction)).
+`error_class` is `read_timeout`, `connect_error`, `http_<status>`, `context_size`,
+`context_preparation` or `other`. `retryable` is false for an HTTP 4xx status other than 408
+and 429, and for the two context classes (see
+[Context compaction](#context-compaction-agent_compaction_fraction)). `summarised` is true
+when a summary replaced older steps of this call's input. The worker then adds the summary
+notice to the answer.
 
 A call entry is one call of the reply as the service classifies it:
 
@@ -205,9 +197,8 @@ A call entry is one call of the reply as the service classifies it:
 |---|---|
 | `id` | the call id. An id that is empty, repeated in the reply, or used by an earlier `ai` message becomes `call-{step_no}-{position}` |
 | `name`, `args` | the call as the model wrote it |
-| `kind` | `delegation` for a `run_subagent` call whose briefings can be read, `ordered` for a plan mutation, `parallel` for every other call |
-| `briefings` | the briefings of a delegation |
-| `page_share` | the call's share of the batch result budget, in bytes, for a `parallel` or `ordered` call |
+| `kind` | `ordered` for `write_plan`, `read_plan` and the todo tools, `parallel` for every other call |
+| `page_share` | the call's share of the batch result budget, in bytes |
 | `retry` | false for the browser actions (`browser_navigate`, `browser_click`, `browser_type`, `browser_select_option`, `browser_press_key`). The worker gives such a call one attempt |
 
 While no frame is ready, the stream sends the SSE comment line `: keepalive` every 30 s
@@ -271,8 +262,8 @@ estimate of 8,192 tokens otherwise. `model_turn` carries the size as `usage.requ
 `tokens`, `method` (`tokenizer` or `estimate`), `model`, `window`, `window_known`,
 `output_reserve`, `reserve_source` (`configured` or `estimate`), `safe_input`, `fits`, and
 `error` when the tokenizer failed. A compacted call records the size after the compaction
-and the size before it (`before_compaction`). A request above the safe input is sent, and a
-warning is logged.
+and the size before it (`before_compaction`). A request above the safe input is not sent.
+The stream sends an `error` frame (see "The failures" under context compaction).
 
 ## Per-chat and per-run browser sessions
 
@@ -324,69 +315,80 @@ A run grows because every result that it collected stays in the list of the next
 (see "The size of a request") reaches the trigger, a fraction of the model's stated context
 window. The trigger is never above the safe input, the window less the output reserve. It
 plans the list to a target of a third of the trigger before the next model call, and
-replaces the older steps with one record.
+replaces one older prefix of steps with one summary.
 
 | variable | default | meaning |
 |---|---|---|
 | `AGENT_COMPACTION_FRACTION` | `0.80` | fraction of the stated window at which compaction fires. Out of range, or unparseable, turns compaction off |
-| `LLM_MODEL_COMPACTION` | the answering model | model that writes the summary part of the record |
+| `LLM_MODEL_COMPACTION` | the answering model | model that writes the summary |
 
-For a window of 262,144 tokens at 0.80, the trigger is 209,715 tokens, the target 69,905, the
-recent window 17,476 and the note warning 188,743.
+For a window of 262,144 tokens at 0.80, the trigger is 209,715 tokens and the target 69,905.
 
-**The parts of the list.** `compact` plans, in this order, with no model call:
+**The parts of the list.** `plan_compaction` plans, in list order, with no model call:
 
-1. **The recent window.** The newest step groups (an `ai` message and its results), up to a
-   quarter of the target, and at least the newest group.
-2. **The keep set**, outside the window. Every user message. The newest successful todo
-   result and plan result. Every `cite_documents` result, and every `ai` text with a citation
-   handle such as `[D3]`. The newest `read_skill` result of each skill name, cut to 5,000
-   tokens, and 25,000 tokens for all skills. Every `run_subagent` report, cut to 4,000
-   tokens. The `write_note` results, 4,000 tokens for all notes. The keep set, user messages
-   included, has a cap of 35,000 tokens. A kept result keeps its call. Its `ai` message
-   keeps its text only when the text holds a citation handle.
-3. **The record.** Every other message: old results, old `ai` messages, and an earlier
-   record. One `human` message takes the place of the first of them.
-4. **Skill and tool texts.** A `read_skill` or `read_tool` result that is not in the window
-   or the keep set leaves the list whole, with its call. It never reaches the summariser.
-   The record names it, and the model can read it again. A later read of it is not a repeat.
+1. **The user's messages.** Every `human` message that is not a record stays in its place:
+   the request, the clarifications and the notes that the worker writes. With the system
+   text and the tool schemas they are the fixed input.
+2. **The summary.** One `human` message takes the place of the first message of the older
+   prefix that it replaces. The prefix holds complete step groups (an `ai` message with all
+   its results) and the previous summary, so a new summary extends the previous one.
+3. **The recent steps.** The largest suffix of complete step groups that fits the target
+   with the fixed input, the index and a summary of 2,000 tokens. The newest group always
+   stays, with every result of its calls.
 
-**The shrink order.** When the list with a record budget of 2,000 tokens passes the
-target, or the keep set passes its cap, the plan makes it smaller: the oldest window groups
-leave the window, then the oldest reports move to the record, then the oldest skills leave
-the list, then the record budget falls to 1,000 tokens, then the results of the newest group
-are cut to fit, to at least 500 tokens. When the user messages and the fixed part pass the
-target, the smallest list goes, and `target_reached` is false. The run goes on. After the
-plan, up to 3 of the newest `read_documents` results of the record come back, each cut to
-5,000 tokens, while the list stays at or under the target.
+A step group leaves the list whole or stays whole, so no call loses its result. A
+`read_skill` or `read_tool` result in the prefix never reaches the summary model. The index
+names it, and the model can read it again.
 
-**The token estimate.** The sizes are estimates. `Estimator.calibrate` divides the billed
-prompt of the newest billed call by the characters of the list that it sent, the system text
-and the tool schemas included, and clamps the ratio to 1/6 to 1/1.5 tokens a character.
-Each size gets a margin of 5 percent.
+**The token estimate.** The plan sizes are estimates. `Estimator.calibrate` divides the
+billed prompt of the newest billed call by the characters of the list that it sent, the
+system text and the tool schemas included, and clamps the ratio to 1/6 to 1/1.5 tokens a
+character. Each size gets a margin of 5 percent. `request_size.measure` uses the same
+estimate when the tokenizer does not count.
 
-**The record.** It starts with `RECORD_HEADER`. Code writes the lists next
-(`thread_index.py`): the searches that found nothing, the searches that found documents with
-their counts, the documents read with their pages, and one line that names the skill and tool
-texts that left the list. The model never writes those lists, because a summariser copies
-file hashes with errors. The served model writes the rest with thinking off, in one request,
-or in 3 requests at once when the record part passes 30,000 tokens. Each request gets its
-share of the record budget as `max_tokens`. A part that fails or times out gets the line
-`PART_FAILED`, and no second request is made. The summary request has the read timeout of a
-model call. Before the requests, the stream sends one `compaction` frame, and it sends
-keepalive lines while they run.
+**The summary.** It starts with `RECORD_HEADER`, which tells the model to read a source again
+before it quotes it. Code writes the lists next (`thread_index.py`): the searches that found
+nothing, the searches that found documents with their counts, the documents read with their
+pages, the citation labels with their file hashes, the pages that `read_page` read with the
+offset of the next part of a cut page, the result pages that continue with their `more`
+handle and call, and one line that names the skill and tool texts that left the list. The model never writes those lists, because a summary model copies
+file hashes with errors. The summary model writes the rest with thinking off, in one request
+with a completion cap of 2,000 tokens, in four sections: findings with their sources,
+contradictions, outstanding work, and the identifiers that read a source again. The summary
+request must fit the window of the summary model. When the prefix passes it, each larger
+result goes to the request as a bounded extract of its start and its end, with a line that
+gives its full length. The summary request has the read timeout of a model call. Before the
+request, the stream sends one `compaction` frame, and it sends keepalive lines while it runs.
 
-**The compacted list is kept.** `model_turn` carries `compaction`, a version 2 record: the
-keys `[thread_id, idx]` of the messages that it `summarised`, `text_removed`, `dropped` and
-`cuts` (with the characters kept), the record as `handoff`, `tokens_before`, `threshold`,
-`target`, `est_after`, `target_reached`, the `steps` of the shrink order, the state of each summary
-part in `parts`, `steps_summarised` and `sizes`. The worker stores it as a `compaction` row
-after the `ai` message of that call. Each later call applies every stored row first
-(`run_messages.apply_compactions`, which also applies a version 1 row), and then measures the
-usage of the last call. `compact` builds its own list with `run_messages.apply_record`, so a
-replay of the row gives the list that the call sent. After the row applies, each call keeps
-one result and each result keeps its call, because the provider refuses a request without
-that.
+**The failures.** No failure edits the stored thread.
+
+* When the fixed input and the newest group pass the safe input, no summary can make the
+  request fit. The stream sends an `error` frame of class `context_size` that names the
+  sizes, before any summary request.
+* When the summary request fails or gives no text, the record has the status `failed` and
+  changes no message. The call sends the previous list only when it fits the safe input.
+  Otherwise the stream sends an `error` frame of class `context_preparation`. A later plan
+  over the same prefix does not send the summary request again.
+* After a compaction, `/model_step` measures the request again. A request that still passes
+  the safe input gives an `error` frame of class `context_size`.
+* When the provider refuses a request as too large before any output, `/model_step` reads
+  the model's window again, uses the limit that the refusal states when it is lower, and
+  prepares the request once more with a compaction under the trigger. It sends the new
+  request only when it differs from the refused one.
+
+The worker does not retry these error classes, and the run ends with the text of the error.
+
+**The compacted list is kept.** `model_turn` carries `compaction`, a version 3 record:
+`status` (`ok` or `failed`), `source`, the keys `[thread_id, idx]` of the prefix that the
+summary replaces, `retained_from`, the key of the first message that stays, the record text
+as `summary`, `error`, `tokens_before`, `threshold`, `target`, `est_after`, `target_reached`,
+`steps_summarised` and `sizes` (the fixed input, the user messages, the retained steps, the
+index, the summary, the summary request, the list after, and the count of extracts). The
+worker stores it as a `compaction` row after the `ai` message of that call. Each later call
+applies every stored row first (`run_messages.apply_compactions`, which also reads the version
+1 and version 2 rows of older threads), and then measures the request.
+`finish_compaction` builds its own list with `run_messages.apply_record`, so a replay of the
+row gives the list that the call sent.
 
 Three properties hold.
 
@@ -400,20 +402,14 @@ Three properties hold.
   answers a system message anywhere but the first position with `System message must be at
   the beginning.`. The bracketed header tells the model that the user did not write it.
 
-**A compacted turn says so to the user.** The answer was written from a record and not from
+**A compacted turn says so to the user.** The answer was written from a summary and not from
 what the agent read, so the worker adds one line to the answer (`summarised` of
-`model_turn`).
+`model_turn`). A failed summary sets no such line.
 
 **The notes tool.** `note_tools.py` gives the tool `write_note` (`text`, 1 to 2,000
 characters). It returns `{"saved": n, "note": text}`, where `n` counts the notes that the
-step context of the run saved. It is in the `skills` pack. Its results stay in the keep set.
-`model_turn` sets `note_warning` when
-the reply's input plus output tokens reach 90 percent of the trigger, the reply has calls,
-and no warning row (`NOTE_WARNING_TEXT`) follows the newest `compaction` row. The worker
-then writes the warning row.
-
-The first model step of a run logs a warning when the system text, the tool schemas and the
-user messages pass the target, at 3 characters a token.
+step context of the run saved. It is in the `skills` pack. A note in the prefix goes to the
+summary request, and the summary prompt asks for each note.
 
 Every compaction writes a `chat_compactions` row: the record whole, the citation handles in
 the list, the list after, the trigger and its window, and the token counts before and after.

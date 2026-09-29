@@ -237,8 +237,6 @@ DEFAULTS = {
         "max_held_polls_per_user": "8",
         "rate_chat_poll_per_minute": "1800",
         "browser_max_contexts": "16",
-        # The sub-agent budgets of a chat turn and of a research plan run.
-        "agent_plan_run_budget": "5",
         # Tool packs for each kind of agent run: a comma list of pack names, or `all`.
         # A sub-agent gets the organizer's packs.
         "agent_packs_chat": "all",
@@ -1479,8 +1477,9 @@ def render_main_env(cfg):
     env["HOOVER4_MAX_HELD_POLLS_PER_USER"] = cfg.get(m, "max_held_polls_per_user")
     env["HOOVER4_RATE_CHAT_POLL_PER_MINUTE"] = cfg.get(m, "rate_chat_poll_per_minute")
     env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")
-    # The plan budget applies to the organizer's briefings.
-    env["AGENT_PLAN_RUN_BUDGET"] = cfg.get(m, "agent_plan_run_budget") or "5"
+    if "agent_plan_run_budget" in cfg.extra.get(m, []):
+        print("warning: [main_services] agent_plan_run_budget is ignored. A plan starts one "
+              "sub-agent for each of its sections, and has at most 4", file=sys.stderr)
     for kind in ("chat", "planner", "organizer"):
         env[f"AGENT_PACKS_{kind.upper()}"] = cfg.get(m, f"agent_packs_{kind}") or "all"
     if "agent_packs_subagent" in cfg.extra.get(m, []):

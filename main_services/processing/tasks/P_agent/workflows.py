@@ -40,12 +40,14 @@ with workflow.unsafe.imports_passed_through():
         AppendNagParams,
         CallRef,
         Continuation,
+        DispatchParams,
         OpenedRun,
         RunRef,
         RunSummary,
         WriteEndingParams,
         append_nag,
         continue_run,
+        dispatch_sections,
         fan_in,
         open_run,
         summarize_if_first_turn,
@@ -65,7 +67,6 @@ with workflow.unsafe.imports_passed_through():
         StepRef,
         ToolCallParams,
         check_citations,
-        delegate_step,
         model_step,
         plan_has_sections,
         prepare_continuation,
@@ -80,7 +81,7 @@ with workflow.unsafe.imports_passed_through():
 
 
 #: The queue `AgentRun` is dispatched to, and the queue of its short activities: open, note,
-#: ending, fan-in, delegation and title. Named here so the worker that polls it
+#: ending, fan-in, section dispatch and title. Named here so the worker that polls it
 #: and the caller that addresses it cannot drift: a workflow addressed to a queue nothing
 #: is polling waits for ever with no error anywhere, which presents as chat hanging.
 #:
@@ -98,7 +99,7 @@ CHAT_MODEL_TASK_QUEUE = "chat-model-queue"
 RESEARCH_TASK_QUEUE = "research-queue"
 
 #: The queue of every `tool_call` activity, of chat turns and plan runs alike. One slot is
-#: one tool call in flight. A delegation takes no tool slot.
+#: one tool call in flight. A section dispatch takes no tool slot.
 AGENT_TOOL_TASK_QUEUE = "agent-tool-queue"
 
 #: Nothing in an `AgentRun` input or result is text. A `RunSummary` with five children
@@ -108,9 +109,9 @@ AGENT_RUN_PAYLOAD_BYTES = 4096
 
 #: The note of the extra planner round, when the planner answered with no plan section.
 PLANNER_NO_SECTION_NOTE = (
-    "The plan has no section yet. A section is a node with at least one task under it, "
-    "and the root counts. Read the tree with read_plan. Add each section with append_node "
-    "and each of its tasks with append_child. Then answer with the orientation."
+    "The plan has no section yet. A section is a top-level node of the tree, and its tasks "
+    "are the nodes under it. Read the tree with read_plan. Write the whole tree with "
+    "write_plan. Then answer with the orientation."
 )
 
 #: The error of a planner run that wrote no plan section after its extra round.
@@ -178,9 +179,8 @@ class AgentRun:
     refuse none. The `ordered` calls and the calls to the plan tree and todo tools
     (`steps.runs_in_order`) run one after the other in the order of the reply. The calls to
     the browser server (`steps.runs_in_browser`) run one after the other in a second chain,
-    because they drive one browser. The other calls run at once beside both chains, and a
-    `delegation` runs after them. A reply with calls gives the next calls. A reply with no
-    call ends the round.
+    because they drive one browser. The other calls run at once beside both chains. A reply
+    with calls gives the next calls. A reply with no call ends the round.
 
     **The limits.** When the model steps of the thread reach `RUN_MODEL_STEPS`, across
     continue-as-new and continuations, the run makes no further model call.
@@ -205,11 +205,14 @@ class AgentRun:
     question to the person (`ask_user`) gets no plan check. A run that ended at a limit gets
     neither. An open todo item does not start a round.
 
-    **Delegation.** A run that stops at `run_subagent` ends as `delegated` with its row in
-    `waiting_for_children`. It starts one abandoned child `AgentRun` for each accepted
-    briefing, and returns. When a run ends, `fan_in` continues its parent once the last
-    run of its batch is terminal, and this workflow starts the continuation. A run with no
-    accepted briefing is continued at once through `continue_run`. Every start rejects a
+    **Sections.** An organizer takes the model and the internet switch of its plan's
+    execution settings, as every run of a plan does. Before any model call, it runs
+    `dispatch_sections`, which writes one sub-agent row for each section of the approved
+    tree and the organizer's `waiting_for_children` state. The workflow starts one
+    abandoned child `AgentRun` for each, and returns `delegated`. When a run ends, `fan_in`
+    continues its parent once the last run of its batch is terminal and has its report,
+    and this workflow starts the continuation. The continuation reads the outcome of every
+    section and combines the reports. It starts no sub-agent. Every start rejects a
     duplicate workflow id, and a refused duplicate counts as started, because the run it
     names exists.
     """
@@ -238,6 +241,13 @@ class AgentRun:
                                 f"run-{opened.continuation_run_id}")
             return "closed"
         self._steps = opened.model_steps
+        if opened.frozen:
+            # A run of a plan runs with the plan's frozen internet switch, and with its
+            # frozen model when the settings name one. Its children and continuations copy
+            # both from this input.
+            inp = replace(inp, internet_tools=opened.internet_tools)
+            if opened.llm_model:
+                inp = replace(inp, llm_model=opened.llm_model)
         try:
             summary = await self._rounds(inp, opened)
         except asyncio.CancelledError:
@@ -307,34 +317,25 @@ class AgentRun:
                           first: bool) -> RunSummary:
         """One round: run the unanswered calls, then model steps until a reply has no call.
 
-        The first round of a workflow run adds the children's reports of a continuation
-        and starts with the unanswered calls that `open_run` found. A later round starts
+        The first round of a workflow run adds the section outcomes of a continuation and
+        starts with the unanswered calls that `open_run` found. A later round starts
         after a note, with no call left.
         """
         pending: list[CallRef] = []
         if first:
             if opened.continues:
-                asked_after_children: CallRef | None = await workflow.execute_activity(
+                await workflow.execute_activity(
                     prepare_continuation, self._ref(inp),
                     start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                     task_queue=CHAT_TASK_QUEUE,
                 )
-                if asked_after_children is not None:
-                    next_seq = await workflow.execute_activity(
-                        write_asked_answer,
-                        AskedAnswerParams(**self._ref_fields(inp), call=asked_after_children),
-                        start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                        retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                        task_queue=CHAT_TASK_QUEUE,
-                    )
-                    return RunSummary(outcome="answered", next_seq=next_seq, asked=True)
             pending = list(opened.pending)
         while True:
             if pending:
-                delegated = await self._run_calls(inp, pending)
-                if delegated is not None:
-                    return delegated
+                asked = await self._run_calls(inp, pending)
+                if asked is not None:
+                    return asked
                 pending = []
             if (self._steps_here >= CONTINUE_AS_NEW_STEPS
                     or workflow.info().get_current_history_length() > HISTORY_EVENTS_PER_RUN):
@@ -411,12 +412,11 @@ class AgentRun:
         return result
 
     async def _run_calls(self, inp: AgentRunInput, pending: list[CallRef]) -> RunSummary | None:
-        """Run the calls of one reply. Returns the delegation summary, or None."""
+        """Run the calls of one reply. Returns the summary of a successful question, or
+        None."""
         ordered = sorted((c for c in pending if runs_in_order(c)), key=lambda c: c.position)
         browser = sorted((c for c in pending if runs_in_browser(c)), key=lambda c: c.position)
-        parallel = [c for c in pending if c.kind != "delegation" and not runs_in_order(c)
-                    and not runs_in_browser(c)]
-        delegations = [c for c in pending if c.kind == "delegation"]
+        parallel = [c for c in pending if not runs_in_order(c) and not runs_in_browser(c)]
 
         async def in_order(chain: list[CallRef]) -> list[tuple[CallRef, str]]:
             # The plan tree and todo calls, and the browser calls, keep the order of the
@@ -428,18 +428,6 @@ class AgentRun:
 
         results = await asyncio.gather(in_order(ordered), in_order(browser),
                                        *(self._tool_call(inp, c) for c in parallel))
-        if delegations:
-            # A delegation takes no tool slot. A stop waits for it to end, so the
-            # `cancelled` ending sees every child row it wrote, and ends each of them.
-            summary = await workflow.execute_activity(
-                delegate_step, self._ref(inp),
-                start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                task_queue=CHAT_TASK_QUEUE,
-                cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
-            )
-            self._raise_if_stopped()
-            return summary
         statuses = results[0] + results[1] + list(zip(parallel, results[2:]))
         asked = next((call for call, status in sorted(statuses, key=lambda pair: pair[0].position)
                       if call.name == "ask_user" and status == "ok"), None)
@@ -505,6 +493,22 @@ class AgentRun:
     # ------------------------------------------------------------------------ the rounds
 
     async def _rounds(self, inp: AgentRunInput, opened: OpenedRun) -> RunSummary:
+        if opened.dispatch:
+            # An organizer starts the sections of its approved plan before any model call.
+            # A stop waits for the activity, so the `cancelled` ending sees every child row
+            # it wrote, and ends each of them.
+            summary = await workflow.execute_activity(
+                dispatch_sections,
+                DispatchParams(run_id=inp.run_id, username=inp.username,
+                               session_id=inp.session_id,
+                               allowed_collections=list(inp.allowed_collections or [])),
+                start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                task_queue=CHAT_TASK_QUEUE,
+                cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+            )
+            self._raise_if_stopped()
+            return summary
         summary = await self._agent_loop(inp, opened, first=True)
         repaired = False
         # True when the repair round follows a question, so the reply of that round is the
@@ -612,7 +616,7 @@ class AgentRun:
         row has no columns for (the collections, the model, the internet switch and the
         turn uuid), copied from this run's input. The row holds the rest."""
         return replace(inp, run_id=run_id, kind=kind or inp.kind, plan_run_id="",
-                       decision_id="", planner_retry_done=False)
+                       decision_id="", planner_retry_done=False, model_source="")
 
     async def _summarize_if_first_turn(self, inp: AgentRunInput) -> None:
         """Name the conversation after its first turn. It can never fail the run.

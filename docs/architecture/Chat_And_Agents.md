@@ -130,26 +130,32 @@ request is a plan run, described in the next section.
 ### The plan layer
 
 A deep research request starts a **plan run**. `start_research_task` starts a planner
-`AgentRun` with the conversation's frozen internet switch. The planner can ask the person
-a question or build the plan tree with the plan tools. Its answer row carries the plan
-reference that the plan card reads. The plan run then waits in
+`AgentRun` with the conversation's frozen internet switch and the resolved model of the
+conversation's profile. Before the first model call, the worker writes both into the plan's
+`execution_settings` document, and every later run of the plan uses them. The planner can
+ask the person a question or write the whole plan tree with `write_plan`. Its answer row
+carries the plan reference that the plan card reads. The plan run then waits in
 `awaiting_review`, and no workflow of the session is open.
 
 A decision starts a new run. `decide_plan`
 (`api/chat/plans.rs`) holds the turn lock, checks the decision id, the version and the state,
 and returns a typed outcome. A rejection starts the next planner round with the comment as
-its opening message. An approval freezes the tree and starts the organizer. A cancel of a
-plan in review writes `cancelled`, and a cancel of a running plan writes the stop row and
-cancels its runs. While a plan waits or runs, the conversation refuses a new message.
+its opening message. An approval freezes the tree and starts the organizer. A second
+approval of the plan starts nothing. A cancel of a plan in review writes `cancelled`, and a
+cancel of a running plan writes the stop row and cancels its runs. While a plan waits or
+runs, the conversation refuses a new message.
 
-The organizer delegates work on the approved tree. A section briefing has the purpose
-`execute` or `correct`. The organizer can send an off-tree briefing, whose report goes
-under the root. A plan has at most 4 sections. Every sub-agent run counts against
-`agent_plan_run_budget`. Each sub-agent thread of a section writes its prompt and report
-as plan documents. A section is failed when its newest `execute` or `correct`
-run did not end `completed` or wrote no report. The organizer's final report ends with a
-generated table of the failed sections and the cause of each. The plan runs take their
-model steps on `research-queue`.
+A section is a direct child of the approved root, with its whole subtree. A plan has at
+most 4 sections. Before the organizer's first model call, the worker starts one sub-agent
+for each section (`dispatch_sections`). Its briefing holds the request, the clarifications,
+the orientation, the documents that the planner read, the section's subtree and the
+permitted collections. Each sub-agent thread writes its prompt and report as plan
+documents. When every section has ended and has its report, one continuation of the
+organizer receives the outcome of each section and combines the reports. The organizer
+cannot start a sub-agent. A section is failed when its run did not complete, stopped at a
+limit, wrote no report or reports incomplete execution. The plan completes when the
+organizer answers, and the final report ends with a generated table of the failed sections
+and the cause of each. The plan runs take their model steps on `research-queue`.
 
 `AgentRun` keeps the run in `agent_runs` and its model conversation in
 `agent_run_messages`, and runs the agent loop. Each model call is one `model_step`
@@ -160,17 +166,15 @@ the reply as it streams, the messages into `agent_run_messages` and the live row
 result and its finished tool row into `chat_messages` at the seq the model step gave it.
 The answer row follows the last model step. The page follows the turn with `chat_poll`.
 
-**The organizer delegates through run rows.** When it calls `run_subagent`, the agent
-ends the run after the other calls of that model turn. The worker writes one sub-agent run
-for each accepted briefing, and each runs as an `AgentRun` of its own. A sub-agent writes no
-transcript row. The transcript shows one `run_subagent` tool row for each call, first with
-the state `delegated`. When the last sub-agent ends, a continuation of the lead reads the
-reports as the result of the call, the tool row takes the reports, and the continuation
-writes the answer. A sub-agent cannot delegate. The organizer reads each refused briefing
-by name. An agent run sweep on `operations-queue` ends a
-run whose workflow closed without an ending, and continues its parent.
+**The sections run through run rows.** The organizer's first run writes one sub-agent run
+for each section and waits, and each sub-agent runs as an `AgentRun` of its own. A
+sub-agent writes no transcript row, and no model call starts it. When the last sub-agent
+ends, `fan_in` writes any missing report and starts one continuation of the organizer,
+which writes the answer. An agent run sweep on `operations-queue` ends a run whose workflow
+closed without an ending, and continues its parent.
 
-**The `run_subagent` card shows the sub-agents.** While a batch is open, `chat_poll`
+**The `run_subagent` card shows the sub-agents of an older turn.** A turn from before the
+controller's section start can hold `run_subagent` tool rows. While a batch is open, `chat_poll`
 returns its entries in `stream.subagent_runs`, one for each briefing, with the state, the
 count of tool calls, and for a running entry the last 20 messages of its thread, each cut
 to 2,000 characters. For each thread it lists only the batch of the newest run, which
@@ -194,7 +198,7 @@ one that holds across processes.
 | dispatch | `api::chat::start_agent_workflow`, `CHAT_TASK_QUEUE`, `RESEARCH_TASK_QUEUE` |
 | the workflow | `main_services/processing/tasks/P_agent/workflows.py`, `AgentRun` |
 | run storage | `main_services/processing/database/agent_runs.py` |
-| delegation, fan-in and budgets | `P_agent/activities.py` (`_delegate`, `fan_in`, `continue_run`), `P_agent/run_budgets.py` |
+| section dispatch and fan-in | `P_agent/activities.py` (`dispatch_sections`, `fan_in`, `continue_run`), `P_agent/plan_runs.py` |
 | the agent run sweep | `main_services/processing/tasks/P_agent/supervise.py` |
 | stream consumer, fold into rows | `main_services/processing/tasks/P_agent/stream_writer.py` |
 | stream table I/O | `db_chat::{append_stream_row, read_stream_rows, mark_stream_final}` |
@@ -206,7 +210,7 @@ is the one failure a shared queue guarantees. The queue names are declared in th
 module and mirrored in `api::chat`: a workflow addressed to a queue nothing polls waits for
 ever with no error anywhere, and presents as chat hanging. **Deploy the worker before the
 website**, for the same reason. A `chat-model-queue` slot is one agent run in flight, not
-one model call, and a delegated turn takes one slot for each running sub-agent.
+one model call, and a running plan takes one slot for each running sub-agent.
 
 Three rules that are commonly broken and hard to notice:
 
@@ -218,8 +222,8 @@ Three rules that are commonly broken and hard to notice:
   nothing in the website.** `ChatPollResult` carries `active`. A turn is open while the
   last user row has no assistant/error row after it (`db_chat::turn_boundaries`), or while
   a run of that turn in `agent_runs` is `running` or `waiting_for_children`. The second
-  test keeps a citation round and a delegation open, because both follow an assistant or
-  tool row. `active` also needs the stream rows or the run rows to have moved recently. There is deliberately no registry of runs the
+  test keeps a citation round and a plan's running sections open, because both follow an
+  assistant row. `active` also needs the stream rows or the run rows to have moved recently. There is deliberately no registry of runs the
   website is holding, because there are none: a registry would empty on a restart while
   the turns themselves carried on, and every one of them would read as interrupted.
 - **A turn always keeps exactly one non-final stream row open**, from before the agent
@@ -321,7 +325,7 @@ a model that hits its token limit every time must not look like one that never r
 switches, elapsed time) with a **Kill** button. It is a **Temporal visibility query** on
 `WorkflowType = 'AgentRun'`, so it is true in both directions across a
 website restart: it does not lose the runs that were already running, and it does not keep
-listing one whose process died. Each open workflow is one entry, so a delegated turn shows
+listing one whose process died. Each open workflow is one entry, so a running plan shows
 each sub-agent that runs. An `AgentRun` takes its session and turn from its row in
 `agent_runs`, because a sub-agent's workflow id `run-{run_id}` names neither.
 

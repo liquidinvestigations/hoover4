@@ -28,7 +28,6 @@ from research_agent.skill_store import (
 log = logging.getLogger(__name__)
 
 SEARCH_TOOL = "search_agent_tools"
-DELEGATION_TOOL = "run_subagent"
 
 #: The text of a search that matched nothing.
 NO_MATCH_TEXT = "No available tool matches this request."

@@ -26,8 +26,7 @@ NEXT_KEY = "next"
 
 
 TODO_TOOLS = frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"})
-PLAN_TOOLS = frozenset({"read_plan", "append_node", "append_child", "move_node", "edit_node",
-                        "remove_node", "read_plan_document", "read_plan_report"})
+PLAN_TOOLS = frozenset({"read_plan", "write_plan", "read_plan_document", "read_plan_report"})
 #: The tools whose `not_found` error means a document id that no readable dataset holds.
 DOCUMENT_TOOLS = frozenset({"read_documents", "list_document_entities"})
 
@@ -76,8 +75,6 @@ def _cause(name: str, content: str, args: Dict[str, Any]) -> Optional[str]:
     failed = False
     error = message = ""
     if isinstance(data, dict):
-        if name == "run_subagent":
-            return None
         err = data.get("error")
         error = str(err or "")
         message = str(data.get("message", "")) + " " + str(data.get("code", ""))

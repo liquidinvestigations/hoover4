@@ -48,9 +48,9 @@ from agent_common.result_pages import SAFE_MODE_BATCH_BYTES, ByteLimit, PageInpu
 
 log = logging.getLogger(__name__)
 
-#: The plan mutations. They run one after the other in call order, because each one
+#: The plan mutation. Its calls run one after the other in call order, because each one
 #: changes the tree that the next one reads.
-PLAN_MUTATIONS = frozenset({"append_node", "append_child", "move_node", "edit_node", "remove_node"})
+PLAN_MUTATIONS = frozenset({"write_plan"})
 
 #: The calls that the worker runs in reply order, in one chain: the plan mutations, the plan
 #: read and the todo tools, because each one reads or changes state that the next one reads.
@@ -73,9 +73,6 @@ def is_browser_tool(name: str) -> bool:
     after the other in call order. Its copy is `is_browser_tool` in
     `processing/tasks/P_agent/steps.py`, and the two change in one patch."""
     return name == BROWSER_READ_TOOL or name.startswith(BROWSER_TOOL_PREFIX)
-
-#: The delegation tool. The worker delegates a readable call, and `/tool_call` refuses it.
-DELEGATION_TOOL = "run_subagent"
 
 #: The request header that carries one call's page share to the page broker.
 PAGE_SHARE_HEADER = "X-Hoover4-Page-Share"
@@ -225,7 +222,7 @@ def pending_calls(messages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], int]:
 
 
 __all__ = [
-    "BROWSER_READ_TOOL", "BROWSER_TOOL_PREFIX", "BatchBudget", "DELEGATION_TOOL",
+    "BROWSER_READ_TOOL", "BROWSER_TOOL_PREFIX", "BatchBudget",
     "IDEMPOTENCY_HEADER", "ORDERED_TOOLS", "PAGE_SHARE_HEADER", "PLAN_MUTATIONS",
     "is_browser_tool",
     "batch_budget", "empty_page_text", "page_share_client", "pending_calls",

@@ -38,21 +38,24 @@ def test_each_tool_name_is_in_exactly_one_pack():
     assert len(names) == len(set(names))
 
 
-def test_every_run_kind_gets_every_pack_by_default_and_only_the_organizer_delegates():
+def test_every_run_kind_gets_every_pack_by_default_and_no_pack_delegates():
     for kind in RUN_KINDS:
-        expected = frozenset(PACKS) - (set() if kind == "organizer" else {"delegation"})
-        assert packs_for(kind, ALL) == expected
-        assert packs_for(kind, "") == expected
-    assert "delegation" not in packs_for("subagent", "collections,delegation")
+        assert packs_for(kind, ALL) == frozenset(PACKS)
+        assert packs_for(kind, "") == frozenset(PACKS)
+    assert "run_subagent" not in allowed_tools("organizer", ALL)
+
+
+def test_the_retired_delegation_pack_selects_nothing():
+    assert packs_for("organizer", "collections,delegation") == frozenset(
+        {"collections", "skills"})
 
 
 def test_a_subagent_reads_the_organizer_setting(monkeypatch):
-    monkeypatch.setenv("AGENT_PACKS_ORGANIZER", "collections,web,delegation")
+    monkeypatch.setenv("AGENT_PACKS_ORGANIZER", "collections,web")
     monkeypatch.setenv("AGENT_PACKS_SUBAGENT", "browser")
     assert env_name("subagent") == "AGENT_PACKS_ORGANIZER"
-    assert packs_for("subagent", configured_packs("subagent")) == (
-        packs_for("organizer", configured_packs("organizer")) - {"delegation"}
-    )
+    assert packs_for("subagent", configured_packs("subagent")) == packs_for(
+        "organizer", configured_packs("organizer"))
 
 
 def test_a_narrowed_setting_gives_only_its_packs_and_the_skill_tools():

@@ -6,8 +6,7 @@ the listed skills by name and description, and the tools of the run's snapshot b
 summary in one list. The other method texts are in the skill store
 (`research_agent.skill_store`), which the model reads with `read_skill` when it chooses to.
 
-The prompt depends on the profile, the purpose, `collections_hint`, the model and the
-snapshot. None of these changes during a run, so the step context renders it once, and the
+The prompt depends on the profile, `collections_hint`, the model and the snapshot. None of these changes during a run, so the step context renders it once, and the
 prompt cache of the system text holds for the whole run.
 
 `SYSTEM_PROMPT` overrides the rendered text outright, which is what an experiment wants. It
@@ -73,16 +72,16 @@ ROLE_LINES: Dict[str, str] = {
         "{% endif %}"
     ),
     "research_subagent": (
-        "You are one of several researchers working in parallel on separate parts of one question.\n"
-        "You cannot see the others and you do not need to: answer the objective you were given and\n"
-        "nothing else."
+        "You research one section of an approved research plan. Other researchers run the other\n"
+        "sections, and you cannot see their work. Answer your section and nothing else."
     ),
     "planner": (
         "You plan a research project for a person who will read your plan before any research runs.\n"
         "Do not answer the question yet. Build the plan, and then describe it."
     ),
     "organizer": (
-        "You run an approved research plan. The person approved the tree, and it does not change now."
+        "You combine the reports of an approved research plan. One researcher ran each section,\n"
+        "and the tree does not change now."
     ),
 }
 
@@ -131,16 +130,14 @@ def render(
     snapshot: Any,
     skills: Sequence[Skill],
     collections_hint: bool = True,
-    purpose: Optional[str] = None,
     model_id: str = "",
     strict: bool = False,
 ) -> str:
     """Render the system prompt of one profile for one run.
 
     `snapshot` is the run's `CatalogueSnapshot`, and `skills` are its listed skills
-    (`skill_store.listed_skills`). `purpose` is the purpose of an organizer's briefing
-    (`execute` or `correct`). No text of the template reads it now. `model_id` is the run's
-    model, whose context window the planner's role text states.
+    (`skill_store.listed_skills`). `model_id` is the run's model, whose context window the
+    planner's role text states.
 
     `strict` raises `UnboundToolError` when a listed skill names a tool that no pack holds,
     in its front matter or in its text. The tests render strict, and the running agent does
@@ -170,7 +167,6 @@ def render(
         catalogue_search="search_agent_tools" in tool_names,
         chat_lead=name in {"internal_search", "full_research"},
         todo_rule=all(t in tool_names for t in TODO_TOOLS),
-        purpose=(purpose or "").strip().lower(),
     ).strip()
 
 
