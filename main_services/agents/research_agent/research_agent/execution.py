@@ -178,8 +178,14 @@ def split_resources(artifact: Any) -> Tuple[Optional[Dict[str, Any]], Optional[L
 
 
 def _text_of(content: Any) -> str:
+    """The text of a tool result as the model reads it. The MCP adapter gives a result of
+    several text blocks as a list of strings, and the blocks are joined with a newline, so
+    the model reads the bytes that the server measured against its page share. A JSON
+    encoding of the list would escape each newline, quote and non-ASCII character."""
     if isinstance(content, str):
         return content
+    if isinstance(content, list) and content and all(isinstance(p, str) for p in content):
+        return "\n".join(content)
     if isinstance(content, list) and all(
         isinstance(p, dict) and p.get("type") == "text" for p in content
     ):
@@ -191,18 +197,115 @@ def _error(code: str, message: str, **extra: Any) -> str:
     return json.dumps({"success": False, "error": code, "message": message, **extra})
 
 
+#: The most problems that one `invalid_arguments` message names.
+MAX_PROBLEMS = 4
+#: The most characters of one value that a problem quotes.
+QUOTE_CHARS = 120
+
+
+def _where(path: Sequence[Any]) -> str:
+    return "/".join(str(p) for p in path) or "arguments"
+
+
+def _clip(value: Any) -> str:
+    text = json.dumps(value, ensure_ascii=False, default=str)
+    return text if len(text) <= QUOTE_CHARS else text[:QUOTE_CHARS] + "..."
+
+
+def _json_kind(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "a boolean"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, str):
+        return "a string"
+    if isinstance(value, list):
+        return f"a list of {len(value)} item{'s' if len(value) != 1 else ''}"
+    if isinstance(value, dict):
+        return "an object"
+    return type(value).__name__
+
+
+def _branch_errors(error: Any) -> List[Any]:
+    """The errors of the branch of a choice that the value's type matches, or the whole
+    choice error when no branch matches it."""
+    by_branch: Dict[Any, List[Any]] = {}
+    for sub in error.context or []:
+        by_branch.setdefault(sub.schema_path[0] if sub.schema_path else None, []).append(sub)
+    path = list(error.absolute_path)
+    for branch, errors in sorted(by_branch.items(), key=lambda item: str(item[0])):
+        if not any(e.validator == "type" and list(e.absolute_path) == path for e in errors):
+            return errors
+    return [error]
+
+
+def _problems(error: Any) -> List[str]:
+    """One sentence for each problem that one validation error holds."""
+    where = _where(error.absolute_path)
+    if error.validator in ("anyOf", "oneOf") and error.context:
+        chosen = _branch_errors(error)
+        if chosen != [error]:
+            out: List[str] = []
+            for sub in chosen:
+                out.extend(_problems(sub))
+            return out
+        types = sorted({str(sub.validator_value) for sub in error.context
+                        if sub.validator == "type"})
+        return [f"{where}: expects {' or '.join(types) or 'another value'}, and the call "
+                f"gave {_json_kind(error.instance)}."]
+    if error.validator == "type":
+        expected = error.validator_value
+        expected = " or ".join(expected) if isinstance(expected, list) else str(expected)
+        if isinstance(error.instance, list) and expected in ("string", "integer", "number", "boolean"):
+            return [f"{where}: takes one {expected} value, and the call gave "
+                    f"{_json_kind(error.instance)}. Send one value."]
+        return [f"{where}: expects {expected}, and the call gave "
+                f"{_json_kind(error.instance)} {_clip(error.instance)}."]
+    if error.validator == "required":
+        out = [f"{where}: {error.message}."]
+        properties = (error.schema or {}).get("properties") if isinstance(error.schema, dict) else None
+        if isinstance(error.instance, dict) and isinstance(properties, dict):
+            unknown = [k for k in error.instance if k not in properties]
+            if unknown:
+                out.append(f"{where}: the call gave {', '.join(repr(k) for k in unknown)}, "
+                           f"which the schema does not name. The schema names "
+                           f"{', '.join(properties)}.")
+        return out
+    message = error.message
+    if len(message) > 300:
+        message = message[:300] + "..."
+    return [f"{where}: {message}."]
+
+
 def validation_error(args: Dict[str, Any], schema: dict) -> Optional[str]:
-    """Return the first reason the arguments do not match the schema, or `None`."""
+    """Return why the arguments do not match the schema, or `None`.
+
+    Each problem starts with its path. The branch of an `anyOf` or `oneOf` that the value's
+    type matches gives the problems, so a list of objects with wrong keys names the
+    missing keys and the keys that the schema does not name.
+    """
     if not schema:
         return None
     try:
-        jsonschema.validate(args, schema)
-    except jsonschema.ValidationError as exc:
-        where = "/".join(str(p) for p in exc.absolute_path) or "arguments"
-        return f"{where}: {exc.message}"
+        validator = jsonschema.validators.validator_for(schema)(schema)
+        validator.check_schema(schema)
+        errors = sorted(validator.iter_errors(args), key=lambda e: list(map(str, e.absolute_path)))
     except jsonschema.SchemaError:
         return None
-    return None
+    if not errors:
+        return None
+    problems: List[str] = []
+    for error in errors:
+        for problem in _problems(error):
+            if problem not in problems:
+                problems.append(problem)
+    shown = problems[:MAX_PROBLEMS]
+    more = len(problems) - len(shown)
+    if more:
+        shown.append(f"The call has {more} more problem{'s' if more != 1 else ''}.")
+    return " ".join(shown)
 
 
 def pending_calls(messages: Sequence[Any]) -> Tuple[List[Dict[str, Any]], int]:

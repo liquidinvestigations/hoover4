@@ -145,7 +145,7 @@ def _render(tool: PagedTool | LocalPagedTool, values: dict[str, Any], resolve: b
         return canonical_json({"success": False, "error": "invalid_argument", "message": str(exc)})
 
 
-@mcp.tool(name="read_documents", description="Read one text page of each of up to 20 documents in one collection. A document can be named by its hash, or by a file name or path that resolves to one document. With a query and no page, the tool opens the page with the most hits. Give page to read another page id, and use min_page, max_page and hit_pages to choose it.")
+@mcp.tool(name="read_documents", description="Read one text page of each of up to 20 documents in one collection. A document can be named by its hash, or by a file name or path that resolves to one document. With a query and no page, the tool opens the page with the most hits. Give page to read another page id, and use min_page, max_page and hit_pages to choose it. Page 0 counts as no page. With no page and no query, the tool opens the first stored page, which can be above 1.")
 def read_documents(collectionname: str, file_hash: list[str], source: str | None = None, query: str | None = None, page: int | None = None) -> str:
     values: dict[str, Any] = {"collectionname": collectionname, "file_hash": file_hash, "source": source, "query": query, "page": page}
     notes = _map_collections(values)

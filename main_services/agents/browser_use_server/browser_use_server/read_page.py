@@ -15,31 +15,55 @@ debugged from the outside; that shape was rejected deliberately and must not com
 MHTML-under-the-cap capture that an explicit snapshot produces, so the archived-page card
 in the transcript renders exactly as it did, one card per page, several per call.
 
-The shared character budget is divided across the URLs asked for, and what did not fit is
-named in the note rather than silently dropped. See `agent_common.batching`.
+**The result fits the call's page share.** The agent sends the byte share of the call in
+`X-Hoover4-Page-Share` (`DEFAULT_PAGE_BYTES` when it is absent). `fit` chooses the text of
+each page so that the whole UTF-8 result, with the notes, the cut lines and the artifact
+marker, stays inside that share. Each page gets an equal part. URLs beyond what the share
+can carry are named in the note rather than silently dropped. See `agent_common.batching`.
+
+**The extracted text is kept for 30 minutes and has a version.** The version is the first 16
+hex characters of the SHA-256 of the text. A cut page names the next offset and the
+version. A call with `version` reads that same text, and it reports a text that has expired
+or changed in place of the text. It never navigates for a continuation.
+
+**`find` searches the kept text.** It returns each match of the literal text, in any case,
+with the text around it and the absolute character offsets, from `offset` on. When the
+share cannot hold every match, the result names the offset and the version of the next
+call. A match is never cut: a match that does not fit starts the next call.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import io
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 
 from agent_common import artifacts, batching
+from agent_common.result_pages import SAFE_MODE_BATCH_BYTES
 
 from browser_use_server import capture as capture_mod
 from browser_use_server.urlcheck import UrlNotAllowed, check_url
 
 log = logging.getLogger(__name__)
 
-#: The whole call's text budget, shared across the URLs. Sized so a four-page read stays
-#: comfortably inside a turn: four pages at ~7500 characters each is roughly 8k tokens.
-TOTAL_CHARS = int(os.getenv("READ_PAGE_TOTAL_CHARS", "30000"))
+#: The byte ceiling of a call that sends no page share: the agent's batch target.
+DEFAULT_PAGE_BYTES = SAFE_MODE_BATCH_BYTES
+
+#: How long the extracted text of a page is kept for a continuation or a `find`.
+KEEP_SECONDS = 1800
+
+#: The characters of text that a `find` match shows on each side of the match.
+FIND_CONTEXT_CHARS = 200
+
+#: The longest `find` text.
+FIND_MAX_CHARS = 200
 
 #: More than this in one call is a model opening everything rather than choosing. The
 #: surplus is refused by name in the note, which is information; silently reading the
@@ -155,6 +179,19 @@ class PageRead:
     blocked: bool = False
     #: What the call note says about this page. It is empty when there is nothing to add.
     note: str = ""
+    #: The version of `full_text` (`text_version`).
+    version: str = ""
+    #: The literal text that the call searched for, or empty for a plain read.
+    find: str = ""
+    #: The shown matches of a `find`: `(match_start, text_start, text_end)`, in order.
+    matches: list[tuple[int, int, int]] = field(default_factory=list)
+    #: The match count of the whole text, and from `offset` on.
+    total_matches: int = 0
+    matches_after: int = 0
+    #: How many of those matches the shown text holds.
+    shown_matches: int = 0
+    #: The offset of the first match that was not shown, or None.
+    next_offset: int | None = None
 
 
 @dataclass
@@ -233,6 +270,33 @@ def focus(text: str, goal: str, limit: int) -> tuple[str, bool]:
     return (kept, True)
 
 
+def text_version(text: str) -> str:
+    """The version of an extracted text: the first 16 hex characters of its SHA-256."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _find_block(page: PageRead) -> str:
+    """The text of a `find` result for one page."""
+    literal = json.dumps(page.find, ensure_ascii=False)
+    kept = f" Version {page.version}." if page.version else ""
+    tail = (f"The page has {page.total_matches} matches in {page.full_chars:,} characters."
+            f"{kept}]")
+    if not page.matches_after:
+        return f"[find {literal}: no match from offset {page.offset}. {tail}"
+    parts = [f"[find {literal}: {page.shown_matches} of {page.matches_after} matches from "
+             f"offset {page.offset} are shown. {tail}"]
+    for match_start, start, end in page.matches:
+        parts.append(f"[match at {match_start}, text from {start} to {end}]\n"
+                     f"{page.full_text[start:end]}")
+    if page.next_offset is not None:
+        left = page.matches_after - page.shown_matches
+        fields = (f"find, offset {page.next_offset} and version {page.version}" if page.version
+                  else f"find and offset {page.next_offset}")
+        parts.append(f"[more: {left} matches from offset {page.next_offset}. Call read_page "
+                     f"with this URL, {fields} for the next matches]")
+    return "\n\n".join(parts)
+
+
 def render(result: ReadResult) -> str:
     """The text block the model reads. One clearly delimited section per page."""
     blocks: list[str] = []
@@ -250,16 +314,20 @@ def render(result: ReadResult) -> str:
         if page.error:
             blocks.append(f"{head}\n\nCOULD NOT READ: {page.error}")
             continue
+        if page.find:
+            blocks.append(f"{head}\n\n{_find_block(page)}")
+            continue
         if page.full_chars and page.offset >= page.full_chars:
             blocks.append(
                 f"{head}\n\n[offset {page.offset} is at or past the page's "
                 f"{page.full_chars:,} characters]"
             )
             continue
+        version = f", with version {page.version}" if page.version else ""
         tail = (
             f"\n\n[cut: this call read {len(page.text):,} of the page's "
             f"{page.full_chars:,} characters. Call read_page with offset "
-            f"{page.offset + len(page.text)} for the next part]"
+            f"{page.offset + len(page.text)} for the next part{version}]"
             if page.truncated else ""
         )
         blocks.append(f"{head}\n\n{page.text}{tail}")
@@ -268,12 +336,105 @@ def render(result: ReadResult) -> str:
     return "\n\n---\n\n".join(blocks) if blocks else "No pages were read."
 
 
-async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0) -> ReadResult:
-    """Navigate, extract and capture each URL in turn, inside one chat's browser.
+def _bytes(text: str) -> int:
+    return len(text.encode("utf-8"))
+
+
+def _head_within(text: str, limit: int) -> str:
+    """The longest start of `text` whose UTF-8 form has at most `limit` bytes."""
+    if limit <= 0:
+        return ""
+    head = text[:limit]
+    encoded = head.encode("utf-8")
+    if len(encoded) <= limit:
+        return head
+    return encoded[:limit].decode("utf-8", "ignore")
+
+
+def _fill(page: PageRead, share: int) -> None:
+    """Choose the text of one page within `share` bytes of content."""
+    if page.find:
+        _fill_find(page, share)
+        return
+    page.text = _head_within(page.full_text[page.offset:], share)
+    page.truncated = page.offset + len(page.text) < page.full_chars
+
+
+def _fill_find(page: PageRead, share: int) -> None:
+    """Choose the matches of one page within `share` bytes. A match is shown whole or not
+    at all. The first match that does not fit is the next offset."""
+    pattern = re.compile(re.escape(page.find), re.IGNORECASE)
+    text = page.full_text
+    page.total_matches = sum(1 for _ in pattern.finditer(text))
+    found = [(m.start(), m.end()) for m in pattern.finditer(text, page.offset)]
+    page.matches_after = len(found)
+    page.matches, page.shown_matches, page.next_offset = [], 0, None
+    used = 0
+    shown_to = 0
+    i = 0
+    while i < len(found):
+        match_start, match_end = found[i]
+        start = max(shown_to, match_start - FIND_CONTEXT_CHARS)
+        end = min(len(text), match_end + FIND_CONTEXT_CHARS)
+        overhead = 48 + len(str(match_start)) + len(str(start)) + len(str(end))
+        room = share - used - overhead
+        if room < _bytes(text[match_start:match_end]):
+            page.next_offset = match_start
+            break
+        while _bytes(text[start:end]) > room and (start < match_start or end > match_end):
+            start = min(match_start, start + max(1, (match_start - start) // 2))
+            end = max(match_end, end - max(1, (end - match_end) // 2))
+        # The text holds every match that starts in it, whole.
+        j = i + 1
+        while j < len(found) and found[j][0] < end:
+            end = max(end, found[j][1])
+            j += 1
+        page.matches.append((match_start, start, end))
+        page.shown_matches += j - i
+        used += overhead + _bytes(text[start:end])
+        shown_to = end
+        i = j
+
+
+def fit(result: ReadResult, ceiling: int, reserved: int = 0) -> None:
+    """Choose the text of every page so that `render(result)` and `reserved` bytes stay
+    within `ceiling` UTF-8 bytes. Each page with text gets an equal part of what the headings,
+    the notes and the cut lines leave."""
+    pages = [p for p in result.pages if p.full_text and not p.error and not p.blocked
+             and (p.find or p.offset < p.full_chars)]
+    budget = ceiling - reserved
+    if not pages:
+        return
+    for page in pages:
+        page.text, page.truncated = "", not page.find
+        page.matches, page.shown_matches = [], 0
+        page.next_offset = page.offset if page.find else None
+    fixed = _bytes(render(result))
+    share = max(0, (budget - fixed) // len(pages))
+    for _ in range(6):
+        for page in pages:
+            _fill(page, share)
+        over = _bytes(render(result)) - budget
+        if over <= 0 or share == 0:
+            break
+        share = max(0, share - over // len(pages) - 1)
+    if _bytes(render(result)) > budget:
+        for page in pages:
+            _fill(page, 0)
+
+
+async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0,
+               find: str = "", version: str = "",
+               ceiling: int = DEFAULT_PAGE_BYTES) -> ReadResult:
+    """Navigate, extract and capture each URL in turn, inside one chat's browser. The
+    text of each page is chosen later, by `fit`.
 
     Serial rather than concurrent on purpose: there is one browser per chat and its calls
     are already serialised by the router's per-chat lock, so firing the navigations in
     parallel would queue them anyway while making the failure attribution worse.
+
+    A page whose text is kept is not navigated again. With `version`, only the kept text of
+    that version is read, and a page with no such text is reported with the reason.
     """
     to_read, _repeats, _over, note = plan(raw_urls)
     result = ReadResult(note=note)
@@ -283,11 +444,12 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
         )
         return result
 
-    per_page, fits = batching.divide_budget(TOTAL_CHARS, len(to_read))
+    per_page, fits = batching.divide_budget(ceiling, len(to_read))
     dropped = to_read[fits:]
     to_read = to_read[:fits]
     if dropped:
         result.note = batching.corrective_note(result.note, batching.dropped_note(dropped, "URL"))
+    find = (find or "")[:FIND_MAX_CHARS]
 
     for url in to_read:
         now = time.monotonic()
@@ -295,20 +457,40 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
             if stored[0] <= now:
                 del chat.page_reads[old_url]
         cached = chat.page_reads.get(url)
+        if version and (not cached or cached[4] != version):
+            page = PageRead(url=url, find=find, offset=offset)
+            if cached:
+                page.error = (
+                    f"the page changed: the kept text is version {cached[4]}, not version "
+                    f"{version}. Its offsets differ, so read it again from offset 0 with "
+                    f"version {cached[4]}"
+                )
+            else:
+                page.error = (
+                    f"the text of version {version} is no longer kept (it is kept for "
+                    f"{KEEP_SECONDS // 60} minutes). Call read_page without version to read "
+                    "the page again from offset 0"
+                )
+            result.pages.append(page)
+            continue
         if cached:
-            _, title, final_url, full_text = cached
-            page = PageRead(url=url, title=title, final_url=final_url, full_text=full_text)
+            _, title, final_url, full_text, kept_version = cached
+            page = PageRead(url=url, title=title, final_url=final_url, full_text=full_text,
+                            version=kept_version)
         else:
             page = await _read_one(chat, url, goal, per_page, username)
+            # Only a kept text has a version. A version of a text that is not kept would
+            # make a continuation report an expiry that did not happen.
             if page.full_text and len(page.full_text.encode("utf-8")) <= PDF_MAX_BYTES:
+                page.version = text_version(page.full_text)
                 chat.page_reads[url] = (
-                    time.monotonic() + 1800, page.title, page.final_url, page.full_text
+                    time.monotonic() + KEEP_SECONDS, page.title, page.final_url,
+                    page.full_text, page.version,
                 )
         if page.full_text:
             page.offset = offset
+            page.find = find
             page.full_chars = len(page.full_text)
-            page.text = page.full_text[offset:offset + per_page]
-            page.truncated = offset + len(page.text) < page.full_chars
         result.pages.append(page)
         result.note = batching.corrective_note(result.note, page.note)
         if page.artifact:
@@ -536,9 +718,11 @@ __all__ = [
     "NAVIGATE_TIMEOUT_MS",
     "PageRead",
     "ReadResult",
-    "TOTAL_CHARS",
+    "DEFAULT_PAGE_BYTES",
+    "fit",
     "focus",
     "plan",
     "read",
     "render",
+    "text_version",
 ]

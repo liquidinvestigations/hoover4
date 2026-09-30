@@ -108,6 +108,27 @@ pub struct PlanView {
     /// live plan run.
     #[serde(default)]
     pub end_reason: String,
+    /// [`PHASE_COMBINING`] while an executing plan's organizer combines the section
+    /// reports: every section run ended, and an organizer run is running. Empty otherwise.
+    /// The backend derives it from the plan's agent runs. No plan state stores it.
+    #[serde(default)]
+    pub phase: String,
+}
+
+/// The [`PlanView::phase`] of an executing plan whose organizer combines the reports.
+pub const PHASE_COMBINING: &str = "combining";
+
+/// The agent run states that end a run.
+pub const RUN_TERMINAL_STATES: [&str; 3] = ["completed", "failed", "cancelled"];
+
+/// The phase of an executing plan from the `(depth, state)` of its agent runs: combining
+/// when at least one section run exists, every section run (depth 1) ended, and a lead run
+/// (depth 0) is running. Empty for every other case.
+pub fn executing_phase(runs: &[(u8, &str)]) -> &'static str {
+    let sections: Vec<&str> = runs.iter().filter(|(d, _)| *d >= 1).map(|(_, s)| *s).collect();
+    let all_ended = !sections.is_empty() && sections.iter().all(|s| RUN_TERMINAL_STATES.contains(s));
+    let lead_running = runs.iter().any(|(d, s)| *d == 0 && *s == "running");
+    if all_ended && lead_running { PHASE_COMBINING } else { "" }
 }
 
 impl PlanView {
@@ -252,7 +273,17 @@ mod tests {
             nodes: Vec::new(),
             sections_json: sections_json.into(),
             end_reason: end_reason.into(),
+            phase: String::new(),
         }
+    }
+
+    #[test]
+    fn the_combining_phase_needs_every_section_ended_and_a_running_lead() {
+        assert_eq!(executing_phase(&[(0, "waiting_for_children"), (1, "running")]), "");
+        assert_eq!(executing_phase(&[(0, "completed"), (1, "completed"), (1, "failed"), (0, "running")]),
+                   PHASE_COMBINING);
+        assert_eq!(executing_phase(&[(0, "running")]), "", "the dispatch runs before any section");
+        assert_eq!(executing_phase(&[(0, "completed"), (1, "completed")]), "");
     }
 
     #[test]

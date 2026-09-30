@@ -6,11 +6,24 @@
 //!
 //! - `planning` and `revising`: the tree so far, and a stop button.
 //! - `awaiting_review`: the tree, with approve, reject and stop on the current version.
+//! - `awaiting_review` with a tree that has no section, or more than
+//!   [`MAX_PLAN_SECTIONS`] sections: the approve button is disabled, and the card says why.
+//!   The backend refuses such an approve too.
 //! - `executing`: the sections from `sections_json`, and the live runs of the current batch
-//!   from the poll's `subagent_runs`.
-//! - `completed`, `failed`, `cancelled`: the sections, with each failed section marked.
+//!   from the poll's `subagent_runs`. When every section run ended and the organizer runs,
+//!   the view's `phase` is `combining`, and the card says that the organizer combines the
+//!   reports.
+//! - `completed`, `failed`, `cancelled`: the sections, each with its outcome, and the cause
+//!   of each failed section. A completed plan with failed sections says how many failed.
 //!   A `completed` run whose tree has no section says that the planner finished with no
 //!   section.
+//!
+//! Each section with a report has a disclosure with the report (`chat_plan_section_reports`).
+//! A typed report shows the model's final answer and its latest texts apart from what code
+//! recorded: the reads with their spans and failures, the citations with their quote
+//! checks, the notes, the artifacts and the execution diagnostics. A report from before
+//! the typed report shows its text, labelled as such. Missing metadata is never read as
+//! success.
 //!
 //! A card whose version is older than the run's `reviewed_version`, or whose answer row a
 //! later planner answer of the same plan run follows, shows its tree labelled as an earlier
@@ -25,12 +38,14 @@
 
 use common::chat_types::SubagentRunEntry;
 use common::plan_types::{
-    has_section, ChatPlanReference, PlanAction, PlanDecisionOutcome, PlanDecisionRequest,
-    PlanNodeView, PlanView, MAX_PLAN_COMMENT_CHARS,
+    has_section, section_count, ChatPlanReference, PlanAction, PlanDecisionOutcome,
+    PlanDecisionRequest, PlanNodeView, PlanView, MAX_PLAN_COMMENT_CHARS, MAX_PLAN_SECTIONS,
+    PHASE_COMBINING,
 };
+use common::report_types::{EvidenceEntry, ReportData, SectionReport, SectionReportView};
 use dioxus::prelude::*;
 
-use crate::api::chat_api::{chat_decide_plan, chat_plan_view};
+use crate::api::chat_api::{chat_decide_plan, chat_plan_section_reports, chat_plan_view};
 
 /// Seconds between two reads of a plan that is not terminal.
 pub const REFRESH_SECONDS: u64 = 3;
@@ -95,6 +110,7 @@ pub fn PlanCard(
 ) -> Element {
     let context = try_consume_context::<PlanCardContext>();
     let mut loaded = use_signal(|| Loaded::Pending);
+    let mut reports = use_signal(Vec::<SectionReportView>::new);
     let mut busy = use_signal(|| false);
     let mut notice = use_signal(|| None::<String>);
     let mut reject_open = use_signal(|| false);
@@ -124,6 +140,20 @@ pub fn PlanCard(
                     Ok(None) => Loaded::Unavailable,
                     Err(_) => loaded.peek().clone(),
                 };
+                // The reports of the sections, while the plan runs and once when it ends.
+                if let Loaded::View(view) = &next {
+                    if (view.state == "executing" || view.is_terminal())
+                        && !view.sections_json.is_empty()
+                    {
+                        if let Ok(Some(read)) =
+                            chat_plan_section_reports(session_id.peek().clone(), run_id.clone()).await
+                        {
+                            if *reports.peek() != read {
+                                reports.set(read);
+                            }
+                        }
+                    }
+                }
                 let stop = match &next {
                     Loaded::View(view) => view.is_terminal(),
                     Loaded::Unavailable => {
@@ -227,11 +257,21 @@ pub fn PlanCard(
     let can_stop = !stale && !terminal;
     let sections = parse_sections(&view.sections_json);
     let show_sections = !sections.is_empty() && !stale;
+    let failed_sections = sections.iter().filter(|s| s.failed).count();
     let state_label = if view.state == "completed" && !has_section(&view.nodes) {
-        NO_SECTION_TEXT
+        NO_SECTION_TEXT.to_string()
+    } else if view.state == "completed" && failed_sections > 0 {
+        format!(
+            "The plan is complete. {failed_sections} of {} sections failed",
+            sections.len()
+        )
+    } else if view.state == "executing" && view.phase == PHASE_COMBINING {
+        COMBINING_TEXT.to_string()
     } else {
-        state_text(&view.state)
+        state_text(&view.state).to_string()
     };
+    // The backend refuses the same approve. The card says why before the click.
+    let approve_refusal = approve_refusal(&view.nodes);
     let rows = tree_rows(&view.nodes);
     let is_busy = *busy.read();
     let comment_len = comment.read().trim().chars().count();
@@ -260,7 +300,7 @@ pub fn PlanCard(
             "data-plan-card": "{view.run_id}",
             "data-plan-state": "{view.state}",
             style: CARD_STYLE,
-            CardHeader { state_label: state_label.to_string() }
+            CardHeader { state_label: state_label.clone() }
             if stale {
                 div { "data-plan-stale": "true",
                     style: "font-size: 12px; color: #92400E; background: #FFFBEB; \
@@ -269,7 +309,7 @@ pub fn PlanCard(
                 }
             }
             if show_sections {
-                SectionList { sections: sections.clone(), terminal }
+                SectionList { sections: sections.clone(), terminal, reports: reports.read().clone() }
             }
             if !live.is_empty() {
                 LiveRuns { entries: live }
@@ -339,10 +379,16 @@ pub fn PlanCard(
                             "Send answer"
                         }
                     } else if can_review && !*reject_open.read() {
+                        if let Some(reason) = approve_refusal.clone() {
+                            div { "data-plan-approve-refused": "true",
+                                style: "font-size: 12px; color: #92400E; flex-basis: 100%;",
+                                "{reason}"
+                            }
+                        }
                         button {
                             "data-plan-action": "approve",
                             style: BUTTON_PRIMARY,
-                            disabled: is_busy,
+                            disabled: is_busy || approve_refusal.is_some(),
                             onclick: move |_| decide_approve(PlanAction::Approve),
                             "Approve plan"
                         }
@@ -411,6 +457,27 @@ fn CardHeader(state_label: String) -> Element {
 /// The state text of a completed plan run whose tree has no section.
 const NO_SECTION_TEXT: &str = "The planner finished with no section";
 
+/// The state text of an executing plan whose organizer combines the section reports.
+const COMBINING_TEXT: &str = "Every section ended. The organizer combines the reports";
+
+/// Why the tree cannot be approved, or `None`. A section is a direct child of the root.
+fn approve_refusal(nodes: &[PlanNodeView]) -> Option<String> {
+    let sections = section_count(nodes);
+    if sections == 0 {
+        return Some(
+            "This plan has no section, so it cannot run. Ask for changes, and the planner \
+             writes it again."
+                .to_string(),
+        );
+    }
+    (sections > MAX_PLAN_SECTIONS).then(|| {
+        format!(
+            "This plan has {sections} top-level sections, and a plan can run at most \
+             {MAX_PLAN_SECTIONS}. Ask for changes, and the planner merges the sections."
+        )
+    })
+}
+
 /// The text the card shows for a plan run state.
 fn state_text(state: &str) -> &'static str {
     match state {
@@ -464,6 +531,8 @@ struct Section {
     title: String,
     tasks: u64,
     state: String,
+    end_reason: String,
+    cause: String,
     corrections: u64,
     defect_classes: Vec<String>,
     failed: bool,
@@ -483,6 +552,8 @@ fn parse_sections(json: &str) -> Vec<Section> {
                 title: text("title").to_string(),
                 tasks: item.get("tasks").and_then(|v| v.as_u64()).unwrap_or(0),
                 state: text("state").to_string(),
+                end_reason: text("end_reason").to_string(),
+                cause: text("cause").to_string(),
                 corrections: item.get("corrections").and_then(|v| v.as_u64()).unwrap_or(0),
                 defect_classes: item
                     .get("defect_classes")
@@ -499,25 +570,18 @@ fn parse_sections(json: &str) -> Vec<Section> {
         .collect()
 }
 
-/// The sections of an approved plan. A section is marked failed only when the run is
-/// terminal, because during execution `failed` means that no review accepted it yet.
+/// The sections of an approved plan, each with its outcome and its report. A section is
+/// marked failed only when the run is terminal, because during execution the worker's
+/// entries do not yet hold the outcome.
 #[component]
-fn SectionList(sections: Vec<Section>, terminal: bool) -> Element {
+fn SectionList(sections: Vec<Section>, terminal: bool, reports: Vec<SectionReportView>) -> Element {
     rsx! {
         div { style: "display: flex; flex-direction: column; gap: 4px;",
             div { style: "font-size: 12px; font-weight: 600; color: #475569;", "Sections" }
             for (i, section) in sections.into_iter().enumerate() {
                 {
                     let failed = terminal && section.failed;
-                    let state = if failed {
-                        "failed".to_string()
-                    } else if section.state.is_empty() {
-                        "not started".to_string()
-                    } else if terminal {
-                        "accepted".to_string()
-                    } else {
-                        section.state.replace('_', " ")
-                    };
+                    let state = section_state_text(&section, terminal);
                     let color = if failed { "#B91C1C" } else { "#334155" };
                     let heading = format!("{}. {}", i + 1, section.title);
                     let defects = section.defect_classes.join(", ");
@@ -526,6 +590,10 @@ fn SectionList(sections: Vec<Section>, terminal: bool) -> Element {
                     } else {
                         format!("{} tasks", section.tasks)
                     };
+                    let report = reports
+                        .iter()
+                        .find(|r| r.node_id == section.node_id)
+                        .map(|r| r.report.clone());
                     rsx! {
                         div {
                             key: "{section.node_id}",
@@ -541,6 +609,12 @@ fn SectionList(sections: Vec<Section>, terminal: bool) -> Element {
                                     "{state}"
                                 }
                             }
+                            if failed && !section.cause.is_empty() {
+                                div { "data-plan-section-cause": "true",
+                                    style: "font-size: 11px; color: #B91C1C;",
+                                    "Cause: {section.cause}"
+                                }
+                            }
                             if section.corrections > 0 {
                                 div { style: "font-size: 11px; color: #64748B;",
                                     "Corrections: {section.corrections}"
@@ -551,12 +625,271 @@ fn SectionList(sections: Vec<Section>, terminal: bool) -> Element {
                                     "Open defects: {defects}"
                                 }
                             }
+                            if let Some(report) = report {
+                                details { "data-plan-section-report": "{i}",
+                                    style: "font-size: 12px; color: #334155;",
+                                    summary { style: "cursor: pointer;", "Report" }
+                                    SectionReportBody { report }
+                                }
+                            } else if terminal {
+                                div { "data-plan-section-report": "missing",
+                                    style: "font-size: 11px; color: #92400E;",
+                                    "No report was written for this section."
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+/// The state text of one section. A terminal plan shows the outcome that the worker
+/// recorded. A section with no run shows "not started".
+fn section_state_text(section: &Section, terminal: bool) -> String {
+    if terminal && section.failed {
+        return "failed".to_string();
+    }
+    if section.state.is_empty() {
+        return "not started".to_string();
+    }
+    section.state.replace('_', " ")
+}
+
+/// One report of a section.
+#[component]
+fn SectionReportBody(report: SectionReport) -> Element {
+    match report {
+        SectionReport::Typed { data } => rsx! { TypedReport { data } },
+        SectionReport::Legacy { text } => rsx! {
+            div { "data-report-shape": "legacy",
+                style: "display: flex; flex-direction: column; gap: 4px; padding-top: 4px;",
+                div { style: "color: #92400E;",
+                    "This report is from before the typed report. It has no recorded reads, \
+                     citations or diagnostics. Its text follows."
+                }
+                div { style: "white-space: pre-wrap; word-break: break-word;", "{text}" }
+            }
+        },
+        SectionReport::Missing => rsx! {
+            div { "data-report-shape": "missing", style: "color: #92400E;",
+                "No report was written for this section."
+            }
+        },
+    }
+}
+
+/// A typed report: the model text, then what code recorded, in separate parts.
+#[component]
+fn TypedReport(data: ReportData) -> Element {
+    let execution = execution_text(&data);
+    let final_answer = data.final_answer.clone();
+    let final_text = final_answer.as_ref().map(|a| a.text.clone()).unwrap_or_default();
+    let recent: Vec<String> = data
+        .recent_text
+        .iter()
+        .map(|t| t.text.clone())
+        .filter(|t| !t.is_empty() && t != &final_text)
+        .collect();
+    let reads: Vec<String> = data.documents_read.iter().map(read_text).collect();
+    let citations: Vec<String> = data.citations.iter().map(citation_text).collect();
+    let notes: Vec<String> = data.notes.iter().map(note_text).collect();
+    let artifacts: Vec<String> = data
+        .artifacts
+        .iter()
+        .map(|e| label_of(e, &["title", "url", "artifact_id"]))
+        .collect();
+    let diagnostics = diagnostics_lines(&data);
+    rsx! {
+        div { "data-report-shape": "typed",
+            style: "display: flex; flex-direction: column; gap: 6px; padding-top: 4px;",
+            div { "data-report-execution": "true", style: "color: #475569;", "{execution}" }
+            if let Some(answer) = final_answer {
+                div { style: "display: flex; flex-direction: column; gap: 2px;",
+                    div { style: "font-weight: 600;",
+                        if answer.asked { "Question to you" } else { "Final answer" }
+                    }
+                    div { "data-report-final": "true",
+                        style: "white-space: pre-wrap; word-break: break-word;",
+                        "{answer.text}"
+                    }
+                }
+            } else {
+                div { "data-report-final": "none", style: "color: #92400E;",
+                    "The run wrote no final answer."
+                }
+            }
+            if !recent.is_empty() {
+                ReportList { title: "Latest texts of the model".to_string(), items: recent, key_name: "recent".to_string() }
+            }
+            div { style: "font-weight: 600; color: #475569; border-top: 1px solid #E2E8F0; \
+                          padding-top: 4px;",
+                "Recorded from the tool results"
+            }
+            ReportList { title: format!("Documents read ({})", reads.len()), items: reads, key_name: "reads".to_string() }
+            ReportList { title: format!("Citations ({})", citations.len()), items: citations, key_name: "citations".to_string() }
+            if !notes.is_empty() {
+                ReportList { title: format!("Notes ({})", notes.len()), items: notes, key_name: "notes".to_string() }
+            }
+            if !artifacts.is_empty() {
+                ReportList { title: format!("Artifacts ({})", artifacts.len()), items: artifacts, key_name: "artifacts".to_string() }
+            }
+            if !diagnostics.is_empty() {
+                ReportList { title: "Diagnostics".to_string(), items: diagnostics, key_name: "diagnostics".to_string() }
+            }
+        }
+    }
+}
+
+#[component]
+fn ReportList(title: String, items: Vec<String>, key_name: String) -> Element {
+    rsx! {
+        div { "data-report-list": "{key_name}",
+            style: "display: flex; flex-direction: column; gap: 1px;",
+            div { style: "font-weight: 600;", "{title}" }
+            for (i, item) in items.into_iter().enumerate() {
+                div { key: "{i}", style: "padding-left: 10px; white-space: pre-wrap; \
+                                         word-break: break-word;",
+                    "{item}"
+                }
+            }
+        }
+    }
+}
+
+/// How the section's run ended, in words. Absent fields say nothing: an absent ending
+/// is not a success.
+fn execution_text(data: &ReportData) -> String {
+    let e = &data.execution;
+    let mut parts = Vec::new();
+    if e.state.is_empty() {
+        parts.push("The report does not record how the run ended.".to_string());
+    } else {
+        parts.push(format!("The run ended {}.", e.state.replace('_', " ")));
+    }
+    match e.end_reason.as_str() {
+        "" => {}
+        "step_budget" => parts.push("It stopped at the step limit.".to_string()),
+        "empty_response" => parts.push("It stopped after two empty replies.".to_string()),
+        other => parts.push(format!("It stopped: {}.", other.replace('_', " "))),
+    }
+    if e.incomplete {
+        parts.push("Its work is incomplete.".to_string());
+    }
+    if !e.error.is_empty() {
+        parts.push(format!("Error: {}", e.error));
+    }
+    parts.join(" ")
+}
+
+/// A string value of a reference, else the first of `keys` that has one, else "an item".
+fn label_of(entry: &EvidenceEntry, keys: &[&str]) -> String {
+    keys.iter()
+        .map(|k| entry.reference_str(k))
+        .find(|v| !v.is_empty())
+        .unwrap_or("an item")
+        .to_string()
+}
+
+/// The span of a read, as the report records it, or "".
+fn span_text(entry: &EvidenceEntry) -> String {
+    let Some(range) = &entry.range else { return String::new() };
+    let num = |k: &str| range.get(k).and_then(|v| v.as_u64());
+    let mut parts = Vec::new();
+    if let Some(page) = num("page") {
+        parts.push(format!("page {page}"));
+    }
+    if let (Some(a), Some(b)) = (num("start_bytes"), num("end_bytes")) {
+        let total = num("total_bytes").map(|t| format!(" of {t}")).unwrap_or_default();
+        parts.push(format!("bytes {a} to {b}{total}"));
+    }
+    if let Some(a) = num("start_chars") {
+        let end = num("end_chars").map(|b| format!(" to {b}")).unwrap_or_default();
+        let total = num("total_chars").map(|t| format!(" of {t}")).unwrap_or_default();
+        parts.push(format!("characters {a}{end}{total}"));
+    }
+    if let Some(find) = range.get("find").and_then(|v| v.as_str()) {
+        let shown = range.get("spans").and_then(|v| v.as_array()).map_or(0, |a| a.len());
+        parts.push(format!("find \"{find}\", {shown} passages shown"));
+    }
+    parts.join(", ")
+}
+
+fn read_text(entry: &EvidenceEntry) -> String {
+    let what = label_of(entry, &["path", "url", "title", "file_hash"]);
+    let span = span_text(entry);
+    match entry.status.as_str() {
+        "error" => format!("{what}: failed: {}", entry.error.clone().unwrap_or_default()),
+        "partial" if span.is_empty() => format!("{what}: part of the text"),
+        "partial" => format!("{what}: part of the text, {span}"),
+        "ok" if span.is_empty() => format!("{what}: read"),
+        "ok" => format!("{what}: read, {span}"),
+        other => format!("{what}: {other}"),
+    }
+}
+
+fn citation_text(entry: &EvidenceEntry) -> String {
+    let handle = entry.reference_str("handle");
+    let what = label_of(entry, &["path", "file_hash"]);
+    if entry.status == "error" {
+        return format!("{what}: failed: {}", entry.error.clone().unwrap_or_default());
+    }
+    let verified = entry.reference.get("quote_verified").and_then(|v| v.as_bool()) == Some(true);
+    let reason = entry.reference_str("quote_reason");
+    let quote = if verified {
+        "quote verified".to_string()
+    } else if reason.is_empty() {
+        "quote not verified".to_string()
+    } else {
+        format!("quote not verified ({reason})")
+    };
+    let handle = if handle.is_empty() { String::new() } else { format!("{handle} ") };
+    format!("{handle}{what}: {quote}")
+}
+
+fn note_text(entry: &EvidenceEntry) -> String {
+    label_of(entry, &["text", "title", "note_id"])
+}
+
+/// The diagnostics of a report that are not empty, one line each.
+fn diagnostics_lines(data: &ReportData) -> Vec<String> {
+    let d = &data.diagnostics;
+    let check = &d.citation_check;
+    let mut out = Vec::new();
+    if d.failed_items > 0 {
+        out.push(format!("{} reads or citations failed.", d.failed_items));
+    }
+    if !d.unanswered_calls.is_empty() {
+        out.push(format!("{} calls have no result.", d.unanswered_calls.len()));
+    }
+    if !check.unresolved.is_empty() {
+        out.push(format!("Labels that no citation gave: {}.", check.unresolved.join(", ")));
+    }
+    if !check.conflicting.is_empty() {
+        out.push(format!(
+            "Labels that citations gave to more than one document: {}.",
+            check.conflicting.join(", ")
+        ));
+    }
+    if !check.unverified_quotes.is_empty() {
+        out.push(format!("{} quotes are not verified.", check.unverified_quotes.len()));
+    }
+    if d.repair_round {
+        out.push("The run had one citation repair round.".to_string());
+    }
+    if d.legacy_tool_messages > 0 {
+        out.push(format!(
+            "{} tool results are from before the recorded evidence, so their reads are not listed.",
+            d.legacy_tool_messages
+        ));
+    }
+    for (list, count) in &d.left_out {
+        if *count > 0 {
+            out.push(format!("The report leaves out {count} entries of {list}."));
+        }
+    }
+    out
 }
 
 /// The sub-agent runs of the current batch, a depth 2 run under its parent.
@@ -589,7 +922,8 @@ fn LiveRuns(entries: Vec<SubagentRunEntry>) -> Element {
 fn LiveRun(entry: SubagentRunEntry) -> Element {
     let state = entry.state.replace('_', " ");
     rsx! {
-        div { style: "display: flex; gap: 8px; font-size: 12px; color: #1E293B;",
+        div { "data-plan-live-run": "{entry.state}",
+            style: "display: flex; gap: 8px; font-size: 12px; color: #1E293B;",
             span { style: "flex: 1; min-width: 0;", "{entry.objective}" }
             span { style: "color: #64748B;", "{entry.tool_calls} tool calls" }
             span { style: "font-weight: 600;", "{state}" }
@@ -767,6 +1101,64 @@ mod tests {
             "This plan has no section, so it cannot run. Reject it with a comment, and the \
              planner writes it again."
         );
+    }
+
+    #[test]
+    fn approval_is_refused_for_a_root_only_tree_and_too_many_sections() {
+        let root = node("root", None, 1, "question");
+        assert!(approve_refusal(&[root.clone()]).unwrap().contains("no section"));
+        let mut nodes = vec![root.clone()];
+        for i in 0..5 {
+            nodes.push(node(&format!("s{i}"), Some("root"), i, "section"));
+        }
+        assert!(approve_refusal(&nodes).unwrap().contains("5 top-level sections"));
+        assert_eq!(approve_refusal(&nodes[..3]), None);
+    }
+
+    #[test]
+    fn a_failed_section_shows_failed_and_a_live_one_shows_its_state() {
+        let json = r#"[{"node_id":"a","title":"A","tasks":1,"state":"completed","end_reason":"",
+            "cause":"","failed":false},{"node_id":"b","title":"B","tasks":2,"state":"completed",
+            "end_reason":"step_budget","cause":"the run stopped at the step limit","failed":true}]"#;
+        let sections = parse_sections(json);
+        assert_eq!(section_state_text(&sections[0], true), "completed");
+        assert_eq!(section_state_text(&sections[1], true), "failed");
+        assert_eq!(sections[1].cause, "the run stopped at the step limit");
+        assert_eq!(section_state_text(&sections[1], false), "completed");
+    }
+
+    #[test]
+    fn a_typed_report_lists_partial_and_failed_reads_and_an_incomplete_run() {
+        let data: ReportData = serde_json::from_str(r#"{
+            "version": 1,
+            "execution": {"state": "completed", "end_reason": "step_budget", "incomplete": true, "error": ""},
+            "documents_read": [
+              {"kind": "document_read", "status": "partial", "reference": {"path": "/a.txt"},
+               "range": {"page": 2, "start_bytes": 0, "end_bytes": 10, "total_bytes": 90}},
+              {"kind": "document_read", "status": "error", "reference": {"file_hash": "bbbb"}, "error": "not found"},
+              {"kind": "document_read", "status": "partial", "reference": {"url": "https://x.example/p"},
+               "range": {"find": "Staff", "spans": [[1, 5], [9, 12]], "matches": 4, "total_chars": 99}}
+            ],
+            "citations": [{"kind": "citation", "status": "ok",
+               "reference": {"handle": "[D1]", "path": "/a.txt", "quote_verified": false, "quote_reason": "absent"}}],
+            "diagnostics": {"citation_check": {"unresolved": ["[D4]"], "conflicting": ["[D2]"]}}
+        }"#).unwrap();
+        assert_eq!(execution_text(&data),
+                   "The run ended completed. It stopped at the step limit. Its work is incomplete.");
+        let reads: Vec<String> = data.documents_read.iter().map(read_text).collect();
+        assert_eq!(reads[0], "/a.txt: part of the text, page 2, bytes 0 to 10 of 90");
+        assert_eq!(reads[1], "bbbb: failed: not found");
+        assert_eq!(reads[2], "https://x.example/p: part of the text, find \"Staff\", 2 passages shown");
+        assert_eq!(citation_text(&data.citations[0]), "[D1] /a.txt: quote not verified (absent)");
+        let lines = diagnostics_lines(&data);
+        assert!(lines.contains(&"Labels that no citation gave: [D4].".to_string()));
+        assert!(lines.contains(&"Labels that citations gave to more than one document: [D2].".to_string()));
+    }
+
+    #[test]
+    fn a_report_with_no_ending_does_not_read_as_success() {
+        let data: ReportData = serde_json::from_str(r#"{"version": 1}"#).unwrap();
+        assert_eq!(execution_text(&data), "The report does not record how the run ended.");
     }
 
     #[test]

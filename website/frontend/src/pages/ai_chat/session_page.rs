@@ -38,6 +38,19 @@ fn keep_stream(
     }
 }
 
+/// The state of the newest turn as one word. An interrupted turn is `interrupted`. A turn
+/// that waits for a model or tool slot is `queued-model` or `queued-tool`. Another turn in
+/// progress is `active`, and no turn in progress is `idle`.
+fn turn_state(sending: bool, queued_for: &str, interrupted: bool) -> &'static str {
+    match (interrupted, sending, queued_for) {
+        (true, _, _) => "interrupted",
+        (false, true, "model") => "queued-model",
+        (false, true, "tool") => "queued-tool",
+        (false, true, _) => "active",
+        (false, false, _) => "idle",
+    }
+}
+
 #[component]
 pub fn AiChatSessionPage(
     session_id: String,
@@ -409,18 +422,25 @@ fn ChatConversationPanel(
         });
     });
 
+    // True once a poll loop follows the turn of this page. The block below starts one for
+    // a turn that the page found in flight when it loaded. A turn that this page starts
+    // sets it first, because its own loop starts after the send returns. A loop started
+    // before that would read the turn as not started, stop, and clear `sending` while the
+    // turn runs.
+    let mut poll_resumed = use_signal(|| false);
+
     // The plan card's decisions open a new turn, which this panel then polls.
     use_context_provider(|| crate::components::chat_components::plan_card::PlanCardContext {
         session_id,
         on_turn_started: Callback::new(move |_: ()| {
             error.set(None);
+            poll_resumed.set(true);
             sending.set(true);
             start_polling.call(());
         }),
     });
 
     // Resume polling after a refresh that found a turn in flight.
-    let mut poll_resumed = use_signal(|| false);
     if *sending.read() && !*poll_resumed.read() && !loaded_for.read().is_empty() {
         poll_resumed.set(true);
         start_polling.call(());
@@ -477,6 +497,7 @@ fn ChatConversationPanel(
         let model = selected_model.read().clone();
         let id = session_id.read().clone();
         draft.set(String::new());
+        poll_resumed.set(true);
         sending.set(true);
         error.set(None);
         retry_after.set(None);
@@ -616,6 +637,7 @@ fn ChatConversationPanel(
                 subagent_batches: subagent_batches.read().clone(),
                 todo_versions: todo_versions.read().clone(),
                 deep_research: detail.session.options.deep_research,
+                turn: turn_state(*sending.read(), &queued_for.read(), *interrupted.read()).to_string(),
                 // A plan that has no planner answer row yet shows its card from here.
                 pending_plan: crate::components::chat_components::plan_card::started_plan(
                     &session_id.read(),
@@ -675,5 +697,19 @@ fn ChatConversationPanel(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod turn_state_tests {
+    use super::turn_state;
+
+    #[test]
+    fn a_queued_turn_is_distinct_from_an_active_and_an_interrupted_turn() {
+        assert_eq!(turn_state(true, "model", false), "queued-model");
+        assert_eq!(turn_state(true, "tool", false), "queued-tool");
+        assert_eq!(turn_state(true, "", false), "active");
+        assert_eq!(turn_state(true, "model", true), "interrupted");
+        assert_eq!(turn_state(false, "", false), "idle");
     }
 }

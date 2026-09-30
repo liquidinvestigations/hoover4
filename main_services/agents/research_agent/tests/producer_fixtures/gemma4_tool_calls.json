@@ -1,0 +1,199 @@
+{
+  "producer": {
+    "server": "vLLM 0.29.1rc1.dev573+ge97573215 (the /version answer of the served model)",
+    "vllm_commit": "e9757321527ca1ecd514c07c1418dd2c53da3d19",
+    "image_source": "https://github.com/mmastrac/djev-spark at 08b708e51bb8d9f4eba0e85b61dab0be7093d20e, fork https://github.com/mmastrac/vllm at 2751ece02505565231a1368b21f43825a1637192, which changes no parser file",
+    "tool_parser": "gemma4 (vllm/tool_parsers/gemma4_engine_tool_parser.py, arguments by vllm/parser/gemma4.py::_parse_gemma4_args)",
+    "chat_template": "the model's own template. /tokenize renders a parameter with anyOf as `type:<|\"|><|\"|>`, as examples/tool_chat_template_gemma4.jinja format_parameters does"
+  },
+  "entries": [
+    {
+      "case": "cite_documents_invented_keys",
+      "tool": "cite_documents",
+      "raw_kind": "captured",
+      "raw": "<|tool_call>call:cite_documents{citations:[{find_phrase:<|\"|>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97<|\"|>,document_id:<|\"|>03a388ac48d3b2cb<|\"|>,message:<|\"|>The document contains a list of the first 25 prime numbers.<|\"|>,quote:<|\"|>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97<|\"|>},{find_phrase:<|\"|>Evolutionary Computation<|\"|>,document_id:<|\"|>d21ccff5b16f15e9<|\"|>,message:<|\"|>The document mentions evolutionary computation.<|\"|>,quote:<|\"|>Evolutionary Computation Volume 10, Number 2<|\"|>},{find_phrase:<|\"|>300dpi<|\"|>,document_id:<|\"|>36a12c77e4fd84e8<|\"|>,message:<|\"|>The document mentions resolution requirements.<|\"|>,quote:<|\"|>300dpi in resolution.<|\"|>}]}<tool_call|>",
+      "parser_result": {
+        "citations": [
+          {
+            "find_phrase": "2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97",
+            "document_id": "03a388ac48d3b2cb",
+            "message": "The document contains a list of the first 25 prime numbers.",
+            "quote": "2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97"
+          },
+          {
+            "find_phrase": "Evolutionary Computation",
+            "document_id": "d21ccff5b16f15e9",
+            "message": "The document mentions evolutionary computation.",
+            "quote": "Evolutionary Computation Volume 10, Number 2"
+          },
+          {
+            "find_phrase": "300dpi",
+            "document_id": "36a12c77e4fd84e8",
+            "message": "The document mentions resolution requirements.",
+            "quote": "300dpi in resolution."
+          }
+        ]
+      },
+      "cause": "The chat template renders the anyOf parameter `citations` with an empty type, so the model never sees the field names. The raw output and the parse are well formed."
+    },
+    {
+      "case": "search_queries_with_phrase_quotes",
+      "tool": "search_collections",
+      "raw_kind": "captured",
+      "raw": "<|tool_call>call:search_collections{date_after:941000000,date_before:978105799,queries:[<|\"|>\"LJM\" \"Raptor\"<|\"|>,<|\"|>\"Raptor\" \"LJM\"<|\"|>,<|\"|>\"LJM\" \"Fastow\"<|\"|>,<|\"|>\"Raptor\" \"Fastow\"<|\"|>,<|\"|>\"LJM\" \"Lay\"<|\"|>,<|\"|>\"Raptor\" \"Lay\"<|\"|>,<|\"|>\"Raptor I\"<|\"|>,<|\"|>\"Raptor II\"<|\"|>,<|\"|>\"Raptor III\"<|\"|>,<|\"|>\"Raptor IV\"<|\"|>]}<tool_call|>",
+      "parser_result": {
+        "date_after": 941000000,
+        "date_before": 978105799,
+        "queries": [
+          "\"LJM\" \"Raptor\"",
+          "\"Raptor\" \"LJM\"",
+          "\"LJM\" \"Fastow\"",
+          "\"Raptor\" \"Fastow\"",
+          "\"LJM\" \"Lay\"",
+          "\"Raptor\" \"Lay\"",
+          "\"Raptor I\"",
+          "\"Raptor II\"",
+          "\"Raptor III\"",
+          "\"Raptor IV\""
+        ]
+      },
+      "cause": "A well-formed call. Each query keeps its phrase quotes."
+    },
+    {
+      "case": "empty_string_lost_one_delimiter",
+      "tool": "run_subagent",
+      "raw_kind": "inferred",
+      "raw": "<|tool_call>call:run_subagent{tasks:[{bring_back:<|\"|>Research the technical valuation models used (e.g., two-factor models) and determine the priorities and values of the research groups (e.g., ECT).<|\"|>,known:<|\"|>,objective:<|\"|>Research the technical valuation models used (e.g., two-factor models) and determine the priorities and values of the research groups (e.g., ECT) regarding LJM and Raptor between late 1999 and the end of 2000.<|\"|>,plan_node_id:<|\"|>2<|\"|>,purpose:<|\"|>execute<|\"|>}]}<tool_call|>",
+      "parser_result": {
+        "tasks": [
+          {
+            "bring_back": "Research the technical valuation models used (e.g., two-factor models) and determine the priorities and values of the research groups (e.g., ECT).",
+            "known": ",objective:",
+            "Research the technical valuation models used (e.g., two-factor models) and determine the priorities and values of the research groups (e.g., ECT) regarding LJM and Raptor between late 1999 and the end of 2000.<|\"|>,plan_node_id": "2",
+            "purpose": "execute"
+          }
+        ]
+      },
+      "cause": "The empty value of `known` has one delimiter where it needs two. The parser at the verified revision gives the stored result from this raw text. The intended object cannot be read from it."
+    },
+    {
+      "case": "objects_written_as_lists",
+      "tool": "cite_documents",
+      "raw_kind": "inferred",
+      "raw": "<|tool_call>call:cite_documents{citations:[[document_id:<|\"|>03a388ac48d3b2cb<|\"|>,find_phrase:<|\"|>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97<|\"|>,message:<|\"|>The document contains a list of the first 25 prime numbers.<|\"|>,quote:<|\"|>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97<|\"|>],[[document_id:<|\"|>d21ccff5b16f15e9<|\"|>,find_phrase:<|\"|>Evolutionary Computation<|\"|>,message:<|\"|>The document mentions evolutionary computation.<|\"|>,quote:<|\"|>Evolutionary Computation Volume 10, Number 2<|\"|>],[[document_id:<|\"|>36a12c77e4fd84e8<|\"|>,find_phrase:<|\"|>300dpi<|\"|>,message:<|\"|>The document mentions resolution requirements.<|\"|>,quote:<|\"|>300dpi in resolution.<|\"|>]]]]}<tool_call|>",
+      "parser_result": {
+        "citations": [
+          [
+            "document_id:<|\"|>03a388ac48d3b2cb<|\"|>",
+            "find_phrase:<|\"|>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97<|\"|>",
+            "message:<|\"|>The document contains a list of the first 25 prime numbers.<|\"|>",
+            "quote:<|\"|>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97<|\"|>"
+          ],
+          [
+            [
+              "document_id:<|\"|>d21ccff5b16f15e9<|\"|>",
+              "find_phrase:<|\"|>Evolutionary Computation<|\"|>",
+              "message:<|\"|>The document mentions evolutionary computation.<|\"|>",
+              "quote:<|\"|>Evolutionary Computation Volume 10",
+              "Number 2<|\"|>"
+            ],
+            [
+              [
+                "document_id:<|\"|>36a12c77e4fd84e8<|\"|>",
+                "find_phrase:<|\"|>300dpi<|\"|>",
+                "message:<|\"|>The document mentions resolution requirements.<|\"|>",
+                "quote:<|\"|>300dpi in resolution.<|\"|>"
+              ]
+            ]
+          ]
+        ]
+      },
+      "cause": "The objects are written with square brackets. The parser reads each key and value as one bare list item, keeps the delimiters, and splits a quoted value at its comma."
+    },
+    {
+      "case": "queries_merged_by_delimiters",
+      "tool": "search_collections",
+      "raw_kind": "not captured",
+      "raw": "",
+      "parser_result": {
+        "date_after": 907488000,
+        "date_before": 1609459200,
+        "queries": [
+          "\"LJM\"",
+          "",
+          "Raptor\"<|\"|><|\"|>\"LJM1\"<|\"|><|\"|>\"LJM2\"<|\"|><|\"|>\"Raptor I\"<|\"|><|\"|>\"Raptor II\"<|\"|><|\"|>\"Raptor III\"<|\"|><|\"|>\"Raptor IV\"<|\"|><|\"|>\"Timberwolf LLC\"<|\"|><|\"|>\"Bobcat LLC\""
+        ]
+      },
+      "cause": "Several queries arrive in one string with delimiters inside it."
+    },
+    {
+      "case": "query_with_a_delimiter_inside",
+      "tool": "search_passages",
+      "raw_kind": "not captured",
+      "raw": "",
+      "parser_result": {
+        "queries": [
+          "\"LJM\" \"Raptor\" 1999..2000",
+          "\"Raptor\" \"LJM\" 1999..2000",
+          "\"LJM1\" 1999..2000",
+          "of<|\"|>\"LJM2\" 1999..2000<|\"|>",
+          "\"Fastow\" Raptor 1999..2000",
+          "\"Lay\" Raptor 1999..2000",
+          "\"Kaminski\" Raptor 1999..2000",
+          "\"Siurek\" Raptor 1999..2000",
+          "\"Buy\" Raptor 1999..2000"
+        ]
+      },
+      "cause": "One query holds a delimiter inside its text."
+    },
+    {
+      "case": "item_with_a_trailing_delimiter",
+      "tool": "write_todo",
+      "raw_kind": "not captured",
+      "raw": "",
+      "parser_result": {
+        "goal": "Research prime numbers information and the IEEE conference paper template requirements.",
+        "steps": [
+          "Search for documents mentioning \"prime numbers\".",
+          "Extract definitions and properties of prime numbers from found documents.",
+          "Summarize findings regarding prime numbers.<|\"|>",
+          "Search for the \"IEEE conference paper template\".",
+          "Identify specific author requirements (formatting, structure, citations) from the template.",
+          "Summarize the requirements for authors using the IEEE template.<|\"|>"
+        ]
+      },
+      "cause": "Two items end with a delimiter. Removing it gives the intended text."
+    },
+    {
+      "case": "streamed_prefix_not_json",
+      "tool": "cite_documents",
+      "raw_kind": "captured",
+      "raw": "<|tool_call>call:cite_documents{citations:[{document_id:<|\"|>03a388ac48d3b2cb<|\"|>,find_phrase:<|\"|>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97<|\"|>,message:<|\"|>The document contains a list of the first 25 prime numbers.<|\"|>quote:<|\"|>2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97<|\"|>]{document_id:<|\"|>d21ccff5b16f15e9<|\"|>,find_phrase:<|\"|>Evolutionary Computation<|\"|>,message:<|\"|>The document mentions evolutionary computation.<|\"|>quote:<|\"|>Evolutionary Computation Volume 10, Number 2<|\"|>},{document_id:<|\"|>36a12c77e4fd84e8<|\"|>,find_phrase:<|\"|>300dpi<|\"|>,message:<|\"|>The document mentions resolution requirements.<|\"|>quote:<|\"|>300dpi in resolution.<|\"|>}]}<tool_call|>",
+      "streamed_arguments": "{\"citations\": [{\"document_id\": \"03a388ac48d3b2cb\", \"find_phrase\": \"2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97\", \"message\": \"The document contains a list of the first 25 prime numbers.\", \"quote\": \"2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97\"}], \"{document_id\": \"d21ccff5b16f15e9\", \"find_phrase\": \"Evolutionary Computation\", \"message\": \"The document mentions evolutionary computation.\", \"quote\": \"Evolutionary Computation Volume 10, Number 2\", \"},{document_id\": ",
+      "parser_result": {
+        "citations": [
+          {
+            "document_id": "03a388ac48d3b2cb",
+            "find_phrase": "2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97",
+            "message": "The document contains a list of the first 25 prime numbers.",
+            "quote": "2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59 61 67 71 73 79 83 89 97"
+          }
+        ],
+        "{document_id": "d21ccff5b16f15e9",
+        "find_phrase": "300dpi",
+        "message": "The document mentions resolution requirements.",
+        "quote": "300dpi in resolution.",
+        "},{document_id": "36a12c77e4fd84e8"
+      },
+      "cause": "The model wrote `]` in place of `}` after the first citation. The final parse of the gemma4 parser does not start with the streamed prefix, and vllm/parser/engine/parser_engine.py::_flush_arg_converter at e9757321 then sends no rest, so the client keeps `streamed_arguments`, which is not JSON. The model client lists the call in invalid_tool_calls. An upstream fix must send the final arguments or a readable error for this raw text."
+    },
+    {
+      "case": "call_returned_as_text",
+      "tool": "read_documents",
+      "raw_kind": "stored",
+      "raw": "call:read_documents{collectionname:<|\"|>testdata<|\"|>,file_hash:[<|\"|>36a12c77e4fd84e8d38542990f9bd657c6afb9768cae6703fc78b37cf64e88be<|\"|>,<|\"|>531768b6ac7bf22ebc39194e3d4639910316b60795d48217575d196a80a1dbc5<|\"|>,<|\"|>d21ccff5b16f15e99148bc3faaa2a2975b071a18fbd1562c9a429c634ad3aee3<|\"|>],page:0}",
+      "parser_result": null,
+      "cause": "The stored reply text of a citation repair step, with no parsed call. The raw tokens were not captured, so the text does not show whether the model or the parser failed. The agent reads such a text as one unreadable call (steps.leaked_call)."
+    }
+  ]
+}

@@ -37,6 +37,9 @@ class ToolCallRecord(BaseModel):
     id: str
     name: str
     args: Dict[str, Any] = Field(default_factory=dict)
+    #: Why the model client could not read the call's arguments (`steps.unreadable_call`).
+    #: The worker sends it with the call, and `/tool_call` refuses such a call.
+    argument_error: Optional[str] = None
 
 
 class RunMessage(BaseModel):

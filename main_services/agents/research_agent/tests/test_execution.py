@@ -142,3 +142,12 @@ def test_every_tool_of_the_browser_server_is_a_browser_tool():
         assert execution.is_browser_tool(name), name
     for name in ("search_collections", "web_search", "read_documents", "read_more"):
         assert not execution.is_browser_tool(name), name
+
+
+def test_the_text_blocks_of_a_result_are_joined_as_the_server_measured_them():
+    from research_agent.execution import _text_of
+
+    blocks = ["## Zoë\nhttps://a.example\n\n名前", '[hoover4:artifacts] {"artifacts": []}']
+    assert _text_of(blocks) == "\n".join(blocks)
+    assert len(_text_of(blocks).encode("utf-8")) == sum(len(b.encode("utf-8")) for b in blocks) + 1
+    assert _text_of([{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]) == "ab"

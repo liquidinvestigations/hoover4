@@ -836,7 +836,10 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
     body = {
         **_step_run(row, params),
         "call": {"id": call.call_id, "name": call.name,
-                 "args": entry.get("args") if isinstance(entry.get("args"), dict) else {}},
+                 "args": entry.get("args") if isinstance(entry.get("args"), dict) else {},
+                 # Set when the model client could not read the arguments. The agent
+                 # service refuses such a call and says why.
+                 "argument_error": str(entry.get("argument_error") or "") or None},
         "page_share": entry.get("page_share"),
         "idempotency_key": key,
     }
@@ -892,8 +895,9 @@ def write_asked_answer(params: AskedAnswerParams) -> int:
     if agent_runs.writes_transcript(row):
         from tasks.P_agent import plan_runs
         reference = plan_runs.plan_reference(row) if row.kind == "planner" else ""
+        # The model that asked, from the usage of the reply, as `write_incomplete` does.
         _chat_row(row)(row.next_seq, "assistant", content=question,
-                       plan_reference_json=reference)
+                       plan_reference_json=reference, model=str(ai.usage.get("model") or ""))
         _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid, row.start_seq)
         next_seq = row.next_seq + 1
     else:

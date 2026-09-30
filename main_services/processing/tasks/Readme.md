@@ -163,7 +163,9 @@ order of the reply. The calls of one reply to the browser server (`read_page` an
 every `browser_*` tool it can list, `steps.is_browser_tool`) run one after the other in a
 second chain,
 because they drive the one browser of the run. The other calls run beside both chains. A
-browser action gets one attempt. Every run starts with a normal model step, which binds the
+browser tool that can change the page gets one attempt (the `retry` of its call entry). A
+call entry with `argument_error` is sent with that error, and the agent service refuses it
+with the reason. Every run starts with a normal model step, which binds the
 run's tools. The workflow continues as new every 250 model steps, or past 30,000 history
 events. A planner that answers with no plan section gets one more round with a note, and
 then fails.
@@ -258,7 +260,8 @@ ended at a limit gets no round. The answer row never holds the model's reasoning
 
 **Evidence and reports.** `_write_tool_result` stores the typed evidence of each result
 (`reports.normalize`) in the `evidence` list of the usage of its `tool` message, at every
-run depth: reads with their page or byte span, failed items, documents that searches found,
+run depth: reads with their page or byte span, a `find` in a web page with the spans that it
+showed, failed items, documents that searches found,
 citations, notes and artifacts. Each entry is keyed by the thread, the message index and the
 item, so a continuation keeps its identity. `reports.project` makes the report of a thread
 from its committed messages: the ending, the final answer, the latest three texts of the

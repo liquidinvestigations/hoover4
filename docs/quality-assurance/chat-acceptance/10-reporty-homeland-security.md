@@ -27,9 +27,9 @@ No document in the test corpora names the later name of the company. That part o
 
 ## Expected tool calls
 
-1. The planner writes one plan node for each part: the people on the emails, the proposal, the roles, and the later history of the company.
-2. After the approval, the organizer calls `run_subagent` with the plan node ids that `read_plan` returns. A todo item id is not a plan node id.
-3. Each sub-agent searches with no `collectionname`, for example `search_passages` with `["Reporty", "\"Reporty Homeland Security\"", "ireporty Elichai", "Reporty Junkermann Indyke"]`.
+1. The planner calls `write_plan` with one section for each part: the people on the emails, the proposal, the roles, and the later history of the company. A section is a direct child of the root.
+2. After the approval, one researcher runs each section. The organizer receives every section report and writes the answer.
+3. Each researcher searches with no `collectionname`, for example `search_passages` with `["Reporty", "\"Reporty Homeland Security\"", "ireporty Elichai", "Reporty Junkermann Indyke"]`.
 4. It calls `doc_email` on the four emails above.
 5. It calls `web_search` with `["Reporty Homeland Security Amir Elichai", "Reporty Ehud Barak investment 2015"]`, then `read_page` of one article.
 6. It calls `cite_documents` with each key email, then the report.
@@ -40,4 +40,4 @@ A report with a dated list of the emails, the people on each and their role, wit
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, in each sub-agent, search over all collections, query variants, more than one in one call, todo edits, web search and page reads, document cards shown to the user, a task completed.
+The story exercises these requirements: first todo write, in each researcher, search over all collections, query variants, more than one in one call, todo edits, web search and page reads, document cards shown to the user, a task completed.

@@ -156,6 +156,19 @@ async fn source_hit_counts(
     Ok((pages, partial))
 }
 
+/// The page that a `page` argument asks for. No page and page 0 ask for no page: an
+/// older tool description used 0 for "the first page", and page ids can start above 1. A
+/// positive page stays exact.
+fn requested_page(page: Option<u32>) -> Option<u32> {
+    page.filter(|page| *page != 0)
+}
+
+/// The page that one read opens: the requested page, else the page with the most query
+/// hits, else the first stored page of the source (`min_page`, from the stored rows).
+fn chosen_page(wanted_page: Option<u32>, counts: &[(u32, u64)], min_page: u32) -> u32 {
+    wanted_page.or_else(|| most_hits_page(counts)).unwrap_or(min_page)
+}
+
 /// The page with the most hits, the lowest page id on a tie, as the website's viewer
 /// opens it.
 fn most_hits_page(pages: &[(u32, u64)]) -> Option<u32> {
@@ -261,7 +274,7 @@ async fn documents_read_body(
         )));
     }
     let (wanted_source, wanted_page) = match body.position.clone() {
-        None => (body.source.clone(), body.page),
+        None => (body.source.clone(), requested_page(body.page)),
         Some(AgentPosition::TextPage { source, page_id }) => (Some(source), Some(page_id)),
         Some(other) => return Err(wrong_position_kind("documents/read", &other, "TextPage")),
     };
@@ -380,7 +393,7 @@ async fn read_one_document(
         Some(query) => source_hit_counts(user, &plan.identifier, &chosen.extracted_by, query).await?,
         None => (Vec::new(), false),
     };
-    let page_id = wanted_page.or_else(|| most_hits_page(&counts)).unwrap_or(chosen.min_page);
+    let page_id = chosen_page(wanted_page, &counts, chosen.min_page);
     let pages = StoredTextPages { user, identifier: &plan.identifier, collectionname, deadline };
     let (text, next) = read_text_page(&pages, &chosen.extracted_by, page_id).await?;
     Ok((
@@ -1054,4 +1067,23 @@ async fn documents_pdf_search_body(
         hit_positions,
         page_info: AgentPageInfo { source, next_position, total: Some(total), partial: false },
     })
+}
+
+#[cfg(test)]
+mod page_choice_tests {
+    use super::{chosen_page, requested_page};
+
+    #[test]
+    fn no_page_and_page_zero_open_the_first_stored_page_after_a_gap() {
+        // The source has no stored page 1 or 2. Its first stored page is 3.
+        assert_eq!(chosen_page(requested_page(None), &[], 3), 3);
+        assert_eq!(chosen_page(requested_page(Some(0)), &[], 3), 3);
+    }
+
+    #[test]
+    fn a_positive_page_stays_exact_and_a_query_opens_its_best_page() {
+        assert_eq!(chosen_page(requested_page(Some(5)), &[(4, 9)], 3), 5);
+        assert_eq!(chosen_page(requested_page(Some(1)), &[], 3), 1);
+        assert_eq!(chosen_page(requested_page(Some(0)), &[(4, 1), (7, 9)], 3), 7);
+    }
 }

@@ -467,6 +467,39 @@ def test_identical_searches_of_one_reply_all_run(monkeypatch):
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
+def test_a_call_returned_as_text_is_refused_and_is_not_the_answer(monkeypatch):
+    """The agent service sends a reply whose text is call syntax as one unreadable call
+    with its `argument_error`. The worker passes the error to `/tool_call`, stores the
+    refusal, and the next reply is the answer. The call text is never the result."""
+    leaked = 'call:read_documents{collectionname:<|"|>testdata<|"|>,page:0}'
+    error = "the model server returned this call as text. The model server sent: " + leaked
+
+    def script(request, n):
+        if n == 1:
+            frames = _reply(request, leaked, calls=[_call("read_documents", {})])
+            turn = json.loads(frames[1][len("data: "):])
+            turn["tool_calls"][0]["argument_error"] = error
+            frames[1] = "data: " + json.dumps(turn) + "\n\n"
+            return frames
+        return _reply(request, "Answer.")
+
+    def refuse(request, n):
+        call = request["call"]
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "error",
+                     "content": json.dumps({"message": call.get("argument_error", "")}),
+                     "measure": {}, "error_class": "invalid_arguments"}
+
+    async def body(client, case, stub, queue, titled):
+        assert await (await _start(client, case, queue)).result() == "completed"
+        assert [r["call"].get("argument_error") for r in stub.tool_requests] == [error]
+        row = case.run_row()
+        assert (row.result, row.model_steps) == ("Answer.", 2)
+        answers = [r[2] for r in case.chat_rows() if r[1] == "assistant"]
+        assert answers == ["Answer."]
+
+    asyncio.run(_run_case(monkeypatch, script, body, tool=refuse))
+
+
 def test_browser_calls_of_one_reply_run_in_call_order_beside_a_search(monkeypatch):
     def script(request, n):
         if n == 1:
@@ -1691,11 +1724,15 @@ def test_ask_user_ends_after_all_calls_without_a_todo_nag(monkeypatch):
     questions = ["Bigger or smaller than 50?", "Which range?"]
 
     def script(request, n):
-        return _reply(request, calls=[
+        frames = _reply(request, calls=[
             _call("ask_user", {"question": questions[0], "options": ["bigger", "smaller"]}),
             _call("read_todo", {}),
             _call("ask_user", {"question": questions[1], "options": []}),
         ])
+        # The agent service names the model of the reply in `model_turn`.
+        turn = json.loads(frames[0][len("data: "):])
+        frames[0] = "data: " + json.dumps({**turn, "model": "asking-model"}) + "\n\n"
+        return frames
 
     def tool(request, n):
         call = request["call"]
@@ -1714,6 +1751,13 @@ def test_ask_user_ends_after_all_calls_without_a_todo_nag(monkeypatch):
         assert [r[3] for r in rows if r[1] == "tool"].count("ask_user") == 2
         assert [r[2] for r in rows if r[1] == "assistant"] == [questions[0]]
         assert not [r for r in rows if r[1] == "nag"]
+        # The question row names the model of the reply that asked.
+        with get_global_client() as ch:
+            models = ch.query(
+                "SELECT model FROM chat_messages FINAL WHERE username = {u:String} "
+                "AND session_id = {s:String} AND role = 'assistant'",
+                parameters={"u": case.username, "s": case.session_id}).result_rows
+        assert [m[0] for m in models] == ["asking-model"]
 
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 

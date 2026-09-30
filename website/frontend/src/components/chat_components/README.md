@@ -13,9 +13,9 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `tool_cards/result_cards.rs` | Result-page, read, citation, todo, plan, and question cards. |
 | `tool_cards/web_search_card.rs` | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
 | `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
-| `tool_cards/subagent_card.rs` | `run_subagent`: each sub-agent's state, live tool calls and partial text from the poll's `subagent_runs` while the batch is open, a depth 2 sub-agent under its parent, then the reports from the tool row's `tool_output`. |
+| `tool_cards/subagent_card.rs` | `run_subagent` rows of older turns: each sub-agent's state, live tool calls and partial text from the poll's `subagent_runs` while the batch is open, a depth 2 sub-agent under its parent, then the reports from the tool row's `tool_output`. |
 | `tool_cards/entities_card.rs` | `list_document_entities`: the two tiers apart, each rule-validated value a link to its explainer card in the document viewer. |
-| `plan_card.rs` | The plan card of a deep-research request, under the planner's answer row. It reads the plan run and the tree through `chat_plan_view`, sends approve, ask for changes and stop through `chat_decide_plan`, and reads the plan again every 3 s until the plan ends. While the plan runs it lists the sections from `sections_json` and the live sub-agent runs from the poll. A request that has no planner answer yet shows its card from the plan run that this tab started. |
+| `plan_card.rs` | The plan card of a deep-research request, under the planner's answer row. It reads the plan run and the tree through `chat_plan_view`, sends approve, ask for changes and stop through `chat_decide_plan`, and reads the plan again every 3 s until the plan ends. Approve is disabled for a tree with no section. While the plan runs it lists the sections from `sections_json` and the live sub-agent runs from the poll, and the header says when the organizer combines the reports. From execution on it reads the section reports through `chat_plan_section_reports`. A request that has no planner answer yet shows its card from the plan run that this tab started. |
 | `tool_run_summary.rs` | The summary line of a run of consecutive tool rows, see below. |
 | `tool_disclosure.rs` | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
 | `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet, see below. |
@@ -23,6 +23,18 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `markdown_text.rs` | Markdown → Dioxus nodes for assistant turns. |
 
 The transcript and persisted answer nodes expose stable attributes for browser history verification.
+The transcript root carries `data-chat-turn`, the state of the newest turn: `active`, `queued-model`, `queued-tool`, `interrupted` or `idle`.
+A browser test reads the end of a turn from it and from the user message seq (`data-chat-user`).
+
+## The plan card shows what each section produced
+
+A completed plan is not a claim that its research is complete. The header of a completed plan
+with failed sections says how many failed, and each section shows its outcome, its end reason
+and its cause. Each section report shows the parts of its typed report apart from each other:
+the final text, the latest 3 contributions, notes, artifacts, citations, document and page
+reads, and the execution cause. A read shows its span, and a failed read or an unverified
+quote says so. A report document with no typed data shows its text and says it is a legacy
+report. The card never infers success from a report that has no typed data.
 
 ## The two switches are frozen after the first message
 
@@ -51,7 +63,10 @@ conversation gave it, at any run depth. The page takes the union of two lists. O
 from the citation rows of the transcript. The other is `run_cited_handles`, which the
 server reads from every run thread of the session on each load and each poll. A sub-agent writes no transcript row, so its handles
 come only from that list. Any other handle renders as plain text marked "not cited", because
-no document stands behind it. The live answer of a turn keeps every handle a chip, because its
+no document stands behind it. A handle that stored citation results give to two documents
+renders as plain text marked "names more than one document". It links to neither document, and
+its sources strip entry names the conflict. Records from before the handle store can hold such a
+conflict. The live answer of a turn keeps every handle a chip, because its
 citation rows can still be in the stream.
 
 The heading scale tops out at **body + 3px** (18px against 15px). Chat headings are labels

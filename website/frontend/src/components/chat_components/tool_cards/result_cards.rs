@@ -60,9 +60,28 @@ fn read_label(tool_name: &str, rows: &[serde_json::Value], more: bool) -> String
     format!("{tool_name} · {path}{page} · {}{cut}", rows_label(rows.len(), more))
 }
 
+/// The number of sections and nodes of a `write_plan` input: the top-level `children`
+/// and every node under them.
+fn written_tree_counts(input: &serde_json::Value) -> (usize, usize) {
+    fn count(nodes: Option<&serde_json::Value>, depth: usize) -> usize {
+        let Some(list) = nodes.and_then(|n| n.as_array()) else { return 0 };
+        if depth > 8 { return list.len(); }
+        list.iter().map(|n| 1 + count(n.get("children"), depth + 1)).sum()
+    }
+    let sections = input.get("children").and_then(|c| c.as_array()).map_or(0, |c| c.len());
+    (sections, count(input.get("children"), 0))
+}
+
 fn plan_change(tool_name: &str, tool_input: &str, tree: &str) -> (String, String) {
     let value = serde_json::from_str::<serde_json::Value>(tool_input).unwrap_or_default();
     let input = value.get("input").unwrap_or(&value);
+    if tool_name == "write_plan" {
+        // The whole tree is written, so no single line is marked.
+        let (sections, nodes) = written_tree_counts(input);
+        let s = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+        let label = format!("wrote {}, {}", s(sections, "section", "sections"), s(nodes, "node", "nodes"));
+        return (label, tree.to_string());
+    }
     let node = input.get("node_id").or_else(|| input.get("parent_id"))
         .and_then(|value| value.as_str()).unwrap_or("");
     let text = input.get("text").and_then(|value| value.as_str()).unwrap_or("");
@@ -363,6 +382,14 @@ mod tests {
         assert!(rendered_text[1].chars().count() > 400);
         assert!(read_label("read_more · part 2 of read_documents #4", &page.items, false)
             .contains("part 2 of read_documents #4"));
+    }
+
+    #[test]
+    fn a_written_plan_names_its_sections_and_nodes() {
+        let input = r#"{"version":1,"children":[{"text":"A","children":[{"text":"A1","children":[]},{"text":"A2"}]},{"text":"B","children":[]}]}"#;
+        let (label, tree) = plan_change("write_plan", input, "root. Goal\n  1. A");
+        assert_eq!(label, "wrote 2 sections, 4 nodes");
+        assert_eq!(tree, "root. Goal\n  1. A");
     }
 
     #[test]

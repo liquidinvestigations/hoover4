@@ -221,16 +221,28 @@ PAGE_FAILURES = ("COULD NOT READ:", "BLOCKED BY A BOT CHECK:", "[offset ")
 #: The cut line of a page that `read_page.render` did not return whole.
 _PAGE_CUT = re.compile(r"\[cut: this call read ([\d,]+) of the page's ([\d,]+) characters")
 
+#: The first line of a `find` result of `read_page.render`, and the line before the text of
+#: each shown match. Mirrors `browser_use_server/read_page.py::_find_block`.
+_PAGE_FIND = re.compile(
+    r"^\[find (\".*?\"): (?:(\d+) of (\d+) matches from offset (\d+) are shown"
+    r"|no match from offset (\d+))\. The page has (\d+) matches in ([\d,]+) characters")
+_FIND_MATCH = re.compile(r"^\[match at (\d+), text from (\d+) to (\d+)\]$", re.MULTILINE)
+
 
 def _page_blocks(parsed: Any) -> list[str]:
-    """The page sections of a `read_page` result, in order. A section starts with
-    `## <title>` and the page URL on its second line. A `---` line inside the text of a
+    """The page sections of a `read_page` result, in order. The result is a list of text
+    blocks (older rows), or one text with the marker block on its last line. A section
+    starts with `## <title>` and the page URL on its second line. A `---` line inside the text of a
     page does not start a section, so that text stays with its page."""
     texts = parsed if isinstance(parsed, list) else [parsed] if isinstance(parsed, str) else []
     blocks: list[str] = []
     for text in texts:
         if not isinstance(text, str) or text.startswith(BROWSER_ARTIFACT_MARKER):
             continue
+        # A result stored as one text holds the marker block on its last line.
+        head, _, last = text.rstrip().rpartition("\n")
+        if head and last.startswith(BROWSER_ARTIFACT_MARKER):
+            text = head
         for part in text.split(PAGE_SEPARATOR):
             lines = part.split("\n", 2)
             starts_page = (part.startswith("## ") and len(lines) > 1
@@ -244,7 +256,8 @@ def _page_blocks(parsed: Any) -> list[str]:
 
 def _read_page(parsed: Any, args: dict, error: str) -> list[dict]:
     """One entry for each page section. A page that gave no text is `error`. A cut page is
-    `partial` with its character span, from the `offset` argument and the cut line."""
+    `partial` with its character span, from the `offset` argument and the cut line. A
+    `find` result is `partial` with the character spans of the text that it shows."""
     urls = args.get("urls") or args.get("url") or []
     if isinstance(urls, str):
         urls = [urls]
@@ -265,6 +278,19 @@ def _read_page(parsed: Any, args: dict, error: str) -> list[dict]:
         if body.startswith(PAGE_FAILURES):
             out.append(_entry(KIND_READ, STATUS_ERROR, reference, key,
                               error=body.split("\n", 1)[0]))
+            continue
+        found = _PAGE_FIND.match(body)
+        if found:
+            # A search in the page shows the text around each match only.
+            spans = [[int(m.group(2)), int(m.group(3))] for m in _FIND_MATCH.finditer(body)]
+            try:
+                literal = json.loads(found.group(1))
+            except ValueError:
+                literal = found.group(1)
+            out.append(_entry(KIND_READ, STATUS_PARTIAL, reference, key, {
+                "find": str(literal), "spans": spans,
+                "matches": int(found.group(6)),
+                "total_chars": int(found.group(7).replace(",", ""))}))
             continue
         cut = _PAGE_CUT.search(body)
         if cut:

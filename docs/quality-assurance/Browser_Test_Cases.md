@@ -190,16 +190,34 @@ Spreadsheet grids, column filters, and the table column dialog.
 
 ## Chat
 
-The chat page, conversation history, and a missing session.
+The chat page, conversation history, a missing session, plan cards and tool cards.
+A case with a chat fixture opens a stored session.
+Run `website/tools/prepare_chat_fixtures.sh --username <name>` with the capture account name before the run.
+The fixture sessions are older than every other session, so they never become the newest conversation.
+A case that opens the newest conversation needs that conversation in the named state at capture time.
 
 | slug | what it exercises | dataset | reproduce |
 |---|---|---|---|
 | `501-ai-chat` | Exercises the ai chat case. | none named | `--names ai-chat` |
 | `502-ai-chat-history` | Exercises the ai chat history case. | none named | `--names ai-chat-history` |
 | `503-ai-chat-session-missing` | Exercises the ai chat session missing case. | none named | `--names ai-chat-session-missing` |
-| `504-ai-chat-delegation-running` | Opens the newest conversation while its sub-agents run and shows the run_subagent card with their live state. | a chat turn that delegates, running in the newest conversation of the capture identity | `--names ai-chat-delegation-running` |
-| `505-ai-chat-delegation-reports` | Opens the newest conversation after its sub-agents ended and shows the run_subagent card with their reports and the answer. | a finished delegated turn in the newest conversation of the capture identity | `--names ai-chat-delegation-reports` |
+| `504-ai-chat-delegation-running` | Opens the newest conversation while its plan executes and shows the running section runs with their live state. | an executing plan with a running section in the newest conversation of the capture identity | `--names ai-chat-delegation-running` |
+| `505-ai-chat-delegation-reports` | Opens the newest conversation after its plan ended and opens the report of the first section. | a finished plan with a section report in the newest conversation of the capture identity | `--names ai-chat-delegation-reports` |
 | `506-ai-chat-entities-card` | Opens the newest conversation and shows the list_document_entities card of a live call over a paged result. | a finished `list_document_entities` call in the newest conversation of the capture identity | `--names ai-chat-entities-card` |
+| `507-ai-chat-plan-planning` | Starts a deep-research request without internet tools and shows the plan card while the planner writes the plan. | none named. The case starts a planner run with the selected model | `--names ai-chat-plan-planning` |
+| `508-ai-chat-plan-review` | Opens the newest conversation and shows the plan card that waits for review, with approve, ask for changes and stop. | a plan that waits for review in the newest conversation of the capture identity | `--names ai-chat-plan-review` |
+| `509-ai-chat-plan-revising` | Asks for changes on the plan card of the newest conversation and shows the card while the planner revises the plan. | a plan that waits for review in the newest conversation of the capture identity | `--names ai-chat-plan-revising` |
+| `510-ai-chat-plan-executing` | Approves the current plan version of the newest conversation and shows the card while the organizer runs it, with its sections and the live sub-agent runs of the current batch. | a plan with at least one section that waits for review in the newest conversation of the capture identity | `--names ai-chat-plan-executing` |
+| `511-ai-chat-plan-completed` | Opens the newest conversation after its plan ended and shows the card with each section and the final report. | a completed plan in the newest conversation of the capture identity | `--names ai-chat-plan-completed` |
+| `512-ai-chat-plan-cancelled` | Stops the plan of the newest conversation from its card and shows the stopped card. | a plan that is not terminal in the newest conversation of the capture identity | `--names ai-chat-plan-cancelled` |
+| `513-ai-chat-plan-failed` | Opens the newest conversation, whose plan run failed, and shows the failed card with no action. | a failed plan in the newest conversation of the capture identity | `--names ai-chat-plan-failed` |
+| `514-ai-chat-plan-live-runs` | Opens the newest conversation while its plan executes and shows the plan card with the sections and the live sub-agent runs of the current batch. | an executing plan in the newest conversation of the capture identity | `--names ai-chat-plan-live-runs` |
+| `515-ai-chat-tool-cards` | Selects the named cards chat and checks search, read, citation, and document actions. | the `cards` chat fixture | `--names ai-chat-tool-cards` |
+| `516-ai-chat-read-more` | Selects the named continuation chat and checks its source and part number. | the `read_more` chat fixture | `--names ai-chat-read-more` |
+| `517-ai-chat-todo-element` | Selects the named todo chat and checks the separate card and changed item state. | the `todo` chat fixture | `--names ai-chat-todo-element` |
+| `518-ai-chat-web-search` | Selects the named web chat and checks slim form fields and the detail control. | the `web` chat fixture | `--names ai-chat-web-search` |
+| `520-ai-chat-compaction-line` | Selects the named compaction chat and opens its visible record. | the `compaction` chat fixture | `--names ai-chat-compaction-line` |
+| `521-ai-chat-question-card` | Selects the named question chat and checks an option fills the reply box. | the `question` chat fixture | `--names ai-chat-question-card` |
 
 ## Admin
 

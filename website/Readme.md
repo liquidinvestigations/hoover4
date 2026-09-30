@@ -81,7 +81,9 @@ table manifest row for a table route. Name order decides between equal datasets.
 `documents/sources` with a `query` counts the hits of every source over the whole document.
 `documents/read` reads one stored text page of each of at most 20 documents. With a
 `query` and no page, it opens the page with the most hits, as the viewer does, and lists the
-first 50 page ids with hits. Page ids can have gaps, and a page id with no stored page is `404`.
+first 50 page ids with hits. Page 0 counts as no page. With no page and no query, it opens the
+first stored page of the source, which can be above 1. Page ids can have gaps, and a positive page id
+with no stored page is `404`.
 It continues with `TextPage` positions. `documents/search_text` lists the hits of one source in
 page order, 50 a page, with `HitKey` positions, and reads only the pages that hold them. A hit
 count stops at the viewer's 1,000-page limit and then sets `partial`. `documents/sources` lists

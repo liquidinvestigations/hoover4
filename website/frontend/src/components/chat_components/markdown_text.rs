@@ -25,6 +25,9 @@ const BODY_PX: f32 = 15.0;
 /// The text of a handle that no citation of the conversation gave.
 const UNCITED_LABEL: &str = "not cited";
 
+/// The text of a handle that citations of the conversation gave to more than one document.
+const CONFLICTING_LABEL: &str = "names more than one document";
+
 #[component]
 pub fn MarkdownishText(
     text: String,
@@ -33,10 +36,17 @@ pub fn MarkdownishText(
     /// as plain text marked "not cited", because no document stands behind it.
     #[props(default)]
     cited_handles: Option<Vec<String>>,
+    /// Handles that citations of the conversation gave to more than one document. Each
+    /// renders as plain text with no link, because no one document stands behind it.
+    #[props(default)]
+    conflicting_handles: Vec<String>,
 ) -> Element {
     let blocks = match &cited_handles {
-        Some(issued) => mark_uncited_handles(parse_blocks(&text), issued),
-        None => parse_blocks(&text),
+        Some(issued) => mark_handles(parse_blocks(&text), issued, &conflicting_handles),
+        None => mark_handles(parse_blocks(&text), &[], &conflicting_handles)
+            .into_iter()
+            .map(unmark_uncited)
+            .collect(),
     };
     rsx! {
         div {
@@ -208,6 +218,16 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                             "{handle} ({UNCITED_LABEL})"
                         }
                     },
+                    Span::ConflictingHandle(handle) => rsx! {
+                        span {
+                            key: "{i}",
+                            "data-conflicting-handle": "{handle}",
+                            style: "color: #B45309;",
+                            title: "Citations of this conversation gave this handle to more \
+                                    than one document, so it links to none of them.",
+                            "{handle} ({CONFLICTING_LABEL})"
+                        }
+                    },
                     Span::Link { text, href } => rsx! {
                         a {
                             key: "{i}",
@@ -242,6 +262,9 @@ pub enum Span {
     /// A handle that no `cite_documents` result of the conversation gave. Rendered as
     /// plain text marked "not cited", with no chip.
     UncitedHandle(String),
+    /// A handle that citations of the conversation gave to more than one document, in
+    /// records from before durable handles. Rendered as plain text with no chip.
+    ConflictingHandle(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -258,31 +281,49 @@ pub enum Block {
 
 /// Turn each `Span::Handle` that is not in `issued` into a `Span::UncitedHandle`.
 pub fn mark_uncited_handles(blocks: Vec<Block>, issued: &[String]) -> Vec<Block> {
-    let mark = |spans: Vec<Span>| -> Vec<Span> {
-        spans
-            .into_iter()
-            .map(|span| match span {
+    mark_handles(blocks, issued, &[])
+}
+
+/// A block with each `Span::UncitedHandle` back as a `Span::Handle`, for a text that
+/// is rendered with no list of issued handles.
+fn unmark_uncited(block: Block) -> Block {
+    map_spans(block, &|span| match span {
+        Span::UncitedHandle(h) => Span::Handle(h),
+        other => other,
+    })
+}
+
+/// Turn each `Span::Handle` in `conflicting` into a `Span::ConflictingHandle`, and each
+/// other handle that is not in `issued` into a `Span::UncitedHandle`.
+pub fn mark_handles(blocks: Vec<Block>, issued: &[String], conflicting: &[String]) -> Vec<Block> {
+    blocks
+        .into_iter()
+        .map(|block| {
+            map_spans(block, &|span| match span {
+                Span::Handle(h) if conflicting.contains(&h) => Span::ConflictingHandle(h),
                 Span::Handle(h) if !issued.contains(&h) => Span::UncitedHandle(h),
                 other => other,
             })
-            .collect()
-    };
-    let mark_all = |lists: Vec<Vec<Span>>| -> Vec<Vec<Span>> { lists.into_iter().map(mark).collect() };
-    blocks
-        .into_iter()
-        .map(|block| match block {
-            Block::Heading { level, spans } => Block::Heading { level, spans: mark(spans) },
-            Block::Paragraph(spans) => Block::Paragraph(mark(spans)),
-            Block::Bullets(items) => Block::Bullets(mark_all(items)),
-            Block::Numbers(items) => Block::Numbers(mark_all(items)),
-            Block::Quote(spans) => Block::Quote(mark(spans)),
-            Block::Table { header, rows } => Block::Table {
-                header: mark_all(header),
-                rows: rows.into_iter().map(mark_all).collect(),
-            },
-            other => other,
         })
         .collect()
+}
+
+/// `block` with `f` applied to each of its spans.
+fn map_spans(block: Block, f: &dyn Fn(Span) -> Span) -> Block {
+    let mark = |spans: Vec<Span>| -> Vec<Span> { spans.into_iter().map(f).collect() };
+    let mark_all = |lists: Vec<Vec<Span>>| -> Vec<Vec<Span>> { lists.into_iter().map(mark).collect() };
+    match block {
+        Block::Heading { level, spans } => Block::Heading { level, spans: mark(spans) },
+        Block::Paragraph(spans) => Block::Paragraph(mark(spans)),
+        Block::Bullets(items) => Block::Bullets(mark_all(items)),
+        Block::Numbers(items) => Block::Numbers(mark_all(items)),
+        Block::Quote(spans) => Block::Quote(mark(spans)),
+        Block::Table { header, rows } => Block::Table {
+            header: mark_all(header),
+            rows: rows.into_iter().map(mark_all).collect(),
+        },
+        other => other,
+    }
 }
 
 pub fn parse_blocks(text: &str) -> Vec<Block> {

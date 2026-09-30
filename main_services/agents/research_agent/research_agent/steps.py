@@ -22,10 +22,12 @@ which the worker does not retry. When the provider refuses a request as too larg
 any output, the step reads the model's window again, compacts once more, and sends the new
 request only when it differs. `model_turn` carries the size in its usage as `request_size`,
 the model that answered as `model`, and in `citation_tool` whether the call bound
-`cite_documents`, which the worker's citation check reads.
+`cite_documents`, which the worker's citation check reads. The model is bound with each
+tool's schema as `tool_args.model_schema` shows it, and `model_turn` carries each call with
+its arguments normalized (`classify_calls`).
 
-`/tool_call` runs one call and returns its result as JSON. It refuses an unavailable name
-and arguments that do not match the tool's schema. The length of the
+`/tool_call` runs one call and returns its result as JSON. It refuses an unavailable name,
+damaged arguments, and arguments that do not match the tool's schema. The length of the
 conversation never refuses a call. A failed result that shows a known stumble ends with a
 sentence that names the skill of the fix (`stumbles.py`).
 """
@@ -36,24 +38,26 @@ import asyncio
 import json
 import logging
 import os
+import re
 from typing import Any, AsyncIterator, Dict, FrozenSet, List, Literal, Optional, Sequence, Tuple
 
 import httpx
 import openai
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolMessage
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel, Field, model_validator
 
 from research_agent import compaction, llm_events, request_size, skill_store, stumbles
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.execution import (
     ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
-    batch_budget, split_resources, validation_error,
+    batch_budget, is_browser_tool, split_resources, validation_error,
 )
 from research_agent.run_messages import (
     RunMessage, ToolCallRecord, apply_compactions, close_unanswered, to_langchain,
 )
 from research_agent import thinking
-from research_agent.tool_args import decode_string_arguments, rename_aliases, repair_arguments
+from research_agent.tool_args import model_schema, normalize_arguments
 from research_agent.tool_catalogue import SEARCH_TOOL, tool_schema
 
 log = logging.getLogger(__name__)
@@ -64,12 +68,20 @@ KEEPALIVE_SECONDS = 30.0
 #: An SSE comment: a line that starts with ":", which a reader of `data: ` frames skips.
 KEEPALIVE_LINE = ": keepalive\n\n"
 
-#: The browser tools that change the page. A second attempt could repeat the action, so
-#: the worker gives these calls one attempt only.
-BROWSER_ACTIONS = frozenset({
-    "browser_navigate", "browser_click", "browser_type", "browser_select_option",
-    "browser_press_key",
+#: The browser tools that only read the page or wait. Every other browser tool can change
+#: the page, and a second attempt could repeat its action, so the worker gives it one
+#: attempt only (`retries`). The browser server can list more `browser_` tools than its six
+#: default ones (`BROWSER_EXPOSED_TOOLS`). A tool that is not named here gets one attempt.
+BROWSER_READS = frozenset({
+    "read_page", "browser_snapshot", "browser_take_screenshot", "browser_wait_for",
+    "browser_console_messages", "browser_network_requests",
 })
+
+
+def retries(name: str) -> bool:
+    """Whether the worker may run a failed call again: every call except a browser tool
+    that can change the page."""
+    return not is_browser_tool(name) or name in BROWSER_READS
 
 
 def llm_streaming_enabled() -> bool:
@@ -132,6 +144,12 @@ class CallEntry(BaseModel):
     kind: Literal["parallel", "ordered"]
     page_share: Optional[int] = None
     retry: bool = True
+    #: The changes that `tool_args.normalize_arguments` made to the model's arguments. `args`
+    #: holds the arguments after them.
+    argument_repairs: List[str] = Field(default_factory=list)
+    #: Why the model client could not read the arguments of the call, which it lists as an
+    #: invalid call. `args` is then empty, and `/tool_call` refuses the call.
+    argument_error: str = ""
 
 
 # ------------------------------------------------------------------------ model step
@@ -154,6 +172,53 @@ def call_ids(calls: Sequence[Dict[str, Any]], step_no: int, earlier_ids: set) ->
     return out
 
 
+#: The name that a call with unreadable arguments and no readable name is stored under.
+UNNAMED_CALL = "unnamed_call"
+#: The most characters of an unreadable argument text that a stored call keeps.
+UNREADABLE_CHARS = 600
+
+
+def unreadable_call(call: Dict[str, Any]) -> Dict[str, Any]:
+    """A call whose arguments the model client could not read as JSON, as a call of the
+    reply with no arguments and its `argument_error`. The tool call parser of the model
+    server can stream an argument text that is not JSON. The call is kept, so the model
+    reads why it did not run, and the reply does not count as a reply with no call."""
+    text = str(call.get("args") or "")
+    if len(text) > UNREADABLE_CHARS:
+        text = text[:UNREADABLE_CHARS] + "..."
+    error = str(call.get("error") or "the text is not JSON")
+    return {"id": call.get("id"), "name": call.get("name") or UNNAMED_CALL, "args": {},
+            "argument_error": f"{error}. The model server sent: {text}"}
+
+
+#: Tokens of the served model's call syntax. A reply text that holds one is a call that the
+#: model server did not parse, whether the model or the parser failed.
+CALL_SYNTAX_TOKENS = ('<|"|>', "<|tool_call>")
+_CALL_NAME = re.compile(r"call:([A-Za-z_][A-Za-z0-9_]*)\{")
+
+
+def leaked_call(text: str) -> Optional[Dict[str, Any]]:
+    """The call that a reply with no parsed call writes as text, as one unreadable call, or
+    `None` for a text with no call syntax. The name comes from `call:NAME{` when the text
+    has it. No argument is rebuilt, so `/tool_call` refuses the call and quotes the text."""
+    if not any(token in text for token in CALL_SYNTAX_TOKENS):
+        return None
+    name = _CALL_NAME.search(text)
+    return unreadable_call({
+        "id": None, "name": name.group(1) if name else UNNAMED_CALL, "args": text,
+        "error": "the model server returned this call as text and did not parse it",
+    })
+
+
+def shown_tool(tool: Any) -> Dict[str, Any]:
+    """The OpenAI tool definition that the model is bound with: the tool's name and
+    description, and its schema as `tool_args.model_schema` shows it."""
+    shown = convert_to_openai_tool(tool)
+    function = shown.get("function") or {}
+    function["parameters"] = model_schema(tool_schema(tool) or function.get("parameters") or {})
+    return shown
+
+
 def classify_calls(
     snapshot: Any,
     callable_names: Sequence[str],
@@ -162,17 +227,30 @@ def classify_calls(
     thread: Sequence[RunMessage],
 ) -> List[CallEntry]:
     """Classify the calls of one reply, give each its id and its page share. The shares
-    depend on the calls of the reply only (`execution.batch_budget`)."""
+    depend on the calls of the reply only (`execution.batch_budget`).
+
+    The arguments of a call to a tool of the run are normalized first
+    (`tool_args.normalize_arguments`), so the stored call, the worker's readers of it, such
+    as the question of `ask_user`, and `/tool_call` all see the same values. Damaged
+    arguments stay as the model sent them, and `/tool_call` refuses them.
+    """
     earlier_ids = {c.id for m in thread if m.role == "ai" for c in m.tool_calls}
     ids = call_ids(calls, step_no, earlier_ids)
+    tools = getattr(snapshot, "tools_by_name", None) or {}
     entries: List[CallEntry] = []
     for call, call_id in zip(calls, ids):
         name = call.get("name") or ""
         args = call.get("args") or {}
+        argument_error = str(call.get("argument_error") or "")
+        repairs: List[str] = []
+        if name in tools and not argument_error:
+            normalized = normalize_arguments(args, tool_schema(tools[name]))
+            if not normalized.problem:
+                args, repairs = normalized.args, normalized.repairs
         entries.append(CallEntry(
             id=call_id, name=name, args=args,
             kind="ordered" if name in ORDERED_TOOLS else "parallel",
-            retry=name not in BROWSER_ACTIONS,
+            retry=retries(name), argument_repairs=repairs, argument_error=argument_error,
         ))
     if entries:
         budget = batch_budget([e.name for e in entries])
@@ -368,7 +446,8 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     names = snapshot.callable_names()
     system_text = context.system_text_for(names)
     bound_tools = snapshot.tools_for()
-    schemas_json = json.dumps([tool_schema(t) for t in bound_tools], default=str)
+    shown_tools = [shown_tool(t) for t in bound_tools]
+    schemas_json = json.dumps([t["function"]["parameters"] for t in shown_tools], default=str)
 
     # What the compaction returns goes to the model only. The stored thread keeps every
     # tool result in full, and the `compaction` row of the reply records what was replaced.
@@ -381,7 +460,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
         disable_streaming=not llm_streaming_enabled(),
         extra_body=thinking_body(request),
     )
-    llm = llm.bind_tools(bound_tools)
+    llm = llm.bind_tools(shown_tools)
     config = _callbacks_config(agent, request)
 
     # A provider refusal of the size gives one more preparation, with the refreshed window
@@ -449,7 +528,13 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     calls = [
         {"id": c.get("id"), "name": c.get("name"), "args": c.get("args")}
         for c in (getattr(message, "tool_calls", None) or [])
-    ]
+    ] + [unreadable_call(c) for c in (getattr(message, "invalid_tool_calls", None) or [])]
+    if not calls:
+        # A reply whose text is call syntax is not an answer. The model reads why the
+        # call did not run and writes it again.
+        leaked = leaked_call(_text(message.content))
+        if leaked is not None:
+            calls = [leaked]
     entries = await asyncio.to_thread(
         classify_calls, snapshot, names, calls, request.step_no, thread
     )
@@ -593,6 +678,14 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     name = request.call.name
     allowed = snapshot.callable_names()
 
+    if request.call.argument_error:
+        return _tool_response(request, _error(
+            "invalid_arguments",
+            "The call was not run, because the arguments could not be read as JSON: "
+            f"{request.call.argument_error} Send the call again, with each argument as plain "
+            "JSON.", tool=name,
+        ), "error", "invalid_arguments")
+
     if name not in allowed:
         return _tool_response(request, _error(
             "tool_unavailable", f"No tool of this run is named {name!r}. "
@@ -601,12 +694,16 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
 
     tool = snapshot.tools_by_name[name]
     schema = tool_schema(tool)
-    repaired, repairs = repair_arguments(dict(request.call.args))
-    repaired, renames = rename_aliases(repaired, schema)
-    repairs += renames
+    normalized = normalize_arguments(dict(request.call.args or {}), schema)
+    repairs = normalized.repairs
+    if normalized.problem:
+        log.info("tool %s: damaged arguments: %s", name, normalized.problem)
+        return _tool_response(
+            request, _error("invalid_arguments", normalized.problem, tool=name), "error",
+            "invalid_arguments")
     if repairs:
         log.info("tool %s: %d argument repairs: %s", name, len(repairs), "; ".join(repairs))
-    args = decode_string_arguments(repaired, schema)
+    args = normalized.args
     problem = validation_error(args, schema)
     if problem:
         return _tool_response(
@@ -643,7 +740,9 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     )
 
 
-#: The measure key that lists the argument repairs of a call (`tool_args.repair_arguments`).
+#: The measure key that lists the argument changes that `/tool_call` made
+#: (`tool_args.normalize_arguments`). A call that `/model_step` normalized holds its changes
+#: in its stored call entry (`CallEntry.argument_repairs`), and `/tool_call` finds none.
 ARGUMENT_REPAIRS_KEY = "argument_repairs"
 
 
@@ -656,10 +755,11 @@ def _with_repairs(measure: Optional[Dict[str, Any]], repairs: List[str]) -> Opti
 
 
 __all__ = [
-    "BROWSER_ACTIONS", "CallEntry", "KEEPALIVE_LINE", "KEEPALIVE_SECONDS", "ModelStepRequest",
+    "BROWSER_READS", "CallEntry", "KEEPALIVE_LINE", "KEEPALIVE_SECONDS", "ModelStepRequest",
     "StepRun", "ToolCallRequest",
     "build_model_input", "call_ids", "classify_calls", "compaction_frame",
     "compaction_record", "model_input_rows",
-    "classify_error", "llm_streaming_enabled", "run_model_step", "run_tool_call",
+    "classify_error", "llm_streaming_enabled", "retries", "run_model_step", "run_tool_call",
+    "shown_tool", "unreadable_call",
     "stream_frames", "thinking_body",
 ]

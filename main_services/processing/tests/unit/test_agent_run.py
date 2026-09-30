@@ -231,6 +231,7 @@ def test_a_successful_question_writes_the_turn_answer(monkeypatch, store, kind, 
     store["row"] = _row(next_seq=6, kind=kind)
     store["messages"].extend([
         agent_runs.RunMessageRow(idx=1, role="ai", content="", run_id=RUN_ID,
+                                 usage_json=json.dumps({"model": "asking-model"}),
                                  tool_calls_json=json.dumps([_entry("ask-1", "ask_user",
                                                                        {"question": question})])),
         agent_runs.RunMessageRow(idx=2, role="tool", content=json.dumps({"asked": True}),
@@ -244,7 +245,7 @@ def test_a_successful_question_writes_the_turn_answer(monkeypatch, store, kind, 
                                                               session_id="s", call=call))
     assert result == 7
     assert store["chat"][-1] == {"seq": 6, "role": "assistant", "content": question,
-                                  "plan_reference_json": reference}
+                                  "plan_reference_json": reference, "model": "asking-model"}
     assert store["run"][-1] == {"result": question, "next_seq": 7}
 
 
@@ -720,6 +721,24 @@ def test_two_parallel_calls_keep_their_own_arguments_results_and_indexes(store, 
     store["messages"] = [m for m in store["messages"] if m.role != "tool"]
     _tool(calls[0])
     assert bodies[2]["idempotency_key"] == bodies[1]["idempotency_key"]
+
+
+def test_a_call_with_unreadable_arguments_sends_its_argument_error(store, monkeypatch):
+    """The agent service stores a call whose arguments the model client could not read
+    with empty arguments and `argument_error`. The worker sends the error with the call."""
+    entry = _entry("a", "cite_documents", {})
+    entry["argument_error"] = "the text is not JSON. The model server sent: {\"citations\""
+    calls = _with_calls(store, [entry, _entry("b", "search_collections", {"query": "b"})])
+    bodies = []
+
+    def post(url, body, read_seconds):
+        bodies.append(body)
+        return {"content": "{}", "status": "ok"}
+    monkeypatch.setattr(steps, "_post_json", post)
+    _tool(calls[0])
+    _tool(calls[1])
+    assert bodies[0]["call"]["argument_error"] == entry["argument_error"]
+    assert bodies[1]["call"]["argument_error"] is None
 
 
 def test_an_answered_call_runs_nothing(store, monkeypatch):

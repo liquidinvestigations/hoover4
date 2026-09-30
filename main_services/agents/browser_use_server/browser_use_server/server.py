@@ -67,6 +67,25 @@ USER_HEADER = "x-hoover4-user"
 #: so two runs of one chat never share a browser. The chat session stays the key for a
 #: caller that sends no run id.
 RUN_HEADER = "x-hoover4-agent-run"
+#: Header carrying the byte share of one call's result. The research agent sends it
+#: (`X-Hoover4-Page-Share`). `read_page` fits its whole result inside it.
+PAGE_SHARE_HEADER = "x-hoover4-page-share"
+
+
+#: Bytes kept free beside the marker block for the separator that a client puts between
+#: two content blocks when it joins them.
+MARKER_SLACK = 16
+
+
+def page_share() -> int:
+    """The byte ceiling of this call's result: the page share header, else
+    `read_page.DEFAULT_PAGE_BYTES`."""
+    raw = _header(PAGE_SHARE_HEADER)
+    try:
+        share = int(raw)
+    except ValueError:
+        return read_page.DEFAULT_PAGE_BYTES
+    return share if share > 0 else read_page.DEFAULT_PAGE_BYTES
 
 
 def browser_key() -> str:
@@ -358,13 +377,18 @@ def _attach_artifact(
     return _append_marker(result, [entry], failed=failed)
 
 
+def _marker_text(entries: list[dict], failed: bool = False) -> str:
+    """The text marker block of a result: `ARTIFACT_MARKER` and its JSON payload."""
+    payload: dict[str, Any] = {"artifacts": entries}
+    if failed:
+        payload["failed"] = True
+    return f"{ARTIFACT_MARKER} {json.dumps(payload)}"
+
+
 def _append_marker(
     result: ToolResult, entries: list[dict], failed: bool = False
 ) -> ToolResult:
     """Put `entries` in both places a consumer might look, text marker last."""
-    payload: dict[str, Any] = {"artifacts": entries}
-    if failed:
-        payload["failed"] = True
 
     # 1. The structured key, for any client that preserves structured content (the host's
     #    .mcp.json entries do). It keeps the bare-array shape: a client reading the
@@ -388,9 +412,7 @@ def _append_marker(
     # 2. The text marker, for the transcript path, and it must be the FINAL block, since
     #    that position is what the card authenticates it by. See ARTIFACT_MARKER.
     content = list(result.content or [])
-    content.append(
-        TextContent(type="text", text=f"{ARTIFACT_MARKER} {json.dumps(payload)}")
-    )
+    content.append(TextContent(type="text", text=_marker_text(entries, failed)))
 
     return ToolResult(content=content, structured_content=structured)
 
@@ -482,6 +504,7 @@ class ReadPageTool(Tool):
             log.error("could not start a browser for chat %r: %s", session_id, exc)
             return _refusal(f"no browser could be started: {exc}")
 
+        ceiling = page_share()
         async with chat.lock:
             if chat.client is None or not chat_browser.sidecar_alive(chat):
                 await chat_browser.restart_sidecar(chat)
@@ -490,7 +513,10 @@ class ReadPageTool(Tool):
                 arguments.get("urls"),
                 str(arguments.get("goal") or ""),
                 username,
-                int(arguments.get("offset") or 0),
+                max(0, int(arguments.get("offset") or 0)),
+                find=str(arguments.get("find") or ""),
+                version=str(arguments.get("version") or "").strip(),
+                ceiling=ceiling,
             )
             await chat_browser.enforce_tab_cap(chat, router_mod.MAX_TABS_PER_CHAT)
 
@@ -509,6 +535,9 @@ class ReadPageTool(Tool):
             ok=not failed, detail=detail,
             session_id=chat.session_id,
         )
+        # The model reads the page text and the marker block, so both fit the share.
+        marker = _marker_text(outcome.artifacts, failed)
+        read_page.fit(outcome, ceiling, reserved=len(marker.encode("utf-8")) + MARKER_SLACK)
         result = ToolResult(
             content=[TextContent(type="text", text=read_page.render(outcome))],
             structured_content=None,
@@ -537,6 +566,21 @@ READ_PAGE_SCHEMA = {
             "default": 0,
             "description": "Character position in one page's extracted text. Use the cut line's offset to read the next part.",
         },
+        "find": {
+            "type": "string",
+            "description": (
+                "Literal text to find in the page's extracted text, in any case, from offset "
+                "on. The result gives each match with the text around it and its character "
+                "offset, in place of the page text."
+            ),
+        },
+        "version": {
+            "type": "string",
+            "description": (
+                "The version that a cut line or a find result gives. With it, the call reads "
+                "the same kept text and does not load the page again."
+            ),
+        },
     },
     "required": ["urls"],
 }
@@ -553,7 +597,10 @@ READ_PAGE_DESCRIPTION = (
     "waits for it to clear. If it does not clear, the page is reported as BLOCKED BY A BOT "
     "CHECK, and its text is not the page. Do not use that text as a source. Try the "
     "archived copy with web_search and sources [\"wayback\"], or another page. "
-    "A cut result gives the next character offset. Pass one URL with that offset to read its next part."
+    "A cut result gives the next character offset and the text's version. Pass one URL with "
+    "that offset and version to read its next part. To find entries in a long page, pass "
+    "`find` with a literal text: the result gives each match with its offset, and a next "
+    "offset when more matches remain."
 )
 
 

@@ -8,6 +8,7 @@ These tools prepare fixtures, drive browser workflows, and write verification ev
 | `capture_credentials.py` | reads `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD` from the process environment, and writes the image inventory default |
 | `capture_credentials.sh` | sourced by the capture wrappers after the login file path is set |
 | `chat_observer.py` | drives a chat conversation to completion and writes its screenshots, DOM snapshots and history checks; imports its browser helpers from `capture_screenshots.py` rather than copying them |
+| `prepare_chat_fixtures.py` | writes the stored chat sessions that the chat screenshot cases open by name; `prepare_chat_fixtures.sh` runs it in the worker container |
 | `count_whoami.py` | how many identity requests one navigation costs |
 | `check_session_gate.py` | which of the session gate's three states a page settled in |
 | `console_whitelist.txt` | console messages the screenshot run treats as expected |
@@ -125,6 +126,28 @@ Each procedure writes its expected result, input steps, observations, request co
 An assertion failure retains earlier evidence and does not prevent the later procedures from running.
 The combined `manual-qa-results.json` reports each baseline and variation at each resolution.
 An absent or unfinished procedure cannot pass.
+
+The chat observer follows one turn: the turn that the first user message after the submission started.
+The turn ends when the transcript's `data-chat-turn` state is `idle` or `interrupted`.
+A turn that waits for a model or tool slot is still running, so a silent queue does not end the observation.
+An ended turn with no answer text gets 15 s for a late answer row before the observer records an empty answer.
+The observer submits a prompt or follow-up once and never submits it again.
+A page script or capture of the turn that takes more than 60 s ends the observation with an unknown outcome.
+The completion captures, the document preview and the history check have limits of 120 s, 60 s and 180 s.
+Run the observer tests in the browser container.
+
+```sh
+docker exec hoover4-mcp-browser mkdir -p /tmp/capture-tests
+docker cp website/tools/. hoover4-mcp-browser:/tmp/capture-tests/
+docker exec -w /tmp/capture-tests hoover4-mcp-browser python3 -m unittest test_chat_observer -v
+```
+
+The chat screenshot cases with a chat fixture open stored sessions.
+Run `website/tools/prepare_chat_fixtures.sh --username <name>` with the capture account name before a capture.
+It writes `website/test_reports/chat_fixtures.json`, and `take-screenshots.sh` reads that file when `HOOVER4_SCREENSHOT_CHAT_FIXTURES` is not set.
+A second run writes the same sessions again.
+The sessions are older than every other session, so the cases that open the newest conversation do not open them.
+The rows name the document `/sample (1).doc` of the `testdata` collection.
 
 The chat observer compares persisted assistant text across reload and navigation.
 Use `website/observe-chat.sh --history-only /ai_chat/c/SESSION/9g==/9g==` to verify an existing conversation without submitting a prompt.

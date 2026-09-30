@@ -153,6 +153,14 @@ pub enum SectionReport {
     Missing,
 }
 
+/// The report of one section of a plan run, keyed by the section's node id, as the plan
+/// card reads it (`chat_plan_section_reports`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SectionReportView {
+    pub node_id: String,
+    pub report: SectionReport,
+}
+
 /// The report of a section from the body of its `report_data` document and of its
 /// `report` document. The typed document wins when it parses.
 pub fn parse_section_report(report_data: Option<&str>, report_text: Option<&str>) -> SectionReport {

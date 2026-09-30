@@ -105,27 +105,165 @@ class TestRender:
         assert "[cut: this call read 1 of the page's 100 characters. Call read_page with offset 1 for the next part]" in out
 
 
+def _loader(monkeypatch, texts):
+    """Replace the navigation with a loader of `texts`, keyed by URL. Returns the list of
+    the URLs it loaded."""
+    calls = []
+
+    async def load(_chat, url, _goal, _limit, _username):
+        calls.append(url)
+        return PageRead(url=url, title="T", final_url=url, full_text=texts[url])
+
+    monkeypatch.setattr(read_page, "_read_one", load)
+    return calls
+
+
+def _read(chat, urls, ceiling, **kwargs):
+    result = asyncio.run(read_page.read(chat, urls, "", "user", ceiling=ceiling, **kwargs))
+    read_page.fit(result, ceiling)
+    return result
+
+
 def test_read_page_offsets_and_cached_text(monkeypatch):
     url = "https://a.example"
     chat = SimpleNamespace(page_reads={})
-    calls = []
-
-    async def load(_chat, _url, _goal, _limit, _username):
-        calls.append(_url)
-        return PageRead(url=_url, title="A", full_text="a" * 30_000 + "b" * 10_000)
-
-    monkeypatch.setattr(read_page, "_read_one", load)
-    first = asyncio.run(read_page.read(chat, [url], "", "user"))
-    assert len(first.pages[0].text) == 30_000
-    assert "offset 30000" in read_page.render(first)
-    middle = asyncio.run(read_page.read(chat, [url], "", "user", offset=30_000))
+    calls = _loader(monkeypatch, {url: "a" * 30_000 + "b" * 10_000})
+    first = _read(chat, [url], 24_000)
+    text = first.pages[0].text
+    assert 20_000 < len(text) < 24_000 and set(text) == {"a"}
+    version = first.pages[0].version
+    assert version == read_page.text_version("a" * 30_000 + "b" * 10_000)
+    rendered = read_page.render(first)
+    assert (f"Call read_page with offset {len(text)} for the next part, with version "
+            f"{version}]") in rendered
+    middle = _read(chat, [url], 24_000, offset=30_000, version=version)
     assert middle.pages[0].text == "b" * 10_000
     assert not middle.pages[0].truncated
-    beyond = asyncio.run(read_page.read(chat, [url], "", "user", offset=50_000))
+    beyond = _read(chat, [url], 24_000, offset=50_000)
     assert beyond.pages[0].text == ""
     assert beyond.pages[0].full_chars == 40_000
     assert "offset 50000 is at or past the page's 40,000 characters" in read_page.render(beyond)
     assert calls == [url]
+
+
+def _people(count):
+    """A large structured file: one JSON entry for each person, with multibyte names."""
+    rows = []
+    for i in range(count):
+        name = f"Zoë Łukasz 名前 {i}"
+        role = "Staff Engineer" if i % 97 == 0 else "Developer"
+        rows.append(json.dumps({"id": i, "name": name, "role": role, "bio": "é" * 40},
+                               ensure_ascii=False))
+    return "[\n" + ",\n".join(rows) + "\n]"
+
+
+def test_find_gives_exact_offsets_and_continues_on_the_same_text(monkeypatch):
+    url = "https://gitlab.example/people.json"
+    text = _people(3000)
+    chat = SimpleNamespace(page_reads={})
+    calls = _loader(monkeypatch, {url: text})
+    expected = [i for i in range(len(text)) if text[i:i + 14].lower() == "staff engineer"]
+    assert len(expected) == 31
+
+    seen, offset, version, rounds = [], 0, "", 0
+    while True:
+        result = _read(chat, [url], 4_000, find="STAFF engineer", offset=offset,
+                       version=version)
+        page = result.pages[0]
+        rendered = read_page.render(result)
+        assert len(rendered.encode("utf-8")) <= 4_000
+        assert page.total_matches == 31
+        for match_start, start, end in page.matches:
+            assert text[match_start:match_start + 14] == "Staff Engineer"
+            assert f"[match at {match_start}, text from {start} to {end}]\n{text[start:end]}" in rendered
+        seen += [m for m in expected if any(s <= m and m + 14 <= e for _, s, e in page.matches)]
+        rounds += 1
+        if page.next_offset is None:
+            break
+        assert (f"Call read_page with this URL, find, offset {page.next_offset} and version "
+                f"{page.version} for the next matches]") in rendered
+        offset, version = page.next_offset, page.version
+    assert seen == expected and rounds > 1
+    assert calls == [url]
+
+
+def test_find_with_no_match_says_so_with_the_count_and_the_version(monkeypatch):
+    url = "https://a.example"
+    chat = SimpleNamespace(page_reads={})
+    _loader(monkeypatch, {url: "alpha beta alpha"})
+    result = _read(chat, [url], 2_000, find="alpha", offset=5)
+    assert result.pages[0].shown_matches == 1
+    result = _read(chat, [url], 2_000, find="gamma")
+    rendered = read_page.render(result)
+    version = read_page.text_version("alpha beta alpha")
+    assert ('[find "gamma": no match from offset 0. The page has 0 matches in 16 characters. '
+            f"Version {version}.]") in rendered
+
+
+def test_a_match_that_does_not_fit_is_not_cut_and_starts_the_next_call(monkeypatch):
+    url = "https://a.example"
+    word = "needle" * 120
+    chat = SimpleNamespace(page_reads={})
+    _loader(monkeypatch, {url: "x" * 500 + word + "y" * 500})
+    result = _read(chat, [url], 600, find=word)
+    page = result.pages[0]
+    assert page.matches == [] and page.next_offset == 500
+    assert word not in read_page.render(result)
+
+
+def test_a_changed_or_expired_text_is_reported_and_not_loaded_again(monkeypatch):
+    url = "https://a.example"
+    chat = SimpleNamespace(page_reads={})
+    calls = _loader(monkeypatch, {url: "old text " * 3000})
+    first = _read(chat, [url], 2_000)
+    old_version = first.pages[0].version
+    # The kept text expires.
+    chat.page_reads.clear()
+    expired = _read(chat, [url], 2_000, offset=1_500, version=old_version)
+    assert expired.pages[0].error.startswith(f"the text of version {old_version} is no longer kept")
+    assert "COULD NOT READ" in read_page.render(expired)
+    assert calls == [url]
+    # A new read keeps a changed text, and the old version no longer matches it.
+    _loader(monkeypatch, {url: "new text " * 3000})
+    fresh = _read(chat, [url], 2_000)
+    new_version = fresh.pages[0].version
+    assert new_version != old_version
+    changed = _read(chat, [url], 2_000, offset=1_500, version=old_version)
+    assert changed.pages[0].error.startswith(
+        f"the page changed: the kept text is version {new_version}, not version {old_version}")
+
+
+def test_a_text_that_is_not_kept_has_no_version_to_continue_with(monkeypatch):
+    """A text above READ_PAGE_PDF_MAX_BYTES is not kept. Its cut line and its find result
+    name no version, so a continuation reads the page again and reports no expiry."""
+    url = "https://a.example"
+    chat = SimpleNamespace(page_reads={})
+    _loader(monkeypatch, {url: "word " * 6000})
+    monkeypatch.setattr(read_page, "PDF_MAX_BYTES", 1_000)
+    first = _read(chat, [url], 2_000)
+    assert first.pages[0].version == "" and chat.page_reads == {}
+    rendered = read_page.render(first)
+    assert "for the next part]" in rendered and "version" not in rendered
+    found = _read(chat, [url], 2_000, find="word")
+    rendered = read_page.render(found)
+    assert "Version" not in rendered and "version" not in rendered
+    assert "Call read_page with this URL, find and offset" in rendered
+
+
+def test_the_whole_result_fits_its_byte_ceiling_with_multibyte_text(monkeypatch):
+    urls = [f"https://{i}.example" for i in range(3)]
+    texts = {u: ("名前é " * 20_000) for u in urls}
+    chat = SimpleNamespace(page_reads={})
+    _loader(monkeypatch, texts)
+    for ceiling in (1_500, 5_000, 24_000):
+        result = _read(chat, urls, ceiling)
+        rendered = read_page.render(result)
+        assert len(rendered.encode("utf-8")) <= ceiling, ceiling
+        for page in result.pages:
+            assert page.text == texts[page.url][:len(page.text)]
+            assert page.truncated
+        result = _read(chat, urls, ceiling, find="名前é")
+        assert len(read_page.render(result).encode("utf-8")) <= ceiling, ceiling
 
 
 class TestDecode:
@@ -156,6 +294,13 @@ def test_the_rendered_page_shape_matches_the_worker_parser():
     assert first.split("\n")[1] == "https://example.org/a"
     assert "[cut: this call read 10 of the page's 50 characters." in first
     assert second.endswith("\n\nCOULD NOT READ: timeout")
+    found = PageRead(url="https://example.org/p", full_text="abc Staff Engineer def",
+                     find="Staff Engineer", version="0123456789abcdef", full_chars=22)
+    read_page._fill_find(found, 1000)
+    body = read_page.render(ReadResult(pages=[found])).split("\n", 2)[2].strip()
+    assert body.startswith('[find "Staff Engineer": 1 of 1 matches from offset 0 are shown. '
+                           "The page has 1 matches in 22 characters. Version 0123456789abcdef.]")
+    assert "\n\n[match at 4, text from 0 to 22]\nabc Staff Engineer def" in body
     assert read_page.BOT_CHECK_LABEL == "BLOCKED BY A BOT CHECK"
     from browser_use_server.server import ARTIFACT_MARKER
 

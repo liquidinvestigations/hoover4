@@ -5,7 +5,7 @@
 #
 # Usage: ./observe-chat.sh [--target URL] [--out DIR]
 #                           [--login-env FILE] [--resolutions LIST] [--prompts LIST]
-#                           [--conversations N] [--no-followup]
+#                           [--conversations N] [--no-followup] [--continue PATH]
 # Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
 # Credential values are not accepted as wrapper arguments and are not placed in
 # Docker or Python argument lists.
@@ -13,7 +13,9 @@
 # --prompts takes a comma-separated list of prompt names from chat_observer.py's PROMPTS,
 #   or 'all'. Defaults to 'collection-exploration'. --conversations caps how many of the
 #   selected prompts run concurrently (0, the default, runs every selected prompt).
-#   --no-followup skips the second-turn check on the collection-exploration conversation.
+#   --no-followup skips the second turn of a prompt that has one in FOLLOW_UPS.
+# --continue /ai_chat/c/ID/9g==/9g== sends the one selected prompt once as the next turn of
+#   that saved conversation and observes that turn.
 #
 # Output: <out>/run-<UTC-timestamp>-<pid>/chat/<prompt-name>/ (default:
 #   website/test_reports/chat_observer/, gitignored). Never deleted by this script; each
@@ -66,6 +68,7 @@ PROMPTS_ARG=""
 CONVERSATIONS_ARG=""
 NO_FOLLOWUP_ARG=""
 HISTORY_ONLY_ARG=""
+CONTINUE_ARG=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -80,6 +83,7 @@ while [ $# -gt 0 ]; do
         --conversations) CONVERSATIONS_ARG="${2:?--conversations needs a value}"; shift 2 ;;
         --no-followup) NO_FOLLOWUP_ARG="1"; shift 1 ;;
         --history-only) HISTORY_ONLY_ARG="${2:?--history-only needs a value}"; shift 2 ;;
+        --continue) CONTINUE_ARG="${2:?--continue needs a value}"; shift 2 ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
@@ -224,6 +228,7 @@ CHAT_ARGS=(
 [ -n "$CONVERSATIONS_ARG" ] && CHAT_ARGS+=(--conversations "$CONVERSATIONS_ARG")
 [ -n "$NO_FOLLOWUP_ARG" ] && CHAT_ARGS+=(--no-followup)
 [ -n "$HISTORY_ONLY_ARG" ] && CHAT_ARGS+=(--history-only "$HISTORY_ONLY_ARG")
+[ -n "$CONTINUE_ARG" ] && CHAT_ARGS+=(--continue "$CONTINUE_ARG")
 # Names only: docker reads values from this process environment.
 CHAT_ENV=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
 [ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && CHAT_ENV+=(-e HOOVER4_CAPTURE_REVISION)

@@ -19,10 +19,11 @@ list, and a long tool list costs accuracy: a seven-tool adaptive shortlist score
 a fixed fifty and beats a fixed five by six points. Thirty from one server is the opposite
 of adaptive.
 
-### `read_page(urls=[…], goal=…, offset=0)`
+### `read_page(urls=[…], goal=…, offset=0, find=…, version=…)`
 
 The tool reads up to six URLs in one call. It extracts text, stores a capture, and returns each page.
-For a cut page, pass its URL and the stated offset to read the next part.
+For a cut page, pass its URL, the stated offset and the stated version to read the next part.
+To find entries in a long page, pass `find` with a literal text.
 
 ```json
 {"urls": ["https://en.wikipedia.org/wiki/Enron_scandal",
@@ -39,7 +40,7 @@ https://en.wikipedia.org/wiki/Enron_scandal
 
 The Enron scandal was an accounting scandal … Arthur Andersen …
 
-[cut: this call read 30,000 of the page's 40,000 characters. Call read_page with offset 30000 for the next part]
+[cut: this call read 21,300 of the page's 40,000 characters. Call read_page with offset 21300 for the next part, with version 3f2a9c0d1e4b5a67]
 
 ---
 
@@ -49,11 +50,35 @@ NOTE: 1 repeated URL ("https://example.com") was run once. Send each distinct UR
 Read these behaviours before you change it:
 
 * **`goal` records the purpose of the read** on a new capture. It does not change the text order.
-  A cut page gives the length of the extracted text and the next character offset.
+  A cut page gives the length of the extracted text, the next character offset and the
+  version of the text.
   The browser keeps text under the chat for 30 minutes when its UTF-8 size is at most
   `READ_PAGE_PDF_MAX_BYTES`. A cache miss or a larger page loads the URL again.
-* **The budget is shared and divided**, not per page: `READ_PAGE_TOTAL_CHARS` over the
-  number of URLs, never below a floor. Under the floor the surplus URLs are dropped *and
+* **The version names one kept text.** It is the first 16 hex characters of the SHA-256 of
+  the text. A text that is not kept has no version, and its cut line and `find` result name
+  none. A call with `version` reads the kept text of that version and navigates nowhere.
+  When the text has expired, or a new read kept another version, the page reports
+  `COULD NOT READ` with the reason, and the next part starts again from offset 0.
+* **`find` searches the kept text** of each page, or the text of a new read, for a literal
+  text in any case, from `offset` on. The result gives the match count, each shown match
+  whole with up to 200 characters around it and its absolute offset, and, when more matches
+  remain, the offset and the version of the next call:
+
+  ```
+  [find "Staff Engineer": 12 of 31 matches from offset 0 are shown. The page has 31 matches in 2,115,365 characters. Version 3f2a9c0d1e4b5a67.]
+
+  [match at 48213, text from 48013 to 48427]
+  … "role": "Staff Engineer", …
+
+  [more: 19 matches from offset 612004. Call read_page with this URL, find, offset 612004 and version 3f2a9c0d1e4b5a67 for the next matches]
+  ```
+
+  A match that does not fit the result is not cut. It starts the next call.
+* **The whole result fits the call's page share**, the `X-Hoover4-Page-Share` header that
+  the research agent sends, else 24,000 bytes. `read_page.fit` measures the UTF-8 result,
+  with the headings, notes, cut lines and the artifact marker, and gives each page an equal
+  part of what is left. The number of URLs is also held above a floor per URL. Under the
+  floor the surplus URLs are dropped *and
   named*, because a page the model can read beats five it cannot.
 * **A page that failed is reported as failed**, per URL, and the rest of the call still
   returns. A navigation that errored is still extracted and still captured: a cookie wall or
@@ -426,7 +451,6 @@ without them and `/health` lists what it loaded.
 | Variable | Default | Notes |
 |---|---|---|
 | `BROWSER_EXPOSED_TOOLS` | the interactive six | comma-separated sidecar tool names to advertise; the rest are registered disabled |
-| `READ_PAGE_TOTAL_CHARS` | `30000` | the whole call's text budget, divided across its URLs |
 | `READ_PAGE_MAX_URLS` | `6` | more than this in one call is refused by name, not silently trimmed |
 | `READ_PAGE_NAVIGATE_TIMEOUT_MS` | `25000` | one dead host must not spend a batched call's whole wall clock |
 | `READ_PAGE_BOT_CHECK_WAIT_S` | `10` | seconds a page on a bot check gets to clear before it is reported as blocked |

@@ -207,26 +207,55 @@ PROMPTS: list[tuple[str, str, str]] = [
         "separate.",
     ),
 ]
-PROMPTS_BY_NAME = {name: (name, profile, text) for name, profile, text in PROMPTS}
+# The requests of the chat audit that the acceptance cases repeat, with their follow-ups.
+# The text is the stored text of the audited sessions. `--prompts all` does not select them,
+# so the workload of `all` stays the list above.
+ACCEPTANCE_PROMPTS: list[tuple[str, str, str]] = [
+    ("general-question", "chat_local", "What is the capital of France?"),
+    ("number-game", "chat_local",
+     "I am thinking of a number. You may ask if it is bigger or smaller until you find it."),
+    ("connection-diagnosis", "chat_local",
+     "My Python program says connection refused. What should I check first?"),
+    ("document-comparison", "chat_local",
+     "Compare how the other and testdata collections discuss energy. Give cited document "
+     "examples."),
+    ("gitlab-chief-of-station", "chat",
+     "go to https://gitlab.com/jack_poulson/widely-reported/-/tree/master/data?ref_type=heads "
+     "and extract and list all the names of chief of station and sort them by year and "
+     "mention location"),
+    # A follow-up for `--continue`. It asks for a source of the earlier turns of a
+    # conversation whose context the next model step compacts.
+    ("compacted-source-followup", "chat",
+     "Which document says that Jane Porter approved lease L-17? Give the first 16 "
+     "characters of its file hash and its citation label. Answer from the conversation, "
+     "and do not search."),
+]
+PROMPTS_BY_NAME = {name: (name, profile, text)
+                   for name, profile, text in PROMPTS + ACCEPTANCE_PROMPTS}
+
+# The second turn of a conversation, sent once after the first turn ends.
+FOLLOW_UPS = {
+    "collection-exploration": FOLLOW_UP_TEXT,
+    "general-question": "Give one fact about it.",
+    "number-game": "bigger",
+    "connection-diagnosis": "The service is listening on a different port.",
+    "gitlab-chief-of-station": "which of these years has the most names?",
+}
 
 # The observation period is the application's configured turn deadline plus 60s.
 # Read from `main_services/processing/tasks/P_agent/workflows.py`'s own
 # `start_to_close_timeout` values, not guessed: 900s for the nag-loop chat turn
 # (`ChatTurn`/ordinary chat with tools), 2400s for `ResearchTask` (Deep Research).
-TURN_DEADLINE_S = {"chat": 900.0, "deep_research": 2400.0}
+TURN_DEADLINE_S = {"chat": 900.0, "chat_local": 900.0, "deep_research": 2400.0}
 DEADLINE_MARGIN_S = 60.0
 
 CAPTURE_INTERVAL_S = 5.0
 
 # Selectors against the real markup in `frontend/src/components/chat_components/`.
-# `composer.rs`: the textarea has this placeholder, the send button this title, and the
-# stop button's title starts with this text while sending is true.
+# `composer.rs`: the textarea has this placeholder and the send button this title.
 TEXTAREA_SEL = "textarea[placeholder='Write a query to send commands to the AI']"
 SEND_BUTTON_SEL = "button[title='Send']"
-STOP_BUTTON_SEL = "button[title^='Stop the answer']"
-# `transcript.rs`'s live/finished transcript pane has no id; it is the one scrollable
-# flex column in the left panel. Selected structurally rather than by a class the source
-# does not have. A behavioral_warning is recorded, not a crash, if this stops matching.
+# `transcript.rs` gives the transcript pane this id and the `data-chat-turn` state.
 TRANSCRIPT_SEL = "#x-chat-transcript"
 DOCREFS_TOGGLE_SEL = ".x-chat-docrefs-toggle"
 # `search_result_item_card.rs` has no id or class either; matched on its distinguishing
@@ -309,10 +338,6 @@ async def current_route(tab) -> str:
     return (await js(tab, "return {href: location.href};")).get("href", "")
 
 
-async def stop_button_present(tab) -> bool:
-    return (await js(tab, "return {ok: !!document.querySelector(%s)};" % json.dumps(STOP_BUTTON_SEL))).get("ok", False)
-
-
 async def transcript_state(tab) -> dict:
     """Message count, text length, loading text, scroll geometry -- the behavior evidence
     the design asks be recorded at every interval. Falls back to `document.body` when the
@@ -329,7 +354,10 @@ for (const el of bubbles) {
 const text = root.innerText || '';
 const working = text.includes('is working') || text.includes('is searching');
 return {
+    turn: matched ? (root.dataset.chatTurn || '') : '',
+    user_seqs: [...root.querySelectorAll('[data-chat-user]')].map(e=>Number(e.dataset.chatUser)),
     assistant_answers: [...root.querySelectorAll('[data-chat-answer]')].map(e=>({seq:e.dataset.chatAnswer,text:e.textContent})),
+    asked: [...root.querySelectorAll('[data-chat-asked]')].map(e=>({seq:e.dataset.chatAsked,text:e.textContent})),
     matched_transcript_selector: matched,
     text_length: text.length,
     user_bubble_count: userCount,
@@ -376,6 +404,62 @@ return {ok: true, title: title, count: cards.length};
 
 
 # ---------------------------------------------------------------------------------
+# Turn identity
+# ---------------------------------------------------------------------------------
+
+# `session_page.rs` writes the state of the newest turn on the transcript root as
+# `data-chat-turn`. These values mean that the turn has not ended.
+RUNNING_TURNS = ("active", "queued-model", "queued-tool")
+# The seconds that an ended turn can show no answer row before the observer records
+# an empty answer. The last poll can end the turn before the answer row renders.
+LATE_ANSWER_S = 15.0
+# The seconds that one page script or capture can take. A browser connection can stop
+# answering while the page itself is idle. The observer then records an unknown outcome
+# and does not wait for the whole turn deadline.
+PAGE_CALL_TIMEOUT_S = 60.0
+
+
+def newest_user_seq(state: dict) -> int:
+    """The seq of the newest user message on the page, or -1 when there is none."""
+    return max((int(seq) for seq in state.get("user_seqs", [])), default=-1)
+
+
+def saved_answers(state: dict) -> list[dict]:
+    """The answer rows on the page. An answer that repeats a question to the user renders
+    as the question card, and the page keeps its text in a hidden `data-chat-asked`."""
+    return list(state.get("assistant_answers", [])) + list(state.get("asked", []))
+
+
+def turn_phase(state: dict, before_seq: int) -> str:
+    """The phase of the turn that the user message after `before_seq` started.
+
+    `not_started` means that the page shows no user message after `before_seq`. `running`
+    means that the turn is active or waits for a slot. A queued turn adds no text, so a
+    silent queue is `running`. `interrupted` means that the page shows the turn as
+    interrupted. `answered` means that the turn ended and an answer or a question to the
+    user after its user message has text. `ended_empty` means that the turn ended and no such answer exists
+    yet. The last state can change to `answered` when the answer row renders late.
+    """
+    own = [int(seq) for seq in state.get("user_seqs", []) if int(seq) > before_seq]
+    if not own:
+        return "not_started"
+    turn = state.get("turn", "")
+    if turn in RUNNING_TURNS:
+        return "running"
+    if turn == "interrupted":
+        return "interrupted"
+    start = min(own)
+    for answer in saved_answers(state):
+        try:
+            seq = int(answer.get("seq", ""))
+        except ValueError:
+            continue
+        if seq > start and answer.get("text", "").strip():
+            return "answered"
+    return "ended_empty"
+
+
+# ---------------------------------------------------------------------------------
 # One conversation
 # ---------------------------------------------------------------------------------
 
@@ -397,7 +481,8 @@ class ConversationResult:
     session_url: str = ""
     submission_ok: bool = False
     turn_started: bool = False
-    stop_disappeared_at_s: float | None = None
+    turn_phase: str = ""
+    turn_ended_at_s: float | None = None
     completed_answer_present: bool = False
     observations: list[tuple[str, str]] = field(default_factory=list)
     captures: dict[str, list[dict]] = field(default_factory=dict)
@@ -408,6 +493,68 @@ class ConversationResult:
     started_monotonic: float = 0.0
     generating_started_s: float | None = None
     generating_ended_s: float | None = None
+
+
+async def submit_followup(tab, text: str) -> tuple[int, str]:
+    """Type `text` into the composer of the open conversation and press Enter once.
+
+    Returns the newest user seq before the submission and an empty string, or that seq
+    and the reason that the submission failed. This function never submits a second
+    time. A failed submission is recorded, because a second submission starts a second
+    turn in the same conversation.
+    """
+    before_seq = newest_user_seq(await transcript_state(tab))
+    try:
+        await type_css(tab, TEXTAREA_SEL, text)
+        await press_enter(tab)
+    except Exception as exc:  # noqa: BLE001
+        return before_seq, f"could not submit the follow-up: {exc}"
+    deadline = time.monotonic() + 30.0
+    while time.monotonic() < deadline:
+        if newest_user_seq(await transcript_state(tab)) > before_seq:
+            return before_seq, ""
+        await asyncio.sleep(0.5)
+    return before_seq, "the page showed no new user message within 30 s of the follow-up"
+
+
+async def follow_turn(tab, before_seq: int, deadline_s: float, interval_s: float, capture) -> tuple[str, float]:
+    """Observe the turn after `before_seq` until it ends or `deadline_s` elapses.
+
+    `capture(index, target_s, actual_s)` records one interval. The intervals are timed
+    from the start, so a slow capture does not delay the later intervals. Returns the
+    last phase from `turn_phase` and the seconds until the observer saw the turn end.
+    The seconds value is -1 when the turn did not end. The phase is `unresponsive` when a
+    page call took longer than `PAGE_CALL_TIMEOUT_S`.
+    """
+    t0 = time.monotonic()
+    index = 0
+    ended_at = -1.0
+    empty_since = None
+    while True:
+        try:
+            state = await asyncio.wait_for(transcript_state(tab), PAGE_CALL_TIMEOUT_S)
+            phase = turn_phase(state, before_seq)
+            now = time.monotonic() - t0
+            await asyncio.wait_for(capture(index, index * interval_s, now), PAGE_CALL_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            return "unresponsive", ended_at
+        if phase in ("answered", "interrupted"):
+            return phase, now
+        if phase == "ended_empty":
+            if empty_since is None:
+                empty_since = now
+                ended_at = now
+            elif now - empty_since >= LATE_ANSWER_S:
+                return phase, ended_at
+        else:
+            empty_since = None
+            ended_at = -1.0
+        if now >= deadline_s:
+            return phase, ended_at
+        index += 1
+        wait = t0 + index * interval_s - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
 
 
 async def submit_and_observe(
@@ -423,35 +570,38 @@ async def submit_and_observe(
     size: tuple[int, int],
     out_dir: Path,
     deadline_s: float,
-    home_first: bool,
+    mode: str,
     run_started: float,
 ) -> ConversationResult:
-    """Submit, wait for the turn to start, capture at each interval, and verify
-    completion, on one tab, at one resolution. Two tabs (one per resolution) call this for
-    the SAME conversation; only the first (`home_first=True`) submits, so the prompt is
-    never retried.
+    """Submit or join one turn, capture at each interval, and verify its end, on one tab
+    at one resolution.
 
-    Never retries a submitted prompt: a submission failure ends this conversation's
-    observation with `incomplete_execution` rather than sending the text again, because a
-    silent retry creates a duplicate conversation and invalidates the comparison between
-    the two tabs watching it. Never cancels a live generation: a missed deadline or a
-    capture failure is recorded and observation stops, but the tab is never told to stop
-    the turn.
+    `mode` is `new`, `join` or `followup`. `new` opens the chat home page and submits
+    the prompt as a new conversation. `join` opens the conversation that the `new` tab
+    publishes in `page_probe.url`, and never submits. `followup` submits the prompt once
+    into the conversation that is already open on `tab`.
+
+    The observer follows one turn: the turn that the first user message after the
+    submission started. A turn that ended before the tab loaded is recorded as ended.
+    The observer never submits a prompt again and never stops a live generation. A missed
+    deadline or a capture failure is recorded and observation stops.
     """
     result = ConversationResult(name=name, profile=profile, prompt_text=prompt_text)
     result.started_monotonic = time.monotonic()
     res_dir = out_dir / resolution_name
     res_dir.mkdir(parents=True, exist_ok=True)
     await set_exact_viewport(tab, *size)
+    before_seq = -1
 
-    if home_first:
+    if mode == "new":
         await tab.get(base_url + "/ai_chat")
         await wait_for_app_mounted(tab)
         await asyncio.sleep(1.0)
         if profile == "deep_research":
             await set_checkbox_by_label(tab, "Deep Research", True)
         else:
-            await set_checkbox_by_label(tab, "Internet tools", True)
+            # `chat_local` is a chat with internet tools off, as the audited sessions were.
+            await set_checkbox_by_label(tab, "Internet tools", profile != "chat_local")
 
         pre_snap = await snapshot(tab)
         (out_dir / "pre_send.snapshot.txt").write_text(
@@ -467,8 +617,7 @@ async def submit_and_observe(
             result.observations.append((INCOMPLETE_EXECUTION, result.incomplete_reason))
             return result
 
-        # Wait for the route to leave /ai_chat -- the homepage creates the session and
-        # navigates only once the message is accepted.
+        # The home page creates the session and opens it after it accepts the message.
         deadline = time.monotonic() + 30.0
         route = await current_route(tab)
         while "/ai_chat/c/" not in route and time.monotonic() < deadline:
@@ -481,13 +630,9 @@ async def submit_and_observe(
             return result
         result.session_url = route
         result.submission_ok = True
-        # Publish the conversation URL the moment it exists, not when this whole
-        # function returns. The second resolution's tab polls `page_probe.url` below and
-        # starts observing as soon as it is set, so both tabs watch the same live
-        # generation instead of the second one starting only after the first finishes.
+        # Published now, so the `join` tab observes the same live turn.
         page_probe.url = route
-    else:
-        # The second resolution's tab: wait for the primary tab to publish the URL.
+    elif mode == "join":
         deadline = time.monotonic() + 30.0
         while not page_probe.url and time.monotonic() < deadline:
             await asyncio.sleep(0.3)
@@ -500,87 +645,100 @@ async def submit_and_observe(
         await tab.get(page_probe.url)
         await wait_for_app_mounted(tab)
         result.submission_ok = True
+    elif mode == "followup":
+        result.session_url = await current_route(tab)
+        before_seq, problem = await submit_followup(tab, prompt_text)
+        if problem:
+            result.incomplete = True
+            result.incomplete_reason = problem
+            result.observations.append((INCOMPLETE_EXECUTION, problem))
+            return result
+        result.submission_ok = True
+    else:
+        raise ValueError(f"unknown observation mode {mode!r}")
 
-    # Step 3: verify the turn actually started. A Stop button or visible tool/answer
-    # activity within a bounded window; nothing observed there is a submission failure,
-    # never promoted into a completed answer.
+    # The turn starts when the page shows its user message.
     start_deadline = time.monotonic() + 30.0
     while time.monotonic() < start_deadline:
-        if await stop_button_present(tab):
-            result.turn_started = True
-            break
-        state = await transcript_state(tab)
-        if state.get("working_placeholder_visible"):
+        if turn_phase(await transcript_state(tab), before_seq) != "not_started":
             result.turn_started = True
             break
         await asyncio.sleep(0.5)
     if not result.turn_started:
         result.incomplete = True
-        result.incomplete_reason = "no observable turn start (no Stop button, no working state)"
+        result.incomplete_reason = "the page showed no user message for the submitted turn"
         result.observations.append((INCOMPLETE_EXECUTION, result.incomplete_reason))
         return result
     result.generating_started_s = time.monotonic() - run_started
 
-    # Step 4-6: capture at 5s deadlines, scheduled against the deadline so a slow
-    # screenshot never stretches a later interval. Scroll position is read but never
-    # changed between intervals, so a capture cannot conceal an unexpected scroll.
+    # Scroll position is read but never changed between intervals, so a capture cannot
+    # conceal an unexpected scroll.
     captures: list[dict] = []
-    interval_index = 0
-    t0 = time.monotonic()
-    hard_deadline = t0 + deadline_s
-    first_capture = await capture_interval(
-        tab, network, whitelist, page_probe_page(page_probe, name), res_dir, 0.0, 0.0, interval_index
-    )
-    captures.append(first_capture)
-    while time.monotonic() < hard_deadline:
-        interval_index += 1
-        target = t0 + interval_index * CAPTURE_INTERVAL_S
-        now = time.monotonic()
-        if target > now:
-            await asyncio.sleep(target - now)
-        stop_now = await stop_button_present(tab)
-        if not stop_now and result.stop_disappeared_at_s is None:
-            result.stop_disappeared_at_s = time.monotonic() - t0
-        record = await capture_interval(
+
+    async def capture(index: int, target_s: float, actual_s: float) -> None:
+        captures.append(await capture_interval(
             tab, network, whitelist, page_probe_page(page_probe, name), res_dir,
-            target - t0, time.monotonic() - t0, interval_index,
-        )
-        captures.append(record)
-        if not stop_now:
-            break
-    else:
+            target_s, actual_s, index,
+        ))
+
+    phase, ended_at = await follow_turn(tab, before_seq, deadline_s, CAPTURE_INTERVAL_S, capture)
+    result.turn_phase = phase
+    if ended_at >= 0:
+        result.turn_ended_at_s = ended_at
+    if phase == "running":
         result.observations.append((
             DIAGNOSTIC_WARNING,
-            f"observation reached its {deadline_s:g}s ceiling with the Stop button still "
-            f"present; the conversation was left running, not cancelled",
+            f"observation reached its {deadline_s:g}s ceiling with the turn still running; "
+            f"the conversation was left running, not cancelled",
         ))
     result.generating_ended_s = time.monotonic() - run_started
     result.captures[resolution_name] = captures
+    if phase == "unresponsive":
+        result.incomplete = True
+        result.incomplete_reason = (
+            f"the page did not answer the observer within {PAGE_CALL_TIMEOUT_S:g}s, so the "
+            f"outcome of the turn is unknown")
+        result.observations.append((INCOMPLETE_EXECUTION, result.incomplete_reason))
+        return result
 
-    # Step 7: top and bottom of the completed transcript.
-    await scroll_transcript(tab, "top")
-    await asyncio.sleep(0.3)
-    top_shot = await screenshot(tab, False)
-    (res_dir / "completion-top.png").write_bytes(top_shot)
-    await scroll_transcript(tab, "bottom")
-    await asyncio.sleep(0.3)
-    bottom_shot = await screenshot(tab, False)
-    (res_dir / "completion-bottom.png").write_bytes(bottom_shot)
+    # The top and the bottom of the transcript after the turn.
+    try:
+        await asyncio.wait_for(completion_captures(tab, res_dir), 2 * PAGE_CALL_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        result.observations.append((
+            INCOMPLETE_EXECUTION,
+            f"the completion captures took more than {2 * PAGE_CALL_TIMEOUT_S:g}s",
+        ))
 
-    final_state = await transcript_state(tab)
-    result.completed_answer_present = any(answer.get("text", "").strip() for answer in final_state.get("assistant_answers", []))
-    if not result.stop_disappeared_at_s:
+    result.completed_answer_present = phase == "answered"
+    if phase == "running":
         result.observations.append((
             APPLICATION_ERROR,
-            "the Stop button never disappeared during the observed window: this is not "
-            "recorded as a completed answer",
+            "the turn did not end during the observed window: this is not recorded as a "
+            "completed answer",
         ))
-    if not result.completed_answer_present:
+    elif phase == "interrupted":
+        result.observations.append((APPLICATION_ERROR, "the page shows the turn as interrupted"))
+    elif phase == "ended_empty":
         result.observations.append((
-            APPLICATION_ERROR, "the completed transcript is empty after the observed window",
+            APPLICATION_ERROR, "the turn ended and the page shows no answer text for it",
         ))
 
     return result
+
+
+async def completion_captures(tab, res_dir: Path) -> None:
+    """Capture the top and the bottom of the transcript."""
+    await scroll_transcript(tab, "top")
+    await asyncio.sleep(0.3)
+    (res_dir / "completion-top.png").write_bytes(await screenshot(tab, False))
+    await scroll_transcript(tab, "bottom")
+    await asyncio.sleep(0.3)
+    (res_dir / "completion-bottom.png").write_bytes(await screenshot(tab, False))
+
+
+# The seconds that the history check of one tab can take. It waits up to 30 s twice.
+HISTORY_TIMEOUT_S = 180.0
 
 
 def page_probe_page(_probe, name: str) -> Page:
@@ -607,6 +765,7 @@ async def capture_interval(
         f"client={state.get('client_height')}",
         f"transcript selector matched: {state.get('matched_transcript_selector')}",
         f"working placeholder visible: {state.get('working_placeholder_visible')}",
+        f"turn state: {state.get('turn')}",
         "",
         "## observations",
         *([f"{sev}: {msg}" for sev, msg in observations] or ["(none)"]),
@@ -620,6 +779,7 @@ async def capture_interval(
         "scroll_top": state.get("scroll_top"),
         "scroll_height": state.get("scroll_height"),
         "text_length": state.get("text_length"),
+        "turn": state.get("turn"),
         "observations": [{"severity": s, "message": m} for s, m in observations],
     }
 
@@ -633,7 +793,7 @@ async def check_history(tab, base_url: str, other_session_url: str | None, timeo
     await wait_for_app_mounted(tab)
     deadline = time.monotonic() + timeout_s
     after_reload = await transcript_state(tab)
-    while time.monotonic() < deadline and after_reload.get("assistant_answers") != before_reload.get("assistant_answers"):
+    while time.monotonic() < deadline and saved_answers(after_reload) != saved_answers(before_reload):
         await asyncio.sleep(0.25)
         after_reload = await transcript_state(tab)
 
@@ -649,18 +809,18 @@ async def check_history(tab, base_url: str, other_session_url: str | None, timeo
         await asyncio.sleep(1.0)
         deadline = time.monotonic() + timeout_s
         after_switch = await transcript_state(tab)
-        while time.monotonic() < deadline and after_switch.get("assistant_answers") != before_reload.get("assistant_answers"):
+        while time.monotonic() < deadline and saved_answers(after_switch) != saved_answers(before_reload):
             await asyncio.sleep(0.25)
             after_switch = await transcript_state(tab)
         switch_result["text_length_after_switch_back"] = after_switch.get("text_length")
-        switch_result["survived"] = bool(before_reload.get("assistant_answers")) and after_switch.get("assistant_answers") == before_reload.get("assistant_answers")
+        switch_result["survived"] = bool(saved_answers(before_reload)) and saved_answers(after_switch) == saved_answers(before_reload)
 
     return {
         "before_reload_text_length": before_reload.get("text_length"),
         "after_reload_text_length": after_reload.get("text_length"),
-        "reload_survived": bool(before_reload.get("assistant_answers")) and after_reload.get("assistant_answers") == before_reload.get("assistant_answers"),
-        "before_answers": before_reload.get("assistant_answers"),
-        "after_answers": after_reload.get("assistant_answers"),
+        "reload_survived": bool(saved_answers(before_reload)) and saved_answers(after_reload) == saved_answers(before_reload),
+        "before_answers": saved_answers(before_reload),
+        "after_answers": saved_answers(after_reload),
         "switch": switch_result,
     }
 
@@ -682,7 +842,7 @@ def write_conversation_report(out_dir: Path, result: ConversationResult) -> None
         f"prompt: {result.prompt_text}",
         f"session: {result.session_url}",
         f"submission ok: {result.submission_ok}  turn started: {result.turn_started}",
-        f"stop button disappeared at: {result.stop_disappeared_at_s}",
+        f"turn phase: {result.turn_phase}  turn ended at: {result.turn_ended_at_s}",
         f"completed answer present: {result.completed_answer_present}",
         f"generating interval (run-relative): {result.generating_started_s} .. {result.generating_ended_s}",
         "",
@@ -701,7 +861,8 @@ def write_conversation_report(out_dir: Path, result: ConversationResult) -> None
             "name": result.name, "profile": result.profile, "prompt": result.prompt_text,
             "session_url": result.session_url, "submission_ok": result.submission_ok,
             "turn_started": result.turn_started,
-            "stop_disappeared_at_s": result.stop_disappeared_at_s,
+            "turn_phase": result.turn_phase,
+            "turn_ended_at_s": result.turn_ended_at_s,
             "completed_answer_present": result.completed_answer_present,
             "generating_started_s": result.generating_started_s,
             "generating_ended_s": result.generating_ended_s,
@@ -789,6 +950,7 @@ async def run_all(
     password: str,
     run_followup: bool,
     history_only: str = "",
+    continue_path: str = "",
 ) -> tuple[list[ConversationResult], int]:
     import nodriver
     import nodriver.cdp.page as page_cdp
@@ -833,7 +995,7 @@ async def run_all(
             for resolution, size in resolutions:
                 await set_exact_viewport(identity_tab, *size)
                 await identity_tab.get(result.session_url)
-                await wait_css(identity_tab, "#x-chat-transcript [data-chat-answer]")
+                await wait_css(identity_tab, "#x-chat-transcript [data-chat-answer], #x-chat-transcript [data-chat-asked]")
                 history = await check_history(identity_tab, base_url, base_url + "/ai_chat")
                 result.history["by_resolution"][resolution] = history
                 if not history["reload_survived"] or not history["switch"].get("survived"):
@@ -844,6 +1006,29 @@ async def run_all(
             result.completed_answer_present = all(h["reload_survived"] for h in result.history["by_resolution"].values())
             write_conversation_report(destination, result)
             exit_status = 1 if result.observations else 0
+            write_run_index(out_dir, [result], exit_status)
+            return [result], exit_status
+
+        if continue_path:
+            # One prompt, sent once as the next turn of a saved conversation.
+            if not continue_path.startswith("/ai_chat/c/") or len(prompt_names) != 1:
+                raise ValueError("--continue needs a saved conversation path and one prompt.")
+            name = prompt_names[0]
+            _, profile, prompt_text = PROMPTS_BY_NAME[name]
+            destination = out_dir / name
+            destination.mkdir(parents=True, exist_ok=True)
+            await identity_tab.get(base_url + continue_path)
+            await wait_for_app_mounted(identity_tab)
+            await wait_css(identity_tab, "#x-chat-transcript [data-chat-user]")
+            result = await submit_and_observe(
+                identity_tab, base_url, identity_network, whitelist, Page(name=name, url=""),
+                name, profile, prompt_text, resolutions[0][0], resolutions[0][1], destination,
+                TURN_DEADLINE_S["chat"] + DEADLINE_MARGIN_S, mode="followup",
+                run_started=run_started,
+            )
+            write_conversation_report(destination, result)
+            exit_status = (1 if any(sev == APPLICATION_ERROR for sev, _ in result.observations)
+                           else 2 if result.incomplete else 0)
             write_run_index(out_dir, [result], exit_status)
             return [result], exit_status
 
@@ -878,7 +1063,8 @@ async def run_all(
                 res_name, size = resolutions[i]
                 return await submit_and_observe(
                     tabs[i], base_url, networks[i], whitelist, page_probe, name, profile,
-                    prompt_text, res_name, size, conv_dir, deadline_s, home_first=(i == 0),
+                    prompt_text, res_name, size, conv_dir, deadline_s,
+                    mode="new" if i == 0 else "join",
                     run_started=run_started,
                 )
 
@@ -912,9 +1098,10 @@ async def run_all(
             if primary.submission_ok:
                 session_urls[name] = merged.session_url
                 try:
-                    merged.document_preview = await open_last_document_card(tabs[0])
+                    merged.document_preview = await asyncio.wait_for(
+                        open_last_document_card(tabs[0]), PAGE_CALL_TIMEOUT_S)
                     await asyncio.sleep(0.6)
-                    doc_shot = await screenshot(tabs[0], False)
+                    doc_shot = await asyncio.wait_for(screenshot(tabs[0], False), PAGE_CALL_TIMEOUT_S)
                     (conv_dir / "document_preview.png").write_bytes(doc_shot)
                     if merged.document_preview.get("ok") is False and merged.document_preview.get("reason") != "no_cards":
                         merged.observations.append((
@@ -929,29 +1116,41 @@ async def run_all(
                 try:
                     histories = {}
                     for index, (resolution, _) in enumerate(resolutions):
-                        histories[resolution] = await check_history(tabs[index], base_url, other_url)
+                        histories[resolution] = await asyncio.wait_for(
+                            check_history(tabs[index], base_url, other_url), HISTORY_TIMEOUT_S)
                     merged.history = {"by_resolution": histories}
                     if not all(history_is_preserved(item) for item in histories.values()):
                         merged.observations.append((APPLICATION_ERROR, "Saved assistant answers changed after history navigation."))
                 except Exception as exc:  # noqa: BLE001
                     merged.observations.append((INCOMPLETE_EXECUTION, f"history check failed: {exc}"))
 
-                if run_followup and name == "collection-exploration":
+                if run_followup and name in FOLLOW_UPS and primary.turn_phase != "answered":
+                    # A turn in progress keeps the composer closed. The follow-up waits for
+                    # an answered first turn, so it is not sent into a running one.
+                    merged.observations.append((
+                        INCOMPLETE_EXECUTION,
+                        f"follow-up not sent: the first turn ended as {primary.turn_phase!r}",
+                    ))
+                elif run_followup and name in FOLLOW_UPS:
                     followup_dir = conv_dir / "followup"
                     followup_dir.mkdir(exist_ok=True)
                     try:
-                        await type_css(tabs[0], TEXTAREA_SEL, FOLLOW_UP_TEXT)
-                        await press_enter(tabs[0])
-                        await asyncio.sleep(2.0)
+                        # Opened again after the history check. `submit_and_observe`
+                        # submits the follow-up once.
+                        await tabs[0].get(merged.session_url)
+                        await wait_for_app_mounted(tabs[0])
                         followup_probe = Page(name=f"{name}-followup", url="")
                         fu_deadline = TURN_DEADLINE_S["chat"] + DEADLINE_MARGIN_S
                         fu_result = await submit_and_observe(
                             tabs[0], base_url, networks[0], whitelist, followup_probe,
-                            f"{name}-followup", "chat", FOLLOW_UP_TEXT, resolutions[0][0],
-                            resolutions[0][1], followup_dir, fu_deadline, home_first=False,
+                            f"{name}-followup", "chat", FOLLOW_UPS[name], resolutions[0][0],
+                            resolutions[0][1], followup_dir, fu_deadline, mode="followup",
                             run_started=run_started,
                         )
                         write_conversation_report(followup_dir, fu_result)
+                        # The follow-up result counts toward the conversation verdict.
+                        for severity, message in fu_result.observations:
+                            merged.observations.append((severity, f"follow-up: {message}"))
                     except Exception as exc:  # noqa: BLE001
                         merged.observations.append((DIAGNOSTIC_WARNING, f"follow-up turn failed: {exc}"))
 
@@ -1008,6 +1207,10 @@ def main() -> int:
     )
     parser.add_argument("--no-followup", action="store_true")
     parser.add_argument("--history-only", default="")
+    parser.add_argument(
+        "--continue", dest="continue_path", default="",
+        help="a saved conversation path; the one selected prompt is sent once as its next turn",
+    )
     args = parser.parse_args()
 
     try:
@@ -1043,7 +1246,7 @@ def main() -> int:
     try:
         results, exit_status = asyncio.run(run_all(
             names, args.base_url.rstrip("/"), out_dir, resolutions, whitelist,
-            username, password, not args.no_followup, args.history_only,
+            username, password, not args.no_followup, args.history_only, args.continue_path,
         ))
     except Exception as exc:  # noqa: BLE001
         sys.stderr.write(f"incomplete execution: {type(exc).__name__}: {exc}\n")

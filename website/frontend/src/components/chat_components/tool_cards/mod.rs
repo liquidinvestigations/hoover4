@@ -134,7 +134,8 @@ pub fn ToolCard(
         "read_todo" | "write_todo" | "edit_todo" | "mark_todo" => rsx! {
             result_cards::TodoCard { tool_name, tool_input, tool_output, running, todo_versions }
         },
-        "append_node" | "append_child" | "move_node" | "edit_node" | "remove_node" | "read_plan" => rsx! {
+        // `write_plan` is the plan mutation. The other names are in stored rows of older turns.
+        "write_plan" | "append_node" | "append_child" | "move_node" | "edit_node" | "remove_node" | "read_plan" => rsx! {
             result_cards::PlanToolCard { tool_name, tool_input, tool_output, running }
         },
         "run_subagent" => rsx! {

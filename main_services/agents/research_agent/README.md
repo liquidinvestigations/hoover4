@@ -124,7 +124,8 @@ service refuses to start on an unknown pack name. A tool that an MCP server list
 names is refused for every run.
 
 Each step builds a `CatalogueSnapshot` (`tool_catalogue.py`) from the run's packs. Every
-model call receives all callable tools in that snapshot. `read_tool` returns one tool's
+model call receives all callable tools in that snapshot, each with its schema as
+`tool_args.model_schema` shows it (see [Tool arguments](#tool-arguments)). `read_tool` returns one tool's
 description and schema. `search_agent_tools` finds tool names from words in a request.
 Both tools provide information and do not change which tools the model can call. The
 service returns `tool_unavailable` for a name outside the run's callable tools. The
@@ -196,10 +197,12 @@ A call entry is one call of the reply as the service classifies it:
 | field | meaning |
 |---|---|
 | `id` | the call id. An id that is empty, repeated in the reply, or used by an earlier `ai` message becomes `call-{step_no}-{position}` |
-| `name`, `args` | the call as the model wrote it |
+| `name`, `args` | the call, with its arguments after `tool_args.normalize_arguments`. Damaged arguments stay as the model wrote them |
+| `argument_repairs` | one line for each change that the normalization made |
+| `argument_error` | set when the model client could not read the arguments as JSON (`steps.unreadable_call`). `args` is then empty |
 | `kind` | `ordered` for `write_plan`, `read_plan` and the todo tools, `parallel` for every other call |
 | `page_share` | the call's share of the batch result budget, in bytes |
-| `retry` | false for the browser actions (`browser_navigate`, `browser_click`, `browser_type`, `browser_select_option`, `browser_press_key`). The worker gives such a call one attempt |
+| `retry` | false for each browser tool that can change the page: every `browser_` tool except the reads in `steps.BROWSER_READS`. The worker gives such a call one attempt |
 
 While no frame is ready, the stream sends the SSE comment line `: keepalive` every 30 s
 (`KEEPALIVE_SECONDS` in `steps.py`). One model call can wait longer than the worker's 300 s
@@ -209,7 +212,7 @@ call.
 
 ### `POST /tool_call`
 
-The request adds `call` (the `id`, `name` and `args` of one stored call entry),
+The request adds `call` (the `id`, `name`, `args` and `argument_error` of one stored call entry),
 `page_share` and `idempotency_key`. The service sends the key to the MCP server as
 `X-Hoover4-Idempotency-Key`, so a retried plan mutation changes the plan tree once. The
 response is JSON:
@@ -219,8 +222,8 @@ response is JSON:
 | `tool_call_id`, `name` | the call |
 | `content` | the result text that the model reads |
 | `status` | `ok` or `error` |
-| `error_class` | empty for `ok`. For `error`: `tool_error` (the tool raised or marked its result as an error), `tool_unavailable` (a name outside the run's tools) or `invalid_arguments` (arguments that do not match the schema). A stored result of an older run can hold `budget_exhausted` |
-| `measure` | the call measure of a broker tool, or `null`. When the agent repaired the arguments, `argument_repairs` lists each repair |
+| `error_class` | empty for `ok`. For `error`: `tool_error` (the tool raised or marked its result as an error), `tool_unavailable` (a name outside the run's tools) or `invalid_arguments` (damaged or unreadable arguments, or arguments that do not match the schema). A stored result of an older run can hold `budget_exhausted` |
+| `measure` | the call measure of a broker tool, or `null`. When `/tool_call` changed the arguments itself, `argument_repairs` lists each change. A call that `/model_step` normalized holds its changes in its call entry |
 | `matched_names` | the names that a `search_agent_tools` result matched, or the name that a `read_tool` result described |
 
 A `tool_unavailable` result names the unavailable tool. `search_agent_tools` can list
@@ -237,14 +240,9 @@ names `browser_use`. In a JSON object the sentence goes after the text of `messa
 `error`, else under the key `next`. In other text it goes after a blank line. A result
 page and a result with no failure get no sentence.
 
-**The arguments are repaired before the call.** The tool call parser of the model server
-can leave the model's string token `<|"|>` in a key or a value, a quote on a key (`id"`),
-or one layer of quotes around a one-word value. `tool_args.repair_arguments` removes the
-token, the quotes of a key and that one layer, and keeps the quotes of `query`, `queries`,
-`quote` and `find`, because a phrase search needs them. `tool_args.rename_aliases` then
-renames a key that the model wrote under another name, such as `collection` for
-`collectionname`, when the tool's schema has that name. Each repair is one line of the
-`argument_repairs` list in the measure of the call.
+**The arguments are normalized before the call.** `/tool_call` runs the normalization of
+[Tool arguments](#tool-arguments) again, which changes nothing for a call that `/model_step`
+normalized, and then validates the arguments against the tool's own schema.
 
 ### The size of a request
 
@@ -416,28 +414,78 @@ the list, the list after, the trigger and its window, and the token counts befor
 The "after" is the prompt of the call made on the compacted list, so it arrives with the
 second insert under the same compaction id.
 
-## Tool arguments sent as JSON strings
+## Tool arguments
 
-The served model often writes a non-string tool argument as a string. It sends
-`"collectionname": "testdata"` or `"collectionname": "[\"testdata\"]"` for a list of
-strings, and `"filename_only": "True"` for a boolean. The MCP servers validate arguments
-with pydantic in lax mode. That mode converts `"True"` and `"5"`, and refuses a string for a
-list or an object, so such a call fails and the model gets no result.
+**The schema that the model is shown.** The chat template of the served model renders each
+tool parameter from its `type`. It renders a parameter with `anyOf` or `oneOf` with an
+empty type, and it drops the item schema of such a list. `cite_documents` takes
+`list[Citation] | str`, so the served model saw no field names and sent invented keys such as
+`document_id` and `find_phrase`. `tool_args.model_schema` gives each such parameter one
+branch: an optional parameter loses its `null` branch, a list or an object loses the string
+branch that the server accepts only as a tolerance, and of several scalar branches the
+string branch stays. It copies each local `$ref` into place and keeps the description and
+the default. `/model_step` binds the tools with these schemas (`steps.shown_tool`), and the
+request size counts them. Every argument is still validated against the tool's own schema.
 
-`_create_context` wraps every MCP tool with `with_decoded_arguments` (`agent.py`), and
-`/tool_call` (`steps.py`) decodes the arguments of every call it runs. Before each call, `decode_string_arguments` (`tool_args.py`)
-reads the parameter's JSON schema, following `anyOf`, `oneOf`, `$ref` and `type` lists. It
-changes a string argument only when the schema does not allow a string:
+**The normalization.** `/model_step` normalizes the arguments of each call to a tool of the
+run before it classifies and returns the call (`classify_calls`), so the stored call, the
+worker's readers of it, such as the question of `ask_user`, and `/tool_call` see the same
+values. `tool_args.normalize_arguments` runs three steps. A second run on its result changes
+nothing.
 
-- A string that parses as JSON becomes the parsed value, if that value has an allowed type.
-  `null` is never a target.
-- For a boolean, `true` and `false` in any case become the boolean.
-- For a list of strings, a string becomes a one-item list when it does not parse, or when it
-  parses to a value of a type the schema does not allow. `"2024"` becomes `["2024"]`.
+1. `repair_arguments`. The tool call parser of the model server can leave the model's string
+   delimiter `<|"|>` in a key or a value, a quote on a key (`id"`), or one layer of quotes
+   around a one-word value. The repair removes a delimiter at the start or the end of a key
+   or value, the quotes of a key, and that one layer, and keeps the quotes of `query`,
+   `queries`, `quote` and `find`, because a phrase search needs them.
+2. `rename_aliases` renames a key that the model wrote under another name, such as
+   `collection` for `collectionname`, when the tool's schema has that name.
+3. `decode_string_arguments` reads the parameter's JSON schema, following `anyOf`, `oneOf`,
+   `$ref` and `type` lists. A string that parses as JSON becomes the parsed value, if that
+   value has an allowed type. For a boolean, `true` and `false` in any case become the
+   boolean. A single value, or the JSON value of a string, becomes a one-item list when the
+   parameter takes a list and the value is a valid item: `3` and `"3"` become `[3]` for a list
+   of integers, and `"2024"` becomes `["2024"]` for a list of strings. `null` and an empty
+   string are never an item.
 
-Every other value stays as the model wrote it, so the server's own validation error reaches
-the model. The decoding runs in the agent because the MCP schemas are correct. `recurse_json_decode`
-decodes strings only for the event stream, and does not change what a tool receives.
+The MCP servers validate arguments with pydantic in lax mode, which converts `"True"` and
+`"5"` and refuses a string for a list or an object. `_create_context` wraps every MCP tool
+with `with_decoded_arguments` (`agent.py`), which runs the same normalization.
+
+**Refused arguments.** The normalization never drops a value, never rebuilds damaged
+arguments, never turns a list into a single value, and never makes several calls from one.
+`/tool_call` refuses these calls with `invalid_arguments` and a message that names the
+reason, and the stored call keeps the arguments as the model sent them:
+
+- A delimiter inside the text of a key or a value, or a repaired key that holds a space or
+  one of `,:{}[]`. The parser split the call in the wrong place, so no value of it is
+  certain.
+- Two keys that become one key with different values, and an alias beside its name with a
+  different value. The same value twice gives one key.
+- A call that the model client lists as invalid, because the model server sent an argument
+  text that is not JSON. `/model_step` keeps it as a call with no arguments and an
+  `argument_error` that holds the start of the text, so the reply does not count as a reply
+  with no call.
+- A reply with no parsed call whose text holds the served model's call syntax (`<|"|>` or
+  `<|tool_call>`). The model or the parser failed, and the text is not an answer.
+  `steps.leaked_call` keeps it as one call with the name from `call:NAME{`, else
+  `unnamed_call`, with no arguments and the text in `argument_error`.
+
+The validation message names each problem with its path. For a value that matches no branch
+of a choice, it reports the problems of the branch that the value's type matches: for a list
+of objects, the missing required keys, the keys that the schema does not name, and the keys
+that it names. A list sent for a single value gets "takes one string value, and the call gave
+a list of 14 items. Send one value."
+
+**The served parser.** `tests/producer_fixtures/gemma4_tool_calls.json` holds calls of the
+served model: the raw text where it was captured, the parse that the model server gave, and
+the cause. The parser is the `gemma4` tool parser of vLLM (`vllm/parser/gemma4.py`) in the
+serving image, and this repository holds none of its code. Two cases are defects of the
+model's output: an empty value written with one delimiter, and objects written with square
+brackets. For a malformed call like these, the streamed parse can also give an argument text
+that is not JSON, because the parser streams a prefix of its partial parse and does not
+correct it when the final parse differs. The agent refuses each of these calls with its
+reason.
 
 ## `LLM_STREAMING` and `disable_streaming`
 

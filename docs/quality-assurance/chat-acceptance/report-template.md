@@ -82,11 +82,11 @@ Read these on the host that ran the chat. The chat tables are in the database `H
 | What did the user see, in order? | `chat_messages FINAL`, ordered by `seq`. `tool_input`, `tool_output` and `doc_refs` hold the call, the result and the cards. |
 | What did the model receive and send on each call? | `agent_run_messages FINAL`, ordered by `thread_id` and `idx`. `tool_calls_json` holds the raw call as the model wrote it, before argument decoding. |
 | Which runs took part, and why did each end? | `agent_runs FINAL`. Read `kind`, `purpose`, `state`, `error`, `refused_json` and `tool_turns_used`. |
-| Did a sub-agent get refused? | `refused_json` on the organizer row, and the `run_subagent` row in `chat_messages`. |
+| Did a plan section fail? | `agent_plan_runs FINAL`. Read `sections_json`, and the section reports in `agent_plan_documents FINAL`. |
 | What did the todo list hold at each step? | `chat_todos`, ordered by `version`. |
 | Which cards and page captures exist? | `chat_artifacts FINAL`. `kind` is `agent_raw_result`, `search_detail` or a page capture. |
 | Did a model call fail or take long? | `llm_call_events`. Read `ok`, `error`, `latency_ms` and `prompt_tokens`. |
-| Did compaction drop history? | `chat_compactions`, `evicted` and `summary`. |
+| Did compaction drop history? | `chat_compactions`. Read `summarised_count`, `preserved_count`, `handles` and `summary`. `evicted` is always empty. The `compaction` rows of `chat_messages FINAL` hold the record that the transcript shows. |
 | Was a search result cut before the path and the hash? | the `cut` object of each item in the `search_collections` output, and `total_units` against `returned_units`. |
 | Is the fact in the data at all? | a text scan of `Hoover4_Collection_<name>.text_content`, joined to `vfs_files` for the path. |
 | Did the tool server log an error? | `docker logs` of the collection search, todo, browser and research agent containers, for the minutes of the turn. |

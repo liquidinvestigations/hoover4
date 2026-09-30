@@ -1,9 +1,17 @@
-"""Tests for `decode_string_arguments` and the tool wrapper that applies it."""
+"""Tests for the argument normalization (`tool_args`) and the tool wrapper that applies it."""
 
+import json
+from pathlib import Path
+
+import pytest
 from langchain_core.tools import StructuredTool
 
 from research_agent.agent import with_decoded_arguments
-from research_agent.tool_args import decode_string_arguments, rename_aliases, repair_arguments
+from research_agent.execution import validation_error
+from research_agent.tool_args import (
+    DamagedArguments, decode_string_arguments, model_schema, normalize_arguments,
+    rename_aliases, repair_arguments,
+)
 
 # Parameters in the shape the MCP server publishes, taken from the `search_collections`
 # input schema, with `anything` added for a parameter that accepts any type.
@@ -196,13 +204,12 @@ def test_a_query_keeps_its_phrase_quotes_and_loses_the_quote_token():
     assert repairs == ["value queries[1] lost the quote token"]
 
 
-def test_the_quote_token_leaves_a_key_and_a_value_of_a_citation():
+def test_a_key_that_holds_the_token_inside_it_is_damage_and_is_not_rebuilt():
+    """The parser put an email address and the next key into one key."""
     args = {"citations": [{"collectionname": "tables", "quote": 'a quote<|"|>',
                            'JoeBWilkinson@cs.com<|"|>,why': "his address"}]}
-    fixed, repairs = repair_arguments(args)
-    assert fixed == {"citations": [{"collectionname": "tables", "quote": "a quote",
-                                    "JoeBWilkinson@cs.com,why": "his address"}]}
-    assert len(repairs) == 2
+    with pytest.raises(DamagedArguments, match=r"holds a string delimiter at citations\[0\]\."):
+        repair_arguments(args)
 
 
 def test_a_phrase_value_keeps_its_quotes_and_clean_arguments_give_no_repair():
@@ -210,10 +217,15 @@ def test_a_phrase_value_keeps_its_quotes_and_clean_arguments_give_no_repair():
     assert repair_arguments(args) == (args, [])
 
 
-def test_a_repaired_key_that_is_already_set_is_dropped_and_named():
-    fixed, repairs = repair_arguments({"id": "1", 'id"': "2"})
+def test_repaired_keys_with_different_values_are_refused_and_drop_nothing():
+    with pytest.raises(DamagedArguments, match="both name the argument id"):
+        repair_arguments({"id": "1", 'id"': "2"})
+
+
+def test_repaired_keys_with_the_same_value_give_one_key():
+    fixed, repairs = repair_arguments({"id": "1", 'id"': "1"})
     assert fixed == {"id": "1"}
-    assert repairs[-1] == "key 'id\"' was dropped, because 'id' is set"
+    assert repairs[-1] == "key 'id\"' repeated 'id' with the same value"
 
 
 def test_an_alias_key_becomes_the_schema_name():
@@ -223,10 +235,187 @@ def test_an_alias_key_becomes_the_schema_name():
     assert repairs == ["key 'collection' became 'collectionname'"]
 
 
-def test_an_alias_stays_when_the_schema_has_it_or_the_name_is_set():
+def test_an_alias_stays_when_the_schema_has_it():
     schema = {"properties": {"collection": {"type": "string"}, "collectionname": {"type": "string"}}}
     args = {"collection": "a"}
     assert rename_aliases(args, schema) == (args, [])
+
+
+def test_an_alias_beside_its_name_is_refused_with_another_value_and_removed_with_the_same():
     schema = {"properties": {"collectionname": {"type": "string"}}}
-    args = {"collection": "a", "collectionname": "b"}
-    assert rename_aliases(args, schema) == (args, [])
+    with pytest.raises(DamagedArguments, match="'collection' and 'collectionname'"):
+        rename_aliases({"collection": "a", "collectionname": "b"}, schema)
+    assert rename_aliases({"collection": "a", "collectionname": "a"}, schema)[0] == {
+        "collectionname": "a"}
+
+
+# ------------------------------------------------------------------ scalars and lists
+
+IDS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "ids": {"type": "array", "items": {"type": "integer"}},
+        "file_hash": {"type": "string"},
+        "citations": {"anyOf": [
+            {"type": "array", "items": {"type": "object", "properties": {"file_hash": {"type": "string"}}}},
+            {"type": "string"}]},
+    },
+}
+
+
+def test_a_scalar_that_is_a_valid_item_becomes_a_one_item_list():
+    assert decode_string_arguments({"ids": 3}, IDS_SCHEMA) == {"ids": [3]}
+    assert decode_string_arguments({"ids": "3"}, IDS_SCHEMA) == {"ids": [3]}
+
+
+def test_a_scalar_that_is_not_a_valid_item_stays_for_the_validation_error():
+    assert decode_string_arguments({"ids": "three"}, IDS_SCHEMA) == {"ids": "three"}
+    assert decode_string_arguments({"ids": True}, IDS_SCHEMA) == {"ids": True}
+
+
+def test_a_list_for_a_scalar_parameter_stays_a_list_and_the_error_says_so():
+    args = {"file_hash": ["a" * 16, "b" * 16]}
+    assert normalize_arguments(args, IDS_SCHEMA).args == args
+    problem = validation_error(args, IDS_SCHEMA)
+    assert problem == ("file_hash: takes one string value, and the call gave a list of 2 "
+                       "items. Send one value.")
+
+
+def test_a_single_object_for_a_list_of_objects_becomes_one_item():
+    args = {"citations": {"file_hash": "h"}}
+    assert decode_string_arguments(args, IDS_SCHEMA) == {"citations": [{"file_hash": "h"}]}
+    schema = {"properties": {"docs": {"type": "array", "items": {"type": "object"}}}}
+    assert decode_string_arguments({"docs": {"a": 1}}, schema) == {"docs": [{"a": 1}]}
+
+
+def test_a_second_normalization_changes_nothing_and_names_no_repair():
+    args = {"collection": "testdata", "ids": '"3"', "query": '"LJM"<|"|>',
+            "steps": ['a step<|"|>']}
+    schema = {"properties": {"collectionname": {"type": "string"}, "query": {"type": "string"},
+                             "ids": IDS_SCHEMA["properties"]["ids"],
+                             "steps": {"type": "array", "items": {"type": "string"}}}}
+    first = normalize_arguments(args, schema)
+    assert first.problem == ""
+    assert first.args == {"collectionname": "testdata", "ids": [3], "query": '"LJM"',
+                          "steps": ["a step"]}
+    second = normalize_arguments(first.args, schema)
+    assert second == (first.args, [], "")
+
+
+def test_damaged_arguments_come_back_unchanged_with_the_problem():
+    args = {"queries": ['"LJM"', 'Raptor"<|"|><|"|>"LJM1"']}
+    out = normalize_arguments(args, {"properties": {"queries": {"type": "array"}}})
+    assert out.args == args and out.repairs == []
+    assert out.problem.startswith("The call was not run, because its arguments arrived damaged")
+    assert "queries[1]" in out.problem
+
+
+# ------------------------------------------------------------------ the served model's calls
+
+FIXTURES = json.loads((Path(__file__).parent / "producer_fixtures" / "gemma4_tool_calls.json")
+                      .read_text())
+CASES = {entry["case"]: entry for entry in FIXTURES["entries"]}
+
+CITE_SCHEMA = {
+    "type": "object",
+    "properties": {"citations": {"anyOf": [
+        {"type": "array", "items": {
+            "type": "object",
+            "properties": {"collectionname": {"type": "string"}, "file_hash": {"type": "string"},
+                           "quote": {"default": "", "type": "string"},
+                           "find": {"default": "", "type": "string"},
+                           "why": {"default": "", "type": "string"}},
+            "required": ["collectionname", "file_hash"]}},
+        {"type": "string"}]}},
+    "required": ["citations"],
+}
+
+
+@pytest.mark.parametrize("case", [
+    "empty_string_lost_one_delimiter", "objects_written_as_lists",
+    "queries_merged_by_delimiters", "query_with_a_delimiter_inside",
+])
+def test_each_damaged_parse_of_the_served_model_is_refused_and_not_rebuilt(case):
+    parsed = CASES[case]["parser_result"]
+    out = normalize_arguments(parsed, {"properties": {}})
+    assert out.problem.startswith("The call was not run, because its arguments arrived damaged")
+    assert out.args == parsed
+
+
+def test_a_trailing_delimiter_of_the_served_model_is_removed():
+    out = normalize_arguments(CASES["item_with_a_trailing_delimiter"]["parser_result"], None)
+    assert out.problem == ""
+    assert out.args["steps"][2] == "Summarize findings regarding prime numbers."
+    assert all('<|"|>' not in step for step in out.args["steps"])
+
+
+def test_a_well_formed_search_keeps_every_phrase_quote():
+    parsed = CASES["search_queries_with_phrase_quotes"]["parser_result"]
+    out = normalize_arguments(parsed, None)
+    assert out == (parsed, [], "")
+    assert parsed["queries"][0] == '"LJM" "Raptor"'
+
+
+def test_invented_citation_keys_get_an_error_that_names_the_schema_fields():
+    """The served model sent these keys because the template showed `citations` with no
+    type. The error names the missing fields and the keys that the schema does not name."""
+    parsed = CASES["cite_documents_invented_keys"]["parser_result"]
+    out = normalize_arguments(parsed, CITE_SCHEMA)
+    assert out.problem == ""
+    problem = validation_error(out.args, CITE_SCHEMA)
+    assert "citations/0: 'collectionname' is a required property." in problem
+    assert "'document_id'" in problem and "'find_phrase'" in problem
+    assert "The schema names collectionname, file_hash, quote, find, why." in problem
+    assert "not valid under any of the given schemas" not in problem
+
+
+def test_the_streamed_prefix_of_the_parser_defect_is_not_json_and_its_final_parse_is_damaged():
+    """The captured failing input of the external parser defect. The client receives the
+    streamed prefix, which is not JSON, and the final parse holds keys with delimiters."""
+    case = CASES["streamed_prefix_not_json"]
+    assert case["raw"].startswith("<|tool_call>call:cite_documents{")
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(case["streamed_arguments"])
+    out = normalize_arguments(case["parser_result"], None)
+    assert out.problem.startswith("The call was not run, because its arguments arrived damaged")
+
+
+# ------------------------------------------------------------------ the schema shown to the model
+
+
+def test_the_shown_schema_has_one_type_for_each_parameter():
+    shown = model_schema(CITE_SCHEMA)
+    citations = shown["properties"]["citations"]
+    assert citations["type"] == "array"
+    assert citations["items"]["required"] == ["collectionname", "file_hash"]
+    assert list(citations["items"]["properties"]) == ["collectionname", "file_hash", "quote",
+                                                      "find", "why"]
+    shown = model_schema(SEARCH_SCHEMA)
+    for name in ("collectionname", "filename_only", "size_min", "sort"):
+        assert "anyOf" not in shown["properties"][name], name
+    assert shown["properties"]["collectionname"] == {
+        "items": {"type": "string"}, "type": "array", "default": None}
+    assert shown["properties"]["sort"]["type"] == "object"
+    assert shown["properties"]["anything"] == {"default": None}
+
+
+def test_the_shown_schema_keeps_the_description_and_copies_a_reference_into_place():
+    schema = {
+        "type": "object",
+        "properties": {
+            "node_id": {"anyOf": [{"type": "string"}, {"type": "integer"}], "default": "",
+                        "description": "The id or number path."},
+            "page": {"$ref": "#/$defs/Page"},
+            "mixed": {"anyOf": [{"type": "array"}, {"type": "object"}]},
+        },
+        "$defs": {"Page": {"type": "object", "properties": {"n": {"type": "integer"}}}},
+    }
+    shown = model_schema(schema)
+    assert shown["properties"]["node_id"] == {"type": "string", "default": "",
+                                              "description": "The id or number path."}
+    assert shown["properties"]["page"] == {"type": "object",
+                                           "properties": {"n": {"type": "integer"}}}
+    assert "anyOf" in shown["properties"]["mixed"]
+    assert "$defs" not in shown
+    # The tool's own schema is not changed.
+    assert "anyOf" in schema["properties"]["node_id"]

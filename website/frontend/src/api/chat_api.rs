@@ -125,6 +125,19 @@ pub async fn chat_plan_view(
         .map_err(to_server_fn_error)
 }
 
+/// The report of each section of a plan run: typed, a text report of an older run, or
+/// absent from the list. `None` for a missing or foreign plan run.
+#[server]
+pub async fn chat_plan_section_reports(
+    session_id: String,
+    plan_run_id: String,
+) -> Result<Option<Vec<common::report_types::SectionReportView>>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::plans::get_section_reports(&user, session_id, plan_run_id)
+        .await
+        .map_err(to_server_fn_error)
+}
+
 /// Agent turns running right now, chat and research alike. Admin only.
 #[server]
 pub async fn chat_admin_live_runs() -> Result<Vec<LiveChatRun>, ServerFnError> {

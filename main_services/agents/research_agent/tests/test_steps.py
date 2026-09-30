@@ -7,6 +7,7 @@ context built from the tools of the test, so no MCP server and no model server i
 import asyncio
 import hashlib
 import json
+from pathlib import Path
 from dataclasses import asdict
 from typing import Any, List
 
@@ -60,13 +61,16 @@ class ScriptedModel(BaseChatModel):
     bound_log: List[Any]
     kwargs_log: List[Any]
     inputs: List[Any]
+    bound_tools: List[Any] = []
 
     @property
     def _llm_type(self) -> str:
         return "scripted"
 
     def bind_tools(self, tools, **kwargs):
-        self.bound_log.append(sorted(t.name for t in tools))
+        # `/model_step` binds OpenAI tool definitions (`steps.shown_tool`).
+        self.bound_log.append(sorted(t["function"]["name"] for t in tools))
+        self.bound_tools = list(tools)
         return self
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
@@ -299,6 +303,125 @@ async def test_a_browser_action_gets_one_attempt(model):
     ]))
     entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
     assert [e["retry"] for e in entries] == [False, True]
+
+
+def test_every_browser_tool_that_can_change_the_page_gets_one_attempt():
+    """The browser server can list more than its six default tools. A tool that it adds
+    gets one attempt unless it only reads the page."""
+    for name in ("browser_click", "browser_navigate", "browser_drag", "browser_file_upload",
+                 "browser_tabs", "browser_evaluate"):
+        assert steps.retries(name) is False, name
+    for name in ("read_page", "browser_snapshot", "browser_take_screenshot",
+                 "browser_wait_for", "search_collections", "write_plan"):
+        assert steps.retries(name) is True, name
+
+
+ASK_SCHEMA = {"type": "object", "properties": {
+    "question": {"type": "string"},
+    "options": {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}],
+                "default": None}}, "required": ["question"]}
+
+
+async def test_the_arguments_are_normalized_before_the_call_is_classified_and_stored(model):
+    """The worker reads the question of `ask_user` from the stored call, so the stored call
+    holds the normalized arguments, and the changes are named with it."""
+    agent = FakeAgent([dict_tool("ask_user", ASK_SCHEMA, []),
+                       dict_tool("mark_todo", MARK_SCHEMA, [])], {"ask_user", "mark_todo"})
+    model.replies.append(AIMessage(content="", tool_calls=[
+        {"id": "a", "name": "ask_user",
+         "args": {"question": 'Which lease?<|"|>', "options": "L-17"}},
+        {"id": "b", "name": "mark_todo", "args": {"ids": "1", "status": '"done"'}},
+    ]))
+    entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
+    assert entries[0]["args"] == {"question": "Which lease?", "options": ["L-17"]}
+    assert entries[0]["argument_repairs"] == ["value question lost the quote token"]
+    assert entries[1]["args"] == {"ids": ["1"], "status": "done"}
+    assert entries[1]["kind"] == "ordered"
+
+
+async def test_damaged_arguments_are_stored_as_sent_and_refused_by_the_tool_call(model):
+    seen: List[Any] = []
+    agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, seen)], {"search_collections"})
+    damaged = {"queries": ['"LJM"', 'Raptor"<|"|><|"|>"LJM1"']}
+    model.replies.append(AIMessage(content="", tool_calls=[
+        {"id": "a", "name": "search_collections", "args": damaged}]))
+    entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
+    assert entries[0]["args"] == damaged and entries[0]["argument_repairs"] == []
+    result = await steps.run_tool_call(agent, tool_request("search_collections", damaged))
+    assert (result["status"], result["error_class"]) == ("error", "invalid_arguments")
+    assert "arrived damaged" in json.loads(result["content"])["message"]
+    assert seen == []
+
+
+async def test_a_call_whose_arguments_are_not_json_is_kept_and_refused_with_the_text(model):
+    """The tool call parser of the served model streamed an argument text that is not JSON
+    (a captured case). The model client lists it as an invalid call. The reply keeps the
+    call, and `/tool_call` names the text that the model server sent."""
+    seen: List[Any] = []
+    agent = FakeAgent([dict_tool("cite_documents", EMPTY_SCHEMA, seen)], {"cite_documents"})
+    sent = ('{"citations": [{"document_id": "03a388ac48d3b2cb"}], "{document_id": '
+            '"d21ccff5b16f15e9", "},{document_id":')
+    model.replies.append(AIMessage(content="", invalid_tool_calls=[
+        {"type": "invalid_tool_call", "id": "x", "name": "cite_documents", "args": sent,
+         "error": None}]))
+    entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
+    assert [(e["name"], e["args"]) for e in entries] == [("cite_documents", {})]
+    assert entries[0]["argument_error"].endswith("The model server sent: " + sent)
+    result = await steps.run_tool_call(agent, steps.ToolCallRequest(
+        **RUN, call={"id": "x", "name": "cite_documents", "args": {},
+                     "argument_error": entries[0]["argument_error"]},
+        idempotency_key="k"))
+    assert (result["status"], result["error_class"]) == ("error", "invalid_arguments")
+    assert sent in json.loads(result["content"])["message"]
+    assert seen == []
+
+
+LEAKED = ('call:read_documents{collectionname:<|"|>testdata<|"|>,file_hash:[<|"|>36a12c77e4fd84e8'
+          'd38542990f9bd657c6afb9768cae6703fc78b37cf64e88be<|"|>],page:0}')
+
+
+async def test_a_call_returned_as_text_is_an_unreadable_call_and_no_answer(model):
+    """A stored case: the served model returned a call as reply text with no parsed call.
+    The reply keeps one call with the name from the text and no rebuilt argument, and
+    `/tool_call` refuses it with the text."""
+    seen: List[Any] = []
+    agent = FakeAgent([dict_tool("read_documents", EMPTY_SCHEMA, seen)], {"read_documents"})
+    model.replies.append(AIMessage(content=LEAKED))
+    entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
+    assert [(e["name"], e["args"]) for e in entries] == [("read_documents", {})]
+    assert LEAKED in entries[0]["argument_error"]
+    result = await steps.run_tool_call(agent, steps.ToolCallRequest(
+        **RUN, call={"id": entries[0]["id"], "name": "read_documents", "args": {},
+                     "argument_error": entries[0]["argument_error"]},
+        idempotency_key="k"))
+    assert (result["status"], result["error_class"]) == ("error", "invalid_arguments")
+    assert seen == []
+
+
+def test_the_stored_call_text_of_the_fixture_is_one_unreadable_call():
+    fixtures = json.loads((Path(__file__).parent / "producer_fixtures"
+                           / "gemma4_tool_calls.json").read_text())
+    stored = next(e for e in fixtures["entries"] if e["case"] == "call_returned_as_text")
+    call = steps.leaked_call(stored["raw"])
+    assert (call["name"], call["args"]) == ("read_documents", {})
+    assert stored["raw"] in call["argument_error"]
+
+
+def test_call_syntax_without_a_name_is_an_unnamed_call_and_plain_text_is_none():
+    assert steps.leaked_call("<|tool_call>{x:<|\"|>1<|\"|>}")["name"] == steps.UNNAMED_CALL
+    assert steps.leaked_call("Use call:read_documents{...} to read.") is None
+
+
+async def test_the_model_is_bound_with_one_type_for_each_parameter(model):
+    agent = FakeAgent([dict_tool("search_collections", ASK_SCHEMA, [])], {"search_collections"})
+    model.replies.append(AIMessage(content="done"))
+    await frames_of(agent, step_request())
+    bound = {t["function"]["name"]: t["function"] for t in model.bound_tools}
+    assert bound["search_collections"]["parameters"]["properties"]["options"] == {
+        "type": "array", "items": {"type": "string"}, "default": None}
+    # `/tool_call` still validates against the tool's own schema.
+    tool = agent.context.snapshot.tools_by_name["search_collections"]
+    assert tool.args_schema is ASK_SCHEMA and "anyOf" in ASK_SCHEMA["properties"]["options"]
 
 
 def _http_error(status):

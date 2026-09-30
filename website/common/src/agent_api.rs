@@ -368,7 +368,8 @@ pub struct DocumentsReadRequest {
     #[serde(default)]
     pub query: Option<String>,
     /// Holds the page id to read in each document. Page ids can have gaps, and a page id
-    /// with no stored page is 404 `not_found`.
+    /// with no stored page is 404 `not_found`. 0 counts as `None`, which reads the page
+    /// with the most query hits, else the first stored page.
     #[serde(default)]
     pub page: Option<u32>,
     /// Holds a `TextPage` position. It selects the source and the page, and it takes

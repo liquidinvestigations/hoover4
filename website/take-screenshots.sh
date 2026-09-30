@@ -256,6 +256,10 @@ PASS_THROUGH_ENV=()
 [ -n "$CRED_USERNAME" ] && PASS_THROUGH_ENV+=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
 [ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && PASS_THROUGH_ENV+=(-e HOOVER4_CAPTURE_REVISION)
 [ -n "$OPERATION_ID" ] && PASS_THROUGH_ENV+=(-e "HOOVER4_SCREENSHOT_OPERATION_ID=$OPERATION_ID")
+# The chat cases open named sessions. tools/prepare_chat_fixtures.sh writes their map.
+if [ -z "${HOOVER4_SCREENSHOT_CHAT_FIXTURES:-}" ] && [ -f test_reports/chat_fixtures.json ]; then
+    export HOOVER4_SCREENSHOT_CHAT_FIXTURES="$(cat test_reports/chat_fixtures.json)"
+fi
 [ -n "${HOOVER4_SCREENSHOT_CHAT_FIXTURES:-}" ] && PASS_THROUGH_ENV+=(-e HOOVER4_SCREENSHOT_CHAT_FIXTURES)
 
 run_capture_python() {

@@ -472,11 +472,17 @@ pub async fn get_plan_view(
         return Ok(None);
     };
     let nodes: Vec<PlanNodeView> = serde_json::from_str(&nodes_json).unwrap_or_default();
-    // Only a terminal plan run shows why it stopped, so a live one skips the query.
-    let end_reason = if run.is_terminal() {
-        lead_end_reason(&db_plans::plan_agent_runs(username, &session_id, &run.rid).await?)
+    // A terminal plan run shows why it stopped, and an executing one its phase. A plan in
+    // review skips the query.
+    let (end_reason, phase) = if run.is_terminal() {
+        let runs = db_plans::plan_agent_runs(username, &session_id, &run.rid).await?;
+        (lead_end_reason(&runs), String::new())
+    } else if run.state == "executing" {
+        let runs = db_plans::plan_agent_runs(username, &session_id, &run.rid).await?;
+        let states: Vec<(u8, &str)> = runs.iter().map(|r| (r.depth, r.state.as_str())).collect();
+        (String::new(), common::plan_types::executing_phase(&states).to_string())
     } else {
-        String::new()
+        (String::new(), String::new())
     };
     Ok(Some(PlanView {
         run_id: run.rid,
@@ -489,7 +495,29 @@ pub async fn get_plan_view(
         nodes,
         sections_json: run.sections_json,
         end_reason,
+        phase,
     }))
+}
+
+/// The report of each section of a plan run of the owner, typed when its `report_data`
+/// document parses, else its text report. `None` for a missing or foreign plan run. A
+/// section with no report document is not listed, and the card says that it has none.
+pub async fn get_section_reports(
+    user: &CurrentUser,
+    session_id: String,
+    plan_run_id: String,
+) -> anyhow::Result<Option<Vec<common::report_types::SectionReportView>>> {
+    let username = user.username.as_str();
+    if db_plans::read_plan_run(username, &session_id, &plan_run_id).await?.is_none() {
+        return Ok(None);
+    }
+    let reports = db_plans::read_section_reports(username, &session_id, &plan_run_id).await?;
+    Ok(Some(
+        reports
+            .into_iter()
+            .map(|(node_id, report)| common::report_types::SectionReportView { node_id, report })
+            .collect(),
+    ))
 }
 
 /// The end reason of the newest lead run (`depth == 0`) in `runs`, oldest first. A

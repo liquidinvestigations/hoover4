@@ -39,8 +39,10 @@ impl Kind {
             "list_document_entities" => Kind::Entities,
             "cite_documents" => Kind::Cite,
             "run_subagent" => Kind::Subagent,
-            "append_node" | "append_child" | "move_node" | "edit_node" | "remove_node"
-            | "read_plan" => Kind::Plan,
+            "write_plan" | "read_plan" | "read_plan_document" | "read_plan_report"
+            | "append_node" | "append_child" | "move_node" | "edit_node" | "remove_node" => {
+                Kind::Plan
+            }
             "write_todo" | "edit_todo" | "mark_todo" | "read_todo" => Kind::Todo,
             "search_skills" | "read_skill" | "read_tool" | "search_agent_tools" => Kind::Skill,
             "write_note" => Kind::Note,

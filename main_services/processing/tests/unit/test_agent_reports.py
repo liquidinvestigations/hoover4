@@ -428,6 +428,39 @@ def test_a_read_page_result_gives_one_entry_for_each_page():
     assert len({e["item_key"] for e in entries}) == 3
 
 
+def test_a_find_in_a_page_is_a_partial_read_with_the_spans_it_shows():
+    """The shape of `read_page.render` for a `find`, which the browser test fixes too."""
+    text = (
+        '## people.json\nhttps://example.org/people.json\n\n[find "Staff Engineer": 2 of 5 '
+        "matches from offset 0 are shown. The page has 5 matches in 2,115,365 characters. "
+        "Version 0123456789abcdef.]\n\n[match at 1200, text from 1000 to 1414]\nabc\n\n"
+        "[match at 9000, text from 8800 to 9214]\ndef\n\n[more: 3 matches from offset 20000. "
+        "Call read_page with this URL, find, offset 20000 and version 0123456789abcdef for "
+        "the next matches]"
+        '\n\n---\n\n## b\nhttps://example.org/b\n\n[find "x": no match from offset 0. '
+        "The page has 0 matches in 12 characters. Version fedcba9876543210.]"
+    )
+    entries = reports.normalize("read_page", {"urls": ["https://example.org/people.json"],
+                                              "find": "Staff Engineer"},
+                                json.dumps([text, '[hoover4:artifacts] {"artifacts": []}']),
+                                "ok")
+    assert [e["status"] for e in entries] == ["partial", "partial"]
+    assert entries[0]["range"] == {"find": "Staff Engineer", "spans": [[1000, 1414], [8800, 9214]],
+                                   "matches": 5, "total_chars": 2115365}
+    assert entries[1]["range"] == {"find": "x", "spans": [], "matches": 0, "total_chars": 12}
+
+
+def test_a_read_page_result_stored_as_one_text_ends_with_its_marker_line():
+    """The agent service joins the text blocks of a result with a newline, so the marker
+    block is the last line of the last page."""
+    text = ("## A\nhttps://example.org/a\n\nbody\n\n[cut: this call read 4 of the page's 9 "
+            "characters. Call read_page with offset 4 for the next part, with version "
+            '0123456789abcdef]\n[hoover4:artifacts] {"artifacts": []}')
+    [entry] = reports.normalize("read_page", {"urls": ["https://example.org/a"]}, text, "ok")
+    assert entry["status"] == "partial"
+    assert entry["range"] == {"start_chars": 0, "end_chars": 4, "total_chars": 9}
+
+
 @pytest.mark.parametrize("failure", [agent_plans.DocumentBodyError("no artifact row"),
                                      RuntimeError("the object store did not answer")])
 def test_an_unreadable_typed_report_reads_as_absent(monkeypatch, failure):

@@ -157,6 +157,13 @@ limit, wrote no report or reports incomplete execution. The plan completes when 
 organizer answers, and the final report ends with a generated table of the failed sections
 and the cause of each. The plan runs take their model steps on `research-queue`.
 
+The plan card reads the plan through `get_plan_view`. For an executing plan it derives the
+phase from the plan's agent runs. When every section run has ended and a lead run is
+`running`, the organizer combines the reports. No stored plan state records that phase.
+The card reads the section reports through `get_section_reports`. It parses the typed
+`report_data` document of each section. Without it, the text `report` document is a legacy
+report. A section with neither has no report, and the card does not infer its success.
+
 `AgentRun` keeps the run in `agent_runs` and its model conversation in
 `agent_run_messages`, and runs the agent loop. Each model call is one `model_step`
 activity: the worker sends the stored thread to the agent's `POST /model_step` and writes

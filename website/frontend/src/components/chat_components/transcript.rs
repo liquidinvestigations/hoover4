@@ -48,6 +48,10 @@ pub fn ChatTranscript(
     /// Plain chats keep each todo write outside a tool group.
     #[props(default)]
     deep_research: bool,
+    /// The state of the newest turn, from `turn_state`. The root element carries it as
+    /// `data-chat-turn`, so a browser test reads the turn state from the page.
+    #[props(default)]
+    turn: String,
 ) -> Element {
     let stream_live = stream_live.unwrap_or(true);
     let waiting_line = match queued_for.as_str() {
@@ -82,6 +86,7 @@ pub fn ChatTranscript(
     // Handles are allocated for the whole conversation, so a handle that any citation of
     // any run gave is a real one. The answers mark every other handle as not cited.
     let cited_handles = issued_handles(&messages, &run_cited_handles);
+    let conflicting = conflicting_handles(&messages);
     let subagent_runs = stream
         .as_ref()
         .map(|t| t.subagent_runs.clone())
@@ -156,6 +161,7 @@ pub fn ChatTranscript(
                 highlight,
                 sources,
                 cited_handles: cited_handles.clone(),
+                conflicting_handles: conflicting.clone(),
                 datasets: datasets.clone(),
                 subagent_runs: runs,
                 subagent_batches: batches,
@@ -193,6 +199,7 @@ pub fn ChatTranscript(
     rsx! {
         div {
             id: "x-chat-transcript",
+            "data-chat-turn": "{turn}",
             style: "flex: 1; overflow-y: auto; padding: 18px; display: flex; \
                     flex-direction: column; gap: 12px;",
             if messages.is_empty() {
@@ -524,6 +531,36 @@ fn collect_datasets(
     }
 }
 
+/// The handles that the citation rows of the conversation give to more than one document.
+/// Records from before durable handles can hold such a handle. The answer links it to no
+/// document, and the sources strip names the conflict.
+fn conflicting_handles(messages: &[ChatMessageItem]) -> Vec<String> {
+    let mut documents: Vec<(String, String)> = Vec::new();
+    let mut conflicting: Vec<String> = Vec::new();
+    for message in messages {
+        if message.role != ChatRole::Tool || message.tool_name != "cite_documents" {
+            continue;
+        }
+        for doc in message.parsed_doc_refs() {
+            if doc.handle.is_empty() {
+                continue;
+            }
+            // A stored ref can hold the whole hash or its first 16 characters.
+            let document: String = doc.file_hash.chars().take(16).collect();
+            match documents.iter().find(|(handle, _)| handle == &doc.handle) {
+                Some((_, known)) if known != &document => {
+                    if !conflicting.contains(&doc.handle) {
+                        conflicting.push(doc.handle.clone());
+                    }
+                }
+                Some(_) => {}
+                None => documents.push((doc.handle.clone(), document)),
+            }
+        }
+    }
+    conflicting
+}
+
 /// Every handle that a `cite_documents` result of the conversation gave: the handles of
 /// the transcript rows, and `run_cited_handles`, which the server read from the run
 /// threads of every depth.
@@ -621,6 +658,9 @@ fn MessageEntry(
     /// The handles that the citations of the conversation gave (`issued_handles`).
     #[props(default)]
     cited_handles: Vec<String>,
+    /// See [`conflicting_handles`].
+    #[props(default)]
+    conflicting_handles: Vec<String>,
     /// See [`dataset_by_hash`]. Read by the entities card and by nothing else.
     #[props(default)]
     datasets: HashMap<String, String>,
@@ -681,11 +721,16 @@ fn MessageEntry(
                             MarkdownishText {
                                 text: message.content.clone(),
                                 cited_handles: Some(cited_handles.clone()),
+                                conflicting_handles: conflicting_handles.clone(),
                             }
                         }
+                    } else {
+                        // The question card above shows this text. A browser test reads
+                        // the answer of a turn that asked the user from this element.
+                        span { "data-chat-asked": "{message.seq}", hidden: true, "{message.content}" }
                     }
                     if !sources.is_empty() {
-                        SourcesStrip { sources: sources.clone() }
+                        SourcesStrip { sources: sources.clone(), conflicting: conflicting_handles.clone() }
                     }
                     if let Some(reference) = plan {
                         PlanCard {
@@ -1001,7 +1046,12 @@ fn unverified_quote_message(reason: &str) -> &'static str {
 /// Each entry carries the handle that appears in the prose, so a reader following `[D3]`
 /// out of a sentence lands on the document it names.
 #[component]
-fn SourcesStrip(sources: Vec<ChatDocRef>) -> Element {
+fn SourcesStrip(
+    sources: Vec<ChatDocRef>,
+    /// See [`conflicting_handles`]. An entry with such a handle gets no jump target.
+    #[props(default)]
+    conflicting: Vec<String>,
+) -> Element {
     rsx! {
         div {
             style: "margin-top: 10px; border-top: 1px solid #E2E8F0; padding-top: 8px;",
@@ -1014,7 +1064,8 @@ fn SourcesStrip(sources: Vec<ChatDocRef>) -> Element {
                 for (index, doc) in sources.into_iter().enumerate() {
                     div {
                         key: "{doc.handle}-{doc.file_hash}",
-                        id: "{source_anchor_id(&doc.handle)}",
+                        id: if conflicting.contains(&doc.handle) { String::new() } else { source_anchor_id(&doc.handle) },
+                        "data-conflicting-handle": conflicting.contains(&doc.handle).to_string(),
                         class: "x-source-entry",
                         style: "display: flex; gap: 8px; align-items: flex-start;",
                         if !doc.handle.is_empty() {
@@ -1031,6 +1082,12 @@ fn SourcesStrip(sources: Vec<ChatDocRef>) -> Element {
                         div {
                             style: "flex: 1 1 auto; min-width: 0;",
                             ChatDocRefCard { doc: doc.clone(), index: index as u64 }
+                            if conflicting.contains(&doc.handle) {
+                                div {
+                                    style: "font-size: 12px; color: #B45309; padding: 0 4px 2px 4px;",
+                                    "Citations of this conversation give {doc.handle} to more than one document. The answer links it to none of them."
+                                }
+                            }
                             if !doc.why.is_empty() {
                                 div {
                                     style: "font-size: 12px; color: #475569; padding: 0 4px 2px 4px;",
@@ -1223,6 +1280,28 @@ mod tests {
     fn a_handle_that_only_a_sub_agent_citation_issued_stays_a_chip() {
         let messages = transcript_with_d1("See [D2].");
         let spans = marked(&messages, &["[D2]".to_string()], "See [D2].");
+        assert!(spans.contains(&Span::Handle("[D2]".to_string())), "{spans:?}");
+    }
+
+    #[test]
+    fn a_handle_given_to_two_documents_is_conflicting_and_one_document_is_not() {
+        let cite = |seq: u32, refs: &str| row(seq, ChatRole::Tool, "cite_documents", refs, "");
+        let messages = vec![
+            cite(1, r#"[{"handle": "[D1]", "collection_dataset": "c", "file_hash": "aaaaaaaaaaaaaaaa1111"},
+                        {"handle": "[D2]", "collection_dataset": "c", "file_hash": "cccccccccccccccc"}]"#),
+            cite(2, r#"[{"handle": "[D1]", "collection_dataset": "c", "file_hash": "bbbbbbbbbbbbbbbb"},
+                        {"handle": "[D2]", "collection_dataset": "c", "file_hash": "cccccccccccccccc2222"}]"#),
+        ];
+        assert_eq!(conflicting_handles(&messages), vec!["[D1]".to_string()]);
+        let blocks = crate::components::chat_components::markdown_text::mark_handles(
+            parse_blocks("See [D1] and [D2]."),
+            &["[D1]".to_string(), "[D2]".to_string()],
+            &conflicting_handles(&messages),
+        );
+        let Block::Paragraph(spans) = &blocks[0] else {
+            panic!("not a paragraph");
+        };
+        assert!(spans.contains(&Span::ConflictingHandle("[D1]".to_string())), "{spans:?}");
         assert!(spans.contains(&Span::Handle("[D2]".to_string())), "{spans:?}");
     }
 
