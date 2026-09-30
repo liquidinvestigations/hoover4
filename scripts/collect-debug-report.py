@@ -606,6 +606,17 @@ def host_cgroup_dir(c):
     return ("/sys/fs/cgroup" + rel[0]) if rel else None
 
 
+def counter_delta(samples, name, key):
+    """Return a counter increase only when every sample belongs to one uninterrupted generation."""
+    values = [sample["containers"].get(name, {}) for sample in samples]
+    if not values or any(value.get(key) is None for value in values):
+        return None
+    if any(x.get("cgroup_generation") != y.get("cgroup_generation")
+           or y[key] < x[key] for x, y in zip(values, values[1:])):
+        return None
+    return values[-1][key] - values[0][key]
+
+
 def collect_timeseries(r, containers, seconds, interval):
     """Sample CPU, throttling, memory and network per container, from the host.
 
@@ -644,8 +655,15 @@ def collect_timeseries(r, containers, seconds, interval):
         for name, (pid, cg) in targets.items():
             cpu = _read_kv(cg + "/cpu.stat")
             ev = _read_kv(cg + "/memory.events")
+            memory = _read_kv(cg + "/memory.stat")
+            try:
+                generation = os.stat(cg).st_ino
+            except OSError:
+                generation = None
             rx, tx = _net_bytes(pid)
-            per[name] = {"usage_usec": cpu.get("usage_usec"),
+            per[name] = {"cgroup_generation": generation,
+                         "anon": memory.get("anon"), "file": memory.get("file"),
+                         "usage_usec": cpu.get("usage_usec"),
                          "nr_periods": cpu.get("nr_periods"),
                          "nr_throttled": cpu.get("nr_throttled"),
                          "throttled_usec": cpu.get("throttled_usec"),
@@ -665,12 +683,10 @@ def collect_timeseries(r, containers, seconds, interval):
     span = max(1e-6, last["t"] - first["t"])
     summary = {"seconds": round(span, 1), "samples": len(samples), "containers": {}}
     for name in targets:
-        a, b = first["containers"].get(name, {}), last["containers"].get(name, {})
+        b = last["containers"].get(name, {})
 
         def delta(k):
-            if a.get(k) is None or b.get(k) is None:
-                return None
-            return b[k] - a[k]
+            return counter_delta(samples, name, k)
         periods = delta("nr_periods")
         mems = [s["containers"][name]["mem"] for s in samples
                 if s["containers"].get(name, {}).get("mem") is not None]
@@ -1505,8 +1521,11 @@ def collect_manticore(r, c, name="manticore"):
              "cat /proc/%d/smaps_rollup 2>&1" % (pid, pid), timeout=30)
     mysql = [r.engine, "exec", name, "mysql", "-h127.0.0.1", "-P9306",
              "--protocol=tcp", "-e"]
-    up = r.run(None, mysql + ["SELECT 1"], timeout=30, capture=True)
-    if not up:
+    up = r.run(j + "probe.txt", mysql + ["SELECT 1"], timeout=30, capture=True)
+    with r.lock:
+        probe = next(entry for entry in reversed(r.manifest)
+                     if entry.get("file") == j + "probe.txt")
+    if probe.get("exit_code") != 0 or not any(row == ["1"] for row in mysql_rows(up)):
         r.note("%s: the daemon does not answer on 9306, so its SQL steps are skipped" % name)
         return
     for name, sql in (("status", "SHOW STATUS"),
@@ -1520,7 +1539,7 @@ def collect_manticore(r, c, name="manticore"):
         probe = next(entry for entry in reversed(r.manifest)
                      if entry.get("file") == j + "tables.txt")
     inventory = mysql_rows(tables)
-    if probe.get("exit_code") != 0 or not inventory or inventory[0][0] not in ("Index", "Table"):
+    if probe.get("exit_code") != 0 or (inventory and inventory[0][0] not in ("Index", "Table")):
         r.note("%s: SHOW TABLES failed or returned no valid inventory" % j.rstrip("/"))
         return
     rows = []
@@ -1536,12 +1555,54 @@ def collect_manticore(r, c, name="manticore"):
                 status[kv[0]] = kv[1]
         status["table"] = name
         rows.append(status)
+        r.run(j + "table-settings/" + name + ".txt",
+              mysql + ["SHOW CREATE TABLE %s" % name], timeout=30)
     keys = ["table", "indexed_documents", "ram_bytes", "disk_bytes", "disk_mapped",
             "disk_mapped_cached", "ram_chunk", "ram_chunk_segments_count", "disk_chunks",
             "mem_limit", "mem_limit_rate", "killed_rate", "optimizing", "tid", "tid_saved"]
     out = ["\t".join(keys)] + ["\t".join(str(row.get(k, "")) for k in keys) for row in rows]
     r.write_text(j + "table-status.tsv", "\n".join(out) + "\n")
     collect_vector_tables(r, j, mysql, rows)
+
+
+def collect_performance(r, samples, interval, running):
+    """Capture repeated service counters without reading document bodies."""
+    for index in range(samples):
+        started = time.monotonic()
+        folder = "performance/%03d/" % index
+        r.write_text(folder + "time.txt", datetime.datetime.now(
+            datetime.timezone.utc).isoformat() + "\n")
+        if "clickhouse" in running:
+            ch(r, folder + "clickhouse-processes.tsv",
+               "SELECT query_id, elapsed, read_rows, read_bytes, memory_usage, "
+               "normalizedQueryHash(query) query_hash FROM system.processes "
+               "ORDER BY memory_usage DESC LIMIT 100", timeout=10)
+            ch(r, folder + "clickhouse-events.tsv",
+               "SELECT event, value FROM system.events WHERE event IN "
+               "('Query', 'SelectQuery', 'FailedQuery', 'SelectedRows', 'SelectedBytes', "
+               "'OSReadBytes', 'OSWriteBytes')", timeout=10)
+        for name in MANTICORE_CONTAINERS:
+            if name not in running:
+                continue
+            mysql = [r.engine, "exec", name, "mysql", "-h127.0.0.1", "-P9306",
+                     "--protocol=tcp", "-e"]
+            r.run(folder + name + "-status.txt", mysql + ["SHOW STATUS"], timeout=10)
+            r.run(folder + name + "-threads.txt",
+                  mysql + ["SHOW THREADS OPTION format=all"], timeout=10)
+            tables = r.run(folder + name + "-tables.txt", mysql + ["SHOW TABLES"],
+                           timeout=10, capture=True)
+            names = [row[0] for row in mysql_rows(tables)
+                     if len(row) >= 2 and row[1] == "rt"
+                     and re.fullmatch(r"[A-Za-z0-9_]+", row[0])]
+            r.write_json(folder + name + "-coverage.json",
+                         {"tables_listed": len(names), "tables_sampled": names[:64]})
+            if names:
+                sql = "; ".join("SHOW TABLE %s STATUS" % name for name in names[:64])
+                r.run(folder + name + "-table-status.txt", mysql + [sql], timeout=10)
+        r.write_text(folder + "finished.txt", datetime.datetime.now(
+            datetime.timezone.utc).isoformat() + "\n")
+        if index + 1 < samples:
+            time.sleep(max(0, interval - (time.monotonic() - started)))
 
 
 def collect_vector_tables(r, j, mysql, status_rows):
@@ -2438,6 +2499,8 @@ def main():
                     help="length of the per-container time series, 0 to skip (default 180)")
     ap.add_argument("--sample-interval", type=int, default=10,
                     help="seconds between time-series samples (default 10)")
+    ap.add_argument("--performance-samples", type=int, default=0,
+                    help="service counter samples, from 0 to 120 (default 0)")
     ap.add_argument("--lifetime-lines", type=int, default=300000,
                     help="most lines kept per lifetime log, 0 to skip (default 300000)")
     ap.add_argument("--dataset-scan-seconds", type=int, default=120,
@@ -2458,6 +2521,10 @@ def main():
                     help="log windows kept around the first and the last kernel OOM kills "
                          "of each container since the deployment (default 3)")
     args = ap.parse_args()
+    if not 0 <= args.performance_samples <= 120:
+        ap.error("--performance-samples must be from 0 to 120")
+    if args.sample_interval < 1:
+        ap.error("--sample-interval must be positive")
     expected_limits = {}
     for item in args.expect_limit:
         name, _, size = item.partition("=")
@@ -2551,6 +2618,9 @@ def main():
                 tasks.append(("dataset shape", lambda: collect_dataset_shape(
                     r, args.dataset_scan_seconds)))
         # Also when it is not running: the data folder and the binlog are read from the host.
+        if args.performance_samples:
+            tasks.insert(0, ("performance", lambda: collect_performance(
+                r, args.performance_samples, args.sample_interval, running)))
         for mname in MANTICORE_CONTAINERS:
             mc = next((c for c in containers if container_name(c) == mname), None)
             if mc is not None:
@@ -2568,7 +2638,7 @@ def main():
 
     # Start the state that can change under the report first. Cassandra can be killed
     # mid-run, and the time series must overlap the other collectors.
-    first = ["timeseries", "cassandra", "temporal", "clickhouse", "lifetime logs"]
+    first = ["timeseries", "performance", "cassandra", "temporal", "clickhouse", "lifetime logs"]
     tasks.sort(key=lambda t: first.index(t[0]) if t[0] in first else len(first))
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
         futures = {pool.submit(fn): label for label, fn in tasks}
