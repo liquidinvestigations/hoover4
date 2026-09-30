@@ -163,6 +163,37 @@ def test_notes_citations_and_artifacts_are_typed():
     assert [(e["kind"], e["reference"]["artifact_id"]) for e in shown] == [("artifact", "art-1")]
 
 
+def _cite(idx, call_id, verified, reason=""):
+    return _tool(idx, "cite_documents",
+                 json.dumps({"citations": [{"file_hash": HASH_A[:16], "handle": "[D1]"}]}),
+                 call_id, doc_refs=[{"collectionname": "c", "file_hash": HASH_A,
+                                     "handle": "[D1]", "quote_verified": verified,
+                                     "quote_reason": reason}])
+
+
+def test_a_document_cited_again_in_the_repair_round_is_listed_once_with_the_verified_quote():
+    messages = [_message(0, "human", "q"),
+                _ai(1, calls=[{"id": "c1", "name": "cite_documents", "args": {}}]),
+                _cite(2, "c1", False, "absent"),
+                _ai(3, "The memo says so [D1]."),
+                _message(4, "human", "cite again",
+                         usage_json=json.dumps({"repair_marker": "citation"})),
+                _ai(5, calls=[{"id": "c2", "name": "cite_documents", "args": {}}]),
+                _cite(6, "c2", True),
+                _ai(7, "The memo says so [D1].")]
+    report = reports.project(messages, thread_id=THREAD, first_run_id=FIRST,
+                             state="completed", result="The memo says so [D1].")
+    [citation] = report["citations"]
+    assert citation["reference"]["quote_verified"] is True
+    assert citation["source"]["message_idx"] == 6
+    assert report["diagnostics"]["citation_check"]["unverified_quotes"] == []
+    assert report["diagnostics"]["repair_round"] is True
+    # A later citation without a verified quote does not replace a verified one.
+    kept = reports.one_citation_per_document(
+        [*report["citations"], *messages[2].usage["evidence"]])
+    assert [e["reference"]["quote_verified"] for e in kept] == [True]
+
+
 def test_the_tool_result_write_stores_the_evidence_in_its_usage(monkeypatch):
     written = []
     monkeypatch.setattr(agent_runs, "write_message", lambda *args: written.append(args[-1]))

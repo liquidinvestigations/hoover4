@@ -116,10 +116,42 @@ calls. It serves a context of 262,144 tokens.
 
 ### The image
 
-Docker BuildKit builds the image from the Git repository in `vllm_build_repo` at the
+The image has two builds. `deploy.py` builds the upstream image
+`hoover4-vllm-dgemma-upstream:<commit>` from the Git repository in `vllm_build_repo` at the
 commit in `vllm_build_ref`. The build context is the Git URL with `#<commit>`, so no file
-of that repository is in this one. The image tag is `hoover4-vllm-dgemma:<commit>`. To
-move the build, change `vllm_build_ref` and run `./deploy --ai-services --build`.
+of that repository is in this one. `deploy.py` builds the upstream image only when the
+image of `hoover4-vllm` must be built, with `--build` or when it does not exist, and only
+when the upstream image does not exist, because its commit is pinned.
+
+The compose build of `hoover4-vllm` then starts from the upstream image and applies the
+patches in `dgemma/vllm-image/` to its vLLM package. The build stops when a patch does not
+apply. The image tag is `hoover4-vllm-dgemma:<commit>`. To move the build, change
+`vllm_build_ref` and run `./deploy --ai-services --build`. Check that each patch still
+applies to the new vLLM.
+
+`parser-arguments.patch` changes the tool call parser of vLLM. A parser that converts the
+model's own argument syntax to JSON, such as `gemma4`, streams no argument deltas. It sends
+the arguments of a call once, when the call ends. The final parse of malformed model output
+can differ from a streamed prefix, and the client cannot take back a prefix that it has
+received. Without the patch, the client then holds arguments that are not JSON. The streamed
+arguments now equal the arguments of a request without streaming.
+
+`dgemma/vllm-image/check_parser.py` tests the parser of an image against the producer
+fixture `main_services/agents/research_agent/tests/producer_fixtures/gemma4_tool_calls.json`.
+It feeds each captured raw call to the parser one token at a time, and compares the joined
+argument deltas with the parse without streaming. It needs the weights folder for the
+tokenizer and no GPU:
+
+```
+docker run --rm --entrypoint python3 -e HF_HUB_OFFLINE=1 \
+  -v <checkout>/ai_services/dgemma/vllm-image:/check:ro \
+  -v <checkout>/main_services/agents/research_agent/tests/producer_fixtures:/fixtures:ro \
+  -v <volumes_path>/dgemma_model:/models/dgemma:ro \
+  hoover4-vllm-dgemma:<commit> /check/check_parser.py /fixtures/gemma4_tool_calls.json
+```
+
+The upstream image fails the case `streamed_prefix_not_json`, and the patched image passes
+every case.
 
 The entrypoint of the image composes the `vllm serve` arguments from the container
 environment. `deploy.py` renders that environment from `[ai_services]`. The entrypoint

@@ -42,6 +42,11 @@ the provider never stated one, and 0 means no compaction.
 the safe input of the model, no summary can help, and `plan_compaction` raises
 `ContextError` with the size of each part. The stored thread stays whole.
 
+**A quote keeps the source that the results give.** The summary model writes the source of
+each quote in brackets. When the quote is in the text of a document or a page that the
+replaced steps read, and the bracket names another source, code writes the source of that
+text in the bracket (`attribute_quotes`).
+
 **A failed summary is not retention.** When the summary request fails or gives no text, the
 record has the status `failed` and changes no message. The caller sends the previous list
 only when it fits. A later plan over the same prefix does not ask the summary model again.
@@ -119,14 +124,16 @@ Use exactly these sections, in this order:
 
 ## Findings
 One line for each fact that bears on the task. Quote each sentence of a source that states \
-such a fact, whole and word for word, in quotation marks, then give its source: the \
-collection name, the first 16 characters of the file hash and the path, or the URL, or the \
-report. Do not shorten a quote and do not merge two sources. Copy every number, date, name, \
+such a fact, whole and word for word, in quotation marks. After the quote, give the source \
+of the result that holds it, in this form: [source: collection name, first 16 characters of \
+the file hash, path] or [source: URL] or [source: report]. Do not shorten a quote and do \
+not merge two sources. Copy every number, date, name, \
 amount, count and identifier exactly. Include each note that the agent saved with \
 `write_note`.
 
 ## Contradictions
-Each pair of sources that disagree, with both claims and both sources. Write "none" when \
+Each pair of sources that disagree, with both quoted claims, each followed by its source in \
+the same form. Write "none" when \
 the history shows no disagreement.
 
 ## Outstanding work
@@ -440,6 +447,83 @@ def summary_blocks(msgs: Sequence[RunMessage], prefix: Sequence[int]) -> List[Bl
     return blocks
 
 
+#: A quote of the summary with its bracketed source: the quote, and the source text.
+QUOTE_SOURCE = re.compile(r'["\u201c]([^"\u201c\u201d\n]{12,})["\u201d]\s*\[source: ([^\]\n]*)\]')
+#: The most sources that one corrected bracket names.
+QUOTE_SOURCES_MAX = 3
+
+
+@dataclass(frozen=True)
+class ReadSource:
+    """The text of one document or page that a replaced step read, with its source."""
+
+    #: The source as a bracket gives it: "collection, hash start, path", or the URL.
+    label: str
+    #: The identifiers of which one must be in a correct bracket, in lower case.
+    ids: Tuple[str, ...]
+    #: The text with each run of white space as one space.
+    text: str
+
+
+def _flat(text: str) -> str:
+    return " ".join((text or "").split())
+
+
+def read_sources(msgs: Sequence[RunMessage], prefix: Sequence[int]) -> List[ReadSource]:
+    """The document and page texts of the `read_documents` and `read_page` results in the
+    prefix, each with its source."""
+    names = _names(msgs)
+    out: List[ReadSource] = []
+    for i in prefix:
+        m = msgs[i]
+        if m.role != "tool" or m.status == "error":
+            continue
+        name = names.get(i) or m.name or ""
+        if name == thread_index.READ_DOCUMENTS:
+            body = thread_index._json_object(m.content) or {}
+            for item in body.get("items") or []:
+                if not isinstance(item, dict) or not item.get("file_hash") or not item.get("text"):
+                    continue
+                start = str(item["file_hash"])[:16]
+                label = ", ".join(x for x in (str(item.get("collectionname") or ""), start,
+                                              str(item.get("path") or "")) if x)
+                out.append(ReadSource(label, (start.lower(),), _flat(str(item["text"]))))
+        elif name == thread_index.READ_PAGE and isinstance(m.content, str):
+            for block in thread_index.page_blocks(m.content):
+                lines = block.split("\n", 2)
+                if len(lines) < 3:
+                    continue
+                url = lines[1].strip()
+                out.append(ReadSource(url, (url.lower(),), _flat(lines[2])))
+    return out
+
+
+def attribute_quotes(summary: str, sources: Sequence[ReadSource]) -> Tuple[str, int]:
+    """The summary with the source of each quote that a read text holds, and the count of
+    brackets changed.
+
+    A bracket that names an identifier of a text that holds the quote stays. A quote that no
+    read text holds keeps its bracket, because code cannot find its source.
+    """
+    changed = 0
+
+    def fix(match: "re.Match[str]") -> str:
+        nonlocal changed
+        quote = _flat(match.group(1))
+        holders = [s for s in sources if quote and quote in s.text]
+        named = match.group(2).lower()
+        if not holders or any(i in named for s in holders for i in s.ids):
+            return match.group(0)
+        labels = list(dict.fromkeys(s.label for s in holders))[:QUOTE_SOURCES_MAX]
+        changed += 1
+        start = match.start(2) - match.start(0)
+        end = match.end(2) - match.start(0)
+        whole = match.group(0)
+        return whole[:start] + "; ".join(labels) + whole[end:]
+
+    return QUOTE_SOURCE.sub(fix, summary), changed
+
+
 def extract(text: str, chars: int) -> str:
     """A bounded extract of a result: its start and its end, which often holds the
     continuation handle, with `EXTRACT_MARK` between them."""
@@ -622,6 +706,8 @@ class CompactionPlan:
     #: True when the newest stored record failed over the same prefix. No summary request
     #: is sent again.
     unchanged_failure: bool = False
+    #: The texts that the prefix read, with their sources, for `attribute_quotes`.
+    read_sources: List[ReadSource] = field(default_factory=list)
 
     @property
     def parts(self) -> int:
@@ -744,7 +830,8 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
         sizes={"fixed": est.fixed, "user": user, "retained": used,
                "index": est.tokens_text(index), "summary_input": est.tokens_text(prompt),
                "summary_window": int(s_window)},
-        extracts=extracts, unchanged_failure=unchanged)
+        extracts=extracts, unchanged_failure=unchanged,
+        read_sources=read_sources(applied, prefix))
 
 
 def finish_compaction(plan: CompactionPlan, summariser: Optional[Summariser] = None
@@ -768,6 +855,7 @@ def finish_compaction(plan: CompactionPlan, summariser: Optional[Summariser] = N
             error = f"{type(exc).__name__}: {exc}"[:300]
         if not text and not error:
             error = "the summary request gave no text"
+    text, corrected = attribute_quotes(text, plan.read_sources)
     status = "ok" if text else "failed"
     record = RECORD_HEADER + plan.index + ("\n\n" if plan.index else "") + text if text else ""
     row: Dict[str, Any] = {
@@ -785,6 +873,7 @@ def finish_compaction(plan: CompactionPlan, summariser: Optional[Summariser] = N
         "tokens_before": plan.billed, "threshold": plan.trigger, "target": plan.target,
         "est_after": est_after, "target_reached": reached,
         "steps_summarised": plan.steps_summarised if text else 0, "sizes": sizes,
+        "sources_corrected": corrected,
     })
     report = CompactionReport(
         compaction_id=uuid.uuid4().hex, status=status, tokens_before=plan.billed,
@@ -799,9 +888,10 @@ def finish_compaction(plan: CompactionPlan, summariser: Optional[Summariser] = N
         list_before=summarise_list(plan.applied), list_after=summarise_list(out), row=row,
     )
     log.info("compacted context %s: status %s, %d tokens over trigger %d, target %d, "
-             "estimate after %d, %d results as extracts\nmodel-visible list AFTER:\n%s",
+             "estimate after %d, %d results as extracts, %d quote sources corrected\n"
+             "model-visible list AFTER:\n%s",
              report.compaction_id, status, plan.billed, plan.trigger, plan.target, est_after,
-             plan.extracts, report.list_after)
+             plan.extracts, corrected, report.list_after)
     if text and not reached:
         log.warning("compaction %s did not reach the target %d: sizes %s",
                     report.compaction_id, plan.target, sizes)

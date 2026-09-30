@@ -130,20 +130,26 @@ container and by the same mechanism as the screenshot harness, and observes it w
 browser page per resolution watching the same live generation, not two separate
 generations. `internet_tools_enabled` must be on. When it is off, this wrapper refuses
 and names that key, and does not start `hoover4-mcp-browser`. It needs an identity: an empty credential pair from every source is a
-validation failure here, unlike the screenshot runner.
+validation failure here, unlike the screenshot runner. The target rules are the rules of
+the screenshot wrapper above. A target that only the login file supplies needs
+`--remote-target`, because a prompt sent to that site starts a real turn there.
+`website/run-manual-qa.sh` applies the same rule before it calls either wrapper.
 
 ```
-website/observe-chat.sh --prompts collection-exploration --conversations 1
-website/observe-chat.sh --prompts all                      # every fixed prompt, run concurrently
-website/observe-chat.sh --prompts p1,p2,p3 --no-followup    # skip the second-turn history check
+website/observe-chat.sh --target URL --prompts collection-exploration --conversations 1
+website/observe-chat.sh --target URL --prompts all                      # every fixed prompt, run concurrently
+website/observe-chat.sh --target URL --prompts p1,p2,p3 --no-followup    # skip the second-turn history check
 ```
 
 Every selected prompt runs as a concurrent conversation, not one after another, so an
 overlap claim measures generations that actually ran at the same time. A local generation
 uses the CPU model twins. One turn can take several minutes, a Deep Research turn tens of
 minutes. The observer never cancels a live generation and never retries a submitted prompt.
-A submission failure, or a missed observation deadline, ends that conversation's own
-observation and is recorded, and the turn is left running.
+A submission failure ends that conversation's own observation and is recorded. The
+observation of one turn ends when the page shows the turn as ended, and after 4 hours at
+most, because `AgentRun` sets no time limit on a run. A turn that is still running then is
+left running. A page call that takes more than 60 s skips its capture. When every page call
+fails for 300 s, the observation ends with an unknown outcome.
 
 Output lands at `website/test_reports/chat_observer/run-<UTC-timestamp>-<pid>/chat/<prompt-name>/`
 (gitignored, never wiped, same `latest` symlink convention), with `pre_send.snapshot.txt`,

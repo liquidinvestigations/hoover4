@@ -995,6 +995,13 @@ def dgemma_image(cfg):
     return "hoover4-vllm-dgemma:%s" % cfg.get("ai_services", "vllm_build_ref").strip()
 
 
+def dgemma_upstream_image(cfg):
+    """The tag of the image built from vllm_build_repo at vllm_build_ref. The image of
+    hoover4-vllm is this image with the patches of ai_services/dgemma/vllm-image."""
+    return "hoover4-vllm-dgemma-upstream:%s" % cfg.get("ai_services",
+                                                       "vllm_build_ref").strip()
+
+
 def weights_complete(folder):
     """Whether folder holds config.json and every shard that the safetensors index names,
     each with a size above zero. A folder with no index needs config.json and one
@@ -1046,13 +1053,36 @@ def ensure_dgemma_weights(cfg, rt):
         fail("the weights of %s are incomplete in %s" % (model, folder))
 
 
+def _image_exists(rt, image):
+    return rt.run(["image", "inspect", image], stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL).returncode == 0
+
+
+def dgemma_upstream_build_command(cfg):
+    """The build of the upstream image from the Git repository at the pinned commit."""
+    a = "ai_services"
+    return ["build", "-t", dgemma_upstream_image(cfg),
+            "%s#%s" % (cfg.get(a, "vllm_build_repo").strip(),
+                       cfg.get(a, "vllm_build_ref").strip())]
+
+
+def ensure_dgemma_upstream_image(cfg, rt):
+    """Build the upstream image when it does not exist yet. The compose build of
+    hoover4-vllm starts from it, so it has to exist before that build. A deploy with
+    --build keeps an existing upstream image, because its commit is pinned."""
+    if _image_exists(rt, dgemma_upstream_image(cfg)):
+        return
+    print("build: %s does not exist yet, so it is built first" % dgemma_upstream_image(cfg))
+    run_or_fail([rt.engine] + dgemma_upstream_build_command(cfg))
+
+
 def ensure_dgemma_image(cfg, rt):
     """Build the model server's image when it does not exist yet. The weight download
-    runs in this image, so it has to exist before `up` builds it."""
-    found = rt.run(["image", "inspect", dgemma_image(cfg)],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if found.returncode == 0:
+    runs in this image, so it has to exist before `up` builds it. Its build starts from the
+    upstream image, so only a missing served image needs the upstream image."""
+    if _image_exists(rt, dgemma_image(cfg)):
         return
+    ensure_dgemma_upstream_image(cfg, rt)
     print("build: %s does not exist yet, so it is built first" % dgemma_image(cfg))
     run_or_fail(compose_command(cfg, "ai", rt, ["build", "hoover4-vllm"]))
 
@@ -2295,6 +2325,11 @@ def verify_network_dns(rt, cfg, side):
 
 def compose_up(cfg, side, rt, build):
     files = compose_files(cfg, side)
+    vllm = side == "ai" and "compose/vllm.yaml" in selected_overlays(cfg, "ai")
+    if vllm and build:
+        # The compose build below starts from the upstream image. Without --build, only a
+        # missing served image is built, and ensure_dgemma_image builds its upstream first.
+        ensure_dgemma_upstream_image(cfg, rt)
     if build:
         build_cmd = rt.compose_prefix()
         for f in files:
@@ -2304,7 +2339,7 @@ def compose_up(cfg, side, rt, build):
         up_args = ["up", "-d", "--force-recreate"]
     else:
         up_args = ["up", "-d"]
-    if side == "ai" and "compose/vllm.yaml" in selected_overlays(cfg, "ai"):
+    if vllm:
         ensure_dgemma_image(cfg, rt)
         ensure_dgemma_weights(cfg, rt)
     run_or_fail(compose_command(cfg, side, rt, up_args))

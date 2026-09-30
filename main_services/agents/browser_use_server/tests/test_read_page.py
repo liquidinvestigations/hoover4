@@ -102,7 +102,7 @@ class TestRender:
         out = read_page.render(
             ReadResult(pages=[PageRead(url="https://a.example", text="x", full_chars=100, truncated=True)])
         )
-        assert "[cut: this call read 1 of the page's 100 characters. Call read_page with offset 1 for the next part]" in out
+        assert "[cut: this call read 1 of the page's 100 characters. Call read_page with offset 1 for the next part. To find a text anywhere in the page, call read_page with find]" in out
 
 
 def _loader(monkeypatch, texts):
@@ -135,7 +135,7 @@ def test_read_page_offsets_and_cached_text(monkeypatch):
     assert version == read_page.text_version("a" * 30_000 + "b" * 10_000)
     rendered = read_page.render(first)
     assert (f"Call read_page with offset {len(text)} for the next part, with version "
-            f"{version}]") in rendered
+            f"{version}. To find a text anywhere in the page, call read_page with find]") in rendered
     middle = _read(chat, [url], 24_000, offset=30_000, version=version)
     assert middle.pages[0].text == "b" * 10_000
     assert not middle.pages[0].truncated
@@ -180,7 +180,7 @@ def test_find_gives_exact_offsets_and_continues_on_the_same_text(monkeypatch):
         rounds += 1
         if page.next_offset is None:
             break
-        assert (f"Call read_page with this URL, find, offset {page.next_offset} and version "
+        assert (f"Call read_page with this URL, find \"STAFF engineer\", offset {page.next_offset} and version "
                 f"{page.version} for the next matches]") in rendered
         offset, version = page.next_offset, page.version
     assert seen == expected and rounds > 1
@@ -198,6 +198,17 @@ def test_find_with_no_match_says_so_with_the_count_and_the_version(monkeypatch):
     version = read_page.text_version("alpha beta alpha")
     assert ('[find "gamma": no match from offset 0. The page has 0 matches in 16 characters. '
             f"Version {version}.]") in rendered
+    # A short page shows its whole text, so the model sees which page it read.
+    assert rendered.endswith("The whole text of the page follows.\n\nalpha beta alpha")
+
+
+def test_a_long_page_with_no_match_shows_no_text(monkeypatch):
+    url = "https://a.example"
+    text = "word " * 400
+    chat = SimpleNamespace(page_reads={})
+    _loader(monkeypatch, {url: text})
+    rendered = read_page.render(_read(chat, [url], 2_000, find="gamma"))
+    assert "no match from offset 0" in rendered and "word" not in rendered
 
 
 def test_a_match_that_does_not_fit_is_not_cut_and_starts_the_next_call(monkeypatch):
@@ -243,11 +254,11 @@ def test_a_text_that_is_not_kept_has_no_version_to_continue_with(monkeypatch):
     first = _read(chat, [url], 2_000)
     assert first.pages[0].version == "" and chat.page_reads == {}
     rendered = read_page.render(first)
-    assert "for the next part]" in rendered and "version" not in rendered
+    assert "for the next part. To find" in rendered and "version" not in rendered
     found = _read(chat, [url], 2_000, find="word")
     rendered = read_page.render(found)
     assert "Version" not in rendered and "version" not in rendered
-    assert "Call read_page with this URL, find and offset" in rendered
+    assert 'Call read_page with this URL, find "word" and offset' in rendered
 
 
 def test_the_whole_result_fits_its_byte_ceiling_with_multibyte_text(monkeypatch):

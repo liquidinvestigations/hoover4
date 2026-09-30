@@ -275,6 +275,12 @@ def text_version(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
+#: A find with no match in a page of at most this many characters shows the whole text. A
+#: model that read the viewer page of a large file in place of the file searched it again and
+#: again, because a count of characters alone did not show which page it had read.
+FIND_SHORT_PAGE_CHARS = 1_000
+
+
 def _find_block(page: PageRead) -> str:
     """The text of a `find` result for one page."""
     literal = json.dumps(page.find, ensure_ascii=False)
@@ -282,7 +288,10 @@ def _find_block(page: PageRead) -> str:
     tail = (f"The page has {page.total_matches} matches in {page.full_chars:,} characters."
             f"{kept}]")
     if not page.matches_after:
-        return f"[find {literal}: no match from offset {page.offset}. {tail}"
+        block = f"[find {literal}: no match from offset {page.offset}. {tail}"
+        if 0 < page.full_chars <= FIND_SHORT_PAGE_CHARS:
+            block += f"\n\nThe whole text of the page follows.\n\n{page.full_text}"
+        return block
     parts = [f"[find {literal}: {page.shown_matches} of {page.matches_after} matches from "
              f"offset {page.offset} are shown. {tail}"]
     for match_start, start, end in page.matches:
@@ -290,8 +299,8 @@ def _find_block(page: PageRead) -> str:
                      f"{page.full_text[start:end]}")
     if page.next_offset is not None:
         left = page.matches_after - page.shown_matches
-        fields = (f"find, offset {page.next_offset} and version {page.version}" if page.version
-                  else f"find and offset {page.next_offset}")
+        fields = (f"find {literal}, offset {page.next_offset} and version {page.version}"
+                  if page.version else f"find {literal} and offset {page.next_offset}")
         parts.append(f"[more: {left} matches from offset {page.next_offset}. Call read_page "
                      f"with this URL, {fields} for the next matches]")
     return "\n\n".join(parts)
@@ -327,7 +336,8 @@ def render(result: ReadResult) -> str:
         tail = (
             f"\n\n[cut: this call read {len(page.text):,} of the page's "
             f"{page.full_chars:,} characters. Call read_page with offset "
-            f"{page.offset + len(page.text)} for the next part{version}]"
+            f"{page.offset + len(page.text)} for the next part{version}. To find a text "
+            "anywhere in the page, call read_page with find]"
             if page.truncated else ""
         )
         blocks.append(f"{head}\n\n{page.text}{tail}")

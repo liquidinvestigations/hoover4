@@ -150,7 +150,9 @@ counter, and a thread from before the marker is read by its text.
 A model step that compacts writes one `compaction` chat row for a run that writes the
 transcript, at the first seq of the step, and every other row of the step moves one seq on.
 The row holds the running state when the `compaction` frame arrives, and the done state
-(`steps.compaction_line`) after the `end` frame. The done state of a version 3 record holds
+(`steps.compaction_line`) after the `end` frame. Both states are written at the same seq, so
+an open page reads the row again while it shows the running state
+(`session_page::poll_after_seq`). The done state of a version 3 record holds
 `summary_state`, `ok` or `failed`, and the summary as `record`. A version 2 record of an
 older thread gives `part_states`. The service ends a request that cannot fit with an `error`
 frame of class `context_size` or `context_preparation`, and the step does not retry it, so
@@ -252,7 +254,9 @@ it and an earlier valid handle does. An unresolved label, a label that results g
 documents, or a document name with no label (a file hash, or a path or file name that a
 tool of the thread returned) gets one repair round. Its note names the labels, and asks for
 the citations and then the answer again. The reply of that round replaces the answer when
-it has text. The note is the marker of the round (`repair_marker` in its usage, with the
+it has text. The `nag` chat row of the note has the `tool_name` `citation_check`
+(`steps.CITATION_NOTE_NAME`), and the transcript shows the answer before it as replaced when
+the round writes an answer with text. The note is the marker of the round (`repair_marker` in its usage, with the
 check), so a logical thread gets one. After a question, the reply of the round is the
 question the person reads, and the planner's plan check does not apply to it. A planner
 that answers with no plan section gets one round with `PLANNER_NO_SECTION_NOTE`. A run that
@@ -266,7 +270,9 @@ citations, notes and artifacts. Each entry is keyed by the thread, the message i
 item, so a continuation keeps its identity. `reports.project` makes the report of a thread
 from its committed messages: the ending, the final answer, the latest three texts of the
 model, the evidence lists and the diagnostics, with the model text apart from what code
-wrote. The ending of a plan sub-agent thread, in every state, writes it as the `report`
+wrote. Its citation list has one entry for each document, and a verified quote replaces an
+unverified one (`reports.one_citation_per_document`), so a document that the repair round
+cites again is listed once. The ending of a plan sub-agent thread, in every state, writes it as the `report`
 text and the `report_data` JSON documents of the thread's first run
 (`plan_runs.write_plan_ending`). `fan_in` writes the pair of a finished thread that has none
 before the parent continues (`reports.ensure_reports`), with no model call, no tool call

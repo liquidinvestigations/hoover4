@@ -1,0 +1,26 @@
+--- a/vllm/parser/engine/parser_engine.py
++++ b/vllm/parser/engine/parser_engine.py
+@@ -1011,8 +1011,11 @@
+         if converter is None:
+             return raw_delta
+ 
+-        if not self._stream_arg_deltas:
+-            return None
++        # hoover4 patch: a parser with an argument converter sends the
++        # arguments once, when the call ends. The final parse of malformed
++        # model output can differ from a streamed prefix, and a client
++        # cannot take back a prefix that it has received.
++        return None
+ 
+         structural = self._arg_structural_chars
+         if structural is not None and structural.isdisjoint(raw_delta):
+@@ -1059,7 +1062,8 @@
+             final_json = converter(slot.args, False)
+         except (json.JSONDecodeError, ValueError, TypeError):
+             logger.debug("arg converter failed (flush): %s", slot.args[:80])
+-            return None
++            # hoover4 patch: send what the non-streaming parse sends.
++            final_json = self._extract_args_json(slot.args, slot.name)
+ 
+         if final_json:
+             final_json = self._fix_arg_types(final_json, slot.name)

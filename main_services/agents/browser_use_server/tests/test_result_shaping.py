@@ -20,6 +20,7 @@ from mcp.types import TextContent
 
 from browser_use_server.server import (
     ARTIFACT_MARKER,
+    SNAPSHOT_NOT_INCLUDED,
     _append_marker,
     _attach_artifact,
     _drop_dead_links,
@@ -118,13 +119,15 @@ def test_the_snapshot_file_link_is_removed_with_its_orphaned_heading():
     )
     out = _text(_drop_dead_links(_result(text)))[0]
     assert ".playwright-mcp" not in out
-    assert "### Snapshot\nThe page tree is not in this result. Call browser_snapshot to read it." in out
+    assert f"### Snapshot\n{SNAPSHOT_NOT_INCLUDED}" in out
+    assert "Call read_page with the URL to read the text of the page." in out
 
 
 def test_snapshot_note_keeps_later_sections():
     text = "### Snapshot\n- [Snapshot](.playwright-mcp/page-x.yml)\n### Events\n- event"
     out = _text(_drop_dead_links(_result(text)))[0]
-    assert "### Snapshot\nThe page tree is not in this result. Call browser_snapshot to read it." in out
+    assert f"### Snapshot\n{SNAPSHOT_NOT_INCLUDED}" in out
+    assert "Call read_page with the URL to read the text of the page." in out
     assert out.endswith("### Events\n- event")
 
 

@@ -10,6 +10,7 @@ resolutions="720p,1080p"
 skip_chat=false
 TARGET_ARG=""
 LOGIN_ENV_ARG=""
+REMOTE_TARGET=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -19,6 +20,7 @@ while [ $# -gt 0 ]; do
         --skip-chat) skip_chat=true; shift ;;
         --target) TARGET_ARG="${2:?--target needs a value}"; shift 2 ;;
         --login-env) LOGIN_ENV_ARG="${2:?--login-env needs a value}"; shift 2 ;;
+        --remote-target) REMOTE_TARGET=1; shift ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
@@ -30,6 +32,9 @@ fi
 # shellcheck source=tools/capture_credentials.sh
 source "$script_dir/tools/capture_credentials.sh"
 require_capture_target
+# The browser and chat wrappers below get the target as --target, so this script makes
+# the check that they would make for a target from the login file.
+require_explicit_capture_target
 export HOOVER4_SITE_URL="$SITE_URL"
 echo "== target: $SITE_URL (source: $TARGET_SOURCE) =="
 

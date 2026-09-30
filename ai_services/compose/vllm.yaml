@@ -15,9 +15,11 @@ x-logging: &logging
 
 services:
   # ---------------------------------------------------------------- GPU: local LLM
-  # DiffusionGemma 26B-A4B at NVFP4, served by the djev-spark build of vLLM. The image
-  # is built from the upstream Git repository at the commit in vllm_build_ref, and no
-  # upstream file is copied into this repository. The image's own entrypoint composes
+  # DiffusionGemma 26B-A4B at NVFP4, served by the djev-spark build of vLLM. deploy.py
+  # builds the upstream image, hoover4-vllm-dgemma-upstream, from the Git repository at
+  # the commit in vllm_build_ref, and no upstream file is copied into this repository.
+  # This service builds its image from that image with the patches of
+  # ai_services/dgemma/vllm-image. The image's own entrypoint composes
   # the `vllm serve` arguments from the environment below, starts vLLM on port 8000,
   # and then starts the structured server on port 8011.
   #
@@ -44,7 +46,9 @@ services:
   hoover4-vllm:
     logging: *logging
     build:
-      context: ${VLLM_BUILD_REPO}#${VLLM_BUILD_REF}
+      context: ${HOOVER4_REPO_ROOT}/ai_services/dgemma/vllm-image
+      args:
+        UPSTREAM_IMAGE: hoover4-vllm-dgemma-upstream:${VLLM_BUILD_REF}
     image: hoover4-vllm-dgemma:${VLLM_BUILD_REF}
     container_name: hoover4-vllm
     restart: unless-stopped

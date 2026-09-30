@@ -242,12 +242,12 @@ FOLLOW_UPS = {
     "gitlab-chief-of-station": "which of these years has the most names?",
 }
 
-# The observation period is the application's configured turn deadline plus 60s.
-# Read from `main_services/processing/tasks/P_agent/workflows.py`'s own
-# `start_to_close_timeout` values, not guessed: 900s for the nag-loop chat turn
-# (`ChatTurn`/ordinary chat with tools), 2400s for `ResearchTask` (Deep Research).
-TURN_DEADLINE_S = {"chat": 900.0, "chat_local": 900.0, "deep_research": 2400.0}
-DEADLINE_MARGIN_S = 60.0
+# The longest observation of one turn. The observer stops earlier when the page shows
+# the turn as ended. `AgentRun` sets no time limit on a run: `RUN_MODEL_STEPS` in
+# `main_services/processing/tasks/P_agent/model_timeouts.py` bounds its steps, and each
+# step can wait up to the model call timeout. So no finite value covers every run that the
+# workflow allows. Four hours is four times the longest measured chat turn (59 minutes).
+TURN_CEILING_S = 14_400.0
 
 CAPTURE_INTERVAL_S = 5.0
 
@@ -413,10 +413,15 @@ RUNNING_TURNS = ("active", "queued-model", "queued-tool")
 # The seconds that an ended turn can show no answer row before the observer records
 # an empty answer. The last poll can end the turn before the answer row renders.
 LATE_ANSWER_S = 15.0
-# The seconds that one page script or capture can take. A browser connection can stop
-# answering while the page itself is idle. The observer then records an unknown outcome
-# and does not wait for the whole turn deadline.
+# The seconds that one page script or capture can take. A call that takes longer is
+# stopped, and its interval is recorded as a missed capture. A long turn can load the
+# browser container, for example when the agent's own browser reads a large file there,
+# and one capture then takes more than this.
 PAGE_CALL_TIMEOUT_S = 60.0
+# The seconds that the page can fail every call before the observer records an unknown
+# outcome. A browser connection can stop answering while the page itself is idle, and the
+# observer then does not wait for the whole turn ceiling.
+UNRESPONSIVE_LIMIT_S = 300.0
 
 
 def newest_user_seq(state: dict) -> int:
@@ -523,21 +528,30 @@ async def follow_turn(tab, before_seq: int, deadline_s: float, interval_s: float
     `capture(index, target_s, actual_s)` records one interval. The intervals are timed
     from the start, so a slow capture does not delay the later intervals. Returns the
     last phase from `turn_phase` and the seconds until the observer saw the turn end.
-    The seconds value is -1 when the turn did not end. The phase is `unresponsive` when a
-    page call took longer than `PAGE_CALL_TIMEOUT_S`.
+    The seconds value is -1 when the turn did not end. A page call that takes longer than
+    `PAGE_CALL_TIMEOUT_S` skips its interval. The phase is `unresponsive` when every call
+    failed for `UNRESPONSIVE_LIMIT_S`.
     """
     t0 = time.monotonic()
     index = 0
     ended_at = -1.0
     empty_since = None
+    failing_since = None
+    phase = "running"
     while True:
         try:
             state = await asyncio.wait_for(transcript_state(tab), PAGE_CALL_TIMEOUT_S)
             phase = turn_phase(state, before_seq)
             now = time.monotonic() - t0
             await asyncio.wait_for(capture(index, index * interval_s, now), PAGE_CALL_TIMEOUT_S)
+            failing_since = None
         except asyncio.TimeoutError:
-            return "unresponsive", ended_at
+            now = time.monotonic() - t0
+            failing_since = now if failing_since is None else failing_since
+            if now - failing_since >= UNRESPONSIVE_LIMIT_S:
+                return "unresponsive", ended_at
+            index += 1
+            continue
         if phase in ("answered", "interrupted"):
             return phase, now
         if phase == "ended_empty":
@@ -696,8 +710,8 @@ async def submit_and_observe(
     if phase == "unresponsive":
         result.incomplete = True
         result.incomplete_reason = (
-            f"the page did not answer the observer within {PAGE_CALL_TIMEOUT_S:g}s, so the "
-            f"outcome of the turn is unknown")
+            f"every page call of the observer took more than {PAGE_CALL_TIMEOUT_S:g}s for "
+            f"{UNRESPONSIVE_LIMIT_S:g}s, so the outcome of the turn is unknown")
         result.observations.append((INCOMPLETE_EXECUTION, result.incomplete_reason))
         return result
 
@@ -1023,7 +1037,7 @@ async def run_all(
             result = await submit_and_observe(
                 identity_tab, base_url, identity_network, whitelist, Page(name=name, url=""),
                 name, profile, prompt_text, resolutions[0][0], resolutions[0][1], destination,
-                TURN_DEADLINE_S["chat"] + DEADLINE_MARGIN_S, mode="followup",
+                TURN_CEILING_S, mode="followup",
                 run_started=run_started,
             )
             write_conversation_report(destination, result)
@@ -1057,7 +1071,7 @@ async def run_all(
                 networks.append(net)
 
             page_probe = Page(name=name, url="")
-            deadline_s = TURN_DEADLINE_S.get(profile, 900.0) + DEADLINE_MARGIN_S
+            deadline_s = TURN_CEILING_S
 
             async def observe_one(i: int) -> ConversationResult:
                 res_name, size = resolutions[i]
@@ -1140,7 +1154,7 @@ async def run_all(
                         await tabs[0].get(merged.session_url)
                         await wait_for_app_mounted(tabs[0])
                         followup_probe = Page(name=f"{name}-followup", url="")
-                        fu_deadline = TURN_DEADLINE_S["chat"] + DEADLINE_MARGIN_S
+                        fu_deadline = TURN_CEILING_S
                         fu_result = await submit_and_observe(
                             tabs[0], base_url, networks[0], whitelist, followup_probe,
                             f"{name}-followup", "chat", FOLLOW_UPS[name], resolutions[0][0],

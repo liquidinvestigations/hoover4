@@ -19,6 +19,7 @@ Verify the source or image that the changed service actually loads.
 Keep build parallelism within the configured resource limit.
 
 Restart a worker through `main_services/restart-worker.sh` so it receives the intended drain period.
+The script restarts `hoover4-worker` and `hoover4-ops` together, because both load the worker source.
 A bare container restart can interrupt active work.
 For a single Compose service, use `--no-deps` when dependency recreation is outside the requested change.
 On Podman, an exited init dependency can prevent restart. Verify whether the old container remained running.

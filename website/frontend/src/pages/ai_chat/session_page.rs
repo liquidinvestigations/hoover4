@@ -1,7 +1,9 @@
 //! `/ai_chat/c/:session_id/...`, conversation transcript + document preview (60/40).
 
 use common::chat_gate::ChatGate;
-use common::chat_types::{rate_limited_seconds, ChatMessageItem, ChatOptions, ChatSessionDetail};
+use common::chat_types::{
+    rate_limited_seconds, ChatMessageItem, ChatOptions, ChatRole, ChatSessionDetail,
+};
 use common::llm_types::ChatModelChoice;
 use common::search_query::SearchQuery;
 use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount};
@@ -49,6 +51,52 @@ fn turn_state(sending: bool, queued_for: &str, interrupted: bool) -> &'static st
         (false, true, _) => "active",
         (false, false, _) => "idle",
     }
+}
+
+/// Whether a row is a compaction line that is still running. The worker writes the line
+/// twice at one seq: `running` when the compaction starts, and `done` when its model step
+/// ends.
+fn is_running_compaction(message: &ChatMessageItem) -> bool {
+    message.role == ChatRole::Compaction
+        && serde_json::from_str::<serde_json::Value>(&message.content)
+            .ok()
+            .and_then(|value| value.get("state").and_then(|state| state.as_str()).map(|s| s == "running"))
+            .unwrap_or(false)
+}
+
+/// The `after_seq` of the next poll. It is the last seq of the page, except when the newest
+/// turn has a running compaction line. The poll then reads again from that line, so the page
+/// receives the `done` line that replaces it.
+fn poll_after_seq(messages: &[ChatMessageItem]) -> Option<u32> {
+    let turn_start = messages
+        .iter()
+        .rposition(|m| m.role == ChatRole::User)
+        .unwrap_or(0);
+    match messages[turn_start..].iter().find(|m| is_running_compaction(m)) {
+        Some(line) => line.seq.checked_sub(1),
+        None => messages.last().map(|m| m.seq),
+    }
+}
+
+/// Add the rows of a poll to the page in seq order. A row with the seq of a row that the
+/// page has replaces it. Returns false when nothing changed.
+fn merge_rows(current: &mut Vec<ChatMessageItem>, rows: Vec<ChatMessageItem>) -> bool {
+    let mut changed = false;
+    for row in rows {
+        match current.binary_search_by_key(&row.seq, |m| m.seq) {
+            Ok(index) => {
+                if current[index] != row {
+                    current[index] = row;
+                    changed = true;
+                }
+            }
+            Err(index) => {
+                current.insert(index, row);
+                changed = true;
+            }
+        }
+    }
+    changed
 }
 
 #[component]
@@ -337,15 +385,16 @@ fn ChatConversationPanel(
                 if *poll_gen.read() != generation {
                     return;
                 }
-                let after_seq = messages.read().last().map(|m| m.seq);
+                let after_seq = poll_after_seq(&messages.read());
                 match chat_poll(poll_sid.clone(), after_seq, sig.clone()).await {
                     Ok(result) => {
                         failures = 0;
                         sig = result.sig;
                         if !result.messages.is_empty() {
                             let mut current = messages.read().clone();
-                            current.extend(result.messages);
-                            messages.set(current);
+                            if merge_rows(&mut current, result.messages) {
+                                messages.set(current);
+                            }
                         }
                         interrupted.set(result.interrupted);
                         queued_for.set(result.queued_for.clone());
@@ -697,6 +746,47 @@ fn ChatConversationPanel(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod poll_rows_tests {
+    use super::{merge_rows, poll_after_seq};
+    use common::chat_types::{ChatMessageItem, ChatRole};
+
+    fn row(seq: u32, role: ChatRole, content: &str) -> ChatMessageItem {
+        let mut item: ChatMessageItem = serde_json::from_value(serde_json::json!({
+            "seq": seq, "role": "User", "content": "", "tool_name": "", "created_at": "",
+        }))
+        .unwrap();
+        item.role = role;
+        item.content = content.to_string();
+        item
+    }
+
+    #[test]
+    fn a_running_compaction_line_of_the_newest_turn_is_read_again_until_it_is_done() {
+        let running = r#"{"state":"running","tokens_before":9,"target":5}"#;
+        let done = r#"{"state":"done","tokens_before":9,"tokens_after":4}"#;
+        let mut rows = vec![row(3, ChatRole::User, "q"), row(4, ChatRole::Compaction, running),
+                            row(5, ChatRole::Tool, "")];
+        assert_eq!(poll_after_seq(&rows), Some(3));
+        assert!(merge_rows(&mut rows, vec![row(4, ChatRole::Compaction, done),
+                                           row(5, ChatRole::Tool, ""),
+                                           row(6, ChatRole::Assistant, "a")]));
+        assert_eq!(rows.iter().map(|m| m.seq).collect::<Vec<_>>(), vec![3, 4, 5, 6]);
+        assert_eq!(rows[1].content, done);
+        assert_eq!(poll_after_seq(&rows), Some(6));
+        assert!(!merge_rows(&mut rows, vec![row(6, ChatRole::Assistant, "a")]));
+    }
+
+    #[test]
+    fn a_running_line_of_an_earlier_turn_does_not_move_the_poll() {
+        let running = r#"{"state":"running"}"#;
+        let rows = vec![row(1, ChatRole::User, "q"), row(2, ChatRole::Compaction, running),
+                        row(3, ChatRole::Assistant, "a"), row(4, ChatRole::User, "q2")];
+        assert_eq!(poll_after_seq(&rows), Some(4));
+        assert_eq!(poll_after_seq(&[]), None);
     }
 }
 

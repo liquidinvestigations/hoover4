@@ -135,7 +135,10 @@ authority.
 **A quote that is not in the text gets a candidate** (`citations.candidate_passage`). The
 citation keeps the quote it was given and stays unverified. Beside it, `candidate` holds an
 exact passage of the extracted text near the longest part of the quote that the text holds,
-with its page. A later citation whose quote is copied from the candidate verifies.
+with its page. A later citation whose quote is copied from the candidate verifies. The note
+of the result asks for a plain part of the passage and says that each returned handle is
+valid in the answer. A model that copied escape sequences and replacement characters from
+a passage sent the same failing citation many times and then wrote the answer with no handle.
 
 **A file hash start names its document.** `read_documents` and `cite_documents` accept the
 first 12 or more characters of a file hash in place of the whole hash, in a collection that

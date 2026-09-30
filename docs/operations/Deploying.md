@@ -127,7 +127,9 @@ graceful period is configured: the runtime applies the compose file's stop grace
 when it is the one stopping the container, and the value cannot be set on the container
 afterwards. A deploy prints the number really in force. Anything else that stops the worker
 (a person, a script, a supervisor) has to pass the timeout itself, which is all the wrapper
-does.
+does. The wrapper restarts `hoover4-ops` with `hoover4-worker`, because both containers load
+the same worker source. A running `hoover4-ops` keeps the modules that it loaded at its start,
+so a change of a worker module then fails there only. `WORKER=<name>` restarts one container.
 
 **Relative paths in a compose file resolve against the project directory** (the first
 compose file's directory) not against the file that declares them. An overlay in a

@@ -1090,7 +1090,9 @@ def test_the_model_server_service_reads_the_rendered_names():
     optional = {"AI_BIND_IP", "VLLM_API_KEY_FILE_HOST"}
     assert used - optional <= set(env), sorted(used - optional - set(env))
     assert service["image"] == "hoover4-vllm-dgemma:${VLLM_BUILD_REF}"
-    assert service["build"]["context"] == "${VLLM_BUILD_REPO}#${VLLM_BUILD_REF}"
+    assert service["build"]["context"] == "${HOOVER4_REPO_ROOT}/ai_services/dgemma/vllm-image"
+    assert service["build"]["args"] == {
+        "UPSTREAM_IMAGE": "hoover4-vllm-dgemma-upstream:${VLLM_BUILD_REF}"}
     assert service["ulimits"] == {"core": 0}
 
 
@@ -1141,6 +1143,70 @@ def test_the_download_runs_in_the_built_image():
     assert "/dev/null:/run/secrets/hf_token:ro" in cmd
     assert "M=nvidia/diffusiongemma-26B-A4B-it-NVFP4" in cmd
     assert "hoover4-vllm-dgemma:08b708e51bb8d9f4eba0e85b61dab0be7093d20e" in cmd
+
+
+def test_the_upstream_image_is_built_from_the_pinned_commit_once():
+    cfg = _config("settings-defaults.ini")
+    assert deploy.dgemma_upstream_build_command(cfg) == [
+        "build", "-t",
+        "hoover4-vllm-dgemma-upstream:08b708e51bb8d9f4eba0e85b61dab0be7093d20e",
+        "https://github.com/mmastrac/djev-spark.git#08b708e51bb8d9f4eba0e85b61dab0be7093d20e"]
+    rt = mock.Mock()
+    rt.run.return_value = subprocess.CompletedProcess([], 0)
+    with mock.patch.object(deploy, "run_or_fail") as build:
+        deploy.ensure_dgemma_upstream_image(cfg, rt)
+    build.assert_not_called()
+    rt.run.return_value = subprocess.CompletedProcess([], 1)
+    rt.engine = "/usr/bin/docker"
+    with mock.patch.object(deploy, "run_or_fail") as build:
+        deploy.ensure_dgemma_upstream_image(cfg, rt)
+    build.assert_called_once_with(["/usr/bin/docker"] + deploy.dgemma_upstream_build_command(cfg))
+
+
+def _ai_up(monkeypatch, build, present):
+    """Run compose_up of the ai side with the model server overlay and the given images
+    present. Returns the names of the images built and whether compose built."""
+    cfg = _config("settings-defaults.ini")
+    built, composed = [], []
+    monkeypatch.setattr(deploy, "compose_files", lambda c, side: ["base.yaml"])
+    monkeypatch.setattr(deploy, "selected_overlays", lambda c, side: ["compose/vllm.yaml"])
+    monkeypatch.setattr(deploy, "ensure_dgemma_weights", lambda c, r: None)
+    monkeypatch.setattr(deploy, "_image_exists", lambda r, image: image in present)
+
+    def run(cmd, env=None):
+        if "build" in cmd and "-t" in cmd:
+            built.append(cmd[cmd.index("-t") + 1])
+        elif "build" in cmd:
+            composed.append(cmd)
+    monkeypatch.setattr(deploy, "run_or_fail", run)
+    rt = mock.Mock()
+    rt.name, rt.engine = "docker", "/usr/bin/docker"
+    rt.compose_prefix.return_value = ["docker", "compose"]
+    deploy.compose_up(cfg, "ai", rt, build)
+    return built, bool(composed)
+
+
+def test_a_present_served_image_builds_no_upstream_image_without_build(monkeypatch):
+    cfg = _config("settings-defaults.ini")
+    served = deploy.dgemma_image(cfg)
+    upstream = deploy.dgemma_upstream_image(cfg)
+    assert _ai_up(monkeypatch, False, {served}) == ([], False)
+    assert _ai_up(monkeypatch, False, {served, upstream}) == ([], False)
+    # A missing served image builds its upstream image first, then the served image.
+    assert _ai_up(monkeypatch, False, set()) == ([upstream], True)
+    assert _ai_up(monkeypatch, False, {upstream}) == ([], True)
+    # --build builds the served image, and the upstream image only when it is absent.
+    assert _ai_up(monkeypatch, True, {served}) == ([upstream], True)
+    assert _ai_up(monkeypatch, True, {served, upstream}) == ([], True)
+
+
+def test_the_patches_of_the_model_server_image_are_in_the_build_folder():
+    folder = deploy.REPO_ROOT / "ai_services" / "dgemma" / "vllm-image"
+    dockerfile = (folder / "Dockerfile").read_text()
+    assert "FROM ${UPSTREAM_IMAGE}" in dockerfile
+    for line in dockerfile.splitlines():
+        if line.startswith("COPY "):
+            assert (folder / line.split()[1]).is_file(), line
 
 
 def test_complete_weights_start_no_download(tmp_path):

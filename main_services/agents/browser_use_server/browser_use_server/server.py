@@ -271,7 +271,8 @@ _DEAD_LINK = re.compile(r"^\s*-?\s*\[[^\]]*\]\(\.playwright-mcp/[^)]*\)\s*$", re
 
 #: A section heading left with nothing under it once the dead link above is gone.
 _EMPTY_TAIL_HEADING = re.compile(r"\n#+ *\w[^\n]*\s*$")
-SNAPSHOT_NOT_INCLUDED = "The page tree is not in this result. Call browser_snapshot to read it."
+SNAPSHOT_NOT_INCLUDED = ("The page tree is not in this result. Call browser_snapshot to read it. "
+                         "Call read_page with the URL to read the text of the page.")
 _LOADING = re.compile(r'^\s*- (status|progressbar) "Loading[^"]*"', re.MULTILINE)
 
 
@@ -600,7 +601,9 @@ READ_PAGE_DESCRIPTION = (
     "A cut result gives the next character offset and the text's version. Pass one URL with "
     "that offset and version to read its next part. To find entries in a long page, pass "
     "`find` with a literal text: the result gives each match with its offset, and a next "
-    "offset when more matches remain."
+    "offset when more matches remain. For a file of a code repository, read its raw address, "
+    "such as the `/-/raw/` address on GitLab or `raw.githubusercontent.com` for GitHub. The "
+    "viewer page of a large file does not hold its text."
 )
 
 

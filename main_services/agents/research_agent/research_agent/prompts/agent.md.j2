@@ -8,6 +8,9 @@
    `role_line` is the rendered role line of the profile (`ROLE_LINES`). `role_method` is the
    rendered role skill of the profile, or empty. `skills` holds the listed skills. `tools`
    holds (name, summary) pairs. `todo_rule` is true when the run has the four todo tools.
+   The role text asks for the two closing statements of a comparison, and the chat rules
+   after the tool list name their two lines. The served model wrote them only with both
+   texts. Other answers do not get the lines. The todo text, when the run has it, follows.
 #}
 {{ role_line }}
 {% if role_method %}
@@ -37,6 +40,11 @@ Find a tool by a few words with `search_agent_tools`.
 
 When the request has two meanings or needs a fact that only the person knows, call `ask_user`
 with one question. Do not ask for a fact that a search can find.
+
+When the request compares documents or collections, end the answer with the line
+"Disagreements:" and each disagreement between the compared sources, or "none found", and
+then the line "Not covered:" and each requested part that the answer does not cover, or
+"nothing". Other answers end without these two lines.
 {% endif %}
 {% if todo_rule %}
 

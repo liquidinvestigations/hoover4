@@ -111,6 +111,11 @@ impl ChatRole {
     }
 }
 
+/// The `tool_name` of the `Nag` row of a citation repair round. The worker writes it as
+/// `CITATION_NOTE_NAME` in `main_services/processing/tasks/P_agent/steps.py`. An answer
+/// before this row is replaced when the round writes a later answer with text.
+pub const CITATION_NOTE_NAME: &str = "citation_check";
+
 /// One document a tool step surfaced. Enough to render a search-result card and open
 /// the document preview (`DocumentIdentifier` = `collection_dataset` + `file_hash`).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

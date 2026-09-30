@@ -3,12 +3,16 @@
 # way take-screenshots.sh drives a page: no application code changed, no server dispatched
 # beyond the identity check and the chat turn itself.
 #
-# Usage: ./observe-chat.sh [--target URL] [--out DIR]
+# Usage: ./observe-chat.sh [--target URL] [--out DIR] [--remote-target]
 #                           [--login-env FILE] [--resolutions LIST] [--prompts LIST]
 #                           [--conversations N] [--no-followup] [--continue PATH]
 # Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
 # Credential values are not accepted as wrapper arguments and are not placed in
 # Docker or Python argument lists.
+#
+# The target comes from --target, else from HOOVER4_SITE_URL. When only the login file
+# supplies the target, the script refuses unless --remote-target is given, because a
+# prompt sent to the wrong site starts a real turn there.
 #
 # --prompts takes a comma-separated list of prompt names from chat_observer.py's PROMPTS,
 #   or 'all'. Defaults to 'collection-exploration'. --conversations caps how many of the
@@ -26,8 +30,8 @@
 #
 # A local generation runs on the CPU model twins. One turn can take several minutes; a
 # Deep Research turn can take tens of minutes. This script waits for the observer's own
-# deadline, which is the workflow's configured turn timeout plus a margin. It never
-# retries a submitted prompt and never cancels a live generation.
+# ceiling of 4 hours, because AgentRun sets no time limit on a run. It never retries a
+# submitted prompt and never cancels a live generation.
 #
 # Preconditions: the stack is up. This reaches /ai_chat, which needs an authenticated
 # identity, so a credential source (below) is required; running with none produces an
@@ -69,6 +73,7 @@ CONVERSATIONS_ARG=""
 NO_FOLLOWUP_ARG=""
 HISTORY_ONLY_ARG=""
 CONTINUE_ARG=""
+REMOTE_TARGET=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -78,6 +83,7 @@ while [ $# -gt 0 ]; do
             echo "error: $1 is not accepted. Set HOOVER4_TEST_USERNAME and HOOVER4_TEST_PASSWORD, or pass --login-env FILE." >&2
             exit 2 ;;
         --login-env) LOGIN_ENV_ARG="${2:?--login-env needs a value}"; shift 2 ;;
+        --remote-target) REMOTE_TARGET=1; shift ;;
         --resolutions) RESOLUTIONS_ARG="${2:?--resolutions needs a value}"; shift 2 ;;
         --prompts) PROMPTS_ARG="${2:?--prompts needs a value}"; shift 2 ;;
         --conversations) CONVERSATIONS_ARG="${2:?--conversations needs a value}"; shift 2 ;;
@@ -97,13 +103,14 @@ fi
 
 # ---------------------------------------------------------------------------------
 # Target precedence: --target, then HOOVER4_SITE_URL in the environment or the
-# login-env file. There is no built-in default. A missing target exits 2 and names
-# the sources that were checked.
+# login-env file. There is no built-in default. A file-only target needs
+# --remote-target. A missing target exits 2 and names the sources that were checked.
 # ---------------------------------------------------------------------------------
 
 # shellcheck source=tools/capture_credentials.sh
 source "$SCRIPT_DIR/tools/capture_credentials.sh"
 require_capture_target
+require_explicit_capture_target
 echo "== target: $SITE_URL (source: $TARGET_SOURCE) =="
 
 # ---------------------------------------------------------------------------------

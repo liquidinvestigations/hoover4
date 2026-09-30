@@ -494,6 +494,31 @@ def label_bindings(entries: Iterable[dict]) -> dict[str, set[str]]:
     return out
 
 
+def one_citation_per_document(entries: Iterable[dict]) -> list[dict]:
+    """The citation entries with one successful entry for each document, in the order of
+    first citation. A later entry with a verified quote replaces one without, as the
+    transcript's source list does (`merge_citations`). A citation repair round cites a
+    document again, and the report shows the stronger result once. Failed entries and
+    other kinds stay unchanged."""
+    out: list[dict] = []
+    kept: dict[tuple[str, str], int] = {}
+    for entry in entries:
+        reference = entry.get("reference") or {}
+        key = (str(reference.get("collectionname") or ""),
+               _hash_start(reference.get("file_hash")) or "")
+        if (entry.get("kind") != KIND_CITATION or entry.get("status") != STATUS_OK
+                or not key[1]):
+            out.append(entry)
+            continue
+        if key not in kept:
+            kept[key] = len(out)
+            out.append(entry)
+        elif (reference.get("quote_verified")
+              and not (out[kept[key]].get("reference") or {}).get("quote_verified")):
+            out[kept[key]] = entry
+    return out
+
+
 def check_labels(answer: str, bindings: dict[str, set[str]],
                  entries: Iterable[dict] = ()) -> dict:
     """The citation check of an answer against the label bindings of the session.
@@ -507,7 +532,7 @@ def check_labels(answer: str, bindings: dict[str, set[str]],
     unresolved = [label for label in labels if not bindings.get(label)]
     conflicting = [label for label in labels if len(bindings.get(label) or ()) > 1]
     unverified = []
-    for entry in entries:
+    for entry in one_citation_per_document(entries):
         reference = entry.get("reference") or {}
         if (entry.get("kind") == KIND_CITATION and entry.get("status") == STATUS_OK
                 and not reference.get("quote_verified")
@@ -625,7 +650,8 @@ def project(messages, *, thread_id: str, first_run_id: str, state: str, result: 
         "recent_text": texts[-RECENT_TEXTS:],
         "documents_read": _bounded(by_kind[KIND_READ], "documents_read", left_out),
         "documents_found": _bounded(by_kind[KIND_DISCOVERY], "documents_found", left_out),
-        "citations": _bounded(by_kind[KIND_CITATION], "citations", left_out),
+        "citations": _bounded(one_citation_per_document(by_kind[KIND_CITATION]), "citations",
+                              left_out),
         "notes": _bounded(by_kind[KIND_NOTE], "notes", left_out),
         "artifacts": _bounded(by_kind[KIND_ARTIFACT], "artifacts", left_out),
         "diagnostics": diagnostics,
@@ -856,6 +882,7 @@ __all__ = [
     "EVIDENCE_VERSION", "KIND_ARTIFACT", "KIND_CITATION", "KIND_DISCOVERY", "KIND_NOTE",
     "KIND_READ", "RECENT_TEXTS", "REPORT_DATA_KIND", "REPORT_KIND", "REPORT_VERSION",
     "answer_labels", "check_labels", "ensure_reports", "label_bindings", "materialize",
+    "one_citation_per_document",
     "message_evidence", "normalize", "project", "read_run_report", "render",
     "report_for_rows", "session_citation_entries", "thread_evidence", "with_source",
     "write_report_documents",

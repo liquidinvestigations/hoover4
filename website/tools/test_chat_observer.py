@@ -92,9 +92,25 @@ class FollowTurnTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.Event().wait()
 
         with patch.object(observer, "transcript_state", never), \
-             patch.object(observer, "PAGE_CALL_TIMEOUT_S", 0.01):
+             patch.object(observer, "PAGE_CALL_TIMEOUT_S", 0.01), \
+             patch.object(observer, "UNRESPONSIVE_LIMIT_S", 0.05):
             phase, ended = await observer.follow_turn(AsyncMock(), -1, 60.0, 0.0, AsyncMock())
         self.assertEqual((phase, ended), ("unresponsive", -1.0))
+
+    async def test_a_slow_capture_skips_its_interval_and_the_observation_goes_on(self):
+        calls = []
+
+        async def capture(index, target, actual):
+            calls.append(index)
+            if index == 1:
+                await asyncio.Event().wait()
+
+        states = [page("active", [1]), page("active", [1]), page("idle", [1], [(2, "answer")])]
+        with patch.object(observer, "transcript_state", AsyncMock(side_effect=states)), \
+             patch.object(observer, "PAGE_CALL_TIMEOUT_S", 0.01):
+            phase, _ = await observer.follow_turn(AsyncMock(), -1, 60.0, 0.0, capture)
+        self.assertEqual(phase, "answered")
+        self.assertEqual(calls, [0, 1, 2])
 
     async def test_the_deadline_leaves_a_running_turn_running(self):
         phase, ended, _ = await self.follow([page("active", [1])], deadline_s=0.0)

@@ -40,7 +40,7 @@ https://en.wikipedia.org/wiki/Enron_scandal
 
 The Enron scandal was an accounting scandal … Arthur Andersen …
 
-[cut: this call read 21,300 of the page's 40,000 characters. Call read_page with offset 21300 for the next part, with version 3f2a9c0d1e4b5a67]
+[cut: this call read 21,300 of the page's 40,000 characters. Call read_page with offset 21300 for the next part, with version 3f2a9c0d1e4b5a67. To find a text anywhere in the page, call read_page with find]
 
 ---
 
@@ -51,7 +51,8 @@ Read these behaviours before you change it:
 
 * **`goal` records the purpose of the read** on a new capture. It does not change the text order.
   A cut page gives the length of the extracted text, the next character offset and the
-  version of the text.
+  version of the text. The cut line also names `find`, because a model that reads a long
+  file part by part stops before the end.
   The browser keeps text under the chat for 30 minutes when its UTF-8 size is at most
   `READ_PAGE_PDF_MAX_BYTES`. A cache miss or a larger page loads the URL again.
 * **The version names one kept text.** It is the first 16 hex characters of the SHA-256 of
@@ -70,10 +71,14 @@ Read these behaviours before you change it:
   [match at 48213, text from 48013 to 48427]
   … "role": "Staff Engineer", …
 
-  [more: 19 matches from offset 612004. Call read_page with this URL, find, offset 612004 and version 3f2a9c0d1e4b5a67 for the next matches]
+  [more: 19 matches from offset 612004. Call read_page with this URL, find "Staff Engineer", offset 612004 and version 3f2a9c0d1e4b5a67 for the next matches]
   ```
 
-  A match that does not fit the result is not cut. It starts the next call.
+  A match that does not fit the result is not cut. It starts the next call. The line of the
+  next matches gives the `find` text again, because a model that copies only the offset and
+  the version reads the plain text at that offset. A find with no match in a page of at most
+  1,000 characters shows the whole text of the page, because a model that read the viewer
+  page of a large file in place of the file searched that page again and again.
 * **The whole result fits the call's page share**, the `X-Hoover4-Page-Share` header that
   the research agent sends, else 24,000 bytes. `read_page.fit` measures the UTF-8 result,
   with the headings, notes, cut lines and the artifact marker, and gives each page an equal
@@ -363,7 +368,8 @@ flag is written only when true; the array form without it is still read, for row
 stored.
 
 The router replaces markdown links into playwright-mcp's own output directory
-with a line that names `browser_snapshot` under the Snapshot heading. That file exists inside the
+with a line that names `browser_snapshot` and `read_page` under the Snapshot heading. A model
+that navigated to a raw file and saw no text navigated again many times. That file exists inside the
 sidecar's container and nowhere else: the model cannot read files, and the website rendered
 it as a dead link in the transcript. Lines that merely *mention* the path are untouched;
 the rule matches a whole line that is only the link, because the rest of the result is

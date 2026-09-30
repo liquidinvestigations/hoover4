@@ -74,6 +74,11 @@ EMPTY_RETRY_MARKER = "empty_reply"
 #: the user speaking. Mirrored as `ChatRole::Nag` in `website/common/src/chat_types.rs`.
 NOTE_ROLE = "nag"
 
+#: The `tool_name` of the note row of the citation repair round. The transcript shows the
+#: answer before that note as replaced when the round gives a new answer. Mirrored as
+#: `CITATION_NOTE_NAME` in `website/common/src/chat_types.rs`.
+CITATION_NOTE_NAME = "citation_check"
+
 #: The tools that read or change the plan tree or the todo list. The calls of one reply to
 #: these tools run one after the other, in the order of the reply, because each one reads
 #: the state that the call before it wrote.
@@ -1037,7 +1042,8 @@ def check_citations(params: CitationCheckParams) -> CitationRepair:
         # because the first attempt can have stopped before them.
         if transcript:
             _insert_chat_row(row.username, row.session_id, params.seq, NOTE_ROLE,
-                             content=messages[-1].content or "")
+                             content=messages[-1].content or "",
+                             tool_name=CITATION_NOTE_NAME)
             agent_runs.write_run(row, next_seq=params.seq + 1)
         return CitationRepair(needed=True, next_seq=params.seq + int(transcript))
     if not citations.has_citation_tool(row, messages):
@@ -1056,7 +1062,8 @@ def check_citations(params: CitationCheckParams) -> CitationRepair:
                                    "citation_check": check}, default=str)))
     if not transcript:
         return CitationRepair(needed=True, next_seq=params.seq)
-    _insert_chat_row(row.username, row.session_id, params.seq, NOTE_ROLE, content=text)
+    _insert_chat_row(row.username, row.session_id, params.seq, NOTE_ROLE, content=text,
+                     tool_name=CITATION_NOTE_NAME)
     agent_runs.write_run(row, next_seq=params.seq + 1)
     log.info("[P_agent] run %s: the citation check asks for one repair round: %s",
              row.run_id, check)
@@ -1153,7 +1160,7 @@ def write_incomplete(params: IncompleteParams) -> int:
 __all__ = [
     "BROWSER_READ_TOOL", "BROWSER_TOOL_PREFIX", "EMPTY_REPLY_TEXT", "EMPTY_RESPONSE", "EmptyNoteParams",
     "INCOMPLETE_REASONS", "IncompleteParams", "ModelRequestRejected", "ModelStepParams",
-    "ModelStepResult", "NOTE_ROLE", "STEP_BUDGET", "StepFailure", "StepRef",
+    "CITATION_NOTE_NAME", "ModelStepResult", "NOTE_ROLE", "STEP_BUDGET", "StepFailure", "StepRef",
     "ToolCallParams", "ToolCallResult", "canonical_json", "check_citations",
     "CitationCheckParams", "CitationRepair",
     "is_browser_tool", "is_retry_marker", "model_step", "plan_has_sections",

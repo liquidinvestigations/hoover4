@@ -520,6 +520,8 @@ def test_a_failed_citation_call_does_not_stop_the_check(citations_store):
     assert note.usage["citation_check"]["unresolved"] == ["[D1]"]
     assert "[D1]" in note.content
     assert citations_store["chat"][-1]["role"] == "nag"
+    # The transcript reads the tag to show the answer before the note as replaced.
+    assert citations_store["chat"][-1]["tool_name"] == "citation_check"
 
 
 def test_a_label_bound_to_two_documents_conflicts(citations_store):

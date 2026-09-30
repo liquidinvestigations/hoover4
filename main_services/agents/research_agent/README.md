@@ -60,7 +60,12 @@ renders the system prompt of every profile (`research_agent/prompts/__init__.py`
 **The prompt holds the role, lists the rest, and the skills teach.** The prompt holds the
 role line of the profile and the role text of the run kind, which is the rendered role skill
 (`skill_store.role_method`). The run's skills by name and description and the run's tools by
-name and summary follow. The todo text follows when the run has the four todo tools. It says
+name and summary follow. A chat run then gets the `ask_user` rule and the closing lines rule:
+an answer to a request that compares documents or collections ends with a `Disagreements:`
+line and a `Not covered:` line, and other answers end without them. The role text of the
+chat asks for the same two statements. The served model wrote the lines only when both
+texts asked for them. The todo text
+follows when the run has the four todo tools. It says
 that the list is optional and that an open item does not stop an answer. The summary of a
 tool is the first sentence of its description, at most 160 characters. `_create_context`
 renders the prompt once for each step context. The prompt cache holds the system text for
@@ -71,7 +76,7 @@ skill is one `.md.j2` file with front matter (`name`, `group`, `description`, `t
 Jinja body. The groups are `role`, `general`, `technique` and `stumble`. The role skills
 (`method_chat_full`, `method_chat_internal`, `method_subagent`, `method_planner`,
 `method_organizer`) state the objective of the role, its sources, its evidence rule and its
-duty. They ask for no search before an answer, no report heading and no todo update. The
+duty. They ask for no search before an answer and no todo update. The
 planner's role text states the context window of the run's model when the catalog knows it.
 A run lists each skill of the other groups whose `tools` list is empty or names a tool of
 the run. The general skills (`search`, `thorough`, `citation`) hold the search rules, the
@@ -352,7 +357,11 @@ offset of the next part of a cut page, the result pages that continue with their
 handle and call, and one line that names the skill and tool texts that left the list. The model never writes those lists, because a summary model copies
 file hashes with errors. The summary model writes the rest with thinking off, in one request
 with a completion cap of 2,000 tokens, in four sections: findings with their sources,
-contradictions, outstanding work, and the identifiers that read a source again. The summary
+contradictions, outstanding work, and the identifiers that read a source again. The model
+writes the source of each quote in brackets, `[source: ...]`. When a document or page text of
+the replaced steps holds the quote and the bracket names another source, code writes the
+source of that text in the bracket (`attribute_quotes`), and the record counts the changes in
+`sources_corrected`. A quote that no read text holds keeps its bracket. The summary
 request must fit the window of the summary model. When the prefix passes it, each larger
 result goes to the request as a bounded extract of its start and its end, with a line that
 gives its full length. The summary request has the read timeout of a model call. Before the

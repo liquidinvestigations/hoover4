@@ -154,3 +154,22 @@ def test_the_estimate_calibrates_on_the_last_billed_call_and_clamps():
     est = Estimator.calibrate(t.rows[:1] + [t.rows[1].model_copy(
         update={"usage": {"input_tokens": 1}})], system_text="s" * 100)
     assert est.ratio == 1 / 6 and est.fixed == 18
+
+
+MARKDOWN_PAGE = ("## Install guide\nhttps://docs.example.org/install\n\nIntro text."
+                 "\n\n---\n\n## Heading\nRun the installer before you start.\nline"
+                 "\n\n[cut: this call read 90 of the page's 500 characters. Call read_page "
+                 "with offset 90 for the next part]"
+                 "\n\n---\n\n## Second page\nhttps://b.example.org/\n\nOther text.")
+
+
+def test_a_rule_and_a_heading_inside_a_page_start_no_page():
+    blocks = thread_index.page_blocks(MARKDOWN_PAGE)
+    assert [b.split("\n", 2)[1] for b in blocks] == [
+        "https://docs.example.org/install", "https://b.example.org/"]
+    assert "Run the installer before you start." in blocks[0]
+    t = Thread()
+    t.human("Read the guide.")
+    t.step(ok("read_page", {"urls": ["https://docs.example.org/install"]}, MARKDOWN_PAGE))
+    assert thread_index.pages_read(t.rows, {(THREAD, 2)}) == [
+        "- https://docs.example.org/install. next offset 90", "- https://b.example.org/"]

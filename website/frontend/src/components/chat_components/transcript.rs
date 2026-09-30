@@ -2,7 +2,9 @@
 
 use std::collections::HashMap;
 
-use common::chat_types::{ChatDocRef, ChatMessageItem, ChatRole, StreamTurn, merge_citations};
+use common::chat_types::{
+    CITATION_NOTE_NAME, ChatDocRef, ChatMessageItem, ChatRole, StreamTurn, merge_citations,
+};
 use common::storage_tree::compose_collection_dataset;
 use dioxus::prelude::*;
 
@@ -113,7 +115,9 @@ pub fn ChatTranscript(
         // The strip belongs to the ANSWER, and the citations arrive on the tool rows before
         // it. Collected here rather than inside `MessageEntry`, which sees one message and
         // cannot know which turn it closes.
-        let sources = if m.role == ChatRole::Assistant {
+        let replaced = answer_replaced(&messages, i);
+        // A replaced answer shows no strip. The answer that replaces it lists its citations.
+        let sources = if m.role == ChatRole::Assistant && !replaced {
             citations_for_answer(&messages, i)
         } else {
             Vec::new()
@@ -171,6 +175,7 @@ pub fn ChatTranscript(
                 plan_question_options,
                 read_more_source,
                 repeat_question,
+                replaced,
                 draft,
             }
         }
@@ -631,6 +636,9 @@ fn read_more_source(messages: &[ChatMessageItem], index: usize) -> Option<(Strin
 /// belongs under the answer that used it, not under every answer after it.
 fn citations_for_answer(messages: &[ChatMessageItem], answer_index: usize) -> Vec<ChatDocRef> {
     let mut refs: Vec<ChatDocRef> = Vec::new();
+    // True after the note of a citation repair round. The answer before that note is
+    // replaced by this one, so the citations before it belong to this answer too.
+    let mut after_note = false;
     for message in messages[..answer_index].iter().rev() {
         match message.role {
             ChatRole::Tool => {
@@ -638,12 +646,41 @@ fn citations_for_answer(messages: &[ChatMessageItem], answer_index: usize) -> Ve
                     refs.extend(message.parsed_doc_refs());
                 }
             }
-            // Anything that is not a tool row closes the turn.
+            ChatRole::Nag if is_citation_note(message) => after_note = true,
+            ChatRole::Assistant if after_note => after_note = false,
+            // Anything else closes the turn.
             _ => break,
         }
     }
     refs.reverse();
     merge_citations(refs)
+}
+
+fn is_citation_note(message: &ChatMessageItem) -> bool {
+    message.role == ChatRole::Nag && message.tool_name == CITATION_NOTE_NAME
+}
+
+/// Whether the answer at `index` is replaced by a later answer of its turn. That is so when
+/// the note of a citation repair round follows it, and the round wrote an answer with text.
+/// A round that wrote no text keeps the earlier answer.
+fn answer_replaced(messages: &[ChatMessageItem], index: usize) -> bool {
+    if messages[index].role != ChatRole::Assistant {
+        return false;
+    }
+    let rest = &messages[index + 1..];
+    let turn_end = rest
+        .iter()
+        .position(|m| m.role == ChatRole::User)
+        .unwrap_or(rest.len());
+    let turn = &rest[..turn_end];
+    let Some(note) = turn.iter().position(|m| m.role == ChatRole::Assistant || is_citation_note(m))
+    else {
+        return false;
+    };
+    is_citation_note(&turn[note])
+        && turn[note + 1..]
+            .iter()
+            .any(|m| m.role == ChatRole::Assistant && !m.content.trim().is_empty())
 }
 
 #[component]
@@ -685,6 +722,9 @@ fn MessageEntry(
     read_more_source: Option<(String, u32, u32)>,
     #[props(default)]
     repeat_question: bool,
+    /// True when a later answer of the turn replaces this one (`answer_replaced`).
+    #[props(default)]
+    replaced: bool,
 ) -> Element {
     let ring = if highlight {
         "outline: 2px solid #F59E0B; outline-offset: 2px;"
@@ -715,7 +755,22 @@ fn MessageEntry(
                     if !message.reasoning.is_empty() {
                         ReasoningDisclosure { reasoning: message.reasoning.clone() }
                     }
-                    if !repeat_question {
+                    if replaced {
+                        // Collapsed, and not marked as an answer: the answer after the
+                        // citation repair round replaces it.
+                        details {
+                            "data-chat-replaced-answer": "{message.seq}",
+                            summary {
+                                style: "cursor: pointer; color: #64748B; font-size: 13px;",
+                                "The answer before the citation check. The answer below replaces it."
+                            }
+                            MarkdownishText {
+                                text: message.content.clone(),
+                                cited_handles: Some(cited_handles.clone()),
+                                conflicting_handles: conflicting_handles.clone(),
+                            }
+                        }
+                    } else if !repeat_question {
                         div {
                             "data-chat-answer": "{message.seq}",
                             MarkdownishText {
@@ -1190,6 +1245,50 @@ mod tests {
             ),
             row(3, ChatRole::Assistant, "", "", answer),
         ]
+    }
+
+    fn citation_note(seq: u32) -> ChatMessageItem {
+        row(seq, ChatRole::Nag, CITATION_NOTE_NAME, "", "Call cite_documents")
+    }
+
+    #[test]
+    fn an_answer_before_a_citation_round_with_a_new_answer_is_replaced() {
+        let d1 = r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"}]"#;
+        let d2 = r#"[{"handle": "[D2]", "collection_dataset": "c_ds", "file_hash": "bb"}]"#;
+        let messages = vec![
+            row(1, ChatRole::User, "", "", "question"),
+            row(2, ChatRole::Tool, "cite_documents", d1, ""),
+            row(3, ChatRole::Assistant, "", "", "first [D1] and Enron memo"),
+            citation_note(4),
+            row(5, ChatRole::Tool, "cite_documents", d2, ""),
+            row(6, ChatRole::Assistant, "", "", "second [D1] [D2]"),
+            row(7, ChatRole::User, "", "", "next"),
+            row(8, ChatRole::Assistant, "", "", "third"),
+        ];
+        assert!(answer_replaced(&messages, 2));
+        assert!(!answer_replaced(&messages, 5));
+        assert!(!answer_replaced(&messages, 7));
+        let handles: Vec<String> = citations_for_answer(&messages, 5)
+            .into_iter()
+            .map(|r| r.handle)
+            .collect();
+        assert_eq!(handles, vec!["[D1]", "[D2]"]);
+    }
+
+    #[test]
+    fn a_citation_round_with_no_new_answer_or_another_note_keeps_the_answer() {
+        let messages = vec![
+            row(1, ChatRole::User, "", "", "question"),
+            row(2, ChatRole::Assistant, "", "", "first"),
+            citation_note(3),
+            row(4, ChatRole::Tool, "cite_documents", "", ""),
+            row(5, ChatRole::User, "", "", "next"),
+            row(6, ChatRole::Assistant, "", "", "answer"),
+            row(7, ChatRole::Nag, "", "", "continue"),
+            row(8, ChatRole::Assistant, "", "", "later"),
+        ];
+        assert!(!answer_replaced(&messages, 1));
+        assert!(!answer_replaced(&messages, 5));
     }
 
     #[test]

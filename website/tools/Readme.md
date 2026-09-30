@@ -28,7 +28,7 @@ processes by default. `--shards 1` runs one process. `--shard I/N` on
 Image stems keep the global position in the selected list. A merge step writes one
 `report.md`, one `report.html` and one `image_inventory.json`. A shard that exits
 with a code other than 0, 1 or 2 is incomplete execution over the scenarios it held.
-The screenshot wrapper requires `--remote-target` when the login file supplies its only target.
+The screenshot wrapper, the chat observer wrapper and `run-manual-qa.sh` require `--remote-target` when the login file supplies their only target.
 Operation scenarios use `--operation-id ID` to select a row by its exact operation id.
 
 Screenshot scenarios can use `pointer_click_css`, `press_key`, and `wait_eval` for CDP
@@ -132,7 +132,9 @@ The turn ends when the transcript's `data-chat-turn` state is `idle` or `interru
 A turn that waits for a model or tool slot is still running, so a silent queue does not end the observation.
 An ended turn with no answer text gets 15 s for a late answer row before the observer records an empty answer.
 The observer submits a prompt or follow-up once and never submits it again.
-A page script or capture of the turn that takes more than 60 s ends the observation with an unknown outcome.
+A page script or capture of the turn that takes more than 60 s skips its interval, and the observation goes on.
+When every page call fails for 300 s, the observation ends with an unknown outcome.
+The observation of one turn ends after 4 hours at most. `AgentRun` sets no time limit on a run, so this ceiling bounds the observer only.
 The completion captures, the document preview and the history check have limits of 120 s, 60 s and 180 s.
 Run the observer tests in the browser container.
 

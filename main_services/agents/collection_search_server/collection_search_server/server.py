@@ -1575,8 +1575,9 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
     if any(r.candidate for r in results):
         note_parts.append(
             "A citation with `candidate` has an exact passage of the document near its "
-            "quote. Cite the document again with a quote copied from that passage to "
-            "verify it."
+            "quote. To verify it, cite the document again with a quote copied from a plain "
+            f"part of that passage, at least {MIN_QUOTE_CHARS} characters long. Each "
+            "handle above is valid in the answer whether or not its quote is verified."
         )
     if lookup_failed:
         note_parts.append(

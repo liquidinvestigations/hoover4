@@ -14,18 +14,53 @@
 #
 # The drain period is read from the worker's own environment, so it cannot drift from the
 # configuration key that set it.
+#
+# hoover4-ops mounts the same worker source and imports the same modules. A worker restart
+# that leaves it running keeps the old modules loaded there, and a changed module then
+# fails in the operations worker only, for example with an ImportError in the chat artifact
+# sweep. So the script restarts both containers by default. They drain at the same time.
+# WORKER names one container to restart only that one.
 set -e
 
-WORKER="${WORKER:-hoover4-worker}"
+WORKERS="${WORKER:-hoover4-worker hoover4-ops}"
 MARGIN=30
 
-grace=$(docker exec "$WORKER" sh -lc 'echo ${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}' 2>/dev/null | tr -d '\r')
-case "$grace" in
-    ''|*[!0-9]*) grace=60 ;;
-esac
-timeout=$(( grace + MARGIN ))
+stop_one() {
+    local name="$1" grace timeout
+    grace=$(docker exec "$name" sh -lc 'echo ${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}' 2>/dev/null | tr -d '\r')
+    case "$grace" in
+        ''|*[!0-9]*) grace=60 ;;
+    esac
+    timeout=$(( grace + MARGIN ))
+    echo "stopping $name with a ${grace}s drain (${timeout}s before SIGKILL)"
+    docker stop -t "$timeout" "$name" >/dev/null
+}
 
-echo "stopping $WORKER with a ${grace}s drain (${timeout}s before SIGKILL)"
-docker stop -t "$timeout" "$WORKER"
-docker start "$WORKER"
-echo "$WORKER restarted"
+names=()
+pids=()
+for name in $WORKERS; do
+    if ! docker inspect "$name" >/dev/null 2>&1; then
+        if [ -n "${WORKER:-}" ]; then
+            echo "error: no container named $name" >&2
+            exit 1
+        fi
+        echo "$name does not exist, so it is not restarted"
+        continue
+    fi
+    stop_one "$name" &
+    names+=("$name")
+    pids+=("$!")
+done
+
+failed=0
+for i in "${!pids[@]}"; do
+    if ! wait "${pids[$i]}"; then
+        echo "error: the stop of ${names[$i]} failed" >&2
+        failed=1
+    fi
+done
+for name in "${names[@]}"; do
+    docker start "$name" >/dev/null
+    echo "$name restarted"
+done
+exit "$failed"

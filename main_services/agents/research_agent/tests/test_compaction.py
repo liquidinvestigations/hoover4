@@ -232,6 +232,74 @@ def test_the_summary_contract_asks_for_findings_contradictions_work_and_sources(
     assert "Read a source again before you quote it." in RECORD_HEADER
 
 
+CLAUSE = ("Clause 14.2 Termination. Either party may terminate this lease with ninety (90) "
+          "days written notice.")
+PAGE_URL = "https://leases.example.org/template-v3"
+EMAIL_HASH = "a6a5a71a8b2e5512" + "c" * 48
+
+
+def _quote_thread():
+    """A thread whose prefix reads one email and one page. The page holds the clause."""
+    email = json.dumps({"items": [{"collectionname": "enron", "file_hash": EMAIL_HASH,
+                                   "path": "/_sent_mail/114.", "page": 1,
+                                   "text": "Message-ID: <1>\nFrom: vince@enron.com\n\nThe\n"
+                                           "meeting moved to Friday."}]})
+    page = (f"## Lease agreement template\n{PAGE_URL}\n\nFrom: vince@enron.com\n\n"
+            + CLAUSE.replace(" with ", "\n with ") + "\n\n[cut: this call read 300 of the "
+            "page's 61,020 characters. Call read_page with offset 300 for the next part]")
+    return _thread(40, 4_000, before=[ok("read_documents", {"file_hash": [EMAIL_HASH[:16]]}, email),
+                                      ok("read_page", {"urls": [PAGE_URL]}, page)])
+
+
+def test_the_contract_asks_for_the_source_of_each_quote_in_brackets():
+    stub = Recorder()
+    t = _quote_thread()
+    compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST, summariser=stub)
+    assert "[source: URL]" in stub.calls[0][0]
+
+
+def test_a_quote_given_to_the_wrong_source_gets_the_source_of_the_text_that_holds_it():
+    t = _quote_thread()
+    text = (f'## Findings\n* "{CLAUSE}" [source: enron, a6a5a71a8b2e5512, /sent_mail/114.]\n'
+            '* "The meeting moved to Friday." [source: enron, a6a5a71a8b2e5512, /_sent_mail/114.]\n'
+            '* "A sentence that no result holds." [source: enron, a6a5a71a8b2e5512, /x]')
+    _out, report = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,
+                                      summariser=Recorder(text=text))
+    record = report.row["summary"]
+    assert f'"{CLAUSE}" [source: {PAGE_URL}]' in record
+    # A correct bracket and a quote with no holder stay as the model wrote them.
+    assert '"The meeting moved to Friday." [source: enron, a6a5a71a8b2e5512, /_sent_mail/114.]' in record
+    assert '"A sentence that no result holds." [source: enron, a6a5a71a8b2e5512, /x]' in record
+    assert report.row["sources_corrected"] == 1
+    # The index gives the same URL as the corrected bracket.
+    assert f"- {PAGE_URL}. next offset 300" in record
+
+
+def test_a_heading_after_a_rule_inside_a_page_is_not_a_source():
+    from test_thread_index import MARKDOWN_PAGE
+    t = Thread()
+    t.human("Read the guide.")
+    t.step(ok("read_page", {"urls": ["https://docs.example.org/install"]}, MARKDOWN_PAGE))
+    sources = compaction.read_sources(t.rows, [1, 2])
+    assert [s.label for s in sources] == ["https://docs.example.org/install",
+                                          "https://b.example.org/"]
+    line = '* "Run the installer before you start." [source: https://docs.example.org/install]'
+    assert compaction.attribute_quotes(line, sources) == (line, 0)
+
+
+def test_a_contradiction_line_keeps_both_brackets_apart():
+    sources = [compaction.ReadSource("enron, aaaaaaaaaaaaaaaa, /a", ("aaaaaaaaaaaaaaaa",),
+                                     "Jane Porter approved lease L-17 on 12 March."),
+               compaction.ReadSource("enron, bbbbbbbbbbbbbbbb, /b", ("bbbbbbbbbbbbbbbb",),
+                                     "Mark Ellis approved lease L-17 on 19 March.")]
+    line = ('* "Jane Porter approved lease L-17 on 12 March." [source: enron, bbbbbbbbbbbbbbbb, /b] '
+            'vs "Mark Ellis approved lease L-17 on 19 March." [source: enron, bbbbbbbbbbbbbbbb, /b]')
+    fixed, changed = compaction.attribute_quotes(line, sources)
+    assert changed == 1
+    assert fixed == ('* "Jane Porter approved lease L-17 on 12 March." [source: enron, aaaaaaaaaaaaaaaa, /a] '
+                     'vs "Mark Ellis approved lease L-17 on 19 March." [source: enron, bbbbbbbbbbbbbbbb, /b]')
+
+
 def test_a_second_compaction_extends_the_previous_summary():
     t = _thread(40, 4_000)
     _out, first = compaction.compact(t.rows, t.rows, window=DGEMMA, estimator=EST,

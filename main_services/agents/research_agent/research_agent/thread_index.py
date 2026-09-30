@@ -188,6 +188,23 @@ def citation_lines(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
     return [f"- {label} {file_hash}" for label, file_hash in labels.items()][-CITATION_LINES:]
 
 
+def page_blocks(content: str) -> List[str]:
+    """The page sections of one `read_page` result text, in order. A section starts with
+    `## <title>` and the page URL on its second line. A `---` line and a `## ` heading inside
+    the text of a page do not start a section, so that text stays with its page. The worker's
+    `reports._page_blocks` splits the same way."""
+    blocks: List[str] = []
+    for part in content.split(PAGE_SEPARATOR):
+        lines = part.split("\n", 2)
+        starts_page = (part.startswith("## ") and len(lines) > 1
+                       and lines[1].strip().startswith(("http://", "https://")))
+        if starts_page or not blocks:
+            blocks.append(part)
+        else:
+            blocks[-1] += PAGE_SEPARATOR + part
+    return [b for b in blocks if b.startswith("## ")]
+
+
 def pages_read(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
     """One line for each page of a hidden `read_page` result: its URL, and the offset of its
     next part when the result was cut. A later read of the same URL replaces the line."""
@@ -195,11 +212,8 @@ def pages_read(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
     for m, name, _args in _results(rows):
         if name != READ_PAGE or _key(m) not in hidden or not isinstance(m.content, str):
             continue
-        for block in m.content.split(PAGE_SEPARATOR):
-            lines = block.split("\n", 2)
-            if not block.startswith("## ") or len(lines) < 2 or not lines[1].strip():
-                continue
-            url = lines[1].strip()
+        for block in page_blocks(m.content):
+            url = block.split("\n", 2)[1].strip()
             match = NEXT_OFFSET.search(block)
             pages.pop(url, None)
             pages[url] = match.group(1) if match else ""
@@ -276,5 +290,5 @@ def render(rows: Sequence[Any], *, visible_after: Set[Key]) -> str:
 
 __all__ = [
     "SEARCH_TOOLS", "citation_lines", "continued_results", "documents_read", "found_nothing",
-    "item_count", "pages_read", "removed_texts", "render", "search_lines",
+    "item_count", "page_blocks", "pages_read", "removed_texts", "render", "search_lines",
 ]
