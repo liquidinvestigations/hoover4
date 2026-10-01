@@ -26,12 +26,12 @@ The data is in `tables`, which the name does not suggest. An agent that searches
 
 ## Expected tool calls
 
-1. It calls `write_todo`.
+1. If it uses a todo list, it calls `write_todo`.
 2. It calls `search_passages` with no `collectionname` and the variants `["\"Nili Priell Barak\" Fortress", "nilipriell Fortress", "\"Fortress consulting agreement\"", "Priell Barak agreement"]`.
 3. It calls `read_documents` or `doc_email` on the three emails of 12/24/2014.
 4. It calls `cite_documents` with the three emails, each with a quote.
 5. It calls `web_search` only for who she is, for example `["\"Nili Priell\" Barak"]`, and the answer marks that part as from the web.
-6. It calls `mark_todo`, then it answers.
+6. If it uses a todo list, it calls `mark_todo` before it answers.
 
 ## Expected result
 
@@ -39,4 +39,4 @@ The answer gives the chain of three emails in order with a card for each. It say
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, search over all collections, with no collection named, query variants and spellings, more than one in one call, web search, kept apart from the document facts, document cards shown to the user, a passage to jump to, a task completed.
+The story exercises these requirements and optional behavior: todo use when needed, search over all collections, with no collection named, query variants and spellings, more than one in one call, web search, kept apart from the document facts, document cards shown to the user, a passage to jump to, a task completed.

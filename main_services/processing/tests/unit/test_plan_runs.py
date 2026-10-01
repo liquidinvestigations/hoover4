@@ -65,6 +65,19 @@ def plan(monkeypatch):
 # ------------------------------------------------------------------ execution settings
 
 
+def test_planner_answer_shows_orientation_only_after_a_section_exists(plan):
+    row = _row("planner", depth=0, kind="planner")
+    assert plan_runs.planner_visible_answer(row, "The sections cover both records.") == (
+        "The sections cover both records.")
+    assert plan_runs.planner_visible_answer(row, '{"children":[{"text":"A"}]}') == (
+        "The plan is ready for review. Its sections appear below.")
+    assert plan_runs.planner_visible_answer(row, "[D1] supports the plan.") == (
+        "[D1] supports the plan.")
+    plan["snapshot"] = ap.initial_snapshot(PLAN, "Who owns the lease?")
+    assert plan_runs.planner_visible_answer(row, '{"children":[]}') == (
+        "The plan has no section. Research cannot start from this plan.")
+
+
 def test_the_first_planner_freezes_the_model_and_a_later_run_reads_it(monkeypatch):
     from tasks.P_agent import stream_writer
 
@@ -102,6 +115,18 @@ def test_a_plan_from_before_the_settings_freezes_the_legacy_or_default_model(mon
     settings = plan_runs.freeze_settings(empty)
     assert (settings["model"], settings["model_source"]) == (
         "default-model", "configured_default")
+
+
+def test_default_less_request_uses_the_configured_provider_model(monkeypatch):
+    from database import clickhouse
+    from tasks.P_agent import stream_writer
+
+    monkeypatch.setattr(clickhouse, "get_server_setting", lambda key: "")
+    monkeypatch.setenv("LLM_MODEL", "catalog-provider-model")
+    assert stream_writer._chat_model() == "catalog-provider-model"
+    monkeypatch.delenv("LLM_MODEL")
+    with pytest.raises(ValueError, match="No chat model is configured"):
+        stream_writer._chat_model()
 
 
 def test_an_opened_run_of_a_plan_carries_the_frozen_model_and_the_dispatch(monkeypatch, plan):
@@ -147,6 +172,13 @@ def test_the_sections_come_from_the_thread_and_its_report(plan):
     plan["documents"].append(ap.PlanDocument(ap.document_id("ra", "report"), a, "executor",
                                              "report", 0, "text"))
     assert plan_runs.section_entries("u", "s", PRID)[0]["failed"] is False
+
+
+def test_running_sections_remain_running_without_a_report(plan):
+    a = ap.sections(plan["snapshot"])[0][0].node_id
+    plan["rows"] = [_row("ra", plan_node_id=a, state="running")]
+    entry = plan_runs.section_entries("u", "s", PRID)[0]
+    assert (entry["state"], entry["failed"], entry["cause"]) == ("running", False, "")
 
 
 def test_a_continuation_row_is_the_state_of_its_thread(plan):

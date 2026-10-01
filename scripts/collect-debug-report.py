@@ -314,8 +314,15 @@ def collect_host(r, since):
     r.run(j + "free.txt", ["free", "-m", "-w"])
     r.run(j + "swapon.txt", ["swapon", "--show"])
     r.sh(j + "loadavg.txt", "cat /proc/loadavg")
-    r.sh(j + "pressure.txt",
-         "for f in /proc/pressure/*; do echo \"== $f\"; cat \"$f\"; done")
+    pressure = []
+    for kind in ("cpu", "io", "memory"):
+        path = "/proc/pressure/" + kind
+        try:
+            with open(path) as source:
+                pressure.extend(("== " + path, source.read().rstrip()))
+        except OSError as exc:
+            pressure.extend(("== " + path, "unavailable: " + str(exc)))
+    r.write_text(j + "pressure.txt", "\n".join(pressure) + "\n")
     r.run(j + "numactl-hardware.txt", ["numactl", "--hardware"])
     r.sh(j + "numa-sysfs.txt",
          "ls /sys/devices/system/node/ 2>&1; cat /proc/sys/kernel/numa_balancing 2>&1")
@@ -617,6 +624,53 @@ def counter_delta(samples, name, key):
     return values[-1][key] - values[0][key]
 
 
+def nested_counter_delta(samples, name, group, key):
+    """Return a nested counter increase across one cgroup generation."""
+    values = [sample["containers"].get(name, {}) for sample in samples]
+    numbers = [value.get(group, {}).get(key) for value in values]
+    if not numbers or any(number is None for number in numbers):
+        return None
+    if any(x.get("cgroup_generation") != y.get("cgroup_generation")
+           or end < start
+           for x, y, start, end in zip(values, values[1:], numbers, numbers[1:])):
+        return None
+    return numbers[-1] - numbers[0]
+
+
+def _read_pressure_totals(path):
+    """Read cumulative PSI stall microseconds, or omit unavailable lines."""
+    totals = {}
+    try:
+        with open(path) as source:
+            for line in source:
+                parts = line.split()
+                if parts and parts[0] in ("some", "full"):
+                    total = next((part[6:] for part in parts[1:]
+                                  if part.startswith("total=")), None)
+                    if total is not None:
+                        totals[parts[0]] = int(total)
+    except (OSError, ValueError):
+        return {}
+    return totals
+
+
+def _read_io_totals(path):
+    """Sum the bounded per-device cgroup I/O counters."""
+    totals = {key: 0 for key in ("rbytes", "wbytes", "rios", "wios")}
+    try:
+        with open(path) as source:
+            for index, line in enumerate(source):
+                if index >= 64:
+                    return {}
+                for part in line.split()[1:]:
+                    key, _, value = part.partition("=")
+                    if key in totals:
+                        totals[key] += int(value)
+    except (OSError, ValueError):
+        return {}
+    return totals
+
+
 def collect_timeseries(r, containers, seconds, interval):
     """Sample CPU, throttling, memory and network per container, from the host.
 
@@ -651,11 +705,15 @@ def collect_timeseries(r, containers, seconds, interval):
             row["host_cpu"] = [int(x) for x in f.readline().split()[1:]]
         mem = _read_kv("/proc/meminfo")
         row["host_mem_available_kb"] = mem.get("MemAvailable:")
+        row["host_pressure"] = {
+            kind: _read_pressure_totals("/proc/pressure/" + kind)
+            for kind in ("cpu", "io", "memory")}
         per = {}
         for name, (pid, cg) in targets.items():
             cpu = _read_kv(cg + "/cpu.stat")
             ev = _read_kv(cg + "/memory.events")
             memory = _read_kv(cg + "/memory.stat")
+            io = _read_io_totals(cg + "/io.stat")
             try:
                 generation = os.stat(cg).st_ino
             except OSError:
@@ -671,6 +729,12 @@ def collect_timeseries(r, containers, seconds, interval):
                          "mem_max": _read_int(cg + "/memory.max"),
                          "oom_kill": ev.get("oom_kill"), "mem_high_events": ev.get("high"),
                          "mem_max_events": ev.get("max"), "rx": rx, "tx": tx}
+            per[name]["io"] = io
+            per[name]["pressure"] = {
+                kind + "_" + level: total
+                for kind in ("cpu", "io", "memory")
+                for level, total in _read_pressure_totals(
+                    cg + "/" + kind + ".pressure").items()}
         row["containers"] = per
         samples.append(row)
         if now >= end:
@@ -687,6 +751,8 @@ def collect_timeseries(r, containers, seconds, interval):
 
         def delta(k):
             return counter_delta(samples, name, k)
+        def nested_delta(group, key):
+            return nested_counter_delta(samples, name, group, key)
         periods = delta("nr_periods")
         mems = [s["containers"][name]["mem"] for s in samples
                 if s["containers"].get(name, {}).get("mem") is not None]
@@ -700,7 +766,13 @@ def collect_timeseries(r, containers, seconds, interval):
             "oom_kills_in_window": delta("oom_kill"),
             "oom_kills_total": b.get("oom_kill"),
             "rx_mb_per_s": None if delta("rx") is None else round(delta("rx") / 2**20 / span, 2),
-            "tx_mb_per_s": None if delta("tx") is None else round(delta("tx") / 2**20 / span, 2)}
+            "tx_mb_per_s": None if delta("tx") is None else round(delta("tx") / 2**20 / span, 2),
+            "io_read_bytes": nested_delta("io", "rbytes"),
+            "io_write_bytes": nested_delta("io", "wbytes"),
+            "pressure_stall_usec": {
+                key: nested_delta("pressure", key)
+                for key in ("cpu_some", "cpu_full", "io_some", "io_full",
+                            "memory_some", "memory_full")}}
     r.write_json(j + "summary.json", summary)
 
 
@@ -720,7 +792,8 @@ def collect_container(r, engine, c, since, tail):
     if cg:
         lines = []
         for f in ("memory.max", "memory.current", "memory.peak", "memory.swap.max",
-                  "memory.events", "memory.pressure", "cpu.max", "cpu.stat", "pids.current",
+                  "memory.events", "memory.pressure", "cpu.max", "cpu.stat", "cpu.pressure",
+                  "io.stat", "io.pressure", "pids.current",
                   "pids.max", "memory.stat"):
             try:
                 with open(os.path.join(cg, f)) as fh:
@@ -744,7 +817,7 @@ def collect_container(r, engine, c, since, tail):
     r.run(d + "cgroup.txt", ex + ["sh", "-c",
           "cd /sys/fs/cgroup 2>/dev/null && for f in memory.max memory.current memory.peak "
           "memory.swap.max memory.swap.current memory.events memory.pressure cpu.max "
-          "cpu.stat cpu.pressure io.pressure pids.current pids.max; do "
+          "cpu.stat cpu.pressure io.stat io.pressure pids.current pids.max; do "
           "[ -f $f ] && { echo \"== $f\"; cat $f; }; done; "
           "[ -f memory.stat ] && { echo '== memory.stat'; head -40 memory.stat; }"],
           timeout=30)

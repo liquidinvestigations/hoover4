@@ -114,7 +114,7 @@ def test_the_index_lists_the_searches_the_documents_and_the_removed_texts():
     assert "- enron/5e8bb0ff3822761c /maildir/kean-s/sent/12. pages 1, 2" in text
     assert "## Citation labels\n- [D1] 5e8bb0ff3822761c\n\n" in text
     assert "a5ee8d51b5bc1579" not in text.split("## Citation labels")[1].split("##")[0]
-    assert ("## Pages read\n- https://a.example/lease. next offset 9000\n"
+    assert ("## Pages read\n- https://a.example/lease. unread continuation at offset 9000\n"
             "- https://b.example/notice\n\n") in text
     assert ('## Results that continue\n- search_passages {"queries": ["Fastow memo"]}: more '
             'c7f3a91b0d2e\n- search_passages {"query": "lease clause"}: more c7f3a91b0d2e'
@@ -172,4 +172,42 @@ def test_a_rule_and_a_heading_inside_a_page_start_no_page():
     t.human("Read the guide.")
     t.step(ok("read_page", {"urls": ["https://docs.example.org/install"]}, MARKDOWN_PAGE))
     assert thread_index.pages_read(t.rows, {(THREAD, 2)}) == [
-        "- https://docs.example.org/install. next offset 90", "- https://b.example.org/"]
+        "- https://docs.example.org/install. unread continuation at offset 90", "- https://b.example.org/"]
+
+
+def test_page_index_keeps_cut_version_and_find_continuation():
+    t = Thread()
+    t.human("Read the source.")
+    text = (
+        "## Lease\nhttps://example.org/lease\n\nClause 14.2.\n\n"
+        "[cut: this call read 100 of the page's 300 characters. Call read_page "
+        "with offset 100 for the next part, with version 0123456789abcdef]"
+        "\n\n---\n\n## Other\nhttps://example.org/other\n\n"
+        '[find "lease": 1 of 2 matches from offset 0 are shown. '
+        "The page has 2 matches in 300 characters. Version fedcba9876543210.]\n\n"
+        "[match at 10, text from 0 to 25]\nlease\n\n"
+        "[more: 1 matches from offset 80. Call read_page with this URL, find "
+        '"lease", offset 80 and version fedcba9876543210 for the next matches]'
+        "\n\n---\n\n## Empty\nhttps://example.org/empty\n\n"
+        '[find "absent": no match from offset 0. The page has 0 matches in 300 '
+        "characters. Version fedcba9876543210.]"
+    )
+    t.step(ok("read_page", {"urls": ["https://example.org/lease"]}, text))
+    assert thread_index.pages_read(t.rows, {(THREAD, 2)}) == [
+        "- https://example.org/lease. version 0123456789abcdef. unread continuation at offset 100",
+        "- https://example.org/other. version fedcba9876543210. unread continuation at offset 80",
+    ]
+
+
+def test_page_index_records_cut_page_without_copying_its_body():
+    t = Thread()
+    t.human("Read the lease template.")
+    page = ("## Lease\nhttps://example.org/lease\n\nUnrelated introduction.\n\n"
+            "Clause 14.2 Termination. Either party may give ninety days notice.\n\n"
+            "[cut: this call read 200 of the page's 900 characters. Call read_page "
+            "with offset 200 for the next part, with version 0123456789abcdef]")
+    t.step(ok("read_page", {"urls": ["https://example.org/lease"],
+                            "goal": "termination clause"}, page))
+    assert thread_index.pages_read(t.rows, {(THREAD, 2)}) == [
+        '- https://example.org/lease. version 0123456789abcdef. unread continuation at offset 200'
+    ]

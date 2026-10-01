@@ -5,8 +5,9 @@ use common::{
     current_user::CurrentUser,
     document_sources::{
         DocumentAudioSourceItem, DocumentEmailSourceItem, DocumentImageSourceItem,
-        DocumentPdfSourceItem, DocumentSourceItem, DocumentTableSourceItem,
-        DocumentTextSourceItem, DocumentVideoSourceItem, EMAIL_TEXT_EXTRACTOR,
+        DocumentPdfSourceItem, DocumentSourceItem, DocumentSourcesStatus, DocumentTableSourceItem,
+        DocumentTextSourceItem, DocumentVideoSourceItem, BINARY_WORD_TEXT_EXTRACTOR,
+        EMAIL_TEXT_EXTRACTOR,
     },
     search_result::DocumentIdentifier,
 };
@@ -30,7 +31,7 @@ pub(crate) async fn get_text_sources(
         .bind(&document_identifier.file_hash)
         .bind(&document_identifier.collection_dataset);
     let result = query.fetch_all::<(String, u32, u32)>().await?;
-    let result = result
+    let mut result = result
         .into_iter()
         .map(
             |(extracted_by, min_page, max_page)| DocumentTextSourceItem {
@@ -40,7 +41,12 @@ pub(crate) async fn get_text_sources(
             },
         )
         .collect::<Vec<_>>();
+    prefer_binary_word(&mut result);
     Ok(result)
+}
+
+fn prefer_binary_word(sources: &mut [DocumentTextSourceItem]) {
+    sources.sort_by_key(|source| source.extracted_by != BINARY_WORD_TEXT_EXTRACTOR);
 }
 
 use common::document_metadata::DocumentMetadataTableInfo;
@@ -51,13 +57,26 @@ pub(crate) async fn get_pdf_sources(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Vec<DocumentPdfSourceItem>> {
+    let (sources, variant_error) = get_pdf_sources_with_status(user, document_identifier).await?;
+    if let Some(error) = variant_error {
+        tracing::warn!(%error, "PDF OCR source query failed");
+    }
+    Ok(sources)
+}
+
+async fn get_pdf_sources_with_status(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+) -> anyhow::Result<(Vec<DocumentPdfSourceItem>, Option<anyhow::Error>)> {
     let meta = get_raw_metadata(
         user,
         document_identifier.clone(),
         DocumentMetadataTableInfo::new("pdfs", "pdf_hash"),
     )
     .await?;
-    let obj = meta.first().context("No PDF metadata found")?;
+    let Some(obj) = meta.first() else {
+        return Ok((Vec::new(), None));
+    };
     let page_count = obj
         .get("page_count")
         .and_then(|v| v.as_u64())
@@ -65,7 +84,7 @@ pub(crate) async fn get_pdf_sources(
 
     // The original first, always: it is the file the investigation actually holds, and an
     // OCR'd rendering of it is an aid, not a replacement.
-    let mut sources = vec![DocumentPdfSourceItem {
+    let sources = vec![DocumentPdfSourceItem {
         page_count,
         engine: String::new(),
         languages: String::new(),
@@ -76,8 +95,9 @@ pub(crate) async fn get_pdf_sources(
     // per input page, deliberately, so page numbers keep matching the viewer) and if they
     // ever stop agreeing the selector must report what the file it is about to serve
     // actually contains.
-    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
-    let variants = client
+    let variants: anyhow::Result<Vec<(String, String, u32)>> = async {
+        let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+        let rows = client
         .query(
             "SELECT engine, languages, argMax(page_count, updated_at) \
              FROM pdf_ocr_results \
@@ -89,10 +109,21 @@ pub(crate) async fn get_pdf_sources(
         .bind(&document_identifier.collection_dataset)
         .bind(&document_identifier.file_hash)
         .fetch_all::<(String, String, u32)>()
-        .await
-        // A missing or unreadable table must not cost the reader the original PDF.
-        .unwrap_or_default();
+        .await?;
+        Ok(rows)
+    }.await;
+    Ok(append_pdf_variants(sources, page_count, variants))
+}
 
+fn append_pdf_variants(
+    mut sources: Vec<DocumentPdfSourceItem>,
+    page_count: u32,
+    variants: anyhow::Result<Vec<(String, String, u32)>>,
+) -> (Vec<DocumentPdfSourceItem>, Option<anyhow::Error>) {
+    let variants = match variants {
+        Ok(variants) => variants,
+        Err(error) => return (sources, Some(error)),
+    };
     for (engine, languages, variant_pages) in variants {
         sources.push(DocumentPdfSourceItem {
             page_count: if variant_pages > 0 {
@@ -104,7 +135,7 @@ pub(crate) async fn get_pdf_sources(
             languages,
         });
     }
-    Ok(sources)
+    (sources, None)
 }
 
 async fn get_email_sources(
@@ -210,11 +241,10 @@ async fn get_video_sources(
         DocumentMetadataTableInfo::new3("video_metadata", "hash", vec!["video_metadata_json"]),
     )
     .await?;
-    let obj = meta
-        .first()
-        .context("No video metadata found")?
-        .as_object()
-        .context("No video metadata found")?;
+    let Some(obj) = meta.first() else {
+        return Ok(None);
+    };
+    let obj = obj.as_object().context("Invalid video metadata")?;
     let duration = obj
         .get("duration_seconds")
         .and_then(|v| v.as_f64())
@@ -244,11 +274,10 @@ async fn get_audio_sources(
         DocumentMetadataTableInfo::new3("audio_metadata", "hash", vec!["audio_metadata_json"]),
     )
     .await?;
-    let obj = meta
-        .first()
-        .context("No video metadata found")?
-        .as_object()
-        .context("No video metadata found")?;
+    let Some(obj) = meta.first() else {
+        return Ok(None);
+    };
+    let obj = obj.as_object().context("Invalid audio metadata")?;
     let duration = obj
         .get("duration_seconds")
         .and_then(|v| v.as_f64())
@@ -285,11 +314,22 @@ pub async fn get_document_sources(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Vec<DocumentSourceItem>> {
+    let status = get_document_sources_status(user, document_identifier).await?;
+    if !status.errors.is_empty() {
+        anyhow::bail!("Could not load all document sources: {}", status.errors.join(", "));
+    }
+    Ok(status.sources)
+}
+
+pub async fn get_document_sources_status(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+) -> anyhow::Result<DocumentSourcesStatus> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
     let (txt, pdf, email, img, vid, aud, table) = tokio::join!(
         get_text_sources(user, document_identifier.clone()),
-        get_pdf_sources(user, document_identifier.clone()),
+        get_pdf_sources_with_status(user, document_identifier.clone()),
         get_email_sources(user, document_identifier.clone()),
         get_image_sources(user, document_identifier.clone()),
         get_video_sources(user, document_identifier.clone()),
@@ -298,16 +338,52 @@ pub async fn get_document_sources(
     );
 
     let mut sources = vec![];
-    let text_sources = txt.unwrap_or_default();
+    let mut errors = Vec::new();
+    let text_sources = txt.unwrap_or_else(|error| {
+        tracing::warn!(%error, "text source query failed");
+        errors.push("Text sources could not load".to_string());
+        Vec::new()
+    });
+    let (pdf, pdf_variant_error) = pdf.unwrap_or_else(|error| {
+        tracing::warn!(%error, "PDF source query failed");
+        errors.push("PDF sources could not load".to_string());
+        (Vec::new(), None)
+    });
+    if let Some(error) = pdf_variant_error {
+        tracing::warn!(%error, "PDF OCR source query failed");
+        errors.push("PDF OCR sources could not load".to_string());
+    }
+    let email = email.unwrap_or_else(|error| {
+        tracing::warn!(%error, "email source query failed");
+        errors.push("Email source could not load".to_string());
+        None
+    });
+    let img = img.unwrap_or_else(|error| {
+        tracing::warn!(%error, "image source query failed");
+        errors.push("Image source could not load".to_string());
+        None
+    });
+    let vid = vid.unwrap_or_else(|error| {
+        tracing::warn!(%error, "video source query failed");
+        errors.push("Video source could not load".to_string());
+        None
+    });
+    let aud = aud.unwrap_or_else(|error| {
+        tracing::warn!(%error, "audio source query failed");
+        errors.push("Audio source could not load".to_string());
+        None
+    });
+    let table = table.unwrap_or_else(|error| {
+        tracing::warn!(%error, "table source query failed");
+        errors.push("Table source could not load".to_string());
+        None
+    });
     // The email preview renders the parsed body, which is an ordinary `text_content`
     // variant. Hand the email source that variant's page range so the viewer asks for a
     // page that exists; `page_id` is 1-based, so 1 is the floor and 0 is never valid.
     //
-    // The variant's ABSENCE is reported just as carefully. Headers and body are stored
-    // independently, and a mail file can have the first without the second. A body of
-    // one character after stripping is dropped by the text writer, as is a message whose
-    // only body part is HTML. Guessing a range for a variant that has no rows is what
-    // makes the viewer render `document not found!` where the body belongs.
+    // Headers and body are stored independently. A message can have headers without
+    // readable body text, so the viewer must not request an absent body page.
     let body_range = text_sources
         .iter()
         .find(|s| s.extracted_by == EMAIL_TEXT_EXTRACTOR)
@@ -316,28 +392,28 @@ pub async fn get_document_sources(
     for source in text_sources {
         sources.push(DocumentSourceItem::Text(source));
     }
-    for source in pdf.unwrap_or_default() {
+    for source in pdf {
         sources.push(DocumentSourceItem::Pdf(source));
     }
-    for mut source in email.unwrap_or_default() {
+    for mut source in email {
         source.min_page = body_min_page;
         source.max_page = body_max_page;
         source.has_body = body_range.is_some();
         sources.push(DocumentSourceItem::Email(source));
     }
-    for source in img.unwrap_or_default() {
+    for source in img {
         sources.push(DocumentSourceItem::Image(source));
     }
-    for source in vid.unwrap_or_default() {
+    for source in vid {
         sources.push(DocumentSourceItem::Video(source));
     }
-    for source in aud.unwrap_or_default() {
+    for source in aud {
         sources.push(DocumentSourceItem::Audio(source));
     }
     // Declared before `Text` in the enum and therefore sorted above it below, so a
     // workbook opens on its grid rather than on the tab-separated flattening of it that
     // the text extractor also produced for the same file.
-    for source in table.unwrap_or_default() {
+    for source in table {
         sources.push(DocumentSourceItem::Table(source));
     }
     // Nothing else is pushed here. `Metadata` and the file locations are DESCRIPTIONS of
@@ -349,5 +425,34 @@ pub async fn get_document_sources(
     // the selector falls back to the first real source.
     sources.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    Ok(sources)
+    Ok(DocumentSourcesStatus { sources, errors })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ocr_query_failure_keeps_original_pdf_source() {
+        let original = DocumentPdfSourceItem {
+            page_count: 4,
+            engine: String::new(),
+            languages: String::new(),
+        };
+        let (sources, error) = append_pdf_variants(
+            vec![original.clone()], 4, Err(anyhow::anyhow!("OCR query failed")),
+        );
+        assert_eq!(sources, vec![original]);
+        assert_eq!(error.unwrap().to_string(), "OCR query failed");
+    }
+
+    #[test]
+    fn default_agent_text_source_prefers_binary_word() {
+        let source = |name: &str| DocumentTextSourceItem {
+            extracted_by: name.to_string(), min_page: 1, max_page: 1,
+        };
+        let mut sources = vec![source("extractous"), source("raw_text"), source("binary_word")];
+        prefer_binary_word(&mut sources);
+        assert_eq!(sources, vec![source("binary_word"), source("extractous"), source("raw_text")]);
+    }
 }

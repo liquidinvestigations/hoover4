@@ -37,7 +37,7 @@ The folder `greenvelope` is the invitation service of the Consulate General of I
 
 ## Expected tool calls
 
-1. It calls `write_todo`, with plain item ids.
+1. If it uses a todo list, it calls `write_todo` with plain item ids.
    ```json
    {"goal": "Find every document that mentions JoeBWilkinson@cs.com and say who the person is",
     "items": [{"id": "search", "text": "Search all collections for the address and the name", "status": "in_progress"},
@@ -51,11 +51,11 @@ The folder `greenvelope` is the invitation service of the Consulate General of I
    ```
    sent to `search_passages`. A `search_collections` call with no `collectionname` and the query `JoeBWilkinson@cs.com | "Joe Wilkinson"` is also correct.
 3. It calls `read_documents` on two or three of the hits, for example `inbox.csv` of campaign 2360064.
-4. It calls `mark_todo` on `search` and `read`.
+4. If it uses a todo list, it calls `mark_todo` on `search` and `read`.
 5. It calls `web_search` with the name and the place from the documents, for example `["\"Joe Wilkinson\" \"Saint Simons Island\"", "\"Joe Wilkinson\" Georgia \"Task Force for the Promotion of Public Trust\""]`.
 6. It calls `read_page` on one result that names the task force or the Georgia role.
 7. It calls `cite_documents` with the three or four documents above, each with a verbatim quote.
-8. It calls `mark_todo` on the last items, then it answers.
+8. If it uses a todo list, it calls `mark_todo` on the last items before it answers.
 
 ## Expected result
 
@@ -63,4 +63,4 @@ The answer names every document that holds the address, grouped by campaign and 
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, with a valid id on the first attempt, search over all collections in one call, query variants and spellings, more than one in one call, web search and page reads, document cards shown to the user, a passage to jump to (the decline message), a task completed, with no claim that has no result behind it.
+The story exercises these requirements and optional behavior: todo use when needed, with a valid id on the first attempt, search over all collections in one call, query variants and spellings, more than one in one call, web search and page reads, document cards shown to the user, a passage to jump to (the decline message), a task completed, with no claim that has no result behind it.

@@ -23,6 +23,7 @@ twice per chunk.
 """
 
 from typing import List
+from time import perf_counter
 from temporalio import activity
 import logging
 import os
@@ -32,6 +33,7 @@ from database.clickhouse import get_collection_client
 from database.manticore import (
     DATE_UNKNOWN,
     DOCUMENT_COLUMNS,
+    bind_manticore_sql,
     manticore_execute,
     shard_table_from_name,
 )
@@ -58,6 +60,10 @@ log = logging.getLogger(__name__)
 
 
 INDEX_ROW_CHUNK_SIZE = 512
+INDEX_STATEMENT_MAX_BYTES = 4 * 1024 * 1024
+INDEX_STATEMENT_MAX_ROWS = 128
+# Manticore 14.1.0 defaults to a 128 MiB max packet. Leave room for framing.
+INDEX_ROW_MAX_BYTES = 127 * 1024 * 1024
 
 
 def union_entities_by_segment(entity_rows):
@@ -279,10 +285,51 @@ def vfs_stale_ids(indexed: list, current_keys: set[str]) -> list[int]:
 
 
 def vfs_delete_ids_sql(vfs_table: str, ids: list[int]) -> str:
-    """DELETE by primary key. Never a dataset-wide ``WHERE collection_dataset`` wipe."""
+    """Delete exact index row IDs from a validated table name."""
     if not ids:
         raise ValueError("vfs_delete_ids_sql needs at least one id")
     return f"DELETE FROM {vfs_table} WHERE id IN ({','.join(str(int(i)) for i in ids)})"
+
+
+PAGE_SCAN_SIZE = 1000
+
+
+def _scan_indexed_page_rows(cur, pages_table: str, collection_dataset: str,
+                            file_hashes: list[str]):
+    """Read bounded pages of indexed identities for this writer's documents."""
+    if not file_hashes:
+        return
+    placeholders = ", ".join(["%s"] * len(file_hashes))
+    query = (
+        f"SELECT id, file_hash FROM {pages_table} "
+        f"WHERE collection_dataset = %s AND file_hash IN ({placeholders}) "
+        f"AND id > %s ORDER BY id ASC LIMIT {PAGE_SCAN_SIZE} "
+        f"OPTION max_matches={PAGE_SCAN_SIZE}"
+    )
+    last_id = 0
+    while True:
+        cur.execute(query, (collection_dataset, *file_hashes, last_id))
+        page = [(int(row_id), file_hash) for row_id, file_hash in cur.fetchall()]
+        if not page:
+            return
+        last_id = page[-1][0]
+        yield page
+        if len(page) < PAGE_SCAN_SIZE:
+            return
+
+
+def _delete_obsolete_index_pages(client, pages_table: str, collection_dataset: str,
+                                 file_hashes: list[str], expected_ids: set[int]) -> set[str]:
+    """Delete absent page identities after all replacement rows commit."""
+    cur = client.cursor()
+    affected: set[str] = set()
+    for page in _scan_indexed_page_rows(cur, pages_table, collection_dataset, file_hashes):
+        obsolete = [(row_id, file_hash) for row_id, file_hash in page
+                    if row_id not in expected_ids]
+        for group in chunks([row_id for row_id, _ in obsolete], 512):
+            manticore_execute(client, vfs_delete_ids_sql(pages_table, group))
+        affected.update(file_hash for _, file_hash in obsolete)
+    return affected
 
 
 def log_missing_ner_watermarks(collection_dataset: str, plan_hash: str,
@@ -296,6 +343,66 @@ def log_missing_ner_watermarks(collection_dataset: str, plan_hash: str,
         "indexed with empty entities",
         collection_dataset, plan_hash[:8], missing_watermarks, text_segments,
     )
+
+
+def write_page_batches(client, table: str, collection_dataset: str,
+                       rows: list[dict]) -> tuple[int, int]:
+    """Write bounded page groups and return transaction count and encoded bytes."""
+    prefix = None
+    values: list[bytes] = []
+    statement_bytes = 0
+    transactions = 0
+    encoded_bytes = 0
+
+    def flush() -> None:
+        nonlocal statement_bytes, transactions, encoded_bytes
+        if not values:
+            return
+        statement = prefix + b" VALUES " + b", ".join(values)
+        client.cmd_query(b"BEGIN")
+        try:
+            # The values are already bound. A second bind would treat corpus "%s"
+            # as another placeholder.
+            client.cmd_query(statement)
+            client.cmd_query(b"COMMIT")
+        except BaseException:
+            try:
+                client.cmd_query(b"ROLLBACK")
+            except Exception:
+                log.exception("Manticore rollback failed")
+            raise
+        transactions += 1
+        encoded_bytes += len(statement)
+        values.clear()
+        statement_bytes = 0
+
+    for row in rows:
+        encoded = bind_manticore_sql(
+            client, pages_replace_sql(table, row),
+            pages_replace_params(collection_dataset, row),
+        )
+        row_prefix, marker, row_values = encoded.partition(b" VALUES ")
+        if not marker or not row_values:
+            raise ValueError("Page REPLACE has no VALUES group")
+        if prefix is None:
+            prefix = row_prefix
+        elif prefix != row_prefix:
+            raise ValueError("Page REPLACE columns changed within one batch")
+        row_bytes = len(prefix) + len(marker) + len(row_values)
+        if row_bytes > INDEX_ROW_MAX_BYTES:
+            raise ValueError(
+                f"Page row exceeds Manticore row limit: {row_bytes} > "
+                f"{INDEX_ROW_MAX_BYTES} bytes"
+            )
+        next_bytes = statement_bytes + len(row_values) + (2 if values else len(prefix) + len(marker))
+        if values and (len(values) >= INDEX_STATEMENT_MAX_ROWS or
+                       next_bytes > INDEX_STATEMENT_MAX_BYTES):
+            flush()
+            next_bytes = row_bytes
+        values.append(row_values)
+        statement_bytes = next_bytes
+    flush()
+    return transactions, encoded_bytes
 
 
 @activity.defn
@@ -314,9 +421,9 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     one repeated value per metadata column. The writer places each document's filename
     before its first page and writes filename-only documents after all text batches.
 
-    Returns the file_hashes actually written (committed). ``IndexDatasetPlan``
-    records exactly these in ``index_state``, a document whose writer failed
-    must never be counted by the shard ledger.
+    Returns hashes whose rows were written or removed after successful commits.
+    ``IndexDatasetPlan`` records these in ``index_state``. A failed writer must
+    never be counted by the shard ledger.
     """
     collection_dataset: str = params.collection_dataset
     item_hashes: list[str] = params.hashes
@@ -408,6 +515,14 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     ])
     written_hashes = set()
     filename_hashes = set()
+    expected_ids = {
+        pages_row_id(collection_dataset, row['file_hash'], row['extracted_by'], row['page_id'])
+        for row in text_segments
+    }
+    expected_ids.update(
+        pages_row_id(collection_dataset, file_hash, FILENAME_EXTRACTED_BY, FILENAME_PAGE_ID)
+        for file_hash, document in metadata.items() if document['basenames']
+    )
 
     def filename_row(file_hash):
         document = metadata[file_hash]
@@ -424,15 +539,16 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     def write_rows(client, rows):
         rows.sort(key=lambda row: (row['collection_dataset'], row['file_hash'],
                                    row['page_id'], row['extracted_by']))
-        for chunk in chunks(rows, INDEX_ROW_CHUNK_SIZE):
-            for row in chunk:
-                manticore_execute(
-                    client,
-                    pages_replace_sql(pages_table, row),
-                    pages_replace_params(collection_dataset, row),
-                )
-            log.info(f"{collection_dataset} (plan {plan_hash[:8]}): Indexed {len(chunk)} rows into {pages_table}")
-            client.commit()
+        started = perf_counter()
+        transactions, encoded_bytes = write_page_batches(
+            client, pages_table, collection_dataset, rows)
+        if rows:
+            log.info(
+                "%s (plan %s): Indexed %d rows into %s in %d transactions, "
+                "%d encoded bytes, %.3f write seconds",
+                collection_dataset, plan_hash[:8], len(rows), pages_table,
+                transactions, encoded_bytes, perf_counter() - started,
+            )
         rows.clear()
 
     with get_manticore_client() as manticore_client:
@@ -497,6 +613,10 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
             rows.append(filename_row(file_hash))
       written_hashes.update(row['file_hash'] for row in rows)
       write_rows(manticore_client, rows)
+
+      written_hashes.update(_delete_obsolete_index_pages(
+          manticore_client, pages_table, collection_dataset, item_hashes, expected_ids,
+      ))
 
     log_missing_ner_watermarks(
         collection_dataset, plan_hash, missing_watermarks, len(text_segments),

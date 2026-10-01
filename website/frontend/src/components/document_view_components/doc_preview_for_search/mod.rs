@@ -10,7 +10,7 @@ pub mod no_document_selected;
 mod text_data_viewer;
 pub mod text_preview_with_search;
 
-use common::document_sources::{DocumentSourceItem, ItemHitCounts};
+use common::document_sources::{DocumentSourceItem, DocumentSourcesStatus, ItemHitCounts};
 use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
@@ -49,16 +49,20 @@ fn DocumentPreviewForSearchContent(
     let document_identifier_value = document_identifier();
     // By value through `use_reactive`: a `ReadSignal` prop is a new signal on every
     // parent render, so a resource subscribed to it never re-runs on its own.
-    let doc_sources: Resource<Vec<DocumentSourceItem>> =
+    let mut source_request: Resource<Result<DocumentSourcesStatus, ServerFnError>> =
         use_resource(use_reactive!(|document_identifier_value| {
-            async move {
-                get_document_sources(document_identifier_value)
-                    .await
-                    .unwrap_or_default()
-            }
+            async move { get_document_sources(document_identifier_value).await }
         }));
     let doc_sources: ReadSignal<Option<Vec<DocumentSourceItem>>> =
-        use_memo(move || doc_sources.read().clone()).into();
+        use_memo(move || source_request.read().as_ref()
+            .and_then(|r| r.as_ref().ok().map(|status| status.sources.clone()))).into();
+    let source_error = use_memo(move || source_request.read().as_ref().and_then(|result| {
+        match result {
+            Ok(status) if !status.errors.is_empty() => Some(status.errors.join(", ")),
+            Err(error) => Some(error.to_string()),
+            _ => None,
+        }
+    }));
 
     let control = use_context::<DocViewerStateControl>();
 
@@ -127,6 +131,13 @@ fn DocumentPreviewForSearchContent(
         }
     };
 
+    let source_notice = rsx! {
+        if let Some(error) = source_error() {
+            div { role: "alert", "Could not load all document sources: {error}" }
+            button { onclick: move |_| source_request.restart(), "Retry" }
+        }
+    };
+
     match (
         doc_sources.read().as_ref(),
         currently_selected_source.read().as_ref(),
@@ -138,6 +149,7 @@ fn DocumentPreviewForSearchContent(
                     preview_selector,
                     children: rsx! {
                         DocTitleBar { document_identifier, show_new_tab_button: true, show_finder }
+                        {source_notice}
                         DocSourceDispatch { document_identifier, source: selected_source.clone() },
                     },
                     wrapper_fn: _make_preview_wrapper,
@@ -156,6 +168,7 @@ fn DocumentPreviewForSearchContent(
                     preview_selector,
                     children: rsx! {
                         DocTitleBar { document_identifier, show_new_tab_button: true, show_finder }
+                        {source_notice}
                         div {
                             style: "padding: 12px; color: rgba(0,0,0,0.45); font-style: italic;",
                             "No preview available for this document."
@@ -165,6 +178,10 @@ fn DocumentPreviewForSearchContent(
                 }
             }
         }
+        _ if source_error().is_some() => rsx! {
+            DocTitleBar { document_identifier, show_new_tab_button: true, show_finder }
+            {source_notice}
+        },
         _ => {
             return rsx! {
                 LoadingIndicator {  }
@@ -176,9 +193,9 @@ fn DocumentPreviewForSearchContent(
 #[server]
 pub async fn get_document_sources(
     document_identifier: DocumentIdentifier,
-) -> Result<Vec<DocumentSourceItem>, ServerFnError> {
+) -> Result<DocumentSourcesStatus, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::documents::get_document_sources::get_document_sources(&user, document_identifier)
+    backend::api::documents::get_document_sources::get_document_sources_status(&user, document_identifier)
         .await
         .map_err(crate::api::error_util::to_server_fn_error)
 }

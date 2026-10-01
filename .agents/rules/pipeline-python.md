@@ -18,8 +18,8 @@ processing view silently loses a bar.
 a 1-based segment ordinal otherwise.
 
 **`insert_text_pages` is called once per `(file, extracted_by)`, with the complete page
-list.** It trims rows above the highest page it writes, so a second call for the same variant
-deletes the first call's pages. Every writer goes through it.
+list.** It removes prior page identities absent from that list. A second call for the same
+variant can delete the first call's pages. Every writer goes through it.
 
 **`extracted_by` is a storage key and a user-visible label at once.** OCR variants carry an
 engine-and-language prefix; native extractors carry none. The convention is implemented twice

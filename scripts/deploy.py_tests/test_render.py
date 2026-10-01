@@ -138,6 +138,43 @@ def test_manticore_memory_limits_are_required_and_rendered():
     assert env["MANTICORE_VECTORS_MEM_LIMIT_BYTES"] == "34359738368"
 
 
+def test_scanner_and_ui_memory_limits_are_validated_and_rendered():
+    cfg = _config("settings-defaults.ini")
+    settings = {
+        "regex_scanner_mem_limit": "4G",
+        "temporal_ui_mem_limit": "512M",
+        "clickhouse_ui_mem_limit": "512M",
+        "clickhouse_monitoring_mem_limit": "768M",
+    }
+    cfg.values["main_services"].update(settings)
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        env = deploy.render_main_env(cfg)
+    for key, value in settings.items():
+        assert env[key.upper()] == value
+
+    for key in settings:
+        for bad in ("", "0M", "not-a-size"):
+            invalid = _config("settings-defaults.ini")
+            invalid.values["main_services"][key] = bad
+            with pytest.raises(deploy.DeployError, match=key):
+                deploy.render_main_env(invalid)
+
+
+def test_scanner_and_ui_compose_limits_use_rendered_names():
+    documents = dict(_compose_documents())
+    main = documents["docker-compose.yaml"]["services"]
+    scanner = documents["regex-entity-scanner.yaml"]["services"]
+    expected = (
+        (scanner["hoover4-regex-entity-scanner"], "REGEX_SCANNER_MEM_LIMIT"),
+        (main["temporal-ui"], "TEMPORAL_UI_MEM_LIMIT"),
+        (main["ch-ui"], "CLICKHOUSE_UI_MEM_LIMIT"),
+        (main["clickhouse-monitoring"], "CLICKHOUSE_MONITORING_MEM_LIMIT"),
+    )
+    for service, key in expected:
+        assert service["mem_limit"].startswith("${" + key + ":-")
+        assert service["memswap_limit"] == service["mem_limit"]
+
+
 def test_gpu_ner_requires_ai_tier():
     with mock.patch.object(deploy, "fail") as fail:
         deploy.preflight_ner_gpu_without_tier(_config("gpu-off-leftovers.ini"), "main")

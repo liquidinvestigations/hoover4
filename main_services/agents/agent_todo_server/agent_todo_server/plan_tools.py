@@ -280,8 +280,16 @@ async def _write(version: int, children: list[dict[str, Any]]) -> PlanResponse:
         except agent_plans.StaleVersion as exc:
             return _response(ctx, exc.current, PlanRefused("stale_version", str(exc)))
         except agent_plans.PlanError as exc:
-            return _response(ctx, await asyncio.to_thread(_snapshot, ctx),
-                             PlanRefused("invalid_plan_change", str(exc)))
+            current = await asyncio.to_thread(_snapshot, ctx)
+            message = str(exc)
+            if "names no node of version" in message and current is not None:
+                paths = agent_plans.node_paths(current)
+                allowed = [path for path in paths.values() if path != agent_plans.ROOT_PATH]
+                message += (" Use node_id only to keep an existing node. "
+                            "Omit node_id for every new node, including its children. "
+                            f"Allowed number paths in version {current.version}: "
+                            f"{', '.join(allowed) if allowed else 'none'}.")
+            return _response(ctx, current, PlanRefused("invalid_plan_change", message))
     log.info("write_plan user=%s session=%s plan=%s v%s", ctx.caller.username,
              ctx.caller.session_id, ctx.plan_run.plan_id, new.version)
     return _response(ctx, new)

@@ -101,7 +101,12 @@ endpoint stays out of rotation.
 
 `tesseract_languages` is what the CPU OCR image can serve. It is baked into the image, so a
 language added here needs a rebuild. `regex_scanner_threads` and `regex_scanner_queue_depth`
-bound the pattern scanner's runtime and its admission control.
+bound the pattern scanner's runtime and its admission control. The scanner takes a slot
+before it reads or parses a scan request body. `regex_scanner_mem_limit` (default `1000M`)
+sets its container memory limit.
+
+`clickhouse_ui_mem_limit` and `clickhouse_monitoring_mem_limit` set the memory
+limits of the two ClickHouse interface containers. Each defaults to `6000M`.
 
 `tesseract_cpu_concurrency` (default `2`) is the number of OCR requests
 `hoover4-tesseract-cpu` runs at once, and its request queue holds 4 times that number.
@@ -266,6 +271,7 @@ is `128`.
 | `cassandra_malloc_arenas` | empty | `MALLOC_ARENA_MAX`. Empty keeps the image default of 4 |
 | `cassandra_chunk_cache_mb` | `512` | `file_cache_size_in_mb` in `cassandra.yaml`, written by `cassandra-entrypoint.sh` at each start |
 | `temporal_mem_limit` | `8000M` | the memory limit of `temporal` |
+| `temporal_ui_mem_limit` | `6000M` | the memory limit of `temporal-ui` |
 | `temporal_cpus` | `8` | its CPU limit |
 | `temporal_retention` | `168h` | how long the default namespace keeps a closed workflow |
 | `temporal_history_persistence_qps` | empty | `history.persistenceMaxQPS` |

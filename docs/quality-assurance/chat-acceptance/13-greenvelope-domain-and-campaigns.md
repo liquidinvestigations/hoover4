@@ -23,7 +23,7 @@ The consulate files have a folder called greenvelope. What is that service, who 
 
 ## Expected tool calls
 
-1. It calls `write_todo`.
+1. If it uses a todo list, it calls `write_todo`.
 2. It calls `folder_overview` on `consulate`, then `folder_list` on the `greenvelope` folder, to count the campaigns.
 3. It calls `search_collections` with no `collectionname` and the query `greenvelope.com`, to find the collections that hold the files.
 4. It calls `whois_lookup` with `["greenvelope.com"]`.
@@ -36,4 +36,4 @@ The answer gives the campaign count from the folder listing, and says that `tabl
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, search over all collections, web search and page reads, and the WHOIS tool, document cards shown to the user, a task completed.
+The story exercises these requirements and optional behavior: todo use when needed, search over all collections, web search and page reads, and the WHOIS tool, document cards shown to the user, a task completed.

@@ -13,6 +13,7 @@ copies together. The tests of both copies read the same literal result strings.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Optional
 
 #: The tools whose results can find nothing.
@@ -32,6 +33,10 @@ INCOMPLETE_HEAD = {
 
 #: The paragraph before the newest text that the model wrote.
 LATEST_TEXT_HEAD = "The newest text that the model wrote in this run:"
+CALL_REFUSAL = "The model server returned a tool call as text. The tool server refused it."
+
+#: A call that the model wrote inside prose instead of sending through the tool API.
+RAW_CITATION_CALL = re.compile(r"\[cite_documents\(.*?\)\]", re.DOTALL)
 
 #: The paragraph before the lists. The lists name the documents of stored results, and a
 #: document that a search returned is not a document that the run read.
@@ -192,7 +197,11 @@ def latest_text(messages) -> str:
     """The newest nonempty text of an `ai` message of the thread, without its reasoning."""
     for m in reversed(list(messages)):
         if m.role == "ai" and (m.content or "").strip():
-            return m.content.strip()
+            text = RAW_CITATION_CALL.sub("", m.content).strip()
+            if "<|tool_call>" in text or "<|\"|>" in text:
+                continue
+            if text:
+                return text
     return ""
 
 
@@ -205,6 +214,10 @@ def incomplete_text(messages, reason: str, limit: int) -> str:
     latest = latest_text(messages)
     if latest:
         parts.append(f"{LATEST_TEXT_HEAD}\n\n{latest}")
+    if any(m.role == "tool" and m.usage.get("status") == "error"
+           and m.usage.get("error_class") == "invalid_arguments"
+           and m.tool_name == "unnamed_call" for m in messages):
+        parts.append(CALL_REFUSAL)
     lists = []
     for title, lines in (
             ("Documents read", documents_read(messages, LISTING_LINES)),

@@ -611,7 +611,7 @@ _recorder = _Recorder()
 
 async def _describe_all_queues(client: Any) -> list[list]:
     """One DescribeTaskQueue RPC per known queue. Failures of a single queue are skipped."""
-    from temporalio.api.enums.v1 import TaskQueueType
+    from temporalio.api.enums.v1 import TaskQueueKind, TaskQueueType
     from temporalio.api.taskqueue.v1 import TaskQueue
     from temporalio.api.workflowservice.v1 import DescribeTaskQueueRequest
 
@@ -623,7 +623,8 @@ async def _describe_all_queues(client: Any) -> list[list]:
             resp = await client.workflow_service.describe_task_queue(
                 DescribeTaskQueueRequest(
                     namespace=namespace,
-                    task_queue=TaskQueue(name=name),
+                    task_queue=TaskQueue(
+                        name=name, kind=TaskQueueKind.TASK_QUEUE_KIND_NORMAL),
                     task_queue_type=TaskQueueType.TASK_QUEUE_TYPE_ACTIVITY,
                     include_task_queue_status=True,
                     report_stats=True,

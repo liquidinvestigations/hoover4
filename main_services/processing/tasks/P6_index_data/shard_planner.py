@@ -298,6 +298,12 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
     if not hashes:
         return []
 
+    # P4 and P5 finished before this activity starts. Flush their async writes,
+    # along with date resolution, before planning and the index writers read them.
+    # A failed flush must fail the plan before it records any shard assignment.
+    with get_collection_client(collectionname) as client:
+        client.command("SYSTEM FLUSH ASYNC INSERT QUEUE")
+
     if params.vectors_only:
         with get_collection_client(collectionname) as client:
             rows = client.query(

@@ -129,7 +129,8 @@ of the result that holds it, in this form: [source: collection name, first 16 ch
 the file hash, path] or [source: URL] or [source: report]. Do not shorten a quote and do \
 not merge two sources. Copy every number, date, name, \
 amount, count and identifier exactly. Include each note that the agent saved with \
-`write_note`.
+`write_note`. Read every `read_page` result at the end of the history below. Keep every \
+finding that answers its call's goal, including each numbered clause, with its URL.
 
 ## Contradictions
 Each pair of sources that disagree, with both quoted claims, each followed by its source in \
@@ -139,7 +140,9 @@ the history shows no disagreement.
 ## Outstanding work
 The parts of the task and of the user's requests that the history did not finish, the \
 questions it did not answer, and the leads not yet followed, each with the document or the \
-query that raised it. Add no work that the user or the agent did not state.
+query that raised it. Check completed tool results before you list work here. A cut page \
+has been read through its shown text; its continuation remains unread. List only the \
+needed unread part as work. Add no work that the user or the agent did not state.
 
 ## Sources to read again
 The identifiers that let the agent read a source again exactly: file hashes with pages, \
@@ -419,20 +422,23 @@ class Block:
 
 
 def summary_blocks(msgs: Sequence[RunMessage], prefix: Sequence[int]) -> List[Block]:
-    """The prefix as blocks for the summary request, in list order. A previous record gives
-    its text. No block holds a `read_skill` or `read_tool` call or result."""
+    """The prefix as blocks for the summary request. Page results follow other blocks so
+    the summary sees them last. Each result names its original step and call. A previous
+    record gives its text. No block holds a `read_skill` or `read_tool` result."""
     names = _names(msgs)
     calls = {c.id: c for m in msgs if m.role == "ai" for c in m.tool_calls}
     blocks: List[Block] = []
+    page_results: List[Block] = []
     for i in prefix:
         m = msgs[i]
         if m.role == "tool":
             if names.get(i) in TEXT_TOOLS:
                 continue
             call = calls.get(m.tool_call_id or "")
-            head = f"[result of {_call_text(call.name, call.args) if call else (m.name or 'tool')}]\n"
-            blocks.append(Block(text=m.content or "", result_chars=len(m.content or ""),
-                                head=head))
+            head = (f"[result of {_call_text(call.name, call.args) if call else (m.name or 'tool')}"
+                    f" at stored step {m.idx}]\n")
+            block = Block(text=m.content or "", result_chars=len(m.content or ""), head=head)
+            (page_results if names.get(i) == thread_index.READ_PAGE else blocks).append(block)
         elif m.role == "ai":
             shown = [c for c in m.tool_calls if c.name not in TEXT_TOOLS]
             content = (m.content or "").strip()
@@ -444,7 +450,7 @@ def summary_blocks(msgs: Sequence[RunMessage], prefix: Sequence[int]) -> List[Bl
             blocks.append(Block(text=f"[{label}]\n{content}".rstrip()))
         elif is_record(m):
             blocks.append(Block(text=f"[previous summary]\n{m.content}"))
-    return blocks
+    return blocks + page_results
 
 
 #: A quote of the summary with its bracketed source: the quote, and the source text.

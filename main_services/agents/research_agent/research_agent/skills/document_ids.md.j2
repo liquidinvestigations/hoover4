@@ -8,13 +8,13 @@ tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, li
    the wrong length in place of the file_hash. #}
 Naming a document
 
-A document hash has 64 hexadecimal characters. Copy it with its collection name from a search result.
+A document hash has 64 hexadecimal characters. The document tools also accept a unique start of at least 12 characters.
 
-1. Copy the file_hash and the collectionname of the same result row. Never write a hash yourself, and never shorten it or add a character.
+1. Copy the file_hash and the collectionname of the same result row. Never write a hash yourself.
 2. {% if has('read_documents') %}{{ tool('read_documents') }} can also resolve a file name or path when it names one document.{% endif %} Other document tools use the hash.
 3. To find the file_hash of a file by its name, search for the name with {{ tool('search_collections') }}{% if has('folder_search') %} or {{ tool('folder_search') }}{% endif %}, and copy the file_hash of the row.
 {% if has('read_more') %}
 4. When a row has no file_hash, call {{ tool('read_more') }} for the next page of the result.
 {% endif %}
 
-When a read says that no readable dataset holds a hash, the hash is wrong or it belongs to another collection. Do not send it again. Copy the hash and the collectionname again from the row, or search again.
+When a read says that no readable dataset holds a hash, check its collection and value against the result row. A missing document can also mean that the value names more than one document.

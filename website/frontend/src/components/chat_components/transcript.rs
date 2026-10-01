@@ -647,6 +647,8 @@ fn citations_for_answer(messages: &[ChatMessageItem], answer_index: usize) -> Ve
                 }
             }
             ChatRole::Nag if is_citation_note(message) => after_note = true,
+            // Another nag is a prompt to the model inside the same turn.
+            ChatRole::Nag => {}
             ChatRole::Assistant if after_note => after_note = false,
             // Anything else closes the turn.
             _ => break,
@@ -769,6 +771,13 @@ fn MessageEntry(
                                 cited_handles: Some(cited_handles.clone()),
                                 conflicting_handles: conflicting_handles.clone(),
                             }
+                            if let Some(footer) = context_footer.as_ref() {
+                                div {
+                                    style: "margin-top: 6px; font-size: 0.78em; color: #6B7280; \
+                                            font-variant-numeric: tabular-nums;",
+                                    "{footer}"
+                                }
+                            }
                         }
                     } else if !repeat_question {
                         div {
@@ -809,7 +818,7 @@ fn MessageEntry(
                             tone_color: "#B45309",
                         }
                     }
-                    if let Some(footer) = context_footer {
+                    if let Some(footer) = context_footer.filter(|_| !replaced) {
                         div {
                             style: "margin-top: 6px; font-size: 0.78em; color: #6B7280; \
                                     font-variant-numeric: tabular-nums;",
@@ -1273,6 +1282,22 @@ mod tests {
             .map(|r| r.handle)
             .collect();
         assert_eq!(handles, vec!["[D1]", "[D2]"]);
+    }
+
+    #[test]
+    fn a_nag_between_the_citation_call_and_the_answer_keeps_the_citations() {
+        let d1 = r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"}]"#;
+        let messages = vec![
+            row(1, ChatRole::User, "", "", "question"),
+            row(2, ChatRole::Tool, "cite_documents", d1, ""),
+            row(3, ChatRole::Nag, "", "", "continue"),
+            row(4, ChatRole::Assistant, "", "", "answer [D1]"),
+        ];
+        let handles: Vec<String> = citations_for_answer(&messages, 3)
+            .into_iter()
+            .map(|r| r.handle)
+            .collect();
+        assert_eq!(handles, vec!["[D1]"]);
     }
 
     #[test]

@@ -446,8 +446,34 @@ def run_tika_and_store(params: RunTikaParams) -> Dict[str, Any]:
     log.info("[P3] Running Extractous for %s", params.file_path)
     require_input_file(params.file_path)
 
+    # A binary Word file keeps its own source. Conversion and Extractous have
+    # independent attempts. A failed Extractous call can still leave Word text.
+    from tasks.P3_parse_files.word_binary import extract_binary_word_text
+    from tasks.text_sources import BINARY_WORD
+    try:
+        word_text = extract_binary_word_text(params.file_path)
+    except Exception as exc:
+        from tasks.heartbeat import worker_is_stopping
+        if worker_is_stopping():
+            raise
+        log.warning("[P3] binary Word source unavailable for %s: %s", params.file_path, exc)
+        word_text = None
+
+    def store_word_text():
+        from tasks.P3_parse_files.parse_common import insert_text_chunks
+        insert_text_chunks(params.collectionname, params.collection_dataset,
+                           params.file_hash, BINARY_WORD, word_text)
+
     # Extract text and metadata using Extractous (subprocess: interruptible)
-    result_text, meta_parsed = _extract_with_extractous(params.file_path)
+    try:
+        result_text, meta_parsed = _extract_with_extractous(params.file_path)
+    except Exception:
+        if word_text:
+            try:
+                store_word_text()
+            except Exception:
+                log.exception("[P3] binary Word source write failed after Extractous failure")
+        raise
     content_text = result_text or ""
 
     # Single ClickHouse session for both inserts
@@ -510,6 +536,9 @@ def run_tika_and_store(params: RunTikaParams) -> Dict[str, Any]:
                 "extracted_by": pa.array(["tika"], type=pa.large_string()),
             })
             insert_arrow_idempotent(client, "file_types", tbl_ft)
+
+    if word_text:
+        store_word_text()
 
     return {
         "mime_types": mime_types,

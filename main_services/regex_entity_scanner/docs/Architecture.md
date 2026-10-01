@@ -88,6 +88,12 @@ The limit is applied at two layers on purpose. The body limit rejects before the
 which is the one that protects memory; the check on the `text` field is the one that answers with a
 precise error instead of a generic transport failure.
 
+The three scan routes take an admission slot before they read the body or parse JSON.
+The limit applies to active scans and requests waiting for a scan slot.
+A full queue returns HTTP 503 with `Retry-After: 2`.
+A request that waits two seconds for a scan slot also returns HTTP 503.
+Task cancellation releases a waiting slot. An active scan keeps its slot until its blocking task ends.
+
 ## Statelessness
 
 One process, N threads, no models, no writes. The scanner is built once at startup and shared; every

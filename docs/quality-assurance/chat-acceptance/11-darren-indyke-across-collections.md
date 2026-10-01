@@ -36,4 +36,4 @@ A table with `epstein` and `tables` and their counts, a note that the `enron` hi
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, search over all collections in one call, query variants and spellings, more than one in one call, document cards shown to the user, a task completed.
+The story exercises these requirements and optional behavior: todo use when needed, search over all collections in one call, query variants and spellings, more than one in one call, document cards shown to the user, a task completed.

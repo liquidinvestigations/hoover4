@@ -22,12 +22,12 @@ Who wrote the EasyChair guide that is in my test data, and where did they work? 
 
 ## Expected tool calls
 
-1. It calls `write_todo` with a document step and a web step.
+1. If it uses a todo list, it calls `write_todo` with a document step and a web step.
 2. It calls `search_passages` with no `collectionname` and `["EasyChair guide author", "Voronkov Hoder", "\"Andrei Voronkov\""]`.
 3. It calls `read_documents` on the ODT file.
 4. It calls `cite_documents` with the author line as the quote.
 5. It calls `web_search` with `["\"Andrei Voronkov\" Manchester", "\"Andrei Voronkov\" Vampire theorem prover"]`.
-6. It calls `read_page` of one result, then it calls `mark_todo` and answers.
+6. It calls `read_page` of one result, before it answers. If it uses a todo list, it calls `mark_todo` before the answer.
 
 ## Expected result
 
@@ -35,4 +35,4 @@ The answer takes the authors and affiliations from the document, with a card. It
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, search over all collections, web search and page reads, document cards shown to the user, a passage to jump to, a task completed.
+The story exercises these requirements and optional behavior: todo use when needed, search over all collections, web search and page reads, document cards shown to the user, a passage to jump to, a task completed.

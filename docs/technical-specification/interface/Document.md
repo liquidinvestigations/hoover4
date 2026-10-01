@@ -20,6 +20,8 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | `.table.column_filter` | column filter control | opens typed filter controls for one column | it opens one centred modal with a closing backdrop |
 | `.table.sort` | column sort control | cycles ascending, descending and no order | the changed order resets the result page |
 | `.table.sheet` | sheet selector | selects a workbook sheet | it clears sheet-specific columns, sorting and filters |
+| `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview and full viewer; a change resets the selected page |
+| `.source.retry` | retry button | requests document sources again | it appears when the source request fails |
 
 ## States
 
@@ -28,6 +30,12 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | table loading | the table overview or page request is pending | a loading indicator |
 | no visible columns | every sheet column is hidden | a message that directs the reader to the visible-column control |
 | column modal | a visibility or filter control is open | one named modal above the grid, with keyboard focus inside it |
+| email without body | the email parser stores no readable body | the envelope, attachments, and source selector remain available |
+| source failure | the source request fails | an error and retry button appear |
+
+The PDF source list keeps the original PDF when its OCR variant query fails.
+The source response reports the OCR query error beside the available source.
+The Word text source precedes Extractous text for binary Word files.
 
 ## Constraints
 

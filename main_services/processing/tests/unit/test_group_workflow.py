@@ -58,6 +58,7 @@ class _Group:
         monkeypatch.setattr(plan_workflows.workflow, "execute_child_workflow",
                             lambda *a, **k: pytest.fail("the group started a child workflow"))
         monkeypatch.setattr(plan_workflows.workflow, "now", lambda: NOW)
+        monkeypatch.setattr(plan_workflows.workflow, "patched", lambda _name: True)
         monkeypatch.setattr(plan_workflows.workflow, "info",
                             lambda: SimpleNamespace(run_id=run_id))
 
@@ -125,9 +126,23 @@ IMAGE = (["image"], ["image/png"])
 TEXT = (["text"], ["text/plain"])
 ARCHIVE = (["archive"], ["application/zip"])
 VIDEO = (["video"], ["video/mp4"])
+PST = (["email"], ["application/x-hoover-pst"])
 
 
 # Scheduling.
+
+def test_mail_route_patch_preserves_old_history_commands(monkeypatch):
+    group = _Group(monkeypatch, {"p": PST})
+    monkeypatch.setattr(plan_workflows.workflow, "patched", lambda _name: False)
+    group.run(["p"])
+    assert group.scheduled("parse_email_headers_batch")
+    assert not group.scheduled("extract_archive_batch")
+
+    new_group = _Group(monkeypatch, {"p": PST})
+    new_group.run(["p"])
+    assert new_group.scheduled("extract_archive_batch")
+    assert not new_group.scheduled("parse_email_headers_batch")
+
 
 def test_three_files_schedule_each_stage_once_with_its_files_and_queue(monkeypatch):
     group = _Group(monkeypatch, {"e": EMAIL, "p": PDF, "i": IMAGE})
@@ -253,7 +268,7 @@ def test_a_failed_stage_keeps_the_files_that_its_last_detail_lists_as_finished(m
 def test_an_error_in_chain_code_fails_the_group_without_error_rows(monkeypatch):
     group = _Group(monkeypatch, {"t": TEXT})
 
-    def broken(_types):
+    def broken(_types, _expand_mail_containers):
         raise KeyError("coarse_types")
 
     monkeypatch.setattr(plan_workflows, "route_stages", broken)

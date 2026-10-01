@@ -40,4 +40,4 @@ A report with a dated list of the emails, the people on each and their role, wit
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, in each researcher, search over all collections, query variants, more than one in one call, todo edits, web search and page reads, document cards shown to the user, a task completed.
+The story exercises these requirements and optional behavior: todo use when needed, in each researcher, search over all collections, query variants, more than one in one call, todo updates when used, web search and page reads, document cards shown to the user, a task completed.

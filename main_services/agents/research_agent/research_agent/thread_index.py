@@ -8,8 +8,8 @@ copies file hashes with errors. This module writes those lists.
 - "Searches that found documents": each other successful search call, with its count.
 - "Documents read": each document of a `read_documents` result, with its pages.
 - "Citation labels": each label of a `cite_documents` result, with its file hash.
-- "Pages read": each page of a `read_page` result, with the offset of its next part when the
-  result was cut.
+- "Pages read": each page of a `read_page` result, with its source version and any unread
+  continuation. A find with no match does not count as a content read.
 - "Results that continue": each result page with a `more` handle, with its call.
 - One line that names the skill and tool texts that left the list.
 
@@ -32,6 +32,9 @@ CITE_DOCUMENTS = "cite_documents"
 READ_PAGE = "read_page"
 #: The cut line of a `read_page` result, which names the offset of the next part.
 NEXT_OFFSET = re.compile(r"Call read_page with offset (\d+) for the next part")
+PAGE_VERSION = re.compile(r"\b[Vv]ersion ([0-9a-f]{16})\b")
+FIND_RESULT = re.compile(r'^\[find .*?: (?:\d+ of \d+ matches|no match) from offset')
+FIND_MORE = re.compile(r"\[more: \d+ matches from offset (\d+)\. Call read_page")
 #: The separator of the pages of one `read_page` result.
 PAGE_SEPARATOR = "\n\n---\n\n"
 
@@ -206,19 +209,25 @@ def page_blocks(content: str) -> List[str]:
 
 
 def pages_read(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
-    """One line for each page of a hidden `read_page` result: its URL, and the offset of its
-    next part when the result was cut. A later read of the same URL replaces the line."""
+    """List pages with text, their version, and any unread continuation."""
     pages: Dict[str, str] = {}
     for m, name, _args in _results(rows):
         if name != READ_PAGE or _key(m) not in hidden or not isinstance(m.content, str):
             continue
         for block in page_blocks(m.content):
             url = block.split("\n", 2)[1].strip()
-            match = NEXT_OFFSET.search(block)
+            body = block.split("\n", 2)[2].strip() if block.count("\n") >= 2 else ""
+            if body.startswith(("COULD NOT READ:", "BLOCKED BY A BOT CHECK:", "[offset ")):
+                continue
+            if FIND_RESULT.match(body) and "no match from offset" in body.split("\n", 1)[0]:
+                continue
+            match = FIND_MORE.search(body) if FIND_RESULT.match(body) else NEXT_OFFSET.search(body)
+            version = PAGE_VERSION.search(body)
             pages.pop(url, None)
-            pages[url] = match.group(1) if match else ""
-    return [f"- {url}" + (f". next offset {offset}" if offset else "")
-            for url, offset in pages.items()][-PAGE_LINES:]
+            detail = (f". version {version.group(1)}" if version else "") + (
+                f". unread continuation at offset {match.group(1)}" if match else "")
+            pages[url] = detail
+    return [f"- {url}{detail}" for url, detail in pages.items()][-PAGE_LINES:]
 
 
 def continued_results(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:

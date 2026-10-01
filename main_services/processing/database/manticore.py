@@ -84,9 +84,11 @@ def get_manticore_client(endpoint: str = TEXT):
         "user": "manticore",
         "password": "manticore",
         "database": "Manticore",
+        "connection_timeout": 10,
     }
-    if endpoint == VECTORS:
-        options["connection_timeout"] = 10
+    if endpoint == TEXT:
+        options["read_timeout"] = 180
+        options["write_timeout"] = 180
     cnx = mysql.connector.connect(**options)
     try:
         yield cnx

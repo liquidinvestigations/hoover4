@@ -42,7 +42,7 @@ def test_round_trip():
 
 
 def test_native_extractors_are_not_ocr_variants():
-    for native in ("pdftotext", "extractous", "office_xml", "email_parser", "raw_text", "qpdf"):
+    for native in ("binary_word", "pdftotext", "extractous", "office_xml", "email_parser", "raw_text", "qpdf"):
         assert parse_ocr_extracted_by(native) is None
 
 

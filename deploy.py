@@ -198,6 +198,7 @@ DEFAULTS = {
         # regex entity scanning, always on, so the only knobs are its size
         "regex_scanner_threads": "10",
         "regex_scanner_queue_depth": "32",
+        "regex_scanner_mem_limit": "1000M",
         # How the website is served. false = `dx serve` (the development loop). true =
         # build once with `dx build --release` and serve the binary, which is what a
         # visitor should get: no dev overlay, no rebuild-on-boot 500s. See
@@ -210,6 +211,8 @@ DEFAULTS = {
         "ocr_pdf_enabled": "true",
         # Datastore memory limits. The Manticore limits are mandatory values in the ini.
         "clickhouse_mem_limit": "19000M",
+        "clickhouse_ui_mem_limit": "6000M",
+        "clickhouse_monitoring_mem_limit": "6000M",
         "ocr_pdf_mem_limit": "8000M",
         # Worker fleet. Empty = the worker's own default, except the three chat keys,
         # which the ini sets because a slot is one turn in flight.
@@ -386,6 +389,7 @@ DEFAULTS = {
         # history. deploy.py applies the retention to the default namespace after
         # every `compose up`.
         "temporal_mem_limit": "8000M",
+        "temporal_ui_mem_limit": "6000M",
         "temporal_cpus": "8",
         "temporal_retention": "168h",
         # Persistence rate limits in queries a second. Empty keeps Temporal's own
@@ -1273,6 +1277,11 @@ def render_main_env(cfg):
     # when it creates the namespace. apply_temporal_retention sets it after each up.
     env.update(render_cassandra_env(cfg))
     size_bytes(cfg, "temporal_mem_limit")
+    for key in ("temporal_ui_mem_limit", "clickhouse_ui_mem_limit",
+                "clickhouse_monitoring_mem_limit", "regex_scanner_mem_limit"):
+        if size_bytes(cfg, key) < 1:
+            fail("[main_services] %s must be greater than zero" % key)
+        env[key.upper()] = cfg.get(m, key)
     cpu_count_value(cfg, "temporal_cpus")
     env["TEMPORAL_MEM_LIMIT"] = cfg.get(m, "temporal_mem_limit")
     env["TEMPORAL_CPUS"] = cfg.get(m, "temporal_cpus")

@@ -171,6 +171,8 @@ manticore_mem_limit         = 32G
 manticore_vectors_mem_limit = 32G
 ; The ClickHouse server cap follows 80 percent of this container limit.
 clickhouse_mem_limit = 19000M
+clickhouse_ui_mem_limit = 6000M
+clickhouse_monitoring_mem_limit = 6000M
 ; The searchable-PDF service uses one child process for each admitted request.
 ocr_pdf_mem_limit = 8000M
 
@@ -181,6 +183,7 @@ ocr_pdf_mem_limit = 8000M
 # 503 with a Retry-After, which the pipeline already treats as retryable.
 regex_scanner_threads     = 10
 regex_scanner_queue_depth = 32
+regex_scanner_mem_limit   = 1000M
 
 # ---- how the website is served --------------------------------------------------
 # false: `dx serve` — hot rebuilds, and the development loop this repo is built around.
@@ -477,6 +480,7 @@ cassandra_direct_memory  = 2G     ; -XX:MaxDirectMemorySize
 cassandra_malloc_arenas  =        ; MALLOC_ARENA_MAX; empty keeps the image default of 4
 cassandra_chunk_cache_mb = 512    ; file_cache_size_in_mb in cassandra.yaml
 temporal_mem_limit       = 8000M
+temporal_ui_mem_limit    = 6000M
 temporal_cpus            = 8
 ; How long Temporal keeps a closed workflow. deploy.py sets it on the default
 ; namespace after each start.

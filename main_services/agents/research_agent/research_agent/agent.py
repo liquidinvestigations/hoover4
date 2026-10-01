@@ -240,11 +240,14 @@ class MCPGatewayAgent:
         )
 
     def _resolve_model(self, llm_model: Optional[str] = None) -> str:
-        return (
+        model = (
             (llm_model or "").strip()
             or (self.llm_model or "").strip()
-            or os.getenv("LLM_MODEL", "gpt-4o-mini")
+            or (os.getenv("LLM_MODEL") or "").strip()
         )
+        if not model:
+            raise ValueError("No chat model is configured. Select a catalog model.")
+        return model
 
     async def context_for(
         self,

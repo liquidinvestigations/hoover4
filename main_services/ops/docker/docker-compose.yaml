@@ -147,8 +147,8 @@ services:
       - '${INFRA_BIND_IP:-0.0.0.0}:${CLICKHOUSE_MONITORING_PORT}:3000'
     volumes:
       - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/clickhouse_monitoring:/var/lib/clickhouse-monitoring
-    memswap_limit: 6000M
-    mem_limit: 6000M
+    memswap_limit: ${CLICKHOUSE_MONITORING_MEM_LIMIT:-6000M}
+    mem_limit: ${CLICKHOUSE_MONITORING_MEM_LIMIT:-6000M}
     restart: unless-stopped
     networks:
       - hoover4
@@ -161,8 +161,8 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
-    memswap_limit: 6000M
-    mem_limit: 6000M
+    memswap_limit: ${CLICKHOUSE_UI_MEM_LIMIT:-6000M}
+    mem_limit: ${CLICKHOUSE_UI_MEM_LIMIT:-6000M}
     restart: unless-stopped
     environment:
       VITE_CLICKHOUSE_URL: "$EXTERNAL_CLICKHOUSE_URL"
@@ -325,6 +325,8 @@ services:
       - hoover4
     ports:
       - 127.0.0.1:${TEMPORAL_UI_PORT}:8080
+    memswap_limit: ${TEMPORAL_UI_MEM_LIMIT:-6000M}
+    mem_limit: ${TEMPORAL_UI_MEM_LIMIT:-6000M}
     healthcheck:
       test: ['CMD-SHELL', 'curl --silent --fail http://temporal-ui:8080/api/v1/settings? || exit 1']
       interval: 15s
@@ -335,7 +337,7 @@ services:
       resources:
         limits:
           cpus: '4'
-          memory: 6000M
+          memory: ${TEMPORAL_UI_MEM_LIMIT:-6000M}
         reservations:
           cpus: '1'
           memory: 500M

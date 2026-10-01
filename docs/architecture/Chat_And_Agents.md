@@ -79,6 +79,10 @@ title. Without it the only way to make one faster is to change the model for eve
 
 A model the user picked in the composer still wins over the profile's: the key configures
 the deployment, not the conversation.
+The worker uses `llm_default_chat_model` for a request without a model. If that setting is
+empty, it uses the configured `LLM_MODEL` value, as the website does. It gives an error
+when both values are empty. The agent service also requires a selected or configured
+model, and it does not insert a model id of its own.
 
 **`llm_models.supports_tools` is `0` for every row**, and nothing populates it, so nothing
 checks that a model chosen here can call tools at all. Choosing one that cannot produces a
@@ -99,12 +103,20 @@ server keeps the numbering. When an answer or a question uses a label that no su
 citation result of the session gives, or a label that results give for two documents, the
 worker asks the model once for the citations and the answer again. A quote that is not in
 the text stays unverified, and the result gives an exact passage of the text near it.
+An unlabeled answer also gets that round after a successful document read, even if the
+answer does not name the file. The worker checks the revised answer before it replaces
+the earlier answer. It retains the earlier answer with a notice when the reply contains
+raw call text or a label that does not resolve. A revised answer without labels shows a
+citation status. The round does not repeat.
 
 The worker stores the typed evidence of each tool result beside it: the reads with their
 spans, the failed items, the citations, the notes and the artifacts. A plan sub-agent
 thread gets a text report and a typed report when it ends, in every state, and the
 organizer reads the typed report with `read_plan_report`. The typed report keeps the model
 text apart from what code wrote. `website/common/src/report_types.rs` reads it.
+Table row windows and cell text count as document reads. Table metadata and search results
+count as discovery. A page find with no match does not count as a content read. The read
+record keeps its source version and unread continuation when the page gives them.
 `markdown_text.rs` renders a bare `[Dn]` in the prose as a chip that scrolls the strip's
 entry into view and flashes it; `[D3](https://…)` is still a link, because the handle arm
 only fires when no `(` follows the `]`. The anchor id is minted by `source_anchor_id` and
@@ -137,6 +149,11 @@ ask the person a question or write the whole plan tree with `write_plan`. Its an
 carries the plan reference that the plan card reads. The plan run then waits in
 `awaiting_review`, and no workflow of the session is open.
 
+The planner writes the tree after it has enough evidence to size its sections. A request
+for web context gets a web section when internet tools are enabled. An unknown node id gets
+the allowed number paths and the form for a new node. The visible answer gives an
+orientation or an incomplete-plan status. Raw plan JSON does not become that answer.
+
 A decision starts a new run. `decide_plan`
 (`api/chat/plans.rs`) holds the turn lock, checks the decision id, the version and the state,
 and returns a typed outcome. A rejection starts the next planner round with the comment as
@@ -152,9 +169,10 @@ the orientation, the documents that the planner read, the section's subtree and 
 permitted collections. Each sub-agent thread writes its prompt and report as plan
 documents. When every section has ended and has its report, one continuation of the
 organizer receives the outcome of each section and combines the reports. The organizer
-cannot start a sub-agent. A section is failed when its run did not complete, stopped at a
-limit, wrote no report or reports incomplete execution. The plan completes when the
-organizer answers, and the final report ends with a generated table of the failed sections
+cannot start a sub-agent. A section stays running while its run is open. It fails when its
+run ends without completion, stops at a limit, writes no report or reports incomplete
+execution. The plan completes when the organizer answers. The final report ends with a
+generated table of the failed sections
 and the cause of each. The plan runs take their model steps on `research-queue`.
 
 The plan card reads the plan through `get_plan_view`. For an executing plan it derives the

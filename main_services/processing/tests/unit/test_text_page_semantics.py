@@ -42,6 +42,52 @@ def test_page_zero_is_refused():
         insert_text_pages("c", "c_1", "hash", "pdftotext", [(0, "text")])
 
 
+def test_successful_empty_reparse_removes_previous_pages(monkeypatch):
+    from database import clickhouse
+
+    commands = []
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def query(self, *_args, **_kwargs):
+            return type("Rows", (), {"result_rows": [(1,), (2,), (3,)]})()
+
+        def command(self, query, parameters):
+            commands.append((query, parameters))
+
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: Client())
+    assert insert_text_pages("c", "c_1", "hash", "email_parser", [], min_chars=1) == 0
+    assert len(commands) == 1
+    assert commands[0][1]["ids"] == [1, 2, 3]
+    assert "mutations_sync = 2" in commands[0][0]
+
+
+def test_reparse_does_not_delete_pages_when_the_previous_read_fails(monkeypatch):
+    from database import clickhouse
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def query(self, *_args, **_kwargs):
+            raise RuntimeError("read failed")
+
+        def command(self, *_args, **_kwargs):
+            pytest.fail("delete ran after failed previous-page read")
+
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: Client())
+    with pytest.raises(RuntimeError, match="read failed"):
+        insert_text_pages("c", "c_1", "hash", "email_parser", [])
+
+
 def test_pdftotext_pages_splits_on_the_form_feed(monkeypatch):
     """pdftotext writes a form feed after every page, including the last.
 

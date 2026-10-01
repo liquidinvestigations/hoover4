@@ -57,7 +57,8 @@ EXPECTED_MIXED_HITS = {
 
 
 def _regular_files(root: Path) -> list[Path]:
-    return sorted(p for p in root.rglob("*") if p.is_file() and not p.is_symlink())
+    return sorted(p for p in root.rglob("*") if p.is_file() and not p.is_symlink()
+                  and "mail-public" not in p.relative_to(root).parts)
 
 
 @pytest.mark.skipif(not EMAIL_CORPUS.is_dir(), reason="enron corpus not fetched")

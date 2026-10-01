@@ -28,7 +28,16 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
 
     def test_failed_switch_is_not_accepted_after_successful_reload(self):
         self.assertFalse(observer.history_is_preserved({"reload_survived": True,
+                                                       "before_answers": [{"seq": "1", "text": "answer"}],
                                                        "switch": {"attempted": True, "survived": False}}))
+
+    def test_history_failure_names_the_transition(self):
+        answers = [{"seq": "2", "text": "answer"}]
+        self.assertIn("reload", observer.history_failure_reason({
+            "before_answers": answers, "reload_survived": False}))
+        self.assertIn("switching", observer.history_failure_reason({
+            "before_answers": answers, "reload_survived": True,
+            "switch": {"attempted": True, "survived": False}}))
 
 
 def page(turn, users, answers=()):
@@ -44,6 +53,34 @@ class TurnPhaseTests(unittest.TestCase):
     def test_a_queued_turn_is_running(self):
         for turn in ("queued-model", "queued-tool", "active"):
             self.assertEqual(observer.turn_phase(page(turn, [1]), -1), "running")
+
+    def test_executing_plan_remains_running_after_planner_answer(self):
+        state = page("idle", [1], [(2, "The plan is ready.")])
+        state["plans"] = [{"seq": "2", "state": "executing"}]
+        self.assertEqual(observer.turn_phase(state, -1), "running")
+
+    def test_earlier_executing_plan_does_not_hide_later_answer(self):
+        state = page("idle", [1, 5], [(2, "Plan"), (6, "Later answer")])
+        state["plans"] = [{"seq": "2", "state": "executing"}]
+        self.assertEqual(observer.turn_phase(state, 1), "answered")
+
+    def test_an_approved_plan_stays_running_after_the_approval_message(self):
+        state = page("idle", [1, 18], [(17, "The plan is ready.")])
+        state["plans"] = [{"seq": "17", "state": "executing"}]
+        self.assertEqual(observer.turn_phase(state, 17, after_answer_seq=17), "ended_empty")
+        self.assertEqual(observer.turn_phase(state, 17, after_answer_seq=17, plan_floor=16),
+                         "running")
+        state["plans"] = [{"seq": "17", "state": "completed"}]
+        state["assistant_answers"].append({"seq": "19", "text": "Organizer answer"})
+        self.assertEqual(observer.turn_phase(state, 17, after_answer_seq=17, plan_floor=16),
+                         "answered")
+
+    def test_existing_plan_waits_for_a_new_organizer_answer(self):
+        state = page("idle", [1], [(2, "Planner answer")])
+        state["plans"] = [{"seq": "2", "state": "completed"}]
+        self.assertEqual(observer.turn_phase(state, 0, after_answer_seq=2), "ended_empty")
+        state["assistant_answers"].append({"seq": "3", "text": "Organizer answer"})
+        self.assertEqual(observer.turn_phase(state, 0, after_answer_seq=2), "answered")
 
     def test_a_question_to_the_user_answers_the_turn(self):
         state = page("idle", [1])
@@ -114,6 +151,15 @@ class FollowTurnTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_the_deadline_leaves_a_running_turn_running(self):
         phase, ended, _ = await self.follow([page("active", [1])], deadline_s=0.0)
+        self.assertEqual((phase, ended), ("running", -1.0))
+
+    async def test_timeout_after_deadline_does_not_start_another_page_call(self):
+        async def never(*_args):
+            await asyncio.Event().wait()
+
+        with patch.object(observer, "transcript_state", never), \
+             patch.object(observer, "PAGE_CALL_TIMEOUT_S", 0.01):
+            phase, ended = await observer.follow_turn(AsyncMock(), -1, 0.0, 0.0, AsyncMock())
         self.assertEqual((phase, ended), ("running", -1.0))
 
 

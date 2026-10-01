@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 #: plausible unit of retrieval, and for genuinely paged formats the page number is used
 #: directly instead (see :func:`insert_text_pages`).
 DEFAULT_TEXT_SEGMENT_BYTES = 256 * 1024
+DELETE_PAGE_BATCH = 1000
 
 
 # The largest encoded input of one record activity, as the payload guard measures it.
@@ -57,7 +58,8 @@ def _split_utf8_bytes_to_chunks(data: bytes, max_bytes: int) -> List[str]:
 
 
 def split_text_segments(text_or_bytes: Any,
-                        max_bytes: int = DEFAULT_TEXT_SEGMENT_BYTES) -> List[str]:
+                        max_bytes: int = DEFAULT_TEXT_SEGMENT_BYTES,
+                        min_chars: int = 2) -> List[str]:
     """Split a blob of text into storage segments, without inserting anything.
 
     For callers that assemble pages from several sources (an email with several
@@ -68,53 +70,38 @@ def split_text_segments(text_or_bytes: Any,
     else:
         data = (text_or_bytes or "").encode("utf-8", errors="ignore")
     data = data.strip()
-    if len(data) < 2:
+    if len(data) < min_chars:
         return []
     return _split_utf8_bytes_to_chunks(data, max_bytes)
 
 
-def _trim_orphan_pages(client: Any, collection_dataset: str, file_hash: str,
-                       extracted_by: str, highest_written: int) -> None:
-    """Delete rows of this variant above ``highest_written``.
-
-    ``text_content`` is a ReplacingMergeTree keyed by
-    ``(collection_dataset, file_hash, extracted_by, page_id)``, so re-extracting a file
-    replaces every page it rewrites. What it does *not* do is remove pages the new run
-    no longer produces: a re-OCR that yields 8 pages where the previous run yielded 12
-    leaves pages 9-12 behind, still readable, still indexed, and silently stale. That is
-    the whole failure mode this function exists for.
-
-    The check is a `max(page_id)` read rather than an unconditional delete because the
-    normal case is a first extraction with nothing to trim, and a ClickHouse DELETE is
-    an asynchronous mutation -- issuing one per file per variant across a dataset is
-    thousands of mutations to remove nothing.
-    """
-    try:
-        rows = client.query(
-            "SELECT max(page_id) FROM text_content "
-            "WHERE collection_dataset = {cd:String} AND file_hash = {fh:String} "
-            "AND extracted_by = {eb:String}",
-            parameters={"cd": collection_dataset, "fh": file_hash, "eb": extracted_by},
-        ).result_rows
-        previous_max = int(rows[0][0]) if rows and rows[0] and rows[0][0] is not None else 0
-    except Exception:
-        # A missing table or an unreadable count must not fail the extraction itself;
-        # the worst case is the pre-existing orphan-page behaviour.
-        log.warning("[P3] could not read previous page count for %s/%s", file_hash, extracted_by)
-        return
-
-    if previous_max <= highest_written:
-        return
-
-    log.info("[P3] trimming orphan pages %d..%d for %s/%s",
-             highest_written + 1, previous_max, file_hash, extracted_by)
-    client.command(
-        "DELETE FROM text_content "
+def _existing_page_ids(client: Any, collection_dataset: str, file_hash: str,
+                       extracted_by: str) -> set[int]:
+    """Read this source's current page identities before a successful replacement."""
+    rows = client.query(
+        "SELECT page_id FROM text_content FINAL "
         "WHERE collection_dataset = {cd:String} AND file_hash = {fh:String} "
-        "AND extracted_by = {eb:String} AND page_id > {hw:UInt32}",
-        parameters={"cd": collection_dataset, "fh": file_hash, "eb": extracted_by,
-                    "hw": highest_written},
-    )
+        "AND extracted_by = {eb:String}",
+        parameters={"cd": collection_dataset, "fh": file_hash, "eb": extracted_by},
+    ).result_rows
+    return {int(row[0]) for row in rows}
+
+
+def _delete_obsolete_pages(client: Any, collection_dataset: str, file_hash: str,
+                           extracted_by: str, page_ids: set[int]) -> None:
+    """Wait for deletion of pages absent from a successful extraction."""
+    if not page_ids:
+        return
+    ids = sorted(page_ids)
+    for start in range(0, len(ids), DELETE_PAGE_BATCH):
+        client.command(
+            "DELETE FROM text_content "
+            "WHERE collection_dataset = {cd:String} AND file_hash = {fh:String} "
+            "AND extracted_by = {eb:String} AND page_id IN {ids:Array(UInt32)} "
+            "SETTINGS mutations_sync = 2",
+            parameters={"cd": collection_dataset, "fh": file_hash, "eb": extracted_by,
+                        "ids": ids[start:start + DELETE_PAGE_BATCH]},
+        )
 
 
 def insert_text_pages(
@@ -123,6 +110,8 @@ def insert_text_pages(
     file_hash: str,
     extracted_by: str,
     pages: Sequence[tuple],
+    *,
+    min_chars: int = 2,
 ) -> int:
     """Insert ``(page_id, text)`` pairs into ``text_content`` as one batch.
 
@@ -130,34 +119,41 @@ def insert_text_pages(
     paged format is a **1-based page number** and never 0 -- the document viewer's page
     jump and `search_document_pdf.rs` both read `page_id` as a page.
 
-    Empty pages are dropped rather than stored, but they still count towards the highest
-    page number written, so a trailing run of blank pages does not look like shrinkage.
+    Empty pages are absent from the new source. A successful call removes prior rows
+    for their page numbers, including blank pages between retained pages.
 
-    **Call this once per (file, extracted_by), with every page.** It trims rows above the
-    highest page number it writes, so calling it twice for the same variant makes the
-    second call delete the first call's pages. Assemble the full page list first --
+    **Call this once per (file, extracted_by), with every page.** It replaces the
+    source's prior page identities, so a second call would remove the first call's
+    pages. Assemble the full page list first.
     :func:`split_text_segments` is there for callers that build one from several sources.
 
     ``text_bytes`` is ``len(body.encode("utf-8"))`` of the stored text, written here so
     readers that need size (ETA sampling) never scan the body.
+
+    New sources enter ClickHouse's async insert queue. Date resolution flushes that
+    queue before downstream reads. A replacement insert waits for visibility before
+    removing obsolete pages.
     """
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
+    from database.clickhouse import (
+        get_collection_client, insert_arrow_durable, insert_arrow_idempotent,
+    )
     import pyarrow as pa
 
     rows: List[tuple] = []
-    highest = 0
     for page_id, text in pages:
         page_id = int(page_id)
         if page_id < 1:
             raise ValueError(
                 f"page_id must be 1-based and never 0, got {page_id} for {file_hash}"
             )
-        highest = max(highest, page_id)
         body = (text or "").strip()
-        if len(body) >= 2:
+        if len(body) >= min_chars:
             rows.append((page_id, body, len(body.encode("utf-8"))))
 
     with get_collection_client(collectionname) as client:
+        previous = _existing_page_ids(client, collection_dataset, file_hash, extracted_by)
+        obsolete = previous.copy()
+        obsolete.difference_update(row[0] for row in rows)
         if rows:
             log.info("[P3] Inserting %d text pages for %s (%s)", len(rows), file_hash, extracted_by)
             tbl_t = pa.table({
@@ -168,9 +164,12 @@ def insert_text_pages(
                 "text": pa.array([r[1] for r in rows], type=pa.string()),
                 "text_bytes": pa.array([r[2] for r in rows], type=pa.uint64()),
             })
-            insert_arrow_idempotent(client, "text_content", tbl_t)
-        if highest:
-            _trim_orphan_pages(client, collection_dataset, file_hash, extracted_by, highest)
+            if previous:
+                insert_arrow_durable(client, "text_content", tbl_t,
+                                     settings={"async_insert": 0})
+            else:
+                insert_arrow_idempotent(client, "text_content", tbl_t)
+        _delete_obsolete_pages(client, collection_dataset, file_hash, extracted_by, obsolete)
 
     return len(rows)
 
@@ -195,19 +194,15 @@ def insert_text_chunks(
     means "this file has a page zero" to every reader of `text_content`.
 
     Callers that know the real pages must use :func:`insert_text_pages` instead. This
-    function is for formats that genuinely have no pages.
+    function is for formats that genuinely have no pages. Successful empty text clears
+    the prior source pages.
     """
     if isinstance(text_or_bytes, bytes):
         data = text_or_bytes
     else:
         data = (text_or_bytes or "").encode("utf-8", errors="ignore")
     data = data.strip()
-    if len(data) < 2:
-        return 0
-
-    chunks = _split_utf8_bytes_to_chunks(data, max_bytes)
-    if not chunks:
-        return 0
+    chunks = _split_utf8_bytes_to_chunks(data, max_bytes) if len(data) >= 2 else []
 
     return insert_text_pages(
         collectionname, collection_dataset, file_hash, extracted_by,

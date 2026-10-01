@@ -23,7 +23,7 @@ What do my files say about Erwin Rommel and the Afrika Korps? I read English, Ge
 
 ## Expected tool calls
 
-1. It calls `write_todo`.
+1. If it uses a todo list, it calls `write_todo`.
 2. It calls `search_passages` with no `collectionname` and variants in three languages, for example `["\"Erwin Rommel\" Afrika Korps", "\"Deutsches Afrikakorps\" Rommel", "\"Német Afrika-hadtest\"", "Rommel Nordafrika"]`.
 3. It calls `search_facet_values` on the PER facet with the query `Rommel`, to count the documents.
 4. It calls `read_documents` on two or three articles, one for each language.
@@ -35,4 +35,4 @@ A short summary with cards for the articles it used, one language at a time. It 
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, search over all collections, query variants and spellings, more than one in one call, in three languages, document cards shown to the user, a passage to jump to, a task completed.
+The story exercises these requirements and optional behavior: todo use when needed, search over all collections, query variants and spellings, more than one in one call, in three languages, document cards shown to the user, a passage to jump to, a task completed.

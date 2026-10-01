@@ -513,7 +513,19 @@ def _detect_by_content(params: DetectMimeParams,
             or magic_output.startswith("Microsoft Outlook Personal"):
         mime_types.add("application/x-hoover-pst")
 
-    if "application/x-ole-storage" in base_mimes:
+    with open(params.file_path, "rb") as input_file:
+        signature = input_file.read(16384)
+    if signature.startswith(b"!BDN") and len(signature) >= 12:
+        mime_types.add("application/x-hoover-pst")
+    if signature.startswith(bytes.fromhex("d0cf11e0a1b11ae1")):
+        from tasks.P3_parse_files.mail_containers import is_msg_ole
+        if is_msg_ole(params.file_path):
+            mime_types.add("application/vnd.ms-outlook")
+    if signature.startswith(bytes.fromhex("789f3e22")):
+        mime_types.add("application/ms-tnef")
+
+    if "application/x-ole-storage" in base_mimes and \
+            "application/vnd.ms-outlook" not in mime_types:
         mime_types.add("application/vnd.ms-excel")
 
     mime_list = sorted(mime_types)

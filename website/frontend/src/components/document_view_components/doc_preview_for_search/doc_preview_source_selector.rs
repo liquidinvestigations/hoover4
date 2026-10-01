@@ -45,6 +45,7 @@ pub fn DocumentPreviewSourceSelectorDropdown(
     selected_source: ReadSignal<Option<DocumentSourceItem>>,
     on_source_selected: Callback<DocumentSourceItem>,
 ) -> Element {
+    let mut expand = use_signal(move || false);
     let sources = sources.read().clone().unwrap_or_default();
     if sources.is_empty() {
         return rsx! {
@@ -57,7 +58,6 @@ pub fn DocumentPreviewSourceSelectorDropdown(
         };
     };
 
-    let mut expand = use_signal(move || false);
     rsx! {
         PopoverRoot {
             open: expand(),

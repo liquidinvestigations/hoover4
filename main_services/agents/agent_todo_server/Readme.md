@@ -54,6 +54,9 @@ outline number of a node of the current tree, which keeps that node's identity. 
 leaves out is removed. The root keeps its id and its text. The tree holds at most 4 sections
 and 150 nodes.
 
+An unknown `node_id` is refused. The response names the current number paths and says to
+omit `node_id` for a new node. The planner can correct that call without changing the tree.
+
 **One writer at a time, at the exact version.** Each version is one row. The server holds one
 `asyncio.Lock` for each plan run. A write takes the lock, reads the newest version, and writes
 version plus one only when the call names the newest version. A call that names another

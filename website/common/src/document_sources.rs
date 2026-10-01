@@ -16,13 +16,16 @@ pub const OCR_PREFIX: &str = "ocr_";
 /// The `extracted_by` value under which an email's parsed body is stored.
 pub const EMAIL_TEXT_EXTRACTOR: &str = "email_parser";
 
+/// The format-specific text of a binary Word file.
+pub const BINARY_WORD_TEXT_EXTRACTOR: &str = "binary_word";
+
 /// OCR engines that may appear inside an `extracted_by` value.
 pub const OCR_ENGINES: [&str; 2] = ["tesseract", "easyocr"];
 
 /// One `extracted_by` value, taken apart for display.
 ///
 /// ```text
-/// native:       pdftotext | extractous | office_xml | email_parser | raw_text | qpdf
+/// native:       binary_word | pdftotext | extractous | office_xml | email_parser | email_html | email_rtf | email_richtext | raw_text | qpdf
 /// OCR variants: ocr_<engine>_<languages>   e.g. ocr_tesseract_eng+ron, ocr_easyocr_en
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,11 +65,15 @@ impl TextSource {
     pub fn label(&self) -> String {
         match self {
             TextSource::Native { extractor } => match extractor.as_str() {
+                "binary_word" => "Word text".to_string(),
                 "pdftotext" => "PDF text".to_string(),
                 "extractous" => "Extracted text".to_string(),
                 "office_xml" => "Office XML".to_string(),
                 "email_parser" => "Email body".to_string(),
-                "raw_text" => "Plain text".to_string(),
+                "email_html" => "Email HTML".to_string(),
+                "email_rtf" => "Email RTF".to_string(),
+                "email_richtext" => "Email rich text".to_string(),
+                "raw_text" => "Raw file text".to_string(),
                 other => other.to_string(),
             },
             TextSource::Ocr { engine, languages } => {
@@ -136,7 +143,7 @@ mod tests {
 
     #[test]
     fn native_extractors_are_not_ocr() {
-        for native in ["pdftotext", "extractous", "office_xml", "email_parser", "raw_text", "qpdf"] {
+        for native in ["binary_word", "pdftotext", "extractous", "office_xml", "email_parser", "raw_text", "qpdf"] {
             assert!(!TextSource::parse(native).is_ocr(), "{native}");
         }
     }
@@ -155,8 +162,19 @@ mod tests {
             "OCR · Tesseract · eng+ron"
         );
         assert_eq!(text_source_label("pdftotext"), "PDF text");
+        assert_eq!(text_source_label("binary_word"), "Word text");
         // An unknown extractor is shown verbatim rather than hidden.
         assert_eq!(text_source_label("some_new_parser"), "some_new_parser");
+    }
+
+    #[test]
+    fn binary_word_text_precedes_extractous_text() {
+        let source = |extracted_by: &str| DocumentSourceItem::Text(DocumentTextSourceItem {
+            extracted_by: extracted_by.to_string(), min_page: 1, max_page: 1,
+        });
+        let mut sources = vec![source("extractous"), source("binary_word")];
+        sources.sort();
+        assert_eq!(sources[0], source("binary_word"));
     }
 
     /// Mirrors `tests/unit/test_text_sources.py::test_language_order_is_preserved...`:
@@ -328,12 +346,8 @@ pub struct DocumentEmailSourceItem {
     /// Whether this email has any parsed body text at all.
     ///
     /// A mail file gets an `emails` row for its headers and a separate `email_parser`
-    /// text variant for its body, and the second is not implied by the first: the text
-    /// writer drops a page whose stripped text is shorter than two characters, so mail
-    /// whose whole `text/plain` part is a single `,` (Enron's export is full of them)
-    /// stores headers and no body, exactly like mail whose only body part is HTML.
-    /// Without this flag the viewer offers the Email source, asks for a body page that
-    /// does not exist, and renders the text endpoint's 404 where the body belongs.
+    /// text variant for its body. Some messages have no readable body. Without this
+    /// flag the viewer requests an absent body page and shows a text endpoint error.
     ///
     /// Defaults to TRUE for URL-encoded viewer state written before the field existed:
     /// that state describes a document the server is about to re-describe anyway, and
@@ -441,6 +455,12 @@ pub enum DocumentSourceItem {
     /// Not offered as a preview source. The viewer's Metadata tab is the metadata
     /// surface. Kept for the same reason as the variant above.
     Metadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DocumentSourcesStatus {
+    pub sources: Vec<DocumentSourceItem>,
+    pub errors: Vec<String>,
 }
 
 impl Eq for DocumentSourceItem {}

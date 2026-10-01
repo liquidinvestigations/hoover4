@@ -30,7 +30,7 @@ PLAN_TOOLS = frozenset({"read_plan", "write_plan", "read_plan_document", "read_p
 #: The tools whose `not_found` error means a document id that no readable dataset holds.
 DOCUMENT_TOOLS = frozenset({"read_documents", "list_document_entities"})
 
-_HASH = re.compile(r"^[0-9a-f]{64}$")
+_HASH = re.compile(r"^[0-9a-f]{12,64}$")
 
 #: The skill of each cause.
 CAUSE_SKILLS = {
@@ -89,7 +89,9 @@ def _cause(name: str, content: str, args: Dict[str, Any]) -> Optional[str]:
         return None
     if "transport failure" in message or error in ("tool_unavailable", "backend_unavailable"):
         return None
-    bad_ids = [h for h in _hashes(args) if not _HASH.match(str(h))]
+    bad_ids = [h for h in _hashes(args) if not _HASH.fullmatch(str(h)) and
+               not (name == "read_documents" and isinstance(h, str) and
+                    ("/" in h or "." in h))]
     if bad_ids or ("file_hash" in message and "characters" in message) \
             or "REPLACE_WITH" in head \
             or ("file_hash" in message and "at least 1 item" in message) \

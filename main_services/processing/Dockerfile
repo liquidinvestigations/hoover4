@@ -11,7 +11,7 @@ RUN pip install uv
 # `extractous`, where no per-dataset language setting can reach it. OCR is an HTTP
 # service (main_services/ocr_tesseract, ai_services/easyocr_server) and every OCR
 # variant is attributed to the engine and languages that produced it.
-RUN  apt-get update -yy && apt-get install -yy sed &&  sed -i 's/^Components: main$/& contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && apt-get update -yy &&  apt-get install -yy p7zip-full p7zip-rar qpdf poppler-utils ffmpeg curl wget file build-essential
+RUN  apt-get update -yy && apt-get install -yy sed &&  sed -i 's/^Components: main$/& contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && apt-get update -yy &&  apt-get install -yy p7zip-full p7zip-rar qpdf poppler-utils ffmpeg curl wget file build-essential pst-utils=0.6.76-1.2 libreoffice-writer-nogui openssl
 WORKDIR /app
 # The dependency layer stays separate from the source layer, so a source-only change
 # rebuilds nothing above this line: `uv.lock` and `pyproject.toml` change far less often

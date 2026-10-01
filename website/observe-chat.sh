@@ -6,6 +6,7 @@
 # Usage: ./observe-chat.sh [--target URL] [--out DIR] [--remote-target]
 #                           [--login-env FILE] [--resolutions LIST] [--prompts LIST]
 #                           [--conversations N] [--no-followup] [--continue PATH]
+#                           [--follow-plan PATH] [--follow-plan-seconds N]
 # Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
 # Credential values are not accepted as wrapper arguments and are not placed in
 # Docker or Python argument lists.
@@ -20,6 +21,8 @@
 #   --no-followup skips the second turn of a prompt that has one in FOLLOW_UPS.
 # --continue /ai_chat/c/ID/9g==/9g== sends the one selected prompt once as the next turn of
 #   that saved conversation and observes that turn.
+# --follow-plan /ai_chat/c/ID/9g==/9g== observes an executing saved plan without
+#   sending a prompt. --follow-plan-seconds bounds that observation (default 1800).
 #
 # Output: <out>/run-<UTC-timestamp>-<pid>/chat/<prompt-name>/ (default:
 #   website/test_reports/chat_observer/, gitignored). Never deleted by this script; each
@@ -73,6 +76,8 @@ CONVERSATIONS_ARG=""
 NO_FOLLOWUP_ARG=""
 HISTORY_ONLY_ARG=""
 CONTINUE_ARG=""
+FOLLOW_PLAN_ARG=""
+FOLLOW_PLAN_SECONDS_ARG=""
 REMOTE_TARGET=0
 
 while [ $# -gt 0 ]; do
@@ -90,6 +95,8 @@ while [ $# -gt 0 ]; do
         --no-followup) NO_FOLLOWUP_ARG="1"; shift 1 ;;
         --history-only) HISTORY_ONLY_ARG="${2:?--history-only needs a value}"; shift 2 ;;
         --continue) CONTINUE_ARG="${2:?--continue needs a value}"; shift 2 ;;
+        --follow-plan) FOLLOW_PLAN_ARG="${2:?--follow-plan needs a value}"; shift 2 ;;
+        --follow-plan-seconds) FOLLOW_PLAN_SECONDS_ARG="${2:?--follow-plan-seconds needs a value}"; shift 2 ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
@@ -236,6 +243,8 @@ CHAT_ARGS=(
 [ -n "$NO_FOLLOWUP_ARG" ] && CHAT_ARGS+=(--no-followup)
 [ -n "$HISTORY_ONLY_ARG" ] && CHAT_ARGS+=(--history-only "$HISTORY_ONLY_ARG")
 [ -n "$CONTINUE_ARG" ] && CHAT_ARGS+=(--continue "$CONTINUE_ARG")
+[ -n "$FOLLOW_PLAN_ARG" ] && CHAT_ARGS+=(--follow-plan "$FOLLOW_PLAN_ARG")
+[ -n "$FOLLOW_PLAN_SECONDS_ARG" ] && CHAT_ARGS+=(--follow-plan-seconds "$FOLLOW_PLAN_SECONDS_ARG")
 # Names only: docker reads values from this process environment.
 CHAT_ENV=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
 [ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && CHAT_ENV+=(-e HOOVER4_CAPTURE_REVISION)

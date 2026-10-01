@@ -7,10 +7,11 @@ failed gives no label, so a failed call does not satisfy the check, and a call t
 does not stop it.
 
 An answer gets one repair round (`needs_repair`) when it has an unresolved or a conflicting
-label, or when it has no label and names a document (`names_documents`). The name rule is a
-reason to ask for citations. It does not show that the claims of the answer are supported.
-The note of the round asks for the citations and the whole answer again. The reply of the
-round replaces the answer, unless it has no text (`steps.keeps_answer`).
+label, or when it has no label and names a document or follows a document read. These
+rules ask for citations. They do not show that the claims of the answer are supported.
+The note of the round asks for the citations and the whole answer again. A reply with
+no text keeps the earlier answer. A reply with invalid labels or raw call text keeps
+that answer with a notice. A reply without labels shows its citation status.
 
 A logical thread gets one repair round at most. The note in the thread is the stored marker
 (`REPAIR_MARKER_KEY` in its usage). A thread from before the marker holds
@@ -105,6 +106,20 @@ def names_documents(answer: str, messages) -> bool:
     return False
 
 
+def read_documents(messages) -> bool:
+    """Whether a content reader gives successful document-read evidence."""
+    for message in messages:
+        if message.role != "tool" or message.tool_name not in (
+                "read_documents", "table_page", "table_cell"):
+            continue
+        if message.usage.get("status") == "error":
+            continue
+        if any(e.get("kind") == "document_read" and e.get("status") in ("ok", "partial")
+               for e in (message.usage.get("evidence") or []) if isinstance(e, dict)):
+            return True
+    return False
+
+
 def is_citation_note(message) -> bool:
     """Whether a thread message is the note of the repair round."""
     return message.role == "human" and (
@@ -150,12 +165,29 @@ def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
         return False, check
     if check["unresolved"] or check["conflicting"]:
         return True, check
-    return (not check["labels"] and names_documents(answer, messages)), check
+    return (not check["labels"] and
+            (names_documents(answer, messages) or read_documents(messages))), check
+
+
+def repair_reply_problem(answer: str, session_entries) -> str:
+    """The structural problem in a citation reply, or empty when it can be shown."""
+    from tasks.P_agent import reports, thread_facts
+
+    if (thread_facts.RAW_CITATION_CALL.search(answer)
+            or "<|tool_call>" in answer or "<|\"|>" in answer):
+        return "raw_call"
+    check = reports.check_labels(answer, reports.label_bindings(session_entries),
+                                 session_entries)
+    if check["unresolved"]:
+        return "unresolved_label"
+    if check["conflicting"]:
+        return "conflicting_label"
+    return ""
 
 
 __all__ = [
     "CITATION_NOTE", "CITATION_TOOL_KEY", "CITE_TOOL", "LABEL_NOTE", "LEGACY_CITATION_NOTE",
     "REPAIR_MARKER",
     "REPAIR_MARKER_KEY", "has_citation_tool", "is_citation_note", "names_documents",
-    "needs_repair", "repair_note",
+    "needs_repair", "read_documents", "repair_note", "repair_reply_problem",
 ]

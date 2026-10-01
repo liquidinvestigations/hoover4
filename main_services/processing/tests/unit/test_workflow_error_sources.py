@@ -45,6 +45,7 @@ def test_p6_failed_writers_keep_one_source_id_for_each_chunk_member(monkeypatch)
                         datetime(2026, 1, 1, tzinfo=timezone.utc))
     monkeypatch.setattr(index_workflows.workflow, "info", lambda:
                         SimpleNamespace(run_id="run"))
+    monkeypatch.setattr(index_workflows.workflow, "patched", lambda _name: True)
     monkeypatch.setattr(index_workflows, "record_errors_from_results", record_errors)
 
     params = IndexDatasetPlanParams("collection", "dataset", "plan", "op")
@@ -85,6 +86,7 @@ def test_p6_manticore_calls_use_the_restart_retry_policy(monkeypatch):
 
     monkeypatch.setattr(index_workflows.workflow, "execute_activity", execute_activity)
     monkeypatch.setattr(index_workflows.workflow, "info", lambda: SimpleNamespace(run_id="run"))
+    monkeypatch.setattr(index_workflows.workflow, "patched", lambda _name: True)
     async def record_errors(*_args, **_kwargs):
         return 0
 
@@ -102,6 +104,47 @@ def test_p6_manticore_calls_use_the_restart_retry_policy(monkeypatch):
     plan_options = dict(calls)[index_workflows.plan_shards]
     assert plan_options["retry_policy"] == expected
     assert plan_options["task_queue"] == index_workflows.PLANNER_TASK_QUEUE
+
+
+@pytest.mark.parametrize("patched,expected_entries", [
+    (True, []),
+    (False, [("shard", "hash-1")]),
+])
+def test_p6_text_commit_controls_ledger_with_replay_branch(
+    monkeypatch, patched, expected_entries,
+):
+    recorded = []
+
+    def execute_activity(fn, params, **_kwargs):
+        async def result():
+            if fn is index_workflows.fetch_plan_hashes:
+                return ["hash-1"]
+            if fn is index_workflows.plan_shards:
+                return [SimpleNamespace(shard_name="shard", hashes=["hash-1"])]
+            if fn is index_workflows.index_text_pages:
+                raise RuntimeError("text write failed")
+            if fn is index_workflows.index_vectors:
+                return ["hash-1"]
+            if fn is index_workflows.record_indexed:
+                recorded.extend(params.entries)
+            return None
+        return result()
+
+    async def record_errors(*_args, **_kwargs):
+        return 1
+
+    monkeypatch.setattr(index_workflows.workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(index_workflows.workflow, "now", lambda:
+                        datetime(2026, 1, 1, tzinfo=timezone.utc))
+    monkeypatch.setattr(index_workflows.workflow, "info", lambda:
+                        SimpleNamespace(run_id="run"))
+    monkeypatch.setattr(index_workflows.workflow, "patched", lambda _name: patched)
+    monkeypatch.setattr(index_workflows, "record_errors_from_results", record_errors)
+
+    asyncio.run(index_workflows.IndexDatasetPlan().run(
+        IndexDatasetPlanParams("collection", "dataset", "plan", "op")))
+
+    assert recorded == expected_entries
 
 
 @pytest.mark.parametrize("stage,workflow_type,params_type,activity_name,label,task_name", [
@@ -184,6 +227,8 @@ def test_group_detector_and_parser_ids_follow_file_and_entry_order(monkeypatch):
                         datetime(2026, 1, 1, tzinfo=timezone.utc))
     monkeypatch.setattr(plan_workflows.workflow, "info", lambda:
                         SimpleNamespace(run_id="group-run"))
+    monkeypatch.setattr(plan_workflows.workflow, "patched", lambda name:
+                        name == "mail-container-archive-route")
     monkeypatch.setattr(plan_workflows, "record_errors_from_results", record)
     params = plan_workflows.ProcessItemsBatchedParams(
         "collection", "dataset", "plan", "/tmp", [{"item_hash": h} for h in hashes], "op")

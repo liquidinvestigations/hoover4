@@ -122,15 +122,18 @@ re-runnable activity opt out through `insert_idempotent` / `insert_arrow_idempot
 re-runs until the anti-joins converge. Ledgers and watermarks go through
 `insert_durable` / `insert_arrow_durable`, or through unmarked inserts which wait.
 
-The line is drawn by what re-derives the row, not by how important it is. Every P3
+The line is drawn by what re-derives the row, not by how important it is. New P3
 parser output qualifies: the parser runs again and writes the same content-addressed
-row. A P0 scan row does not. Nothing rescans the disk, so a lost `blobs` row is a file
-that is never planned and never noticed.
+row. Source replacement waits for `text_content` visibility and deletion.
+Date resolution flushes pending parse inserts before downstream reads. A P0 scan row
+does not qualify. Nothing rescans the disk, so a lost `blobs` row is never planned.
+The index planner flushes pending P4 and P5 inserts before it assigns shards.
+Each flush acts on the server's whole async insert queue and propagates failure.
 
 | Wait | Tables |
 |---|---|
-| Do not wait | every P3 parser output: `file_types`, `text_content`, `tika_metadata`, `emails`, `email_headers`, `email_addresses`, `archives`, `pdfs`, `pdf_metadata`, `pdfs_image`, `pdf_ocr_results`, `raw_ocr_results`, `image`, `image_metadata`, `audio_metadata`, `video_metadata`, `document_dates`, `table_documents`, `table_sheets`, `table_columns`, `table_cells`; plus `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry`, `agent_step_events` |
-| Wait | `blobs`, `blob_values`, `vfs_files`, `vfs_directories`, `processing_plan_finished`, `index_state`, `manticore_shards`, `manticore_shard_assignments`, `dataset`, `processing_plans`, `schema_versions` |
+| Do not wait | new P3 parser output: `file_types`, `text_content`, `tika_metadata`, `emails`, `email_headers`, `email_addresses`, `archives`, `pdfs`, `pdf_metadata`, `pdfs_image`, `pdf_ocr_results`, `raw_ocr_results`, `image`, `image_metadata`, `audio_metadata`, `video_metadata`, `document_dates`, `table_documents`, `table_sheets`, `table_columns`, `table_cells`; plus `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry`, `agent_step_events` |
+| Wait | replacement `text_content`; `blobs`, `blob_values`, `vfs_files`, `vfs_directories`, `processing_plan_finished`, `index_state`, `manticore_shards`, `manticore_shard_assignments`, `dataset`, `processing_plans`, `schema_versions` |
 
 The Error recorder waits for its row insert before it writes the operation event.
 This order lets a retry repair an event write without creating another logical Error.
@@ -168,7 +171,7 @@ Collapsing is a deliberate break of the never-edit-history rule and is paid for 
 from a pre-collapse database and none is wanted. Do not collapse again without that reset
 being acceptable.
 
-## Every Manticore write goes through `manticore_execute`, never a cursor
+## Bind corpus text before sending it to Manticore
 
 `cursor.execute(sql, params)` is not safe for a statement carrying corpus text, and no
 amount of escaping makes it safe. The MySQL driver scans the **fully interpolated**
@@ -185,6 +188,10 @@ failed, so a single file can hide dozens of healthy ones.
 escaping and sends the bytes with `cmd_query`, which has no splitter in front of it. The
 statement template is split on `%s` rather than `%`-formatted, so a `%s` inside a document
 is just text.
+
+The page writer binds each row with `bind_manticore_sql`. It combines encoded value groups
+and sends the resulting statement with `cmd_query`. It does not bind the statement again.
+A second bind would interpret a literal `%s` in corpus text as a parameter marker.
 
 Two properties this depends on, both of which have to be handled and neither of which can
 be assumed:

@@ -4,8 +4,12 @@ from temporalio import activity
 from typing import Dict, Any, List
 from dataclasses import dataclass
 import os
+import json
+import sys
+import time
+import signal
 import logging
-from tasks.heartbeat import heartbeat_pump, with_heartbeat
+from tasks.heartbeat import heartbeat_pump, with_heartbeat, worker_is_stopping
 from tasks.P3_parse_files.batch_runner import BatchFile, BatchResult, StageBatchParams, run_batch
 
 log = logging.getLogger(__name__)
@@ -27,7 +31,62 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
     import shutil
     import subprocess
     from tasks.P3_parse_files.temp_dirs import make_temp_dir
+    from tasks.P3_parse_files.mail_containers import mail_format
     out_dir = make_temp_dir(params.collection_dataset, "extract", params.archive_hash)
+
+    kind = mail_format(params.archive_path, params.archive_types)
+    if kind:
+        # Retries must not scan members left by an earlier interrupted attempt.
+        shutil.rmtree(out_dir, ignore_errors=True)
+        os.makedirs(out_dir)
+        cmd = [sys.executable, "-m", "tasks.P3_parse_files.mail_containers",
+               params.archive_path, out_dir, kind]
+        child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 stdin=subprocess.DEVNULL, start_new_session=True)
+        started = time.monotonic()
+        try:
+            with heartbeat_pump(f"mail {params.archive_hash[:8]}"):
+                while True:
+                    try:
+                        stdout, stderr = child.communicate(timeout=1)
+                        break
+                    except subprocess.TimeoutExpired:
+                        if worker_is_stopping():
+                            raise RuntimeError("mail extraction stopped with the worker")
+                        if time.monotonic() - started >= 3600:
+                            raise RuntimeError("mail extraction exceeded 3600 seconds")
+        except BaseException:
+            try:
+                os.killpg(child.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                child.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                child.communicate()
+            shutil.rmtree(out_dir, ignore_errors=True)
+            raise
+        entry_count = count_member_files(out_dir)
+        if child.returncode:
+            if not entry_count:
+                shutil.rmtree(out_dir, ignore_errors=True)
+                raise RuntimeError(f"{kind} extraction failed: {stderr[:300]!r}")
+            return {"out_dir": out_dir, "entry_count": entry_count,
+                    "partial_errors": [f"{kind} reader exited {child.returncode}: "
+                                       f"{stderr[:300]!r}"]}
+        try:
+            details = json.loads(stdout)
+        except (UnicodeDecodeError, ValueError) as exc:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            raise RuntimeError(f"{kind} reader returned no result") from exc
+        if not entry_count:
+            shutil.rmtree(out_dir, ignore_errors=True)
+        return {"out_dir": out_dir, "entry_count": entry_count,
+                "partial_errors": details.get("partial_errors", [])}
 
     log.info("[P3] Extracting archive to %s", out_dir)
     cmd = ["7z", "x", "-y", f"-o{out_dir}", params.archive_path]

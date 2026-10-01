@@ -22,11 +22,11 @@ When was the Fontys international open day in Venlo and what was on the programm
 
 ## Expected tool calls
 
-1. It calls `write_todo`.
+1. If it uses a todo list, it calls `write_todo`.
 2. It calls `search_passages` with no `collectionname` and `["Fontys open day Venlo", "\"International Open Day\"", "campusvenlo invitation", "Fontys \"2nd of February\""]`.
 3. It calls `read_documents` on the PDF and the email.
 4. It calls `cite_documents` for the PDF, with the programme lines as the quote, and for the email.
-5. It calls `mark_todo`, then it answers.
+5. If it uses a todo list, it calls `mark_todo` before it answers.
 
 ## Expected result
 
@@ -34,4 +34,4 @@ The answer gives 2 February 2014 from the documents, lists the programme items f
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, search over all collections, query variants, more than one in one call, document cards shown to the user, a passage to jump to (the programme in the PDF), a task completed, with the documents preferred over the web.
+The story exercises these requirements and optional behavior: todo use when needed, search over all collections, query variants, more than one in one call, document cards shown to the user, a passage to jump to (the programme in the PDF), a task completed, with the documents preferred over the web.

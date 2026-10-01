@@ -65,17 +65,21 @@ def _chat_model() -> str:
     in this container, so every research row recorded an empty model, while the agent
     quietly answered with whatever *its* container's env said.
 
-    Empty means "no admin default configured" and is passed through as such. The agent
-    then falls back to its own, which is the pre-existing behaviour and better than
-    refusing the turn.
+    An empty admin setting uses the configured provider model. A request with neither
+    setting fails before it reaches the agent.
     """
     try:
         from database.clickhouse import get_server_setting
 
-        return (get_server_setting("llm_default_chat_model") or "").strip()
+        configured = (get_server_setting("llm_default_chat_model") or "").strip()
+        if configured:
+            return configured
     except Exception:  # noqa: BLE001 - a research turn must not die over a settings read
         log.warning("[P_agent] could not read llm_default_chat_model", exc_info=True)
-        return ""
+    configured = (os.getenv("LLM_MODEL") or "").strip()
+    if configured:
+        return configured
+    raise ValueError("No chat model is configured. Set a default model in the LLM catalog.")
 
 
 def context_window_for(model_id: str) -> int:

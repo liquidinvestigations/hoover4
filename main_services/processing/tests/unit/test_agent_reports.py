@@ -441,7 +441,7 @@ def test_a_read_page_result_gives_one_entry_for_each_page():
     text = (
         "## Lease terms\nhttps://example.org/lease\n\nFirst part.\n\n---\n\nStill the lease."
         "\n\n[cut: this call read 1,200 of the page's 5,000 characters. Call read_page with "
-        "offset 1300 for the next part]"
+        "offset 1300 for the next part, with version 0123456789abcdef]"
         "\n\n---\n\n## https://example.org/down\nhttps://example.org/down\n\n"
         "COULD NOT READ: net::ERR_NAME_NOT_RESOLVED"
         "\n\n---\n\n## Check\nhttps://example.org/check\n\nBLOCKED BY A BOT CHECK: "
@@ -453,7 +453,8 @@ def test_a_read_page_result_gives_one_entry_for_each_page():
     assert [(e["reference"]["url"], e["status"]) for e in entries] == [
         ("https://example.org/lease", "partial"), ("https://example.org/down", "error"),
         ("https://example.org/check", "error")]
-    assert entries[0]["range"] == {"start_chars": 100, "end_chars": 1300, "total_chars": 5000}
+    assert entries[0]["range"] == {"start_chars": 100, "end_chars": 1300,
+                                    "total_chars": 5000, "version": "0123456789abcdef"}
     assert entries[1]["error"] == "COULD NOT READ: net::ERR_NAME_NOT_RESOLVED"
     assert entries[2]["error"].startswith("BLOCKED BY A BOT CHECK")
     assert len({e["item_key"] for e in entries}) == 3
@@ -475,10 +476,28 @@ def test_a_find_in_a_page_is_a_partial_read_with_the_spans_it_shows():
                                               "find": "Staff Engineer"},
                                 json.dumps([text, '[hoover4:artifacts] {"artifacts": []}']),
                                 "ok")
-    assert [e["status"] for e in entries] == ["partial", "partial"]
+    assert [e["status"] for e in entries] == ["partial"]
     assert entries[0]["range"] == {"find": "Staff Engineer", "spans": [[1000, 1414], [8800, 9214]],
-                                   "matches": 5, "total_chars": 2115365}
-    assert entries[1]["range"] == {"find": "x", "spans": [], "matches": 0, "total_chars": 12}
+                                   "matches": 5, "total_chars": 2115365,
+                                   "version": "0123456789abcdef", "next_offset": 20000}
+
+
+def test_table_rows_and_cells_count_as_document_content_reads():
+    args = {"collectionname": "c", "file_hash": HASH_A, "sheet": 0}
+    rows = json.dumps({"items": [{"row_id": 2, "cells": {"name": "A"}}], "row_start": 0})
+    [entry] = reports.normalize("table_page", args, rows, "ok")
+    assert entry["kind"] == "document_read" and entry["reference"]["file_hash"] == HASH_A
+    assert entry["range"] == {"sheet": 0, "row_start": 0}
+    assert reports.normalize("table_page", args, '{"items":[]}', "ok") == []
+    assert reports.normalize("table_overview", args, rows, "ok") == []
+    [cell] = reports.normalize("table_cell", {**args, "row": 2, "column": 1},
+                               '{"text":"A","offset":0}', "ok")
+    assert cell["kind"] == "document_read" and cell["range"]["row"] == 2
+    [other_cell] = reports.normalize("table_cell", {**args, "row": 2, "column": 2},
+                                     '{"text":"B","offset":0}', "ok")
+    [later_part] = reports.normalize("table_cell", {**args, "row": 2, "column": 1},
+                                     '{"text":"C","offset":2000}', "ok")
+    assert len({cell["item_key"], other_cell["item_key"], later_part["item_key"]}) == 3
 
 
 def test_a_read_page_result_stored_as_one_text_ends_with_its_marker_line():
@@ -489,7 +508,8 @@ def test_a_read_page_result_stored_as_one_text_ends_with_its_marker_line():
             '0123456789abcdef]\n[hoover4:artifacts] {"artifacts": []}')
     [entry] = reports.normalize("read_page", {"urls": ["https://example.org/a"]}, text, "ok")
     assert entry["status"] == "partial"
-    assert entry["range"] == {"start_chars": 0, "end_chars": 4, "total_chars": 9}
+    assert entry["range"] == {"start_chars": 0, "end_chars": 4, "total_chars": 9,
+                              "version": "0123456789abcdef"}
 
 
 @pytest.mark.parametrize("failure", [agent_plans.DocumentBodyError("no artifact row"),

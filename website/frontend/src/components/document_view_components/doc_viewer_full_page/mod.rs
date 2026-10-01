@@ -3,7 +3,7 @@
 mod document_entities_panel;
 mod raw_metadata_collector;
 
-use common::document_sources::{DocumentSourceItem, ItemHitCounts};
+use common::document_sources::{DocumentSourceItem, DocumentSourcesStatus, ItemHitCounts};
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
@@ -12,7 +12,8 @@ use crate::{
         doc_preview_for_search::{
             doc_preview_find_query::DocPreviewFindQueryInputBox,
             doc_preview_source_selector::{
-                DocumentPreviewSourceSelectorList, search_document_item_hit_counts,
+                DocumentPreviewSourceSelectorDropdown, DocumentPreviewSourceSelectorList,
+                search_document_item_hit_counts,
             },
         },
         doc_file_locations_panel::DocumentFileLocationsPanel,
@@ -57,16 +58,20 @@ pub fn DocViewerRoot(
     // signal: a `ReadSignal` prop is a new signal on every parent render, so a resource
     // subscribed to it never re-runs and the pairing of `use_effect` + `restart()` that
     // used to compensate fired a second, identical request on every mount.
-    let doc_sources: Resource<Vec<DocumentSourceItem>> =
+    let mut source_request: Resource<Result<DocumentSourcesStatus, ServerFnError>> =
         use_resource(use_reactive!(|document_identifier_value| {
-            async move {
-                get_document_sources(document_identifier_value)
-                    .await
-                    .unwrap_or_default()
-            }
+            async move { get_document_sources(document_identifier_value).await }
         }));
     let doc_sources: ReadSignal<Option<Vec<DocumentSourceItem>>> =
-        use_memo(move || doc_sources.read().clone()).into();
+        use_memo(move || source_request.read().as_ref()
+            .and_then(|r| r.as_ref().ok().map(|status| status.sources.clone()))).into();
+    let source_error = use_memo(move || source_request.read().as_ref().and_then(|result| {
+        match result {
+            Ok(status) if !status.errors.is_empty() => Some(status.errors.join(", ")),
+            Err(error) => Some(error.to_string()),
+            _ => None,
+        }
+    }));
 
     let control = use_context::<DocViewerStateControl>();
     let currently_selected_source: ReadSignal<Option<DocumentSourceItem>> = use_memo(move || {
@@ -167,6 +172,10 @@ pub fn DocViewerRoot(
     // controls vertically in the left column; so we pass empty elements here to satisfy
     // `PreviewControlsSection` without duplicating UI.
     let content_view = rsx! {
+        if let Some(error) = source_error() {
+            div { role: "alert", "Could not load all document sources: {error}" }
+            button { onclick: move |_| source_request.restart(), "Retry" }
+        }
         ProvidePreviewExtraSections {
             find_query_input_box: rsx! { div {} },
             preview_selector: rsx! { div {} },
@@ -307,6 +316,15 @@ fn LeftControls(
             div {
                 style: "flex-shrink: 0;",
                 {controls}
+            }
+            div {
+                style: "flex-shrink: 0;",
+                DocumentPreviewSourceSelectorDropdown {
+                    sources,
+                    selected_source,
+                    on_source_selected,
+                    item_hit_counts,
+                }
             }
             div {
                 style: "flex-shrink: 0;",

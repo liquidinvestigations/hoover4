@@ -844,6 +844,8 @@ def section_cause(run: SectionRun | None) -> str:
     a report that states incomplete execution, or no report."""
     if run is None:
         return "no run"
+    if run.state in ("running", "waiting_for_children", "pending"):
+        return ""
     if run.state != "completed":
         return f"the run ended {run.state}" + (f": {run.error}" if run.error else "")
     if run.end_reason:

@@ -222,6 +222,7 @@ async def test_the_system_text_is_the_same_for_each_model_step(monkeypatch):
 
     monkeypatch.setattr(agent_module, "MultiServerMCPClient", FakeClient)
     monkeypatch.setenv("LLM_API_KEY", "test")
+    monkeypatch.setenv("LLM_MODEL", "test-model")
     monkeypatch.delenv("SYSTEM_PROMPT", raising=False)
     gateway = agent_module.MCPGatewayAgent([], "test", "", profile="full_research")
     context = await gateway._create_context(None, ["c"], kind="chat")

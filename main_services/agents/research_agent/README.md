@@ -76,8 +76,12 @@ skill is one `.md.j2` file with front matter (`name`, `group`, `description`, `t
 Jinja body. The groups are `role`, `general`, `technique` and `stumble`. The role skills
 (`method_chat_full`, `method_chat_internal`, `method_subagent`, `method_planner`,
 `method_organizer`) state the objective of the role, its sources, its evidence rule and its
-duty. They ask for no search before an answer and no todo update. The
+duty. They do not require a search for an unrelated general question or a todo update. The
 planner's role text states the context window of the run's model when the catalog knows it.
+For a selected collection, the chat role starts with its documents before it uses web
+context. A requested web context keeps direct page links in the answer. Comparison
+requests end with coverage and disagreement lines based on the evidence read. Other
+answers do not get those lines. The planner writes a plan after enough sizing evidence.
 A run lists each skill of the other groups whose `tools` list is empty or names a tool of
 the run. The general skills (`search`, `thorough`, `citation`) hold the search rules, the
 investigation rule and the citation protocol. The technique skills (`browser_use`,
@@ -352,12 +356,16 @@ estimate when the tokenizer does not count.
 **The summary.** It starts with `RECORD_HEADER`, which tells the model to read a source again
 before it quotes it. Code writes the lists next (`thread_index.py`): the searches that found
 nothing, the searches that found documents with their counts, the documents read with their
-pages, the citation labels with their file hashes, the pages that `read_page` read with the
-offset of the next part of a cut page, the result pages that continue with their `more`
+pages, the citation labels with their file hashes, the pages that `read_page` read with
+their source versions and unread continuation offsets, the result pages that continue with their `more`
 handle and call, and one line that names the skill and tool texts that left the list. The model never writes those lists, because a summary model copies
 file hashes with errors. The summary model writes the rest with thinking off, in one request
 with a completion cap of 2,000 tokens, in four sections: findings with their sources,
 contradictions, outstanding work, and the identifiers that read a source again. The model
+writes each finding with an exact quote and its source. A cut page is read through its shown
+text. Its continuation stays unread. The summary request presents page results last, with
+their stored step numbers and call inputs. A find with no match is not a content read.
+The model
 writes the source of each quote in brackets, `[source: ...]`. When a document or page text of
 the replaced steps holds the quote and the bracket names another source, code writes the
 source of that text in the bracket (`attribute_quotes`), and the record counts the changes in
@@ -555,7 +563,8 @@ The application is configured entirely via environment variables (rendered from
 ### Optional Variables
 
 - `LLM_BASE_URL`: Base URL for your LLM service
-- `LLM_MODEL`: Model name to use
+- `LLM_MODEL`: Model name to use when a request has no model. A request fails with a clear
+  error when it has no model and this value is empty.
 - `LLM_TEMPERATURE`: Temperature setting (default: 0.0)
 - `LLM_SEND_TEMPERATURE`: `false` leaves `temperature` out of every model request: the agent
   turns and the compaction summary. `deploy.py` renders it from the active provider's

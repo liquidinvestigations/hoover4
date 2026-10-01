@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write the stored chat sessions that the chat screenshot cases open by name.
 
-The cases `515` to `521` in `website/browser-tests/` open `{{chat_fixture:<name>}}`. This
+The named chat cases in `website/browser-tests/` open `{{chat_fixture:<name>}}`. This
 script writes one session for each name, owned by one user, and prints the JSON map from
 name to session id that `HOOVER4_SCREENSHOT_CHAT_FIXTURES` holds. It runs in the worker
 container, which has the datastore clients and credentials. `prepare_chat_fixtures.sh`
@@ -115,6 +115,24 @@ def cards(_name: str, _username: str) -> dict:
     ]}
 
 
+def entities(_name: str, _username: str) -> dict:
+    # The canonical page text that the collection server returns for this call.
+    page = json.dumps(
+        {"items": [{"collectionname": COLLECTION, "entities": {"organisation": ["IEEE"]},
+                    "error": None, "file_hash": DOC_SHORT, "structured": [],
+                    "success": True, "truncated": False}],
+         "note": "One document was listed.", "success": True},
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {"title": "Browser fixture: document entities", "rows": [
+        user("List the entities in the sample document."),
+        search_row(),
+        tool("list_document_entities",
+             {"documents": [{"collectionname": COLLECTION, "file_hash": DOC_HASH}]},
+             page, doc_ref()),
+        answer("The sample document names IEEE."),
+    ]}
+
+
 def read_more(_name: str, _username: str) -> dict:
     handle = "f1a7c0de2b31"
     return {"title": "Browser fixture: continued read", "rows": [
@@ -222,13 +240,70 @@ def question(name: str, username: str) -> dict:
     ], "plan": {"plan_id": plan_id, "run_id": run_id, "nodes": nodes}}
 
 
+def plan_completed(name: str, username: str) -> dict:
+    plan_id = fixture_uuid(name, username, "plan")
+    run_id = fixture_uuid(name, username, "run")
+    root = fixture_uuid(name, username, "root")
+    section = fixture_uuid(name, username, "section")
+    reference = {"plan_id": plan_id, "run_id": run_id, "reviewed_version": 1}
+    nodes = [
+        {"node_id": root, "ordinal": 1, "parent_id": None, "text": "Research the unit table."},
+        {"node_id": section, "ordinal": 1, "parent_id": root, "text": "Read the sample document."},
+    ]
+    sections = [{"node_id": section, "title": "Read the sample document.", "tasks": 1,
+                 "state": "completed", "end_reason": "", "cause": "", "failed": False}]
+    return {"title": "Browser fixture: completed plan", "deep_research": True,
+            "rows": [user("Research the sample document's unit table."),
+                     answer("The plan has one section.", reference),
+                     answer("The sample document gives an energy density conversion.", reference)],
+            "plan": {"plan_id": plan_id, "run_id": run_id, "nodes": nodes,
+                     "state": "completed", "sections": sections}}
+
+
+def plan_revising(name: str, username: str) -> dict:
+    plan_id = fixture_uuid(name, username, "plan")
+    run_id = fixture_uuid(name, username, "run")
+    root = fixture_uuid(name, username, "root")
+    reference = {"plan_id": plan_id, "run_id": run_id, "reviewed_version": 1}
+    return {"title": "Browser fixture: plan awaiting review", "deep_research": True,
+            "rows": [user("Research the sample document's unit table."),
+                     answer("Review the plan before it runs.", reference)],
+            "plan": {"plan_id": plan_id, "run_id": run_id,
+                     "nodes": [{"node_id": root, "ordinal": 1, "parent_id": None,
+                                "text": "Research the unit table."}]}}
+
+
+def plan_failed(name: str, username: str) -> dict:
+    plan_id = fixture_uuid(name, username, "plan")
+    run_id = fixture_uuid(name, username, "run")
+    root = fixture_uuid(name, username, "root")
+    section = fixture_uuid(name, username, "section")
+    reference = {"plan_id": plan_id, "run_id": run_id, "reviewed_version": 1}
+    return {"title": "Browser fixture: failed plan", "deep_research": True,
+            "rows": [user("Research the sample document's unit table."),
+                     answer("The plan could not complete.", reference)],
+            "plan": {"plan_id": plan_id, "run_id": run_id,
+                     "nodes": [{"node_id": root, "ordinal": 1, "parent_id": None,
+                                "text": "Research the unit table."},
+                               {"node_id": section, "ordinal": 1, "parent_id": root,
+                                "text": "Read the sample document."}],
+                     "state": "failed", "sections": [{"node_id": section,
+                     "title": "Read the sample document.", "tasks": 1,
+                     "state": "failed", "end_reason": "tool_error",
+                     "cause": "The document read failed.", "failed": True}]}}
+
+
 FIXTURES = {
     "cards": cards,
+    "entities": entities,
     "read_more": read_more,
     "todo": todo,
     "web": web,
     "compaction": compaction,
     "question": question,
+    "plan_completed": plan_completed,
+    "plan_revising": plan_revising,
+    "plan_failed": plan_failed,
 }
 
 
@@ -299,7 +374,9 @@ def write_plan(client, sid, username, plan, now):
     # The state version stays above every state that a real workflow could write for
     # this run, because no workflow of this run exists.
     insert_durable(client, "agent_plan_runs", [[
-        plan["run_id"], plan["plan_id"], username, sid, 0, "awaiting_review", 1, 0, 0, "[]",
+        plan["run_id"], plan["plan_id"], username, sid, 0,
+        plan.get("state", "awaiting_review"), 1, 0, 0,
+        json.dumps(plan.get("sections", [])),
         1, now,
     ]], column_names=["run_id", "plan_id", "username", "session_id", "start_seq", "state",
                       "reviewed_version", "approved_version", "review_round", "sections_json",

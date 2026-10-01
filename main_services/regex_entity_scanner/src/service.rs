@@ -7,12 +7,16 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::rejection::JsonRejection;
 use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::http::Request;
 use axum::http::StatusCode;
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use axum::Extension;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
@@ -52,7 +56,7 @@ pub struct Admission {
     /// Requests inside the semaphore or waiting for it. Compared against `scan_threads +
     /// queue_depth` to decide admission, and reported by `/health` so the bound is observable
     /// rather than assumed.
-    occupancy: AtomicUsize,
+    occupancy: Arc<AtomicUsize>,
     scan_threads: usize,
     queue_depth: usize,
 }
@@ -61,7 +65,7 @@ impl Admission {
     pub fn new(scan_threads: usize, queue_depth: usize) -> Self {
         Self {
             permits: Arc::new(Semaphore::new(scan_threads)),
-            occupancy: AtomicUsize::new(0),
+            occupancy: Arc::new(AtomicUsize::new(0)),
             scan_threads,
             queue_depth,
         }
@@ -69,7 +73,7 @@ impl Admission {
 
     /// Takes a slot, or returns `None` when the queue is already full. The guard releases the slot
     /// on drop, so a handler that returns early (or panics) cannot leak one.
-    async fn admit(&self) -> Option<AdmissionGuard<'_>> {
+    async fn admit(&self) -> Option<AdmissionGuard> {
         let capacity = self.scan_threads + self.queue_depth;
         let mut occupancy = self.occupancy.load(Ordering::Acquire);
         loop {
@@ -86,11 +90,22 @@ impl Admission {
                 Err(seen) => occupancy = seen,
             }
         }
-        let permit = Arc::clone(&self.permits).acquire_owned().await.ok()?;
-        Some(AdmissionGuard {
-            admission: self,
-            _permit: permit,
-        })
+        // This guard also covers the wait for a scan permit. Cancellation must release
+        // queue occupancy before the request body is read.
+        let mut guard = AdmissionGuard {
+            occupancy: Arc::clone(&self.occupancy),
+            permit: None,
+        };
+        guard.permit = Some(
+            tokio::time::timeout(
+                Duration::from_secs(RETRY_AFTER_SECONDS.into()),
+                Arc::clone(&self.permits).acquire_owned(),
+            )
+            .await
+            .ok()?
+            .ok()?,
+        );
+        Some(guard)
     }
 
     fn in_flight(&self) -> usize {
@@ -98,14 +113,14 @@ impl Admission {
     }
 }
 
-struct AdmissionGuard<'a> {
-    admission: &'a Admission,
-    _permit: tokio::sync::OwnedSemaphorePermit,
+struct AdmissionGuard {
+    occupancy: Arc<AtomicUsize>,
+    permit: Option<tokio::sync::OwnedSemaphorePermit>,
 }
 
-impl Drop for AdmissionGuard<'_> {
+impl Drop for AdmissionGuard {
     fn drop(&mut self) {
-        self.admission.occupancy.fetch_sub(1, Ordering::AcqRel);
+        self.occupancy.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
@@ -204,17 +219,35 @@ pub struct ErrorResponse {
 
 pub fn router(state: Arc<AppState>) -> Router {
     let max_body_bytes = state.max_body_bytes + JSON_ENVELOPE_ALLOWANCE;
+    let scan_routes = Router::new()
+        .route("/scan", post(scan))
+        .route("/scan_batch", post(scan_batch))
+        .route("/signal_batch", post(signal_batch))
+        .route_layer(middleware::from_fn_with_state(
+            Arc::clone(&state),
+            admit_scan,
+        ));
     Router::new()
         .route("/health", get(health))
         .route("/rules", get(rules))
         .route("/rules/{rule_id}", get(rule))
-        .route("/scan", post(scan))
-        .route("/scan_batch", post(scan_batch))
         .route("/signals", get(signals))
-        .route("/signal_batch", post(signal_batch))
         .route("/explain", post(explain_entity))
+        .merge(scan_routes)
         .layer(DefaultBodyLimit::max(max_body_bytes))
         .with_state(state)
+}
+
+async fn admit_scan(
+    State(state): State<Arc<AppState>>,
+    mut request: Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let Some(slot) = state.admission.admit().await else {
+        return overloaded();
+    };
+    request.extensions_mut().insert(Arc::new(slot));
+    next.run(request).await
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> (StatusCode, Json<HealthResponse>) {
@@ -305,6 +338,7 @@ async fn explain_entity(
 /// whether this process is alive) would be the first casualty.
 async fn scan(
     State(state): State<Arc<AppState>>,
+    Extension(slot): Extension<Arc<AdmissionGuard>>,
     request: Result<Json<ScanRequest>, JsonRejection>,
 ) -> Response {
     let request = match request {
@@ -314,12 +348,10 @@ async fn scan(
     if request.text.len() > state.max_body_bytes {
         return oversized(request.text.len(), state.max_body_bytes);
     }
-    let Some(_slot) = state.admission.admit().await else {
-        return overloaded();
-    };
     let scanner = Arc::clone(&state.scanner);
     let lexicon = Arc::clone(&state.lexicon);
     let (entities, signals) = match tokio::task::spawn_blocking(move || {
+        let _slot = slot;
         let entities = scanner.scan(&request.text, request.offset);
         let signals = request
             .signals
@@ -398,6 +430,7 @@ pub struct SignalBatchResult {
 /// without re-running the entity scan.
 async fn signal_batch(
     State(state): State<Arc<AppState>>,
+    Extension(slot): Extension<Arc<AdmissionGuard>>,
     request: Result<Json<SignalBatchRequest>, JsonRejection>,
 ) -> Response {
     let request = match request {
@@ -412,11 +445,9 @@ async fn signal_batch(
     {
         return oversized(oversize, state.max_body_bytes);
     }
-    let Some(_slot) = state.admission.admit().await else {
-        return overloaded();
-    };
     let lexicon = Arc::clone(&state.lexicon);
     let results = match tokio::task::spawn_blocking(move || {
+        let _slot = slot;
         request
             .texts
             .iter()
@@ -506,6 +537,7 @@ pub struct ScanBatchValue {
 /// Scans several fragments under one admission slot and answers with deduplicated values.
 async fn scan_batch(
     State(state): State<Arc<AppState>>,
+    Extension(slot): Extension<Arc<AdmissionGuard>>,
     request: Result<Json<ScanBatchRequest>, JsonRejection>,
 ) -> Response {
     let request = match request {
@@ -520,11 +552,9 @@ async fn scan_batch(
     {
         return oversized(oversize, state.max_body_bytes);
     }
-    let Some(_slot) = state.admission.admit().await else {
-        return overloaded();
-    };
     let scanner = Arc::clone(&state.scanner);
     let results = match tokio::task::spawn_blocking(move || {
+        let _slot = slot;
         request
             .texts
             .iter()
@@ -643,7 +673,28 @@ fn oversized(len: usize, limit: usize) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::catch_panicking_scan;
+    use super::{catch_panicking_scan, Admission};
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn cancelled_waiter_releases_occupancy() {
+        let admission = Arc::new(Admission::new(1, 1));
+        let active = admission.admit().await.expect("active slot");
+        let waiting = Arc::clone(&admission);
+        let task = tokio::spawn(async move { waiting.admit().await.is_some() });
+        for _ in 0..100 {
+            if admission.in_flight() == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(admission.in_flight(), 2);
+        task.abort();
+        let _ = task.await;
+        assert_eq!(admission.in_flight(), 1);
+        drop(active);
+        assert_eq!(admission.in_flight(), 0);
+    }
 
     /// The mechanism `scan_one` relies on, proven directly: a panic inside the scan comes back
     /// as `Err` rather than unwinding into the caller, and a scan that does not panic is

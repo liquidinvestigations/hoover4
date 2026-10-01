@@ -23,11 +23,11 @@ Which members of the Georgia General Assembly did the Israeli consulate in Atlan
 
 ## Expected tool calls
 
-1. It calls `write_todo`.
+1. If it uses a todo list, it calls `write_todo`.
 2. It calls `search_collections` with no `collectionname`, the query `"Georgia General Assembly"` and a date filter for 2019.
 3. It calls `folder_overview` on `consulate` to find the campaign folders, then `table_overview` and `table_search_cells` on the `contacts_export.csv` and `inbox.csv` of each 2019 campaign.
 4. It calls `cite_documents` for each row of the table.
-5. It calls `mark_todo`, then it answers.
+5. If it uses a todo list, it calls `mark_todo` before it answers.
 
 ## Expected result
 
@@ -35,4 +35,4 @@ A table with one row for each invited legislator: name, email address, campaign,
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, search over all collections, todo edits, as the campaign count becomes known, document cards shown to the user, a passage to jump to, a task completed.
+The story exercises these requirements and optional behavior: todo use when needed, search over all collections, todo updates when used, as the campaign count becomes known, document cards shown to the user, a passage to jump to, a task completed.

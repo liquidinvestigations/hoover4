@@ -5,6 +5,7 @@ from typing import Dict, Any, List
 from dataclasses import dataclass
 import json
 import os
+import re
 import logging
 from tasks.heartbeat import with_heartbeat
 from tasks.P3_parse_files.batch_runner import (
@@ -210,36 +211,21 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
                 "display_name": pa.array([r[2] for r in address_rows], type=pa.string()),
             }))
 
-    # Extract plaintext parts
-    texts: List[str] = []
-    if msg.is_multipart():
-        for part in msg.walk():
-            ctype = part.get_content_type()
-            if ctype == "text/plain":
-                try:
-                    texts.append(part.get_content())
-                except Exception:
-                    pass
-    else:
-        if msg.get_content_type() == "text/plain":
-            try:
-                texts.append(msg.get_content())
-            except Exception:
-                pass
+    from tasks.P3_parse_files.email_parts import body_alternatives
+    from tasks.P3_parse_files.parse_common import insert_text_pages, split_text_segments
+    from tasks.text_sources import EMAIL_HTML, EMAIL_PARSER, EMAIL_RTF, EMAIL_RICHTEXT
 
-    if texts:
-        from tasks.P3_parse_files.parse_common import insert_text_pages, split_text_segments
-        # One continuous 1-based page sequence over every text/plain part, inserted in a
-        # single call. The previous version called the inserter once per part and used a
-        # running total as the next start page, which reused a page number whenever a
-        # part produced no segments -- and would now also make each call trim the pages
-        # written by the one before it.
-        pages: list[tuple[int, str]] = []
-        for t in texts:
-            for seg in split_text_segments(t or ""):
-                pages.append((len(pages) + 1, seg))
+    alternatives = body_alternatives(msg)
+    canonical = next((alternatives[kind] for kind in ("plain", "html", "rtf", "richtext")
+                      if kind in alternatives), "")
+    for extracted_by, content in ((EMAIL_PARSER, canonical),
+                                  (EMAIL_HTML, alternatives.get("html", "")),
+                                  (EMAIL_RTF, alternatives.get("rtf", "")),
+                                  (EMAIL_RICHTEXT, alternatives.get("richtext", ""))):
+        pages = [(index, segment) for index, segment in
+                 enumerate(split_text_segments(content, min_chars=1), 1)]
         insert_text_pages(params.collectionname, params.collection_dataset,
-                          params.email_hash, "email_parser", pages)
+                          params.email_hash, extracted_by, pages, min_chars=1)
 
     return f"email {params.email_hash}"
 
@@ -279,32 +265,39 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
 
     msg = BytesParser(policy=policy.default).parsebytes(_message_bytes(params.file_path))
 
-    attachment_index = 0
+    from tasks.P3_parse_files.email_parts import mail_parts
+
     written = 0
-    for part in msg.walk():
-        # Skip containers
-        if part.is_multipart():
+    missing_attachments: list[dict[str, str]] = []
+    for item in mail_parts(msg):
+        if not item.attachment:
             continue
-        filename = part.get_filename()
-        content_disposition = (part.get("Content-Disposition") or "").lower()
-        is_attachment = "attachment" in content_disposition or filename
-        if not is_attachment:
+        part = item.message
+        if item.nested_message:
+            nested = part.get_payload()
+            if not isinstance(nested, list) or not nested:
+                raise ValueError(f"nested message at {item.path} has no message payload")
+            payload = nested[0].as_bytes(policy=policy.SMTP)
+            filename = item.filename or "message.eml"
+        else:
+            payload = part.get_payload(decode=True)
+            filename = item.filename or "attachment"
+        if payload is None or (not payload and part.get("X-Apple-Content-Length")):
+            if part.get("X-Apple-Content-Length"):
+                log.warning("[P3] detached Apple attachment missing at MIME part %s", item.path)
+                missing_attachments.append({"part_path": item.path,
+                                            "filename": filename,
+                                            "declared_length": str(part.get("X-Apple-Content-Length"))})
+            else:
+                log.warning("[P3] attachment has no payload at MIME part %s", item.path)
             continue
-        if not filename:
-            attachment_index += 1
-            filename = f"attachment_{attachment_index}"
-        # Sanitize filename minimally
-        safe_name = filename.replace("/", "_").replace("\\", "_")
-        payload = part.get_payload(decode=True)
-        if payload is None:
-            continue
+        # A file name has at most 255 bytes and no NUL or path separator.
+        safe_name = re.sub(r"[\x00-\x1f\x7f/\\]", "_", filename)
+        safe_name = safe_name.encode("utf-8")[:200].decode("utf-8", "ignore")
+        safe_name = f"part-{item.path}-{safe_name}"
         target_path = os.path.join(out_dir, safe_name)
-        try:
-            with open(target_path, "wb") as out_f:
-                out_f.write(payload)
-        except Exception:
-            # Best-effort: skip on error
-            continue
+        with open(target_path, "wb") as out_f:
+            out_f.write(payload)
         written += 1
 
     if written == 0:
@@ -314,7 +307,8 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
             _os.rmdir(out_dir)
         except OSError:
             pass
-    return {"out_dir": out_dir, "attachment_count": written}
+    return {"out_dir": out_dir, "attachment_count": written,
+            "missing_attachments": missing_attachments}
 
 
 @activity.defn

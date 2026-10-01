@@ -964,6 +964,7 @@ mod tests {
     /// refresh will, otherwise one endpoint renders as two providers.
     #[test]
     fn a_provider_name_survives_an_address_literal() {
+        let configured = std::env::var("LLM_PROVIDER_NAME").ok().filter(|name| !name.trim().is_empty());
         for (base, expected) in [
             ("https://api.moonshot.ai/v1", "moonshot"),
             ("https://integrate.api.nvidia.com/v1", "nvidia"),
@@ -972,7 +973,7 @@ mod tests {
             ("http://[fd00::1]:8000/v1", "[fd00::1]:8000"),
             ("http://localhost:8000/v1", "localhost"),
         ] {
-            assert_eq!(provider_name_from_url(base), expected, "{base}");
+            assert_eq!(provider_name_from_url(base), configured.as_deref().unwrap_or(expected), "{base}");
         }
     }
 

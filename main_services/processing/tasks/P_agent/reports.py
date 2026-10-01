@@ -69,7 +69,8 @@ MAX_REPORT_ENTRIES = 400
 MAX_ENTRY_TEXT = 2000
 
 #: The tools whose result reads the text of a document.
-READ_TOOLS = frozenset({"read_documents", "read_more", "read_page"})
+READ_TOOLS = frozenset({"read_documents", "read_more", "read_page", "table_page",
+                        "table_cell"})
 
 #: The report document kinds.
 REPORT_KIND = "report"
@@ -207,6 +208,30 @@ def _read_more(parsed: Any, args: dict, error: str) -> list[dict]:
     return []
 
 
+def _table_content(tool_name: str, parsed: Any, args: dict, error: str) -> list[dict]:
+    """A table row window or cell with content is a read of its source document."""
+    if error or not isinstance(parsed, dict) or not args.get("file_hash"):
+        return []
+    if tool_name == "table_page":
+        items = parsed.get("items")
+        if not isinstance(items, list) or not any(isinstance(item, dict) and item.get("cells")
+                                                     for item in items):
+            return []
+        range_ = {"sheet": args.get("sheet"), "row_start": parsed.get("row_start")}
+    else:
+        if not str(parsed.get("text") or ""):
+            return []
+        range_ = {"sheet": args.get("sheet"), "row": args.get("row"),
+                  "column": args.get("column"), "offset": parsed.get("offset")}
+    reference = {"collectionname": str(args.get("collectionname") or ""),
+                 "file_hash": str(args["file_hash"]), "path": ""}
+    location = (f"{range_.get('row_start')}" if tool_name == "table_page"
+                else f"{range_.get('row')}:{range_.get('column')}:{range_.get('offset')}")
+    return [_entry(KIND_READ, STATUS_OK, reference,
+                   f"table:{tool_name}:{_hash_start(args['file_hash'])}:{args.get('sheet')}:{location}",
+                   {key: value for key, value in range_.items() if value is not None})]
+
+
 #: The separator between the pages of one `read_page` result. Mirrors the join of
 #: `browser_use_server/read_page.py::render`.
 PAGE_SEPARATOR = "\n\n---\n\n"
@@ -227,6 +252,8 @@ _PAGE_FIND = re.compile(
     r"^\[find (\".*?\"): (?:(\d+) of (\d+) matches from offset (\d+) are shown"
     r"|no match from offset (\d+))\. The page has (\d+) matches in ([\d,]+) characters")
 _FIND_MATCH = re.compile(r"^\[match at (\d+), text from (\d+) to (\d+)\]$", re.MULTILINE)
+_PAGE_VERSION = re.compile(r"\b[Vv]ersion ([0-9a-f]{16})\b")
+_FIND_MORE = re.compile(r"\[more: \d+ matches from offset (\d+)\. Call read_page")
 
 
 def _page_blocks(parsed: Any) -> list[str]:
@@ -281,24 +308,36 @@ def _read_page(parsed: Any, args: dict, error: str) -> list[dict]:
             continue
         found = _PAGE_FIND.match(body)
         if found:
+            if not found.group(2):
+                continue
             # A search in the page shows the text around each match only.
             spans = [[int(m.group(2)), int(m.group(3))] for m in _FIND_MATCH.finditer(body)]
             try:
                 literal = json.loads(found.group(1))
             except ValueError:
                 literal = found.group(1)
-            out.append(_entry(KIND_READ, STATUS_PARTIAL, reference, key, {
+            range_ = {
                 "find": str(literal), "spans": spans,
                 "matches": int(found.group(6)),
-                "total_chars": int(found.group(7).replace(",", ""))}))
+                "total_chars": int(found.group(7).replace(",", ""))}
+            version = _PAGE_VERSION.search(body)
+            more = _FIND_MORE.search(body)
+            if version:
+                range_["version"] = version.group(1)
+            if more:
+                range_["next_offset"] = int(more.group(1))
+            out.append(_entry(KIND_READ, STATUS_PARTIAL, reference, key, range_))
             continue
         cut = _PAGE_CUT.search(body)
         if cut:
             read = int(cut.group(1).replace(",", ""))
             total = int(cut.group(2).replace(",", ""))
-            out.append(_entry(KIND_READ, STATUS_PARTIAL, reference, key,
-                              {"start_chars": offset, "end_chars": offset + read,
-                               "total_chars": total}))
+            range_ = {"start_chars": offset, "end_chars": offset + read,
+                      "total_chars": total}
+            version = _PAGE_VERSION.search(body)
+            if version:
+                range_["version"] = version.group(1)
+            out.append(_entry(KIND_READ, STATUS_PARTIAL, reference, key, range_))
         elif offset:
             out.append(_entry(KIND_READ, STATUS_PARTIAL, reference, key,
                               {"start_chars": offset}))
@@ -395,6 +434,8 @@ def normalize(tool_name: str, args: Any, content: str, status: str,
         entries = _read_more(parsed, args, error)
     elif tool_name == "read_page":
         entries = _read_page(parsed, args, error)
+    elif tool_name in ("table_page", "table_cell"):
+        entries = _table_content(tool_name, parsed, args, error)
     elif tool_name == "cite_documents":
         entries = _citations(parsed, args, doc_refs, error)
     elif tool_name == "write_note":

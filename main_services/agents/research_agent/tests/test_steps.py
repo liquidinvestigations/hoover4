@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 from dataclasses import asdict
+from types import SimpleNamespace
 from typing import Any, List
 
 import httpx
@@ -23,7 +24,7 @@ from mcp.types import EmbeddedResource, TextResourceContents
 from agent_common.result_pages import ByteLimit, PageInput, SAFE_MODE_BATCH_BYTES, build_page
 from agent_common.tool_packs import allowed_tools
 from research_agent import execution, steps, stumbles
-from research_agent.agent import AgentContext
+from research_agent.agent import AgentContext, MCPGatewayAgent
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.skill_tools import SKILL_TOOLS
 from research_agent.tool_catalogue import SEARCH_TOOL, build_snapshot
@@ -410,6 +411,12 @@ def test_the_stored_call_text_of_the_fixture_is_one_unreadable_call():
 def test_call_syntax_without_a_name_is_an_unnamed_call_and_plain_text_is_none():
     assert steps.leaked_call("<|tool_call>{x:<|\"|>1<|\"|>}")["name"] == steps.UNNAMED_CALL
     assert steps.leaked_call("Use call:read_documents{...} to read.") is None
+
+
+def test_missing_model_has_an_explicit_error(monkeypatch):
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    with pytest.raises(ValueError, match="No chat model is configured"):
+        MCPGatewayAgent._resolve_model(SimpleNamespace(llm_model=""))
 
 
 async def test_the_model_is_bound_with_one_type_for_each_parameter(model):

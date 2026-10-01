@@ -78,6 +78,20 @@ def _pairs_complete(messages):
     return asked == answered
 
 
+def test_summary_input_keeps_page_call_and_stored_step_after_other_results():
+    t = Thread()
+    t.human("Read the lease clause.")
+    t.step(ok("read_page", {"urls": ["https://example.org/lease"],
+                            "goal": "termination"},
+              "## Lease\nhttps://example.org/lease\n\nClause 14.2 Termination."))
+    t.step(ok("search_collections", {"queries": ["lease"]}, {"items": []}))
+    blocks = compaction.summary_blocks(t.rows, range(1, len(t.rows)))
+    assert "search_collections" in blocks[-2].head
+    assert "read_page" in blocks[-1].head
+    assert "at stored step 2" in blocks[-1].head
+    assert "Clause 14.2 Termination." in blocks[-1].text
+
+
 # --------------------------------------------------------------- the trigger
 
 
@@ -272,7 +286,7 @@ def test_a_quote_given_to_the_wrong_source_gets_the_source_of_the_text_that_hold
     assert '"A sentence that no result holds." [source: enron, a6a5a71a8b2e5512, /x]' in record
     assert report.row["sources_corrected"] == 1
     # The index gives the same URL as the corrected bracket.
-    assert f"- {PAGE_URL}. next offset 300" in record
+    assert f"- {PAGE_URL}. unread continuation at offset 300" in record
 
 
 def test_a_heading_after_a_rule_inside_a_page_is_not_a_source():

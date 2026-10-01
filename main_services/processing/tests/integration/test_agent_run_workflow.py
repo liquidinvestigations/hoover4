@@ -23,6 +23,8 @@ from types import SimpleNamespace
 
 import pytest
 from temporalio.client import Client, WorkflowExecutionStatus, WorkflowFailureError
+from temporalio.api.common.v1 import WorkflowExecution
+from temporalio.api.workflowservice.v1 import DeleteWorkflowExecutionRequest
 from temporalio.service import RPCError, RPCStatusCode
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
@@ -257,7 +259,7 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
 
 
 async def _end_workflows(client, case):
-    """Terminate every workflow of the case that still runs, before its rows go.
+    """Terminate and delete each test-owned workflow before its rows go.
 
     The ids are the top workflow ids a case starts and the `workflow_id` of each of the
     case's run rows, children and continuations included. A child is abandoned by its
@@ -271,9 +273,20 @@ async def _end_workflows(client, case):
     for workflow_id in sorted(ids):
         handle = client.get_workflow_handle(workflow_id)
         try:
-            if (await handle.describe()).status != WorkflowExecutionStatus.RUNNING:
-                continue
-            await handle.terminate(reason="the test case ended")
+            description = await handle.describe()
+            if description.status == WorkflowExecutionStatus.RUNNING:
+                await handle.terminate(reason="the test case ended")
+            run_ids = {description.run_id}
+            async for execution in client.list_workflows(
+                f'WorkflowId = "{workflow_id}"'):
+                if execution.id == workflow_id:
+                    run_ids.add(execution.run_id)
+            for run_id in sorted(run_ids):
+                await client.workflow_service.delete_workflow_execution(
+                    DeleteWorkflowExecutionRequest(
+                        namespace=client.namespace,
+                        workflow_execution=WorkflowExecution(
+                            workflow_id=workflow_id, run_id=run_id)))
         except RPCError as exc:
             if exc.status != RPCStatusCode.NOT_FOUND:
                 raise
@@ -883,7 +896,14 @@ def test_an_uncited_answer_that_names_a_document_gets_one_citation_round(monkeyp
         assert (row.state, row.nags_this_turn) == ("completed", 0)
         assert row.result == "The memo sets the budget [D1], cited."
 
-    asyncio.run(_run_case(monkeypatch, script, body))
+    def tool(request, n):
+        call = request["call"]
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "ok",
+                     "content": json.dumps({"citations": [{"file_hash": "a" * 16,
+                                                        "handle": "[D1]"}]}),
+                     "measure": {}, "error_class": ""}
+
+    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
 def _citation_tool(frames):
@@ -896,6 +916,43 @@ def _citation_tool(frames):
             frame = "data: " + json.dumps(data) + "\n\n"
         out.append(frame)
     return out
+
+
+def test_a_read_document_answer_without_a_file_name_gets_one_round(monkeypatch):
+    """The stored read shape can support an answer that names no path or hash."""
+    def script(request, n):
+        if n == 1:
+            return _citation_tool(_reply(request, calls=[_call("read_documents", {
+                "collectionname": "testdata", "file_hashes": ["a" * 64]})]))
+        if n == 2:
+            return _citation_tool(_reply(request, "The budget is 5."))
+        if n == 3:
+            return _citation_tool(_reply(request, calls=[_call("cite_documents", {
+                "citations": [{"collectionname": "testdata", "file_hash": "a" * 64,
+                               "quote": "The budget is 5."}]})]))
+        return _citation_tool(_reply(request, "The budget is 5 [D1]."))
+
+    def tool(request, n):
+        call = request["call"]
+        if call["name"] == "read_documents":
+            content = {"items": [{"collectionname": "testdata", "file_hash": "a" * 16,
+                                  "path": "/memo.txt", "page": 1,
+                                  "text": "The budget is 5.", "more": "next"}]}
+        else:
+            content = {"citations": [{"collectionname": "testdata",
+                                      "file_hash": "a" * 16, "handle": "[D1]"}]}
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "ok",
+                     "content": json.dumps(content), "measure": {}, "error_class": ""}
+
+    async def body(client, case, stub, queue, titled):
+        assert await (await _start(client, case, queue)).result() == "completed"
+        assert len(stub.requests) == 4
+        notes = [m for m in case.messages() if m.usage.get("repair_marker") == "citation"]
+        assert len(notes) == 1
+        assert case.run_row().result == "The budget is 5 [D1]."
+        assert any(m.tool_name == "cite_documents" for m in case.messages())
+
+    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
 def test_a_failed_citation_call_does_not_stop_the_label_check(monkeypatch):
@@ -925,7 +982,8 @@ def test_a_failed_citation_call_does_not_stop_the_label_check(monkeypatch):
         notes = [m for m in case.messages() if m.usage.get("repair_marker") == "citation"]
         assert len(notes) == 1
         assert notes[0].usage["citation_check"]["unresolved"] == ["[D1]"]
-        assert case.run_row().result == "The memo sets the budget."
+        assert case.run_row().result == ("The revised answer has no document citation.\n\n"
+                                             "The memo sets the budget.")
 
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 

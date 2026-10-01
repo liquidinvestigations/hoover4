@@ -12,7 +12,7 @@ Each story is a request that an investigative journalist could make of the chat,
 | [04-enron-ljm-raptor-timeline.md](04-enron-ljm-raptor-timeline.md) | deep research | on | `enron` | a plan with one node for each part, a timeline with cards |
 | [05-nili-priell-barak-fortress.md](05-nili-priell-barak-fortress.md) | chat | on | `tables` | data in a collection whose name does not suggest it |
 | [06-hebrew-and-latin-spellings.md](06-hebrew-and-latin-spellings.md) | chat | off | `tables` | variants in two scripts in one call |
-| [07-consulate-legislator-invitations.md](07-consulate-legislator-invitations.md) | chat | off | `consulate` | table tools over many exports, todo edits |
+| [07-consulate-legislator-invitations.md](07-consulate-legislator-invitations.md) | chat | off | `consulate` | table tools over many exports, optional todo use |
 | [08-textfiles-rommel-multilingual.md](08-textfiles-rommel-multilingual.md) | chat | off | `textfiles` | variants in three languages, a word inside another word |
 | [09-fontys-open-day-invitation.md](09-fontys-open-day-invitation.md) | chat | on | `testdata`, `other` | documents in preference to the web, a card the user opens |
 | [10-reporty-homeland-security.md](10-reporty-homeland-security.md) | deep research | on | `tables` | plan node ids, web context kept apart |

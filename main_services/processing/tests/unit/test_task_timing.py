@@ -516,6 +516,24 @@ def test_backlog_falls_back_to_the_count_hint():
     assert row[6] == 2
 
 
+def test_queue_describe_names_its_kind_and_activity_type(monkeypatch):
+    from temporalio.api.enums.v1 import TaskQueueKind, TaskQueueType
+
+    requests = []
+
+    async def describe(request):
+        requests.append(request)
+        return _FakeDescribe(pollers=["worker"])
+
+    monkeypatch.setattr(task_timing, "KNOWN_TASK_QUEUES", ("processing-common-queue",))
+    client = SimpleNamespace(namespace="default", workflow_service=SimpleNamespace(
+        describe_task_queue=describe))
+    rows = asyncio.run(task_timing._describe_all_queues(client))
+    assert len(rows) == len(requests) == 1
+    assert requests[0].task_queue.kind == TaskQueueKind.TASK_QUEUE_KIND_NORMAL
+    assert requests[0].task_queue_type == TaskQueueType.TASK_QUEUE_TYPE_ACTIVITY
+
+
 def test_idle_worker_writes_no_backlog_rows(recorder):
     recorder._sample_backlog()
     assert recorder.inserts == []

@@ -100,6 +100,10 @@ sidecar result of the last 16 searches for 10 minutes, filters it by `page_from`
 search keeps its 120 s sidecar timeout, and the agent route gives the sidecar the time that
 remains of its deadline.
 
+The document viewer offers every stored text source in its preview and full view.
+An email with no parsed body keeps its source selector, envelope, and attachment cards.
+A failed source request shows an error and a retry button.
+
 A table route reads a window of a sheet, and its `source` comes from the table manifest,
 the reader version and the latest manifest write time, so no read scans the cells for it.
 Three reads grow with the sheet and run under the 30 s deadline. `tables/search_cells` scans

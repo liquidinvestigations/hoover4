@@ -7,7 +7,7 @@ These tools prepare fixtures, drive browser workflows, and write verification ev
 | `capture_screenshots.py` | drives a plain browser over a page list and writes a PNG, a DOM text snapshot and console errors per page |
 | `capture_credentials.py` | reads `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD` from the process environment, and writes the image inventory default |
 | `capture_credentials.sh` | sourced by the capture wrappers after the login file path is set |
-| `chat_observer.py` | drives a chat conversation to completion and writes its screenshots, DOM snapshots and history checks; imports its browser helpers from `capture_screenshots.py` rather than copying them |
+| `chat_observer.py` | observes chat turns and saved plans, then writes screenshots, DOM snapshots and history checks |
 | `prepare_chat_fixtures.py` | writes the stored chat sessions that the chat screenshot cases open by name; `prepare_chat_fixtures.sh` runs it in the worker container |
 | `count_whoami.py` | how many identity requests one navigation costs |
 | `check_session_gate.py` | which of the session gate's three states a page settled in |
@@ -43,6 +43,11 @@ The file retains completed steps and the failing action when a later assertion f
 Failed manual phases also retain the current PDF registry, viewer generation, source, and resource timings before another phase navigates.
 Both browser entry points use `browser_lifecycle.py` for bounded startup and awaited process cleanup.
 Chromium writes process diagnostics to `chromium.log` in the run output.
+
+After a person approves a plan, `observe-chat.sh --follow-plan /ai_chat/c/ID/9g==/9g==`
+observes the current plan. `--follow-plan-seconds` sets its observation limit.
+The run records the executing, combining, and final plan states in interval snapshots.
+It waits for an organizer answer newer than the planner answer.
 
 Run the capture-driver tests in the browser container.
 

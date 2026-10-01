@@ -268,6 +268,21 @@ def plan_reference(row) -> str:
                       sort_keys=True)
 
 
+def planner_visible_answer(row, answer: str) -> str:
+    """Keep unfinished or raw plan data out of the planner's answer row."""
+    from database import agent_plans
+
+    plan_run = agent_plans.read_plan_run(row.username, row.session_id, row.plan_run_id)
+    snapshot = (agent_plans.read_snapshot(row.username, row.session_id, plan_run.plan_id)
+                if plan_run else None)
+    if snapshot is None or not agent_plans.sections(snapshot):
+        return "The plan has no section. Research cannot start from this plan."
+    stripped = (answer or "").strip()
+    if stripped.startswith(("{", "[{", "```json", "write_plan(")):
+        return "The plan is ready for review. Its sections appear below."
+    return answer
+
+
 # ------------------------------------------------------------------ section assignments
 
 

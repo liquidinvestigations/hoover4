@@ -39,28 +39,43 @@ activity id, attempt, task name and document hash. Recorder retries keep that id
 ~256 KB segment ordinal** for everything else. It is never 0.
 
 - `insert_text_pages(...)` is the paged path. Callers pass the real page numbers.
-  **Call it once per `(file, extracted_by)` with the complete page list**. It deletes
-  rows above the highest page it writes, which is what stops a shorter re-OCR from
-  leaving the previous run's tail behind, and which also means a second call for the
-  same variant would delete the first call's pages. Each stored row carries
+  **Call it once per `(file, extracted_by)` with the complete page list**. A successful
+  call replaces that source's page identities. It removes prior pages absent from the
+  result, including blank pages inside the retained range. Each stored row carries
   `text_bytes` (`len(body.encode("utf-8"))`) so size queries never scan `text`.
 - `insert_text_chunks(...)` is the unpaged path: it segments a blob at
-  `DEFAULT_TEXT_SEGMENT_BYTES` and numbers the segments from 1.
+  `DEFAULT_TEXT_SEGMENT_BYTES` and numbers the segments from 1. Successful empty text
+  clears prior segments.
 - `split_text_segments(...)` segments without inserting, for callers assembling one page
   sequence from several sources (`parse_email.py` and its MIME parts).
 
-**A page whose stripped text is under two characters is not stored**, so a variant can be
-absent rather than empty. Mail is where that shows: `parse_email.py` writes
-`email_headers` whenever the file parses, but writes no `email_parser` row at all when the
-message's whole `text/plain` part is a single `,` (which Enron's export produces by the
-dozen) or when the only body part is HTML. Every reader must treat the variant as
-optional; the document viewer carries an explicit "this email has no parsed body" flag for
-exactly this, and NER falls back to the `raw_text` envelope for these files rather than
-losing their entities (`tasks/text_sources.ner_reads_variant`).
+Most extractors omit text shorter than two characters. Email bodies retain one-character
+text. The email parser selects plain text, HTML, RTF, or legacy rich text as its body.
+It stores the selected body as `email_parser`. It stores converted alternatives as
+`email_html`, `email_rtf`, and `email_richtext`.
+Opaque CMS signed messages supply their encapsulated MIME body when OpenSSL can read it.
+The parser also reads clear-signed PGP bodies and removes their signature block.
+It does not verify signatures or decrypt encrypted messages.
+Signed decoding has a 16 MiB input limit, a 10-second process limit, and a four-layer limit.
+A successful empty extraction clears old pages for each key.
+An extraction failure leaves previously stored text in place. Every reader treats the
+body variant as optional. The viewer can still show the headers and other sources.
+Replacement inserts wait for ClickHouse visibility before obsolete pages are deleted.
+The deletion waits for completion. The first insertion stays asynchronous.
+Date resolution flushes pending parse inserts after all parse groups finish.
+P4 and P6 read text after this stage boundary.
+The ClickHouse flush acts on the server's whole async insert queue.
+If it fails, date resolution fails before it reads parser output.
 
 PDF text comes from a single `pdftotext` call split on the form feed it writes after
 every page, so per-page storage costs no extra subprocesses. The label is
 `extracted_by = 'pdftotext'` (it was `'qpdf'`, which named the wrong tool).
+
+Binary Word files with a `WordDocument` OLE stream get a `binary_word` text source.
+LibreOffice converts at most 32 MiB of input to DOCX in a separate process.
+The Office XML reader then reads at most 128 MiB of output and maps declared Symbol font codes.
+The conversion has a 45-second limit and stops with its worker.
+Extractous still runs and keeps its own source.
 
 qpdf exit status 3 returns usable output with warnings. Page-count parsing accepts it and
 logs the warning with the file hash. Metadata JSON parsing accepts it. A page-count error
@@ -92,6 +107,34 @@ object shape, because a document only gets the list shape when it is re-parsed.
 
 Parsing uses type-based routing derived from detector results. Archives, PDFs, emails, and videos can spawn child scans by writing extracted content to temp directories and invoking P0 workflows with container hashes. OCR runs on a dedicated queue (`processing-ocr-queue`) and Tika runs on `processing-tika-queue` to isolate heavy dependencies.
 
+## Mail containers
+
+PST, OST, MSG, mbox, and TNEF files use the archive extraction stage.
+The `mail-container-archive-route` workflow patch preserves old activity commands during history replay.
+The member scanner assigns VFS paths and blob identities to the extracted files.
+The original container also receives its normal Extractous text attempt.
+
+`mail_containers.py` reads PST and OST with pypff, MSG with extract-msg, and TNEF with tnefparse.
+It reads mbox separators with support for `Content-Length` and escaped `From` lines.
+When pypff cannot expose an embedded PST message, `readpst` exports that child message.
+The adapter writes mail items as EML and non-mail MAPI items as typed JSON.
+It includes stable folder identifiers and folder names in member paths.
+Generated MIME boundaries and child paths remain stable across retries.
+Binary attachments retain their bytes, names, MIME types, and content IDs when the reader provides them.
+The adapter marks RTF body parts as inline `text/rtf` with `X-Hoover-Body-Alternative: rtf`.
+
+The mail reader runs in a child process group.
+Cancellation and timeout stop that group and remove the partial directory.
+The stage scans readable members before it records a `MailPartialFailure` for damaged members.
+An unreadable container with no members records an Error.
+
+Apple `.emlx` parsing uses the declared byte count and excludes the trailing property list.
+Detached `.emlxpart` files remain separate source files.
+The current VFS member contract does not link a detached part to its `.emlx` placeholder.
+The email parser does not create a child for a detached Apple attachment with no inline bytes.
+Nested `message/rfc822` parts become child EML files. MIME part paths keep duplicate names
+distinct. Named text attachments and detached signatures do not enter the parent body.
+
 Magika is constructed once per worker process: building the detector is several times
 the cost of `identify_path`, and every file paid that construction when it lived inside
 the activity. Extractous still runs in a subprocess (a wedged native call cannot be
@@ -113,11 +156,11 @@ call, not to the name on the copy, and retrying it under a different name pays t
 same worst case for a result already certain. Giving up raises one error naming every
 candidate that was tried and what each one said.
 
-Every parser output here skips the ClickHouse async-insert wait
-(`insert_arrow_idempotent`): these writers are re-runnable and a lost buffer converges on
-the next pass, while the wait itself costs ~60 ms per insert against ~1 ms without. The
-scan tables P0 writes are the exception and stay durable. Nothing rescans a disk, so a
-lost `blobs` row is a file that is never planned. See
+New parser output skips the ClickHouse async-insert wait
+(`insert_arrow_idempotent`). Source replacement waits for the text insert and its
+scoped deletion. Date resolution flushes pending parse output before dependent reads.
+The scan tables P0 writes stay durable. Nothing rescans a disk, so a lost `blobs` row
+is a file that is never planned. See
 [`../../database/Readme.md`](../../database/Readme.md).
 
 ## Usage

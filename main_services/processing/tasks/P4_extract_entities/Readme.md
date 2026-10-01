@@ -44,13 +44,11 @@ A model labels whatever it is handed, so both of these are correctness questions
 the Entities facet rather than tuning.
 
 **Which variant.** `text_sources.ner_reads_variant` drops a stored variant that is a
-worse copy of another variant of the same document. Today that is exactly one case: a
-mail file has both `raw_text` (its MIME envelope, meaning the header block, boundaries and base64
-payloads) and `email_parser` (the body alone), and running the model over the envelope
-makes every header name an entity on every message in the corpus. The predicate is
-structural (a file HAS a parsed body or it does not), so mail whose only body part is
-HTML produces no `email_parser` rows and keeps its `raw_text` entities instead of
-silently losing all of them.
+worse copy of another variant of the same document. A mail file can have `raw_text`
+(its MIME envelope), `email_parser` (the selected body), and converted HTML or RTF
+alternatives. When the selected body exists, the model reads that source. It skips the
+envelope and body alternatives for entity work. The alternatives remain stored and
+selectable in the viewer. When no readable body exists, the model can read `raw_text`.
 
 Skipped segments still get an `nlp_processed` watermark, carrying the **configured**
 model (no service saw them to claim it). Without it the stage would re-read them every

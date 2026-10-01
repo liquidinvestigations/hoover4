@@ -205,6 +205,9 @@ def store(monkeypatch):
     monkeypatch.setattr(stream_writer, "context_window_for", lambda model: 0)
     monkeypatch.setattr(stream_writer, "_chat_model", lambda: "test-model")
     monkeypatch.setattr(agent_runs, "read_earlier_threads", lambda *a: [])
+    written["session_citations"] = []
+    monkeypatch.setattr(agent_runs, "read_session_tool_messages",
+                        lambda u, s, name: {RUN_ID: list(written["session_citations"])})
     monkeypatch.setattr(steps, "_finish_stream_rows_from", lambda *a: None)
     monkeypatch.setattr(steps, "thinking_setting", lambda: True)
     monkeypatch.setattr(activities, "_insert_chat_row",
@@ -430,6 +433,7 @@ def _citation_round(store, marked=False):
 
 def test_the_reply_of_the_citation_round_replaces_the_answer(store, monkeypatch):
     _citation_round(store)
+    store["session_citations"] = [_citation_result(3, "[D2]", "a" * 64)]
     _serve(monkeypatch, store, _frames(text="The memo sets the budget [D2]."))
     _step(step_no=2)
     assert [r["content"] for r in store["chat"] if r["role"] == "assistant"] == [
@@ -444,6 +448,44 @@ def test_a_citation_round_reply_with_no_text_keeps_the_answer(store, monkeypatch
     _step(step_no=2)
     assert [r for r in store["chat"] if r["role"] == "assistant"] == []
     assert "result" not in store["run"][-1]
+
+
+@pytest.mark.parametrize("reply", [
+    "The memo sets the budget [D9].",
+    'The memo [cite_documents(citations=[{"file_hash":"a"}])] sets the budget [D2].',
+])
+def test_an_invalid_citation_reply_keeps_the_prior_answer(store, monkeypatch, reply):
+    _citation_round(store, marked=True)
+    store["session_citations"] = [_citation_result(3, "[D2]", "a" * 64)]
+    _serve(monkeypatch, store, _frames(text=reply))
+    assert _step(step_no=2).outcome == "answered"
+    [answer] = [r["content"] for r in store["chat"] if r["role"] == "assistant"]
+    assert answer.startswith("The citation reply could not replace the earlier answer.")
+    assert answer.endswith("The memo sets the budget [D1].")
+    assert reply not in answer
+    assert store["run"][-1]["result"] == answer
+
+
+def test_a_no_label_correction_is_shown_with_its_status(store, monkeypatch):
+    _citation_round(store, marked=True)
+    _serve(monkeypatch, store, _frames(text="I cannot verify the budget from these records."))
+    assert _step(step_no=2).outcome == "answered"
+    [answer] = [r["content"] for r in store["chat"] if r["role"] == "assistant"]
+    assert answer == ("The revised answer has no document citation.\n\n"
+                      "I cannot verify the budget from these records.")
+    assert store["run"][-1]["result"] == answer
+
+
+def test_an_invalid_repair_without_a_prior_answer_has_a_bounded_result(store, monkeypatch):
+    _citation_round(store, marked=True)
+    store["row"] = _row(next_seq=8, model_steps=1, result="")
+    raw = 'call:cite_documents{"citations":<|"|>broken<|"|>}'
+    _serve(monkeypatch, store, _frames(text=raw))
+    assert _step(step_no=2).outcome == "answered"
+    assert store["run"][-1]["result"] == (
+        "The citation reply could not be used. It contains a tool call as text. "
+        "No earlier answer is available.")
+    assert raw not in store["run"][-1]["result"]
 
 
 def _citation_result(idx, handle, file_hash, status="ok", error=""):
@@ -578,6 +620,24 @@ def test_a_document_name_with_no_label_still_gets_the_round_after_a_citation_cal
     _answer_with_tool(citations_store, "The file memo-budget.txt sets the budget.")
     assert _check(citations_store).needed is True
     assert citations_store["messages"][-1].content == citations.CITATION_NOTE
+
+
+@pytest.mark.parametrize("kind", ["chat", "planner", "organizer", "subagent"])
+@pytest.mark.parametrize("reader", ["read_documents", "table_page", "table_cell"])
+def test_a_read_result_without_a_named_file_starts_one_citation_round(
+        citations_store, kind, reader):
+    citations_store["messages"].append(agent_runs.RunMessageRow(
+        idx=1, role="tool", tool_name=reader, tool_call_id="r",
+        content=json.dumps({"items": [{"file_hash": "a" * 16,
+                                        "collectionname": "c", "text": "The budget is 5."}]}),
+        usage_json=json.dumps({"status": "ok", "evidence": [
+            {"kind": "document_read", "status": "partial", "reference": {
+                "file_hash": "a" * 64, "collectionname": "c"}}]})))
+    _answer_with_tool(citations_store, "The budget is 5.", kind=kind)
+    assert _check(citations_store).needed is True
+    assert _check(citations_store).needed is True
+    assert len([m for m in citations_store["messages"]
+                if m.usage.get("repair_marker") == "citation"]) == 1
 
 
 def test_the_first_reply_of_a_turn_still_writes_the_answer_row(store, monkeypatch):
@@ -997,6 +1057,24 @@ def test_write_incomplete_writes_the_evidence_with_no_model_call(store, monkeypa
     assert "## Documents that the searches returned\n- c/" + "b" * 64 in text
     [row] = [r for r in store["chat"] if r["role"] == "assistant"]
     assert (row["seq"], row["content"], row["model"]) == (7, text, "selected-model")
+
+
+def test_an_incomplete_section_keeps_prose_and_the_call_refusal(store):
+    from tasks.P_agent import thread_facts
+
+    raw = ('The report has a dated timeline. '
+           '[cite_documents(citations=[{"collectionname:<|"|>enron<|"|>"}])]')
+    store["messages"].extend([
+        agent_runs.RunMessageRow(idx=1, role="ai", content=raw, run_id=RUN_ID),
+        agent_runs.RunMessageRow(
+            idx=2, role="tool", tool_name="unnamed_call", run_id=RUN_ID,
+            usage_json=json.dumps({"status": "error", "error_class": "invalid_arguments"})),
+        agent_runs.RunMessageRow(idx=3, role="ai", content="", run_id=RUN_ID),
+    ])
+    result = thread_facts.incomplete_text(store["messages"], "empty_response", 600)
+    assert "The report has a dated timeline." in result
+    assert thread_facts.CALL_REFUSAL in result
+    assert "cite_documents(" not in result and '<|"|>' not in result
 
 
 def test_write_incomplete_retried_after_its_write_writes_nothing(store):

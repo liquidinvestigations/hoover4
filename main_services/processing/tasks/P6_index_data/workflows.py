@@ -145,9 +145,11 @@ class IndexDatasetPlan:
         failed_starts = []
         failed_hashes = []
         failed_source_ids = []
-        # index_state entries: the union of the hashes each successful writer
-        # reports as written. A permanently failed writer chunk contributes nothing.
+        # index_state tracks the text shard. A vector result cannot confirm that
+        # the page transaction committed.
         indexed_entries: set[tuple[str, str]] = set()
+        # Old histories used the union. Keep their command sequence on replay.
+        text_only_ledger = workflow.patched("index-state-text-commits")
         for index, chunk in enumerate(chunks):
             writer_results = [(vectors_results[index], "P6_IndexVectors")]
             if not params.vectors_only:
@@ -163,7 +165,7 @@ class IndexDatasetPlan:
                             workflow.info().run_id,
                             "P6.text" if task_id == "P6_IndexTextPages" else "P6.vectors",
                             chunk.ordinal))
-                else:
+                elif task_id == "P6_IndexTextPages" or not text_only_ledger:
                     for item_hash in res:
                         indexed_entries.add((chunk.shard_name, item_hash))
         await record_errors_from_results(

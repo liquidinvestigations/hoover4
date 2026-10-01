@@ -128,8 +128,16 @@ def message_offset(data: bytes) -> int:
 
 
 def strip_email_envelope(data: bytes) -> bytes:
-    """`data` with the BOM and any Apple `.emlx` byte count removed."""
-    return data[message_offset(data):]
+    """Return only the RFC bytes declared by an Apple `.emlx` prefix."""
+    bom = bom_length(data)
+    prefix = emlx_prefix_length(data[bom:])
+    if not prefix:
+        return data[bom:]
+    count = int(data[bom:bom + prefix].strip())
+    start = bom + prefix
+    if count > len(data) - start:
+        raise ValueError("EMLX message ends before its declared byte count")
+    return data[start:start + count]
 
 
 def _header_block(text: str) -> tuple[set[str], bool]:

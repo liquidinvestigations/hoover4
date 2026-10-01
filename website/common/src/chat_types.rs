@@ -651,8 +651,10 @@ pub const TITLE_CHARS: usize = 60;
 /// for the richer web_search payload, the search-detail artifact absorbs anything bigger.
 pub const TOOL_PAYLOAD_CHARS: usize = 24_000;
 
-/// True when `text` is a broker result page: a `result_page` object whose canonical
-/// re-serialization (sorted keys, compact separators) reproduces `text` byte for byte.
+/// True when `text` is a broker result page whose canonical re-serialization (sorted
+/// keys, compact separators) reproduces `text` byte for byte. A page is an object with a
+/// list under `items`, the `budget_exhausted` error, or an object with
+/// `"kind": "result_page"`, which a page stored before the slim format has.
 ///
 /// Mirrors `agent_common.result_pages.is_canonical_page` and
 /// `tasks.P_agent.trajectory.is_canonical_page` on the Python side. `serde_json::Value`'s
@@ -670,7 +672,10 @@ pub fn is_canonical_page(text: &str) -> bool {
     let Some(obj) = value.as_object() else {
         return false;
     };
-    if obj.get("kind").and_then(|v| v.as_str()) != Some("result_page") {
+    let is_page = obj.get("items").is_some_and(|items| items.is_array())
+        || obj.get("error").and_then(|v| v.as_str()) == Some("budget_exhausted")
+        || obj.get("kind").and_then(|v| v.as_str()) == Some("result_page");
+    if !is_page {
         return false;
     }
     matches!(serde_json::to_string(&value), Ok(rendered) if rendered == text)
@@ -1053,11 +1058,16 @@ fn extract_from_document_list(content: &serde_json::Value) -> Vec<ChatDocRef> {
     collapse_by_document(documents.iter().filter_map(doc_ref_from_value).collect())
 }
 
-/// The units of a broker result page, `{"kind": "result_page", "items": [...]}`, or `None`
-/// for content that is not a result page.
+/// The units of a broker result page, or `None` for content that is not a result page.
+///
+/// A current page holds its units under `items` and has no `kind`. A page stored before
+/// the slim format also has `"kind": "result_page"`. Content with another `kind` is not
+/// a page.
 pub fn result_page_items(content: &serde_json::Value) -> Option<&Vec<serde_json::Value>> {
-    if content.get("kind").and_then(|kind| kind.as_str()) != Some("result_page") {
-        return None;
+    match content.get("kind") {
+        None => {}
+        Some(kind) if kind.as_str() == Some("result_page") => {}
+        Some(_) => return None,
     }
     content.get("items").and_then(|items| items.as_array())
 }
@@ -1304,6 +1314,16 @@ mod tests {
             quote_reason: String::new(),
             find_query: String::new(),
         }
+    }
+
+    #[test]
+    fn a_slim_page_without_kind_has_items() {
+        let slim = serde_json::json!({"items": [{"file_hash": "abc"}], "note": "n", "success": true});
+        assert_eq!(result_page_items(&slim).map(|items| items.len()), Some(1));
+        let other = serde_json::json!({"kind": "something_else", "items": [{"file_hash": "abc"}]});
+        assert!(result_page_items(&other).is_none());
+        assert!(is_canonical_page(&serde_json::to_string(&slim).unwrap()));
+        assert!(!is_canonical_page(r#"{"error":"not_found","success":false}"#));
     }
 
     #[test]

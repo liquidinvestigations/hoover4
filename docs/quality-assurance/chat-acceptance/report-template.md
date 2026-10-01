@@ -19,12 +19,12 @@ Copy this file once for each run. Fill every field. Write "not seen" when a fiel
 
 ## Verdicts
 
-Give each category PASS, FAIL or PARTIAL. Give the message sequence number (`seq`) of the evidence for each.
+Give each required category PASS, FAIL or PARTIAL. Give each optional todo category N/A when no todo list exists. Give the message sequence number (`seq`) of the evidence for each verdict.
 
 | category | verdict | seq | what the reviewer saw |
 |---|---|---|---|
-| First todo write. The first `write_todo` is accepted, with plain ids. | | | |
-| Todo upkeep. Items move to `in_progress` and `done` as the work happens, and the list is not marked done after the answer. | | | |
+| Optional first todo write. If the agent creates a list, its first `write_todo` is accepted with plain ids. | | | |
+| Optional todo upkeep. If a list exists, its items change state as the work happens. | | | |
 | Search scope. The first search covers every collection in scope, in one call, with no collection named unless the user narrowed the scope. | | | |
 | Query variants. One call carries the variants the story needs: quotes and no quotes, spellings, scripts, the address and the name. | | | |
 | Query syntax. No `OR`, `AND` or other Elasticsearch syntax. `|` for either word. | | | |

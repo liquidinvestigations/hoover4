@@ -17,5 +17,6 @@ Changing a research plan tree
 6. The text of a node is one line of at most 120 characters. A plan holds at most 4 sections and 150 nodes. The root text does not change.
 
 A refused call with `stale_version` returns the current tree and writes nothing. Read that tree, and send the whole tree again with its version.
+For `invalid_plan_change` with an unknown node, use only the allowed paths in the result. Omit `node_id` for each new section and task.
 
 The person approves the plan on the page. After the approval, the plan runs, and the tools cannot change it. A refused call that names an executing plan means that the plan runs already. Do not send that call again.

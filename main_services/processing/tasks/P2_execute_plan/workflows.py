@@ -676,7 +676,8 @@ class ProcessItemsBatched:
         )
         detector_results = [detector_results_for_file(d, t) for d, t in zip(detect, tika)]
         combined = [combine_detector_results(results) for results in detector_results]
-        routes = [route_stages(types) for types in combined]
+        expand_mail_containers = workflow.patched("mail-container-archive-route")
+        routes = [route_stages(types, expand_mail_containers) for types in combined]
 
         def with_route(route: str) -> List[int]:
             return [index for index, file_routes in enumerate(routes) if route in file_routes]
@@ -785,6 +786,27 @@ class ProcessItemsBatched:
             for (i, folder), result in zip(folders, scan):
                 if result.status == "failed":
                     entries[i][folder.error_task_name] = result
+            for i in with_route("email"):
+                result = entries[i].get("email_scan")
+                value = result.value if result and isinstance(result.value, dict) else {}
+                missing = value.get("missing_attachments") or []
+                if missing and result.status != "failed":
+                    details = [f"part {part['part_path']}: {part['filename']} "
+                               f"({part['declared_length']} declared bytes)"
+                               for part in missing]
+                    entries[i]["email_scan"] = dataclasses.replace(
+                        result, status="failed", error_type="MailPartialFailure",
+                        error_message="Detached attachment missing: " + "; ".join(details)[:3900],
+                    )
+            for i in with_route("archive"):
+                result = entries[i].get("archive_scan")
+                value = result.value if result and isinstance(result.value, dict) else {}
+                errors = value.get("partial_errors") or []
+                if errors and result.status != "failed":
+                    entries[i]["archive_scan"] = dataclasses.replace(
+                        result, status="failed", error_type="MailPartialFailure",
+                        error_message="; ".join(str(error) for error in errors)[:4000],
+                    )
 
         # Stage 2: every chain at once.
         stage_two = [

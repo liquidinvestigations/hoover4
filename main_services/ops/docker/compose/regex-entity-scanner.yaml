@@ -31,12 +31,9 @@ services:
     networks:
       - hoover4
     restart: unless-stopped
-    # The process holds its compiled rule set and the vendored tables and nothing else:
-    # measured at 188 MB under full load, with no per-request growth, because a scan
-    # allocates only for the fragment it was given. 1 GB is room for a burst of large
-    # fragments, not a working set.
-    memswap_limit: 1000M
-    mem_limit: 1000M
+    # Admission bounds request bodies before they are retained or parsed.
+    memswap_limit: ${REGEX_SCANNER_MEM_LIMIT:-1000M}
+    mem_limit: ${REGEX_SCANNER_MEM_LIMIT:-1000M}
     environment:
       - RES_BIND=0.0.0.0:19705
       # Async workers parse JSON and move bytes; the scanning is on the blocking pool.

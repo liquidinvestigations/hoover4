@@ -15,10 +15,10 @@ search to named sources.{% if has('list_search_sources') %} {{ tool('list_search
 lists those sources.{% endif +%}
 {% endif %}
 {% if has('read_page') %}
-3. Read the best results in full with {{ tool('read_page') }}. Give all the addresses in one call, and give goal to say what you look for. A result marked BLOCKED BY A BOT CHECK is not the page. Do not use its text.
+1. Read the best results in full with {{ tool('read_page') }}. Give all the addresses in one call, and give goal to say what you look for. A result marked BLOCKED BY A BOT CHECK is not the page. Do not use its text.
 {% endif %}
 {% if has('whois_lookup') %}
-4. For the owner, the registrar or the dates of a domain, call {{ tool('whois_lookup') }} with every domain in one call.
+{% if has('read_page') %}2.{% else %}1.{% endif %} For the owner, the registrar or the dates of a domain, call {{ tool('whois_lookup') }} with every domain in one call.
 {% endif %}
 
 In your answer, give the address of each web page that a fact comes from. Say which facts came from the web and which came from the documents. A search result snippet is not a source. Read the page before you rely on it.

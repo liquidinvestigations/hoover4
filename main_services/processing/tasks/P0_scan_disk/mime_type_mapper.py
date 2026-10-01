@@ -120,7 +120,7 @@ def coarse_file_type(mime_type: str) -> str:
     # and a PST only in its human-readable output.
     if mime_type in (
         "message/rfc822", "application/vnd.ms-outlook", "application/vnd.ms-exchange", "application/mbox",
-        "message/x-emlx", "application/x-hoover-pst",
+        "message/x-emlx", "application/x-hoover-pst", "application/ms-tnef",
     ):
         return "email"
 

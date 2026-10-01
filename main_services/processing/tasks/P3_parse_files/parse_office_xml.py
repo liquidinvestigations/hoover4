@@ -49,6 +49,7 @@ from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.P3_parse_files.batch_runner import (
     BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
 )
+from tasks.P3_parse_files.symbol_encoding import SYMBOL_TO_UNICODE
 
 log = logging.getLogger(__name__)
 
@@ -106,6 +107,48 @@ _OOXML_RULES = _Rules(
     tab_tags=frozenset({"tab", "tc"}),
 )
 
+def _word_symbol(el: ET.Element) -> str:
+    attrs = {_local(key): value for key, value in el.attrib.items()}
+    if attrs.get("font", "").lower() != "symbol":
+        return "\ufffd"
+    try:
+        code = int(attrs.get("char", ""), 16)
+    except ValueError:
+        return "\ufffd"
+    if code >> 8 not in {0, 0xf0}:
+        return "\ufffd"
+    return SYMBOL_TO_UNICODE.get(code & 0xff, "\ufffd")
+
+
+_SUPERSCRIPT = str.maketrans({
+    "0": "\u2070", "1": "\u00b9", "2": "\u00b2", "3": "\u00b3", "4": "\u2074",
+    "5": "\u2075", "6": "\u2076", "7": "\u2077", "8": "\u2078", "9": "\u2079",
+    "+": "\u207a", "-": "\u207b", "\u2212": "\u207b", "=": "\u207c",
+    "(": "\u207d", ")": "\u207e", "n": "\u207f", "i": "\u2071",
+})
+
+
+def _word_run_script(el: ET.Element) -> str:
+    if el.tag != "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}r":
+        return ""
+    for prop in el:
+        if _local(prop.tag) != "rPr":
+            continue
+        for setting in prop:
+            if _local(setting.tag) == "vertAlign":
+                value = next((v for k, v in setting.attrib.items() if _local(k) == "val"), "")
+                return value if value in {"superscript", "subscript"} else ""
+    return ""
+
+
+def _word_script_text(text: str, script: str) -> str:
+    if script != "superscript" or not text or text.isspace():
+        return text
+    rendered = text.translate(_SUPERSCRIPT)
+    if all(char != original for char, original in zip(rendered, text)):
+        return rendered
+    return f"^({text})"
+
 _ODF_RULES = _Rules(
     mixed_content=True,
     block_tags=frozenset({"p", "h", "table-row", "list-item"}),
@@ -137,9 +180,9 @@ def _xml_to_text(data: bytes, rules: _Rules) -> str:
     out: List[str] = []
     # (element, closing?) -- an element is pushed twice so the close separator and the
     # tail land after everything nested inside it.
-    stack = [(root, False)]
+    stack = [(root, False, "")]
     while stack:
-        el, closing = stack.pop()
+        el, closing, script = stack.pop()
         tag = _local(el.tag)
         if closing:
             if tag in rules.block_tags:
@@ -153,17 +196,21 @@ def _xml_to_text(data: bytes, rules: _Rules) -> str:
             if rules.mixed_content and el.tail:
                 out.append(el.tail)
             continue
+        if rules is _OOXML_RULES and tag == "r":
+            script = _word_run_script(el)
         if tag in rules.break_tags:
             out.append("\n")
+        elif tag == "sym" and rules is _OOXML_RULES:
+            out.append(_word_script_text(_word_symbol(el), script))
         elif tag in rules.tab_tags:
             out.append("\t")
         elif tag in rules.space_tags:
             out.append(" ")
         if el.text and (rules.mixed_content or tag in rules.text_tags):
-            out.append(el.text)
-        stack.append((el, True))
+            out.append(_word_script_text(el.text, script) if rules is _OOXML_RULES else el.text)
+        stack.append((el, True, script))
         for child in reversed(el):
-            stack.append((child, False))
+            stack.append((child, False, script))
     return "".join(out)
 
 

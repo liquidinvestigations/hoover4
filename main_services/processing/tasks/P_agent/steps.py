@@ -545,6 +545,9 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
     plan_prose, round_reasoning, _ = round_view(earlier)
     answer = "\n\n".join(p for p in (plan_prose, (ai.content or "").strip()) if p)
     reasoning = "\n\n".join(p for p in (round_reasoning, (ai.reasoning or "").strip()) if p)
+    from tasks.P_agent import citations, reports
+
+    repair_round = any(citations.is_citation_note(m) for m in earlier)
     if keeps_answer(row, ai.content or "", earlier):
         transcript = agent_runs.writes_transcript(row)
         if transcript:
@@ -569,6 +572,23 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
                  row.run_id, params.step_no, " again" if again else "")
         return ModelStepResult(outcome="empty_again" if again else "empty", next_seq=first,
                                next_idx=reply_end_idx(ai))
+    if repair_round:
+        entries = reports.session_citation_entries(row.username, row.session_id)
+        problem = citations.repair_reply_problem(ai.content or "", entries)
+        if problem:
+            detail = {
+                "raw_call": "It contains a tool call as text.",
+                "unresolved_label": "It uses a label that no document gives.",
+                "conflicting_label": "It uses a label for more than one document.",
+            }[problem]
+            answer = ("The citation reply could not replace the earlier answer. "
+                      + detail + "\n\n" + row.result
+                      if (row.result or "").strip() else
+                      "The citation reply could not be used. " + detail
+                      + " No earlier answer is available.")
+        elif not reports.answer_labels(ai.content or ""):
+            answer = ("The revised answer has no document citation.\n\n"
+                      + answer)
     start = 0
     for i, m in enumerate(earlier):
         if m.role == "human":
@@ -585,6 +605,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
         if row.kind == "organizer":
             answer = plan_runs.final_answer(row, answer)
         elif row.kind == "planner":
+            answer = plan_runs.planner_visible_answer(row, answer)
             plan_reference = plan_runs.plan_reference(row)
     transcript = agent_runs.writes_transcript(row)
     written = row.model_steps >= params.step_no
@@ -1142,6 +1163,7 @@ def write_incomplete(params: IncompleteParams) -> int:
         if row.kind == "organizer":
             text = plan_runs.final_answer(row, text)
         elif row.kind == "planner":
+            text = plan_runs.planner_visible_answer(row, text)
             plan_reference = plan_runs.plan_reference(row)
     seq = row.next_seq
     if agent_runs.writes_transcript(row):

@@ -8,6 +8,9 @@ The vector writer refuses a batch above its memory budget. The text writer remai
 
 An operation-owned writer records document outcomes only for hashes it returns as committed.
 Text and vector writers keep separate outcomes for each shard chunk.
+The shard planner flushes ClickHouse's server-wide async insert queue once per plan.
+It runs after P4 and P5 finish and before either index writer reads their rows.
+A failed flush stops shard assignment.
 
 ## Key Responsibilities
 
@@ -40,9 +43,14 @@ A shard is ONE Manticore table, `<shard>_pages`, and the document's metadata is 
 
 Rows are inserted grouped by `(collection_dataset, file_hash, page_id)`. The columnar engine picks a storage scheme per block, so a block whose rows all belong to one document stores one repeated value per metadata column; that ordering is the difference between paying ~15% for the duplication and paying several times over.
 
-Every writer here sends its rows with `database.manticore.manticore_execute`, never through a MySQL cursor: the driver's cursor mangles a statement whose data contains the word `delimiter` followed by whitespace and a quote, which is ordinary MediaWiki text. See [`../../database/Readme.md`](../../database/Readme.md). One page like that fails the whole activity, and the workflow then records an error for every document in the batch, so a single file can present as dozens of unindexable ones.
+Every writer here binds corpus text with `database.manticore.bind_manticore_sql` or sends it with `manticore_execute`. The page writer sends already bound bytes with `cmd_query`. A MySQL cursor can change corpus text that contains `delimiter` followed by a quote. See [`../../database/Readme.md`](../../database/Readme.md).
 
-The page writer reads and writes one text batch at a time. It keeps no cleaned page text from a prior batch. It places the filename row before the first page of each document and writes filename-only documents last. Each write uses chunks of at most `INDEX_ROW_CHUNK_SIZE = 512` rows. Entity MVAs (`ner_per/org/loc/misc`) come from `entity_hit` per segment. If a segment has no `nlp_processed` watermark, the stage logs a WARNING and indexes it with empty entity MVAs. A missing entity list does not block search. Deterministic hashes give string term IDs for reuse.
+The page writer reads and writes one text batch at a time. It keeps no cleaned page text from a prior batch. It places the filename row before the first page of each document and writes filename-only documents last. It binds each row, then sends at most 128 rows or 4 MiB per transaction. A larger row uses its own transaction up to the 127 MiB encoded-row limit. It fails explicitly above that limit and does not shorten text. Each transaction has one `BEGIN`, one multirow `REPLACE`, and one `COMMIT`. A failed statement gets `ROLLBACK` where possible. Retries use the same row IDs. `index_state` records a hash only after its text writer returns after every commit. Entity MVAs (`ner_per/org/loc/misc`) come from `entity_hit` per segment. If a segment has no `nlp_processed` watermark, the stage logs a WARNING and indexes it with empty entity MVAs. A missing entity list does not block search. Deterministic hashes give string term IDs for reuse.
+
+After all replacements commit, the writer scans indexed IDs for its assigned files.
+It removes IDs absent from current text and filename rows. The scan uses bounded pages.
+A cleanup failure fails the writer, so `index_state` does not mark the file complete.
+Rows for other files and sources remain in place.
 
 ## The regex entity columns
 

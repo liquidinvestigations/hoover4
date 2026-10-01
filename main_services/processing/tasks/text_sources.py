@@ -10,7 +10,7 @@ deliberate, like `collectionname` validation: neither runtime may depend on the 
 being right, and `tests/unit/test_text_sources.py` plus a cargo test keep the two
 conventions from drifting.
 
-    native:       pdftotext | extractous | office_xml | email_parser | raw_text | qpdf
+    native:       binary_word | pdftotext | extractous | office_xml | email_parser | email_html | email_rtf | email_richtext | raw_text | qpdf
     OCR variants: ocr_<engine>_<languages>   e.g. ocr_tesseract_eng+ron, ocr_easyocr_en
 
 Language codes are joined with `+`, which is Tesseract's own convention, for both
@@ -69,8 +69,15 @@ def fetch_text_batch(client, collection_dataset: str,
 #: that is the MIME envelope: header block, boundaries, base64 attachment payloads.
 RAW_TEXT = "raw_text"
 
-#: The `text/plain` parts of a mail file, decoded. Same document, none of the envelope.
+#: The text of a binary Word file after bounded DOCX conversion.
+BINARY_WORD = "binary_word"
+
+#: The selected readable email body, without the MIME envelope.
 EMAIL_PARSER = "email_parser"
+#: Readable conversions of the HTML and RTF body alternatives.
+EMAIL_HTML = "email_html"
+EMAIL_RTF = "email_rtf"
+EMAIL_RICHTEXT = "email_richtext"
 
 #: Engine identifiers. These appear inside `extracted_by`, so changing one invalidates
 #: every stored row that used it.
@@ -96,18 +103,11 @@ def ner_reads_variant(extracted_by: str, variants_present: Collection[str]) -> b
     Every variant is stored, indexed and offered in the viewer's source selector; this
     decides only which of them the NLP stage reads.
 
-    A mail file that parsed produces both `raw_text` (the MIME envelope: header names,
-    boundaries, base64 payloads) and `email_parser` (the body alone). They are the same
-    document, so NER over both doubles the work and the entities of the second copy are
-    the envelope -- `Content-Transfer-Encoding`, `Message-ID`, every `X-` header the
-    mailer wrote -- which then outnumber every real entity in the facet.
-
-    The predicate is structural rather than a file-type check: a file HAS a parsed body,
-    or it does not. Mail whose only body part is HTML produces no `email_parser` rows, and
-    that file keeps its `raw_text` entities rather than silently losing all of them --
-    which is also why the stop-list exists, since those envelopes still reach the model.
+    When the selected email body exists, NER reads that source. It skips the MIME
+    envelope and converted body alternatives. All sources remain stored and indexed.
+    A message without readable body text can still use its raw source for NER.
     """
-    if extracted_by == RAW_TEXT and EMAIL_PARSER in variants_present:
+    if extracted_by in {RAW_TEXT, EMAIL_HTML, EMAIL_RTF, EMAIL_RICHTEXT} and EMAIL_PARSER in variants_present:
         return False
     return True
 

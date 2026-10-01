@@ -389,6 +389,21 @@ fn has_positive_term(query: &str) -> bool {
     false
 }
 
+/// Keep an address inside one search term. Manticore otherwise reads the domain after
+/// `@` as a field name. A field prefix at the start of a term keeps its query meaning.
+fn escape_address_at(query: &str) -> String {
+    let mut out = String::with_capacity(query.len());
+    let mut previous_word = false;
+    for c in query.chars() {
+        if c == '@' && previous_word {
+            out.push('\\');
+        }
+        out.push(c);
+        previous_word = c.is_alphanumeric() || c == '_';
+    }
+    out
+}
+
 /// Split one whitespace-delimited token into runs of non-quote text and bare `"`
 /// markers, so [`has_positive_term`] can track phrase boundaries mid-token.
 fn split_keeping_quotes(token: &str) -> Vec<&str> {
@@ -435,6 +450,7 @@ pub fn prepare_match_query(query: &str) -> Result<PreparedMatch, MatchQueryError
     }
 
     let (cleaned, mut repairs) = rewrite_boolean_words(query);
+    let cleaned = escape_address_at(&cleaned);
     let (cleaned, quote_repairs) = balance_quotes(&cleaned);
     repairs.extend(quote_repairs);
     let (cleaned, paren_repairs) = balance_parens(&cleaned);
@@ -616,6 +632,14 @@ mod tests {
         assert_eq!(p.expr, "a | b");
         assert_eq!(p.repairs[0], OR_LINE);
         assert_eq!(p.repairs.len(), 2);
+    }
+
+    #[test]
+    fn an_address_is_not_read_as_a_field_name() {
+        let prepared = prepare_match_query("JoeBWilkinson@cs.com").unwrap();
+        assert_eq!(prepared.expr, r"JoeBWilkinson\\@cs.com");
+        assert_eq!(prepare_match_query("@page_text contract").unwrap().expr,
+                   "@page_text contract");
     }
 
     /// The characters measured against a live Manticore as breaking the extended

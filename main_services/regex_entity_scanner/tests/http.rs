@@ -5,6 +5,8 @@
 
 mod support;
 
+use std::io::Write;
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
@@ -24,11 +26,15 @@ fn lexicon() -> Arc<Lexicon> {
 
 /// Serves the router on an ephemeral port and answers with its base URL.
 async fn serve(max_body_bytes: usize) -> String {
+    serve_with_admission(max_body_bytes, 2, 4).await
+}
+
+async fn serve_with_admission(max_body_bytes: usize, threads: usize, queue: usize) -> String {
     let state = Arc::new(AppState {
         scanner: support::scanner(),
         lexicon: lexicon(),
         max_body_bytes,
-        admission: Admission::new(2, 4),
+        admission: Admission::new(threads, queue),
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -38,6 +44,56 @@ async fn serve(max_body_bytes: usize) -> String {
         axum::serve(listener, service::router(state)).await.ok();
     });
     format!("http://{address}")
+}
+
+async fn wait_occupied(base: &str, client: &reqwest::Client, count: u64) {
+    for _ in 0..400 {
+        let health: serde_json::Value = client
+            .get(format!("{base}/health"))
+            .send()
+            .await
+            .expect("health request")
+            .json()
+            .await
+            .expect("health json");
+        if health["in_flight"] == count {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("scanner did not report {count} requests");
+}
+
+#[tokio::test]
+async fn admission_precedes_body_parse_and_cancellation_releases_queue() {
+    let base = serve_with_admission(2_048, 1, 1).await;
+    let address = base.strip_prefix("http://").unwrap();
+    let client = reqwest::Client::new();
+    let partial = |address: &str| {
+        let mut stream = TcpStream::connect(address).expect("connect scan request");
+        stream.write_all(b"POST /scan HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 20\r\n\r\n{")
+            .expect("send partial body");
+        stream
+    };
+    let first = partial(address);
+    wait_occupied(&base, &client, 1).await;
+    let second = partial(address);
+    wait_occupied(&base, &client, 2).await;
+    let refused = client
+        .post(format!("{base}/scan"))
+        .header("content-type", "application/json")
+        .body("{")
+        .send()
+        .await
+        .expect("refused request");
+    assert_eq!(refused.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(refused.headers()["retry-after"], "2");
+    // A disconnected queued client can remain unobserved until the wait ends.
+    // The timeout releases its slot even when the body has not been read.
+    drop(second);
+    wait_occupied(&base, &client, 1).await;
+    drop(first);
+    wait_occupied(&base, &client, 0).await;
 }
 
 #[tokio::test]

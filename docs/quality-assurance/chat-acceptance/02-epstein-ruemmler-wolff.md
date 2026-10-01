@@ -24,12 +24,12 @@ What did Kathy Ruemmler and Jeffrey Epstein write to each other about Michael Wo
 
 ## Expected tool calls
 
-1. It calls `write_todo` with a goal and three or four items.
+1. If it uses a todo list, it calls `write_todo` with a goal and three or four items.
 2. One `search_passages` call with no `collectionname`, for example `{"queries": ["Ruemmler Wolff book", "\"Kathy Ruemmler\" publisher", "Ruemmler \"Michael Wolff\"", "jeevacation Ruemmler"]}`.
 3. It calls `search_collections` with a phrase and a date sort, for example `{"query": "\"Kathy Ruemmler\" Wolff", "sort": {"field": "date", "direction": "asc"}}`, when the answer needs dates in order.
 4. It calls `read_documents` on the hits with the best quotes.
 5. It calls `cite_documents` with each quoted document.
-6. It calls `mark_todo` as the items land, then it answers.
+6. If it uses a todo list, it calls `mark_todo` as the items land before it answers.
 
 ## Expected result
 
@@ -37,4 +37,4 @@ A list of messages in date order. Each item gives the date, the sender, the rece
 
 ## Requirements exercised
 
-The story exercises these requirements: first todo write, search over all collections, query variants, more than one in one call, document cards shown to the user, a passage to jump to, a task completed.
+The story exercises these requirements and optional behavior: todo use when needed, search over all collections, query variants, more than one in one call, document cards shown to the user, a passage to jump to, a task completed.

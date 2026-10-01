@@ -358,6 +358,15 @@ return {
     user_seqs: [...root.querySelectorAll('[data-chat-user]')].map(e=>Number(e.dataset.chatUser)),
     assistant_answers: [...root.querySelectorAll('[data-chat-answer]')].map(e=>({seq:e.dataset.chatAnswer,text:e.textContent})),
     asked: [...root.querySelectorAll('[data-chat-asked]')].map(e=>({seq:e.dataset.chatAsked,text:e.textContent})),
+    plans: [...root.querySelectorAll('[data-plan-state]')].map(e=>({
+        state: e.dataset.planState,
+        phase: e.textContent?.includes('Every section ended. The organizer combines the reports')
+            ? 'combining' : '',
+        seq: e.parentElement?.querySelector('[data-chat-answer]')?.dataset.chatAnswer
+            || e.parentElement?.querySelector('[data-chat-asked]')?.dataset.chatAsked
+            || e.parentElement?.querySelector('[data-chat-replaced-answer]')?.dataset.chatReplacedAnswer
+            || null,
+    })),
     matched_transcript_selector: matched,
     text_length: text.length,
     user_bubble_count: userCount,
@@ -435,7 +444,8 @@ def saved_answers(state: dict) -> list[dict]:
     return list(state.get("assistant_answers", [])) + list(state.get("asked", []))
 
 
-def turn_phase(state: dict, before_seq: int) -> str:
+def turn_phase(state: dict, before_seq: int, after_answer_seq: int = -1,
+               plan_floor: int = -1) -> str:
     """The phase of the turn that the user message after `before_seq` started.
 
     `not_started` means that the page shows no user message after `before_seq`. `running`
@@ -444,22 +454,31 @@ def turn_phase(state: dict, before_seq: int) -> str:
     interrupted. `answered` means that the turn ended and an answer or a question to the
     user after its user message has text. `ended_empty` means that the turn ended and no such answer exists
     yet. The last state can change to `answered` when the answer row renders late.
+
+    An executing plan counts when its card follows the turn's user message. A plan that
+    the user approved has its card before the approval message, so `--follow-plan`
+    passes `plan_floor` and an executing plan with a card after that seq counts.
     """
     own = [int(seq) for seq in state.get("user_seqs", []) if int(seq) > before_seq]
     if not own:
         return "not_started"
     turn = state.get("turn", "")
+    start = min(own)
+    floor = plan_floor if plan_floor >= 0 else start
+    if any(plan.get("state") == "executing" and
+           (plan.get("seq") is None or int(plan["seq"]) > floor)
+           for plan in state.get("plans", [])):
+        return "running"
     if turn in RUNNING_TURNS:
         return "running"
     if turn == "interrupted":
         return "interrupted"
-    start = min(own)
     for answer in saved_answers(state):
         try:
             seq = int(answer.get("seq", ""))
         except ValueError:
             continue
-        if seq > start and answer.get("text", "").strip():
+        if seq > max(start, after_answer_seq) and answer.get("text", "").strip():
             return "answered"
     return "ended_empty"
 
@@ -522,7 +541,8 @@ async def submit_followup(tab, text: str) -> tuple[int, str]:
     return before_seq, "the page showed no new user message within 30 s of the follow-up"
 
 
-async def follow_turn(tab, before_seq: int, deadline_s: float, interval_s: float, capture) -> tuple[str, float]:
+async def follow_turn(tab, before_seq: int, deadline_s: float, interval_s: float, capture,
+                      after_answer_seq: int = -1, plan_floor: int = -1) -> tuple[str, float]:
     """Observe the turn after `before_seq` until it ends or `deadline_s` elapses.
 
     `capture(index, target_s, actual_s)` records one interval. The intervals are timed
@@ -541,12 +561,14 @@ async def follow_turn(tab, before_seq: int, deadline_s: float, interval_s: float
     while True:
         try:
             state = await asyncio.wait_for(transcript_state(tab), PAGE_CALL_TIMEOUT_S)
-            phase = turn_phase(state, before_seq)
+            phase = turn_phase(state, before_seq, after_answer_seq, plan_floor)
             now = time.monotonic() - t0
             await asyncio.wait_for(capture(index, index * interval_s, now), PAGE_CALL_TIMEOUT_S)
             failing_since = None
         except asyncio.TimeoutError:
             now = time.monotonic() - t0
+            if now >= deadline_s:
+                return phase, ended_at
             failing_since = now if failing_since is None else failing_since
             if now - failing_since >= UNRESPONSIVE_LIMIT_S:
                 return "unresponsive", ended_at
@@ -780,6 +802,7 @@ async def capture_interval(
         f"transcript selector matched: {state.get('matched_transcript_selector')}",
         f"working placeholder visible: {state.get('working_placeholder_visible')}",
         f"turn state: {state.get('turn')}",
+        f"plan states: {state.get('plans')}",
         "",
         "## observations",
         *([f"{sev}: {msg}" for sev, msg in observations] or ["(none)"]),
@@ -794,6 +817,7 @@ async def capture_interval(
         "scroll_height": state.get("scroll_height"),
         "text_length": state.get("text_length"),
         "turn": state.get("turn"),
+        "plans": state.get("plans"),
         "observations": [{"severity": s, "message": m} for s, m in observations],
     }
 
@@ -839,10 +863,21 @@ async def check_history(tab, base_url: str, other_session_url: str | None, timeo
     }
 
 
+def history_failure_reason(history: dict) -> str:
+    """Name the first failed history transition."""
+    if not history.get("before_answers"):
+        return "No saved answer was visible before navigation."
+    if history.get("reload_survived") is not True:
+        return "Saved answers changed or disappeared after reload."
+    switch = history.get("switch", {})
+    if switch.get("attempted") and switch.get("survived") is not True:
+        return "Saved answers changed or disappeared after switching conversations."
+    return ""
+
+
 def history_is_preserved(history: dict) -> bool:
     """Require an observed answer match for every attempted history transition."""
-    switch = history.get("switch", {})
-    return history.get("reload_survived") is True and (not switch.get("attempted") or switch.get("survived") is True)
+    return not history_failure_reason(history)
 
 
 # ---------------------------------------------------------------------------------
@@ -965,6 +1000,8 @@ async def run_all(
     run_followup: bool,
     history_only: str = "",
     continue_path: str = "",
+    follow_plan: str = "",
+    follow_plan_seconds: float = 1800.0,
 ) -> tuple[list[ConversationResult], int]:
     import nodriver
     import nodriver.cdp.page as page_cdp
@@ -1012,14 +1049,64 @@ async def run_all(
                 await wait_css(identity_tab, "#x-chat-transcript [data-chat-answer], #x-chat-transcript [data-chat-asked]")
                 history = await check_history(identity_tab, base_url, base_url + "/ai_chat")
                 result.history["by_resolution"][resolution] = history
-                if not history["reload_survived"] or not history["switch"].get("survived"):
-                    result.observations.append((APPLICATION_ERROR, f"Saved answers changed at {resolution}."))
+                reason = history_failure_reason(history)
+                if reason:
+                    result.observations.append((APPLICATION_ERROR, f"{resolution}: {reason}"))
                 filename = f"{resolution}.png"
                 (destination / filename).write_bytes(await screenshot(identity_tab, False))
                 result.captures[resolution] = [{"file": filename}]
             result.completed_answer_present = all(h["reload_survived"] for h in result.history["by_resolution"].values())
             write_conversation_report(destination, result)
             exit_status = 1 if result.observations else 0
+            write_run_index(out_dir, [result], exit_status)
+            return [result], exit_status
+
+        if follow_plan:
+            if not follow_plan.startswith("/ai_chat/c/") or len(prompt_names) != 1:
+                raise ValueError("--follow-plan needs a saved conversation path and one selected prompt.")
+            await set_exact_viewport(identity_tab, *resolutions[0][1])
+            await identity_tab.get(base_url + follow_plan)
+            await wait_for_app_mounted(identity_tab)
+            initial = await transcript_state(identity_tab)
+            newest_user = newest_user_seq(initial)
+            # Approval adds a user message after the plan card. The followed plan is an
+            # executing plan that no newer answer follows.
+            answer_seq = max((int(a["seq"]) for a in saved_answers(initial)), default=-1)
+            followed = [p for p in initial.get("plans", []) if p.get("state") == "executing" and
+                        (p.get("seq") is None or int(p["seq"]) >= answer_seq)]
+            if not followed:
+                raise ValueError("The selected conversation has no executing plan.")
+            plan_floor = min((int(p["seq"]) for p in followed if p.get("seq") is not None),
+                             default=0) - 1
+            result = ConversationResult(name="follow-plan", profile="deep_research", prompt_text="")
+            result.session_url = base_url + follow_plan
+            result.submission_ok = True
+            result.turn_started = True
+            destination = out_dir / result.name
+            destination.mkdir()
+            res_name = resolutions[0][0]
+            res_dir = destination / res_name
+            res_dir.mkdir()
+            before_seq = newest_user - 1
+            probe = Page(name="follow-plan", url=follow_plan)
+
+            async def capture(index: int, target: float, actual: float) -> None:
+                item = await capture_interval(identity_tab, identity_network, whitelist, probe,
+                                              res_dir, target, actual, index)
+                result.captures.setdefault(res_name, []).append(item)
+
+            phase, ended = await follow_turn(identity_tab, before_seq, follow_plan_seconds,
+                                             CAPTURE_INTERVAL_S, capture, answer_seq, plan_floor)
+            result.turn_phase = phase
+            result.turn_ended_at_s = ended if ended >= 0 else None
+            result.completed_answer_present = phase == "answered"
+            if phase != "answered":
+                result.incomplete = True
+                result.incomplete_reason = f"The plan remained {phase} after {follow_plan_seconds:g} s."
+                result.observations.append((INCOMPLETE_EXECUTION, result.incomplete_reason))
+            await completion_captures(identity_tab, res_dir)
+            write_conversation_report(destination, result)
+            exit_status = 2 if result.incomplete else 0
             write_run_index(out_dir, [result], exit_status)
             return [result], exit_status
 
@@ -1133,8 +1220,10 @@ async def run_all(
                         histories[resolution] = await asyncio.wait_for(
                             check_history(tabs[index], base_url, other_url), HISTORY_TIMEOUT_S)
                     merged.history = {"by_resolution": histories}
-                    if not all(history_is_preserved(item) for item in histories.values()):
-                        merged.observations.append((APPLICATION_ERROR, "Saved assistant answers changed after history navigation."))
+                    for resolution, history in histories.items():
+                        reason = history_failure_reason(history)
+                        if reason:
+                            merged.observations.append((APPLICATION_ERROR, f"{resolution}: {reason}"))
                 except Exception as exc:  # noqa: BLE001
                     merged.observations.append((INCOMPLETE_EXECUTION, f"history check failed: {exc}"))
 
@@ -1221,6 +1310,8 @@ def main() -> int:
     )
     parser.add_argument("--no-followup", action="store_true")
     parser.add_argument("--history-only", default="")
+    parser.add_argument("--follow-plan", default="", help="observe one executing saved plan")
+    parser.add_argument("--follow-plan-seconds", type=float, default=1800.0)
     parser.add_argument(
         "--continue", dest="continue_path", default="",
         help="a saved conversation path; the one selected prompt is sent once as its next turn",
@@ -1261,6 +1352,7 @@ def main() -> int:
         results, exit_status = asyncio.run(run_all(
             names, args.base_url.rstrip("/"), out_dir, resolutions, whitelist,
             username, password, not args.no_followup, args.history_only, args.continue_path,
+            args.follow_plan, args.follow_plan_seconds,
         ))
     except Exception as exc:  # noqa: BLE001
         sys.stderr.write(f"incomplete execution: {type(exc).__name__}: {exc}\n")

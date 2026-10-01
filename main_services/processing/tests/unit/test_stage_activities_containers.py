@@ -68,7 +68,7 @@ def test_email_attachments_count_and_empty_folder_removed(temp_root):
     assert [r.task_name for r in batch.results] == ["extract_email_attachments_to_temp"] * 2
     first, second = (r.value for r in batch.results)
     assert first["attachment_count"] == 1 and first["member_count"] == 1
-    assert os.listdir(first["out_dir"]) == ["notes.bin"]
+    assert os.listdir(first["out_dir"]) == ["part-1.2-notes.bin"]
     assert second["attachment_count"] == 0 and second["member_count"] == 0
     assert not os.path.exists(second["out_dir"])
 

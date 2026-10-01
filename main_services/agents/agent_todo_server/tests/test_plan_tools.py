@@ -196,6 +196,15 @@ def test_an_invalid_tree_is_refused_with_the_tree(headers, store, children, rule
     assert sorted(store.snapshots) == [1]
 
 
+def test_a_new_child_with_story_04_node_ids_gets_valid_form(headers, store):
+    result = write(1, _node("Enron records", _node("Search Raptor", node_id="1.1"),
+                            node_id="1"))
+    assert result.code == "invalid_plan_change"
+    assert "Allowed number paths in version 1: none" in result.error
+    assert "Omit node_id for every new node, including its children" in result.error
+    assert write(1, _node("Enron records", _node("Search Raptor"))).success
+
+
 @pytest.mark.parametrize("change, code", [
     ({"X-Hoover4-Agent-Run": ""}, "caller_unknown"),
     ({"X-Hoover4-Agent-Run": "chat-run"}, "no_plan"),
