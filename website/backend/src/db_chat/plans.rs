@@ -284,6 +284,47 @@ async fn report_body(
     Ok(String::from_utf8(bytes)?)
 }
 
+/// The document of each citation in the typed reports of the session's plan runs. A
+/// sub-agent's `cite_documents` result names only the file hash, and its typed report
+/// keeps the whole identity. A report whose body cannot be read is skipped.
+pub async fn session_report_citations(
+    username: &str,
+    session_id: &str,
+) -> anyhow::Result<Vec<common::chat_types::ChatDocRef>> {
+    let docs = get_global_client()
+        .query(
+            "SELECT toString(document_id) AS did, toString(node_id) AS nid, kind, attempt, \
+             body_inline, artifact_id, toUnixTimestamp64Milli(created_at) AS created_ms \
+             FROM agent_plan_documents FINAL WHERE username = ? AND session_id = ? \
+             AND kind = 'report_data' ORDER BY created_at, document_id",
+        )
+        .bind(username)
+        .bind(session_id)
+        .fetch_all::<PlanReportDocument>()
+        .await?;
+    let mut refs = Vec::new();
+    for doc in &docs {
+        let body = match report_body(username, session_id, doc).await {
+            Ok(body) => body,
+            Err(e) => {
+                tracing::warn!("report {} citations skipped: {e:#}", doc.did);
+                continue;
+            }
+        };
+        let Ok(data) = serde_json::from_str::<common::report_types::ReportData>(&body) else {
+            continue;
+        };
+        for entry in data.citations {
+            if let Ok(doc_ref) = serde_json::from_value::<common::chat_types::ChatDocRef>(
+                serde_json::Value::Object(entry.reference),
+            ) {
+                refs.push(doc_ref);
+            }
+        }
+    }
+    Ok(refs)
+}
+
 /// The newest report of each section node of a plan run, typed when the `report_data`
 /// document parses, else the text report. A node whose documents are both missing is
 /// not listed.

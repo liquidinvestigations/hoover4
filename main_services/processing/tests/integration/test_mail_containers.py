@@ -211,7 +211,19 @@ def test_mbox_content_length_and_escaping(tmp_path):
     result = extract(str(source), str(tmp_path / "out"), "mbox")
     assert result == {"entry_count": 2, "partial_errors": []}
     first = (tmp_path / "out" / "message-00000000.eml").read_bytes()
-    assert b"From hidden\nFrom escaped\n" in first
+    assert b"From hidden\n>From escaped\n" in first
+
+
+@pytest.mark.skipif(not SOURCE.is_dir(), reason="public mail fixtures not fetched")
+def test_an_mbox_child_with_quoted_from_lines_stays_one_message(tmp_path):
+    from tasks.P3_parse_files.sniff_email import MIME_RFC822, sniff_email
+
+    out = tmp_path / "jwz"
+    result = extract(str(fixture("jwz.mbox.txt")), str(out), "mbox")
+    assert result == {"entry_count": 152, "partial_errors": []}
+    child = (out / "message-00000051.eml").read_bytes()
+    assert b"\n>From within a development environment" in child
+    assert sniff_email(child).mime_type == MIME_RFC822
 
 
 @pytest.mark.skipif(not OLD.is_dir(), reason="existing EMLX fixture not fetched")

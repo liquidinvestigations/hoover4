@@ -1057,6 +1057,21 @@ pub fn citation_refs<'a>(outputs: impl IntoIterator<Item = &'a str>) -> Vec<Chat
     refs
 }
 
+/// Replace each reference that names no dataset with the known reference of the same
+/// handle and file hash. A sub-agent's citation result names only the hash, and its
+/// typed report keeps the whole identity.
+pub fn fill_citation_identity(refs: &mut [ChatDocRef], known: &[ChatDocRef]) {
+    for doc in refs.iter_mut().filter(|d| d.collection_dataset.is_empty()) {
+        if let Some(full) = known.iter().find(|k| {
+            k.handle == doc.handle
+                && !k.collection_dataset.is_empty()
+                && (doc.file_hash.is_empty() || k.file_hash.starts_with(&doc.file_hash))
+        }) {
+            *doc = full.clone();
+        }
+    }
+}
+
 /// The number inside a `[Dn]` handle, or `None` when the string is not one.
 pub fn handle_number(handle: &str) -> Option<u32> {
     handle
@@ -1404,6 +1419,24 @@ mod tests {
         // than an unrelated passage of the same file.
         assert_eq!(refs[0].snippet, "the board approved");
         assert_eq!(refs[0].quote_reason, "");
+    }
+
+    #[test]
+    fn a_sub_agent_citation_takes_its_identity_from_the_typed_report() {
+        let mut refs: Vec<ChatDocRef> = serde_json::from_str(
+            r#"[{"handle": "[D1]", "collection_dataset": "", "file_hash": "aa11"},
+                {"handle": "[D2]", "collection_dataset": "", "file_hash": "bb22"}]"#,
+        )
+        .unwrap();
+        let known: Vec<ChatDocRef> = serde_json::from_str(
+            r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa11ff", "path": "/a.eml"},
+                {"handle": "[D2]", "collection_dataset": "c_ds", "file_hash": "cc33"}]"#,
+        )
+        .unwrap();
+        fill_citation_identity(&mut refs, &known);
+        assert_eq!(refs[0].collection_dataset, "c_ds");
+        assert_eq!(refs[0].path, "/a.eml");
+        assert_eq!(refs[1].collection_dataset, "");
     }
 
     #[test]

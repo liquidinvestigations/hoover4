@@ -652,8 +652,9 @@ def _extract_mbox(path: str, root: Path, errors: list[str]) -> int:
         if envelope_end < 0:
             errors.append(f"mbox message {index}: envelope has no newline")
             continue
+        # The `>From ` lines keep their bytes. Without the `>`, a message body with
+        # several `From ` lines reads as a mailbox and is split again.
         message = data[envelope_end + 1:end]
-        message = re.sub(br"(?m)^>+(?=From )", lambda m: m.group()[1:], message)
         _write(root / f"message-{index:08d}.eml", message)
     return len(starts) - len(errors)
 

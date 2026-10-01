@@ -116,6 +116,7 @@ The original container also receives its normal Extractous text attempt.
 
 `mail_containers.py` reads PST and OST with pypff, MSG with extract-msg, and TNEF with tnefparse.
 It reads mbox separators with support for `Content-Length` and escaped `From` lines.
+A child message keeps its `>From ` lines as stored, so its body is not read as a mailbox.
 When pypff cannot expose an embedded PST message, `readpst` exports that child message.
 The adapter writes mail items as EML and non-mail MAPI items as typed JSON.
 It includes stable folder identifiers and folder names in member paths.

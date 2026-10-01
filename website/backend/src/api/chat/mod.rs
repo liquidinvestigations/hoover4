@@ -118,10 +118,12 @@ async fn run_citations(
     session_id: &str,
 ) -> anyhow::Result<(Vec<String>, Vec<common::chat_types::ChatDocRef>)> {
     let outputs = db_chat::session_citation_outputs(username, session_id).await?;
-    Ok((
-        citation_handles(outputs.iter().map(String::as_str)),
-        common::chat_types::citation_refs(outputs.iter().map(String::as_str)),
-    ))
+    let mut refs = common::chat_types::citation_refs(outputs.iter().map(String::as_str));
+    if refs.iter().any(|r| r.collection_dataset.is_empty()) {
+        let known = db_chat::plans::session_report_citations(username, session_id).await?;
+        common::chat_types::fill_citation_identity(&mut refs, &known);
+    }
+    Ok((citation_handles(outputs.iter().map(String::as_str)), refs))
 }
 
 fn todo_versions_in(messages: &[common::chat_types::ChatMessageItem]) -> Vec<u32> {

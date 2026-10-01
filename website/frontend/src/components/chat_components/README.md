@@ -67,7 +67,8 @@ no document stands behind it. A handle that stored citation results give to two 
 renders as plain text marked "names more than one document". It links to neither document, and
 its sources strip entry names the conflict. The organizer answer of an approved plan has no
 citation row of its own. Its strip lists the documents of the `run_cited_refs` handles that its
-text uses. Records from before the handle store can hold such a
+text uses. A sub-agent citation result names only the file hash, so the server takes the
+dataset and path from the typed reports of the plan. Records from before the handle store can hold such a
 conflict. The live answer of a turn keeps every handle a chip, because its
 citation rows can still be in the stream.
 
