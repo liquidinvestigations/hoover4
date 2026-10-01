@@ -80,7 +80,7 @@ pub async fn get_chat_session(
     let messages = db_chat::list_messages(username, &session_id).await?;
     let available_collections = list_permitted_collections(user).await?;
     let tail = stream_state(username, &session_id).await?;
-    let run_cited_handles = run_cited_handles(username, &session_id).await?;
+    let (run_cited_handles, run_cited_refs) = run_citations(username, &session_id).await?;
     let todo_versions = todo_snapshots(username, &session_id, &messages).await?;
     let subagent_batches = subagent_batches(username, &session_id, &messages).await?;
 
@@ -104,17 +104,24 @@ pub async fn get_chat_session(
         queued: tail.queued,
         queued_for: tail.queued_for,
         run_cited_handles,
+        run_cited_refs,
         todo_versions,
         subagent_batches,
     })
 }
 
-/// Every handle that a `cite_documents` result of the session issued, at every run depth.
-/// The page marks a handle "not cited" only when it is absent from this list and from the
-/// citation rows of the transcript.
-async fn run_cited_handles(username: &str, session_id: &str) -> anyhow::Result<Vec<String>> {
+/// Every handle that a `cite_documents` result of the session issued, at every run depth,
+/// and the document of each. The page marks a handle "not cited" only when it is absent
+/// from this list and from the citation rows of the transcript.
+async fn run_citations(
+    username: &str,
+    session_id: &str,
+) -> anyhow::Result<(Vec<String>, Vec<common::chat_types::ChatDocRef>)> {
     let outputs = db_chat::session_citation_outputs(username, session_id).await?;
-    Ok(citation_handles(outputs.iter().map(String::as_str)))
+    Ok((
+        citation_handles(outputs.iter().map(String::as_str)),
+        common::chat_types::citation_refs(outputs.iter().map(String::as_str)),
+    ))
 }
 
 fn todo_versions_in(messages: &[common::chat_types::ChatMessageItem]) -> Vec<u32> {
@@ -872,6 +879,7 @@ fn subagent_entries(runs: &[db_chat::AgentRunRow]) -> Vec<common::chat_types::Su
             depth: first.depth,
             batch_id: first.batch.clone(),
             tool_call_id: first.tool_call_id.clone(),
+            plan_node_id: first.plan_node.clone(),
             state: last.state.clone(),
             objective,
             tool_calls: 0,
@@ -1064,7 +1072,7 @@ pub async fn poll_chat(
             if let Some(remaining) = floor.checked_sub(started.elapsed()) {
                 tokio::time::sleep(remaining).await;
             }
-            let run_cited_handles = run_cited_handles(username, &session_id).await?;
+            let (run_cited_handles, run_cited_refs) = run_citations(username, &session_id).await?;
             let todo_versions = todo_snapshots(username, &session_id, &messages).await?;
             let subagent_batches = subagent_batches(username, &session_id, &messages).await?;
             return Ok(ChatPollResult {
@@ -1075,6 +1083,7 @@ pub async fn poll_chat(
                 queued: tail.queued,
                 queued_for: tail.queued_for,
                 run_cited_handles,
+                run_cited_refs,
                 todo_versions,
                 subagent_batches,
                 sig: current_sig,
@@ -1738,6 +1747,7 @@ mod tests {
             queue: "chat-model-queue".into(),
             briefing: String::new(),
             tool_call_id: String::new(),
+            plan_node: String::new(),
             result_head: String::new(),
             error_head: String::new(),
             started_ms: 0,

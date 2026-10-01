@@ -42,6 +42,10 @@ pub fn ChatTranscript(
     /// its handles.
     #[props(default)]
     run_cited_handles: Vec<String>,
+    /// The document of each handle in `run_cited_handles`. The sources strip of a plan's
+    /// organizer answer reads it.
+    #[props(default)]
+    run_cited_refs: Vec<ChatDocRef>,
     /// Finished delegation batches read with the stored transcript.
     #[props(default)]
     subagent_batches: Vec<common::chat_types::SubagentBatchState>,
@@ -118,7 +122,14 @@ pub fn ChatTranscript(
         let replaced = answer_replaced(&messages, i);
         // A replaced answer shows no strip. The answer that replaces it lists its citations.
         let sources = if m.role == ChatRole::Assistant && !replaced {
-            citations_for_answer(&messages, i)
+            let own = citations_for_answer(&messages, i);
+            if is_plan_answer(&messages, i) {
+                let mut all = own;
+                all.extend(plan_answer_citations(&m.content, &run_cited_refs));
+                merge_citations(all)
+            } else {
+                own
+            }
         } else {
             Vec::new()
         };
@@ -655,6 +666,41 @@ fn citations_for_answer(messages: &[ChatMessageItem], answer_index: usize) -> Ve
         }
     }
     refs.reverse();
+    merge_citations(refs)
+}
+
+/// The text of the user row that approving a plan writes, before its version number.
+const APPROVAL_TEXT: &str = "Approved plan version ";
+
+/// Whether the answer at `index` is the organizer answer of an approved plan. It answers
+/// the approval message, which follows the planner answer that holds the plan card.
+fn is_plan_answer(messages: &[ChatMessageItem], index: usize) -> bool {
+    let Some(user) = messages[..index].iter().rposition(|m| m.role == ChatRole::User) else {
+        return false;
+    };
+    if !messages[user].content.starts_with(APPROVAL_TEXT) {
+        return false;
+    }
+    let answered_before = messages[user + 1..index]
+        .iter()
+        .any(|m| m.role == ChatRole::Assistant);
+    !answered_before
+        && messages[..user]
+            .iter()
+            .rev()
+            .find(|m| m.role == ChatRole::Assistant || m.role == ChatRole::User)
+            .is_some_and(|m| m.role == ChatRole::Assistant && m.plan_reference().is_some())
+}
+
+/// The documents of the handles that a plan's organizer answer uses. The sections issued
+/// them, so no citation row of the transcript holds them.
+fn plan_answer_citations(answer: &str, run_cited_refs: &[ChatDocRef]) -> Vec<ChatDocRef> {
+    let mut refs: Vec<ChatDocRef> = run_cited_refs
+        .iter()
+        .filter(|r| !r.handle.is_empty() && answer.contains(r.handle.as_str()))
+        .cloned()
+        .collect();
+    refs.sort_by_key(|r| common::chat_types::handle_number(&r.handle).unwrap_or(u32::MAX));
     merge_citations(refs)
 }
 
@@ -1282,6 +1328,61 @@ mod tests {
             .map(|r| r.handle)
             .collect();
         assert_eq!(handles, vec!["[D1]", "[D2]"]);
+    }
+
+    #[test]
+    fn a_plan_organizer_answer_lists_the_section_citations_it_uses() {
+        let mut planner = row(2, ChatRole::Assistant, "", "", "The plan is ready.");
+        planner.plan_reference_json =
+            r#"{"plan_id": "p", "reviewed_version": 1, "run_id": "r"}"#.to_string();
+        let messages = vec![
+            row(1, ChatRole::User, "", "", "question"),
+            planner,
+            row(3, ChatRole::User, "", "", "Approved plan version 1."),
+            row(4, ChatRole::Assistant, "", "", "Findings [D2] and [D1]."),
+            row(5, ChatRole::User, "", "", "next"),
+            row(6, ChatRole::Assistant, "", "", "Again [D1]."),
+        ];
+        assert!(is_plan_answer(&messages, 3));
+        assert!(!is_plan_answer(&messages, 5));
+        let refs: Vec<ChatDocRef> = serde_json::from_str(
+            r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"},
+                {"handle": "[D2]", "collection_dataset": "c_ds", "file_hash": "bb"},
+                {"handle": "[D3]", "collection_dataset": "c_ds", "file_hash": "cc"}]"#,
+        )
+        .unwrap();
+        let handles: Vec<String> = plan_answer_citations(&messages[3].content, &refs)
+            .into_iter()
+            .map(|r| r.handle)
+            .collect();
+        assert_eq!(handles, vec!["[D1]", "[D2]"]);
+        let mut revision = messages.clone();
+        revision[2].content = "Please add a section on dates.".to_string();
+        assert!(!is_plan_answer(&revision, 3));
+    }
+
+    #[test]
+    fn an_organizer_answer_with_its_own_citation_keeps_the_section_citations() {
+        let mut planner = row(2, ChatRole::Assistant, "", "", "The plan is ready.");
+        planner.plan_reference_json =
+            r#"{"plan_id": "p", "reviewed_version": 1, "run_id": "r"}"#.to_string();
+        let own = r#"[{"handle": "[D3]", "collection_dataset": "c_ds", "file_hash": "cc"}]"#;
+        let messages = vec![
+            row(1, ChatRole::User, "", "", "question"),
+            planner,
+            row(3, ChatRole::User, "", "", "Approved plan version 1."),
+            row(4, ChatRole::Tool, "cite_documents", own, ""),
+            row(5, ChatRole::Assistant, "", "", "Findings [D1] and [D3]."),
+        ];
+        let refs: Vec<ChatDocRef> = serde_json::from_str(
+            r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"}]"#,
+        )
+        .unwrap();
+        assert!(is_plan_answer(&messages, 4));
+        let mut all = citations_for_answer(&messages, 4);
+        all.extend(plan_answer_citations(&messages[4].content, &refs));
+        let handles: Vec<String> = merge_citations(all).into_iter().map(|r| r.handle).collect();
+        assert_eq!(handles, vec!["[D1]", "[D3]"]);
     }
 
     #[test]

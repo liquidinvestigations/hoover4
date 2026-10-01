@@ -309,7 +309,12 @@ pub fn PlanCard(
                 }
             }
             if show_sections {
-                SectionList { sections: sections.clone(), terminal, reports: reports.read().clone() }
+                SectionList {
+                    sections: sections.clone(),
+                    terminal,
+                    reports: reports.read().clone(),
+                    live: live.clone(),
+                }
             }
             if !live.is_empty() {
                 LiveRuns { entries: live }
@@ -574,14 +579,19 @@ fn parse_sections(json: &str) -> Vec<Section> {
 /// marked failed only when the run is terminal, because during execution the worker's
 /// entries do not yet hold the outcome.
 #[component]
-fn SectionList(sections: Vec<Section>, terminal: bool, reports: Vec<SectionReportView>) -> Element {
+fn SectionList(
+    sections: Vec<Section>,
+    terminal: bool,
+    reports: Vec<SectionReportView>,
+    live: Vec<SubagentRunEntry>,
+) -> Element {
     rsx! {
         div { style: "display: flex; flex-direction: column; gap: 4px;",
             div { style: "font-size: 12px; font-weight: 600; color: #475569;", "Sections" }
             for (i, section) in sections.into_iter().enumerate() {
                 {
                     let failed = terminal && section.failed;
-                    let state = section_state_text(&section, terminal);
+                    let state = section_state_text(&section, terminal, &live);
                     let color = if failed { "#B91C1C" } else { "#334155" };
                     let heading = format!("{}. {}", i + 1, section.title);
                     let defects = section.defect_classes.join(", ");
@@ -646,15 +656,24 @@ fn SectionList(sections: Vec<Section>, terminal: bool, reports: Vec<SectionRepor
 }
 
 /// The state text of one section. A terminal plan shows the outcome that the worker
-/// recorded. A section with no run shows "not started".
-fn section_state_text(section: &Section, terminal: bool) -> String {
+/// recorded. While the plan runs, the stored entries hold no state yet, so a section with
+/// a live run shows the state of that run. A section with no run shows "not started".
+fn section_state_text(section: &Section, terminal: bool, live: &[SubagentRunEntry]) -> String {
     if terminal && section.failed {
         return "failed".to_string();
     }
-    if section.state.is_empty() {
+    let state = if section.state.is_empty() {
+        live.iter()
+            .find(|e| e.depth == 1 && !e.plan_node_id.is_empty() && e.plan_node_id == section.node_id)
+            .map(|e| e.state.as_str())
+            .unwrap_or_default()
+    } else {
+        section.state.as_str()
+    };
+    if state.is_empty() {
         return "not started".to_string();
     }
-    section.state.replace('_', " ")
+    state.replace('_', " ")
 }
 
 /// One report of a section.
@@ -1121,10 +1140,24 @@ mod tests {
             "cause":"","failed":false},{"node_id":"b","title":"B","tasks":2,"state":"completed",
             "end_reason":"step_budget","cause":"the run stopped at the step limit","failed":true}]"#;
         let sections = parse_sections(json);
-        assert_eq!(section_state_text(&sections[0], true), "completed");
-        assert_eq!(section_state_text(&sections[1], true), "failed");
+        assert_eq!(section_state_text(&sections[0], true, &[]), "completed");
+        assert_eq!(section_state_text(&sections[1], true, &[]), "failed");
         assert_eq!(sections[1].cause, "the run stopped at the step limit");
-        assert_eq!(section_state_text(&sections[1], false), "completed");
+        assert_eq!(section_state_text(&sections[1], false, &[]), "completed");
+    }
+
+    #[test]
+    fn a_section_without_a_stored_state_shows_its_live_run() {
+        let json = r#"[{"node_id":"a","title":"A","tasks":1,"state":"","failed":false},
+            {"node_id":"b","title":"B","tasks":1,"state":"","failed":false}]"#;
+        let sections = parse_sections(json);
+        let live: Vec<SubagentRunEntry> = serde_json::from_str(
+            r#"[{"run_id":"r1","parent_run_id":"o","depth":1,"batch_id":"x","tool_call_id":"",
+                "plan_node_id":"a","state":"running","objective":"A","tool_calls":3}]"#,
+        )
+        .unwrap();
+        assert_eq!(section_state_text(&sections[0], false, &live), "running");
+        assert_eq!(section_state_text(&sections[1], false, &live), "not started");
     }
 
     #[test]

@@ -75,7 +75,6 @@ class ParseImageParams:
 def parse_image_metadata_and_store(params: ParseImageParams) -> str:
     from database.clickhouse import get_collection_client, insert_arrow_idempotent
     import pyarrow as pa
-    from datetime import datetime, timezone
 
     log.info("[P3] Parsing image metadata for %s", params.file_path)
 
@@ -90,7 +89,6 @@ def parse_image_metadata_and_store(params: ParseImageParams) -> str:
     # may be undecodable; consider routing it through
     # tasks/P3_parse_files/image_loader.load_image_rgb like parse_ocr.py does.
 
-    processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     with get_collection_client(params.collectionname) as client:
         # Upsert into image table
         tbl_img = pa.table({
@@ -101,19 +99,6 @@ def parse_image_metadata_and_store(params: ParseImageParams) -> str:
             "image_metadata": pa.array([json.dumps(meta)], type=pa.string()),
         })
         insert_arrow_idempotent(client, "image", tbl_img)
-
-        # Also store raw metadata to image_metadata table if present in DB
-        try:
-            tbl_meta = pa.table({
-                "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
-                "hash": pa.array([params.file_hash], type=pa.string()),
-                "image_metadata_json": pa.array([json.dumps(meta)], type=pa.string()),
-                "processed_at": pa.array([processed_at], type=pa.timestamp("s")),
-            })
-            insert_arrow_idempotent(client, "image_metadata", tbl_meta)
-        except Exception:
-            # Table might not exist yet; ignore
-            pass
 
     return "image_ok"
 

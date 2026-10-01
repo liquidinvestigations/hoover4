@@ -65,7 +65,9 @@ server reads from every run thread of the session on each load and each poll. A 
 come only from that list. Any other handle renders as plain text marked "not cited", because
 no document stands behind it. A handle that stored citation results give to two documents
 renders as plain text marked "names more than one document". It links to neither document, and
-its sources strip entry names the conflict. Records from before the handle store can hold such a
+its sources strip entry names the conflict. The organizer answer of an approved plan has no
+citation row of its own. Its strip lists the documents of the `run_cited_refs` handles that its
+text uses. Records from before the handle store can hold such a
 conflict. The live answer of a turn keeps every handle a chip, because its
 citation rows can still be in the stream.
 

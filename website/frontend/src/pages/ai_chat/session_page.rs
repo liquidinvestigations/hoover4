@@ -311,6 +311,7 @@ fn ChatConversationPanel(
     // The handles that the citations of every run of the session issued, sub-agents
     // included. The server sends the whole list on each load and each poll.
     let mut run_cited_handles = use_signal(Vec::<String>::new);
+    let mut run_cited_refs = use_signal(Vec::<common::chat_types::ChatDocRef>::new);
     // Finished batch states survive after the live stream stops. A poll returns states
     // only for its newly finalised rows, so the page retains earlier batch states.
     let mut subagent_batches = use_signal(Vec::<common::chat_types::SubagentBatchState>::new);
@@ -356,6 +357,7 @@ fn ChatConversationPanel(
         interrupted.set(detail.interrupted);
         queued_for.set(detail.queued_for.clone());
         run_cited_handles.set(detail.run_cited_handles.clone());
+        run_cited_refs.set(detail.run_cited_refs.clone());
         subagent_batches.set(detail.subagent_batches.clone());
         todo_versions.set(detail.todo_versions.clone());
         loaded_for.set(detail.session.session_id.clone());
@@ -400,6 +402,9 @@ fn ChatConversationPanel(
                         queued_for.set(result.queued_for.clone());
                         if *run_cited_handles.peek() != result.run_cited_handles {
                             run_cited_handles.set(result.run_cited_handles.clone());
+                        }
+                        if *run_cited_refs.peek() != result.run_cited_refs {
+                            run_cited_refs.set(result.run_cited_refs.clone());
                         }
                         if !result.subagent_batches.is_empty() {
                             let mut known = subagent_batches.read().clone();
@@ -683,6 +688,7 @@ fn ChatConversationPanel(
                 stream_live: !*interrupted.read(),
                 queued_for: queued_for.read().clone(),
                 run_cited_handles: run_cited_handles.read().clone(),
+                run_cited_refs: run_cited_refs.read().clone(),
                 subagent_batches: subagent_batches.read().clone(),
                 todo_versions: todo_versions.read().clone(),
                 deep_research: detail.session.options.deep_research,

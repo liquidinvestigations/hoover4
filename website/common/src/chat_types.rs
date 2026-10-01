@@ -470,6 +470,9 @@ pub struct SubagentRunEntry {
     pub batch_id: String,
     /// The `run_subagent` call this thread answers.
     pub tool_call_id: String,
+    /// The plan section node that the thread executes, or empty outside a plan.
+    #[serde(default)]
+    pub plan_node_id: String,
     /// The state of the newest run of the thread: `running`, `waiting_for_children`,
     /// `completed`, `failed` or `cancelled`.
     pub state: String,
@@ -545,6 +548,10 @@ pub struct ChatPollResult {
     /// transcript row, so its handles reach the page only through this list.
     #[serde(default)]
     pub run_cited_handles: Vec<String>,
+    /// The document of each handle in `run_cited_handles` ([`citation_refs`]). The sources
+    /// strip of a plan's organizer answer reads it, because the sections issued its handles.
+    #[serde(default)]
+    pub run_cited_refs: Vec<ChatDocRef>,
     /// Todo snapshots named by tool rows returned in this poll.
     #[serde(default)]
     pub todo_versions: Vec<TodoSnapshot>,
@@ -599,6 +606,9 @@ pub struct ChatSessionDetail {
     /// See [`ChatPollResult::run_cited_handles`].
     #[serde(default)]
     pub run_cited_handles: Vec<String>,
+    /// See [`ChatPollResult::run_cited_refs`].
+    #[serde(default)]
+    pub run_cited_refs: Vec<ChatDocRef>,
     /// The lead todo snapshots named by this transcript's todo writes.
     #[serde(default)]
     pub todo_versions: Vec<TodoSnapshot>,
@@ -1034,6 +1044,19 @@ pub fn citation_handles<'a>(outputs: impl IntoIterator<Item = &'a str>) -> Vec<S
     handles
 }
 
+/// The first document that a `cite_documents` result gave each handle, in first-seen order.
+pub fn citation_refs<'a>(outputs: impl IntoIterator<Item = &'a str>) -> Vec<ChatDocRef> {
+    let mut refs: Vec<ChatDocRef> = Vec::new();
+    for output in outputs {
+        for doc in extract_doc_refs("cite_documents", output) {
+            if !doc.handle.is_empty() && !refs.iter().any(|r| r.handle == doc.handle) {
+                refs.push(doc);
+            }
+        }
+    }
+    refs
+}
+
 /// The number inside a `[Dn]` handle, or `None` when the string is not one.
 pub fn handle_number(handle: &str) -> Option<u32> {
     handle
@@ -1381,6 +1404,19 @@ mod tests {
         // than an unrelated passage of the same file.
         assert_eq!(refs[0].snippet, "the board approved");
         assert_eq!(refs[0].quote_reason, "");
+    }
+
+    #[test]
+    fn citation_refs_keep_the_first_document_of_each_handle() {
+        let first = r#"{"success": true, "citations": [
+            {"handle": "[D2]", "collection_dataset": "c_ds", "file_hash": "bb"}]}"#;
+        let second = r#"{"success": true, "citations": [
+            {"handle": "[D2]", "collection_dataset": "c_ds", "file_hash": "zz"},
+            {"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"}]}"#;
+        let refs = citation_refs([first, second]);
+        let pairs: Vec<(&str, &str)> =
+            refs.iter().map(|r| (r.handle.as_str(), r.file_hash.as_str())).collect();
+        assert_eq!(pairs, vec![("[D2]", "bb"), ("[D1]", "aa")]);
     }
 
     #[test]

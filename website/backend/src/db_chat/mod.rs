@@ -905,6 +905,8 @@ pub struct AgentRunRow {
     pub queue: String,
     pub briefing: String,
     pub tool_call_id: String,
+    /// The plan section node that the run executes, or empty.
+    pub plan_node: String,
     /// The result, cut to the poll's text limit.
     pub result_head: String,
     /// The error, cut to the poll's text limit.
@@ -929,6 +931,7 @@ const RUN_SELECT: &str = "SELECT toString(run_id) AS rid, username AS owner, ses
      ifNull(toString(continues_run_id), '') AS continues, \
      ifNull(toString(delegated_batch_id), '') AS delegated_batch, \
      depth, kind, state, workflow_id, queue, briefing, tool_call_id, \
+     ifNull(toString(plan_node_id), '') AS plan_node, \
      substringUTF8(result, 1, 2000) AS result_head, \
      substringUTF8(error, 1, 2000) AS error_head, \
      toUnixTimestamp64Milli(started_at) AS started_ms, \
