@@ -47,6 +47,7 @@ import asyncio
 import json
 import math
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -241,6 +242,22 @@ FOLLOW_UPS = {
     "connection-diagnosis": "The service is listening on a different port.",
     "gitlab-chief-of-station": "which of these years has the most names?",
 }
+
+
+def register_story_prompts(root: Path) -> None:
+    """Read acceptance prompts and internet settings from their source documents."""
+    for path in sorted(root.glob("[0-9][0-9]-*.md")):
+        source = path.read_text(encoding="utf-8")
+        mode = re.search(r"^\| mode \| chat, internet tools (on|off) \|$", source, re.M)
+        section = source.split("## Prompt\n", 1)[1].split("\n## ", 1)[0]
+        turns = re.findall(r"```text\n(.*?)\n```", section, re.S)
+        if mode is None or len(turns) not in (1, 2):
+            raise ValueError(f"The story mode or prompts are invalid in {path.name}.")
+        name = "story-" + path.name[:2]
+        profile = "chat_local" if mode[1] == "off" else "chat"
+        PROMPTS_BY_NAME[name] = (name, profile, turns[0])
+        if len(turns) == 2:
+            FOLLOW_UPS[name] = turns[1]
 
 # The longest observation of one turn. The observer stops earlier when the page shows
 # the turn as ended. `AgentRun` sets no time limit on a run: `RUN_MODEL_STEPS` in
@@ -1242,6 +1259,12 @@ def main() -> int:
         help="a saved conversation path; the one selected prompt is sent once as its next turn",
     )
     args = parser.parse_args()
+
+    try:
+        register_story_prompts(Path(__file__).with_name("chat-acceptance"))
+    except (IndexError, ValueError) as error:
+        sys.stderr.write(f"error: {error}\n")
+        return 2
 
     try:
         username, password = read_credentials()

@@ -40,6 +40,10 @@ Each story is a request that an investigative journalist could make of the chat,
 
 A driver can send the same requests through the website's server functions, in place of the page. It must send the identity of a real account, so that the person can open the chat afterwards.
 
+`website/observe-chat.sh --prompts story-14,story-17` runs the named stories and their second turns.
+The observer reads prompt text and internet settings from these documents.
+The `all` selection retains the fixed workload.
+
 ## When the data changes
 
 Each fact names its collection, its path and the first 12 characters of its content hash. Before a verdict, the reviewer checks that the fact is still in the data with a text scan of the collection. A story whose facts are gone is marked stale, and it is not run until its facts are read again.

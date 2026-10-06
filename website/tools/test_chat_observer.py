@@ -2,9 +2,29 @@
 
 import asyncio
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import chat_observer as observer
+
+
+class StoryTests(unittest.TestCase):
+    def test_document_prompts_keep_their_modes_and_followups(self):
+        root = Path(__file__).resolve().parents[2] / "docs/quality-assurance/chat-acceptance"
+        workload = tuple(observer.PROMPTS)
+        with patch.dict(observer.PROMPTS_BY_NAME), patch.dict(observer.FOLLOW_UPS):
+            observer.register_story_prompts(root)
+            names = {name for name in observer.PROMPTS_BY_NAME if name.startswith("story-")}
+            self.assertEqual(names, {f"story-{n:02d}" for n in range(1, 24)})
+            self.assertEqual(observer.PROMPTS_BY_NAME["story-14"], (
+                "story-14", "chat_local",
+                "Go in collection testdata and retrieve all the pdf files. Sort them by size, largest first.",
+            ))
+            self.assertEqual(observer.FOLLOW_UPS["story-14"],
+                "How many PDF documents does the epstein collection hold? List the 10 largest.")
+            self.assertEqual(observer.PROMPTS_BY_NAME["story-18"][1], "chat")
+            self.assertEqual(observer.PROMPTS_BY_NAME["story-17"][1], "chat_local")
+            self.assertEqual(tuple(observer.PROMPTS), workload)
 
 
 class HistoryTests(unittest.IsolatedAsyncioTestCase):

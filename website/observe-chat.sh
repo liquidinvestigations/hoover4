@@ -15,8 +15,10 @@
 # prompt sent to the wrong site starts a real turn there.
 #
 # --prompts takes a comma-separated list of prompt names from chat_observer.py's PROMPTS,
-#   or 'all'. Defaults to 'collection-exploration'. --conversations caps how many of the
-#   selected prompts run concurrently (0, the default, runs every selected prompt).
+#   or 'all'. Defaults to 'collection-exploration'. --conversations limits the number
+#   of selected prompts (0, the default, runs every selected prompt).
+# Story names `story-01` through `story-23` read their prompts from the acceptance documents.
+# `all` continues to select the fixed workload.
 #   --no-followup skips the second turn of a prompt that has one in FOLLOW_UPS.
 # --continue /ai_chat/c/ID/9g==/9g== sends the one selected prompt once as the next turn of
 #   that saved conversation and observes that turn.
@@ -217,6 +219,7 @@ docker exec "$BROWSER_CONTAINER" mkdir -p "$REMOTE_DIR"
 # chat_observer.py imports its browser helpers from capture_screenshots.py rather than
 # copying them, so both files travel together.
 docker cp tools/chat_observer.py "$BROWSER_CONTAINER:$REMOTE_DIR/chat_observer.py"
+docker cp ../docs/quality-assurance/chat-acceptance "$BROWSER_CONTAINER:$REMOTE_DIR/chat-acceptance"
 docker cp tools/capture_screenshots.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_screenshots.py"
 docker cp tools/capture_credentials.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_credentials.py"
 docker cp tools/browser_lifecycle.py "$BROWSER_CONTAINER:$REMOTE_DIR/browser_lifecycle.py"
