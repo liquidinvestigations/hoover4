@@ -323,7 +323,6 @@ async def run_common_worker():
 
     log.info("Starting common worker...")
     client = await Client.connect("temporal:7233")
-    attach_temporal_client(client)
     await ensure_search_attributes(client)
 
     # Self-scheduling ETA sampler for the admin processing page. A singleton:
@@ -736,7 +735,6 @@ async def run_chat_worker():
   from .visibility import ensure_search_attributes
   log.info("Starting Chat worker...")
   client = await Client.connect("temporal:7233")
-  attach_temporal_client(client)
   await ensure_search_attributes(client)
   # An empty key yields 3, 8 and 16. The ini sets 3, 4 and 16.
   model_slots = worker_concurrency("chat_model", 3)

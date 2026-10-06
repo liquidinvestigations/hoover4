@@ -57,7 +57,7 @@ live view most needs to name. Inflight is busy slots. Queue *waiters* are a diff
 table, ``Hoover4_Processing.processing_queue_backlog``, filled from Temporal
 ``DescribeTaskQueue`` on the same cadence: levels, nothing written while every queue's
 backlog is 0. DescribeTaskQueue is async and must not run on the activity path -- the
-common worker hands this recorder its client and event loop at startup, and the daemon
+operations worker hands this recorder its client and event loop at startup, and the daemon
 schedules the RPCs onto that loop.
 """
 
@@ -649,12 +649,11 @@ async def _describe_all_queues(client: Any) -> list[list]:
 
 
 def attach_temporal_client(client: Any) -> None:
-    """Give the recorder the common worker's Temporal client for queue-backlog samples.
+    """Sample every queue from the operations worker.
 
-    Other workers leave this unset: DescribeTaskQueue is cluster-wide, so the two
-    common-worker processes sampling every queue is enough (a reader takes the newest
-    row per task_queue). Starts the daemon so an idle fleet still records waiters.
-    Never raises.
+    Only this worker attaches a client because queue observations cover the entire fleet.
+    Its minute batches keep backlog writes independent of the common worker count.
+    Start the recorder even when no activity runs.
     """
     try:
         loop = asyncio.get_running_loop()
