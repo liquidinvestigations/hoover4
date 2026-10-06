@@ -71,8 +71,8 @@ def main() -> int:
         CLIENT_SETTINGS,
         GLOBAL_DB,
         get_global_client,
-        insert_arrow_idempotent,
-        insert_idempotent,
+        insert_arrow_durable,
+        insert_durable,
         reset_client_pool_for_tests,
     )
 
@@ -130,34 +130,22 @@ def main() -> int:
             _stats(_time(probe_insert_async)),
         )
 
-        def probe_insert_sync():
-            c = get_client(settings={"async_insert": 0, "wait_for_async_insert": 0})
-            try:
-                c.insert("bench_overhead_probe", [[1]], column_names=["x"])
-            finally:
-                c.close()
+        def probe_insert_durable():
+            insert_durable(warm, "bench_overhead_probe", [[1]], column_names=["x"])
 
         print(
-            "1-row insert no async settings (fresh client):",
-            _stats(_time(probe_insert_sync)),
-        )
-
-        def probe_insert_idempotent():
-            insert_idempotent(warm, "bench_overhead_probe", [[1]], column_names=["x"])
-
-        print(
-            "1-row insert_idempotent (pooled, no async wait):",
-            _stats(_time(probe_insert_idempotent)),
+            "1-row insert_durable (pooled, waits for storage):",
+            _stats(_time(probe_insert_durable)),
         )
 
         import pyarrow as pa
 
         def probe_store_shaped_insert():
             tbl = pa.table({"x": pa.array([1], type=pa.uint8())})
-            insert_arrow_idempotent(warm, "bench_overhead_probe", tbl)
+            insert_arrow_durable(warm, "bench_overhead_probe", tbl)
 
         print(
-            "_store_file_types shaped (pooled + insert_arrow_idempotent):",
+            "_store_file_types shaped (pooled + insert_arrow_durable):",
             _stats(_time(probe_store_shaped_insert)),
         )
 
@@ -166,7 +154,7 @@ def main() -> int:
         def probe_detect_mime_body():
             mime_types_from_name(probe)
             tbl = pa.table({"x": pa.array([1], type=pa.uint8())})
-            insert_arrow_idempotent(warm, "bench_overhead_probe", tbl)
+            insert_arrow_durable(warm, "bench_overhead_probe", tbl)
 
         print(
             "detect_mime_from_name body (name + idempotent insert):",

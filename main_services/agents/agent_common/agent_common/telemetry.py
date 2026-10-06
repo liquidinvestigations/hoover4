@@ -1,21 +1,4 @@
-"""One `ai_service_telemetry` row per outbound call to an AI capability.
-
-`/admin/ai_status` shows a use% strip and a recent-traffic table built entirely from this
-table. Until now only the LLM path wrote to it, so those panels described one capability
-and implied five: embeddings, rerank, NER, OCR and the browser were all rendered as
-"no traffic", which reads as *idle* and is indistinguishable from *broken*. A dashboard
-that cannot tell those apart is worse than one that admits it has no data.
-
-**Best-effort, and never in the way.** Every function here swallows its own failures: a
-ClickHouse hiccup must not fail the search it is describing. Writes are fire-and-forget
-over the HTTP interface with a short timeout, the same shape `research_agent/llm_events.py`
-uses for the LLM half. The two are deliberately separate because they run in different
-images, and neither may depend on the other being present.
-
-The worker has its own copy in `main_services/processing/tasks/ai_telemetry.py`: it holds
-a real ClickHouse client already and does not vendor this package. Same table, same column
-meanings; keep them agreeing.
-"""
+"""Collect AI service telemetry and write waited batches each minute."""
 
 from __future__ import annotations
 
@@ -59,7 +42,7 @@ def record(
     username: str = "",
     session_id: str = "",
 ) -> None:
-    """Insert one row. Never raises, never blocks longer than `WRITE_TIMEOUT_SECONDS`."""
+    """Collect one telemetry row. Never raises."""
     base = (os.getenv("CLICKHOUSE_URL") or "").rstrip("/")
     if not base:
         return
@@ -76,40 +59,16 @@ def record(
         "detail": (detail or "")[:200],
     }
     try:
-        import httpx
+        from agent_common.clickhouse_buffer import record as buffer_record
 
-        with httpx.Client(timeout=WRITE_TIMEOUT_SECONDS, auth=_auth()) as client:
-            response = client.post(
-                f"{base}/",
-                params={
-                    "database": GLOBAL_DB,
-                    "query": "INSERT INTO ai_service_telemetry FORMAT JSONEachRow",
-                },
-                content=json.dumps(row, ensure_ascii=False).encode("utf-8"),
-            )
-            if response.status_code >= 300:
-                log.warning(
-                    "ai_service_telemetry insert failed status=%s body=%s",
-                    response.status_code, response.text[:200],
-                )
-    except Exception as exc:  # noqa: BLE001 - telemetry is never worth a failed call
+        buffer_record(base, GLOBAL_DB, _auth(), 'ai_service_telemetry', row)
+    except Exception as exc:
         log.debug("ai_service_telemetry insert failed: %s", exc)
 
 
 def record_async(service: str, **kwargs) -> None:
-    """`record` on a daemon thread, for callers on an event loop.
-
-    The clients that call this are synchronous (`requests`) inside async servers, so the
-    natural fix (`asyncio.to_thread`) is not available at the call site. A daemon thread
-    per call is cheap next to the model call it is describing, and a dropped row at
-    shutdown is the correct trade for never delaying an answer.
-    """
-    if not enabled():
-        return
-    threading.Thread(
-        target=record, args=(service,), kwargs=kwargs, daemon=True,
-        name=f"ai-telemetry-{service}",
-    ).start()
+    """Collect telemetry for a caller on an event loop."""
+    record(service, **kwargs)
 
 
 @contextmanager

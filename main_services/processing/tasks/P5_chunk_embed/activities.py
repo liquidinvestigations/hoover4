@@ -102,25 +102,19 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
     # Keyset pagination on the ORDER BY prefix, not OFFSET: OFFSET re-reads everything
     # before it, which on a multi-million-segment file is quadratic.
     #
-    # FINAL, not a bare read. `text_content` is a ReplacingMergeTree and a re-parse
-    # inserts a second row for the same
-    # (collection_dataset, file_hash, extracted_by, page_id) that lives until the
-    # background merge collapses it. Without FINAL both rows come back, both are
-    # chunked, and both survive the anti-join below, because they produce *identical*
-    # chunk keys, so neither is in `existing` on the first run. The endpoint is then
-    # asked to embed every chunk of the page twice, at full GPU cost, and both vectors
-    # are inserted. The filter is on the ORDER BY prefix, so FINAL is cheap here.
+    # Group versions before applying the page limit.
     def _segment_pages():
         after = ("", "", 0)
         while True:
             with get_collection_client(params.collectionname) as page_client:
                 rows = page_client.query_arrow("""
-                    SELECT collection_dataset, file_hash, extracted_by, page_id, text
-                    FROM text_content FINAL
+                    SELECT collection_dataset, file_hash, extracted_by, page_id, argMax(text, version) AS text
+                    FROM text_content
                     WHERE collection_dataset = {collection_dataset:String}
                     AND file_hash IN {item_hashes:Array(String)}
                     AND (file_hash, extracted_by, page_id) >
                         ({after_hash:String}, {after_by:String}, {after_page:UInt32})
+                    GROUP BY collection_dataset, file_hash, extracted_by, page_id
                     ORDER BY file_hash, extracted_by, page_id
                     LIMIT {page_rows:UInt32}
                 """, {

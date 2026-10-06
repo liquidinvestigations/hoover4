@@ -48,7 +48,7 @@ def clickhouse_query(sql: str, database: str, params: dict[str, Any] | None = No
     into the query.
     """
     query_params = {
-        "database": database,
+        "database": database, "async_insert": 1, "wait_for_async_insert": 1,
         "user": os.getenv("CLICKHOUSE_USER", "hoover4"),
         "password": os.getenv("CLICKHOUSE_PASSWORD", "hoover4"),
         "default_format": "JSONEachRow",

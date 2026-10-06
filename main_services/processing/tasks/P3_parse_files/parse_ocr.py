@@ -120,7 +120,7 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
     import pyarrow as pa
     import requests
 
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
+    from database.clickhouse import get_collection_client, insert_parser_arrow
     from tasks.ocr_client import engine_configured, run_ocr
     from tasks.P3_parse_files.parse_common import insert_text_chunks
 
@@ -203,7 +203,7 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
 
             extracted_by = ocr_extracted_by(outcome.engine, outcome.languages)
 
-            insert_arrow_idempotent(client, "raw_ocr_results", pa.table({
+            insert_parser_arrow(client, "raw_ocr_results", pa.table({
                 "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
                 "image_hash": pa.array([params.file_hash], type=pa.string()),
                 "engine": pa.array([outcome.engine], type=pa.string()),

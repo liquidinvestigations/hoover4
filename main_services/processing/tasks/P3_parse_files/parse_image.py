@@ -73,7 +73,7 @@ class ParseImageParams:
 @activity.defn
 @with_heartbeat
 def parse_image_metadata_and_store(params: ParseImageParams) -> str:
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
+    from database.clickhouse import get_collection_client, insert_parser_arrow
     import pyarrow as pa
 
     log.info("[P3] Parsing image metadata for %s", params.file_path)
@@ -98,7 +98,7 @@ def parse_image_metadata_and_store(params: ParseImageParams) -> str:
             "height_pixels": pa.array([int(height)], type=pa.uint32()),
             "image_metadata": pa.array([json.dumps(meta)], type=pa.string()),
         })
-        insert_arrow_idempotent(client, "image", tbl_img)
+        insert_parser_arrow(client, "image", tbl_img)
 
     return "image_ok"
 

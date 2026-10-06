@@ -83,7 +83,7 @@ def test_supervise_marks_old_absent_row_errored(monkeypatch):
         status = activities.RPCStatusCode.NOT_FOUND
 
     monkeypatch.setattr(activities, "RPCError", NotFound)
-    row = _row("pending", age=601)
+    row = _row("pending", age=activities.PENDING_START_GRACE_SECONDS + 1)
     client = _Client({("op", None): _Handle(NotFound())})
     asyncio.run(activities.supervise(client, datetime(2026, 1, 1), [row]))
     assert writes == [("op", "errored", activities.WORKFLOW_ABSENT_ERROR)]

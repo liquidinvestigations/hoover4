@@ -27,7 +27,7 @@ from time import perf_counter
 from temporalio import activity
 import logging
 import os
-from .string_term_encodings import get_string_term_ids, hash_string_to_uint63
+from .string_term_encodings import get_string_term_ids, get_string_term_ids_by_field, hash_string_to_uint63
 from tasks.plan_utils import clean_text
 from database.clickhouse import get_collection_client
 from database.manticore import (
@@ -434,16 +434,13 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     metadata = document_metadata(params)
 
     with get_collection_client(params.collectionname) as client:
-        # FINAL: `text_content` is a ReplacingMergeTree, so a re-parse leaves two rows for
-        # the same segment until the background merge runs. The Manticore row id is
-        # deterministic, so the duplicate REPLACEs into the same row rather than corrupting
-        # the index, but it doubles the work of the whole activity, and the page text is
-        # then non-deterministically whichever copy came back last.
+        # Plan each segment from its latest stored size.
         text_segments = client.query_arrow("""
-            SELECT file_hash, extracted_by, page_id, text_bytes
-            FROM text_content FINAL
+            SELECT file_hash, extracted_by, page_id, argMax(text_bytes, version) AS text_bytes
+            FROM text_content
             WHERE collection_dataset = {collection_dataset:String}
             AND file_hash IN {item_hashes:Array(String)}
+            GROUP BY file_hash, extracted_by, page_id
         """, {
             "collection_dataset": collection_dataset,
             "item_hashes": item_hashes
@@ -472,12 +469,15 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
         # into the facet beside one they do.
         regex_rows = client.query_arrow("""
             SELECT file_hash, extracted_by, page_id, entity_type,
-                    argMax(entity_values, rule_set_version) AS entity_values,
-                    argMax(entity_value_json, rule_set_version) AS entity_value_json
-            FROM regex_entity_hit FINAL
-            WHERE collection_dataset = {collection_dataset:String}
-            AND file_hash IN {item_hashes:Array(String)}
-            GROUP BY file_hash, extracted_by, page_id, entity_type
+                   latest.1 AS entity_values, latest.2 AS entity_value_json
+            FROM (
+                SELECT file_hash, extracted_by, page_id, entity_type,
+                       argMax((entity_values, entity_value_json), rule_set_version) AS latest
+                FROM regex_entity_hit FINAL
+                WHERE collection_dataset = {collection_dataset:String}
+                AND file_hash IN {item_hashes:Array(String)}
+                GROUP BY file_hash, extracted_by, page_id, entity_type
+            )
         """, {
             "collection_dataset": collection_dataset,
             "item_hashes": item_hashes
@@ -490,22 +490,16 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     for row in entity_rows:
         ner_values.update(row['entity_values'])
 
-    # Cache hits: the NLP stage already populated the 'ner' term dictionary
-    # with these values (ids are content-derived via hash_string_to_uint63).
-    ner_ids = get_string_term_ids(params.collectionname, collection_dataset, 'ner', ner_values)
-
     regex_facets, mentioned_by_segment = regex_facets_by_segment(regex_rows)
-    # One dictionary per facet field, so a term id resolves to text meaningful for its
-    # own facet: and so money's ids resolve to bucket labels rather than to amounts.
-    # Cache hits: the scan stage populated the same fields with the same values.
-    regex_ids = {
-        field.term_field: get_string_term_ids(
-            params.collectionname, collection_dataset, field.term_field,
-            {value for segment in regex_facets.values()
-             for value in segment.get(field.term_field, ())},
-        )
+    fields = {
+        field.term_field: {value for segment in regex_facets.values()
+                           for value in segment.get(field.term_field, ())}
         for field in FACET_FIELDS
     }
+    fields['ner'] = ner_values
+    term_ids = get_string_term_ids_by_field(params.collectionname, collection_dataset, fields)
+    ner_ids = term_ids.pop('ner')
+    regex_ids = term_ids
 
     missing_watermarks = 0
     text_batches = plan_text_batches([
@@ -926,13 +920,15 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
         all_node_keys.update(node_keys)
         all_addresses.update(addresses)
 
-    filetype_ids = get_string_term_ids(params.collectionname, collection_dataset, 'filetype', all_filetypes)
-    mime_type_ids = get_string_term_ids(params.collectionname, collection_dataset, 'mime_type', all_mime_types)
-    extension_ids = get_string_term_ids(params.collectionname, collection_dataset, 'extension', all_extensions)
-    # `vfs_node`, not the old `parent_paths`: the term VALUE embeds collection_dataset
-    # and container_hash, so the id cannot collide across datasets or archives.
-    node_key_ids = get_string_term_ids(params.collectionname, collection_dataset, 'vfs_node', all_node_keys)
-    address_ids = get_string_term_ids(params.collectionname, collection_dataset, 'email_address', all_addresses)
+    term_ids = get_string_term_ids_by_field(params.collectionname, collection_dataset, {
+        'filetype': all_filetypes, 'mime_type': all_mime_types, 'extension': all_extensions,
+        'vfs_node': all_node_keys, 'email_address': all_addresses,
+    })
+    filetype_ids = term_ids['filetype']
+    mime_type_ids = term_ids['mime_type']
+    extension_ids = term_ids['extension']
+    node_key_ids = term_ids['vfs_node']
+    address_ids = term_ids['email_address']
 
     from database.manticore import DATE_UNKNOWN, SIZE_UNKNOWN
 
@@ -1839,7 +1835,7 @@ def resolve_canonical_file_type(params: ResolveCanonicalFileTypeParams) -> str:
             SELECT archive_hash AS hash, 'archive' AS kind FROM archives FINAL
                 WHERE collection_dataset = {cd:String}""" + scoped("archive_hash") + """
             UNION ALL
-            SELECT file_hash AS hash, 'office' AS kind FROM text_content FINAL
+            SELECT file_hash AS hash, 'office' AS kind FROM text_content
                 WHERE collection_dataset = {cd:String} AND extracted_by = 'office_xml'""" + scoped("file_hash") + """
             UNION ALL
             SELECT hash, 'table' AS kind FROM table_documents FINAL

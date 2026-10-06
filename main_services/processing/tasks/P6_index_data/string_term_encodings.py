@@ -121,3 +121,45 @@ def get_string_term_ids(collectionname: str, collection_dataset: str, term_field
     new_term_ids = create_string_term_ids(collectionname, collection_dataset, term_field, remaining_term_values)
     log.info(f"Created {len(new_term_ids)} new string term IDs for {term_field} in {collection_dataset}")
     return {**existing_term_ids, **new_term_ids}
+
+def get_string_term_ids_by_field(collectionname: str, collection_dataset: str,
+                                 fields: dict[str, set[str]]) -> dict[str, dict[str, int]]:
+    """Read all requested fields and write missing dictionary rows in two waited batches."""
+    import json
+    import pyarrow as pa
+    from clickhouse_connect.driver.external import ExternalData
+    from database.clickhouse import get_collection_client, insert_arrow_durable
+
+    found = {field: {} for field in fields}
+    keys = sorted((field, value) for field, values in fields.items() for value in values)
+    if not keys:
+        return found
+    data = '\n'.join(json.dumps(key, ensure_ascii=False) for key in keys).encode('utf-8')
+    external = ExternalData(file_name='terms', data=data, fmt='JSONCompactEachRow',
+                            structure='term_field String, term_value String')
+    with get_collection_client(collectionname) as client:
+        rows = client.query_arrow(
+            "SELECT term_field, term_value, any(term_id) AS term_id FROM string_term_text_to_id "
+            "WHERE collection_dataset = {cd:String} "
+            "AND (term_field, term_value) IN (SELECT term_field, term_value FROM terms) "
+            "GROUP BY term_field, term_value", {"cd": collection_dataset},
+            external_data=external,
+        ).to_pylist()
+        for row in rows:
+            found[row['term_field']][row['term_value']] = row['term_id']
+        missing = []
+        for field, value in keys:
+            if value not in found[field]:
+                term_id = hash_string_to_uint63(value)
+                found[field][value] = term_id
+                missing.append((field, value, term_id))
+        if missing:
+            table = pa.table({
+                'collection_dataset': pa.array([collection_dataset] * len(missing), type=pa.string()),
+                'term_field': pa.array([r[0] for r in missing], type=pa.string()),
+                'term_value': pa.array([r[1] for r in missing], type=pa.string()),
+                'term_id': pa.array([r[2] for r in missing], type=pa.uint64()),
+            })
+            insert_arrow_durable(client, 'string_term_text_to_id', table)
+            insert_arrow_durable(client, 'string_term_id_to_text', table)
+    return found

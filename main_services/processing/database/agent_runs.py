@@ -7,7 +7,7 @@ state, and no answer, tool result or briefing crosses a Temporal payload.
 
 Three rules hold for every function in this module:
 
-* **Every write uses the unmarked insert or `insert_durable`**, never `insert_idempotent`,
+* **Every write uses the unmarked insert or `insert_durable`**, and waits for storage,
   so a read that follows the write sees it.
 * **Every read uses `FINAL` and the full owner prefix** `(username, session_id)`. Without
   `FINAL`, a read before a merge sees every partial version of a message.

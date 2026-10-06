@@ -8,9 +8,8 @@ The vector writer refuses a batch above its memory budget. The text writer remai
 
 An operation-owned writer records document outcomes only for hashes it returns as committed.
 Text and vector writers keep separate outcomes for each shard chunk.
-The shard planner flushes ClickHouse's server-wide async insert queue once per plan.
-It runs after P4 and P5 finish and before either index writer reads their rows.
-A failed flush stops shard assignment.
+P4 and P5 wait for storage before the shard planner reads their rows.
+The planner groups text segment versions before it counts rows and bytes.
 
 ## Key Responsibilities
 

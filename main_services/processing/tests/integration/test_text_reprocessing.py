@@ -3,7 +3,7 @@
 import pytest
 import pyarrow as pa
 
-from database.clickhouse import get_collection_client, insert_arrow_idempotent
+from database.clickhouse import get_collection_client, insert_arrow_durable
 from database.manticore import create_shard_tables, get_manticore_client
 from tasks.P3_parse_files import parse_pdf
 from tasks.P3_parse_files.document_dates import (
@@ -23,7 +23,7 @@ def test_index_planner_flushes_pending_stage_rows(temp_collection):
     collection = temp_collection
     dataset = f"{collection}_barrier"
     with get_collection_client(collection) as client:
-        insert_arrow_idempotent(client, "nlp_processed", pa.table({
+        insert_arrow_durable(client, "nlp_processed", pa.table({
             "collection_dataset": pa.array([dataset]),
             "file_hash": pa.array(["barrier-file"]),
             "extracted_by": pa.array(["raw_text"]),
@@ -31,7 +31,7 @@ def test_index_planner_flushes_pending_stage_rows(temp_collection):
             "nlp_model": pa.array(["barrier-model"]),
             "text_bytes": pa.array([12], type=pa.uint64()),
         }))
-        insert_arrow_idempotent(client, "document_dates", pa.table({
+        insert_arrow_durable(client, "document_dates", pa.table({
             "collection_dataset": pa.array([dataset]),
             "hash": pa.array(["barrier-file"]),
             "date": pa.array([1], type=pa.int64()),

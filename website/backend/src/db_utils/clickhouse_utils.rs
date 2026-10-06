@@ -34,6 +34,8 @@ fn client_with_database(database: &str) -> clickhouse::Client {
         .with_user("hoover4")
         .with_password("hoover4")
         .with_database(database)
+        .with_option("async_insert", "1")
+        .with_option("wait_for_async_insert", "1")
 }
 
 /// Client bound to the global database `Hoover4_Processing`.

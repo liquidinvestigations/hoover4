@@ -134,7 +134,7 @@ def test_metadata_and_type_are_stored_before_failure(monkeypatch):
     monkeypatch.setattr(parse_common, "insert_text_chunks", lambda *a: stored.append(("text", a)))
     monkeypatch.setattr(tika, "parse_document", lambda p: answer)
     monkeypatch.setattr(db, "get_collection_client", lambda c: nullcontext(object()))
-    monkeypatch.setattr(db, "insert_arrow_idempotent", lambda c, name, table: stored.append((name, table.to_pylist())))
+    monkeypatch.setattr(db, "insert_arrow_durable", lambda c, name, table: stored.append((name, table.to_pylist())))
     with pytest.raises(ApplicationError) as caught:
         tika.run_tika_and_store(tika.RunTikaParams("c", "ds", "h", "input", 1900))
     assert caught.value.type == "TikaParseFailed"

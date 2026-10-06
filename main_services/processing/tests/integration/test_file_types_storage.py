@@ -18,7 +18,7 @@ def collection(storage):
 
 
 def flush(client):
-    client.command("SYSTEM FLUSH ASYNC INSERT QUEUE")
+    pass
 
 
 def test_plan_metadata_keeps_bounded_names(collection):

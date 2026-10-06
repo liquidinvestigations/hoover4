@@ -82,7 +82,7 @@ class VideoMetaParams:
 @activity.defn
 @with_heartbeat
 def video_ffprobe_and_store(params: VideoMetaParams) -> Dict[str, Any]:
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
+    from database.clickhouse import get_collection_client, insert_parser_arrow
     import pyarrow as pa
     from datetime import datetime, timezone
 
@@ -113,7 +113,7 @@ def video_ffprobe_and_store(params: VideoMetaParams) -> Dict[str, Any]:
             "video_metadata_json": pa.array([json.dumps({"ffprobe": meta, "duration_seconds": duration, "width": width, "height": height})], type=pa.string()),
             "processed_at": pa.array([processed_at], type=pa.timestamp("s")),
         })
-        insert_arrow_idempotent(client, "video_metadata", tbl_meta)
+        insert_parser_arrow(client, "video_metadata", tbl_meta)
 
     return {"duration": duration, "width": width, "height": height, "size_bytes": size_bytes}
 

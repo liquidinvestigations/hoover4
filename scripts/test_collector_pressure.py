@@ -24,9 +24,22 @@ class PressureCountersTest(unittest.TestCase):
             io = Path(folder, "io.stat")
             io.write_text("8:0 rbytes=12 wbytes=20 rios=1 wios=2\n"
                           "8:1 rbytes=4 wbytes=7 rios=3 wios=4\n")
-            self.assertEqual(collector._read_io_totals(io),
+            self.assertEqual(collector._read_io_totals(io, device_root=folder),
                              {"rbytes": 16, "wbytes": 27, "rios": 4, "wios": 6})
             self.assertEqual(collector._read_pressure_totals(Path(folder, "absent")), {})
+
+    def test_mapped_device_counters_exclude_lower_devices(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            mapped = root / '253:0' / 'slaves' / 'lower'
+            mapped.mkdir(parents=True)
+            (mapped / 'dev').write_text('8:0')
+            (root / '8:0').mkdir()
+            source = root / 'io.stat'
+            source.write_text('253:0 rbytes=12 wbytes=20 rios=1 wios=2\n'
+                              '8:0 rbytes=12 wbytes=20 rios=1 wios=2\n')
+            self.assertEqual(collector._read_io_totals(source, device_root=root),
+                             {'rbytes': 12, 'wbytes': 20, 'rios': 1, 'wios': 2})
 
     def test_generation_change_invalidates_delta(self):
         def sample(generation, value):

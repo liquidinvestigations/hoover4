@@ -252,8 +252,7 @@ def resolve_document_dates(params: ResolveDocumentDatesParams) -> str:
     attribute from this table, so a document indexed before its dates were resolved
     would be permanently undated until the next re-index.
 
-    This activity flushes the parse stages' async inserts before it reads their
-    metadata. P4 and P6 then read visible text pages after the parse groups finish.
+    Parse activities wait for storage before this activity reads their metadata.
 
     Idempotent by construction -- ``document_dates`` is a ReplacingMergeTree keyed on
     ``(collection_dataset, hash, date, source)``, so re-running a plan rewrites the same
@@ -261,14 +260,11 @@ def resolve_document_dates(params: ResolveDocumentDatesParams) -> str:
     re-parse) would linger, which is why every read of the table uses FINAL and the
     viewer shows the source of each row.
     """
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
+    from database.clickhouse import get_collection_client, insert_arrow_durable
     import pyarrow as pa
 
     collection_dataset = params.collection_dataset
     with get_collection_client(params.collectionname) as client:
-        # All parse-group children have finished before this activity starts. Flush
-        # their asynchronous inserts before any stage reads their text or metadata.
-        client.command("SYSTEM FLUSH ASYNC INSERT QUEUE")
         hashes = client.query_arrow("""
             SELECT item_hashes
             FROM processing_plans
@@ -340,7 +336,7 @@ def resolve_document_dates(params: ResolveDocumentDatesParams) -> str:
         return f"0 dates for {len(item_hashes)} documents"
 
     with get_collection_client(params.collectionname) as client:
-        insert_arrow_idempotent(client, "document_dates", pa.table({
+        insert_arrow_durable(client, "document_dates", pa.table({
             "collection_dataset": pa.array([collection_dataset] * len(out_hash), type=pa.string()),
             "hash": pa.array(out_hash, type=pa.string()),
             "date": pa.array(out_date, type=pa.int64()),

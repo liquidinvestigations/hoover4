@@ -65,7 +65,7 @@ class ParseAudioParams:
 @activity.defn
 @with_heartbeat
 def parse_audio_metadata_and_store(params: ParseAudioParams) -> str:
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
+    from database.clickhouse import get_collection_client, insert_parser_arrow
     import pyarrow as pa
     from datetime import datetime, timezone
 
@@ -83,7 +83,7 @@ def parse_audio_metadata_and_store(params: ParseAudioParams) -> str:
             "audio_metadata_json": pa.array([json.dumps({"ffprobe": meta, "duration_seconds": duration})], type=pa.string()),
             "processed_at": pa.array([processed_at], type=pa.timestamp("s")),
         })
-        insert_arrow_idempotent(client, "audio_metadata", tbl_meta)
+        insert_parser_arrow(client, "audio_metadata", tbl_meta)
 
     return "audio_ok"
 

@@ -259,7 +259,7 @@ def context_window(model_id: str, *, now: Optional[float] = None) -> int:
             r = client.get(
                 f"{base}/",
                 params={
-                    "database": GLOBAL_DB,
+                    "database": GLOBAL_DB, "async_insert": 1, "wait_for_async_insert": 1,
                     "query": (
                         "SELECT max(context_window) FROM llm_models FINAL "
                         "WHERE model_id = {m:String} AND is_deleted = 0 FORMAT TSV"
@@ -954,17 +954,10 @@ def record_compaction(report: CompactionReport, *, username: Optional[str],
         "list_after": report.list_after,
     }
     try:
-        with httpx.Client(timeout=(2.0, 5.0), auth=_auth()) as client:
-            r = client.post(
-                f"{base}/",
-                params={"database": GLOBAL_DB,
-                        "query": "INSERT INTO chat_compactions FORMAT JSONEachRow"},
-                content=json.dumps(row, ensure_ascii=False).encode("utf-8"),
-            )
-            if r.status_code >= 300:
-                log.warning("chat_compactions insert failed status=%s body=%s",
-                            r.status_code, r.text[:200])
-    except Exception as exc:  # noqa: BLE001 -- the trail must not break a chat turn
+        from agent_common.clickhouse_buffer import record as buffer_record
+
+        buffer_record(base, GLOBAL_DB, _auth(), 'chat_compactions', row)
+    except Exception as exc:
         log.warning("chat_compactions insert failed: %s", exc)
 
 

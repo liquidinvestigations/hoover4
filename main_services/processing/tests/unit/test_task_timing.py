@@ -388,6 +388,8 @@ def test_inflight_samples_are_written_only_while_something_is_running(recorder):
 
     token = recorder.begin("testdata", "testdata_testfiles", "run_ocr_and_store")
     recorder._sample_inflight()
+    assert recorder.inserts == []
+    recorder.flush()
     rows = [r for (_c, t, _cols, rs) in recorder.inserts if t == "processing_task_inflight" for r in rs]
     assert len(rows) == 1
     assert rows[0][0] == "testdata_testfiles"
@@ -548,3 +550,17 @@ def test_ai_telemetry_shares_the_timing_buffer(recorder):
     ]
     assert rows == [["ocr", "gpu", "pipeline", "", 12, 1, "ok"]]
     assert recorder.inserts[0][0] == ""
+
+
+def test_observations_accumulate_until_the_minute_write(recorder, monkeypatch):
+    waits = iter([False, False, True])
+    times = iter([0.0, 5.0, 60.0, 60.0])
+    monkeypatch.setattr(recorder._stop, 'wait', lambda seconds: next(waits))
+    monkeypatch.setattr(task_timing.time, 'monotonic', lambda: next(times))
+    monkeypatch.setattr(recorder, '_sample_backlog', lambda: recorder._buffer_sample(
+        '', 'processing_queue_backlog', ['value'], [[1]]))
+    monkeypatch.setattr(recorder, '_sample_inflight', lambda: recorder._buffer_sample(
+        'collection', 'processing_task_inflight', ['value'], [[2]]))
+    recorder._run()
+    assert [(table, len(rows)) for _, table, _, rows in recorder.inserts] == [
+        ('processing_task_inflight', 2), ('processing_queue_backlog', 2)]

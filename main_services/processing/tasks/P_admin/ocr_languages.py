@@ -346,14 +346,14 @@ def purge_dropped_ocr_variants(params: PurgeVariantsParams) -> Dict[str, int]:
                     "(collection_dataset, pdf_hash, engine, languages, blob_key, blob_hash, "
                     " page_count, size_bytes, run_time_ms, is_deleted) "
                     "SELECT collection_dataset, pdf_hash, engine, languages, "
-                    "       argMax(blob_key, updated_at), argMax(blob_hash, updated_at), "
-                    "       argMax(page_count, updated_at), argMax(size_bytes, updated_at), "
-                    "       argMax(run_time_ms, updated_at), 1 "
+                    "       latest.1, latest.2, latest.3, latest.4, latest.5, 1 "
+                    "FROM (SELECT collection_dataset, pdf_hash, engine, languages, "
+                    "argMax((blob_key, blob_hash, page_count, size_bytes, run_time_ms, is_deleted), updated_at) AS latest "
                     "FROM pdf_ocr_results "
                     "WHERE collection_dataset = {cd:String} AND engine = {en:String} "
                     "AND languages = {la:String} "
                     "GROUP BY collection_dataset, pdf_hash, engine, languages "
-                    "HAVING argMax(is_deleted, updated_at) = 0",
+                    ") WHERE latest.6 = 0",
                     parameters={"cd": params.collection_dataset, "en": engine, "la": languages},
                 )
                 pdf_rows += 1
@@ -409,10 +409,12 @@ def delete_orphaned_derived_pdfs(params: PurgeVariantsParams) -> int:
     with get_collection_client(params.collectionname) as client:
         for engine, languages in params.removed_pairs:
             rows = client.query(
-                "SELECT pdf_hash, argMax(blob_key, updated_at) FROM pdf_ocr_results "
+                "SELECT pdf_hash, latest.1 FROM (SELECT pdf_hash, "
+                "argMax((blob_key, is_deleted), updated_at) AS latest "
+                "FROM pdf_ocr_results "
                 "WHERE collection_dataset = {cd:String} AND engine = {en:String} "
                 "AND languages = {la:String} "
-                "GROUP BY pdf_hash HAVING argMax(is_deleted, updated_at) = 1",
+                "GROUP BY pdf_hash) WHERE latest.2 = 1",
                 parameters={"cd": params.collection_dataset, "en": engine, "la": languages},
             ).result_rows
 

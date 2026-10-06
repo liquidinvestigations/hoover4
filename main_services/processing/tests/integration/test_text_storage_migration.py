@@ -6,7 +6,6 @@ from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 import clickhouse_connect
-from clickhouse_migrations.clickhouse_cluster import ClickhouseCluster
 import pytest
 
 from database import clickhouse as db
@@ -20,7 +19,7 @@ pytestmark = pytest.mark.integration
 def storage(monkeypatch):
     collection = "textstorage" + uuid4().hex[:8]
     database = db.COLLECTION_DB_PREFIX + collection
-    cluster = ClickhouseCluster(db.CLICKHOUSE_HOST, db.CLICKHOUSE_USER, db.CLICKHOUSE_PASS)
+    cluster = db._cluster()
     admin = clickhouse_connect.get_client(host=db.CLICKHOUSE_HOST, username=db.CLICKHOUSE_USER,
         password=db.CLICKHOUSE_PASS, settings=db.CLIENT_SETTINGS)
     with TemporaryDirectory() as folder:

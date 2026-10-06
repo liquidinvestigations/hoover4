@@ -126,21 +126,11 @@ def test_http_pool_is_sized_above_activity_slots(monkeypatch):
     assert pool.connection_pool_kw["maxsize"] > 8
 
 
-def test_insert_idempotent_opts_out_of_the_async_wait(monkeypatch):
-    _record_get_client(monkeypatch)
-    with clickhouse.get_global_client() as client:
-        clickhouse.insert_idempotent(client, "file_types", [[1]], column_names=["x"])
-        clickhouse.insert_arrow_idempotent(client, "text_content", object())
-
-    assert client.last_insert[1]["settings"]["wait_for_async_insert"] == 0
-    assert client.last_insert_arrow[1]["settings"]["wait_for_async_insert"] == 0
-
-
 def test_insert_durable_keeps_the_async_wait(monkeypatch):
     _record_get_client(monkeypatch)
     with clickhouse.get_global_client() as client:
         clickhouse.insert_durable(client, "index_state", [[1]], column_names=["x"])
         clickhouse.insert_arrow_durable(client, "processing_plan_finished", object())
 
-    assert client.last_insert[1]["settings"]["wait_for_async_insert"] == 1
+    assert client.last_insert[1]["settings"] == {"async_insert": 1, "wait_for_async_insert": 1}
     assert client.last_insert_arrow[1]["settings"]["wait_for_async_insert"] == 1

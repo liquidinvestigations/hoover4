@@ -81,7 +81,7 @@ into the global `processing_eta_samples` table (migration `00013`); the website 
   more blobs) raises the denominator mid-run, so `total` is re-read on every sample and
   never cached.
 - Throttle: every pass is timed, the workflow keeps the last 10 pass durations, and waits
-  at least **20 x mean(last 10)** before the next pass (floor 60 s). These queries scan
+  at least **20 x mean(last 10)** before the next pass (floor 300 s). These queries scan
   the whole collection database; on a large collection one pass is seconds, and a naive
   poll would put the pipeline's own storage under load to report on the pipeline.
   `continue_as_new` resets `passes` to 0 before carrying state into the next run, so the
@@ -129,3 +129,7 @@ a typed confirmation in the UI.
 ## Navigation
 
 - [Go Back](../Readme.md)
+
+The ETA collector skips collections without active operations.
+It counts the NER stage as complete when NER is disabled.
+Text byte totals use each segment's latest version.

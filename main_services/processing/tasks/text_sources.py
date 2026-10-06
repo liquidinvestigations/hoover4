@@ -48,7 +48,7 @@ def plan_text_batches(keys: list[tuple[SegmentKey, int]],
 
 def fetch_text_batch(client, collection_dataset: str,
                      batch: list[SegmentKey]) -> list[dict]:
-    """Read exactly the requested text segments from ``text_content FINAL``."""
+    """Read the latest version of each requested text segment."""
     if not batch:
         return []
     import json
@@ -59,11 +59,12 @@ def fetch_text_batch(client, collection_dataset: str,
     keys = ExternalData(file_name="keys", data=data, fmt="JSONCompactEachRow",
                         structure="file_hash String, extracted_by String, page_id UInt32")
     return client.query_arrow("""
-        SELECT collection_dataset, file_hash, extracted_by, page_id, text
-        FROM text_content FINAL
+        SELECT collection_dataset, file_hash, extracted_by, page_id, argMax(text, version) AS text
+        FROM text_content
         WHERE collection_dataset = {collection_dataset:String}
           AND file_hash IN (SELECT file_hash FROM keys)
           AND (file_hash, extracted_by, page_id) IN (SELECT file_hash, extracted_by, page_id FROM keys)
+        GROUP BY collection_dataset, file_hash, extracted_by, page_id
         ORDER BY file_hash, extracted_by, page_id
     """, {"collection_dataset": collection_dataset}, external_data=keys).to_pylist()
 

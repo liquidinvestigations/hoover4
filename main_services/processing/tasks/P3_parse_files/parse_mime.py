@@ -329,7 +329,7 @@ def _store_file_types_many(params: DetectMimeParams, rows: List[Dict[str, Any]])
     weighs them against each other and needs them distinct. What is shared is the round
     trip: four separate inserts of one row each cost four of them for no gain.
     """
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
+    from database.clickhouse import get_collection_client, insert_parser_arrow
     import pyarrow as pa
 
     if not rows:
@@ -347,7 +347,7 @@ def _store_file_types_many(params: DetectMimeParams, rows: List[Dict[str, Any]])
                                    type=pa.list_(pa.string())),
             "extracted_by": pa.array([r["extracted_by"] for r in rows], type=pa.large_string()),
         })
-        insert_arrow_idempotent(client, "file_types", tbl)
+        insert_parser_arrow(client, "file_types", tbl)
 
 
 # The four detectors that run locally, in the order the fan-out used to schedule them.

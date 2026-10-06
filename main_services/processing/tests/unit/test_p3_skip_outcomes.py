@@ -159,7 +159,7 @@ def test_non_table_releases_temporary_cells(monkeypatch):
 
     client = _CommandClient()
     monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
-    monkeypatch.setattr(clickhouse, "insert_arrow_idempotent", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(clickhouse, "insert_arrow_durable", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args, **_kwargs: READER_CSV)
     monkeypatch.setattr(parse_table, "table_format_for", lambda *_args: "csv")
     monkeypatch.setattr(
@@ -191,7 +191,7 @@ def test_table_reader_failure_records_op_id(monkeypatch):
     monkeypatch.setattr(parse_table, "table_format_for", lambda *_args: "format")
     monkeypatch.setattr(table_readers, "fallback_reader", lambda _reader: None)
     monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: _NoRowsClient())
-    monkeypatch.setattr(clickhouse, "insert_arrow_idempotent", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(clickhouse, "insert_arrow_durable", lambda *_args, **_kwargs: None)
 
     def fail_reader(*_args, **_kwargs):
         raise RuntimeError("reader failed")

@@ -44,3 +44,5 @@ __pycache__
 .kimi-code/local.toml
 
 /main_services/ops/docker/tika/tika-config.json
+
+/main_services/ops/docker/clickhouse-server-config-override.xml

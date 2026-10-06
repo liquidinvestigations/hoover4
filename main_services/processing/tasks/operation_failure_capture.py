@@ -383,13 +383,13 @@ def _insert_rows(rows: Sequence[list]) -> int:
     ``nodes_dropped > 0`` as truncated, and a later-chunk failure would not set
     that flag. One statement either stores every node or stores none.
     """
-    from database.clickhouse import get_global_client, insert_idempotent
+    from database.clickhouse import get_global_client, insert_durable
 
     if not rows:
         return 0
     try:
         with get_global_client() as client:
-            insert_idempotent(
+            insert_durable(
                 client,
                 "operation_failures",
                 list(rows),

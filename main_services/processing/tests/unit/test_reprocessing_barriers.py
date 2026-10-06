@@ -1,4 +1,4 @@
-"""A failed insert flush stops dependent processing before it reads stale rows."""
+"""A failed storage read stops dependent processing."""
 
 import pytest
 
@@ -17,27 +17,26 @@ class FailedFlush:
         return None
 
     def command(self, sql):
-        assert sql == "SYSTEM FLUSH ASYNC INSERT QUEUE"
-        raise RuntimeError("flush failed")
+        pytest.fail("Unexpected async queue flush")
 
     def query(self, *_args, **_kwargs):
-        pytest.fail("the stage read after a failed flush")
+        raise RuntimeError("read failed")
 
     def query_arrow(self, *_args, **_kwargs):
-        pytest.fail("the stage read after a failed flush")
+        raise RuntimeError("read failed")
 
 
-def test_date_resolution_propagates_flush_failure(monkeypatch):
+def test_date_resolution_propagates_read_failure(monkeypatch):
     from database import clickhouse
 
     monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: FailedFlush())
-    with pytest.raises(RuntimeError, match="flush failed"):
+    with pytest.raises(RuntimeError, match="read failed"):
         resolve_document_dates(ResolveDocumentDatesParams("collection", "dataset", "plan"))
 
 
-def test_index_planner_propagates_flush_failure(monkeypatch):
+def test_index_planner_propagates_read_failure(monkeypatch):
     monkeypatch.setattr(shard_planner, "get_collection_client", lambda _name: FailedFlush())
-    with pytest.raises(RuntimeError, match="flush failed"):
+    with pytest.raises(RuntimeError, match="read failed"):
         shard_planner.plan_shards(
             PlanShardsParams("collection", "dataset", "plan", ["file"])
         )

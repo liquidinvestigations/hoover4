@@ -654,21 +654,49 @@ def _read_pressure_totals(path):
     return totals
 
 
-def _read_io_totals(path):
-    """Sum the bounded per-device cgroup I/O counters."""
-    totals = {key: 0 for key in ("rbytes", "wbytes", "rios", "wios")}
+def _read_io_totals(path, device_root="/sys/dev/block"):
+    """Read top device counters without counting mapped storage twice."""
+    rows = {}
+    keys = ("rbytes", "wbytes", "rios", "wios")
     try:
         with open(path) as source:
             for index, line in enumerate(source):
                 if index >= 64:
                     return {}
-                for part in line.split()[1:]:
+                parts = line.split()
+                if not parts:
+                    continue
+                row = {key: 0 for key in keys}
+                for part in parts[1:]:
                     key, _, value = part.partition("=")
-                    if key in totals:
-                        totals[key] += int(value)
+                    if key in row:
+                        row[key] = int(value)
+                rows[parts[0]] = row
     except (OSError, ValueError):
         return {}
-    return totals
+    lower = set()
+    visited = set()
+
+    def descendants(device):
+        if device in visited:
+            return
+        visited.add(device)
+        folder = Path(device_root) / device
+        try:
+            for slave in ((folder / "slaves").iterdir() if (folder / "slaves").is_dir() else []):
+                identity = (slave / "dev").read_text().strip()
+                lower.add(identity)
+                descendants(identity)
+            # A partition also contributes to its whole device's I/O counters.
+            if (folder / "partition").exists():
+                lower.add((folder.resolve().parent / "dev").read_text().strip())
+        except OSError:
+            pass
+
+    for device in rows:
+        descendants(device)
+    return {key: sum(row[key] for device, row in rows.items() if device not in lower)
+            for key in keys}
 
 
 def collect_timeseries(r, containers, seconds, interval):
@@ -721,6 +749,8 @@ def collect_timeseries(r, containers, seconds, interval):
             rx, tx = _net_bytes(pid)
             per[name] = {"cgroup_generation": generation,
                          "anon": memory.get("anon"), "file": memory.get("file"),
+                         "workingset_refault_anon": memory.get("workingset_refault_anon"),
+                         "workingset_refault_file": memory.get("workingset_refault_file"),
                          "usage_usec": cpu.get("usage_usec"),
                          "nr_periods": cpu.get("nr_periods"),
                          "nr_throttled": cpu.get("nr_throttled"),

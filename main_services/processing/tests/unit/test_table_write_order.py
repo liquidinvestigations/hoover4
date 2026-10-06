@@ -19,7 +19,7 @@ def writes(monkeypatch, tmp_path):
     client = SimpleNamespace(query=lambda *a, **k: SimpleNamespace(result_rows=[]),
                              command=lambda *a, **k: pytest.fail("Table parsing issued a delete"))
     monkeypatch.setattr(db, "get_collection_client", lambda *a: nullcontext(client))
-    monkeypatch.setattr(db, "insert_arrow_idempotent", lambda c, name, data: rows.append((name, False, data.to_pylist())))
+    monkeypatch.setattr(db, "insert_parser_arrow", lambda c, name, data: rows.append((name, False, data.to_pylist())))
     monkeypatch.setattr(db, "insert_arrow_durable", lambda c, name, data: rows.append((name, True, data.to_pylist())))
     monkeypatch.setattr(table, "_record_skip", lambda *a: None)
     monkeypatch.setattr(table, "INSERT_BATCH_CELLS", 3)
@@ -69,7 +69,8 @@ def test_failed_stream_has_no_published_cells(writes, monkeypatch, fallback):
     assert all(row["cell_text"] == "accepted" for row in cells)
     if fallback == "ok":
         assert result["status"] == "ok" and len(cells) == 1
-        assert rows[0][0:2] == ("table_documents", True)
+        assert not any(name == "table_documents" and batch[0]["status"] == "parsing"
+                       for name, _, batch in rows)
     elif fallback == "empty":
         assert isinstance(result, SkippedOutcome) and rows == []
     else:

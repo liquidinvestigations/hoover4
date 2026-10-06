@@ -32,7 +32,7 @@ def test_page_rows_flush_before_the_next_text_batch(monkeypatch):
 
     class _Collection:
         def query_arrow(self, sql, _parameters):
-            if "FROM text_content FINAL" in sql:
+            if "FROM text_content" in sql:
                 return _Rows(segments)
             return _Rows([])
 
@@ -73,7 +73,8 @@ def test_page_rows_flush_before_the_next_text_batch(monkeypatch):
     monkeypatch.setattr(pages, "document_metadata", lambda _params: {
         file_hash: {**pages.empty_document_metadata(), "basenames": [f"{file_hash}.txt"]}
         for file_hash in ("a", "b", "c", "empty")})
-    monkeypatch.setattr(pages, "get_string_term_ids", lambda *_args: {})
+    monkeypatch.setattr(pages, "get_string_term_ids_by_field",
+                        lambda _c, _ds, fields: {field: {} for field in fields})
     monkeypatch.setattr(pages, "fetch_text_batch", fetch)
     monkeypatch.setattr(pages, "plan_text_batches",
                         lambda keys: plan_text_batches(keys, max_bytes=5))

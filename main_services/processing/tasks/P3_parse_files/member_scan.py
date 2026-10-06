@@ -105,7 +105,10 @@ def scan_container_folders(params: ScanContainerFoldersParams) -> BatchResult:
         log.info("[P3] Scanning container folder %s", folder.out_dir)
         scan_folder_tree(params.collectionname, params.collection_dataset,
                          folder.out_dir, folder.container_hash, params.op_id)
-        cleanup_temp_dir(CleanupTempDirParams(out_dir=folder.out_dir))
+        from tasks.P3_parse_files.insert_batch import current_batch
+
+        current_batch().after_storage(
+            lambda: cleanup_temp_dir(CleanupTempDirParams(out_dir=folder.out_dir)))
         return {"status": "scanned"}
 
     return run_batch("scan_container_folders", params.folders,

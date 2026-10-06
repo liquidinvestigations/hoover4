@@ -35,6 +35,9 @@ def test_the_row_goes_in_the_body_not_in_the_sql(monkeypatch):
         status_code = 200
         text = ""
 
+        def raise_for_status(self):
+            pass
+
     class FakeClient:
         def __enter__(self):
             return self
@@ -58,6 +61,9 @@ def test_the_row_goes_in_the_body_not_in_the_sql(monkeypatch):
         session_id="s'1",
     )
 
+    from agent_common.clickhouse_buffer import flush
+    assert sent == []
+    flush()
     assert len(sent) == 2
     for params, content in sent:
         query = params["query"]

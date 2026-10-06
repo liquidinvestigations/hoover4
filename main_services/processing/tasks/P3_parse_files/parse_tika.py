@@ -130,7 +130,7 @@ def parse_document(params: RunTikaParams) -> TikaAnswer:
 
 
 def _store_answer(params: RunTikaParams, answer: TikaAnswer) -> dict:
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
+    from database.clickhouse import get_collection_client, insert_parser_arrow
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
     from tasks.P3_parse_files.parse_common import insert_text_chunks
     import pyarrow as pa
@@ -142,13 +142,13 @@ def _store_answer(params: RunTikaParams, answer: TikaAnswer) -> dict:
     encodings = [encoding] if isinstance(encoding, str) and encoding else []
     if answer.metadata:
         with get_collection_client(params.collectionname) as client:
-            insert_arrow_idempotent(client, "tika_metadata", pa.table({
+            insert_parser_arrow(client, "tika_metadata", pa.table({
                 "collection_dataset": [params.collection_dataset], "hash": [params.file_hash],
                 "tika_metadata_json": [json.dumps(answer.metadata)],
                 "processed_at": pa.array([datetime.now(timezone.utc).replace(tzinfo=None)], type=pa.timestamp("s")),
             }))
             if types:
-                insert_arrow_idempotent(client, "file_types", pa.table({
+                insert_parser_arrow(client, "file_types", pa.table({
                     "collection_dataset": [params.collection_dataset], "hash": [params.file_hash],
                     "mime_type": pa.array([types], type=pa.list_(pa.string())),
                     "mime_encoding": pa.array([encodings], type=pa.list_(pa.string())),

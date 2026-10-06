@@ -149,7 +149,7 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
     from email.parser import BytesParser
     from email.utils import parsedate_to_datetime
     from datetime import datetime, timezone
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
+    from database.clickhouse import get_collection_client, insert_parser_arrow
     import pyarrow as pa
     log.info("[P3] Parsing email headers for %s", params.file_path)
     msg = BytesParser(policy=policy.default).parsebytes(_message_bytes(params.file_path))
@@ -191,7 +191,7 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
             "email_hash": pa.array([params.email_hash], type=pa.string()),
             "email_type": pa.array(["eml"], type=pa.string()),
         })
-        insert_arrow_idempotent(client, "emails", tbl_e)
+        insert_parser_arrow(client, "emails", tbl_e)
         tbl_h = pa.table({
             "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
             "email_hash": pa.array([params.email_hash], type=pa.string()),
@@ -201,9 +201,9 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
             "date_sent": pa.array([date_sent_dt], type=pa.timestamp("s")),
             "date_sent_known": pa.array([date_sent_known], type=pa.uint8()),
         })
-        insert_arrow_idempotent(client, "email_headers", tbl_h)
+        insert_parser_arrow(client, "email_headers", tbl_h)
         if address_rows:
-            insert_arrow_idempotent(client, "email_addresses", pa.table({
+            insert_parser_arrow(client, "email_addresses", pa.table({
                 "collection_dataset": pa.array([params.collection_dataset] * len(address_rows), type=pa.string()),
                 "email_hash": pa.array([params.email_hash] * len(address_rows), type=pa.string()),
                 "role": pa.array([r[0] for r in address_rows], type=pa.string()),
@@ -212,20 +212,21 @@ def parse_email_extract_text_headers(params: ParseEmailHeadersParams) -> str:
             }))
 
     from tasks.P3_parse_files.email_parts import body_alternatives
-    from tasks.P3_parse_files.parse_common import insert_text_pages, split_text_segments
+    from tasks.P3_parse_files.parse_common import insert_text_sources, split_text_segments
     from tasks.text_sources import EMAIL_HTML, EMAIL_PARSER, EMAIL_RTF, EMAIL_RICHTEXT
 
     alternatives = body_alternatives(msg)
     canonical = next((alternatives[kind] for kind in ("plain", "html", "rtf", "richtext")
                       if kind in alternatives), "")
-    for extracted_by, content in ((EMAIL_PARSER, canonical),
-                                  (EMAIL_HTML, alternatives.get("html", "")),
-                                  (EMAIL_RTF, alternatives.get("rtf", "")),
-                                  (EMAIL_RICHTEXT, alternatives.get("richtext", ""))):
-        pages = [(index, segment) for index, segment in
-                 enumerate(split_text_segments(content, min_chars=1), 1)]
-        insert_text_pages(params.collectionname, params.collection_dataset,
-                          params.email_hash, extracted_by, pages, min_chars=1)
+    sources = {
+        extracted_by: list(enumerate(split_text_segments(content, min_chars=1), 1))
+        for extracted_by, content in ((EMAIL_PARSER, canonical),
+                                      (EMAIL_HTML, alternatives.get("html", "")),
+                                      (EMAIL_RTF, alternatives.get("rtf", "")),
+                                      (EMAIL_RICHTEXT, alternatives.get("richtext", "")))
+    }
+    insert_text_sources(params.collectionname, params.collection_dataset,
+                        params.email_hash, sources, min_chars=1)
 
     return f"email {params.email_hash}"
 

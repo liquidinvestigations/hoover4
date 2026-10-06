@@ -302,7 +302,7 @@ def _read_back_body_sha256(username: str, artifact_id: str) -> str | None:
     response = requests.post(
         url,
         params={
-            "database": GLOBAL_DB,
+            "database": GLOBAL_DB, "async_insert": 1, "wait_for_async_insert": 1,
             "user": os.getenv("CLICKHOUSE_USER", "hoover4"),
             "password": os.getenv("CLICKHOUSE_PASSWORD", "hoover4"),
             "default_format": "JSONEachRow",
@@ -344,7 +344,7 @@ def _artifact_row(artifact_id: str) -> dict[str, Any] | None:
     response = requests.post(
         url,
         params={
-            "database": GLOBAL_DB,
+            "database": GLOBAL_DB, "async_insert": 1, "wait_for_async_insert": 1,
             "user": os.getenv("CLICKHOUSE_USER", "hoover4"),
             "password": os.getenv("CLICKHOUSE_PASSWORD", "hoover4"),
             "default_format": "JSONEachRow",
@@ -423,7 +423,7 @@ def insert_row(row: ArtifactRow) -> None:
     response = requests.post(
         url,
         params={
-            "database": GLOBAL_DB,
+            "database": GLOBAL_DB, "async_insert": 1, "wait_for_async_insert": 1,
             "user": os.getenv("CLICKHOUSE_USER", "hoover4"),
             "password": os.getenv("CLICKHOUSE_PASSWORD", "hoover4"),
             "query": "INSERT INTO chat_artifacts FORMAT JSONEachRow",

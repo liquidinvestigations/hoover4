@@ -250,7 +250,8 @@ pub async fn get_document_text_by_id_and_source(
     WHERE collection_dataset = ?
     AND file_hash = ?
     AND extracted_by = ?
-    AND page_id = ?   
+    AND page_id = ?
+    ORDER BY version DESC
     LIMIT 1 
     ";
     let query = client.query(query)

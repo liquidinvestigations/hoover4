@@ -1123,17 +1123,19 @@ def _read_document_text(collectionname: str, file_hash: str) -> DocumentText:
         )
 
     try:
-        rows = clickhouse_query(
-            "SELECT text FROM text_content FINAL WHERE file_hash = {hash:String} "
-            "ORDER BY extracted_by, page_id",
-            database=collection_db(collectionname),
-            params={"hash": file_hash},
-        )
         path_rows = clickhouse_query(
-            "SELECT any(path) AS path, any(collection_dataset) AS collection_dataset "
-            "FROM vfs_files WHERE hash = {hash:String} AND is_deleted = 0",
+            "SELECT path, collection_dataset FROM vfs_files "
+            "WHERE hash = {hash:String} AND is_deleted = 0 "
+            "ORDER BY collection_dataset, path LIMIT 1",
+            database=collection_db(collectionname), params={"hash": file_hash},
+        )
+        dataset = (path_rows[0].get("collection_dataset") if path_rows else "") or ""
+        rows = clickhouse_query(
+            "SELECT argMax(text, version) AS text FROM text_content "
+            "WHERE file_hash = {hash:String} AND collection_dataset = {dataset:String} "
+            "GROUP BY file_hash, extracted_by, page_id ORDER BY extracted_by, page_id",
             database=collection_db(collectionname),
-            params={"hash": file_hash},
+            params={"hash": file_hash, "dataset": dataset},
         )
     except Exception as exc:  # noqa: BLE001
         return DocumentText(success=False, error=f"lookup failed: {exc}")
@@ -1661,11 +1663,11 @@ def _extracted_page_rows(collectionname: str, file_hash: str, collection_dataset
     after = ("", 0)
     while True:
         rows = clickhouse_query(
-            "SELECT extracted_by, page_id, text FROM text_content FINAL "
+            "SELECT extracted_by, page_id, argMax(text, version) AS text FROM text_content "
             "WHERE ({dataset:String} = '' OR collection_dataset = {dataset:String}) "
             "AND file_hash = {hash:String} "
             "AND (extracted_by, page_id) > ({after_source:String}, {after_page:UInt32}) "
-            "ORDER BY extracted_by, page_id "
+            "GROUP BY collection_dataset, extracted_by, page_id ORDER BY extracted_by, page_id "
             "LIMIT {limit:UInt32}",
             database=collection_db(collectionname),
             params={

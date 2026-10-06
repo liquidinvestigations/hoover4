@@ -177,7 +177,7 @@ class _Collector:
             for sheet_id, sheet_name, cell in stream:
                 if self._done or not self._accept(sheet_id, sheet_name, cell, client):
                     break
-            self._flush(client)
+            self._flush(client, final=True)
         finally:
             close = getattr(stream, "close", None)
             if close:
@@ -288,12 +288,12 @@ class _Collector:
                 if key > bounds[2]:
                     bounds[2:4] = [key, text]
 
-    def _flush(self, client) -> None:
+    def _flush(self, client, *, final=False) -> None:
         if not self.batch or not self.meets_threshold():
             return
         import pyarrow as pa
 
-        from database.clickhouse import insert_arrow_idempotent
+        from database.clickhouse import insert_parser_arrow
 
         rows = self.batch
         self.batch = []
@@ -321,8 +321,9 @@ class _Collector:
                     options=pa.ipc.IpcWriteOptions(compression="lz4"))
             self.spool_writer.write_table(table)
         else:
-            self.start_manifest(client)
-            insert_arrow_idempotent(client, "table_cells", table)
+            if not final or self.parsing_started:
+                self.start_manifest(client)
+            insert_parser_arrow(client, "table_cells", table)
 
     def start_manifest(self, client) -> None:
         if not self.parsing_started:
@@ -335,15 +336,16 @@ class _Collector:
         if self.spool_writer is None:
             return
         import pyarrow as pa
-        from database.clickhouse import insert_arrow_idempotent
+        from database.clickhouse import insert_parser_arrow
         self.spool_writer.close()
         self.spool_writer = None
         self.spool.seek(0)
         try:
             batches = pa.ipc.open_file(self.spool)
-            self.start_manifest(client)
+            if self.cell_count >= INSERT_BATCH_CELLS:
+                self.start_manifest(client)
             for index in range(batches.num_record_batches):
-                insert_arrow_idempotent(client, "table_cells", pa.Table.from_batches([batches.get_batch(index)]))
+                insert_parser_arrow(client, "table_cells", pa.Table.from_batches([batches.get_batch(index)]))
         finally:
             self.close()
 
@@ -453,7 +455,7 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
                     parse_error: str = "", durable: bool = False) -> None:
     import pyarrow as pa
 
-    from database.clickhouse import insert_arrow_idempotent, insert_arrow_durable
+    from database.clickhouse import insert_parser_arrow, insert_arrow_durable
 
     truncation = truncation or TruncationRecord()
     table = pa.table({
@@ -476,7 +478,7 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
         "parse_ms": pa.array([parse_ms], type=pa.uint32()),
         "parse_error": pa.array([parse_error], type=pa.string()),
     })
-    writer = insert_arrow_durable if durable else insert_arrow_idempotent
+    writer = insert_arrow_durable if durable else insert_parser_arrow
     writer(client, "table_documents", table)
 
 
@@ -546,7 +548,7 @@ def _copy_structure(client, params: ParseTableParams, source_dataset: str) -> No
 @with_heartbeat
 def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedOutcome:
     """Read one tabular document into `table_cells` and describe it in the manifest."""
-    from database.clickhouse import get_collection_client, insert_arrow_idempotent
+    from database.clickhouse import get_collection_client, insert_parser_arrow
     from tasks.P3_parse_files.table_readers import fallback_reader, read_cells
 
     started = time.time()
@@ -576,9 +578,9 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
                 from tasks.P3_parse_files.parse_common import insert_text_pages
                 from tasks.text_sources import TABLE_TEXT
                 pages = client.query(
-                    "SELECT page_id, text FROM text_content FINAL "
+                    "SELECT page_id, argMax(text, version) AS text FROM text_content "
                     "WHERE collection_dataset = {ds:String} AND file_hash = {h:String} "
-                    "AND extracted_by = {source:String} ORDER BY page_id",
+                    "AND extracted_by = {source:String} GROUP BY page_id ORDER BY page_id",
                     parameters={"ds": existing[12], "h": params.file_hash, "source": TABLE_TEXT},
                 ).result_rows
                 insert_text_pages(params.collectionname, params.collection_dataset,
@@ -653,10 +655,10 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
 
         collector.commit_spool(client)
 
-        insert_arrow_idempotent(client, "table_sheets", _sheet_rows(params, collector))
+        insert_parser_arrow(client, "table_sheets", _sheet_rows(params, collector))
         columns = _column_rows(params, collector)
         if columns.num_rows:
-            insert_arrow_idempotent(client, "table_columns", columns)
+            insert_parser_arrow(client, "table_columns", columns)
 
         if collector.text is not None:
             from tasks.P3_parse_files.parse_common import insert_text_pages

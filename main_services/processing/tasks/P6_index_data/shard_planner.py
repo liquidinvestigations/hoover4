@@ -298,12 +298,6 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
     if not hashes:
         return []
 
-    # P4 and P5 finished before this activity starts. Flush their async writes,
-    # along with date resolution, before planning and the index writers read them.
-    # A failed flush must fail the plan before it records any shard assignment.
-    with get_collection_client(collectionname) as client:
-        client.command("SYSTEM FLUSH ASYNC INSERT QUEUE")
-
     if params.vectors_only:
         with get_collection_client(collectionname) as client:
             rows = client.query(
@@ -336,8 +330,10 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
                 row[0]: int(row[1]) + 1
                 for row in client.query(
                     "SELECT file_hash, count() AS segments "
-                    "FROM text_content FINAL "
+                    "FROM (SELECT file_hash, extracted_by, page_id, argMax(text_bytes, version) AS text_bytes "
+                    "FROM text_content "
                     "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
+                    "GROUP BY file_hash, extracted_by, page_id) "
                     "GROUP BY file_hash",
                     parameters={"cd": collection_dataset, "hashes": unassigned},
                 ).result_rows
@@ -361,8 +357,10 @@ def plan_shards(params: PlanShardsParams) -> list[ShardAssignment]:
                 row[0]: int(row[1])
                 for row in client.query(
                     "SELECT file_hash, sum(text_bytes) AS text_bytes "
-                    "FROM text_content FINAL "
+                    "FROM (SELECT file_hash, extracted_by, page_id, argMax(text_bytes, version) AS text_bytes "
+                    "FROM text_content "
                     "WHERE collection_dataset = {cd:String} AND file_hash IN {hashes:Array(String)} "
+                    "GROUP BY file_hash, extracted_by, page_id) "
                     "GROUP BY file_hash",
                     parameters={"cd": collection_dataset, "hashes": unassigned},
                 ).result_rows

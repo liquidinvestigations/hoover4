@@ -14,10 +14,8 @@ Pick the client by what you are reading, never by convenience:
 collection is known, :func:`get_client_for_dataset` when only a ``collection_dataset``
 is in hand.
 
-Clients are pooled per ``(thread, database)`` for the process lifetime. Insert
-durability is per table: :func:`insert_idempotent` / :func:`insert_arrow_idempotent`
-skip the async-insert wait; everything else waits, including unmarked
-``client.insert`` calls.
+Clients are pooled per ``(thread, database)`` for the process lifetime.
+Every insert uses async mode and waits for storage before it returns.
 """
 
 import logging
@@ -44,17 +42,10 @@ COLLECTION_MIGRATIONS_PATH = str(_MIGRATIONS_ROOT / 'db_collection_migrations')
 
 CLIENT_SETTINGS = {
     'async_insert': 1,
-    # Default: wait so an unmarked insert stays durable across a ClickHouse restart.
-    # Idempotent pipeline tables opt out per call via insert_idempotent /
-    # insert_arrow_idempotent; see those helpers and database/Readme.md.
     'wait_for_async_insert': 1,
 }
 
-# Which table takes which side is in database/Readme.md, under "Insert durability".
-# A list of names here would be a second copy of it that nothing reads.
-
-_INSERT_WAIT = {'wait_for_async_insert': 1}
-_INSERT_NO_WAIT = {'wait_for_async_insert': 0}
+_INSERT_WAIT = {'async_insert': 1, 'wait_for_async_insert': 1}
 
 # Common and tika workers run 8 concurrent activities; nested resolve_collection
 # holds a second client on the same thread. urllib3's default maxsize is 8 and
@@ -100,32 +91,28 @@ def reset_client_pool_for_tests() -> None:
     _tls.state = _ThreadClients()
 
 
-def insert_idempotent(client, table, data, **kwargs):
-    """Insert that may be lost on a ClickHouse restart; the writer is re-runnable."""
-    settings = dict(kwargs.pop('settings', None) or {})
-    settings.update(_INSERT_NO_WAIT)
-    return client.insert(table, data, settings=settings, **kwargs)
-
-
-def insert_arrow_idempotent(client, table, arrow_table, **kwargs):
-    """Arrow insert that may be lost on a ClickHouse restart; the writer is re-runnable."""
-    settings = dict(kwargs.pop('settings', None) or {})
-    settings.update(_INSERT_NO_WAIT)
-    return client.insert_arrow(table, arrow_table, settings=settings, **kwargs)
-
-
 def insert_durable(client, table, data, **kwargs):
-    """Insert that waits for the async buffer to land before returning."""
+    """Insert rows and wait for storage."""
     settings = dict(kwargs.pop('settings', None) or {})
     settings.update(_INSERT_WAIT)
     return client.insert(table, data, settings=settings, **kwargs)
 
 
 def insert_arrow_durable(client, table, arrow_table, **kwargs):
-    """Arrow insert that waits for the async buffer to land before returning."""
+    """Insert Arrow rows and wait for storage."""
     settings = dict(kwargs.pop('settings', None) or {})
     settings.update(_INSERT_WAIT)
     return client.insert_arrow(table, arrow_table, settings=settings, **kwargs)
+
+def insert_parser_arrow(client, table, arrow_table, **kwargs):
+    """Collect parser rows within a stage activity, or write them waited."""
+    from tasks.P3_parse_files.insert_batch import current_batch
+
+    batch = current_batch()
+    if batch is None:
+        return insert_arrow_durable(client, table, arrow_table, **kwargs)
+    return batch.add(client, table, arrow_table, kwargs)
+
 
 # Mirrors website/backend/src/api/admin/collections.rs::collectionname_valid.
 # Duplicated deliberately: the two runtimes must independently refuse a bad name.
@@ -326,7 +313,8 @@ def get_server_setting(key: str) -> str | None:
 def _cluster():
     from clickhouse_migrations.clickhouse_cluster import ClickhouseCluster
 
-    return ClickhouseCluster(CLICKHOUSE_HOST, CLICKHOUSE_USER, CLICKHOUSE_PASS)
+    return ClickhouseCluster(CLICKHOUSE_HOST, CLICKHOUSE_USER, CLICKHOUSE_PASS,
+                             settings=dict(CLIENT_SETTINGS))
 
 
 def migrate_collection(collectionname: str) -> str:

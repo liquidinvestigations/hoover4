@@ -235,7 +235,11 @@ def route_stages(combined: Dict[str, List[str]]) -> List[str]:
         routes.append("archive")
     if "email" in coarse_types:
         routes.append("email")
-    if "text" in coarse_types:
+    structured = {"text/rtf", "application/rtf", "text/html", "application/xhtml+xml",
+                  "application/xml", "text/xml", "image/svg+xml"}
+    has_structural_text = any(m in structured or m.endswith("+xml")
+                              or m.startswith("image/") for m in mime_types)
+    if "text" in coarse_types and not has_structural_text:
         routes.append("text")
     # A zip-based office document gets a second extractor beside Tika, always. The
     # condition is the MIME set: the legacy binary formats of the same coarse types are

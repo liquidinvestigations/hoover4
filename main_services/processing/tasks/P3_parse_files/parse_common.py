@@ -80,9 +80,9 @@ def _existing_page_ids(client: Any, collection_dataset: str, file_hash: str,
                        extracted_by: str) -> tuple[set[int], int]:
     """Read this source's current page identities before a successful replacement."""
     rows = client.query(
-        "SELECT page_id, version FROM text_content FINAL "
+        "SELECT page_id, max(version) FROM text_content "
         "WHERE collection_dataset = {cd:String} AND file_hash = {fh:String} "
-        "AND extracted_by = {eb:String}",
+        "AND extracted_by = {eb:String} GROUP BY page_id",
         parameters={"cd": collection_dataset, "fh": file_hash, "eb": extracted_by},
     ).result_rows
     return {int(row[0]) for row in rows}, max((int(row[1]) for row in rows), default=0)
@@ -134,42 +134,59 @@ def insert_text_pages(
     Each call assigns one version from the current clock or above the previous source version.
     The async insert waits for storage before obsolete pages are removed.
     """
-    from database.clickhouse import (
-        get_collection_client, insert_arrow_durable,
-    )
-    import pyarrow as pa
+    return insert_text_sources(collectionname, collection_dataset, file_hash,
+                               {extracted_by: pages}, min_chars=min_chars)
 
-    rows: List[tuple] = []
-    for page_id, text in pages:
-        page_id = int(page_id)
-        if page_id < 1:
-            raise ValueError(
-                f"page_id must be 1-based and never 0, got {page_id} for {file_hash}"
-            )
-        body = (text or "").strip()
-        if len(body) >= min_chars:
-            rows.append((page_id, body, len(body.encode("utf-8"))))
+
+def insert_text_sources(collectionname: str, collection_dataset: str, file_hash: str,
+                        sources: dict[str, Sequence[tuple]], *, min_chars: int = 2) -> int:
+    """Replace a file's text sources with one prior-page read and one waited insert."""
+    import pyarrow as pa
+    from database.clickhouse import get_collection_client, insert_arrow_durable
+
+    rows = []
+    for source, pages in sources.items():
+        for page_id, text in pages:
+            page_id = int(page_id)
+            if page_id < 1:
+                raise ValueError(f"page_id must be 1-based and never 0, got {page_id} for {file_hash}")
+            body = (text or "").strip()
+            if len(body) >= min_chars:
+                rows.append((source, page_id, body, len(body.encode("utf-8"))))
 
     with get_collection_client(collectionname) as client:
-        previous, stored_version = _existing_page_ids(client, collection_dataset, file_hash, extracted_by)
-        version = max(time.time_ns(), stored_version + 1)
-        obsolete = previous.copy()
-        obsolete.difference_update(row[0] for row in rows)
+        previous = {source: (set(), 0) for source in sources}
+        if len(sources) == 1:
+            source = next(iter(sources))
+            previous[source] = _existing_page_ids(client, collection_dataset, file_hash, source)
+        else:
+            stored = client.query(
+                "SELECT extracted_by, page_id, max(version) FROM text_content "
+                "WHERE collection_dataset = {cd:String} AND file_hash = {fh:String} "
+                "AND extracted_by IN {sources:Array(String)} GROUP BY extracted_by, page_id",
+                parameters={"cd": collection_dataset, "fh": file_hash, "sources": list(sources)},
+            ).result_rows
+            for source, page_id, version in stored:
+                ids, maximum = previous[source]
+                ids.add(int(page_id))
+                previous[source] = ids, max(maximum, int(version))
+        clock_version = time.time_ns()
+        versions = {source: max(clock_version, maximum + 1)
+                    for source, (_, maximum) in previous.items()}
         if rows:
-            log.info("[P3] Inserting %d text pages for %s (%s)", len(rows), file_hash, extracted_by)
-            tbl_t = pa.table({
+            table = pa.table({
                 "collection_dataset": pa.array([collection_dataset] * len(rows), type=pa.string()),
                 "file_hash": pa.array([file_hash] * len(rows), type=pa.string()),
-                "extracted_by": pa.array([extracted_by] * len(rows), type=pa.string()),
-                "page_id": pa.array([r[0] for r in rows], type=pa.uint32()),
-                "text": pa.array([r[1] for r in rows], type=pa.string()),
-                "text_bytes": pa.array([r[2] for r in rows], type=pa.uint64()),
-                "version": pa.array([version] * len(rows), type=pa.uint64()),
+                "extracted_by": pa.array([r[0] for r in rows], type=pa.string()),
+                "page_id": pa.array([r[1] for r in rows], type=pa.uint32()),
+                "text": pa.array([r[2] for r in rows], type=pa.string()),
+                "text_bytes": pa.array([r[3] for r in rows], type=pa.uint64()),
+                "version": pa.array([versions[r[0]] for r in rows], type=pa.uint64()),
             })
-            insert_arrow_durable(client, "text_content", tbl_t,
-                                 settings={"async_insert": 1, "wait_for_async_insert": 1})
-        _delete_obsolete_pages(client, collection_dataset, file_hash, extracted_by, obsolete)
-
+            insert_arrow_durable(client, "text_content", table)
+        for source, (ids, _) in previous.items():
+            ids.difference_update(r[1] for r in rows if r[0] == source)
+            _delete_obsolete_pages(client, collection_dataset, file_hash, source, ids)
     return len(rows)
 
 

@@ -419,6 +419,10 @@ is the map back to the group above that explains it.
 - `temporal_history_persistence_qps`, `temporal_frontend_persistence_qps`, `temporal_matching_persistence_qps`
 - `container_log_max_size`, `container_log_max_files`
 
+The `clickhouse_server_memory_ratio` key sets the server memory fraction of its container limit.
+It defaults to `0.7` and must be above zero and at most one.
+Deployment renders this value into the server override XML.
+
 ### `[operations]`: the operation caps
 
 - `add_dataset_cap`, `rescan_dataset_cap`, `compute_plans_cap`, `execute_plans_cap`

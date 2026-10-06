@@ -61,11 +61,9 @@ A successful empty extraction clears old pages for each key.
 An extraction failure leaves previously stored text in place. Every reader treats the
 body variant as optional. The viewer can still show the headers and other sources.
 Replacement inserts wait for ClickHouse visibility before obsolete pages are deleted.
-The deletion waits for completion. The first insertion stays asynchronous.
-Date resolution flushes pending parse inserts after all parse groups finish.
-P4 and P6 read text after this stage boundary.
-The ClickHouse flush acts on the server's whole async insert queue.
-If it fails, date resolution fails before it reads parser output.
+The deletion waits for completion.
+All parser inserts wait for storage before dependent stages read their rows.
+Email text sources share one previous-page query and one insert.
 
 PDF text comes from a single `pdftotext` call split on the form feed it writes after
 every page, so per-page storage costs no extra subprocesses. The label is
@@ -184,12 +182,18 @@ The covering readers include archive extraction and image OCR.
 Busy and connection failures remain visible.
 The Tika task outcome and stored Java exception remain available.
 
-New parser output skips the ClickHouse async-insert wait
-(`insert_arrow_idempotent`). Source replacement waits for the text insert and its
-scoped deletion. Date resolution flushes pending parse output before dependent reads.
-The scan tables P0 writes stay durable. Nothing rescans a disk, so a lost `blobs` row
-is a file that is never planned. See
-[`../../database/Readme.md`](../../database/Readme.md).
+Parser activities collect rows into an 8 MiB buffer and write each table with waited inserts.
+A failed table batch is written per file to isolate the failed file.
+Heartbeat details list a file as finished after its writes complete.
+Text replacement remains per file.
+Member scans remove temporary folders after their stored rows become visible.
+See [`../../database/Readme.md`](../../database/Readme.md).
+
+Raw text excludes HTML, RTF, raster images, SVG, and XML documents.
+Tika reads their document structure.
+Card and calendar raw text retains the structural property rules.
+Mail HTML parts retain markup and inline data values.
+Plain text retains PGP, uuencoded text, hashes, addresses, and URLs.
 
 ## Usage
 
@@ -323,7 +327,8 @@ activity returns a skipped outcome and writes no `processing_errors` row.
 
 The collector keeps cells in memory until the minimum table shape is met.
 A below-threshold input writes no cells or manifest.
-A parsing manifest uses a waited insert before the first published cell batch.
+A table above the cell batch size gets a waited parsing manifest before its first cell batch.
+A smaller table gets its final manifest after its cell rows.
 Readers with a fallback write accepted batches to a temporary Arrow file with LZ4 compression.
 A failed reader removes that file before the fallback runs.
 A successful reader publishes the manifest and spooled batches.

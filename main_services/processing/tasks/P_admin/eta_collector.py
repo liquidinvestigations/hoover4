@@ -71,7 +71,7 @@ THROTTLE_HISTORY = 10
 #: Lower bound on the interval, so an all-finished cluster (pass cost ~0) does
 #: not busy-loop. The finished-set skip makes such passes nearly free, but they
 #: still query the dataset registry.
-MIN_INTERVAL_SECONDS = 60
+MIN_INTERVAL_SECONDS = 300
 
 #: How long a fully-complete collection is skipped before one re-validation
 #: pass, so a rescan started against a "finished" collection gets ETAs again.
@@ -234,7 +234,10 @@ def _sample_nlp(client, ds: str) -> StageSample:
     done = _query(client, f"SELECT uniqExact({seg}) FROM nlp_processed WHERE collection_dataset = {{ds:String}}", ds)[0][0]
     total = _query(client, f"SELECT uniqExact({seg}) FROM text_content WHERE collection_dataset = {{ds:String}}", ds)[0][0]
     done_bytes = _query(client, "SELECT sum(tb) FROM (SELECT file_hash, extracted_by, page_id, max(text_bytes) AS tb FROM nlp_processed WHERE collection_dataset = {ds:String} GROUP BY file_hash, extracted_by, page_id)", ds)[0][0] or 0
-    total_bytes = _query(client, "SELECT sum(tb) FROM (SELECT file_hash, extracted_by, page_id, max(text_bytes) AS tb FROM text_content WHERE collection_dataset = {ds:String} GROUP BY file_hash, extracted_by, page_id)", ds)[0][0] or 0
+    total_bytes = _query(client, "SELECT sum(tb) FROM (SELECT file_hash, extracted_by, page_id, argMax(text_bytes, version) AS tb FROM text_content WHERE collection_dataset = {ds:String} GROUP BY file_hash, extracted_by, page_id)", ds)[0][0] or 0
+    import os
+    if not (os.getenv('NER_URL') or '').strip():
+        return StageSample(STAGE_NLP, total, total, 0.0, 0.0, 0.0)
     events = [
         (_epoch(ts), 1, int(tb))
         for ts, tb in _query(
@@ -287,6 +290,12 @@ def collect_collection_samples(collectionname: str) -> tuple[list[dict], bool]:
     from database.clickhouse import get_collection_client, get_global_client
 
     with get_global_client() as client:
+        running = client.query(
+            "SELECT count() FROM operations FINAL WHERE collectionname = {c:String} "
+            "AND state IN ('pending', 'running')", parameters={"c": collectionname},
+        ).result_rows
+        if not running or not running[0][0]:
+            return ([], True)
         datasets = [
             r[0]
             for r in client.query(

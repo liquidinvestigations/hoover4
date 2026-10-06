@@ -75,7 +75,7 @@ impl TextPages for StoredTextPages<'_> {
     async fn page_text(&self, extracted_by: &str, page_id: u32) -> Result<Option<String>, AgentError> {
         self.deadline
             .collection_client(self.collectionname)
-            .query("SELECT text FROM text_content WHERE collection_dataset = ? AND file_hash = ? AND extracted_by = ? AND page_id = ? LIMIT 1")
+            .query("SELECT text FROM text_content WHERE collection_dataset = ? AND file_hash = ? AND extracted_by = ? AND page_id = ? ORDER BY version DESC LIMIT 1")
             .bind(&self.identifier.collection_dataset)
             .bind(&self.identifier.file_hash)
             .bind(extracted_by)

@@ -193,25 +193,13 @@ def record_llm_call(
         ("ai_service_telemetry", telem_row),
     )
     try:
-        with httpx.Client(timeout=2.0, auth=_auth()) as client:
-            for table, payload in inserts:
-                r = client.post(
-                    f"{base}/",
-                    params={
-                        "database": GLOBAL_DB,
-                        "query": f"INSERT INTO {table} FORMAT JSONEachRow",
-                    },
-                    content=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                )
-                if r.status_code >= 300:
-                    log.warning(
-                        "llm_events insert failed status=%s body=%s",
-                        r.status_code,
-                        r.text[:200],
-                    )
-                    return
-    except Exception as exc:  # noqa: BLE001, telemetry must not break chat
+        from agent_common.clickhouse_buffer import record as buffer_record
+
+        for table, payload in inserts:
+            buffer_record(base, GLOBAL_DB, _auth(), table, payload)
+    except Exception as exc:
         log.warning("llm_events insert failed: %s", exc)
+
 
 
 class CallTimer:

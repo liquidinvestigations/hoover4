@@ -20,7 +20,7 @@
 //! instrumentation, so nothing here returns a `Result`.
 
 use std::sync::{LazyLock, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::db_utils::clickhouse_utils::get_global_client;
 
@@ -30,14 +30,11 @@ pub const EVENT_USER_GET_DOCUMENT: &str = "user_get_document";
 pub const EVENT_USER_OTHER_REQUEST: &str = "user_other_request";
 pub const EVENT_LLM_CHAT_MESSAGE: &str = "llm_chat_message";
 
-/// Insert batch size; the buffer flushes early once it holds this many events.
-const BATCH_SIZE: usize = 64;
 /// Buffer cap. Beyond it events are dropped (and counted in the debug log).
 /// Telemetry must never apply backpressure to the site.
 const MAX_BUFFERED: usize = 4096;
-/// Longest an event may sit in the buffer before a flush is triggered by the
-/// next recorded event.
-const FLUSH_INTERVAL: Duration = Duration::from_secs(10);
+/// Telemetry batches wait one minute before storage.
+const FLUSH_INTERVAL: Duration = Duration::from_secs(60);
 /// Metadata is a small JSON blob with the broad route class only; keep it small.
 const MAX_METADATA_LEN: usize = 256;
 
@@ -67,7 +64,6 @@ struct ApiEventRow {
 struct EventBuffer {
     usage: Vec<UsageEventRow>,
     api: Vec<ApiEventRow>,
-    last_flush: Option<Instant>,
     flushing: bool,
     dropped: u64,
 }
@@ -136,11 +132,9 @@ fn push(add: impl FnOnce(&mut EventBuffer)) {
         // buffer rather than refusing to instrument.
         let mut buf = BUFFER.lock().unwrap_or_else(|e| e.into_inner());
         add(&mut buf);
-        let full = buf.usage.len() + buf.api.len() >= BATCH_SIZE;
-        let stale = buf
-            .last_flush
-            .is_none_or(|t| t.elapsed() >= FLUSH_INTERVAL);
-        (full || stale) && !buf.flushing && {
+        if buf.flushing {
+            false
+        } else {
             buf.flushing = true;
             true
         }
@@ -149,7 +143,10 @@ fn push(add: impl FnOnce(&mut EventBuffer)) {
         // Outside a tokio runtime (unit tests) there is nothing to spawn on;
         // the events stay buffered and the next record inside a runtime flushes.
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(flush());
+            handle.spawn(async {
+                tokio::time::sleep(FLUSH_INTERVAL).await;
+                flush().await;
+            });
         } else {
             let mut buf = BUFFER.lock().unwrap_or_else(|e| e.into_inner());
             buf.flushing = false;
@@ -163,12 +160,11 @@ fn push(add: impl FnOnce(&mut EventBuffer)) {
 async fn flush() {
     let (usage, api, dropped) = {
         let mut buf = BUFFER.lock().unwrap_or_else(|e| e.into_inner());
-        buf.last_flush = Some(Instant::now());
         buf.flushing = false;
         (
             std::mem::take(&mut buf.usage),
             std::mem::take(&mut buf.api),
-            buf.dropped,
+            std::mem::take(&mut buf.dropped),
         )
     };
     if dropped > 0 {

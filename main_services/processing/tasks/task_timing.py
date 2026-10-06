@@ -46,11 +46,10 @@ table the first time a given task type takes this path.
 wrapped. Every drop -- a failed insert, an overflowing buffer -- is logged with a count.
 A bare ``except: pass`` losing error rows is the failure mode this exists to close.
 
-**Batched.** 200k files is single-digit millions of executions. One insert per execution
-would add a ClickHouse round trip to every activity and distort the very measurement it
-is taking, so rows land in an in-process buffer that a single daemon thread drains every
-few seconds (or as soon as it is full) -- the same shape as the website's `telemetry.rs`
-buffer and `ai_telemetry.py`'s fire-and-forget writes.
+Rows stay in an in-process buffer until the telemetry thread writes them each minute.
+Each write waits for ClickHouse storage.
+Inflight observations run each five seconds and queue observations each ten seconds.
+The observations share the minute write interval.
 
 The same thread samples what is *running* into ``processing_task_inflight``: a finished-row
 table cannot show a task that has been stuck for twenty minutes, and that is the one the
@@ -85,11 +84,7 @@ from temporalio.worker import (
 log = logging.getLogger(__name__)
 
 #: How often the buffer is drained and the in-flight snapshot written.
-FLUSH_INTERVAL_SECONDS = 5.0
-
-#: Drain early once this many rows are waiting, so a burst does not sit for the full
-#: interval.
-FLUSH_AT_ROWS = 500
+FLUSH_INTERVAL_SECONDS = 60.0
 
 #: Hard cap on the buffer. Reached only when ClickHouse is unreachable for minutes; at
 #: that point the oldest rows are dropped (loudly) rather than growing the worker's RSS
@@ -366,6 +361,7 @@ class _Recorder:
         self._lock = threading.Lock()
         self._rows: Dict[str, List[list]] = {}
         self._row_count = 0
+        self._samples = {}
         self._overflow_dropped = 0
         self._insert_dropped = 0
         self._last_warn = 0.0
@@ -382,7 +378,6 @@ class _Recorder:
         self._last_backlog_at = 0.0
         self._backlog_logged = False
 
-        self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -407,12 +402,13 @@ class _Recorder:
             atexit.register(self.flush)
 
     def _run(self) -> None:
-        while not self._stop.is_set():
-            self._wake.wait(FLUSH_INTERVAL_SECONDS)
-            self._wake.clear()
-            self.flush()
+        next_flush = time.monotonic() + FLUSH_INTERVAL_SECONDS
+        while not self._stop.wait(5.0):
             self._sample_inflight()
             self._sample_backlog()
+            if time.monotonic() >= next_flush:
+                self.flush()
+                next_flush = time.monotonic() + FLUSH_INTERVAL_SECONDS
 
     # -- recording ---------------------------------------------------------
 
@@ -434,7 +430,6 @@ class _Recorder:
         # flusher thread for them. Without it the buffer sits until a collection-scoped
         # activity happens, and collect_eta_samples would be invisible again.
         self.ensure_started()
-        flush_now = False
         with self._lock:
             rows = self._rows.setdefault(collectionname, [])
             if self._row_count >= MAX_BUFFERED_ROWS:
@@ -447,10 +442,6 @@ class _Recorder:
                     self._overflow_dropped += 1
             rows.append(row)
             self._row_count += 1
-            if self._row_count >= FLUSH_AT_ROWS:
-                flush_now = True
-        if flush_now:
-            self._wake.set()
 
     def record_ai(self, row: list) -> None:
         """Buffer one ``ai_service_telemetry`` row. Same process, same daemon, never raises."""
@@ -496,6 +487,7 @@ class _Recorder:
             overflow, self._overflow_dropped = self._overflow_dropped, 0
             ai_rows, self._ai_rows = self._ai_rows, []
             step_rows, self._step_rows = self._step_rows, []
+            samples, self._samples = self._samples, {}
 
         if overflow:
             self._warn(
@@ -513,6 +505,18 @@ class _Recorder:
 
             self._insert("", "agent_step_events", step_columns, step_rows)
 
+        for (collectionname, table), (columns, rows) in samples.items():
+            self._insert(collectionname, table, columns, rows)
+
+    def _buffer_sample(self, collectionname, table, columns, rows):
+        with self._lock:
+            bucket = self._samples.setdefault((collectionname, table), (columns, []))[1]
+            bucket.extend(rows)
+            if len(bucket) > MAX_BUFFERED_ROWS:
+                dropped = len(bucket) - MAX_BUFFERED_ROWS
+                del bucket[:dropped]
+                self._overflow_dropped += dropped
+
     def _insert(
         self, collectionname: str, table: str, columns: List[str], rows: List[list]
     ) -> None:
@@ -520,15 +524,15 @@ class _Recorder:
             return
         try:
             if not collectionname:
-                from database.clickhouse import get_global_client, insert_idempotent
+                from database.clickhouse import get_global_client, insert_durable
 
                 with get_global_client() as client:
-                    insert_idempotent(client, table, rows, column_names=columns)
+                    insert_durable(client, table, rows, column_names=columns)
             else:
-                from database.clickhouse import get_collection_client, insert_idempotent
+                from database.clickhouse import get_collection_client, insert_durable
 
                 with get_collection_client(collectionname) as client:
-                    insert_idempotent(client, table, rows, column_names=columns)
+                    insert_durable(client, table, rows, column_names=columns)
         except Exception as exc:  # noqa: BLE001 - never fail an ingest over telemetry
             self._insert_dropped += len(rows)
             self._warn(
@@ -574,7 +578,7 @@ class _Recorder:
             )
 
         for collectionname, rows in per_collection.items():
-            self._insert(
+            self._buffer_sample(
                 collectionname, "processing_task_inflight", _INFLIGHT_COLUMNS, rows
             )
 
@@ -604,7 +608,7 @@ class _Recorder:
             return
         rows = backlog_rows_to_write(samples)
         if rows:
-            self._insert("", "processing_queue_backlog", _BACKLOG_COLUMNS, rows)
+            self._buffer_sample("", "processing_queue_backlog", _BACKLOG_COLUMNS, rows)
 
 
 _recorder = _Recorder()

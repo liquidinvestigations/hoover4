@@ -48,8 +48,8 @@ def test_combine_eta_takes_the_pessimistic_projection():
 
 
 def test_throttle_is_twenty_times_the_mean_cost():
-    # mean = 10_000 ms -> 200 s (above the idle floor)
-    assert next_interval_seconds([10_000, 10_000]) == THROTTLE_FACTOR * 10.0
+    # A 20 s mean produces a 400 s sampling interval.
+    assert next_interval_seconds([20_000, 20_000]) == THROTTLE_FACTOR * 20.0
 
 
 def test_throttle_has_a_floor_for_idle_clusters():
@@ -75,3 +75,27 @@ def test_continue_as_new_resets_passes():
     text = src.read_text()
     assert "state.passes = 0" in text
     assert "workflow.continue_as_new(state)" in text
+
+
+def test_disabled_ner_counts_every_segment_as_complete(monkeypatch):
+    from tasks.P_admin import eta_collector as eta
+
+    monkeypatch.delenv('NER_URL', raising=False)
+    values = iter([[(3,)], [(8,)], [(30,)], [(80,)]])
+    monkeypatch.setattr(eta, '_query', lambda *args: next(values))
+    sample = eta._sample_nlp(object(), 'dataset')
+    assert sample.done == sample.total == 8
+    assert sample.eta_seconds == 0
+
+
+def test_collection_without_active_operation_has_no_collection_reads(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from database import clickhouse
+    from tasks.P_admin import eta_collector as eta
+
+    client = SimpleNamespace(query=lambda *args, **kwargs: SimpleNamespace(result_rows=[(0,)]))
+    monkeypatch.setattr(clickhouse, 'get_global_client', lambda: nullcontext(client))
+    monkeypatch.setattr(clickhouse, 'get_collection_client', lambda *args: (_ for _ in ()).throw(
+        AssertionError('Inactive collection was sampled')))
+    assert eta.collect_collection_samples('collection') == ([], True)

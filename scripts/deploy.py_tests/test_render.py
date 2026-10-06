@@ -1285,3 +1285,19 @@ def test_tika_refuses_invalid_memory_or_slots(key, value):
     cfg.values["main_services"][key] = value
     with pytest.raises(deploy.DeployError):
         deploy.render_main_env(cfg)
+
+
+def test_clickhouse_memory_ratio_is_configurable():
+    cfg = deploy.Config(None)
+    cfg.values['main_services']['clickhouse_server_memory_ratio'] = '0.65'
+    xml = deploy.render_clickhouse_config(cfg)
+    assert '<max_server_memory_usage_to_ram_ratio>0.65</max_server_memory_usage_to_ram_ratio>' in xml
+    assert '{{' not in xml
+
+
+@pytest.mark.parametrize('ratio', ['0', '-1', '1.1', 'nan', 'inf', 'text'])
+def test_invalid_clickhouse_memory_ratio_is_refused(ratio):
+    cfg = deploy.Config(None)
+    cfg.values['main_services']['clickhouse_server_memory_ratio'] = ratio
+    with pytest.raises(deploy.DeployError):
+        deploy.render_clickhouse_config(cfg)

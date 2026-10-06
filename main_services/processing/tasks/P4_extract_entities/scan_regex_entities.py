@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 import pyarrow as pa
 from temporalio import activity
 
-from database.clickhouse import get_collection_client, insert_arrow_idempotent
+from database.clickhouse import get_collection_client, insert_arrow_durable
 from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.plan_utils import clean_text
 from tasks.regex_entities import (
@@ -35,7 +35,7 @@ from tasks.regex_entities import (
 )
 from tasks.remote import post_json, scanner_health
 from tasks.text_sources import fetch_text_batch, ner_reads_variant, plan_text_batches
-from tasks.P6_index_data.string_term_encodings import get_string_term_ids
+from tasks.P6_index_data.string_term_encodings import get_string_term_ids_by_field
 
 from .params import ScanRegexEntitiesParams, ScanRegexEntitiesResult
 
@@ -74,12 +74,17 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
     rule_set_version = scanner_health()["rule_set_version"]
 
     with get_collection_client(params.collectionname) as client:
-        # FINAL for the same reason P4 needs it: a re-parse leaves a second
-        # ReplacingMergeTree row for the segment until the background merge collapses it,
-        # and the anti-join cannot tell the copies apart, so the page is scanned twice.
+        # Select one latest size for each segment before the watermark join.
         text_segments = client.query_arrow("""
             SELECT t.file_hash, t.extracted_by, t.page_id, t.text_bytes
-            FROM text_content AS t FINAL
+            FROM (
+                SELECT collection_dataset, file_hash, extracted_by, page_id,
+                       argMax(text_bytes, version) AS text_bytes
+                FROM text_content
+                WHERE collection_dataset = {collection_dataset:String}
+                  AND file_hash IN {item_hashes:Array(String)}
+                GROUP BY collection_dataset, file_hash, extracted_by, page_id
+            ) AS t
             LEFT ANTI JOIN regex_scanned AS s
                 ON s.collection_dataset = t.collection_dataset
                 AND s.file_hash = t.file_hash
@@ -105,7 +110,7 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
         variants_present: dict[str, set[str]] = {}
         for row in client.query_arrow("""
             SELECT file_hash, groupUniqArray(extracted_by) AS variants
-            FROM text_content FINAL
+            FROM text_content
             WHERE collection_dataset = {collection_dataset:String}
             AND file_hash IN {item_hashes:Array(String)}
             GROUP BY file_hash
@@ -200,12 +205,11 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
     # Populate the term dictionary here. The indexing stage calls the same function with
     # the same values and gets cache hits; the ids are content-derived, so there is no
     # ordering dependency between the two.
-    for term_field, values in term_values.items():
-        get_string_term_ids(params.collectionname, collection_dataset, term_field, values)
+    get_string_term_ids_by_field(params.collectionname, collection_dataset, term_values)
 
     with get_collection_client(params.collectionname) as client:
         if rows:
-            insert_arrow_idempotent(client, "regex_entity_hit", pa.table({
+            insert_arrow_durable(client, "regex_entity_hit", pa.table({
                 "collection_dataset": pa.array([r['collection_dataset'] for r in rows], type=pa.string()),
                 "file_hash": pa.array([r['file_hash'] for r in rows], type=pa.string()),
                 "extracted_by": pa.array([r['extracted_by'] for r in rows], type=pa.string()),
@@ -221,7 +225,7 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
 
         # ClickHouse DateTime columns are naive UTC.
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        insert_arrow_idempotent(client, "regex_scanned", pa.table({
+        insert_arrow_durable(client, "regex_scanned", pa.table({
             "collection_dataset": pa.array([r['collection_dataset'] for r in watermark_rows], type=pa.string()),
             "file_hash": pa.array([r['file_hash'] for r in watermark_rows], type=pa.string()),
             "extracted_by": pa.array([r['extracted_by'] for r in watermark_rows], type=pa.string()),

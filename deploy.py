@@ -211,6 +211,7 @@ DEFAULTS = {
         "ocr_pdf_enabled": "true",
         # Datastore memory limits. The Manticore limits are mandatory values in the ini.
         "clickhouse_mem_limit": "19000M",
+        "clickhouse_server_memory_ratio": "0.7",
         "clickhouse_ui_mem_limit": "6000M",
         "clickhouse_monitoring_mem_limit": "6000M",
         "ocr_pdf_mem_limit": "8000M",
@@ -1250,6 +1251,18 @@ def ocr_concurrency_warning(cfg):
                 "tesseract_cpu_concurrency = %s, so Tesseract slots stay idle"
                 % (ocr, tesseract))
     return None
+
+
+def render_clickhouse_config(cfg):
+    """Render the server memory cap from the installation configuration."""
+    try:
+        ratio = float(cfg.get('main_services', 'clickhouse_server_memory_ratio'))
+    except ValueError:
+        fail('ClickHouse server memory ratio must be a number.')
+    if not 0 < ratio <= 1:
+        fail('ClickHouse server memory ratio must be above 0 and at most 1.')
+    template = (MAIN_COMPOSE_DIR / 'clickhouse-server-config-override.xml.in').read_text()
+    return template.replace('{{ clickhouse_server_memory_ratio }}', str(ratio))
 
 
 def render_tika_config(cfg):
@@ -2776,6 +2789,8 @@ def main(argv=None):
     print("rendered %s%s" % (env_path, " (changed)" if changed else " (unchanged)"))
 
     if side == "main":
+        _write_if_changed(MAIN_COMPOSE_DIR / "clickhouse-server-config-override.xml",
+                          render_clickhouse_config(cfg))
         tika_path = MAIN_COMPOSE_DIR / "tika" / "tika-config.json"
         _write_if_changed(tika_path, render_tika_config(cfg))
         # The proxy's own configuration, rendered beside the .env file for the same

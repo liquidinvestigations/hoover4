@@ -328,11 +328,35 @@ def run_batch(
     keys = [key(item) for item in items]
     names = [task_name(item) if callable(task_name) else task_name for item in items]
     state = _State.start(stage, keys, names)
-    with batch_progress(state):
+    from tasks.P3_parse_files.insert_batch import parser_insert_batch
+
+    pending = {}
+    with batch_progress(state), parser_insert_batch() as inserts:
+        def flush_pending():
+            import time
+
+            inserts.flush()
+            inserts.did_flush = False
+            for pending_index, result in list(pending.items()):
+                try:
+                    inserts.finish_file(pending_index)
+                except CancelledError:
+                    raise
+                except Exception as exc:
+                    stop_if_worker_is_stopping()
+                    inserts.errors[pending_index] = exc
+                error = inserts.errors.pop(pending_index, None)
+                if error is not None:
+                    result = _failed(state, pending_index, error, time.monotonic())
+                state.pending.remove(pending_index)
+                state.end_try(pending_index, result)
+            pending.clear()
+
         while True:
             stop_if_worker_is_stopping()
             index = state.next_index()
             if index is None:
+                flush_pending()
                 if not state.due_ms:
                     return BatchResult(stage=stage, results=state.results())
                 state.sleep_until_due()
@@ -340,7 +364,17 @@ def run_batch(
             limit = (budget(items[index]) if budget is not None
                      else try_budget_seconds(stage, size(items[index])))
             state.start_try(index, limit)
-            state.end_try(index, _try_once(state, index, items[index], step))
+            inserts.index = index
+            result = _try_once(state, index, items[index], step)
+            if index not in inserts.seen:
+                state.end_try(index, result)
+                continue
+            pending[index] = result
+            state.pending.add(index)
+            state.running = None
+            state._publish()
+            if inserts.did_flush:
+                flush_pending()
 
 
 class _State:
@@ -356,6 +390,7 @@ class _State:
 
         self.stage, self.keys, self.names, self.attempt = stage, keys, names, attempt
         self.digest = stage_keys_digest(keys)
+        self.pending: set[int] = set()
         self.done: Dict[int, FileResult] = {}
         self.rows: Dict[int, Dict[str, Any]] = {}
         self.due_ms: Dict[int, int] = {}       # the wait list: file index to due time
@@ -430,7 +465,7 @@ class _State:
         if due:
             return min(due, key=lambda index: (self.due_ms[index], index))
         for index in range(len(self.keys)):
-            if index not in self.done and index not in self.due_ms:
+            if index not in self.done and index not in self.due_ms and index not in self.pending:
                 return index
         return None
 

@@ -213,7 +213,7 @@ pub async fn admin_get_dataset_ocr(
 
     let text_variants: Vec<DatasetTextVariant> = client
         .query(
-            "SELECT extracted_by, count() FROM text_content FINAL \
+            "SELECT extracted_by, uniqExact((file_hash, page_id)) FROM text_content \
              WHERE collection_dataset = ? GROUP BY extracted_by ORDER BY extracted_by",
         )
         .bind(&collection_dataset)

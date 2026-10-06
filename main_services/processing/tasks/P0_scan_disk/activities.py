@@ -1,6 +1,7 @@
 """Disk ingestion activities for listing, hashing, and storing file metadata."""
 
 from temporalio import activity
+from database.clickhouse import insert_parser_arrow
 import os
 import re
 import hashlib
@@ -386,7 +387,7 @@ def insert_vfs_directories(params: InsertVfsDirectoriesParams) -> int:
         "user_id": pa.array(["system"] * len(to_insert), type=pa.string()),
     })
     with get_collection_client(params.collectionname) as client:
-        client.insert_arrow("vfs_directories", table)
+        insert_parser_arrow(client, "vfs_directories", table)
     return len(to_insert)
 
 
@@ -450,7 +451,7 @@ def _touch_vfs_rows(collectionname: str, collection_dataset: str, container_hash
         return
     now = _now_naive_utc()
     with get_collection_client(collectionname) as client:
-        client.insert_arrow("vfs_files", pa.table({
+        insert_parser_arrow(client, "vfs_files", pa.table({
             "collection_dataset": pa.array([collection_dataset] * len(rows), type=pa.string()),
             "container_hash": pa.array([container_hash] * len(rows), type=pa.string()),
             "path": pa.array([r["path"] for r in rows], type=pa.string()),
@@ -774,7 +775,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
                 "blob_length": pa.array(bv_len, type=pa.uint64()),
                 "blob_value": pa.array(bv_val, type=pa.binary()),
             })
-            client.insert_arrow("blob_values", table_bv)
+            insert_parser_arrow(client, "blob_values", table_bv)
 
         if blob_rows_hash:
             table_blobs = pa.table({
@@ -787,7 +788,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
                 "s3_path": pa.array(blob_rows_s3, type=pa.string()),
                 "stored_in_clickhouse": pa.array(blob_rows_inch, type=pa.uint8()),
             })
-            client.insert_arrow("blobs", table_blobs)
+            insert_parser_arrow(client, "blobs", table_blobs)
 
     # 6) MIME/type insertion moved to P3; no file_types writes here
 
@@ -830,7 +831,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
             "updated_at": pa.array([_now_naive_utc()] * len(final_paths), type=pa.timestamp("s")),
             "is_deleted": pa.array([0] * len(final_paths), type=pa.uint8()),
         })
-        client.insert_arrow("vfs_files", table_files)
+        insert_parser_arrow(client, "vfs_files", table_files)
 
     return f"ingested {len(todo_paths)} files (skipped {skipped} unchanged)"
 
@@ -861,7 +862,7 @@ def _tombstone_paths(client, collection_dataset: str, gone: list, now) -> None:
     `ReplacingMergeTree` keyed on the path, so a tombstone is how a path says it is gone
     and still says what used to be there.
     """
-    client.insert_arrow("vfs_files", pa.table({
+    insert_parser_arrow(client, "vfs_files", pa.table({
         "collection_dataset": pa.array([collection_dataset] * len(gone), type=pa.string()),
         "container_hash": pa.array([""] * len(gone), type=pa.string()),
         "path": pa.array([r["path"] for r in gone], type=pa.string()),

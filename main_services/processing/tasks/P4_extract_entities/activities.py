@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import pyarrow as pa
 from temporalio import activity
 
-from database.clickhouse import get_collection_client, insert_arrow_idempotent
+from database.clickhouse import get_collection_client, insert_arrow_durable
 from tasks.entity_stoplist import filter_entity_values
 from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.plan_utils import clean_text
@@ -112,13 +112,17 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
     heartbeat.beat("querying text_content")
 
     with get_collection_client(params.collectionname) as client:
-        # FINAL for the same reason P5 and P6 need it: a re-parse leaves a second
-        # ReplacingMergeTree row for the segment until the background merge collapses it,
-        # and the anti-join cannot tell the copies apart, so the page is sent to the NER
-        # model twice and writes two sets of `entity_hit` rows.
+        # Select one latest size for each segment before the watermark join.
         text_segments = client.query_arrow("""
             SELECT t.file_hash, t.extracted_by, t.page_id, t.text_bytes
-            FROM text_content AS t FINAL
+            FROM (
+                SELECT collection_dataset, file_hash, extracted_by, page_id,
+                       argMax(text_bytes, version) AS text_bytes
+                FROM text_content
+                WHERE collection_dataset = {collection_dataset:String}
+                  AND file_hash IN {item_hashes:Array(String)}
+                GROUP BY collection_dataset, file_hash, extracted_by, page_id
+            ) AS t
             LEFT ANTI JOIN nlp_processed AS n
                 ON n.collection_dataset = t.collection_dataset
                 AND n.file_hash = t.file_hash
@@ -144,7 +148,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
         variants_present: dict[str, set[str]] = {}
         for row in client.query_arrow("""
             SELECT file_hash, groupUniqArray(extracted_by) AS variants
-            FROM text_content FINAL
+            FROM text_content
             WHERE collection_dataset = {collection_dataset:String}
             AND file_hash IN {item_hashes:Array(String)}
             GROUP BY file_hash
@@ -236,7 +240,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
                 "entity_type": pa.array([row['entity_type'] for row in clickhouse_ner_rows], type=pa.string()),
                 "entity_values": pa.array([row['entity_values'] for row in clickhouse_ner_rows], type=pa.list_(pa.string())),
             })
-            insert_arrow_idempotent(client, "entity_hit", tbl_ner)
+            insert_arrow_durable(client, "entity_hit", tbl_ner)
 
         # Watermark rows, one per processed segment. text_bytes is the byte
         # length of the cleaned text actually indexed - part 6's shard planner
@@ -255,7 +259,7 @@ def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitie
             "text_bytes": pa.array([row['text_bytes'] for row in processed_rows], type=pa.uint64()),
             "processed_at": pa.array([now] * len(processed_rows), type=pa.timestamp("s")),
         })
-        insert_arrow_idempotent(client, "nlp_processed", tbl_processed)
+        insert_arrow_durable(client, "nlp_processed", tbl_processed)
 
     log.info(
         f"{collection_dataset} (plan {plan_hash[:8]}): extracted "

@@ -97,7 +97,7 @@ Text uses `ZSTD(3)`. Text and blob tables use granules of 1,024 rows or 1 MiB, w
 Both tables cap merged parts at 4 GiB.
 Merge blocks contain at most 1,024 text rows or 512 blob values.
 Migration creates replacement tables, copies `FINAL` rows, exchanges their names, and removes the old tables.
-The `text_storage_ready` table marks schema readiness.
+The `ocr_pdf_version_ready` table marks schema readiness.
 
 Segment-key batches use a ClickHouse external table in the request body.
 Only the dataset parameter enters the request URL.
@@ -124,34 +124,32 @@ connections.
 
 ## Insert durability
 
-`CLIENT_SETTINGS` waits for async inserts (`wait_for_async_insert=1`). An unmarked
-`client.insert` / `insert_arrow` stays durable. Pipeline tables written inside a
-re-runnable activity opt out through `insert_idempotent` / `insert_arrow_idempotent`
-(`wait_for_async_insert=0`): a ClickHouse restart can lose the buffer, and the stage
-re-runs until the anti-joins converge. Ledgers and watermarks go through
-`insert_durable` / `insert_arrow_durable`, or through unmarked inserts which wait.
+Every client uses `async_insert=1` and `wait_for_async_insert=1`.
+Every insert waits for storage before it returns.
+`insert_durable` and `insert_arrow_durable` enforce both settings for their calls.
+A failed insert propagates to its activity.
 
-The line is drawn by what re-derives the row, not by how important it is. New P3
-parser output qualifies: the parser runs again and writes the same content-addressed
-row. Every `text_content` insert waits for visibility before obsolete pages are deleted.
-Date resolution flushes pending parse inserts before downstream reads. A P0 scan row
-does not qualify. Nothing rescans the disk, so a lost `blobs` row is never planned.
-The index planner flushes pending P4 and P5 inserts before it assigns shards.
-Each flush acts on the server's whole async insert queue and propagates failure.
-
-| Wait | Tables |
+| Mode | Tables |
 |---|---|
-| Do not wait | new P3 parser output: `file_types`, `tika_metadata`, `emails`, `email_headers`, `email_addresses`, `archives`, `pdfs`, `pdf_metadata`, `pdfs_image`, `pdf_ocr_results`, `raw_ocr_results`, `image`, `audio_metadata`, `video_metadata`, `document_dates`, `table_documents`, `table_sheets`, `table_columns`, `table_cells`; plus `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry`, `agent_step_events` |
-| Wait | all `text_content`; `blobs`, `blob_values`, `vfs_files`, `vfs_directories`, `processing_plan_finished`, `index_state`, `manticore_shards`, `manticore_shard_assignments`, `dataset`, `processing_plans`, `schema_versions` |
+| Async inserts wait for storage. | Every table uses this mode. |
 
-The Error recorder waits for its row insert before it writes the operation event.
-This order lets a retry repair an event write without creating another logical Error.
-`processing_task_runs` records worker execution duration and queue wait separately.
-Execution duration includes worker hand-off time. It excludes time before worker acceptance.
+Parser activities collect Arrow rows through `insert_parser_arrow`.
+They write each table once per activity or when the buffer reaches about 8 MiB.
+A failed batch is written again per file to isolate refused rows.
+A file enters the finished heartbeat detail only after its writes complete.
+Member scans store blob values before headers and VFS rows.
+They remove temporary member folders after storage completes.
 
-The wait is not a rounding error. One waited insert costs ~60 ms against ~1 ms without;
-`parse_email_extract_text_headers` writes three rows per email, so leaving them durable
-put ~180 ms of pure waiting into a ~540 ms activity that runs once per message.
+Text replacement stays per file and waits before deleting obsolete pages.
+Email sources share one previous-page query and one insert.
+Text readers select the largest stored version for each segment key without `FINAL`.
+OCR-PDF versions use nanosecond timestamps and tuple reads that keep fields from one row.
+
+Telemetry retains samples in memory and writes waited batches each minute.
+Buffer limits and failed writes report dropped row counts.
+The Error recorder waits before it writes the operation event.
+`processing_task_runs` records execution duration and queue wait separately.
+Execution duration excludes time before worker acceptance.
 
 ## Migrations
 

@@ -23,7 +23,8 @@ class Client:
                 for name in ("blob_hash", "stored_in_clickhouse", "s3_path")})
         return pa.table({"path": []})
 
-    def insert_arrow(self, table, data):
+    def insert_arrow(self, table, data, *, settings):
+        assert settings == {"async_insert": 1, "wait_for_async_insert": 1}
         self.inserts.append(table)
         key = "path" if table == "vfs_files" else "blob_hash"
         for row in data.to_pylist():

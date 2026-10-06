@@ -120,6 +120,7 @@ EXPECTED_COLLECTION_TABLES = {
     "vfs_files",
     "vfs_nodes",
     "video_metadata",
+    "ocr_pdf_version_ready",
 }
 
 
@@ -259,7 +260,7 @@ def test_global_tables_match_expected():
 
 
 def test_collection_tables_match_expected():
-    assert set(_table_names(COLLECTION_MIGRATIONS_PATH)) - {"processing_errors_next", "text_content_new", "blob_values_new"} == EXPECTED_COLLECTION_TABLES
+    assert set(_table_names(COLLECTION_MIGRATIONS_PATH)) - {"processing_errors_next", "text_content_new", "blob_values_new", "pdf_ocr_results_new"} == EXPECTED_COLLECTION_TABLES
     migration = Path(COLLECTION_MIGRATIONS_PATH, "00051_processing_errors_identity.sql").read_text()
     assert "ReplacingMergeTree(write_version)" in migration
     assert "processing_errors_next TO processing_errors" in migration
