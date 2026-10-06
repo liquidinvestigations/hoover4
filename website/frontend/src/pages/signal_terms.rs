@@ -19,7 +19,7 @@ pub fn SignalTermsPage() -> Element {
         None => rsx! { LoadingIndicator {} },
         Some(Err(error)) => rsx! { ServerErrorDisplay { error } },
         Some(Ok(catalog)) => rsx! {
-            main { style: "max-width: 1100px; margin: auto; padding: 24px;",
+            main { class: "x-signal-terms", style: "max-width: 1100px; margin: auto; padding: 24px;",
                 h1 { "Red flag terms" }
                 p { "These terms identify passages for review. A match does not establish misconduct." }
                 for category in catalog.categories {
