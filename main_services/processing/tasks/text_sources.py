@@ -59,7 +59,7 @@ def fetch_text_batch(client, collection_dataset: str,
     keys = ExternalData(file_name="keys", data=data, fmt="JSONCompactEachRow",
                         structure="file_hash String, extracted_by String, page_id UInt32")
     return client.query_arrow("""
-        SELECT collection_dataset, file_hash, extracted_by, page_id, argMax(text, version) AS text
+        SELECT collection_dataset, file_hash, extracted_by, page_id, argMax(text, version) AS text, max(version) AS text_version
         FROM text_content
         WHERE collection_dataset = {collection_dataset:String}
           AND file_hash IN (SELECT file_hash FROM keys)

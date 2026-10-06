@@ -65,6 +65,8 @@ const SEARCH_FIELDS: &[&str] = &[
     "ner_loc",
     "ner_misc",
     "file_types",
+    "language",
+    "red_flags",
     "file_mime_types",
     "file_extensions",
     "file_paths",

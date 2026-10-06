@@ -53,3 +53,9 @@ The Word text source precedes Extractous text for binary Word files.
 - The application uses the light palette for either browser color preference.
 
 The empty source selector stays hidden. A processing query failure remains separate from an empty extraction.
+
+The Entities tab shows red flag excerpts with matched text marked.
+Other signal hits remain in a closed pane.
+The information control opens the read-only category and terms page in a new tab.
+Document permission checks apply before signal evidence queries.
+A signal query failure appears as an error.

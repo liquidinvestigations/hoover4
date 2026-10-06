@@ -81,6 +81,7 @@ const STRUCT_FLAGS_WITH_ATTACHMENTS: [u64; 2] = [1, 3];
 pub enum FilterCategory {
     Collections,
     FileTypes,
+    Language,
     FileSize,
     FileLocation,
     Dates,
@@ -89,9 +90,10 @@ pub enum FilterCategory {
 }
 
 impl FilterCategory {
-    pub const ALL: [FilterCategory; 7] = [
+    pub const ALL: [FilterCategory; 8] = [
         FilterCategory::Collections,
         FilterCategory::FileTypes,
+        FilterCategory::Language,
         FilterCategory::FileSize,
         FilterCategory::FileLocation,
         FilterCategory::Dates,
@@ -103,6 +105,7 @@ impl FilterCategory {
         match self {
             FilterCategory::Collections => "Collections",
             FilterCategory::FileTypes => "File types",
+            FilterCategory::Language => "Language",
             FilterCategory::FileSize => "File size",
             FilterCategory::FileLocation => "File location",
             FilterCategory::Dates => "Date",
@@ -116,6 +119,7 @@ impl FilterCategory {
         match self {
             FilterCategory::Collections => &["collection_dataset"],
             FilterCategory::FileTypes => &["file_types"],
+            FilterCategory::Language => &["language"],
             FilterCategory::FileLocation => &["file_paths"],
             FilterCategory::Email => &["email_from", "email_to", "struct_flags"],
             FilterCategory::Entities => &EntitySub::VALUE_FIELDS,
@@ -178,6 +182,8 @@ impl FilterCategory {
 pub fn term_field_of(facet_field: &str) -> Option<&'static str> {
     match facet_field {
         "file_types" => Some("filetype"),
+        "language" => Some("language"),
+        "red_flags" => Some("red_flags"),
         "file_paths" => Some("vfs_node"),
         "email_from" | "email_to" => Some("email_address"),
         "ner_per" | "ner_org" | "ner_loc" | "ner_misc" => Some("ner"),
@@ -618,6 +624,13 @@ pub fn FilterModal(
                                     server_side: false,
                                 }
                             },
+                            FilterCategory::Language => rsx! {
+                                SearchableFacetPane {
+                                    original_query, pending, field: "language".to_string(),
+                                    map_string_terms: term_field_prop("language"),
+                                    placeholder: "Search languages…".to_string(),
+                                }
+                            },
                             FilterCategory::FileSize => rsx! {
                                 FileSizePane { original_query, pending }
                             },
@@ -649,6 +662,7 @@ fn CategoryIcon(category: FilterCategory) -> Element {
     match category {
         FilterCategory::Collections => rsx! { Icon { icon: GoDatabase, style } },
         FilterCategory::FileTypes => rsx! { Icon { icon: MdInsertDriveFile, style } },
+        FilterCategory::Language => rsx! { Icon { icon: MdInfo, style } },
         FilterCategory::FileSize => rsx! { Icon { icon: MdStraighten, style } },
         FilterCategory::FileLocation => rsx! { Icon { icon: MdStorage, style } },
         FilterCategory::Dates => rsx! { Icon { icon: MdDateRange, style } },
@@ -761,7 +775,7 @@ fn SearchableFacetPane(
     original_query: ReadSignal<SearchQuery>,
     pending: Signal<SearchQuery>,
     /// A SIGNAL rather than a `String`, and the difference decides correctness. The Entities rail renders one
-    /// instance of this pane for eleven of its twelve children, so switching child hands
+    /// instance of this pane for each value child, so switching child hands
     /// the SAME component a different field. A plain prop is read once into the hooks
     /// below and never again: the corpus-wide term search would keep asking about the
     /// column the reader left, and answer the column they are looking at with its term
@@ -773,7 +787,7 @@ fn SearchableFacetPane(
     /// values are few enough to all be visible.
     #[props(default = true)]
     server_side: bool,
-    /// A needle owned by a parent, for the merged view that drives ten panes at once.
+    /// A needle owned by a parent, for the merged view that drives the value panes together.
     /// When set, this pane draws no box of its own.
     #[props(default)]
     shared_needle: Option<ReadSignal<String>>,
@@ -1600,11 +1614,12 @@ pub enum EntitySub {
     CompanyId,
     Money,
     CryptoWallet,
+    RedFlags,
     MentionedDate,
 }
 
 impl EntitySub {
-    pub const ALL: [EntitySub; 12] = [
+    pub const ALL: [EntitySub; 13] = [
         EntitySub::All,
         EntitySub::Per,
         EntitySub::Org,
@@ -1616,12 +1631,13 @@ impl EntitySub {
         EntitySub::CompanyId,
         EntitySub::Money,
         EntitySub::CryptoWallet,
+        EntitySub::RedFlags,
         EntitySub::MentionedDate,
     ];
 
-    /// The ten value facets, in rail order. `All` merges exactly these; Mentioned Date is
+    /// The eleven value facets, in rail order. `All` merges exactly these; Mentioned Date is
     /// excluded because a timestamp has no place in a list sorted by document count.
-    pub const VALUE_FIELDS: [&'static str; 10] = [
+    pub const VALUE_FIELDS: [&'static str; 11] = [
         "ner_per",
         "ner_org",
         "ner_loc",
@@ -1632,6 +1648,7 @@ impl EntitySub {
         "re_company_id",
         "re_money",
         "re_crypto_wallet",
+        "red_flags",
     ];
 
     pub fn label(&self) -> &'static str {
@@ -1647,6 +1664,7 @@ impl EntitySub {
             EntitySub::CompanyId => "Company ID",
             EntitySub::Money => "Money",
             EntitySub::CryptoWallet => "Crypto wallet",
+            EntitySub::RedFlags => "Red flags",
             EntitySub::MentionedDate => "Mentioned Date",
         }
     }
@@ -1666,6 +1684,7 @@ impl EntitySub {
             EntitySub::CompanyId => Some("re_company_id"),
             EntitySub::Money => Some("re_money"),
             EntitySub::CryptoWallet => Some("re_crypto_wallet"),
+            EntitySub::RedFlags => Some("red_flags"),
         }
     }
 
@@ -1688,6 +1707,7 @@ fn EntitySubIcon(sub: EntitySub, style: String) -> Element {
         EntitySub::CompanyId => rsx! { Icon { icon: MdDomain, style } },
         EntitySub::Money => rsx! { Icon { icon: MdAttachMoney, style } },
         EntitySub::CryptoWallet => rsx! { Icon { icon: MdAccountBalanceWallet, style } },
+        EntitySub::RedFlags => rsx! { Icon { icon: MdInfo, style } },
         EntitySub::MentionedDate => rsx! { Icon { icon: MdDateRange, style } },
     }
 }
@@ -1772,8 +1792,8 @@ fn EntitiesPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQ
 /// Whether one child of Entities has anything set.
 fn entity_sub_is_active(sub: EntitySub, query: &SearchQuery) -> bool {
     match sub {
-        // `All` lights when any of the ten does, because it is the view that shows all
-        // ten and a rail with no dot anywhere over a filtered corpus is false.
+        // `All` lights when any value facet does, because it is the view that shows all
+        // values and a rail with no dot anywhere over a filtered corpus is false.
         EntitySub::All => EntitySub::VALUE_FIELDS.iter().any(|field| {
             query.facet_filters.get(*field).is_some_and(|values| !values.is_empty())
         }),
@@ -1787,7 +1807,7 @@ fn entity_sub_is_active(sub: EntitySub, query: &SearchQuery) -> bool {
     }
 }
 
-/// The ten value lists merged into one, sorted by document count.
+/// The value lists merged into one, sorted by document count.
 ///
 /// The type column between the checkbox and the text is what makes the merge readable: a
 /// row saying `enron` is a different claim depending on whether it is an organisation or
@@ -1795,9 +1815,9 @@ fn entity_sub_is_active(sub: EntitySub, query: &SearchQuery) -> bool {
 /// next to each other.
 ///
 /// Ticking a row writes into that row's OWN facet field, so the merged view produces
-/// exactly the query its sub-list would. The ten fetches are the sub-lists' own queries
+/// exactly the query its sub-list would. The facet fetches are the sub-lists' own queries
 /// verbatim, and identical queries hit the backend's Manticore result cache, switching
-/// between All and a child is not ten fresh fan-outs.
+/// between All and a child is not eleven fresh fan-outs.
 #[component]
 fn EntitiesAllPane(
     original_query: ReadSignal<SearchQuery>,
@@ -1847,7 +1867,7 @@ fn EntitiesAllPane(
             }
         }
         match lists.read().as_ref() {
-            // Every list, or none: a merged view that renders while three of its ten
+            // Every list, or none: a merged view that renders while three of its value
             // sources are still in flight is sorted by a count it does not have yet, and
             // reorders itself under the reader's cursor as they arrive.
             None => rsx! { div { style: "padding: 8px; color: rgba(0,0,0,0.5);", "Loading…" } },

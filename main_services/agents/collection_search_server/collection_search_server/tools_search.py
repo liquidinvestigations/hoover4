@@ -341,7 +341,7 @@ Query rules:
 
 Each row gives file_hash, path and collectionname. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has more, give that value to read_more to get the other rows.
 
-Set a filter only when the user asks for it. Dates are epoch seconds. size_min and size_max are in bytes. A facet_filters value is a term id from a facet count or search_facet_values."""
+Set a filter only when the user asks for it. Dates are epoch seconds. size_min and size_max are in bytes. A facet_filters value accepts a term id from a facet count or search_facet_values. language also accepts a code or English name. red_flags also accepts a category identifier or title."""
 
 SEARCH_PASSAGES_TEXT = (
     "Search the text passages of the user's documents by keywords and by meaning together. Use "

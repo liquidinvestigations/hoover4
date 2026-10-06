@@ -248,6 +248,15 @@ impl Lexicon {
         &self.version
     }
 
+    /// Return the loaded terms with their category identifiers.
+    pub fn term_rows(&self) -> Vec<serde_json::Value> {
+        self.terms.iter().map(|term| serde_json::json!({
+            "category": self.categories[term.category].id,
+            "term": term.term, "concept": term.concept, "lang": term.lang,
+            "tier": term.tier, "speaker": term.speaker,
+        })).collect()
+    }
+
     pub fn term_count(&self) -> usize {
         self.terms.len()
     }

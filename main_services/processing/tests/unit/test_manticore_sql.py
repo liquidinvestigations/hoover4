@@ -37,6 +37,8 @@ def test_pages_table_ddl_golden():
             extracted_by string,
             page_id int,
             page_text text,
+            language multi64,
+            red_flags multi64,
             ner_per multi64,
             ner_org multi64,
             ner_loc multi64,

@@ -23,7 +23,9 @@ twice per chunk.
 """
 
 from typing import List
-from time import perf_counter
+from time import perf_counter, time_ns
+from tasks.signal_storage import read_signal_pages, page_clusters, write_clusters, remove_old_clusters
+from tasks.red_flags import load_calibration
 from temporalio import activity
 import logging
 import os
@@ -153,7 +155,7 @@ _MVA_COLUMNS = (
     'file_types', 'file_mime_types', 'file_extensions', 'file_paths', 'dates',
     'email_from', 'email_to',
     're_email', 're_phone', 're_bank_account', 're_company_id', 're_money',
-    're_crypto_wallet', 'mentioned_dates',
+    're_crypto_wallet', 'mentioned_dates', 'language', 'red_flags',
 )
 
 #: The bound (non-MVA) columns of a pages row, in the same order.
@@ -433,8 +435,10 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     from database.manticore import get_manticore_client
 
     metadata = document_metadata(params)
+    write_version = time_ns()
 
     with get_collection_client(params.collectionname) as client:
+        signal_marks, signal_hits = read_signal_pages(client, collection_dataset, item_hashes)
         # Plan each segment from its latest stored size.
         text_segments = client.query_arrow("""
             SELECT file_hash, extracted_by, page_id, argMax(text_bytes, version) AS text_bytes
@@ -498,8 +502,10 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
         for field in FACET_FIELDS
     }
     fields['ner'] = ner_values
+    fields['red_flags'] = set(load_calibration()['categories'])
     term_ids = get_string_term_ids_by_field(params.collectionname, collection_dataset, fields)
     ner_ids = term_ids.pop('ner')
+    red_flag_ids = term_ids.pop("red_flags")
     regex_ids = term_ids
 
     missing_watermarks = 0
@@ -551,6 +557,7 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
         with get_collection_client(params.collectionname) as client:
             text_content = fetch_text_batch(client, collection_dataset, text_batch)
         rows = []
+        clusters = []
         for row in text_content:
             file_hash = row['file_hash']
             if file_hash not in filename_hashes:
@@ -567,13 +574,17 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
                 segment_entities = {}
             else:
                 segment_entities = entities_by_segment.get(key, {})
+            cleaned = clean_text(row['text'])
+            scored = page_clusters(row, cleaned, signal_marks, signal_hits, write_version)
+            clusters.extend(scored)
             page = dict(metadata.get(row['file_hash']) or empty_document_metadata())
             page.update({
                 'collection_dataset': row['collection_dataset'],
                 'file_hash': row['file_hash'],
                 'extracted_by': row['extracted_by'],
                 'page_id': row['page_id'],
-                'page_text': limit_encoded_runs(clean_text(row['text'])),
+                'page_text': limit_encoded_runs(cleaned),
+                'red_flags': repr_manticore_tuple(sorted({red_flag_ids[cluster['category']] for cluster in scored})),
             })
             for entity_type in ("PER", "ORG", "LOC", "MISC"):
                 field_name = f"ner_{entity_type.lower()}"
@@ -598,6 +609,8 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
             rows.append(page)
         del text_content
         written_hashes.update(row['file_hash'] for row in rows)
+        with get_collection_client(params.collectionname) as client:
+            write_clusters(client, clusters)
         write_rows(manticore_client, rows)
         row = None
         page = None
@@ -612,6 +625,9 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
       written_hashes.update(_delete_obsolete_index_pages(
           manticore_client, pages_table, collection_dataset, item_hashes, expected_ids,
       ))
+
+    with get_collection_client(params.collectionname) as client:
+        remove_old_clusters(client, collection_dataset, item_hashes, write_version)
 
     log_missing_ner_watermarks(
         collection_dataset, plan_hash, missing_watermarks, len(text_segments),
@@ -871,6 +887,16 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
             AND kind = 'container'
         """, {"collection_dataset": collection_dataset}).to_pylist()
 
+    with get_collection_client(params.collectionname) as client:
+        language_rows = client.query_arrow("""
+            SELECT file_hash, groupUniqArray(language) AS languages FROM (
+                SELECT file_hash, extracted_by, page_id, argMax(language, version) AS language
+                FROM text_content WHERE collection_dataset = {ds:String} AND file_hash IN {hashes:Array(String)}
+                GROUP BY file_hash, extracted_by, page_id)
+            WHERE language != 'und' AND language != '' GROUP BY file_hash
+        """, {"ds": collection_dataset, "hashes": item_hashes}).to_pylist()
+    languages_by_hash = {row["file_hash"]: row["languages"] for row in language_rows}
+
     container_parents = container_parents_from_nodes(node_rows)
 
     vfs_by_hash: dict[str, list[dict]] = {}
@@ -924,12 +950,14 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
     term_ids = get_string_term_ids_by_field(params.collectionname, collection_dataset, {
         'filetype': all_filetypes, 'mime_type': all_mime_types, 'extension': all_extensions,
         'vfs_node': all_node_keys, 'email_address': all_addresses,
+        'language': {code for codes in languages_by_hash.values() for code in codes},
     })
     filetype_ids = term_ids['filetype']
     mime_type_ids = term_ids['mime_type']
     extension_ids = term_ids['extension']
     node_key_ids = term_ids['vfs_node']
     address_ids = term_ids['email_address']
+    language_ids = term_ids['language']
 
     from database.manticore import DATE_UNKNOWN, SIZE_UNKNOWN
 
@@ -947,6 +975,7 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
             struct_flags |= STRUCT_FLAG_EMAIL_HAS_ATTACHMENTS
         basenames = sorted({os.path.basename(row['path']) for row in rows if row['path']})
         metadata[file_hash] = {
+            "language": repr_manticore_tuple(sorted(language_ids[code] for code in languages_by_hash.get(file_hash, []))),
             "file_types": repr_manticore_tuple([filetype_ids[ft] for ft in item['file_types']]),
             "file_mime_types": repr_manticore_tuple([mime_type_ids[mt] for mt in item['mime_types']]),
             "file_extensions": repr_manticore_tuple([extension_ids[ext] for ext in item['extensions']]),

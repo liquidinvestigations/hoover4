@@ -8,3 +8,4 @@ pub mod home_page;
 pub mod not_found_page;
 pub mod search_page;
 pub mod view_document_page;
+pub mod signal_terms;

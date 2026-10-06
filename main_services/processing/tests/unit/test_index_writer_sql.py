@@ -92,11 +92,11 @@ class TestPagesReplaceSql:
                 file_types, file_mime_types, file_extensions, file_paths, dates,
                 email_from, email_to,
                 re_email, re_phone, re_bank_account, re_company_id, re_money,
-                re_crypto_wallet, mentioned_dates)
+                re_crypto_wallet, mentioned_dates, language, red_flags)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 (11,22), (33), (), (44),
                 (5), (6,7), (), (8,9), (-3786825600,1370000000), (11), (),
-                (51), (), (), (), (52,53), (), (-3786825600,1370000000))
+                (51), (), (), (), (52,53), (), (-3786825600,1370000000), (), ())
         """)
 
     def test_missing_mva_fields_default_to_empty_mva(self):
@@ -104,7 +104,7 @@ class TestPagesReplaceSql:
         # rather than None, which is what the `row.get(...) or '()'` behaviour gives.
         sql = pages_replace_sql("testdata_1_pages", {})
         assert "None" not in sql
-        assert sql.count("()") == 18
+        assert sql.count("()") == 20
 
     def test_params_are_in_column_order(self):
         """The bound parameters and the placeholder list are two halves of one

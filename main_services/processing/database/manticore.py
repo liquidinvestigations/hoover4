@@ -315,6 +315,7 @@ SIZE_UNKNOWN = -1
 #: sorts on them; a column added to one list and not the other is a Manticore error on
 #: every query rather than an empty result.
 DOCUMENT_COLUMNS = (
+    'language',
     'file_types',
     'file_mime_types',
     'file_extensions',
@@ -391,6 +392,8 @@ def pages_table_ddl(table_name: str) -> str:
             extracted_by string,
             page_id int,
             page_text text,
+            language multi64,
+            red_flags multi64,
             ner_per multi64,
             ner_org multi64,
             ner_loc multi64,

@@ -530,6 +530,39 @@ def reindex_collection(collectionname: str, vectors_only: bool = False):
         raise click.ClickException(f"{op_id} failed.")
 
 
+@cli.command(name="scan-signals-collection")
+@click.argument("collectionname", type=str)
+def scan_signals_collection(collectionname: str):
+    """Scan existing finished plans for missing regex and signal watermarks."""
+    from database.clickhouse import get_collection_client, validate_collectionname
+    from database.operations import open_operations_for_collection
+    validate_collectionname(collectionname)
+    if open_operations_for_collection(collectionname):
+        raise click.ClickException("Wait for the collection operation to finish.")
+    with get_collection_client(collectionname) as client:
+        plans = client.query("SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL "
+                             "ORDER BY collection_dataset, plan_hash").result_rows
+
+    async def scan():
+        from temporalio.client import Client
+        from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
+        from tasks.P4_extract_entities.params import ScanRegexEntitiesForPlanParams
+        from tasks.P4_extract_entities.workflows import ScanRegexEntitiesForPlan
+        from tasks.visibility import dataset_search_attributes
+        client = await Client.connect("temporal:7233")
+        for dataset, plan in plans:
+            handle = await client.start_workflow(
+                ScanRegexEntitiesForPlan.run,
+                ScanRegexEntitiesForPlanParams(collectionname, dataset, plan),
+                id=f"signal-rescan-{dataset}-{plan}", task_queue="processing-common-queue",
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+                id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+                search_attributes=dataset_search_attributes(dataset))
+            await handle.result()
+            click.echo(f"Scanned plan {dataset} {plan}.")
+    asyncio.run(scan())
+
+
 @cli.command(name="refresh-document-locations")
 @click.argument("collectionname", type=str)
 @click.argument("collection_dataset", type=str)

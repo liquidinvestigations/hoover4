@@ -1,0 +1,2922 @@
+{
+  "window_words": 400,
+  "stride_words": 200,
+  "categories": {
+    "concealment": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": true
+    },
+    "accounting": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": true
+    },
+    "bribery": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "rationalisation": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": true
+    },
+    "hostility": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "litigation": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": true
+    },
+    "crime": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "financial_crime": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "violence": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "sexual_misconduct": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "genocide": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "crimes_against_humanity": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "war_crimes": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "coded_language": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "scam": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "marketing": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "legal_document": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "contract": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "legal_letter": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": true
+    },
+    "memorandum": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "invoice": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false,
+      "calibrated_on": [
+        "enron"
+      ]
+    },
+    "invoice_draft": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false,
+      "calibrated_on": [
+        "enron"
+      ]
+    },
+    "invoice_final": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false,
+      "calibrated_on": [
+        "enron"
+      ]
+    },
+    "payment_proof": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false,
+      "calibrated_on": [
+        "enron"
+      ]
+    },
+    "international_transfer": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    },
+    "jurisdiction": {
+      "points": {
+        "L": 1,
+        "M": 3,
+        "H": 6
+      },
+      "threshold": 8,
+      "min_concepts": 2,
+      "l_cap": 2,
+      "low_recall": false
+    }
+  },
+  "noisy_terms": [
+    [
+      "accounting",
+      "Unregelmäßigkeit*"
+    ],
+    [
+      "accounting",
+      "abgeschrieben"
+    ],
+    [
+      "accounting",
+      "backdate"
+    ],
+    [
+      "accounting",
+      "close the gap"
+    ],
+    [
+      "accounting",
+      "intercompany accounts"
+    ],
+    [
+      "accounting",
+      "irregular"
+    ],
+    [
+      "accounting",
+      "irregularidad*"
+    ],
+    [
+      "accounting",
+      "irrégularité*"
+    ],
+    [
+      "accounting",
+      "irrégulier"
+    ],
+    [
+      "accounting",
+      "miscellaneous expenses"
+    ],
+    [
+      "accounting",
+      "off balance sheet"
+    ],
+    [
+      "accounting",
+      "restatement"
+    ],
+    [
+      "accounting",
+      "side letter"
+    ],
+    [
+      "accounting",
+      "window dressing"
+    ],
+    [
+      "accounting",
+      "write off"
+    ],
+    [
+      "accounting",
+      "writeoff"
+    ],
+    [
+      "bribery",
+      "bestechen"
+    ],
+    [
+      "bribery",
+      "corrupto"
+    ],
+    [
+      "bribery",
+      "crooked"
+    ],
+    [
+      "bribery",
+      "dirty"
+    ],
+    [
+      "bribery",
+      "douteux"
+    ],
+    [
+      "bribery",
+      "enveloppe"
+    ],
+    [
+      "bribery",
+      "finder's fee"
+    ],
+    [
+      "bribery",
+      "korrupt*"
+    ],
+    [
+      "bribery",
+      "louche"
+    ],
+    [
+      "bribery",
+      "louches"
+    ],
+    [
+      "bribery",
+      "officieux"
+    ],
+    [
+      "bribery",
+      "pots-de-vin"
+    ],
+    [
+      "bribery",
+      "sa part"
+    ],
+    [
+      "bribery",
+      "sale"
+    ],
+    [
+      "bribery",
+      "sales"
+    ],
+    [
+      "bribery",
+      "sales and marketing expenses"
+    ],
+    [
+      "bribery",
+      "schmutzig*"
+    ],
+    [
+      "bribery",
+      "shady"
+    ],
+    [
+      "bribery",
+      "sous la table"
+    ],
+    [
+      "bribery",
+      "success fee"
+    ],
+    [
+      "bribery",
+      "sucio"
+    ],
+    [
+      "bribery",
+      "sweetener"
+    ],
+    [
+      "bribery",
+      "take care of her"
+    ],
+    [
+      "bribery",
+      "take care of him"
+    ],
+    [
+      "bribery",
+      "take care of them"
+    ],
+    [
+      "bribery",
+      "turbio"
+    ],
+    [
+      "bribery",
+      "under the table"
+    ],
+    [
+      "bribery",
+      "unofficial"
+    ],
+    [
+      "bribery",
+      "unter der Hand"
+    ],
+    [
+      "bribery",
+      "благодарность"
+    ],
+    [
+      "bribery",
+      "грязн*"
+    ],
+    [
+      "bribery",
+      "неофициальн*"
+    ],
+    [
+      "bribery",
+      "сомнительн*"
+    ],
+    [
+      "bribery",
+      "הסדר כובל"
+    ],
+    [
+      "bribery",
+      "שיחד"
+    ],
+    [
+      "bribery",
+      "حصته"
+    ],
+    [
+      "bribery",
+      "حلاوة"
+    ],
+    [
+      "bribery",
+      "فاسد"
+    ],
+    [
+      "bribery",
+      "نصيبه"
+    ],
+    [
+      "bribery",
+      "وسخ"
+    ],
+    [
+      "bribery",
+      "وسطة"
+    ],
+    [
+      "coded_language",
+      "Kohle"
+    ],
+    [
+      "coded_language",
+      "Moos"
+    ],
+    [
+      "coded_language",
+      "bread"
+    ],
+    [
+      "coded_language",
+      "brick"
+    ],
+    [
+      "coded_language",
+      "chopper"
+    ],
+    [
+      "coded_language",
+      "comme d'habitude"
+    ],
+    [
+      "coded_language",
+      "conecte"
+    ],
+    [
+      "coded_language",
+      "das Paket"
+    ],
+    [
+      "coded_language",
+      "der Stoff"
+    ],
+    [
+      "coded_language",
+      "el encargo"
+    ],
+    [
+      "coded_language",
+      "el paquete"
+    ],
+    [
+      "coded_language",
+      "feria"
+    ],
+    [
+      "coded_language",
+      "fierro"
+    ],
+    [
+      "coded_language",
+      "flights"
+    ],
+    [
+      "coded_language",
+      "free money"
+    ],
+    [
+      "coded_language",
+      "ladrillo"
+    ],
+    [
+      "coded_language",
+      "lana"
+    ],
+    [
+      "coded_language",
+      "le paquet"
+    ],
+    [
+      "coded_language",
+      "notre ami"
+    ],
+    [
+      "coded_language",
+      "nuestro amigo"
+    ],
+    [
+      "coded_language",
+      "our friend"
+    ],
+    [
+      "coded_language",
+      "overselling"
+    ],
+    [
+      "coded_language",
+      "palabra clave"
+    ],
+    [
+      "coded_language",
+      "paper"
+    ],
+    [
+      "coded_language",
+      "plug"
+    ],
+    [
+      "coded_language",
+      "rent"
+    ],
+    [
+      "coded_language",
+      "straps"
+    ],
+    [
+      "coded_language",
+      "the goods"
+    ],
+    [
+      "coded_language",
+      "the package"
+    ],
+    [
+      "coded_language",
+      "the product"
+    ],
+    [
+      "coded_language",
+      "the usual"
+    ],
+    [
+      "coded_language",
+      "tickets"
+    ],
+    [
+      "coded_language",
+      "unser Freund"
+    ],
+    [
+      "coded_language",
+      "wie immer"
+    ],
+    [
+      "coded_language",
+      "you know what i mean"
+    ],
+    [
+      "coded_language",
+      "you know who"
+    ],
+    [
+      "coded_language",
+      "zip"
+    ],
+    [
+      "coded_language",
+      "вещество"
+    ],
+    [
+      "coded_language",
+      "груз"
+    ],
+    [
+      "coded_language",
+      "закладк*"
+    ],
+    [
+      "coded_language",
+      "как всегда"
+    ],
+    [
+      "coded_language",
+      "как обычно"
+    ],
+    [
+      "coded_language",
+      "חבילה"
+    ],
+    [
+      "coded_language",
+      "כרגיל"
+    ],
+    [
+      "coded_language",
+      "الأمانة"
+    ],
+    [
+      "concealment",
+      "Geheimnis*"
+    ],
+    [
+      "concealment",
+      "Leck"
+    ],
+    [
+      "concealment",
+      "Lecks"
+    ],
+    [
+      "concealment",
+      "alternate email"
+    ],
+    [
+      "concealment",
+      "between you and me"
+    ],
+    [
+      "concealment",
+      "black-out"
+    ],
+    [
+      "concealment",
+      "blackout"
+    ],
+    [
+      "concealment",
+      "burner"
+    ],
+    [
+      "concealment",
+      "confidencial"
+    ],
+    [
+      "concealment",
+      "confidential"
+    ],
+    [
+      "concealment",
+      "confidentiel"
+    ],
+    [
+      "concealment",
+      "confidentielle"
+    ],
+    [
+      "concealment",
+      "damage control"
+    ],
+    [
+      "concealment",
+      "delete this"
+    ],
+    [
+      "concealment",
+      "delete this email"
+    ],
+    [
+      "concealment",
+      "do not forward"
+    ],
+    [
+      "concealment",
+      "don't need to know"
+    ],
+    [
+      "concealment",
+      "encubrir"
+    ],
+    [
+      "concealment",
+      "entre nous"
+    ],
+    [
+      "concealment",
+      "heads up"
+    ],
+    [
+      "concealment",
+      "leak"
+    ],
+    [
+      "concealment",
+      "need to know basis"
+    ],
+    [
+      "concealment",
+      "not in writing"
+    ],
+    [
+      "concealment",
+      "off the record"
+    ],
+    [
+      "concealment",
+      "out of band"
+    ],
+    [
+      "concealment",
+      "private e-mail"
+    ],
+    [
+      "concealment",
+      "private email"
+    ],
+    [
+      "concealment",
+      "secret"
+    ],
+    [
+      "concealment",
+      "secreto"
+    ],
+    [
+      "concealment",
+      "shred it"
+    ],
+    [
+      "concealment",
+      "strictement nécessaire"
+    ],
+    [
+      "concealment",
+      "unter uns"
+    ],
+    [
+      "concealment",
+      "vertraulich*"
+    ],
+    [
+      "concealment",
+      "whitewash"
+    ],
+    [
+      "concealment",
+      "étouffer"
+    ],
+    [
+      "concealment",
+      "между нами"
+    ],
+    [
+      "concealment",
+      "молчание"
+    ],
+    [
+      "concealment",
+      "при встрече"
+    ],
+    [
+      "concealment",
+      "секрет"
+    ],
+    [
+      "concealment",
+      "тайн*"
+    ],
+    [
+      "concealment",
+      "телега"
+    ],
+    [
+      "concealment",
+      "телеграм*"
+    ],
+    [
+      "concealment",
+      "חסוי"
+    ],
+    [
+      "concealment",
+      "بيني وبينك"
+    ],
+    [
+      "concealment",
+      "سري"
+    ],
+    [
+      "contract",
+      "CGU"
+    ],
+    [
+      "contract",
+      "возмещение убытков"
+    ],
+    [
+      "contract",
+      "возмещение ущерба"
+    ],
+    [
+      "contract",
+      "заключен"
+    ],
+    [
+      "contract",
+      "заключили"
+    ],
+    [
+      "contract",
+      "лицензионный договор"
+    ],
+    [
+      "contract",
+      "настоящего договора"
+    ],
+    [
+      "contract",
+      "неустойк*"
+    ],
+    [
+      "contract",
+      "стороны договорились"
+    ],
+    [
+      "contract",
+      "условия договора"
+    ],
+    [
+      "contract",
+      "التعويض"
+    ],
+    [
+      "contract",
+      "هذا العقد"
+    ],
+    [
+      "contract",
+      "هذه الاتفاقية"
+    ],
+    [
+      "crime",
+      "Betrug*"
+    ],
+    [
+      "crime",
+      "Raub"
+    ],
+    [
+      "crime",
+      "Straftat*"
+    ],
+    [
+      "crime",
+      "Verstoß*"
+    ],
+    [
+      "crime",
+      "alibi*"
+    ],
+    [
+      "crime",
+      "betrügerisch*"
+    ],
+    [
+      "crime",
+      "coke"
+    ],
+    [
+      "crime",
+      "complice*"
+    ],
+    [
+      "crime",
+      "contrefait*"
+    ],
+    [
+      "crime",
+      "contrefaçon*"
+    ],
+    [
+      "crime",
+      "cómplice"
+    ],
+    [
+      "crime",
+      "delito grave"
+    ],
+    [
+      "crime",
+      "documentos falsos"
+    ],
+    [
+      "crime",
+      "défendu"
+    ],
+    [
+      "crime",
+      "falsificación"
+    ],
+    [
+      "crime",
+      "forbidden"
+    ],
+    [
+      "crime",
+      "fraude"
+    ],
+    [
+      "crime",
+      "geächtet"
+    ],
+    [
+      "crime",
+      "hurto"
+    ],
+    [
+      "crime",
+      "héroïne"
+    ],
+    [
+      "crime",
+      "illicite*"
+    ],
+    [
+      "crime",
+      "ilícito"
+    ],
+    [
+      "crime",
+      "infracción"
+    ],
+    [
+      "crime",
+      "infraction*"
+    ],
+    [
+      "crime",
+      "no autorizado"
+    ],
+    [
+      "crime",
+      "non autorisé*"
+    ],
+    [
+      "crime",
+      "offence"
+    ],
+    [
+      "crime",
+      "ransomware"
+    ],
+    [
+      "crime",
+      "rechtswidrig*"
+    ],
+    [
+      "crime",
+      "robado"
+    ],
+    [
+      "crime",
+      "tabou*"
+    ],
+    [
+      "crime",
+      "unauthorised"
+    ],
+    [
+      "crime",
+      "unauthorized"
+    ],
+    [
+      "crime",
+      "unbefugt*"
+    ],
+    [
+      "crime",
+      "unrechtmäßig*"
+    ],
+    [
+      "crime",
+      "volé"
+    ],
+    [
+      "crime",
+      "volée"
+    ],
+    [
+      "crime",
+      "widerrechtlich*"
+    ],
+    [
+      "crime",
+      "גנוב"
+    ],
+    [
+      "crime",
+      "השוד"
+    ],
+    [
+      "crime",
+      "חטיפה"
+    ],
+    [
+      "crime",
+      "להבריח"
+    ],
+    [
+      "crime",
+      "מרמה"
+    ],
+    [
+      "crime",
+      "נעצרה"
+    ],
+    [
+      "crime",
+      "עוון"
+    ],
+    [
+      "crime",
+      "פושע"
+    ],
+    [
+      "crime",
+      "פריצה"
+    ],
+    [
+      "crime",
+      "שוד"
+    ],
+    [
+      "crimes_against_humanity",
+      "Massengrab*"
+    ],
+    [
+      "crimes_against_humanity",
+      "forced labor"
+    ],
+    [
+      "crimes_against_humanity",
+      "gefoltert"
+    ],
+    [
+      "crimes_against_humanity",
+      "נעלמים"
+    ],
+    [
+      "crimes_against_humanity",
+      "עינויים"
+    ],
+    [
+      "crimes_against_humanity",
+      "الاسترقاق"
+    ],
+    [
+      "crimes_against_humanity",
+      "السخرة"
+    ],
+    [
+      "crimes_against_humanity",
+      "الفصل العنصري"
+    ],
+    [
+      "financial_crime",
+      "Untreue"
+    ],
+    [
+      "financial_crime",
+      "as high as possible"
+    ],
+    [
+      "financial_crime",
+      "beneficial owner"
+    ],
+    [
+      "financial_crime",
+      "bribery act"
+    ],
+    [
+      "financial_crime",
+      "dual use"
+    ],
+    [
+      "financial_crime",
+      "détourn*"
+    ],
+    [
+      "financial_crime",
+      "détournement de fonds"
+    ],
+    [
+      "financial_crime",
+      "end use"
+    ],
+    [
+      "financial_crime",
+      "end user"
+    ],
+    [
+      "financial_crime",
+      "hs code"
+    ],
+    [
+      "financial_crime",
+      "insider information"
+    ],
+    [
+      "financial_crime",
+      "nominee"
+    ],
+    [
+      "financial_crime",
+      "over invoic*"
+    ],
+    [
+      "financial_crime",
+      "patently false"
+    ],
+    [
+      "financial_crime",
+      "sample contract"
+    ],
+    [
+      "financial_crime",
+      "sanctions evasion"
+    ],
+    [
+      "financial_crime",
+      "tuyau"
+    ],
+    [
+      "financial_crime",
+      "unterschlag*"
+    ],
+    [
+      "financial_crime",
+      "двойного назначения"
+    ],
+    [
+      "financial_crime",
+      "заведомо ложн*"
+    ],
+    [
+      "financial_crime",
+      "растрат*"
+    ],
+    [
+      "financial_crime",
+      "хищени*"
+    ],
+    [
+      "financial_crime",
+      "מעילה"
+    ],
+    [
+      "genocide",
+      "Ungeziefer"
+    ],
+    [
+      "genocide",
+      "nuisibles"
+    ],
+    [
+      "genocide",
+      "shoah"
+    ],
+    [
+      "genocide",
+      "vermin"
+    ],
+    [
+      "genocide",
+      "vermine"
+    ],
+    [
+      "genocide",
+      "геноцид*"
+    ],
+    [
+      "genocide",
+      "окончательное решение"
+    ],
+    [
+      "genocide",
+      "отрицание геноцида"
+    ],
+    [
+      "genocide",
+      "שואה"
+    ],
+    [
+      "genocide",
+      "المحرقة"
+    ],
+    [
+      "hostility",
+      "Hetze"
+    ],
+    [
+      "hostility",
+      "Mist"
+    ],
+    [
+      "hostility",
+      "cabrón"
+    ],
+    [
+      "hostility",
+      "coño"
+    ],
+    [
+      "hostility",
+      "cállate"
+    ],
+    [
+      "hostility",
+      "dégage"
+    ],
+    [
+      "hostility",
+      "fck"
+    ],
+    [
+      "hostility",
+      "ferme-la"
+    ],
+    [
+      "hostility",
+      "insinuation*"
+    ],
+    [
+      "hostility",
+      "merde"
+    ],
+    [
+      "hostility",
+      "mierda"
+    ],
+    [
+      "hostility",
+      "salir"
+    ],
+    [
+      "hostility",
+      "sous-entendu*"
+    ],
+    [
+      "hostility",
+      "tais-toi"
+    ],
+    [
+      "hostility",
+      "tonterías"
+    ],
+    [
+      "hostility",
+      "verdammt"
+    ],
+    [
+      "hostility",
+      "блин"
+    ],
+    [
+      "hostility",
+      "говн*"
+    ],
+    [
+      "hostility",
+      "козел"
+    ],
+    [
+      "hostility",
+      "намек*"
+    ],
+    [
+      "hostility",
+      "порочащ*"
+    ],
+    [
+      "hostility",
+      "урод*"
+    ],
+    [
+      "hostility",
+      "фигня"
+    ],
+    [
+      "hostility",
+      "רמיזות"
+    ],
+    [
+      "hostility",
+      "שטויות"
+    ],
+    [
+      "hostility",
+      "اخرس"
+    ],
+    [
+      "hostility",
+      "حمار"
+    ],
+    [
+      "international_transfer",
+      "fx rate"
+    ],
+    [
+      "international_transfer",
+      "receiving bank"
+    ],
+    [
+      "international_transfer",
+      "remesa"
+    ],
+    [
+      "international_transfer",
+      "sort code"
+    ],
+    [
+      "international_transfer",
+      "swift code"
+    ],
+    [
+      "international_transfer",
+      "трансграничн*"
+    ],
+    [
+      "invoice",
+      "Menge"
+    ],
+    [
+      "invoice",
+      "avoir"
+    ],
+    [
+      "invoice",
+      "balance due"
+    ],
+    [
+      "invoice",
+      "cant"
+    ],
+    [
+      "invoice",
+      "cuit"
+    ],
+    [
+      "invoice",
+      "due date"
+    ],
+    [
+      "invoice",
+      "gst"
+    ],
+    [
+      "invoice",
+      "invoice no"
+    ],
+    [
+      "invoice",
+      "net 30"
+    ],
+    [
+      "invoice",
+      "nif"
+    ],
+    [
+      "invoice",
+      "payment terms"
+    ],
+    [
+      "invoice",
+      "purchase order"
+    ],
+    [
+      "invoice",
+      "qty"
+    ],
+    [
+      "invoice",
+      "rfc"
+    ],
+    [
+      "invoice",
+      "ship to"
+    ],
+    [
+      "invoice",
+      "subtotal"
+    ],
+    [
+      "invoice",
+      "tax id"
+    ],
+    [
+      "invoice",
+      "total due"
+    ],
+    [
+      "invoice",
+      "vat"
+    ],
+    [
+      "invoice",
+      "vendu à"
+    ],
+    [
+      "invoice",
+      "КПП"
+    ],
+    [
+      "invoice",
+      "кол-во"
+    ],
+    [
+      "invoice",
+      "מועד תשלום"
+    ],
+    [
+      "invoice_draft",
+      "Entwurf*"
+    ],
+    [
+      "invoice_draft",
+      "Vorab*"
+    ],
+    [
+      "invoice_draft",
+      "amended"
+    ],
+    [
+      "invoice_draft",
+      "annulé*"
+    ],
+    [
+      "invoice_draft",
+      "brouillon*"
+    ],
+    [
+      "invoice_draft",
+      "cotización"
+    ],
+    [
+      "invoice_draft",
+      "estimate"
+    ],
+    [
+      "invoice_draft",
+      "for approval"
+    ],
+    [
+      "invoice_draft",
+      "geändert"
+    ],
+    [
+      "invoice_draft",
+      "modificada"
+    ],
+    [
+      "invoice_draft",
+      "modifié"
+    ],
+    [
+      "invoice_draft",
+      "nul"
+    ],
+    [
+      "invoice_draft",
+      "preliminar"
+    ],
+    [
+      "invoice_draft",
+      "preliminary"
+    ],
+    [
+      "invoice_draft",
+      "presupuesto"
+    ],
+    [
+      "invoice_draft",
+      "proforma"
+    ],
+    [
+      "invoice_draft",
+      "provisoire*"
+    ],
+    [
+      "invoice_draft",
+      "provisoria"
+    ],
+    [
+      "invoice_draft",
+      "préliminaire*"
+    ],
+    [
+      "invoice_draft",
+      "quotation"
+    ],
+    [
+      "invoice_draft",
+      "remplace"
+    ],
+    [
+      "invoice_draft",
+      "supersedes"
+    ],
+    [
+      "invoice_draft",
+      "void"
+    ],
+    [
+      "invoice_draft",
+      "vorläufig"
+    ],
+    [
+      "invoice_draft",
+      "vorläufig*"
+    ],
+    [
+      "invoice_draft",
+      "zur Prüfung"
+    ],
+    [
+      "invoice_draft",
+      "измененн*"
+    ],
+    [
+      "invoice_draft",
+      "котировк*"
+    ],
+    [
+      "invoice_draft",
+      "на рассмотрение"
+    ],
+    [
+      "invoice_draft",
+      "на утверждение"
+    ],
+    [
+      "invoice_draft",
+      "предварительн*"
+    ],
+    [
+      "invoice_draft",
+      "ארעי"
+    ],
+    [
+      "invoice_draft",
+      "טיוטה"
+    ],
+    [
+      "invoice_draft",
+      "לאישור"
+    ],
+    [
+      "invoice_draft",
+      "מעודכן"
+    ],
+    [
+      "invoice_draft",
+      "מתוקן"
+    ],
+    [
+      "invoice_draft",
+      "للموافقة"
+    ],
+    [
+      "invoice_final",
+      "acquittée"
+    ],
+    [
+      "invoice_final",
+      "final invoice"
+    ],
+    [
+      "invoice_final",
+      "invoice issued"
+    ],
+    [
+      "invoice_final",
+      "pagada"
+    ],
+    [
+      "invoice_final",
+      "paid"
+    ],
+    [
+      "invoice_final",
+      "paid in full"
+    ],
+    [
+      "invoice_final",
+      "payment received"
+    ],
+    [
+      "invoice_final",
+      "receipted"
+    ],
+    [
+      "invoice_final",
+      "مدفوع"
+    ],
+    [
+      "jurisdiction",
+      "Amtsgericht*"
+    ],
+    [
+      "jurisdiction",
+      "Cour de cassation"
+    ],
+    [
+      "jurisdiction",
+      "Delaware"
+    ],
+    [
+      "jurisdiction",
+      "Landgericht*"
+    ],
+    [
+      "jurisdiction",
+      "Oberlandesgericht*"
+    ],
+    [
+      "jurisdiction",
+      "arms export control act"
+    ],
+    [
+      "jurisdiction",
+      "corte suprema"
+    ],
+    [
+      "jurisdiction",
+      "cour d'appel"
+    ],
+    [
+      "jurisdiction",
+      "district court"
+    ],
+    [
+      "jurisdiction",
+      "fuero"
+    ],
+    [
+      "jurisdiction",
+      "suprema corte de justicia"
+    ],
+    [
+      "jurisdiction",
+      "tribunal de grande instance"
+    ],
+    [
+      "jurisdiction",
+      "upper tribunal"
+    ],
+    [
+      "jurisdiction",
+      "апелляционный суд"
+    ],
+    [
+      "jurisdiction",
+      "районного суда"
+    ],
+    [
+      "jurisdiction",
+      "районный суд"
+    ],
+    [
+      "jurisdiction",
+      "בג״ץ"
+    ],
+    [
+      "jurisdiction",
+      "المحكمة العليا"
+    ],
+    [
+      "jurisdiction",
+      "محاكم"
+    ],
+    [
+      "jurisdiction",
+      "محكمة الاستئناف"
+    ],
+    [
+      "legal_document",
+      "Angeklagte*"
+    ],
+    [
+      "legal_document",
+      "Gerichtsbeschluss*"
+    ],
+    [
+      "legal_document",
+      "Gesetz"
+    ],
+    [
+      "legal_document",
+      "Notar"
+    ],
+    [
+      "legal_document",
+      "Urteil*"
+    ],
+    [
+      "legal_document",
+      "Urteilsbegründung*"
+    ],
+    [
+      "legal_document",
+      "affidavit"
+    ],
+    [
+      "legal_document",
+      "arrêt"
+    ],
+    [
+      "legal_document",
+      "attendu que"
+    ],
+    [
+      "legal_document",
+      "claimant"
+    ],
+    [
+      "legal_document",
+      "defendant"
+    ],
+    [
+      "legal_document",
+      "docket"
+    ],
+    [
+      "legal_document",
+      "fallo"
+    ],
+    [
+      "legal_document",
+      "hierin"
+    ],
+    [
+      "legal_document",
+      "in Sachen"
+    ],
+    [
+      "legal_document",
+      "in the matter of"
+    ],
+    [
+      "legal_document",
+      "intimé*"
+    ],
+    [
+      "legal_document",
+      "legally privileged"
+    ],
+    [
+      "legal_document",
+      "prévenu"
+    ],
+    [
+      "legal_document",
+      "sentencia"
+    ],
+    [
+      "legal_document",
+      "the undersigned"
+    ],
+    [
+      "legal_document",
+      "вышеуказанн*"
+    ],
+    [
+      "legal_document",
+      "далее"
+    ],
+    [
+      "legal_document",
+      "по делу"
+    ],
+    [
+      "legal_document",
+      "согласно"
+    ],
+    [
+      "legal_document",
+      "учитывая, что"
+    ],
+    [
+      "legal_document",
+      "בזאת"
+    ],
+    [
+      "legal_document",
+      "נוטריון"
+    ],
+    [
+      "legal_document",
+      "פסיקה"
+    ],
+    [
+      "legal_document",
+      "حيث أن"
+    ],
+    [
+      "legal_document",
+      "قرار المحكمة"
+    ],
+    [
+      "legal_letter",
+      "Kanzlei"
+    ],
+    [
+      "legal_letter",
+      "acciones judiciales"
+    ],
+    [
+      "legal_letter",
+      "alternative dispute resolution"
+    ],
+    [
+      "legal_letter",
+      "atentamente"
+    ],
+    [
+      "legal_letter",
+      "demand letter"
+    ],
+    [
+      "legal_letter",
+      "en caso contrario"
+    ],
+    [
+      "legal_letter",
+      "engager des poursuites"
+    ],
+    [
+      "legal_letter",
+      "failing which"
+    ],
+    [
+      "legal_letter",
+      "faute de quoi"
+    ],
+    [
+      "legal_letter",
+      "formal notice"
+    ],
+    [
+      "legal_letter",
+      "practice direction"
+    ],
+    [
+      "legal_letter",
+      "procedimiento judicial"
+    ],
+    [
+      "legal_letter",
+      "procédure judiciaire"
+    ],
+    [
+      "legal_letter",
+      "solicitors"
+    ],
+    [
+      "legal_letter",
+      "su cliente"
+    ],
+    [
+      "legal_letter",
+      "take legal action"
+    ],
+    [
+      "legal_letter",
+      "within 14 days"
+    ],
+    [
+      "legal_letter",
+      "without further notice"
+    ],
+    [
+      "legal_letter",
+      "your client"
+    ],
+    [
+      "legal_letter",
+      "yours faithfully"
+    ],
+    [
+      "legal_letter",
+      "адвокаты"
+    ],
+    [
+      "legal_letter",
+      "в противном случае"
+    ],
+    [
+      "legal_letter",
+      "в судебном порядке"
+    ],
+    [
+      "legal_letter",
+      "обратиться в суд"
+    ],
+    [
+      "legal_letter",
+      "с уважением"
+    ],
+    [
+      "legal_letter",
+      "судебное разбирательство"
+    ],
+    [
+      "legal_letter",
+      "תוך 14 ימים"
+    ],
+    [
+      "legal_letter",
+      "الإجراءات القضائية"
+    ],
+    [
+      "legal_letter",
+      "وإلا"
+    ],
+    [
+      "litigation",
+      "Anspruch*"
+    ],
+    [
+      "litigation",
+      "Geldbuße*"
+    ],
+    [
+      "litigation",
+      "Klagen"
+    ],
+    [
+      "litigation",
+      "Repressalie*"
+    ],
+    [
+      "litigation",
+      "Schiedsgericht*"
+    ],
+    [
+      "litigation",
+      "Schiedsverfahren*"
+    ],
+    [
+      "litigation",
+      "Strafverfolg*"
+    ],
+    [
+      "litigation",
+      "Verjährung*"
+    ],
+    [
+      "litigation",
+      "Verleumdung*"
+    ],
+    [
+      "litigation",
+      "arbitration"
+    ],
+    [
+      "litigation",
+      "calomnie*"
+    ],
+    [
+      "litigation",
+      "calumnia*"
+    ],
+    [
+      "litigation",
+      "claim"
+    ],
+    [
+      "litigation",
+      "counterclaim"
+    ],
+    [
+      "litigation",
+      "délai de prescription"
+    ],
+    [
+      "litigation",
+      "déposition*"
+    ],
+    [
+      "litigation",
+      "enjuici*"
+    ],
+    [
+      "litigation",
+      "enquête*"
+    ],
+    [
+      "litigation",
+      "ermitteln"
+    ],
+    [
+      "litigation",
+      "final notice"
+    ],
+    [
+      "litigation",
+      "financial penalty"
+    ],
+    [
+      "litigation",
+      "injonction"
+    ],
+    [
+      "litigation",
+      "injuria*"
+    ],
+    [
+      "litigation",
+      "limitation period"
+    ],
+    [
+      "litigation",
+      "medidas cautelares"
+    ],
+    [
+      "litigation",
+      "perquisitions"
+    ],
+    [
+      "litigation",
+      "plazo de prescripción"
+    ],
+    [
+      "litigation",
+      "prétention*"
+    ],
+    [
+      "litigation",
+      "reclamación"
+    ],
+    [
+      "litigation",
+      "représailles"
+    ],
+    [
+      "litigation",
+      "réclamation*"
+    ],
+    [
+      "litigation",
+      "slander"
+    ],
+    [
+      "litigation",
+      "stay of proceedings"
+    ],
+    [
+      "litigation",
+      "strafrechtlich verfolg*"
+    ],
+    [
+      "litigation",
+      "transaction"
+    ],
+    [
+      "litigation",
+      "verklagen"
+    ],
+    [
+      "litigation",
+      "клевет*"
+    ],
+    [
+      "litigation",
+      "мести"
+    ],
+    [
+      "litigation",
+      "показани*"
+    ],
+    [
+      "litigation",
+      "проверк*"
+    ],
+    [
+      "litigation",
+      "прокурор*"
+    ],
+    [
+      "litigation",
+      "расследовани*"
+    ],
+    [
+      "litigation",
+      "требовани*"
+    ],
+    [
+      "litigation",
+      "третейск*"
+    ],
+    [
+      "litigation",
+      "התיישנות"
+    ],
+    [
+      "litigation",
+      "כתב אישום"
+    ],
+    [
+      "litigation",
+      "לשון הרע"
+    ],
+    [
+      "litigation",
+      "עיצום כספי"
+    ],
+    [
+      "litigation",
+      "צו חיפוש"
+    ],
+    [
+      "litigation",
+      "תובענה ייצוגית"
+    ],
+    [
+      "litigation",
+      "النيابة العامة"
+    ],
+    [
+      "litigation",
+      "تحكيم"
+    ],
+    [
+      "litigation",
+      "قرار الاتهام"
+    ],
+    [
+      "litigation",
+      "مداهمة"
+    ],
+    [
+      "litigation",
+      "مطالبة"
+    ],
+    [
+      "marketing",
+      "act now"
+    ],
+    [
+      "marketing",
+      "annonce"
+    ],
+    [
+      "marketing",
+      "click here"
+    ],
+    [
+      "marketing",
+      "cliquez ici"
+    ],
+    [
+      "marketing",
+      "derniers jours"
+    ],
+    [
+      "marketing",
+      "email preferences"
+    ],
+    [
+      "marketing",
+      "opt out"
+    ],
+    [
+      "marketing",
+      "sale ends"
+    ],
+    [
+      "marketing",
+      "view in browser"
+    ],
+    [
+      "marketing",
+      "webinar"
+    ],
+    [
+      "marketing",
+      "דיוור"
+    ],
+    [
+      "marketing",
+      "اشترك"
+    ],
+    [
+      "memorandum",
+      "Absichtserklärung*"
+    ],
+    [
+      "memorandum",
+      "Kooperationsvereinbarung*"
+    ],
+    [
+      "memorandum",
+      "Rahmenvereinbarung*"
+    ],
+    [
+      "memorandum",
+      "accord-cadre"
+    ],
+    [
+      "memorandum",
+      "acuerdo de cooperación"
+    ],
+    [
+      "memorandum",
+      "acuerdo marco"
+    ],
+    [
+      "memorandum",
+      "memorando de entendimiento"
+    ],
+    [
+      "memorandum",
+      "mémorandum d'entente"
+    ],
+    [
+      "memorandum",
+      "non-binding"
+    ],
+    [
+      "memorandum",
+      "protocole d'accord"
+    ],
+    [
+      "memorandum",
+      "term sheet"
+    ],
+    [
+      "memorandum",
+      "the parties intend"
+    ],
+    [
+      "memorandum",
+      "в принципе"
+    ],
+    [
+      "memorandum",
+      "меморандум о взаимопонимании"
+    ],
+    [
+      "payment_proof",
+      "belastet"
+    ],
+    [
+      "payment_proof",
+      "зачислен*"
+    ],
+    [
+      "payment_proof",
+      "הודעת תשלום"
+    ],
+    [
+      "rationalisation",
+      "Hinweisgeber*"
+    ],
+    [
+      "rationalisation",
+      "bankrupt"
+    ],
+    [
+      "rationalisation",
+      "cash crunch"
+    ],
+    [
+      "rationalisation",
+      "don't have the right"
+    ],
+    [
+      "rationalisation",
+      "embarrassing"
+    ],
+    [
+      "rationalisation",
+      "everyone does it"
+    ],
+    [
+      "rationalisation",
+      "exceptionnellement"
+    ],
+    [
+      "rationalisation",
+      "faille"
+    ],
+    [
+      "rationalisation",
+      "fermeture"
+    ],
+    [
+      "rationalisation",
+      "for the record"
+    ],
+    [
+      "rationalisation",
+      "going concern"
+    ],
+    [
+      "rationalisation",
+      "gray area"
+    ],
+    [
+      "rationalisation",
+      "gênant"
+    ],
+    [
+      "rationalisation",
+      "i have no choice"
+    ],
+    [
+      "rationalisation",
+      "i object"
+    ],
+    [
+      "rationalisation",
+      "i refuse to"
+    ],
+    [
+      "rationalisation",
+      "loophole"
+    ],
+    [
+      "rationalisation",
+      "mal à l'aise"
+    ],
+    [
+      "rationalisation",
+      "no regrets"
+    ],
+    [
+      "rationalisation",
+      "not comfortable"
+    ],
+    [
+      "rationalisation",
+      "notgedrungen"
+    ],
+    [
+      "rationalisation",
+      "peinlich"
+    ],
+    [
+      "rationalisation",
+      "pour mémoire"
+    ],
+    [
+      "rationalisation",
+      "red flag"
+    ],
+    [
+      "rationalisation",
+      "reluctantly"
+    ],
+    [
+      "rationalisation",
+      "serious concerns"
+    ],
+    [
+      "rationalisation",
+      "shutdown"
+    ],
+    [
+      "rationalisation",
+      "suspects"
+    ],
+    [
+      "rationalisation",
+      "suspicious"
+    ],
+    [
+      "rationalisation",
+      "told me to"
+    ],
+    [
+      "rationalisation",
+      "vergonzoso"
+    ],
+    [
+      "rationalisation",
+      "victimless"
+    ],
+    [
+      "rationalisation",
+      "закрытие"
+    ],
+    [
+      "rationalisation",
+      "неловк*"
+    ],
+    [
+      "rationalisation",
+      "неохотно"
+    ],
+    [
+      "rationalisation",
+      "подозрительн*"
+    ],
+    [
+      "rationalisation",
+      "разорен*"
+    ],
+    [
+      "rationalisation",
+      "сказал мне"
+    ],
+    [
+      "rationalisation",
+      "חשוד"
+    ],
+    [
+      "rationalisation",
+      "مفلس"
+    ],
+    [
+      "scam",
+      "Großmut*"
+    ],
+    [
+      "scam",
+      "Haftbefehl*"
+    ],
+    [
+      "scam",
+      "Lotto*"
+    ],
+    [
+      "scam",
+      "Modalitäten"
+    ],
+    [
+      "scam",
+      "alter Freund"
+    ],
+    [
+      "scam",
+      "arrest warrant"
+    ],
+    [
+      "scam",
+      "award notification"
+    ],
+    [
+      "scam",
+      "business partner"
+    ],
+    [
+      "scam",
+      "cher ami"
+    ],
+    [
+      "scam",
+      "chère amie"
+    ],
+    [
+      "scam",
+      "compensation fund"
+    ],
+    [
+      "scam",
+      "dear friend"
+    ],
+    [
+      "scam",
+      "desembolso"
+    ],
+    [
+      "scam",
+      "du bureau de"
+    ],
+    [
+      "scam",
+      "décaissement*"
+    ],
+    [
+      "scam",
+      "générosité"
+    ],
+    [
+      "scam",
+      "herencia"
+    ],
+    [
+      "scam",
+      "inheritance"
+    ],
+    [
+      "scam",
+      "kindly"
+    ],
+    [
+      "scam",
+      "le montant total"
+    ],
+    [
+      "scam",
+      "lieber Freund"
+    ],
+    [
+      "scam",
+      "magnanimity"
+    ],
+    [
+      "scam",
+      "mandat d'arrêt"
+    ],
+    [
+      "scam",
+      "modalidades"
+    ],
+    [
+      "scam",
+      "modalities"
+    ],
+    [
+      "scam",
+      "modalités"
+    ],
+    [
+      "scam",
+      "old friend"
+    ],
+    [
+      "scam",
+      "orden de arresto"
+    ],
+    [
+      "scam",
+      "partenaire commercial"
+    ],
+    [
+      "scam",
+      "private lawyer"
+    ],
+    [
+      "scam",
+      "querido amigo"
+    ],
+    [
+      "scam",
+      "socio comercial"
+    ],
+    [
+      "scam",
+      "strictly confidential"
+    ],
+    [
+      "scam",
+      "tirage au sort"
+    ],
+    [
+      "scam",
+      "vieil ami"
+    ],
+    [
+      "scam",
+      "you have won"
+    ],
+    [
+      "scam",
+      "выплат*"
+    ],
+    [
+      "scam",
+      "наследств*"
+    ],
+    [
+      "scam",
+      "порядок"
+    ],
+    [
+      "scam",
+      "розыгрыш*"
+    ],
+    [
+      "scam",
+      "условия"
+    ],
+    [
+      "scam",
+      "ירושה"
+    ],
+    [
+      "scam",
+      "צו מעצר"
+    ],
+    [
+      "scam",
+      "الترتيبات"
+    ],
+    [
+      "scam",
+      "ميراث"
+    ],
+    [
+      "sexual_misconduct",
+      "Bordell*"
+    ],
+    [
+      "sexual_misconduct",
+      "Kinderpornografie*"
+    ],
+    [
+      "sexual_misconduct",
+      "Kindesmissbrauch*"
+    ],
+    [
+      "sexual_misconduct",
+      "Menschenhandel*"
+    ],
+    [
+      "sexual_misconduct",
+      "Minderjährige*"
+    ],
+    [
+      "sexual_misconduct",
+      "Puff"
+    ],
+    [
+      "sexual_misconduct",
+      "mac"
+    ],
+    [
+      "sexual_misconduct",
+      "mineur"
+    ],
+    [
+      "sexual_misconduct",
+      "pornografía infantil"
+    ],
+    [
+      "sexual_misconduct",
+      "pédopornographi*"
+    ],
+    [
+      "sexual_misconduct",
+      "sexuellen Missbrauch*"
+    ],
+    [
+      "sexual_misconduct",
+      "traite des êtres humains"
+    ],
+    [
+      "sexual_misconduct",
+      "trata de personas"
+    ],
+    [
+      "sexual_misconduct",
+      "vergewaltig*"
+    ],
+    [
+      "sexual_misconduct",
+      "without consent"
+    ],
+    [
+      "sexual_misconduct",
+      "без согласия"
+    ],
+    [
+      "sexual_misconduct",
+      "объявления"
+    ],
+    [
+      "sexual_misconduct",
+      "педофил*"
+    ],
+    [
+      "sexual_misconduct",
+      "притон*"
+    ],
+    [
+      "sexual_misconduct",
+      "эксплуатаци*"
+    ],
+    [
+      "sexual_misconduct",
+      "סרסור"
+    ],
+    [
+      "sexual_misconduct",
+      "סרסורים"
+    ],
+    [
+      "sexual_misconduct",
+      "קטינה"
+    ],
+    [
+      "sexual_misconduct",
+      "استغلال"
+    ],
+    [
+      "sexual_misconduct",
+      "الاتجار بالأشخاص"
+    ],
+    [
+      "sexual_misconduct",
+      "قاصر"
+    ],
+    [
+      "sexual_misconduct",
+      "قواد"
+    ],
+    [
+      "violence",
+      "Feuerwaffe*"
+    ],
+    [
+      "violence",
+      "Munition*"
+    ],
+    [
+      "violence",
+      "Sprengstoff*"
+    ],
+    [
+      "violence",
+      "ammo"
+    ],
+    [
+      "violence",
+      "explosif*"
+    ],
+    [
+      "violence",
+      "liste noire"
+    ],
+    [
+      "violence",
+      "radicalis*"
+    ],
+    [
+      "violence",
+      "radikalisier*"
+    ],
+    [
+      "violence",
+      "terroris*"
+    ],
+    [
+      "violence",
+      "terrorist"
+    ],
+    [
+      "violence",
+      "terroristisch*"
+    ],
+    [
+      "violence",
+      "автомат*"
+    ],
+    [
+      "violence",
+      "חומר נפץ"
+    ],
+    [
+      "violence",
+      "חומרי נפץ"
+    ],
+    [
+      "violence",
+      "לירות"
+    ],
+    [
+      "violence",
+      "סליק"
+    ],
+    [
+      "violence",
+      "תחמושת"
+    ],
+    [
+      "war_crimes",
+      "Römischen Statut*"
+    ],
+    [
+      "war_crimes",
+      "no quarter"
+    ],
+    [
+      "war_crimes",
+      "perfidie"
+    ],
+    [
+      "war_crimes",
+      "perfidious*"
+    ],
+    [
+      "war_crimes",
+      "treacherously"
+    ],
+    [
+      "war_crimes",
+      "הרעבה"
+    ],
+    [
+      "war_crimes",
+      "أسرى الحرب"
+    ],
+    [
+      "war_crimes",
+      "الغدر"
+    ],
+    [
+      "war_crimes",
+      "القانون الدولي الإنساني"
+    ],
+    [
+      "war_crimes",
+      "دولة الاحتلال"
+    ]
+  ]
+}

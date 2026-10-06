@@ -44,8 +44,14 @@ longer hit is dropped.
 
 ## `POST /signal_batch`
 
-`{"texts": ["…", …]}` → one result per text, in order, summarised per category. This is the shape a
-storage consumer keeps:
+`{"texts": ["…", …]}` returns one result per text, in order, summarised per category.
+The response reports spans_served as false by default.
+Set spans to true to include each result's hits array and receive spans_served as true.
+Each hit uses the same fields and UTF-8 byte offsets as the scan signals response.
+The summary and hits come from one scan.
+Existing summary clients can omit spans.
+
+The summary response contains these fields:
 
 ```jsonc
 {
@@ -86,6 +92,12 @@ The lexicon's version, languages, total term count, and every category with its 
 `catches`, what a match `does_not_prove`, and its term count per language. A client shows the last
 of these beside a signal.
 
+## `GET /signal_terms`
+
+The response contains signal_set_version and the loaded lexicon's terms.
+Each term contains category, term, concept, lang, tier, and speaker.
+The website uses these rows on its read-only terms page.
+
 ## Versions
 
 `signal_set_version` is a content hash of the lexicon files. It changes whenever a term does, and it
@@ -95,9 +107,8 @@ without re-running the entity scan.
 
 ## What a signal does not mean
 
-Keyword search alone finds a minority of the relevant documents, while the people running it
-usually believe they found most of them. Most keyword alerts in communications surveillance are
-false. Direct words (`fraud`, `bribe`, `illegal`) are written more by accusers, lawyers, auditors and
-compliance staff than by the people doing it, which is what `speaker` records. A signal orders a
-collection for reading. It does not report that anything happened, and it does not show that a
-collection without signals is clean.
+Keyword search can omit relevant documents.
+A signal directs document review and does not establish misconduct.
+A missing signal does not establish that a collection contains no misconduct.
+Direct terms can appear in accusations, legal work, audits, and compliance text.
+The speaker field records the lexicon's speaker class.

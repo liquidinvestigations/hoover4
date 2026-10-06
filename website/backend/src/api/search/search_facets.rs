@@ -506,6 +506,16 @@ pub async fn fetch_db_terms_for_ints(
             }
         }
     }
+    let titles = if field_name == "red_flags" {
+        crate::api::documents::signals::signal_titles().await?
+    } else { HashMap::new() };
+    for value in merged.values_mut() {
+        if field_name == "language" {
+            *value = common::signals::language_name(value);
+        } else if let Some(title) = titles.get(value) {
+            *value = title.clone();
+        }
+    }
     Ok(merged)
 }
 

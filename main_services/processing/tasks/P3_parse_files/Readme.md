@@ -386,3 +386,12 @@ The searchable PDF client uses a read timeout at least 60 seconds below its mini
 Extraction results keep the first twenty recoverable errors and their total count.
 Each error sample and missing attachment field has a 200-byte UTF-8 limit.
 Attachment retries remove the prior extraction directory before writing members.
+
+## Document language
+
+The text writer detects one language for each complete text source before it writes its pages.
+It samples the first 4,000 characters with the packaged fastText model.
+It stores the code in each text_content row of that source.
+Fewer than 200 letters, confidence below 0.5, or a detection failure produces und.
+P6 excludes und from the document language facet.
+The model licence is in [models/Readme.md](../../models/Readme.md).

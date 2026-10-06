@@ -30,3 +30,5 @@ pub mod search_result;
 pub mod storage_tree;
 pub mod text_highlight;
 pub mod vfs;
+
+pub mod signals;

@@ -217,6 +217,7 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
                         force_expanded: selected_entity.is_some(),
                     }
                 }
+                super::document_red_flags::DocumentRedFlags { document_identifier }
             }
         }
     }

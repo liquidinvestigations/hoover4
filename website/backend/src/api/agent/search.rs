@@ -39,6 +39,8 @@ const SEARCH_FACETS: &[(&str, Option<&str>)] = &[
     ("ner_loc", Some("ner")),
     ("ner_misc", Some("ner")),
     ("re_email", Some("regex_email")),
+    ("language", Some("language")),
+    ("red_flags", Some("red_flags")),
     ("re_phone", Some("regex_phone")),
     ("re_bank_account", Some("regex_bank_account")),
     ("re_company_id", Some("regex_company_id")),
@@ -134,11 +136,29 @@ async fn build_search_query(
         }
         let mut ids = std::collections::BTreeSet::new();
         for value in values {
-            let id = value.trim().parse::<u64>().map_err(|_| {
-                AgentError::invalid_argument(format!(
-                    "the facet {facet:?} takes term ids, and {value:?} is not one; search_facet_values lists the ids"
-                ))
-            })?;
+            let id = if let Ok(id) = value.trim().parse::<u64>() {
+                id
+            } else if facet == "language" || facet == "red_flags" {
+                let normalized = if facet == "language" {
+                    common::signals::language_code(value).ok_or_else(|| AgentError::invalid_argument("The language is unknown."))?
+                } else {
+                    crate::api::documents::signals::signal_titles().await.map_err(AgentError::from_anyhow)?
+                        .into_iter().find(|(id, title)| id.eq_ignore_ascii_case(value.trim()) || title.eq_ignore_ascii_case(value.trim()))
+                        .map(|(id, _)| id).ok_or_else(|| AgentError::invalid_argument("The red flag category is unknown."))?
+                };
+                let mut found = None;
+                for collection in &selected {
+                    found = crate::db_utils::clickhouse_utils::get_collection_client(collection)
+                        .query("SELECT term_id FROM string_term_text_to_id WHERE term_field = ? AND term_value = ? LIMIT 1")
+                        .bind(facet).bind(&normalized).fetch_optional::<u64>().await.map_err(|error| AgentError::from_anyhow(error.into()))?;
+                    if found.is_some() { break; }
+                }
+                found.unwrap_or(0)
+            } else {
+                return Err(AgentError::invalid_argument(format!(
+                    "The facet {facet:?} requires a term id. search_facet_values lists the ids."
+                )));
+            };
             ids.insert(FacetOriginalValue::Int(id));
         }
         query.facet_filters.insert(facet.clone(), ids);

@@ -87,7 +87,8 @@ Details in [docs/Architecture.md](docs/Architecture.md).
 | `POST /scan_batch` | `{"texts": ["…", …]}` → one entry per text, in order, holding deduplicated values per type with an occurrence count. For a caller that stores values rather than spans. A text whose scan fails carries an `error` string and no values. The rest of the batch still answers. |
 | `POST /explain` | An entity, posted back exactly as `/scan` returned it → an explainer card. |
 | `GET /signals` | The investigative lexicon: its version, languages, and every category with what it catches and what a match does not prove. |
-| `POST /signal_batch` | `{"texts": ["…", …]}` → per text, per category: a score, the distinct terms that counted, and each term with its count and flags. `/scan` with `"signals": true` returns the same matches as spans. |
+| `POST /signal_batch` | `{"texts": ["…", …], "spans": true}` returns category summaries and optional hit arrays with UTF-8 offsets. spans_served reports the selected mode. |
+| `GET /signal_terms` | The response contains the loaded lexicon terms and signal_set_version. |
 
 `offset` is the byte offset of the fragment's first byte in the source document; it is added to
 every span, so a caller windowing a large document gets offsets usable against the original bytes.

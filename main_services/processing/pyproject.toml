@@ -32,6 +32,7 @@ dependencies = [
     "types-pytz>=2025.2.0.20250809",
     "types-requests>=2.32.4.20250809",
     "types-ujson>=5.10.0.20250822",
+    "fasttext-predict==0.9.2.4",
 ]
 
 [tool.uv.sources]

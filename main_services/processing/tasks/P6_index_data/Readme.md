@@ -206,3 +206,32 @@ Each plan batch submits eligible closed-shard merges. The final batch also submi
 Collection reindex submits merges after its final plan page, including when a plan failed.
 Submission does not wait for completion. Submitted merges continue after operation cancellation.
 A table has completed compaction when its status reports no active merge and one disk chunk.
+
+## Language and red flags
+
+Each indexed row receives the distinct language codes of its document's text sources, except und.
+The language attribute uses the shared term dictionary.
+
+The page writer reads signal hits from the newest completed scan.
+It verifies the cleaned text digest and stored text version before scoring.
+Missing or stale scans fail indexing and require another signal scan.
+The scoring configuration is tasks/signal_calibration.json.
+It contains all category points, thresholds, concept limits, and noisy term overrides.
+A missing configuration stops worker startup.
+
+The rule uses 400-word windows with 200-word steps.
+Each concept scores once at its greatest eligible points.
+Quoted and boilerplate hits score zero.
+Negated hits score half their tier points.
+Noisy terms score as L.
+L points contribute at most two.
+The default rule needs eight points from at least two concepts.
+Adjacent qualifying windows form one cluster.
+Clusters retain exact excerpts, relative hit ranges, source digests, and the calibration hash.
+
+The writer stores clusters durably before it writes each search batch.
+After every assigned file finishes, it removes clusters from earlier writes.
+A failed attempt leaves index_state incomplete, and a retry replaces its clusters.
+Only categories with qualifying clusters enter the page red_flags attribute.
+Filename rows have no red flags.
+A calibration change requires reindexing and does not require another scan.

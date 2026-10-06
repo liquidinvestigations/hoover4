@@ -166,6 +166,10 @@ def clear_regex_state(collectionname: str, collection_dataset: str, hashes) -> t
                 parameters={"ds": collection_dataset, "hashes": chunk},
                 settings=settings,
             )
+            for table in ("signal_scanned", "signal_hit", "signal_cluster"):
+                client.command(f"ALTER TABLE {table} DELETE WHERE collection_dataset = {{ds:String}} "
+                               "AND file_hash IN {hashes:Array(String)}", parameters={"ds": collection_dataset, "hashes": chunk},
+                               settings=settings)
     log.info(
         "[retry] cleared %d regex_scanned and %d regex_entity_hit rows for %s",
         watermarks, hits, collection_dataset,

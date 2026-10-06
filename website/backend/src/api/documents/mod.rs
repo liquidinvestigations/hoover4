@@ -12,3 +12,4 @@ pub mod search_document_itemcount;
 pub mod search_document_pdf;
 pub mod search_document_text;
 pub mod table_browse;
+pub mod signals;

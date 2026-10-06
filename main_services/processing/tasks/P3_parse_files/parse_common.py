@@ -144,6 +144,9 @@ def insert_text_sources(collectionname: str, collection_dataset: str, file_hash:
     import pyarrow as pa
     from database.clickhouse import get_collection_client, insert_arrow_durable
 
+    from tasks.document_language import source_language
+    languages = {source: source_language(pages)
+                 for source, pages in sources.items()}
     rows = []
     for source, pages in sources.items():
         for page_id, text in pages:
@@ -182,6 +185,7 @@ def insert_text_sources(collectionname: str, collection_dataset: str, file_hash:
                 "text": pa.array([r[2] for r in rows], type=pa.string()),
                 "text_bytes": pa.array([r[3] for r in rows], type=pa.uint64()),
                 "version": pa.array([versions[r[0]] for r in rows], type=pa.uint64()),
+                "language": pa.array([languages[r[0]] for r in rows], type=pa.string()),
             })
             insert_arrow_durable(client, "text_content", table)
         for source, (ids, _) in previous.items():

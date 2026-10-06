@@ -55,3 +55,14 @@ and distinct from the entity it was extracted from.
 **Tier**:
 In `ai_services/`, a tier is the GPU service tier. A planned pass names a logical role.
 The harness maps that role to a model. The plan names its harness for cost estimates.
+In the signal lexicon, a tier is the L, M, or H class that sets a term's scoring points.
+
+**Signal**:
+In the scanner, a signal is a lexicon match with source offsets and context flags.
+
+**Red flag**:
+In search and the document viewer, a red flag is a category whose passage meets the configured scoring rule.
+A red flag directs document review and does not establish misconduct.
+
+**Passage**:
+In red flag scoring, a passage is a word window or a group of adjacent qualifying windows.

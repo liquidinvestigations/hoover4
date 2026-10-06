@@ -42,7 +42,7 @@ def row(page_id, text):
     result.update(
         collection_dataset=DATASET, file_hash="same-file", extracted_by="tika",
         page_id=page_id, page_text=text, primary_filename="test.txt",
-        file_types="(21)", dates="(-3786825600)",
+        file_types="(21)", dates="(-3786825600)", language="(22)", red_flags="(23)",
     )
     return result
 
@@ -95,6 +95,7 @@ def test_page_batch_visibility_rollback_and_commit(probe_table, use_pure):
 
         write_page_batches(writer, TABLE, DATASET, [first, second])
         assert len(query(reader, f"SELECT id FROM {TABLE} LIMIT 10")) == 2
+        assert query(reader, f"SELECT COUNT(DISTINCT file_hash) FROM {TABLE} WHERE ANY(language) IN (22) AND ANY(red_flags) IN (23)") == [(1,)]
         assert int(status(writer)["tid"]) == before + 2
         assert command_commits(writer) >= commits_before + 2
 
@@ -122,3 +123,20 @@ def test_batch_matches_single_row_writer(probe_table):
         assert len(batched) == len(rows)
         assert int(status(reader)["tid"]) == 1
         assert int(dict(query(reader, f"SHOW TABLE {SINGLE_TABLE} STATUS"))["tid"]) == len(rows)
+
+
+def test_short_language_codes_use_attribute_lookup_without_infix_matching():
+    from database.manticore import entities_table_ddl
+    table = "it_signal_terms_probe"
+    with closing(connection(True)) as client:
+        query(client, f"DROP TABLE IF EXISTS {table}")
+        try:
+            query(client, entities_table_ddl(table))
+            cursor = client.cursor()
+            cursor.execute(f"INSERT INTO {table} (id, term_field, term_text, term_display, term_id, collection_dataset) "
+                           "VALUES (1, %s, %s, %s, 22, 'dataset')", ("language", "hu", "hu"))
+            rows = query(client, f"SELECT term_display, term_id, HIGHLIGHT({{limit=120}}, term_text) AS highlight "
+                                 f"FROM {table} WHERE term_display IN ('hu') AND term_field IN ('language') LIMIT 200")
+            assert len(rows) == 1 and rows[0][0] == "hu" and rows[0][1] == 22
+        finally:
+            query(client, f"DROP TABLE IF EXISTS {table}")

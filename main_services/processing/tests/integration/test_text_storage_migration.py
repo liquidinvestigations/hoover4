@@ -40,7 +40,9 @@ def storage(monkeypatch):
 
 
 def migrate(client, cluster, folder):
-    shutil.copy(Path(db.COLLECTION_MIGRATIONS_PATH) / "00052_text_storage.sql", folder)
+    for path in Path(db.COLLECTION_MIGRATIONS_PATH).glob("*.sql"):
+        if path.name >= "00052":
+            shutil.copy(path, folder)
     cluster.migrate(client.database, folder, cluster_name=None, create_db_if_no_exists=True, multi_statement=True)
 
 

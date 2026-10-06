@@ -194,3 +194,21 @@ The busy budget is half the activity timeout, measured from its first busy respo
 The activity reports `ServiceStayedBusy` when that budget ends.
 Ordinary failures stop after five tries. Cancellation still propagates.
 P6 can shorten encoded runs after the source text measurement.
+
+## Signal scans
+
+The regex activity also calls signal_batch with spans enabled for pages without a current signal watermark.
+It reads and cleans each text once for both scanner routes.
+Signal and regex versions remain independent.
+A signal-only rescan preserves current regex rows and watermarks.
+The activity verifies response versions, result counts, and the spans_served value.
+A failed response writes no signal watermark.
+It writes signal_hit with waited inserts before it writes signal_scanned.
+Both tables retain source byte offsets and the cleaned text digest.
+A completed empty scan supersedes earlier hits.
+Readers use the newest completed watermark to select its signal version and scan version.
+
+Run `uv run main.py scan-signals-collection <collectionname>` to scan the collection's finished plans.
+The command uses the existing Temporal scan workflow and waits for each plan.
+Run reindex-collection after the scan to apply current calibration.
+Failed-file retry clears signal rows, watermarks, and clusters with regex state.

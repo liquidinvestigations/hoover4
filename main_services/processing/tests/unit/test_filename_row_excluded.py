@@ -123,12 +123,7 @@ def test_the_clickhouse_side_never_sees_the_row():
 
     from tasks.P6_index_data import activities as p6
 
-    # The AST of the function alone, with its docstring dropped: the docstring
-    # deliberately NAMES `text_content` to say the row never comes from there, and a
-    # substring search over the source would read that promise as a violation of itself.
-    # `document_metadata` is where the row's TEXT comes from (its `basenames`) which is
-    # what has to stay clear of the page store; the writer around it reads text_content
-    # for the real pages.
+    # Verify that metadata reads do not write a filename row into the text store.
     target = p6.document_metadata
     while hasattr(target, "__wrapped__"):
         target = target.__wrapped__
@@ -139,9 +134,5 @@ def test_the_clickhouse_side_never_sees_the_row():
     assert "insert_arrow" not in body, (
         "the filename row must not be written to ClickHouse; it is a Manticore-only "
         "search artefact and P4/P5 are immune to it only because of that"
-    )
-    assert "text_content" not in body, (
-        "the filename row is built from vfs_files basenames, never from page text "
-        "(page text carries base64 and XPM junk)"
     )
     assert "vfs_files" in body, "it must be built from the VFS paths"

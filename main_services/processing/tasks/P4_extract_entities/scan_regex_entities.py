@@ -19,6 +19,8 @@ bounded rather than mysterious.
 import json
 import logging
 import os
+import time
+from collections import defaultdict
 from datetime import datetime, timezone
 
 import pyarrow as pa
@@ -33,6 +35,7 @@ from tasks.regex_entities import (
     assert_parallel_value_arrays,
     money_bucket_from_value_json,
 )
+from tasks.red_flags import load_calibration, text_digest
 from tasks.remote import post_json, scanner_health
 from tasks.text_sources import fetch_text_batch, ner_reads_variant, plan_text_batches
 from tasks.P6_index_data.string_term_encodings import get_string_term_ids_by_field
@@ -59,12 +62,10 @@ REGEX_BATCH_TEXTS = 64
 @with_remote_busy_retry
 @with_heartbeat
 def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegexEntitiesResult:
-    """Scan the plan's text segments and write `regex_entity_hit` + watermark rows.
+    """Scan missing regex and signal versions from each current text segment.
 
-    The rule set version is read from the service once, before any batch, and every batch
-    response is checked against it. An image swapped mid-activity would otherwise file the
-    new rules' values under the old version's watermark, and nothing downstream would ever
-    reconsider them.
+    Verify scanner versions and spans before writing completion watermarks.
+    Store signal hits durably before their completion watermark.
     """
     collection_dataset: str = params.collection_dataset
     item_hashes: list[str] = params.hashes
@@ -72,36 +73,36 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
     heartbeat = HeartbeatClock()
     heartbeat.beat("reading the scanner rule set version")
 
-    rule_set_version = scanner_health()["rule_set_version"]
+    health = scanner_health()
+    rule_set_version = health["rule_set_version"]
+    signal_set_version = health["signal_set_version"]
 
     with get_collection_client(params.collectionname) as client:
-        # Select one latest size for each segment before the watermark join.
         text_segments = client.query_arrow("""
-            SELECT t.file_hash, t.extracted_by, t.page_id, t.text_bytes
-            FROM (
-                SELECT collection_dataset, file_hash, extracted_by, page_id,
-                       argMax(text_bytes, version) AS text_bytes
-                FROM text_content
-                WHERE collection_dataset = {collection_dataset:String}
-                  AND file_hash IN {item_hashes:Array(String)}
-                GROUP BY collection_dataset, file_hash, extracted_by, page_id
-            ) AS t
-            LEFT ANTI JOIN regex_scanned AS s
-                ON s.collection_dataset = t.collection_dataset
-                AND s.file_hash = t.file_hash
-                AND s.extracted_by = t.extracted_by
-                AND s.page_id = t.page_id
-                AND s.rule_set_version = {rule_set_version:UInt32}
-            WHERE t.collection_dataset = {collection_dataset:String}
-            AND t.file_hash IN {item_hashes:Array(String)}
-        """, {
-            "collection_dataset": collection_dataset,
-            "item_hashes": item_hashes,
-            "rule_set_version": rule_set_version,
-        }).to_pylist()
-
+            SELECT file_hash, extracted_by, page_id, argMax(text_bytes, version) AS text_bytes,
+                   max(version) AS text_version
+            FROM text_content
+            WHERE collection_dataset = {collection_dataset:String}
+              AND file_hash IN {item_hashes:Array(String)}
+            GROUP BY file_hash, extracted_by, page_id
+        """, {"collection_dataset": collection_dataset, "item_hashes": item_hashes}).to_pylist()
+        bound = {"ds": collection_dataset, "hashes": item_hashes,
+                 "rule": rule_set_version, "signal": signal_set_version}
+        regex_done = {segment_key(row) for row in client.query_arrow("""
+            SELECT file_hash, extracted_by, page_id FROM regex_scanned
+            WHERE collection_dataset = {ds:String} AND file_hash IN {hashes:Array(String)}
+              AND rule_set_version = {rule:UInt32}
+        """, bound).to_pylist()}
+        signal_done = {segment_key(row): int(row["text_version"]) for row in client.query_arrow("""
+            SELECT file_hash, extracted_by, page_id, argMax(text_version, scan_version) AS text_version
+            FROM signal_scanned
+            WHERE collection_dataset = {ds:String} AND file_hash IN {hashes:Array(String)}
+              AND signal_set_version = {signal:String}
+            GROUP BY file_hash, extracted_by, page_id
+        """, bound).to_pylist()}
+        text_segments = [row for row in text_segments if segment_key(row) not in regex_done
+                         or signal_done.get(segment_key(row)) != int(row["text_version"])]
         if not text_segments:
-            log.info(f"{collection_dataset} (plan {plan_hash[:8]}): nothing to scan")
             return ScanRegexEntitiesResult(0, 0, rule_set_version)
 
         # Which variants each file HAS, from the whole table: the anti-join has already
@@ -122,6 +123,9 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
             variants_present[row['file_hash']] = set(row['variants'])
 
     rows: list[dict] = []
+    signal_rows = []
+    signal_watermarks = []
+    scan_version = time.time_ns()
     term_values: dict[str, set[str]] = {}
     watermark_rows: list[dict] = []
     scanned_count = 0
@@ -134,31 +138,19 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
         with get_collection_client(params.collectionname) as client:
             text_content = fetch_text_batch(client, collection_dataset, segment_batch)
         cleaned_texts = [clean_text(row['text']) for row in text_content]
-        scan_indices = [
-            i for i, row in enumerate(text_content)
-            if ner_reads_variant(row['extracted_by'], variants_present.get(row['file_hash'], ()))
-        ]
-        skipped_count += len(text_content) - len(scan_indices)
-        scan_texts = [cleaned_texts[i] for i in scan_indices]
-        scanned: list[dict] = []
-        for batch in batch_texts_by_chars(scan_texts):
-            stop_if_worker_is_stopping(f"scanned {scanned_count + len(scanned)}/{len(text_segments)} texts")
-            result = post_json(
-                [("regex-scanner", scanner_url("/scan_batch"))],
-                {"texts": batch},
-                service="regex_scan",
-            )
-            served_version = result.data.get("rule_set_version")
-            if served_version != rule_set_version:
-                raise RuntimeError(
-                    f"the scanner reported rule set {rule_set_version} on /health and "
-                    f"{served_version} on /scan_batch. The image changed mid-activity, and "
-                    f"writing these rows would file them under the wrong version"
-                )
-            scanned.extend(result.data["results"])
-            heartbeat.beat(f"scanned {scanned_count + len(scanned)}/{len(text_segments)} texts")
-        scanned_count += len(scan_texts)
-        result_by_index = dict(zip(scan_indices, scanned))
+        selected = [i for i, row in enumerate(text_content)
+                    if ner_reads_variant(row['extracted_by'], variants_present.get(row['file_hash'], ()))]
+        skipped_count += len(text_content) - len(selected)
+        regex_indices = [i for i in selected if segment_key(text_content[i]) not in regex_done]
+        signal_indices = [i for i in selected
+                          if signal_done.get(segment_key(text_content[i])) != int(text_content[i]["text_version"])]
+        scanned = scan_batches([cleaned_texts[i] for i in regex_indices], "/scan_batch",
+                               "rule_set_version", rule_set_version)
+        signals = scan_batches([cleaned_texts[i] for i in signal_indices], "/signal_batch",
+                               "signal_set_version", signal_set_version, spans=True)
+        result_by_index = dict(zip(regex_indices, scanned))
+        signal_by_index = dict(zip(signal_indices, signals))
+        scanned_count += len(set(regex_indices) | set(signal_indices))
         for i, text_row in enumerate(text_content):
             for entity_type, values in (result_by_index.get(i) or {}).get("types", {}).items():
                 row = {
@@ -189,13 +181,26 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
                 else:
                     keys = set(row["entity_values"])
                 term_values.setdefault(facet.term_field, set()).update(keys)
-            watermark_rows.extend({
-                "collection_dataset": text_row['collection_dataset'],
-                "file_hash": text_row['file_hash'],
-                "extracted_by": text_row['extracted_by'],
-                "page_id": text_row['page_id'],
-                "text_bytes": len(cleaned_texts[i].encode('utf-8')),
-            } for i, text_row in enumerate(text_content))
+            if segment_key(text_row) not in regex_done:
+                watermark_rows.append({**{name: text_row[name] for name in
+                    ("collection_dataset", "file_hash", "extracted_by", "page_id")},
+                    "text_bytes": len(cleaned_texts[i].encode("utf-8"))})
+            if signal_done.get(segment_key(text_row)) != int(text_row["text_version"]):
+                digest = text_digest(cleaned_texts[i])
+                common = {name: text_row[name] for name in ("collection_dataset", "file_hash", "extracted_by", "page_id")}
+                common.update(signal_set_version=signal_set_version, text_digest=digest, scan_version=scan_version)
+                by_category = defaultdict(list)
+                encoded = cleaned_texts[i].encode("utf-8")
+                for hit in signal_by_index.get(i, {}).get("hits", []):
+                    validate_signal_hit(encoded, hit)
+                    by_category[hit["category"]].append(hit)
+                for category, hits in by_category.items():
+                    row = dict(common, category=category)
+                    for column, field in SIGNAL_ARRAYS.items():
+                        row[column] = [hit.get(field, []) if field == "flags" else hit[field] for hit in hits]
+                    signal_rows.append(row)
+                signal_watermarks.append(dict(common, text_version=int(text_row["text_version"])))
+        heartbeat.beat(f"scanned {scanned_count}/{len(text_segments)} texts")
 
     if skipped_count:
         log.info(
@@ -226,18 +231,21 @@ def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegex
 
         # ClickHouse DateTime columns are naive UTC.
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        insert_arrow_durable(client, "regex_scanned", pa.table({
-            "collection_dataset": pa.array([r['collection_dataset'] for r in watermark_rows], type=pa.string()),
-            "file_hash": pa.array([r['file_hash'] for r in watermark_rows], type=pa.string()),
-            "extracted_by": pa.array([r['extracted_by'] for r in watermark_rows], type=pa.string()),
-            "page_id": pa.array([r['page_id'] for r in watermark_rows], type=pa.uint32()),
-            "rule_set_version": pa.array([rule_set_version] * len(watermark_rows), type=pa.uint32()),
-            "text_bytes": pa.array([r['text_bytes'] for r in watermark_rows], type=pa.uint64()),
-            "scanned_at": pa.array([now] * len(watermark_rows), type=pa.timestamp("s")),
-        }))
+        if watermark_rows:
+            insert_arrow_durable(client, "regex_scanned", pa.table({
+                "collection_dataset": pa.array([r['collection_dataset'] for r in watermark_rows], type=pa.string()),
+                "file_hash": pa.array([r['file_hash'] for r in watermark_rows], type=pa.string()),
+                "extracted_by": pa.array([r['extracted_by'] for r in watermark_rows], type=pa.string()),
+                "page_id": pa.array([r['page_id'] for r in watermark_rows], type=pa.uint32()),
+                "rule_set_version": pa.array([rule_set_version] * len(watermark_rows), type=pa.uint32()),
+                "text_bytes": pa.array([r['text_bytes'] for r in watermark_rows], type=pa.uint64()),
+                "scanned_at": pa.array([now] * len(watermark_rows), type=pa.timestamp("s")),
+            }))
+        write_signal_rows(client, signal_rows, signal_watermarks)
+
 
     log.info(
-        f"{collection_dataset} (plan {plan_hash[:8]}): scanned {len(scan_texts)} of "
+        f"{collection_dataset} (plan {plan_hash[:8]}): scanned {scanned_count} of "
         f"{len(text_segments)} text segments under rule set {rule_set_version}, "
         f"writing {len(rows)} entity groups"
     )
@@ -274,3 +282,62 @@ def _dumps(value) -> str:
     run. The column is part of a ReplacingMergeTree row that a re-scan must not change
     for no reason."""
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
+
+
+SIGNAL_ARRAYS = {"starts": "start", "ends": "end", "terms": "term", "concepts": "concept",
+                 "languages": "lang", "tiers": "tier", "speakers": "speaker", "flags": "flags", "texts": "text"}
+
+
+def segment_key(row):
+    return row["file_hash"], row["extracted_by"], row["page_id"]
+
+
+def scan_batches(texts, route, version_field, version, *, spans=False):
+    results = []
+    for batch in batch_texts_by_chars(texts):
+        stop_if_worker_is_stopping()
+        request = {"texts": batch}
+        if spans:
+            request["spans"] = True
+        reply = post_json([("regex-scanner", scanner_url(route))], request, service="regex_scan").data
+        if reply.get(version_field) != version:
+            raise RuntimeError("The scanner version changed during the activity.")
+        if spans and reply.get("spans_served") is not True:
+            raise RuntimeError("The scanner did not serve the requested signal spans.")
+        rows = reply.get("results", [])
+        if len(rows) != len(batch) or any(row.get("error") for row in rows):
+            raise RuntimeError("The scanner did not complete every requested text.")
+        if spans and any(not isinstance(row.get("hits"), list) for row in rows):
+            raise RuntimeError("The scanner reply has no signal hit list.")
+        results.extend(rows)
+    return results
+
+
+def validate_signal_hit(encoded: bytes, hit):
+    start, end = hit["start"], hit["end"]
+    if not isinstance(start, int) or not isinstance(end, int) or not 0 <= start < end <= len(encoded):
+        raise ValueError("The scanner returned invalid signal offsets.")
+    if encoded[start:end].decode("utf-8") != hit["text"]:
+        raise ValueError("The scanner signal does not match its source bytes.")
+    if hit["category"] not in load_calibration()["categories"] or hit["tier"] not in ("L", "M", "H"):
+        raise ValueError("The scanner returned an unknown signal category or tier.")
+
+
+def write_signal_rows(client, hits, watermarks):
+    if hits:
+        types = {"page_id": pa.uint32(), "scan_version": pa.uint64(),
+                 "starts": pa.list_(pa.uint32()), "ends": pa.list_(pa.uint32()),
+                 "flags": pa.list_(pa.list_(pa.string()))}
+        for name in SIGNAL_ARRAYS:
+            types.setdefault(name, pa.list_(pa.string()))
+        for row in hits:
+            if len({len(row[name]) for name in SIGNAL_ARRAYS}) != 1:
+                raise ValueError("Signal occurrence arrays have different lengths.")
+        insert_arrow_durable(client, "signal_hit", pa.table({
+            name: pa.array([row[name] for row in hits], type=types.get(name, pa.string()))
+            for name in hits[0]}))
+    if watermarks:
+        types = {"page_id": pa.uint32(), "text_version": pa.uint64(), "scan_version": pa.uint64()}
+        insert_arrow_durable(client, "signal_scanned", pa.table({
+            name: pa.array([row[name] for row in watermarks], type=types.get(name, pa.string()))
+            for name in watermarks[0]}))

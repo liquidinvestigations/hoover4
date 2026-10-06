@@ -9,6 +9,7 @@ added, renamed or deleted in the code mechanically visible against this tree, an
 |---|---|---|
 | `UI-HomePage` | `/` | - |
 | `UI-SearchPage` | `/search/…` | [`Search.md`](Search.md) |
+| `UI-SignalTermsPage` | `/red_flag_terms` | - |
 | `UI-ViewDocumentPage` | `/view_document/…` | [`Document.md`](Document.md) |
 | `UI-FileBrowserCollectionsPage` | `/file_browser` | - |
 | `UI-FileBrowserCollectionPage` | `/file_browser/c/:collectionname` | - |

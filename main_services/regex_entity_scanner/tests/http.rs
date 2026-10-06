@@ -449,3 +449,26 @@ async fn signals_on_scan_and_in_batch() {
         "an ordinary sentence carries no signal: {batch}"
     );
 }
+
+#[tokio::test]
+async fn signal_spans_are_requested_echoed_and_match_utf8_bytes() {
+    let base = serve(1 << 20).await;
+    let client = reqwest::Client::new();
+    let text = "é off the books and backdate the record";
+    let reply: serde_json::Value = client.post(format!("{base}/signal_batch"))
+        .json(&serde_json::json!({"texts": [text], "spans": true})).send().await.unwrap().json().await.unwrap();
+    assert_eq!(reply["spans_served"], true);
+    let hits = reply["results"][0]["hits"].as_array().unwrap();
+    assert!(!hits.is_empty());
+    for hit in hits {
+        let start = hit["start"].as_u64().unwrap() as usize;
+        let end = hit["end"].as_u64().unwrap() as usize;
+        assert_eq!(&text[start..end], hit["text"].as_str().unwrap());
+        for name in ["category", "term", "concept", "lang", "tier", "speaker"] {
+            assert!(hit[name].is_string());
+        }
+    }
+    let terms: serde_json::Value = client.get(format!("{base}/signal_terms")).send().await.unwrap().json().await.unwrap();
+    assert_eq!(terms["signal_set_version"], reply["signal_set_version"]);
+    assert!(terms["terms"].as_array().unwrap().iter().any(|term| term["term"] == "off the books"));
+}

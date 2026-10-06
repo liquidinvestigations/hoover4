@@ -232,6 +232,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/rules", get(rules))
         .route("/rules/{rule_id}", get(rule))
         .route("/signals", get(signals))
+        .route("/signal_terms", get(signal_terms))
         .route("/explain", post(explain_entity))
         .merge(scan_routes)
         .layer(DefaultBodyLimit::max(max_body_bytes))
@@ -402,13 +403,23 @@ async fn signals(State(state): State<Arc<AppState>>) -> Response {
     .into_response()
 }
 
+async fn signal_terms(State(state): State<Arc<AppState>>) -> Response {
+    Json(serde_json::json!({
+        "signal_set_version": state.lexicon.version(),
+        "terms": state.lexicon.term_rows(),
+    })).into_response()
+}
+
 #[derive(Debug, Deserialize)]
 pub struct SignalBatchRequest {
     pub texts: Vec<String>,
+    #[serde(default)]
+    pub spans: bool,
 }
 
 #[derive(Debug, Serialize)]
 pub struct SignalBatchResponse {
+    pub spans_served: bool,
     /// One entry per input text, in order.
     pub results: Vec<SignalBatchResult>,
     /// A content hash of the lexicon. A stored summary is stale when this changes; the entity
@@ -418,6 +429,8 @@ pub struct SignalBatchResponse {
 
 #[derive(Debug, Serialize)]
 pub struct SignalBatchResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hits: Option<Vec<Signal>>,
     /// Per category with at least one signal. A category with none is absent.
     pub categories: BTreeMap<String, CategorySummary>,
     /// Set only for a text whose scan panicked, like `/scan_batch`.
@@ -446,6 +459,7 @@ async fn signal_batch(
         return oversized(oversize, state.max_body_bytes);
     }
     let lexicon = Arc::clone(&state.lexicon);
+    let spans_served = request.spans;
     let results = match tokio::task::spawn_blocking(move || {
         let _slot = slot;
         request
@@ -453,15 +467,19 @@ async fn signal_batch(
             .iter()
             .map(|text| {
                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    lexicon.summarise(&lexicon.scan(text, 0))
+                    let hits = lexicon.scan(text, 0);
+                    let categories = lexicon.summarise(&hits);
+                    (categories, request.spans.then_some(hits))
                 })) {
-                    Ok(categories) => SignalBatchResult {
+                    Ok((categories, hits)) => SignalBatchResult {
                         categories,
+                        hits,
                         error: None,
                     },
                     Err(_) => {
                         tracing::error!("a document panicked during signal scan");
                         SignalBatchResult {
+                            hits: request.spans.then(Vec::new),
                             categories: BTreeMap::new(),
                             error: Some("this document could not be scanned".to_string()),
                         }
@@ -481,6 +499,7 @@ async fn signal_batch(
         }
     };
     Json(SignalBatchResponse {
+        spans_served,
         results,
         signal_set_version: state.lexicon.version().to_string(),
     })

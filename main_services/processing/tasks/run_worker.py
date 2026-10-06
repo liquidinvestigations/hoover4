@@ -84,6 +84,8 @@ async def run_until_signalled(*workers: Worker) -> None:
     a second signal is left to the default disposition so an operator can still force
     the issue.
     """
+    from tasks.red_flags import load_calibration
+    load_calibration()
     loop = asyncio.get_running_loop()
     name = ", ".join(w.task_queue for w in workers)
     stopping = False

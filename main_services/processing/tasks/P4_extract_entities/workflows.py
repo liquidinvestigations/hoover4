@@ -110,7 +110,7 @@ class ExtractEntitiesForPlan:
 
 @workflow.defn
 class ScanRegexEntitiesForPlan:
-    """Scan every text segment of one processing plan for regex entities.
+    """Scan every text segment of one processing plan for regex entities and signals.
 
     A sibling of `ExtractEntitiesForPlan`, not a successor: it writes tables no other
     stage touches, so the two run concurrently and neither waits on the other.

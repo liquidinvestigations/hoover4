@@ -1,6 +1,7 @@
 //! Full-page document viewer components.
 
 mod document_entities_panel;
+mod document_red_flags;
 mod raw_metadata_collector;
 
 use common::document_sources::{DocumentSourceItem, DocumentSourcesStatus, ItemHitCounts};

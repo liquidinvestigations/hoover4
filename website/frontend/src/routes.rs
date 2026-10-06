@@ -30,6 +30,7 @@ use crate::pages::home_page::HomePage;
 use crate::pages::not_found_page::NotFoundPage;
 use crate::pages::search_page::SearchPage;
 use crate::pages::view_document_page::ViewDocumentPage;
+use crate::pages::signal_terms::SignalTermsPage;
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
@@ -97,6 +98,9 @@ pub enum Route {
         selected_result_hash: UrlParam<Option<DocumentIdentifier>>,
         doc_viewer_state: UrlParam<Option<DocViewerState>>,
     },
+
+    #[route("/red_flag_terms")]
+    SignalTermsPage {},
 
     #[route("/admin")]
     AdminDashboardPage {},

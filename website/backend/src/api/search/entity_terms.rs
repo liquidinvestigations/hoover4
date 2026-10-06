@@ -51,6 +51,8 @@ const TERM_FIELD_OF: &[(&str, &str)] = &[
     ("email_from", "email_address"),
     ("email_to", "email_address"),
     ("re_email", "regex_email"),
+    ("language", "language"),
+    ("red_flags", "red_flags"),
     ("re_phone", "regex_phone"),
     ("re_bank_account", "regex_bank_account"),
     ("re_company_id", "regex_company_id"),
@@ -129,9 +131,26 @@ pub async fn search_entity_terms(
     if collections.is_empty() {
         return Ok(EntityTermHits::default());
     }
-    let match_argument = prepare_match_query(&format!("*{needle}*"))
-        .map_err(anyhow::Error::from)?
-        .quoted();
+    let titles = if term_fields.contains(&"red_flags") {
+        crate::api::documents::signals::signal_titles().await?
+    } else { std::collections::HashMap::new() };
+    let where_argument = if term_fields == ["language"] || term_fields == ["red_flags"] {
+        let lower = needle.to_lowercase();
+        let values: Vec<String> = if term_fields == ["language"] {
+            common::signals::language_names().iter().filter(|(code, name)|
+                code.contains(&lower) || name.to_lowercase().contains(&lower))
+                .map(|(code, _)| code.clone()).collect()
+        } else {
+            titles.iter().filter(|(id, title)| id.contains(&lower) || title.to_lowercase().contains(&lower))
+                .map(|(id, _)| id.clone()).collect()
+        };
+        if values.is_empty() { return Ok(EntityTermHits::default()); }
+        format!("term_display IN ({})", values.into_iter()
+            .map(|value| format_sql_query::QuotedData(&value).to_string()).collect::<Vec<_>>().join(","))
+    } else {
+        format!("MATCH({})", prepare_match_query(&format!("*{needle}*"))
+            .map_err(anyhow::Error::from)?.quoted())
+    };
     let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, TERM_HIT_LIMIT);
 
     let targets: Vec<FanoutTarget> = collections
@@ -140,7 +159,7 @@ pub async fn search_entity_terms(
         .collect();
     let outcome = fanout::fan_out(targets, move |target: FanoutTarget| {
         let field_list = field_list.clone();
-        let match_argument = match_argument.clone();
+        let where_argument = where_argument.clone();
         let options_clause = options_clause.clone();
         async move {
             let table = entities_table(target.collectionname())?;
@@ -156,7 +175,7 @@ pub async fn search_entity_terms(
                         around=20
                     }}, term_text) AS highlight
                 FROM {table}
-                WHERE MATCH({match_argument})
+                WHERE {where_argument}
                   AND term_field IN ({field_list})
                 ORDER BY term_display ASC
                 LIMIT {TERM_HIT_LIMIT}
@@ -190,7 +209,9 @@ pub async fn search_entity_terms(
             };
             hits.push(EntityTermHit {
                 term_id,
-                term_display: row.term_display,
+                term_display: if row.term_field == "language" {
+                    common::signals::language_name(&row.term_display)
+                } else { titles.get(&row.term_display).cloned().unwrap_or(row.term_display) },
                 term_field: row.term_field,
                 highlight: crate::db_utils::decompose_spans::decompose_text_into_spans(
                     row.highlight,

@@ -20,7 +20,7 @@ The remembered query is specific to the dataset, container, and folder path.
 |---|---|---|---|
 | `.query` | query input | the words to match | empty is legal and returns the whole collection selection |
 | `.collections` | collection selector | which collections and datasets are searched | an empty selection searches nothing and says so, rather than searching everything |
-| `.facet.<name>` | facet chips, collections, file types, file location, entities, email attachments | narrow by an indexed value; each carries a live count | a chip commits on click; counts are the count *within the rest of the query*, not the corpus |
+| `.facet.<name>` | facet chips, collections, file types, file location, entities, email attachments, language, red flags | narrow by an indexed value; each carries a live count | a chip commits on click; counts are the count *within the rest of the query*, not the corpus |
 | `.range.dates` | date filter, before, after, between, no confirmed date | narrow by the document's date interval | a document with no confirmed date matches only through "no confirmed date": it can never fall inside a range |
 | `.range.file_size_bytes` | file size filter | narrow by size | Unknown size is excluded from every range. Reopening the filter restores its applied bounds, including after reload. |
 | `.filters_modal` | "All filters", clear all, cancel, show results | edits every filter at once, pending until `.search_button` commits them | edits are pending until committed; cancel discards them; the button names how many results committing would show |
@@ -61,3 +61,7 @@ The remembered query is specific to the dataset, container, and folder path.
 `website/common/src/search_query.rs` (the query, sort and range types, shared with the
 backend). The fan-out, the match builder and the caching boundary are
 `../../architecture/Search_Architecture.md`.
+
+Language values show English names and accept a code or name in facet search.
+The Red flags child of Entities shows category titles from the scanner catalog.
+Counts retain the other active filters.

@@ -68,6 +68,9 @@ def test_page_rows_flush_before_the_next_text_batch(monkeypatch):
         retained_text.append(sum(len(row["page_text"].encode()) for row in rows))
         return original_write(client, table, dataset, rows)
 
+    monkeypatch.setattr(pages, "read_signal_pages", lambda *_args: ({}, {}))
+    monkeypatch.setattr(pages, "page_clusters", lambda *_args: [])
+    monkeypatch.setattr(pages, "remove_old_clusters", lambda *_args: None)
     monkeypatch.setattr(pages, "get_collection_client", collection)
     monkeypatch.setattr(manticore, "get_manticore_client", search)
     monkeypatch.setattr(pages, "document_metadata", lambda _params: {
