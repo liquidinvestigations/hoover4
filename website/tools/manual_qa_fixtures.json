@@ -18,7 +18,7 @@
     {"collection": "testdata", "dataset": "excelsc", "source_root": "/testdata/hoover-testdata/data/www.learningcontainer.com/excels", "purpose": "Table screenshot cases."},
     {"collection": "testdata", "dataset": "wide", "source_root": "/testdata/hoover-testdata/qa/wide", "purpose": "Truncated-table case."},
     {"collection": "testdata", "dataset": "leaf", "source_root": "/testdata/hoover-testdata/qa/leaf", "purpose": "Leaf tree case."},
-    {"collection": "testdata", "dataset": "manualpdf", "source_root": "/testdata/hoover-testdata/qa/manualpdf", "purpose": "Original-only PDF fixture ingested with the global PDF provider set to none."},
+    {"collection": "testdata", "dataset": "manualpdf", "source_root": "/testdata/generated/manual-qa-original-pdf", "purpose": "The original-only PDF fixture has empty per-dataset OCR languages before ingestion."},
     {"collection": "testdata", "dataset": "shapes", "source_root": "/testdata/hoover-testdata/data/many-children", "purpose": "Deep tree case with known branches."},
     {"collection": "testdata", "dataset": "diskfiles", "source_root": "/testdata/hoover-testdata/qa/diskfiles", "purpose": "Rescan control capture."}
   ],

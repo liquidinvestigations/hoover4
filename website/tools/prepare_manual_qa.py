@@ -36,6 +36,7 @@ DISCOVER_DATASETS = (
 )
 LOCAL_INGEST = (
     ("manualqa", GENERATED_ROOT),
+    ("manualpdf", ORIGINAL_PDF_ROOT),
     ("excelsc", EXCELS_ROOT),
     ("wide", WIDE_ROOT),
     ("leaf", LEAF_ROOT),
@@ -379,7 +380,14 @@ def ingest_local_datasets() -> None:
         raise FileNotFoundError(EXCELS_ROOT)
     if not DISKFILES_ROOT.is_dir():
         raise FileNotFoundError(DISKFILES_ROOT)
-    for command in ingest_commands():
+    for (dataset, _root), command in zip(LOCAL_INGEST, ingest_commands(), strict=True):
+        if dataset == "manualpdf":
+            if "/app" not in sys.path:
+                sys.path.insert(0, "/app")
+            from tasks.dataset_config import set_dataset_setting
+
+            set_dataset_setting("testdata_manualpdf", "ocr.tesseract.languages", "")
+            set_dataset_setting("testdata_manualpdf", "ocr.easyocr.languages", "")
         run(command)
 
 

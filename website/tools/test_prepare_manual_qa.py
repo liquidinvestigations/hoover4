@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 SPEC = importlib.util.spec_from_file_location(
@@ -163,7 +163,20 @@ class DiscoveryTests(unittest.TestCase):
     def test_ingest_commands_include_diskfiles_and_never_run_from_discover(self) -> None:
         commands = MODULE.ingest_commands()
         self.assertTrue(any("diskfiles" in command for command in commands))
+        self.assertTrue(any("manualpdf" in command for command in commands))
         self.assertTrue(all(command[4] == "add-disk-dataset" for command in commands))
+
+    def test_original_pdf_disables_dataset_ocr_before_submission(self) -> None:
+        events = []
+        settings = Mock()
+        settings.set_dataset_setting.side_effect = lambda *args: events.append(("setting", args))
+        with patch.dict(sys.modules, {"tasks.dataset_config": settings}), \
+             patch.object(Path, "is_dir", return_value=True), \
+             patch.object(MODULE, "run", side_effect=lambda command: events.append(("ingest", command[6]))):
+            MODULE.ingest_local_datasets()
+        submission = events.index(("ingest", "manualpdf"))
+        for key in ("ocr.tesseract.languages", "ocr.easyocr.languages"):
+            self.assertLess(events.index(("setting", ("testdata_manualpdf", key, ""))), submission)
 
     def test_original_cases_remain_incomplete(self) -> None:
         names = {item["name"] for item in MODULE.original_case_status()}
