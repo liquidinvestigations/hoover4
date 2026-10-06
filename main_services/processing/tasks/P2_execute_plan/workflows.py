@@ -51,6 +51,7 @@ with workflow.unsafe.imports_passed_through():
         ROUTE_ERROR_NAMES,
         _detector_error_task_ids,
         _detector_results_for_error_capture,
+        parser_results_for_error_capture,
         combine_detector_results,
         detector_results_for_file,
         ocr_error_name,
@@ -578,12 +579,9 @@ class ProcessItemsBatched:
             except ActivityError as exc:
                 return stage_failure_results(name, keys, exc)
 
-        # Stage 1: the local detectors and Tika, at once.
-        detect, tika = await asyncio.gather(
-            run_stage("detect_mime_batch", files),
-            run_stage("run_tika_batch", files),
-        )
-        detector_results = [detector_results_for_file(d, t) for d, t in zip(detect, tika)]
+        # Stage 1 selects routes with local detectors.
+        detect = await run_stage("detect_mime_batch", files)
+        detector_results = [detector_results_for_file(d) for d in detect]
         combined = [combine_detector_results(results) for results in detector_results]
         routes = [route_stages(types) for types in combined]
 
@@ -718,8 +716,17 @@ class ProcessItemsBatched:
                         error_message="; ".join(str(error) for error in errors)[:4000],
                     )
 
+        async def tika_stage() -> None:
+            items = [batch_file(i, mime_types=combined[i]["mime_types"], routes=routes[i],
+                                file_mime_type=((detect[i].value.get("detectors", {}).get("file", {}).get("mime_types") or [""])[0]
+                                                if isinstance(detect[i].value, dict) else ""))
+                     for i in range(len(files))]
+            for i, result in enumerate(await run_stage("tika_text_batch", items)):
+                put(i, "tika_text_batch", result, ("tika_text_batch", ""))
+
         # Stage 2: every chain at once.
         stage_two = [
+            tika_stage(),
             single("extract_plaintext_batch", "text", "extract_plaintext_chunks", with_types=True),
             single("parse_office_xml_batch", "office_xml", "parse_office_xml_and_store"),
             single("parse_table_batch", "table", "parse_table_and_store", with_types=True),
@@ -737,16 +744,18 @@ class ProcessItemsBatched:
         parser_names: List[List[str]] = []
         parser_results: List[List[Any]] = []
         for i, file_routes in enumerate(routes):
-            names = []
+            names = (["tika_text_batch"] if not (detect[i].status == "failed"
+                     and detect[i].error_type == "TempCopyMissing") else [])
             for route in file_routes:
                 names.append(ROUTE_ERROR_NAMES[route])
                 if route == "image":
                     names += [ocr_error_name(engine) for engine in OCR_ENGINES]
             names = [name for name in names if name in entries[i]]
             parser_names.append(names)
-            parser_results.append([_as_error_input(entries[i][name]) for name in names])
+            parser_results.append(parser_results_for_error_capture(
+                names, [_as_error_input(entries[i][name]) for name in names]))
 
-        detector_names = list(LOCAL_DETECTORS) + ["tika"]
+        detector_names = list(LOCAL_DETECTORS)
         detector_inputs: List[Any] = []
         detector_task_ids: List[str] = []
         for i, results in enumerate(detector_results):

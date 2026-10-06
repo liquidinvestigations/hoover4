@@ -45,7 +45,7 @@ class Stage:
 
 STAGES = [
     Stage(parse_mime, "detect_mime_batch", "detect_mime_all", parse_mime.DetectMimeParams),
-    Stage(parse_tika, "run_tika_batch", "run_tika_and_store", parse_tika.RunTikaParams),
+    Stage(parse_tika, "tika_text_batch", "run_tika_and_store", parse_tika.RunTikaParams),
     Stage(parse_text, "extract_plaintext_batch", "extract_plaintext_chunks",
           parse_text.ExtractPlaintextParams),
     Stage(parse_office_xml, "parse_office_xml_batch", "parse_office_xml_and_store",
@@ -87,6 +87,9 @@ def _expected(stage: Stage, file: BatchFile, engine: str):
                                                                      file.file_size_bytes),
         op_id="op-1",
     )
+    if stage.batch == "tika_text_batch":
+        kwargs.update(mime_types=file.mime_types, routes=file.routes,
+                      file_mime_type=file.file_mime_type, file_name=file.file_name)
     if stage.batch == "extract_plaintext_batch":
         kwargs.update(mime_types=file.mime_types, sniff_mime_type=file.sniff_mime_type)
     if stage.extra.get("table"):
@@ -126,7 +129,7 @@ def test_the_try_budget_is_the_file_budget_and_tika_adds_1000_seconds(monkeypatc
         _run(getattr(stage.module, stage.batch), _params(FILES))
     assert seen["detect_mime_batch"] == [file_budget_seconds(0), file_budget_seconds(2_500)]
     assert seen["detect_mime_batch"] == [900, 902]
-    assert seen["run_tika_batch"] == [1900, 1902]
+    assert seen["tika_text_batch"] == [1900, 1902]
 
 
 def test_run_ocr_batch_passes_the_engine_of_the_stage(monkeypatch):
@@ -163,32 +166,12 @@ def test_detect_mime_batch_fails_a_missing_copy_after_one_try(tmp_path, monkeypa
     assert ran == []
 
 
-def test_run_tika_batch_fails_a_missing_copy_after_one_try(tmp_path, monkeypatch):
+def test_tika_text_batch_fails_a_missing_copy_after_one_try(tmp_path, monkeypatch):
     def no_pool():
         raise AssertionError("the helper pool must not be reached for a missing copy")
 
-    monkeypatch.setattr(parse_tika, "_get_pool", no_pool)
-    result = _run(parse_tika.run_tika_batch, _params(_missing_files(tmp_path)))
+    monkeypatch.setattr(parse_tika, "parse_document", lambda p: no_pool())
+    result = _run(parse_tika.tika_text_batch, _params(_missing_files(tmp_path)))
     [only] = result.results
     assert (only.status, only.error_type, only.attempts) == ("failed", TEMP_COPY_MISSING, 1)
     assert only.task_name == "run_tika_and_store"
-
-
-@pytest.fixture
-def fresh_pool():
-    parse_tika.reset_extractous_pool_for_tests()
-    yield
-    parse_tika.reset_extractous_pool_for_tests()
-
-
-def test_the_helper_pool_follows_the_tika_slot_count(monkeypatch, fresh_pool):
-    monkeypatch.setenv("HOOVER4_TIKA_CONCURRENCY", "12")
-    assert parse_tika._get_pool()._size == 12
-
-
-def test_the_helper_pool_has_8_helpers_when_the_slot_count_is_empty(monkeypatch, fresh_pool):
-    monkeypatch.setenv("HOOVER4_TIKA_CONCURRENCY", "12")
-    assert parse_tika._get_pool()._size == 12
-    parse_tika.reset_extractous_pool_for_tests()
-    monkeypatch.setenv("HOOVER4_TIKA_CONCURRENCY", "")
-    assert parse_tika._get_pool()._size == 8

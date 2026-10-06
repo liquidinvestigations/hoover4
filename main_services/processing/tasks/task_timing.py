@@ -682,7 +682,7 @@ class SkippedOutcome:
 
 #: The `processing_errors` task name that a successful run of each task proves recovered.
 _OUTCOME_NAMES = {
-    "run_tika_and_store": "detector_error_tika",
+    "run_tika_and_store": "tika_text_batch",
     "extract_plaintext_chunks": "extract_plaintext_chunks",
     "parse_office_xml_and_store": "parse_office_xml_and_store",
     "parse_table_and_store": "parse_table_and_store",

@@ -1262,3 +1262,26 @@ def test_a_download_that_leaves_the_folder_incomplete_halts(tmp_path):
         deploy.ensure_dgemma_weights(cfg, rt)
     assert "incomplete" in str(refused.value)
     rt.run.assert_called_once()
+
+
+def test_tika_config_limits_and_slots():
+    import json
+    cfg = _config("settings-defaults.ini")
+    config = json.loads(deploy.render_tika_config(cfg))
+    assert config["pipes"]["numClients"] == 4
+    assert config["pipes"]["forkedJvmArgs"] == ["-Xmx1g"]
+    assert config["pipes"]["maxWaitForClientMillis"] == 60000
+    assert config["server"]["allowPerRequestConfig"] is False
+    limits = config["parse-context"]["output-limits"]
+    assert limits == {"writeLimit": 20000000, "throwOnWriteLimit": True}
+    assert limits["writeLimit"] * 4 + 1024 ** 2 < 100 * 1024 ** 2
+    assert deploy.render_main_env(cfg)["HOOVER4_TIKA_CONCURRENCY"] == "4"
+    assert "compose/tika.yaml" in deploy.selected_overlays(cfg, "main")
+
+
+@pytest.mark.parametrize("key,value", [("tika_mem_limit", "4G"), ("tika_concurrency", "8")])
+def test_tika_refuses_invalid_memory_or_slots(key, value):
+    cfg = _config("settings-defaults.ini")
+    cfg.values["main_services"][key] = value
+    with pytest.raises(deploy.DeployError):
+        deploy.render_main_env(cfg)

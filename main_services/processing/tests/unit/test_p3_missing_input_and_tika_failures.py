@@ -1,6 +1,6 @@
 """A missing temporary copy fails once with its cause, and a Tika refusal is classified.
 
-No JVM and no ClickHouse: the extractous pool, Magika and the stores are replaced, and
+No JVM and no ClickHouse: the Tika client, Magika and the stores are replaced, and
 the workflow helpers are pure functions of the results they receive.
 """
 
@@ -125,7 +125,7 @@ def test_magika_file_not_found_is_a_missing_copy(tmp_path, monkeypatch):
 
 def test_tika_fails_on_a_missing_copy_without_running_extractous(tmp_path, monkeypatch):
     path = _missing(tmp_path)
-    monkeypatch.setattr(parse_tika, "_extract_with_extractous",
+    monkeypatch.setattr(parse_tika, "parse_document",
                         lambda p: pytest.fail("extractous ran on a missing path"))
     params = parse_tika.RunTikaParams("c", "ds", "h", path, 30)
     with pytest.raises(ApplicationError) as excinfo:
@@ -200,54 +200,6 @@ def test_a_retryable_tika_failure_stays_a_detector_error():
         ["parse_image_metadata_and_store"], ["ok"],
     )
     assert names == ["detector_error_tika"]
-
-
-class _ParseFailurePool:
-    def __init__(self):
-        self.calls = []
-
-    def extract(self, path):
-        self.calls.append(path)
-        raise parse_tika.ExtractousParseError(
-            f"extractous failed for {path}: 'ParseError(\"Parse error occurred : "
-            "Unexpected RuntimeException from org.apache.tika.parser.image.JpegParser@1\")'"
-        )
-
-
-def test_a_file_tika_refuses_at_every_step_is_not_retried(tmp_path, monkeypatch):
-    path = tmp_path / "photo"
-    path.write_bytes(b"\xff\xd8\xff")
-    pool = _ParseFailurePool()
-    monkeypatch.setattr(parse_tika, "_get_pool", lambda: pool)
-    monkeypatch.setattr(parse_tika, "_detector_candidate_types", lambda p: [
-        ("the file detector's first match", "image/jpeg"),
-        ("the file detector's second match", "application/x-no-such-type"),
-    ])
-    with pytest.raises(ApplicationError) as excinfo:
-        parse_tika._extract_with_extractous(str(path))
-    assert excinfo.value.type == parse_tika.TIKA_PARSE_FAILED
-    assert excinfo.value.non_retryable is True
-    assert "org.apache.tika.parser.image.JpegParser" in str(excinfo.value)
-    assert "no extension known" in str(excinfo.value)
-    assert len(pool.calls) == 2
-
-
-def test_a_helper_failure_keeps_the_chain_retryable(tmp_path, monkeypatch):
-    path = tmp_path / "photo"
-    path.write_bytes(b"\xff\xd8\xff")
-
-    class _Pool:
-        def extract(self, p):
-            if p.endswith(".jpg"):
-                raise parse_tika.ExtractousParseError("extractous failed: parse error")
-            raise EOFError("extractous helper closed stdout")
-
-    monkeypatch.setattr(parse_tika, "_get_pool", lambda: _Pool())
-    monkeypatch.setattr(parse_tika, "_detector_candidate_types",
-                        lambda p: [("the file detector's first match", "image/jpeg")])
-    with pytest.raises(RuntimeError) as excinfo:
-        parse_tika._extract_with_extractous(str(path))
-    assert not isinstance(excinfo.value, ApplicationError)
 
 
 def test_parse_error_tika_is_known_and_recovered_by_the_tika_activity():

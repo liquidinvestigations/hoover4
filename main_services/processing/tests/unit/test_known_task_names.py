@@ -38,5 +38,6 @@ def test_known_task_names_match_the_current_error_writers():
     writer_names.add("detector_error_unknown")
     assert '"parse_error_tika"' in p3
     writer_names.add("parse_error_tika")
+    writer_names.add("tika_text_batch")
 
     assert writer_names == KNOWN_TASK_NAMES

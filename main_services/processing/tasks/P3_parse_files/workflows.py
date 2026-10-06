@@ -55,6 +55,7 @@ def _detector_results_for_error_capture(
 #: The parse tasks that extract the content of a file without Tika.
 _CONTENT_EXTRACTORS_BESIDE_TIKA = frozenset({
     "email_scan",
+    "archive_scan",
     "extract_plaintext_chunks",
     "parse_office_xml_and_store",
     "parse_table_and_store",
@@ -63,6 +64,23 @@ _CONTENT_EXTRACTORS_BESIDE_TIKA = frozenset({
     "parse_audio_metadata_and_store",
     "video_process",
 })
+
+
+def parser_results_for_error_capture(names: List[str], results: List[Any]) -> List[Any]:
+    """Remove a Tika document failure when another content reader succeeded."""
+    covered = any(
+        (name in _CONTENT_EXTRACTORS_BESIDE_TIKA or name.startswith("run_ocr_and_store["))
+        and not isinstance(result, BaseException)
+        for name, result in zip(names, results)
+    )
+    qpdf_failed = any(name == "pdf_process" and isinstance(result, BaseException)
+                      and _is_qpdf_page_count_failure(result)
+                      for name, result in zip(names, results))
+    failures = ("TikaParseFailed", "TikaServiceFailed", "TikaOutputTooLarge")
+    return [None if (name == "tika_text_batch" and (covered or qpdf_failed)
+                     and isinstance(result, BaseException)
+                     and any(has_application_error_type(result, t) for t in failures))
+            else result for name, result in zip(names, results)]
 
 
 def _detector_error_task_ids(
@@ -98,7 +116,8 @@ def _is_qpdf_page_count_failure(error: BaseException) -> bool:
     current: BaseException | None = error
     seen: set[int] = set()
     while current is not None and id(current) not in seen:
-        if str(current).startswith("qpdf --show-npages failed:"):
+        message = str(getattr(current, "message", "") or current)
+        if message.startswith("qpdf --show-npages failed:"):
             return True
         seen.add(id(current))
         temporal_cause = getattr(current, "cause", None)
@@ -157,8 +176,8 @@ def combine_detector_results(detector_results: List[Any]) -> Dict[str, List[str]
     }
 
 
-def detector_results_for_file(detect_result: FileResult, tika_result: FileResult) -> List[Any]:
-    """One result for each detector of one file: the local detectors, then Tika.
+def detector_results_for_file(detect_result: FileResult) -> List[Any]:
+    """Return one result for each local detector of one file.
 
     A detector that raised inside `detect_mime_all` comes back under `errors`. A failed
     detect result, for example a missing temporary copy, makes every local detector
@@ -174,8 +193,6 @@ def detector_results_for_file(detect_result: FileResult, tika_result: FileResult
             per_detector.get(name, RuntimeError(per_error.get(name, "detector produced no result")))
             for name in LOCAL_DETECTORS
         ]
-    results.append(file_error(tika_result) if tika_result.status == "failed"
-                   else tika_result.value)
     return results
 
 

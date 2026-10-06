@@ -298,7 +298,7 @@ the Temporal execution identity.
 A stage activity returns a `BatchResult`. The interceptor writes one run row for each
 file, with the per-file function name, the file hash, and the file's own outcome, run
 time and start. The attempt, the activity id and the queue-wait columns are those of the
-stage activity, the same on every file row. A stage name, such as `run_tika_batch`, gets a
+stage activity, the same on every file row. A stage name, such as `tika_text_batch`, gets a
 run row only when the stage activity raises, so it always has the outcome `error`, and a
 failure rate grouped by task name shows each stage name at 100 percent.
 

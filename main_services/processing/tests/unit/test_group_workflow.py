@@ -70,7 +70,7 @@ class _Group:
         if name == "detect_mime_batch":
             return _ok(file, {"detectors": {d: self._types(file) for d in LOCAL_DETECTORS},
                               "errors": {}})
-        if name == "run_tika_batch":
+        if name == "tika_text_batch":
             return _ok(file, self._types(file))
         if name == "extract_email_attachments_batch":
             return _ok(file, {"out_dir": f"/tmp/email_{file.item_hash}", "attachment_count": 1})
@@ -145,7 +145,7 @@ def test_three_files_schedule_each_stage_once_with_its_files_and_queue(monkeypat
 
     expected = {
         "detect_mime_batch": ["e", "p", "i"],
-        "run_tika_batch": ["e", "p", "i"],
+        "tika_text_batch": ["e", "p", "i"],
         "extract_plaintext_batch": ["e"],
         "parse_image_metadata_batch": ["i"],
         "parse_email_headers_batch": ["e"],
@@ -196,11 +196,11 @@ def test_100_emails_take_five_activities_and_six_with_an_attachment(
 
 def test_a_failed_tika_stage_leaves_the_routes_to_the_local_detectors(monkeypatch):
     group = _Group(monkeypatch, {"t": TEXT})
-    group.overrides["run_tika_batch"] = _activity_error(ApplicationError(
+    group.overrides["tika_text_batch"] = _activity_error(ApplicationError(
         "stuck", type=br.STAGE_NO_PROGRESS, non_retryable=True))
     group.run(["t"])
     assert group.hashes("extract_plaintext_batch") == ["t"]
-    assert group.rows() == [("t", "detector_error_tika")]
+    assert group.rows() == [("t", "tika_text_batch")]
 
 
 def test_a_file_whose_headers_fail_is_not_in_the_attachments_input(monkeypatch):
@@ -274,30 +274,41 @@ def test_an_error_in_chain_code_fails_the_group_without_error_rows(monkeypatch):
 
 # Error rows.
 
-def test_a_tika_parse_failure_beside_a_text_parse_gives_one_parse_error_tika_row(monkeypatch):
-    rows = []
-    for _ in range(2):
-        group = _Group(monkeypatch, {h: TEXT for h in "abc"}, run_id="run")
-        group.overrides["run_tika_batch"] = lambda f: (
-            _failed(f, "TikaParseFailed", "extractous refused it") if f.item_hash == "b"
-            else _ok(f, group._types(f)))
-        group.run(["a", "b", "c"])
-        rows.append([row for batch in group.records for row in batch])
-    assert [(row["hash"], row["task_name"], row["op_id"]) for row in rows[0]] == [
-        ("b", "parse_error_tika", "op")]
-    source = plan_workflows.source_execution_id("run", "P3.group.detector", 9)
-    expected = hashlib.sha256(json.dumps(
-        [source, "parse_error_tika", "dataset", "b"], ensure_ascii=False,
-        separators=(",", ":")).encode("utf-8")).hexdigest()
-    assert rows[0][0]["error_identity"] == expected
-    assert rows[1][0]["error_identity"] == expected
+@pytest.mark.parametrize("types,error,failing_stage,has_error", [
+    (TEXT, "TikaParseFailed", None, False),
+    (EMAIL, "TikaParseFailed", None, False),
+    (PDF, "TikaServiceFailed", None, False),
+    (PST, "TikaParseFailed", None, False),
+    (([], ["application/octet-stream"]), "TikaParseFailed", None, True),
+    (TEXT, "TikaParseFailed", "extract_plaintext_batch", True),
+    (TEXT, "ServiceStayedBusy", None, True),
+    (TEXT, "TikaOutputTooLarge", None, False),
+    (TEXT, "ConnectionError", None, True),
+])
+def test_tika_failure_coverage(monkeypatch, types, error, failing_stage, has_error):
+    group = _Group(monkeypatch, {"f": types})
+    group.overrides["tika_text_batch"] = lambda f: _failed(f, error, "java exception text")
+    if failing_stage:
+        group.overrides[failing_stage] = lambda f: _failed(f, "Broken", "reader failed")
+    group.run(["f"])
+    assert (("f", "tika_text_batch") in group.rows()) is has_error
+
+
+def test_tika_types_do_not_change_routes(monkeypatch):
+    group = _Group(monkeypatch, {"f": TEXT})
+    group.overrides["tika_text_batch"] = lambda f: _ok(f, {"coarse_types": ["pdf"],
+                                                         "mime_types": ["application/pdf"]})
+    group.run(["f"])
+    assert group.hashes("extract_plaintext_batch") == ["f"]
+    assert not group.scheduled("pdf_metadata_batch")
+    assert group.calls[0][0] == "detect_mime_batch"
 
 
 def test_a_missing_copy_for_every_detector_gives_one_row(monkeypatch):
     group = _Group(monkeypatch, {"a": TEXT})
     missing = lambda f: _failed(f, "TempCopyMissing", "temporary copy is gone")
     group.overrides["detect_mime_batch"] = missing
-    group.overrides["run_tika_batch"] = missing
+    group.overrides["tika_text_batch"] = missing
     group.run(["a"])
     assert group.rows() == [("a", f"detector_error_{LOCAL_DETECTORS[0]}")]
 
@@ -353,3 +364,11 @@ def test_no_removed_workflow_type_is_registered_and_handle_folders_stays():
     assert not registered & REMOVED_WORKFLOWS
     assert "HandleFolders" in workers["processing-common-queue"][0]
     assert "ProcessItemsBatched" in workers["processing-common-queue"][0]
+
+
+def test_qpdf_page_count_failure_records_one_document_error(monkeypatch):
+    group = _Group(monkeypatch, {"f": PDF})
+    group.overrides["pdf_metadata_batch"] = lambda f: _failed(f, "Broken", "qpdf --show-npages failed: unreadable")
+    group.overrides["tika_text_batch"] = lambda f: _failed(f, "TikaParseFailed", "java parse error")
+    group.run(["f"])
+    assert group.rows() == [("f", "pdf_process")]

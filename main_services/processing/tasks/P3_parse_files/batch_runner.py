@@ -85,7 +85,7 @@ OCR_QUEUE = "processing-ocr-queue"
 #: Every stage activity, by its registered name, and the queue it runs on.
 STAGE_QUEUES: Dict[str, str] = {
     "detect_mime_batch": COMMON_QUEUE,
-    "run_tika_batch": TIKA_QUEUE,
+    "tika_text_batch": TIKA_QUEUE,
     "extract_plaintext_batch": COMMON_QUEUE,
     "parse_office_xml_batch": COMMON_QUEUE,
     "parse_table_batch": COMMON_QUEUE,
@@ -107,7 +107,7 @@ STAGE_QUEUES: Dict[str, str] = {
 #: stage makes for one file.
 STAGE_BUDGETS: Dict[str, Tuple[int, int, int]] = {
     "detect_mime_batch": (1, 0, 0),
-    "run_tika_batch": (1, 1000, 0),
+    "tika_text_batch": (1, 1000, 0),
     "extract_plaintext_batch": (1, 0, 0),
     "parse_office_xml_batch": (1, 0, 0),
     "parse_table_batch": (1, 0, 0),
@@ -137,6 +137,9 @@ class BatchFile:
     page_count: int = 0
     pdf_size_bytes: int = 0
     sniff_mime_type: str = ""
+    file_mime_type: str = ""
+    file_name: str = ""
+    routes: List[str] = field(default_factory=list)
 
 
 @dataclass

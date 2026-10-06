@@ -219,7 +219,10 @@ common_concurrency    =            ; activity slots per common worker (default 3
 ; Cached workflow runs in each common worker. Each one keeps its state in memory.
 common_max_cached_workflows = 100
 worker_mem_limit      =            ; hard ceiling for the worker container (default 29000M)
-tika_concurrency      =            ; default 8; one extractous helper per slot
+tika_concurrency      =            ; empty uses the parser process count
+tika_mem_limit        = 6G
+tika_parse_processes  = 4
+tika_parse_heap       = 1g
 ocr_concurrency       =            ; default 4
 nlp_concurrency       =            ; default 4, matching ai_server_ner_concurrency
 embed_concurrency     =            ; default 6, under ai_server_embed_concurrency

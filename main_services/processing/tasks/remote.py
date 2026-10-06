@@ -41,6 +41,19 @@ import threading
 import time
 from dataclasses import dataclass
 
+
+class RemoteBusy(RuntimeError):
+    """A service requests a delay before another request."""
+
+    def __init__(self, retry_after_seconds=None):
+        try:
+            seconds = float(retry_after_seconds)
+        except (TypeError, ValueError):
+            seconds = 5.0
+        import math
+        self.retry_after_seconds = min(120.0, max(5.0, seconds)) if math.isfinite(seconds) else 5.0
+        super().__init__(f"Service is busy. Retry after {self.retry_after_seconds:g} seconds.")
+
 import requests
 
 log = logging.getLogger(__name__)

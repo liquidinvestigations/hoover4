@@ -457,13 +457,13 @@ async def run_common_worker():
 
 async def run_tika_worker():
     # Localized import for Tika-only worker
-    from .P3_parse_files.parse_tika import run_tika_batch
+    from .P3_parse_files.parse_tika import tika_text_batch
     from .visibility import ensure_search_attributes
 
     log.info("Starting Tika worker...")
     client = await Client.connect("temporal:7233")
     await ensure_search_attributes(client)
-    CONCURRENCY = worker_concurrency("tika", 8)
+    CONCURRENCY = worker_concurrency("tika", 4)
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
           client,
@@ -473,7 +473,7 @@ async def run_tika_worker():
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
           workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
           workflows=[],
-          activities=[run_tika_batch],
+          activities=[tika_text_batch],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,
           max_concurrent_workflow_tasks=CONCURRENCY*2,

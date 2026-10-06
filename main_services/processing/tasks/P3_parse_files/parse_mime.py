@@ -350,8 +350,7 @@ def _store_file_types_many(params: DetectMimeParams, rows: List[Dict[str, Any]])
 
 
 # The four detectors that run locally, in the order the fan-out used to schedule them.
-# Tika is deliberately absent: it lives on its own task queue because it holds an
-# extractous helper, and merging it here would put that helper on the common worker.
+# Tika reads text and metadata after these detectors select routes.
 LOCAL_DETECTORS = ("file", "magika", "extension", "content_sniff")
 
 

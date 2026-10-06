@@ -4,7 +4,7 @@ This stage parses downloaded files by type and writes structured content and met
 
 ## Key Responsibilities
 
-- Detect MIME types using GNU `file`, Tika/Extractous, and Magika.
+- Detect MIME types with GNU `file`, Magika, filename extensions, and content sniffs.
 - Parse archives, emails, PDFs, images, audio, video, and raw text.
 - Read tabular documents (CSV/TSV/PSV, XLSX/XLSM/XLTX, XLS/XLSB, ODS) into individual
   cells (`parse_table.py`), alongside the text extraction of the same file.
@@ -75,7 +75,7 @@ Binary Word files with a `WordDocument` OLE stream get a `binary_word` text sour
 LibreOffice converts at most 32 MiB of input to DOCX in a separate process.
 The Office XML reader then reads at most 128 MiB of output and maps declared Symbol font codes.
 The conversion has a 45-second limit and stops with its worker.
-Extractous still runs and keeps its own source.
+Tika still runs and keeps the `extractous` source identity.
 
 qpdf exit status 3 returns usable output with warnings. Page-count parsing accepts it and
 logs the warning with the file hash. Metadata JSON parsing accepts it. A page-count error
@@ -110,9 +110,10 @@ Parsing uses type-based routing derived from detector results. Archives, PDFs, e
 ## Mail containers
 
 PST, OST, MSG, mbox, and TNEF files use the archive extraction stage.
-The `mail-container-archive-route` workflow patch preserves old activity commands during history replay.
 The member scanner assigns VFS paths and blob identities to the extracted files.
-The original container also receives its normal Extractous text attempt.
+PST, OST, and mbox files receive no Tika request.
+Other mail containers receive metadata requests only.
+The extracted members carry their text.
 
 `mail_containers.py` reads PST and OST with pypff, MSG with extract-msg, and TNEF with tnefparse.
 It reads mbox separators with support for `Content-Length` and escaped `From` lines.
@@ -136,26 +137,42 @@ The email parser does not create a child for a detached Apple attachment with no
 Nested `message/rfc822` parts become child EML files. MIME part paths keep duplicate names
 distinct. Named text attachments and detached signatures do not enter the parent body.
 
-Magika is constructed once per worker process: building the detector is several times
-the cost of `identify_path`, and every file paid that construction when it lived inside
-the activity. Extractous still runs in a subprocess (a wedged native call cannot be
-interrupted in-process), but the helpers are a pool of long-lived interpreters (sized to
-the tika worker's activity slots) that read one JSON path per line and write one JSON
-object back. A timeout kills that helper, raises a non-retryable `ApplicationError`, and
-the next file gets a fresh one. Stderr is drained so a noisy child cannot fill a pipe
-and stall.
+Magika is constructed once for each worker process.
+The local detectors select routes before Tika runs.
 
-**`run_tika_and_store` tries up to four candidate types before it records a failure.**
-Extractous takes no type argument, so a candidate is tried by copying the file to a
-temporary path whose extension names that type, which is the only lever that reaches
-its detector. The order is the `file` command's first match, a second match when
-`file -k` offers one, the type the file's real extension implies, then extractous's
-own detection with no hint at all. A candidate whose type repeats an earlier one is
-skipped. Only a parse failure moves to the next candidate; a timeout still aborts the
-whole attempt immediately, because a wedge belongs to the bytes reaching a native
-call, not to the name on the copy, and retrying it under a different name pays the
-same worst case for a result already certain. Giving up raises one error naming every
-candidate that was tried and what each one said.
+## Tika server parsing
+
+`tika_text_batch` runs in stage 2 on the Tika queue.
+The Tika server parses the outer document only.
+Embedded document text needs a separate reader.
+The text source identity remains `extractous`.
+
+Mail containers, email routes, archive routes, cards, calendars, and raster images receive metadata requests only.
+PST, OST, and mbox files receive no Tika request.
+Other files receive one text and metadata request.
+The client streams the input file.
+A stored filename provides a detection hint when available.
+
+The client reads the document type from the JSON metadata and removes MIME parameters.
+It writes this type under the `tika` detector identity after parsing.
+This result contributes to canonical type resolution.
+It does not change the selected routes.
+
+A parse failure permits one additional request with the first local `file` type when the types differ.
+An HTTP 500 response permits one additional request.
+An HTTP 429 response requests a busy delay.
+An HTTP 503 response reports a service failure.
+The client read timeout includes parser time, queue time, and transfer time below the file try budget.
+
+The server output limit is 20,000,000 characters.
+A write-limit exception keeps the truncated text and its metadata flag.
+Other Java exceptions remain in metadata and produce a document failure.
+The binary Word reader stores its independent text before the Tika request.
+
+Stage 3 removes a Tika document failure when another content reader succeeded for the same file.
+The covering readers include archive extraction and image OCR.
+Busy and connection failures remain visible.
+The Tika task outcome and stored Java exception remain available.
 
 New parser output skips the ClickHouse async-insert wait
 (`insert_arrow_idempotent`). Source replacement waits for the text insert and its
@@ -178,25 +195,14 @@ is a file that is never planned. See
 
 ## Detection is parallel, contradictory, and resolved later
 
-Five detectors run on every file and each writes its own `file_types` row: `file`, Tika,
-Magika, the filename (`extension`) and the content sniff (`content_sniff`). They are
-allowed to disagree. Processing is attempted on the union of what they say, which is how
-a `.docx` gets its office text extracted out of a file libmagic calls a zip, and how a
-mail file gets both its headers parsed and its body extracted as text.
+Four local detectors run in `detect_mime_all` and write their distinct `file_types` rows in one insert.
+They can disagree.
+The group selects routes from their combined results.
+Each failed detector reports its own error.
 
-Five detectors, **two** Temporal activities. The four local ones run together inside
-`detect_mime_all`, which invokes `file` once for the two detectors that need it and
-writes all four rows in a single insert. Each of them costs tens of milliseconds, so a
-Temporal activity per detector spent several times more on the round trip than on the
-detection. Failure is still per detector: one that raises contributes no row and reports
-under its own name in the result's `errors`, which is what the caller records in
-`processing_errors`. Exactly what a failed activity in the old fan-out produced.
-
-`run_tika_and_store` stays a separate activity on `processing-tika-queue`, because it
-holds an extractous helper and that helper belongs to that tier, not to the common
-worker. The four local detectors keep their distinct `extracted_by` values: the rows are
-what `resolve_canonical_file_type` weighs against each other, and merging them would
-throw the disagreement away.
+Tika runs after route selection on its separate queue.
+Its document type adds a fifth detector row when metadata contains a type.
+Canonical type resolution runs after all parsers finish.
 
 `content_sniff` is the one that reads content nothing else can name. `sniff_table.py`
 recognises delimited text the same way, and runs only after `sniff_email` has declined:
@@ -229,7 +235,7 @@ input order. The rows of each file carry the per-file function name.
 | stage activity | per-file function | queue | Error name of a failed file |
 |---|---|---|---|
 | `detect_mime_batch` | `detect_mime_all` | common | `detector_error_<name>` for each detector |
-| `run_tika_batch` | `run_tika_and_store` | Tika | `detector_error_tika` or `parse_error_tika` |
+| `tika_text_batch` | `run_tika_and_store` | Tika | `tika_text_batch` |
 | `extract_plaintext_batch` | `extract_plaintext_chunks` | common | the same |
 | `parse_office_xml_batch` | `parse_office_xml_and_store` | common | the same |
 | `parse_table_batch` | `parse_table_and_store` | common | the same |

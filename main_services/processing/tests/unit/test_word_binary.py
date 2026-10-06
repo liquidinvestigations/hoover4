@@ -41,7 +41,7 @@ def test_word_text_survives_extractous_failure(monkeypatch):
     stored = []
     monkeypatch.setattr("tasks.P3_parse_files.temp_dirs.require_input_file", lambda path: None)
     monkeypatch.setattr(word_binary, "extract_binary_word_text", lambda path: "Word source")
-    monkeypatch.setattr(parse_tika, "_extract_with_extractous",
+    monkeypatch.setattr(parse_tika, "parse_document",
                         lambda path: (_ for _ in ()).throw(RuntimeError("Extractous failed")))
     monkeypatch.setattr("tasks.P3_parse_files.parse_common.insert_text_chunks",
                         lambda *args: stored.append(args))
@@ -61,8 +61,8 @@ def test_word_conversion_failure_still_attempts_extractous(monkeypatch):
         attempted.append(path)
         raise RuntimeError("Extractous failed")
 
-    monkeypatch.setattr(parse_tika, "_extract_with_extractous", fail_extractous)
+    monkeypatch.setattr(parse_tika, "parse_document", fail_extractous)
     params = parse_tika.RunTikaParams("collection", "dataset", "hash", "input.doc", 60)
     with pytest.raises(RuntimeError, match="Extractous failed"):
         parse_tika.run_tika_and_store(params)
-    assert attempted == ["input.doc"]
+    assert attempted[0].file_path == "input.doc"

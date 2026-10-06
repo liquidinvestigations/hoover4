@@ -467,18 +467,6 @@ wheels = [
 ]
 
 [[package]]
-name = "extractous"
-version = "0.3.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2a/12/36c9422feee01461d4db1a915857df21e431ef88ddf9d84e689dd4a984b5/extractous-0.3.0.tar.gz", hash = "sha256:ebccc7778137d6be7680660f1e880e8a1898dedca7f64ab4b354a68d22359e84", size = 179234, upload-time = "2024-12-21T09:27:56.534Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/98/50/99d6e8982ced454cc7a0e184988b63c65e199587626c45404fc7b6ab9d90/extractous-0.3.0-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:9f513d8da78b74ab655e659c64e287ddd653009f5af011cef0d2c8467a931e38", size = 49149827, upload-time = "2024-12-21T09:27:23.764Z" },
-    { url = "https://files.pythonhosted.org/packages/66/91/7debbfabadb88d34687bf93e23d176692bdae7e82c51180b2481710bb709/extractous-0.3.0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:6e43d9dee26e7cb322b6f9059f3e3565252f444b80d2f4ff2007a002fdd00727", size = 48476433, upload-time = "2024-12-21T09:27:31.835Z" },
-    { url = "https://files.pythonhosted.org/packages/6f/d9/1a3838e24f78902ca1a594110a00812134102c5cad13f889141509062481/extractous-0.3.0-cp38-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:01ef136a5901aed0e813f747989bbeaff60e4777cc77b933bef8f10de80b7dfd", size = 42277794, upload-time = "2024-12-21T09:27:39.915Z" },
-    { url = "https://files.pythonhosted.org/packages/07/a1/dd01a3abb4c4af89cf3775735948d76522233ae3550a166b8c2f7c849a52/extractous-0.3.0-cp38-abi3-win_amd64.whl", hash = "sha256:d86754320beba736f33c10227a641cce473cfb690c9e2d5ae823c917110c98ab", size = 41106822, upload-time = "2024-12-21T09:27:53.143Z" },
-]
-
-[[package]]
 name = "filelock"
 version = "3.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1082,7 +1070,6 @@ dependencies = [
     { name = "clickhouse-migrations" },
     { name = "easyocr" },
     { name = "extract-msg" },
-    { name = "extractous" },
     { name = "libpff-python" },
     { name = "magika" },
     { name = "minio" },
@@ -1117,7 +1104,6 @@ requires-dist = [
     { name = "clickhouse-migrations", specifier = ">=0.8.1" },
     { name = "easyocr", specifier = ">=1.7.2" },
     { name = "extract-msg", specifier = "==0.56.0" },
-    { name = "extractous", specifier = ">=0.3.0" },
     { name = "libpff-python", specifier = "==20260926" },
     { name = "magika", specifier = ">=0.6.2" },
     { name = "minio", specifier = ">=7.2.16" },

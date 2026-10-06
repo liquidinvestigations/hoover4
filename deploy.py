@@ -226,6 +226,9 @@ DEFAULTS = {
         # Magika model, so the count and this number have to be chosen together.
         "worker_mem_limit": "29000M",
         "tika_concurrency": "",
+        "tika_mem_limit": "6G",
+        "tika_parse_processes": "4",
+        "tika_parse_heap": "1g",
         "ocr_concurrency": "",
         "nlp_concurrency": "",
         "embed_concurrency": "",
@@ -490,6 +493,7 @@ MAIN_OVERLAYS = [
     (research_agents_enabled, "compose/research-agents.yaml", None),
     # Adds the internet MCP servers to hoover4-full-research-agent's depends_on.
     (research_agents_internet_enabled, "compose/research-agents-internet.yaml", None),
+    (None, "compose/tika.yaml", None),
     (None, "compose/regex-entity-scanner.yaml", None),  # always on
     ("tesseract_cpu_enabled", "compose/tesseract-cpu.yaml", "hoover4-tesseract-cpu"),
     ("ocr_pdf_enabled", "compose/ocr-pdf.yaml", "hoover4-ocr-pdf"),
@@ -1248,12 +1252,41 @@ def ocr_concurrency_warning(cfg):
     return None
 
 
+def render_tika_config(cfg):
+    """Render parser limits from the main service configuration."""
+    processes = whole_number(cfg, "tika_parse_processes")
+    heap = size_bytes(cfg, "tika_parse_heap")
+    limit = size_bytes(cfg, "tika_mem_limit")
+    if limit < processes * heap + 1024 ** 3:
+        fail("Tika memory limit must cover all parser heaps plus 1 GiB.")
+    slots = cfg.get("main_services", "tika_concurrency").strip()
+    if slots and slots != str(processes):
+        fail("Tika concurrency must equal the parser process count.")
+    config = {
+        "server": {"allowPerRequestConfig": False},
+        "pipes": {"numClients": processes,
+                  "forkedJvmArgs": ["-Xmx" + cfg.get("main_services", "tika_parse_heap")],
+                  "maxWaitForClientMillis": 60000},
+        "parse-context": {
+            "skip-embedded-document-selector": {},
+            "timeout-limits": {"totalTaskTimeoutMillis": 300000, "progressTimeoutMillis": 60000},
+            "exception-reporting": {"level": "FULL", "maxLength": 8000},
+            "output-limits": {"writeLimit": 20000000, "throwOnWriteLimit": True},
+        },
+        "parsers": [{"default-parser": {}}],
+    }
+    return json.dumps(config, indent=2) + "\n"
+
+
 def render_main_env(cfg):
     """Env vars for main_services/ops/docker/.env. Ports come from the ini, and no port
     literal appears here except 12345 (which is not rendered at all. It stays in the
     compose file where humans read it)."""
     m = "main_services"
     env = {}
+    render_tika_config(cfg)
+    env["TIKA_MEM_LIMIT"] = cfg.get(m, "tika_mem_limit")
+    env["HOOVER4_TIKA_CONCURRENCY"] = str(whole_number(cfg, "tika_parse_processes"))
     env["COMPOSE_PROJECT_NAME"] = "hoover4"
     env["TZ"] = "UTC"
     env["HOOVER4_REPO_ROOT"] = str(REPO_ROOT)
@@ -2743,6 +2776,8 @@ def main(argv=None):
     print("rendered %s%s" % (env_path, " (changed)" if changed else " (unchanged)"))
 
     if side == "main":
+        tika_path = MAIN_COMPOSE_DIR / "tika" / "tika-config.json"
+        _write_if_changed(tika_path, render_tika_config(cfg))
         # The proxy's own configuration, rendered beside the .env file for the same
         # reason: hoover4.ini is read once, here, and nowhere downstream re-reads it.
         nginx_conf_path = MAIN_COMPOSE_DIR / "nginx-proxy.conf"

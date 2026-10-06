@@ -141,6 +141,19 @@ website instead, which asserts a real identity the same way. `proxy_groups` is
 comma-separated with no space. A group named `admin` or `superuser` makes the asserted
 user an administrator.
 
+### Tika parser limits
+
+`tika_parse_processes` defaults to `4`.
+`tika_parse_heap` defaults to `1g` for each parser process.
+`tika_mem_limit` defaults to `6G` for the server container.
+An empty `tika_concurrency` uses the parser process count.
+A configured concurrency must equal that count.
+Deployment requires memory for all parser heaps plus one GiB.
+
+`deploy.py` generates the server configuration from these keys.
+The configuration disables request overrides and embedded document parsing.
+It limits output to 20,000,000 characters and keeps a truncation flag.
+
 ### Worker fleet and concurrency
 
 `common_workers`, `worker_mem_limit`, and the per-queue concurrency keys

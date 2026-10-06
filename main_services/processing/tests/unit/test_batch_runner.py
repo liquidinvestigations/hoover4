@@ -114,7 +114,7 @@ def test_zero_items_give_an_empty_result(clock):
     assert _Run().run([], _record([])) == br.BatchResult(stage=STAGE, results=[])
 
 
-@pytest.mark.parametrize("change", [{"stage": "run_tika_batch"}, {"v": 1}, {"keys": "0" * 16}])
+@pytest.mark.parametrize("change", [{"stage": "tika_text_batch"}, {"v": 1}, {"keys": "0" * 16}])
 def test_a_detail_of_another_stage_version_or_input_restores_nothing(clock, change):
     first = _Run()
     first.run([0, 1], _record([]))
@@ -127,7 +127,7 @@ def test_a_detail_of_another_stage_version_or_input_restores_nothing(clock, chan
 def test_stage_timeout_seconds_is_five_try_budgets_and_the_waits_of_each_file():
     # Each file: 5 tries at 900 + ceil(size / 1250) s, and 1 + 2 + 4 + 8 s of waits.
     assert br.stage_timeout_seconds("detect_mime_batch", [0, 1250, 2500]) == 13560
-    assert br.stage_timeout_seconds("run_tika_batch", [0, 1250, 2500]) == 28560
+    assert br.stage_timeout_seconds("tika_text_batch", [0, 1250, 2500]) == 28560
     assert br.stage_timeout_seconds("run_ocr_pdf_batch", [0, 1250, 2500]) == 54045
 
 

@@ -199,17 +199,17 @@ def test_failed_chunks_keep_their_source_id_for_each_hash(
 
 
 def test_group_detector_and_parser_ids_follow_file_and_entry_order(monkeypatch):
-    """Detector ids are 5 x file index + detector index. Parser ids count every entry."""
+    """Detector ids are 4 x file index + detector index. Parser ids count every entry."""
     captured = []
     hashes = ["a", "b"]
-    detector_names = list(parse_workflows.LOCAL_DETECTORS) + ["tika"]
+    detector_names = list(parse_workflows.LOCAL_DETECTORS)
 
     def execute_activity(name, params, **_kwargs):
         async def result():
             results = []
             for file in params.files:
                 if name == "detect_mime_batch":
-                    value = {"detectors": {}, "errors": {n: "failed" for n in detector_names[:-1]}}
+                    value = {"detectors": {}, "errors": {n: "failed" for n in detector_names}}
                     value["detectors"][detector_names[1]] = {"coarse_types": ["text"]}
                     results.append(FileResult(file.item_hash, "detect_mime_all", "ok", value))
                 else:
@@ -243,8 +243,8 @@ def test_group_detector_and_parser_ids_follow_file_and_entry_order(monkeypatch):
         ["group-run", "P3.group.detector", index]
         for index in range(len(detector_names) * len(hashes))]
     parser_results, parser = captured[1]
-    assert parser["task_ids"] == ["extract_plaintext_chunks"] * len(hashes)
-    assert parser["item_hashes"] == hashes
+    assert parser["task_ids"] == ["tika_text_batch", "extract_plaintext_chunks"] * len(hashes)
+    assert parser["item_hashes"] == [h for h in hashes for _ in range(2)]
     assert all(isinstance(result, Exception) for result in parser_results)
     assert [json.loads(source) for source in parser["source_execution_ids"]] == [
-        ["group-run", "P3.group.parser", index] for index in range(len(hashes))]
+        ["group-run", "P3.group.parser", index] for index in range(2 * len(hashes))]

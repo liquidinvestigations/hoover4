@@ -1,0 +1,25 @@
+# Tika parses documents on the internal service network.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
+services:
+  hoover4-tika:
+    image: apache/tika:4.1.0@sha256:06bcdbd09aca073293e5a171ad161418cc93c91d58d9e4e205064eade84889d4
+    container_name: hoover4-tika
+    logging: *logging
+    command: ["-c", "/tika-config.json"]
+    volumes:
+      - "${HOOVER4_REPO_ROOT}/main_services/ops/docker/tika/tika-config.json:/tika-config.json:ro"
+    mem_limit: ${TIKA_MEM_LIMIT:-6G}
+    memswap_limit: ${TIKA_MEM_LIMIT:-6G}
+    restart: unless-stopped
+    networks:
+      - hoover4
+
+networks:
+  hoover4:
+    name: hoover4
+    external: true
