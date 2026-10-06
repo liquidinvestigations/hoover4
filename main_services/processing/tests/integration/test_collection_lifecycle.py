@@ -3,10 +3,12 @@
 create -> ingest the tiny fixture dataset -> verify per-stage tables ->
 delete -> verify the ClickHouse database and the Manticore tables are gone.
 
-Requires the docker stack (and a reachable NER service for ``nlp_processed``);
+Requires the stack. A configured NER service must produce ``nlp_processed`` rows.
 run inside the worker container:
 ``docker exec -it hoover4-worker uv run pytest tests/integration --integration -q``
 """
+
+import os
 
 import pytest
 
@@ -48,7 +50,14 @@ def test_collection_lifecycle(temp_collection, tiny_dataset):
     # --- every pipeline stage left its rows in the collection database ---
     assert _table_count(collectionname, "vfs_files") > 0
     assert _table_count(collectionname, "text_content") > 0
-    if ner_service_reachable():
+    if not (os.getenv("NER_URL") or "").strip():
+        assert _table_count(collectionname, "nlp_processed") == 0
+        with get_collection_client(collectionname) as client:
+            assert client.query(
+                "SELECT count() FROM processing_errors FINAL "
+                "WHERE task_name = 'extract_entities_for_hashes'"
+            ).result_rows == [(0,)]
+    elif ner_service_reachable():
         assert _table_count(collectionname, "nlp_processed") > 0
     else:
         # NER down: P4 must record its failures, never swallow them, and the

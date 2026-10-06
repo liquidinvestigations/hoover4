@@ -12,7 +12,7 @@ Requires the docker stack; run inside the worker container:
 
 import pytest
 
-from database.manticore import get_manticore_client, list_shard_tables, manticore_migrate
+from database.manticore import endpoint_for_table, get_manticore_client, list_shard_tables, manticore_migrate
 
 from .helpers import ingest_dataset, wait_for_plans_finished
 
@@ -20,7 +20,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(3600)]
 
 
 def _count(table: str) -> int:
-    with get_manticore_client() as cnx:
+    with get_manticore_client(endpoint_for_table(table)) as cnx:
         cursor = cnx.cursor()
         cursor.execute(f"SELECT count(*) FROM {table}")
         return int(cursor.fetchone()[0])

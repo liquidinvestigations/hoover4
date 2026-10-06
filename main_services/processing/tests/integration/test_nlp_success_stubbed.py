@@ -72,6 +72,7 @@ def test_nlp_success_path_with_stubbed_ner(temp_collection, tiny_dataset, monkey
     # STUB_MODEL exactly as a real provider would write its own id.
     monkeypatch.setattr(p4_activities, "configured_nlp_model", lambda: STUB_MODEL)
     monkeypatch.setattr(p4_activities, "extract_ner_from_texts", _stub_ner)
+    monkeypatch.setenv("NER_URL", "http://ner-stub.invalid")
 
     result = p4_activities.extract_entities_for_hashes(
         ExtractEntitiesParams(

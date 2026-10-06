@@ -13,7 +13,7 @@ Requires the docker stack; run inside the worker container:
 import pytest
 
 from database.clickhouse import get_collection_client
-from database.manticore import get_manticore_client, list_shard_tables
+from database.manticore import endpoint_for_table, get_manticore_client, list_shard_tables
 from tasks.P6_index_data import shard_planner
 from tasks.P6_index_data.activities import index_text_pages
 from tasks.P6_index_data.params import (
@@ -34,9 +34,9 @@ INDEXING_CHUNK_SIZE = 100
 def _manticore_counts(collectionname: str) -> dict[str, int]:
     """Row count of every shard table of the collection."""
     counts = {}
-    with get_manticore_client() as cnx:
-        cursor = cnx.cursor()
-        for table in list_shard_tables(collectionname):
+    for table in list_shard_tables(collectionname):
+        with get_manticore_client(endpoint_for_table(table)) as cnx:
+            cursor = cnx.cursor()
             cursor.execute(f"SELECT count(*) FROM {table}")
             counts[table] = int(cursor.fetchone()[0])
     return counts

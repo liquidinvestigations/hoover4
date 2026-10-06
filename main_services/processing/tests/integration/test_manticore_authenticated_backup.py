@@ -13,7 +13,13 @@ from database import manticore
 from tasks.P_ops import backup, restore
 from tasks.P_ops.params import ExportParams, ImportParams
 
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not Path(backup.MANTICORE_DATA_ROOT).is_dir(),
+        reason="run in hoover4-ops with the Manticore datastore mounts",
+    ),
+]
 
 
 def test_authenticated_backup_restores_rows_and_search(monkeypatch):
@@ -33,7 +39,6 @@ def test_authenticated_backup_restores_rows_and_search(monkeypatch):
     monkeypatch.setattr(operations, "get_operation", lambda *_a, **_k: {})
     table = "authbackup_1_pages"
     monkeypatch.setattr(manticore, "list_collection_tables", lambda _collection: [table])
-    monkeypatch.setattr(restore, "MANTICORE_RESTORE_ROOT", backup.MANTICORE_DATA_ROOT)
     with manticore.get_manticore_client() as client:
         cursor = client.cursor()
         cursor.execute(f"DROP TABLE IF EXISTS {table}")

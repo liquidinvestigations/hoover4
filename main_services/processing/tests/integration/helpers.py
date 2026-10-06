@@ -16,9 +16,9 @@ def ner_service_reachable() -> bool:
     not serve docs would otherwise be reported unreachable, silently downgrading
     every test that branches on this probe).
 
-    When it does not answer, P4 records its failures in ``processing_errors`` and
-    the pipeline continues with empty entity MVAs, but ``nlp_processed`` stays
-    empty, so tests asserting on it must branch on this probe.
+    An empty ``NER_URL`` disables extraction without a processing error.
+    An unreachable configured service produces processing errors.
+    Both cases leave ``nlp_processed`` empty.
     """
     ner_url = os.environ.get("NER_URL", "")
     if not ner_url:

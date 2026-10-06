@@ -12,10 +12,23 @@ from .test_text_storage_migration import storage
 pytestmark = pytest.mark.integration
 
 
+def backend_source(relative):
+    root = os.getenv("HOOVER4_REPO_ROOT")
+    if root:
+        candidates = [Path(root) / "website/backend/src" / relative]
+    else:
+        candidates = [parent / "website/backend/src" / relative
+                      for parent in Path(__file__).resolve().parents]
+        candidates.append(Path("/mirror/website-backend-src") / relative)
+    for path in candidates:
+        if path.is_file():
+            return path.read_text()
+    pytest.fail("Current website source is unavailable. Set HOOVER4_REPO_ROOT.")
+
+
 def test_viewer_processing_query_distinguishes_ended_pending_active_and_empty(storage):
     _, client, _, _ = storage
-    root = Path(os.getenv("HOOVER4_REPO_ROOT") or Path(__file__).resolve().parents[4])
-    source = (root / "website/backend/src/api/documents/get_document_sources.rs").read_text()
+    source = backend_source("api/documents/get_document_sources.rs")
     sql = source.split('const DOCUMENT_PROCESSING_SQL: &str = r#"', 1)[1].split('"#;', 1)[0]
     for parameter in ("dataset", "hash", "dataset", "dataset", "dataset", "hash"):
         sql = sql.replace("?", "{" + parameter + ":String}", 1)
@@ -56,8 +69,7 @@ def test_viewer_processing_query_distinguishes_ended_pending_active_and_empty(st
 def test_table_match_count_excludes_cells_outside_current_sheet(storage):
     import re
     _, client, _, _ = storage
-    root = Path(os.getenv("HOOVER4_REPO_ROOT") or Path(__file__).resolve().parents[4])
-    source = (root / "website/backend/src/api/documents/table_browse.rs").read_text()
+    source = backend_source("api/documents/table_browse.rs")
     sql = source.split('"SELECT count() FROM table_cells AS c FINAL', 1)[1].split('",', 1)[0]
     sql = "SELECT count() FROM table_cells AS c FINAL" + re.sub(r"\\\n\s*", " ", sql)
     for parameter in ("dataset", "hash", "hash", "query"):

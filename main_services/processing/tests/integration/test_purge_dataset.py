@@ -14,7 +14,7 @@ import time
 import pytest
 
 from database.clickhouse import get_collection_client
-from database.manticore import get_manticore_client, list_shard_tables
+from database.manticore import endpoint_for_table, get_manticore_client, list_shard_tables
 from tasks.P_admin.activities import (
     CollectionDatabaseParams,
     PurgeDatasetParams,
@@ -92,9 +92,9 @@ def test_purge_dataset(temp_collection, tiny_dataset):
     # --- Manticore: cd2 gone from every shard table, cd1 intact ---
     shard_tables = list_shard_tables(collectionname)
     assert shard_tables
-    with get_manticore_client() as cnx:
-        cursor = cnx.cursor()
-        for table in shard_tables:
+    for table in shard_tables:
+        with get_manticore_client(endpoint_for_table(table)) as cnx:
+            cursor = cnx.cursor()
             cursor.execute(
                 f"SELECT count(*) FROM {table} WHERE collection_dataset = %s",
                 (cd2,),

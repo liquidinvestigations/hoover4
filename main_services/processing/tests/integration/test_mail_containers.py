@@ -92,9 +92,9 @@ def test_pff_embedded_message_and_stable_bytes(tmp_path):
     first = tmp_path / "first"
     second = tmp_path / "second"
     assert extract(str(source), str(first), "pff") == {
-        "entry_count": 2, "partial_errors": []}
+        "entry_count": 2, "partial_errors": [], "partial_error_count": 0}
     assert extract(str(source), str(second), "pff") == {
-        "entry_count": 2, "partial_errors": []}
+        "entry_count": 2, "partial_errors": [], "partial_error_count": 0}
     first_files = sorted(path.relative_to(first) for path in first.rglob("*.eml"))
     second_files = sorted(path.relative_to(second) for path in second.rglob("*.eml"))
     assert first_files == second_files
@@ -163,12 +163,12 @@ def test_msg_nested_binary_and_non_ascii_body(tmp_path):
 
     assert mail_format(str(fixture("testMSG_att_msg.msg")), []) == "msg"
     sniff = _detect_by_content(
-        SimpleNamespace(file_path=str(fixture("testMSG_att_msg.msg"))),
+        SimpleNamespace(file_path=str(fixture("testMSG_att_msg.msg")), file_names=[]),
         (["application/x-ole-storage"], [], []))
     assert "application/vnd.ms-outlook" in sniff["mime_types"]
     assert "application/vnd.ms-excel" not in sniff["mime_types"]
     nested = extract(str(fixture("testMSG_att_msg.msg")), str(tmp_path / "nested"), "msg")
-    assert nested == {"entry_count": 2, "partial_errors": []}
+    assert nested == {"entry_count": 2, "partial_errors": [], "partial_error_count": 0}
     assert len(list((tmp_path / "nested").rglob("*.eml"))) == 2
     binary = extract(str(fixture("testMSG_att_doc.msg")), str(tmp_path / "binary"), "msg")
     assert binary["entry_count"] == 1
@@ -177,7 +177,7 @@ def test_msg_nested_binary_and_non_ascii_body(tmp_path):
     assert any(part.get_filename() == "test-unicode.doc" and part.get_payload(decode=True)
                for part in msg.walk())
     chinese = extract(str(fixture("testMSG_chinese.msg")), str(tmp_path / "chinese"), "msg")
-    assert chinese == {"entry_count": 1, "partial_errors": []}
+    assert chinese == {"entry_count": 1, "partial_errors": [], "partial_error_count": 0}
     msg = BytesParser(policy=policy.default).parsebytes(
         (tmp_path / "chinese" / "message.eml").read_bytes())
     assert "中文測試" in msg.get_body(preferencelist=("plain",)).get_content()
@@ -195,9 +195,9 @@ def test_tnef_and_mbox_boundaries(tmp_path):
     assert mail_format(str(fixture("testWINMAIL.dat")), []) == "tnef"
     assert mail_format(str(fixture("unmunged.mbox.txt")), []) == "mbox"
     tnef = extract(str(fixture("testWINMAIL.dat")), str(tmp_path / "tnef"), "tnef")
-    assert tnef == {"entry_count": 6, "partial_errors": []}
+    assert tnef == {"entry_count": 6, "partial_errors": [], "partial_error_count": 0}
     mailbox = extract(str(fixture("unmunged.mbox.txt")), str(tmp_path / "mbox"), "mbox")
-    assert mailbox == {"entry_count": 4, "partial_errors": []}
+    assert mailbox == {"entry_count": 4, "partial_errors": [], "partial_error_count": 0}
     assert len(list((tmp_path / "mbox").glob("*.eml"))) == 4
 
 
@@ -209,7 +209,7 @@ def test_mbox_content_length_and_escaping(tmp_path):
     source = tmp_path / "mailbox"
     source.write_bytes(raw)
     result = extract(str(source), str(tmp_path / "out"), "mbox")
-    assert result == {"entry_count": 2, "partial_errors": []}
+    assert result == {"entry_count": 2, "partial_errors": [], "partial_error_count": 0}
     first = (tmp_path / "out" / "message-00000000.eml").read_bytes()
     assert b"From hidden\n>From escaped\n" in first
 
@@ -220,7 +220,7 @@ def test_an_mbox_child_with_quoted_from_lines_stays_one_message(tmp_path):
 
     out = tmp_path / "jwz"
     result = extract(str(fixture("jwz.mbox.txt")), str(out), "mbox")
-    assert result == {"entry_count": 152, "partial_errors": []}
+    assert result == {"entry_count": 152, "partial_errors": [], "partial_error_count": 0}
     child = (out / "message-00000051.eml").read_bytes()
     assert b"\n>From within a development environment" in child
     assert sniff_email(child).mime_type == MIME_RFC822

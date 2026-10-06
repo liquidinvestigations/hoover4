@@ -815,8 +815,6 @@ def test_an_agent_error_ends_the_run_as_failed(monkeypatch):
 
 
 def test_an_uncited_answer_that_names_a_document_gets_one_citation_round(monkeypatch):
-    from tasks.P_agent import citations
-
     def script(request, n):
         if n == 1:
             return _reply(request, "The memo sets the budget [D1].")
@@ -830,7 +828,8 @@ def test_an_uncited_answer_that_names_a_document_gets_one_citation_round(monkeyp
         assert await handle.result() == "completed"
         assert len(stub.requests) == 3
         note = stub.requests[1]["messages"][-1]["content"]
-        assert note.startswith("Your answer uses citation labels") and "[D1]" in note
+        assert "No successful `cite_documents` result gives [D1]." in note
+        assert "Write the complete answer again" in note
         rows = [(r[1], r[2], r[3]) for r in case.chat_rows()]
         assert [r[0] for r in rows] == ["user", "assistant", "nag", "tool", "assistant"]
         assert rows[2][1] == note and rows[3][2] == "cite_documents"

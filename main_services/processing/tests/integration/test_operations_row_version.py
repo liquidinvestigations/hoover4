@@ -26,7 +26,10 @@ def test_fresh_global_migrations_create_versioned_operations():
                 "AND name = 'operations'"
             ).result_rows[0][0]
             assert "ReplacingMergeTree(row_version)" in engine
-            assert client.query("SELECT count() FROM schema_versions").result_rows[0][0] == 30
+            versions = client.query("SELECT version FROM schema_versions").result_rows
+            expected = {int(path.name.split("_")[0]) for path in Path(GLOBAL_MIGRATIONS_PATH).glob("*.sql")}
+            assert {row[0] for row in versions} == expected
+            assert len(versions) == len(expected)
         finally:
             client.close()
     finally:
@@ -50,6 +53,10 @@ def test_fresh_operation_migration_and_late_progress_insert(monkeypatch):
             "'2026-01-01 00:00:00', '2026-01-01 00:00:00', 0, 2, 0, 'test')"
         )
         migration = (root / "00030_operations_row_version.sql").read_text()
+        for statement in migration.split(";"):
+            if statement.strip():
+                client.command(statement)
+        migration = (root / "00033_operations_run_started_at.sql").read_text()
         for statement in migration.split(";"):
             if statement.strip():
                 client.command(statement)

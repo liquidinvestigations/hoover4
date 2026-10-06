@@ -18,13 +18,18 @@ from database.clickhouse import (
 pytestmark = pytest.mark.integration
 
 _CREATE_TABLE_RE = re.compile(
-    r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+[`\"]?(\w+)[`\"]?", re.IGNORECASE
+    r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`\"]?(\w+)[`\"]?", re.IGNORECASE
 )
 _ALTER_TABLE_RE = re.compile(r"ALTER\s+TABLE\s+[`\"]?(\w+)[`\"]?", re.IGNORECASE)
+_DROP_TABLE_RE = re.compile(r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?[`\"]?(\w+)[`\"]?", re.IGNORECASE)
+_RENAME_TABLE_RE = re.compile(r"RENAME\s+TABLE\s+(.+)", re.IGNORECASE | re.DOTALL)
+_RENAME_PAIR_RE = re.compile(r"[`\"]?(\w+)[`\"]?\s+TO\s+[`\"]?(\w+)[`\"]?", re.IGNORECASE)
 
 
 def _expected_tables() -> set[str]:
-    """Table names declared by the collection migrations, parsed from the SQL files.
+    """Current table names after the collection migrations.
+
+    Renames change table identities. Drops remove temporary migration tables.
 
     A migration file may create more than one table, and a migration that only adds
     columns to a table an earlier one created declares no table at all. Both are
@@ -36,8 +41,14 @@ def _expected_tables() -> set[str]:
         sql = path.read_text()
         found = _CREATE_TABLE_RE.findall(sql)
         assert found or _ALTER_TABLE_RE.search(sql), f"no table statement in {path.name}"
-        tables.update(found)
-    tables.discard("processing_errors_next")
+        for statement in sql.split(";"):
+            tables.update(_CREATE_TABLE_RE.findall(statement))
+            rename = _RENAME_TABLE_RE.search(statement)
+            if rename:
+                pairs = _RENAME_PAIR_RE.findall(rename.group(1))
+                tables.difference_update(old for old, _ in pairs)
+                tables.update(new for _, new in pairs)
+            tables.difference_update(_DROP_TABLE_RE.findall(statement))
     return tables
 
 

@@ -27,9 +27,8 @@ MIXED_CORPUS = Path("/testdata/hoover-testdata/data")
 MIN_EMAIL_RECALL = 0.999
 
 #: The mixed corpus holds PDFs, zips, images, office documents, HTML, GPG keys and shell
-#: scripts alongside its mail fixtures. Exactly 22 of its 991 files are email, and the
-#: sniff must find those 22 and nothing else. An exact set, not a count, so a swap of
-#: one false positive for one false negative cannot pass.
+#: scripts alongside its mail fixtures. The sniff must find the complete expected set.
+#: This comparison detects both missing emails and incorrectly detected files.
 EXPECTED_MIXED_HITS = {
     "eml-1-promotional/Introducing Mapbox Android Services - Mapbox Team <newsletter@mapbox.com> - 2016-04-20 1603.eml",
     "eml-1-promotional/Machine Learning comes to CodinGame! - CodinGame Team <contact@codingame.com> - 2016-04-22 1731.eml",
@@ -53,7 +52,12 @@ EXPECTED_MIXED_HITS = {
     "mbox/2018-March.txt",
     "mbox/shapelib.mbox",
     "no-extension/file_eml",
+    "disk-files/entity-fixtures/remittance-advice.eml",
+    "disk-files/entity-fixtures/security-incident.eml",
 }
+
+# The additional fixture can be absent from an older testdata checkout.
+OPTIONAL_MIXED_HITS = {"text-spam/uuencoded-mail.txt"}
 
 
 def _regular_files(root: Path) -> list[Path]:
@@ -82,7 +86,9 @@ def test_exactly_the_known_emails_in_the_mixed_corpus():
         for p in files
         if sniff_email_path(str(p))
     }
-    false_positives = sorted(hits - EXPECTED_MIXED_HITS)
-    false_negatives = sorted(EXPECTED_MIXED_HITS - hits)
+    present = {str(p.relative_to(MIXED_CORPUS)) for p in files}
+    expected = EXPECTED_MIXED_HITS | (OPTIONAL_MIXED_HITS & present)
+    false_positives = sorted(hits - expected)
+    false_negatives = sorted(expected - hits)
     assert not false_positives, f"sniff became eager: {false_positives}"
     assert not false_negatives, f"sniff lost known emails: {false_negatives}"
