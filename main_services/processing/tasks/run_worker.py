@@ -697,32 +697,25 @@ STEP_HEARTBEAT_THROTTLE = timedelta(seconds=5)
 
 
 async def run_chat_worker():
-  """Serve the four agent queues from one process.
+  """Serve the three agent queues from one process.
 
-  One process rather than four because the slot counts, not the process boundary, are
+  One process rather than three because the slot counts, not the process boundary, are
   what bounds the load: slots of mostly-waiting work do not need four interpreters, and
   one process means one place for the container's memory budget to apply. The queues
-  stay separate so a long model call cannot hold a write slot or a tool slot, and a
-  research run cannot take a chat model slot.
+  stay separate so a long model call cannot hold a write slot or a tool slot.
 
-  `chat-queue` carries `AgentRun` and its short activities (open, nag, ending, fan-in,
-  section dispatch, continuation, step failure, plan check, title, run-start reads).
-  `chat-model-queue` carries `model_step` for a chat turn and its sub-agents.
-  `research-queue` carries `model_step` for a run whose row names that queue: the
-  planner and organizer runs of a deep-research plan, and their sub-agents.
+  `chat-queue` carries `AgentRun` and its short activities (open, ending, step failure,
+  citation check, notes, title).
+  `chat-model-queue` carries `model_step` for every run.
   `agent-tool-queue` carries `tool_call` for every run. A slot is one model call or one
-  tool call in flight, not one agent run. A section dispatch takes no tool slot.
+  tool call in flight, not one agent run.
 
-  The four queues are not the ingestion queue. An ingestion backlog delaying a person
+  The three queues are not the ingestion queue. An ingestion backlog delaying a person
   waiting at a screen is the failure a shared queue guarantees, and these four make it
   impossible. The worker deploys before the website: a workflow addressed to a queue
   nothing polls waits for ever with no error anywhere.
   """
   from .P_agent.activities import (
-      append_nag,
-      continue_run,
-      dispatch_sections,
-      fan_in,
       open_run,
       summarize_if_first_turn,
       write_ending,
@@ -730,8 +723,6 @@ async def run_chat_worker():
   from .P_agent.steps import (
       check_citations,
       model_step,
-      plan_has_sections,
-      prepare_continuation,
       record_step_failure,
       tool_call,
       write_asked_answer,
@@ -742,7 +733,6 @@ async def run_chat_worker():
       AGENT_TOOL_TASK_QUEUE,
       CHAT_MODEL_TASK_QUEUE,
       CHAT_TASK_QUEUE,
-      RESEARCH_TASK_QUEUE,
       AgentRun,
   )
   from .visibility import ensure_search_attributes
@@ -750,12 +740,11 @@ async def run_chat_worker():
   client = await Client.connect("temporal:7233")
   attach_temporal_client(client)
   await ensure_search_attributes(client)
-  # An empty key yields 3, 8, 3 and 16. The ini sets 3, 4, 3 and 16.
+  # An empty key yields 3, 8 and 16. The ini sets 3, 4 and 16.
   model_slots = worker_concurrency("chat_model", 3)
   low_latency_slots = worker_concurrency("chat_low_latency", 8)
-  research_slots = worker_concurrency("research", 3)
   tool_slots = worker_concurrency("agent_tool", 16)
-  thread_count = model_slots + low_latency_slots + research_slots + tool_slots
+  thread_count = model_slots + low_latency_slots + tool_slots
   with concurrent.futures.ThreadPoolExecutor(max_workers=thread_count) as activity_executor:
     workers = [
       Worker(
@@ -767,9 +756,8 @@ async def run_chat_worker():
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[AgentRun],
         activities=[
-            open_run, append_nag, write_ending, summarize_if_first_turn, fan_in,
-            continue_run, dispatch_sections, prepare_continuation,
-            record_step_failure, plan_has_sections, check_citations,
+            open_run, write_ending, summarize_if_first_turn,
+            record_step_failure, check_citations,
             write_empty_note, write_asked_answer, write_incomplete,
         ],
         activity_executor=activity_executor,
@@ -787,19 +775,6 @@ async def run_chat_worker():
         activities=[model_step],
         activity_executor=activity_executor,
         max_concurrent_activities=model_slots,
-      ),
-      Worker(
-        client,
-        interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
-        workflow_runner=sandboxed_runner(),
-        task_queue=RESEARCH_TASK_QUEUE,
-        graceful_shutdown_timeout=graceful_shutdown_timeout(),
-        max_heartbeat_throttle_interval=STEP_HEARTBEAT_THROTTLE,
-        workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
-        workflows=[],
-        activities=[model_step],
-        activity_executor=activity_executor,
-        max_concurrent_activities=research_slots,
       ),
       Worker(
         client,

@@ -54,33 +54,9 @@ class TurnPhaseTests(unittest.TestCase):
         for turn in ("queued-model", "queued-tool", "active"):
             self.assertEqual(observer.turn_phase(page(turn, [1]), -1), "running")
 
-    def test_executing_plan_remains_running_after_planner_answer(self):
-        state = page("idle", [1], [(2, "The plan is ready.")])
-        state["plans"] = [{"seq": "2", "state": "executing"}]
-        self.assertEqual(observer.turn_phase(state, -1), "running")
 
-    def test_earlier_executing_plan_does_not_hide_later_answer(self):
-        state = page("idle", [1, 5], [(2, "Plan"), (6, "Later answer")])
-        state["plans"] = [{"seq": "2", "state": "executing"}]
-        self.assertEqual(observer.turn_phase(state, 1), "answered")
 
-    def test_an_approved_plan_stays_running_after_the_approval_message(self):
-        state = page("idle", [1, 18], [(17, "The plan is ready.")])
-        state["plans"] = [{"seq": "17", "state": "executing"}]
-        self.assertEqual(observer.turn_phase(state, 17, after_answer_seq=17), "ended_empty")
-        self.assertEqual(observer.turn_phase(state, 17, after_answer_seq=17, plan_floor=16),
-                         "running")
-        state["plans"] = [{"seq": "17", "state": "completed"}]
-        state["assistant_answers"].append({"seq": "19", "text": "Organizer answer"})
-        self.assertEqual(observer.turn_phase(state, 17, after_answer_seq=17, plan_floor=16),
-                         "answered")
 
-    def test_existing_plan_waits_for_a_new_organizer_answer(self):
-        state = page("idle", [1], [(2, "Planner answer")])
-        state["plans"] = [{"seq": "2", "state": "completed"}]
-        self.assertEqual(observer.turn_phase(state, 0, after_answer_seq=2), "ended_empty")
-        state["assistant_answers"].append({"seq": "3", "text": "Organizer answer"})
-        self.assertEqual(observer.turn_phase(state, 0, after_answer_seq=2), "answered")
 
     def test_a_question_to_the_user_answers_the_turn(self):
         state = page("idle", [1])

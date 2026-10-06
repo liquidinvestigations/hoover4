@@ -15,7 +15,6 @@
 pub mod browser_card;
 pub mod entities_card;
 pub mod result_cards;
-pub mod subagent_card;
 pub mod web_search_card;
 
 use std::collections::HashMap;
@@ -61,7 +60,7 @@ mod page_tests {
 
     #[test]
     fn page_rows_reads_old_and_current_page_shapes() {
-        let old = r#"{"kind":"result_page","items":[{"path":"a"}],"fields":{"total":1}}"#;
+        let old = r#"{"items":[{"path":"a"}],"fields":{"total":1}}"#;
         let current = r#"{"items":[{"path":"a"}],"total":1,"more":"next"}"#;
         assert_eq!(page_rows(old).unwrap().items.len(), 1);
         let current = page_rows(current).unwrap();
@@ -93,13 +92,6 @@ pub fn ToolCard(
     /// collection and hash alone.
     #[props(default)]
     datasets: HashMap<String, String>,
-    /// The poll's sub-agent entries of the open turn. Only the `run_subagent` card reads
-    /// them, and every other row receives an empty list.
-    #[props(default)]
-    subagent_runs: Vec<common::chat_types::SubagentRunEntry>,
-    /// Terminal depth-one runs read after a delegation batch leaves the live poll.
-    #[props(default)]
-    subagent_batches: Vec<common::chat_types::SubagentBatchState>,
     #[props(default)]
     todo_versions: Vec<common::chat_types::TodoSnapshot>,
     #[props(default)]
@@ -133,19 +125,6 @@ pub fn ToolCard(
         },
         "read_todo" | "write_todo" | "edit_todo" | "mark_todo" => rsx! {
             result_cards::TodoCard { tool_name, tool_input, tool_output, running, todo_versions }
-        },
-        // `write_plan` is the plan mutation. The other names are in stored rows of older turns.
-        "write_plan" | "append_node" | "append_child" | "move_node" | "edit_node" | "remove_node" | "read_plan" => rsx! {
-            result_cards::PlanToolCard { tool_name, tool_input, tool_output, running }
-        },
-        "run_subagent" => rsx! {
-            subagent_card::SubagentCard {
-                tool_input: tool_input.clone(),
-                tool_output: tool_output.clone(),
-                running,
-                subagent_runs: subagent_runs.clone(),
-                subagent_batches: subagent_batches.clone(),
-            }
         },
         "list_document_entities" => rsx! {
             entities_card::EntitiesCard {

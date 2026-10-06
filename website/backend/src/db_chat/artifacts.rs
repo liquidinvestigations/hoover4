@@ -94,25 +94,3 @@ pub async fn soft_delete_session_artifacts(username: &str, session_id: &str) -> 
     }
     Ok(())
 }
-
-/// Artifacts produced in one session, newest first. Used by the tool cards to resolve the
-/// ids a tool payload carries without a round trip per card.
-pub async fn list_session_artifacts(
-    username: &str,
-    session_id: &str,
-) -> anyhow::Result<Vec<ChatArtifactRow>> {
-    let client = get_global_client();
-    Ok(client
-        .query(
-            "SELECT artifact_id, session_id, username, kind, tool_name, url, title, \
-             thumb_key, body_key, body_bytes, thumb_bytes, status, detail, \
-             created_at, updated_at, is_deleted \
-             FROM chat_artifacts FINAL \
-             WHERE username = ? AND session_id = ? AND is_deleted = 0 \
-             ORDER BY created_at DESC LIMIT 500",
-        )
-        .bind(username)
-        .bind(session_id)
-        .fetch_all::<ChatArtifactRow>()
-        .await?)
-}

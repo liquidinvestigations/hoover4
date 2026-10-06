@@ -30,7 +30,7 @@ struct ModelRow {
 }
 
 /// The median latency and call count of one model over 14 days of `llm_call_events`.
-/// Only `kind = 'chat'` rows count, so a title call or a planning call does not move
+/// Only `kind = 'chat'` rows count, so a title call does not move
 /// the median of a chat model.
 #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
 struct LatencyRow {
@@ -1015,7 +1015,6 @@ mod tests {
         assert_eq!(
             ChatProfile::of(ChatOptions {
                 internet_tools: false,
-                deep_research: false,
                 locked: true
             }),
             ChatProfile::InternalSearch

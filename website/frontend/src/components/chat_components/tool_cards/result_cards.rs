@@ -60,49 +60,6 @@ fn read_label(tool_name: &str, rows: &[serde_json::Value], more: bool) -> String
     format!("{tool_name} · {path}{page} · {}{cut}", rows_label(rows.len(), more))
 }
 
-/// The number of sections and nodes of a `write_plan` input: the top-level `children`
-/// and every node under them.
-fn written_tree_counts(input: &serde_json::Value) -> (usize, usize) {
-    fn count(nodes: Option<&serde_json::Value>, depth: usize) -> usize {
-        let Some(list) = nodes.and_then(|n| n.as_array()) else { return 0 };
-        if depth > 8 { return list.len(); }
-        list.iter().map(|n| 1 + count(n.get("children"), depth + 1)).sum()
-    }
-    let sections = input.get("children").and_then(|c| c.as_array()).map_or(0, |c| c.len());
-    (sections, count(input.get("children"), 0))
-}
-
-fn plan_change(tool_name: &str, tool_input: &str, tree: &str) -> (String, String) {
-    let value = serde_json::from_str::<serde_json::Value>(tool_input).unwrap_or_default();
-    let input = value.get("input").unwrap_or(&value);
-    if tool_name == "write_plan" {
-        // The whole tree is written, so no single line is marked.
-        let (sections, nodes) = written_tree_counts(input);
-        let s = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
-        let label = format!("wrote {}, {}", s(sections, "section", "sections"), s(nodes, "node", "nodes"));
-        return (label, tree.to_string());
-    }
-    let node = input.get("node_id").or_else(|| input.get("parent_id"))
-        .and_then(|value| value.as_str()).unwrap_or("");
-    let text = input.get("text").and_then(|value| value.as_str()).unwrap_or("");
-    let action = match tool_name { "append_node" | "append_child" => "added", "edit_node" => "edited", "move_node" => "moved", "remove_node" => "removed", _ => "" };
-    let target = if !text.is_empty() { text } else { node };
-    let mut lines = tree.lines().map(str::to_string).collect::<Vec<_>>();
-    let named_line = if matches!(tool_name, "append_node" | "append_child") {
-        lines.iter().rposition(|line| !text.is_empty() && line.contains(text))
-    } else {
-        lines.iter().position(|line| !node.is_empty() && line.trim_start().starts_with(&format!("{node}. ")))
-            .or_else(|| lines.iter().rposition(|line| !text.is_empty() && line.contains(text)))
-    };
-    if let Some(index) = named_line {
-        lines[index].push_str(&format!(" [{action}]"));
-    } else if !action.is_empty() {
-        lines.push(format!("{target} [{action}]"));
-    }
-    let marked = lines.join("\n");
-    (format!("{action} {target}").trim().to_string(), marked)
-}
-
 #[component]
 fn HashLink(row: serde_json::Value, refs: Vec<ChatDocRef>) -> Element {
     let hash = json_str(&row, "file_hash");
@@ -324,28 +281,6 @@ pub fn TodoCard(tool_name: String, tool_input: String, tool_output: String, runn
     }}
 }
 
-#[component]
-pub fn PlanToolCard(tool_name: String, tool_input: String, tool_output: String, running: bool) -> Element {
-    let mut expanded = use_signal(|| false);
-    let value = tool_content(&tool_output).unwrap_or_default();
-    let failure = tool_failure(&value);
-    let version = value.get("version").and_then(|version| version.as_u64());
-    let label = if failure.is_some() { format!("{tool_name} · refused") }
-        else if let Some(version) = version { format!("{tool_name} · version {version}") }
-        else { tool_name.clone() };
-    let tree = json_str(&value, "tree");
-    let (change, marked_tree) = plan_change(&tool_name, &tool_input, &tree);
-    let label = if change.is_empty() { label } else { format!("{label} · {change}") };
-    rsx! { CardShell { chip: "Plan", label, running, expanded, failure, raw_output: tool_output.clone(),
-        badges: rsx! {},
-        div { style: "white-space: pre-wrap;", "{tool_input}" }
-        if !tree.is_empty() { pre { style: "margin: 0; white-space: pre-wrap;", "{marked_tree}" } }
-        if let Some(error) = value.get("error").and_then(|error| error.as_str()) {
-            div { "{error}" }
-        }
-    }}
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,18 +319,4 @@ mod tests {
             .contains("part 2 of read_documents #4"));
     }
 
-    #[test]
-    fn a_written_plan_names_its_sections_and_nodes() {
-        let input = r#"{"version":1,"children":[{"text":"A","children":[{"text":"A1","children":[]},{"text":"A2"}]},{"text":"B","children":[]}]}"#;
-        let (label, tree) = plan_change("write_plan", input, "root. Goal\n  1. A");
-        assert_eq!(label, "wrote 2 sections, 4 nodes");
-        assert_eq!(tree, "root. Goal\n  1. A");
-    }
-
-    #[test]
-    fn a_plan_change_marks_its_tree_line() {
-        let (label, tree) = plan_change("append_child", r#"{"parent_id":"1","text":"Find files"}"#, "root. Goal\n  1. Survey\n    1.1. Find files");
-        assert_eq!(label, "added Find files");
-        assert!(tree.contains("1.1. Find files [added]"));
-    }
 }

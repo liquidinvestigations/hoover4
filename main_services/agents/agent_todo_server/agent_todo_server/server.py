@@ -6,8 +6,6 @@ Tools:
     ``edit_todo``   replaces the steps and keeps the goal
     ``mark_todo``   one status for a list of step ids
 
-The plan tools of a deep-research plan run register on this server from `plan_tools`.
-
 **This server holds no rules of its own.** Every shape, every limit and both of the
 rules that stop the plan protocol being gamed live in `database.chat_todos`, which the
 chat workflow reads directly. A check re-implemented here would be a second copy that
@@ -33,12 +31,12 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field, PrivateAttr, model_serializer
 
-from agent_todo_server.identity import Caller, CallerUnknown, agent_run_id, parse_caller
+from agent_todo_server.identity import Caller, CallerUnknown, parse_caller
 
 # The store, imported from the pipeline package rather than copied: the chat workflow
 # reads the same module, and two copies of the cancellation rule would eventually
 # disagree about whether a plan was abandoned or finished.
-from database import agent_runs, chat_todos
+from database import chat_todos
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -122,16 +120,7 @@ mcp = FastMCP(
 
 def _caller() -> Caller:
     """Whose plan the in-flight request is about."""
-    headers = dict(get_http_headers())
-    caller = parse_caller(headers)
-    try:
-        run_id = agent_run_id(headers)
-    except CallerUnknown:
-        return caller
-    run = agent_runs.read_run(caller.username, caller.session_id, run_id)
-    if run is None:
-        return caller
-    return Caller(caller.username, chat_todos.key_for_run(run))
+    return parse_caller(dict(get_http_headers()))
 
 
 def _response(todo: dict, error: str | None = None, kind: str = "read") -> TodoResponse:
@@ -297,9 +286,6 @@ async def health(_request: Any):
     return JSONResponse({"status": "ok", "service": "hoover4-agent-todo"})
 
 
-# The plan tools register on the same server. They import `mcp` from this module.
-from agent_todo_server import plan_tools  # noqa: E402,F401
-
 
 def main() -> None:
     log.info("Starting Hoover4 agent todo MCP server")
@@ -311,8 +297,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Run as `__main__`, this file is a second copy of the module, and the plan tools are on
-    # the `mcp` of the imported copy. Serve that copy.
-    from agent_todo_server.server import main as imported_main
-
-    imported_main()
+    main()

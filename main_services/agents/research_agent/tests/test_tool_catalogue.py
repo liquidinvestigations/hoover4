@@ -29,8 +29,6 @@ COLLECTION_TOOLS = [
 OTHER_TOOLS = [
     FakeTool("read_todo", "Read the plan of this conversation."),
     FakeTool("web_search", "Search the open web."),
-    FakeTool("read_plan", "Read the research plan tree."),
-    FakeTool("write_plan", "Write the plan tree."),
 ]
 EVERY_PACK = allowed_tools("chat", "all")
 
@@ -48,14 +46,11 @@ def test_every_snapshot_tool_is_callable():
         "list_collections", "search_collections", "search_passages", "read_documents",
         "cite_documents", "search_agent_tools", "search_skills", "read_skill", "read_tool",
         "read_todo",
-        "doc_search_text", "table_cell", "read_plan", "write_plan", "web_search",
+        "doc_search_text", "table_cell", "web_search",
     } <= set(snap.callable_names())
     assert {tool.name for tool in snap.tools_for()} == set(snap.callable_names())
 
 
-@pytest.mark.parametrize("kind", ["chat", "subagent", "planner", "organizer"])
-def test_the_plan_tools_are_callable_when_the_pack_holds_them(kind):
-    assert {"read_plan", "write_plan"} <= set(snapshot(kind).callable_names())
 
 
 def test_a_tool_outside_the_packs_is_not_in_the_snapshot():

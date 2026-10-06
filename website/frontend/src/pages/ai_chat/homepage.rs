@@ -1,13 +1,12 @@
 //! `/ai_chat`, "What are you researching?" homepage.
 
 use common::chat_gate::ChatGate;
-use common::chat_types::{rate_limited_seconds, ChatOptions};
+use common::chat_types::ChatOptions;
 use dioxus::prelude::*;
 
 use crate::api::admin_api::{chat_list_models, chat_llm_configured};
 use crate::api::chat_api::{
     chat_create_session, chat_delete_session, chat_list_sessions, chat_send_message,
-    chat_start_research,
 };
 use crate::components::chat_components::{
     ChatComposer, ChatGateOverlay, ChatSessionCard, ModelSelector,
@@ -90,27 +89,7 @@ pub fn AiChatPage() -> Element {
                     // that message never lands, the empty "New chat" it left behind is
                     // pure litter, and rate limiting is exactly the case that produces
                     // one per press. So the failure paths take it back out.
-                    let sent = if opts.deep_research {
-                        match chat_start_research(id.clone(), text, opts).await {
-                            Ok(run_id) => {
-                                // The session page shows the plan card from this value
-                                // until the planner answers.
-                                crate::components::chat_components::plan_card::remember_started_plan(
-                                    id.clone(),
-                                    run_id,
-                                );
-                                true
-                            }
-                            Err(e) => {
-                                if let Some(secs) = rate_limited_seconds(&e.to_string()) {
-                                    retry_after.set(Some(secs));
-                                } else {
-                                    error.set(Some(e.to_string()));
-                                }
-                                false
-                            }
-                        }
-                    } else {
+                    let sent = {
                         let model_id = if model.is_empty() { None } else { Some(model) };
                         match chat_send_message(id.clone(), text, opts, model_id).await {
                             Ok(result) => match result.retry_after_seconds {

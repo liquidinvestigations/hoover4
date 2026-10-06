@@ -563,7 +563,6 @@ services:
       - "MANTICORE_VECTORS_MEM_LIMIT_BYTES=${MANTICORE_VECTORS_MEM_LIMIT_BYTES:-}"
       - "HOOVER4_CHAT_MODEL_CONCURRENCY=${HOOVER4_CHAT_MODEL_CONCURRENCY:-}"
       - "HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY=${HOOVER4_CHAT_LOW_LATENCY_CONCURRENCY:-}"
-      - "HOOVER4_RESEARCH_CONCURRENCY=${HOOVER4_RESEARCH_CONCURRENCY:-}"
       - "HOOVER4_AGENT_TOOL_CONCURRENCY=${HOOVER4_AGENT_TOOL_CONCURRENCY:-}"
       # A rendered .env is substituted INTO this file; it does not reach the container by
       # itself. Without this line the worker reads no graceful shutdown period, falls
@@ -751,28 +750,7 @@ services:
       # The failure rate above which the operations page calls a task type out as a
       # possible tooling limitation rather than as ordinary corpus mess.
       - HOOVER4_ERROR_RATE_ALERT_PERCENT=${HOOVER4_ERROR_RATE_ALERT_PERCENT:-5}
-      # AI Chat: the research agent from compose/agents.yaml (same stack, same
-      # `hoover4` network). Chat returns an error message in the transcript
-      # when this is unreachable, so the site works fine without the agents running.
-      - HOOVER4_AGENT_URL=${HOOVER4_AGENT_URL:-http://hoover4-internal-search-agent:8000}
-      # The internet-tools agent, selected by the chat composer's "Internet tools" box.
-      # Must be set explicitly for the same reason as TEMPORAL_HTTP_URL above: the code
-      # default is a loopback port published on the *host*, which inside this container
-      # resolves to the container itself. Leaving it unset is what made every
-      # internet-tools turn fail with "AI agent unreachable at http://localhost:9090".
-      - HOOVER4_FULL_AGENT_URL=${HOOVER4_FULL_AGENT_URL:-http://hoover4-full-research-agent:8000}
-      # How long the agent may stay SILENT before the turn is called dead, not how long
-      # the turn may take: a research turn streams for as long as it keeps working, and
-      # bounding the total instead cuts healthy turns at five minutes with an error that
-      # reads like a corrupt stream. The absolute ceiling is the second knob.
-      - HOOVER4_AGENT_TIMEOUT_SECONDS=${HOOVER4_AGENT_TIMEOUT_SECONDS:-300}
-      - HOOVER4_AGENT_TOTAL_TIMEOUT_SECONDS=${HOOVER4_AGENT_TOTAL_TIMEOUT_SECONDS:-1800}
-      # Retries for one chat turn: 4 attempts, backing off 2/4/8 s. Once the agent has
-      # streamed anything, a replay repeats every provider call it has made, so at most
-      # HOOVER4_AGENT_STREAM_RESUMES of those attempts may be spent mid-stream (0 = none).
-      - HOOVER4_AGENT_ATTEMPTS=${HOOVER4_AGENT_ATTEMPTS:-4}
-      - HOOVER4_AGENT_RETRY_BASE_MS=${HOOVER4_AGENT_RETRY_BASE_MS:-2000}
-      - HOOVER4_AGENT_STREAM_RESUMES=${HOOVER4_AGENT_STREAM_RESUMES:-1}
+      # The worker dispatches chat turns to the agent services.
       # The chat title/summary generator (api/chat/summarize.rs) calls the LLM
       # directly, not through the agent. Summarising must not drag MCP tools into
       # the call. `LLM_MODEL` has no default in the code on purpose (the served name

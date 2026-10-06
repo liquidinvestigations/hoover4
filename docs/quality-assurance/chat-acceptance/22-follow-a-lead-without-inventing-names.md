@@ -2,7 +2,7 @@
 
 | field | value |
 |---|---|
-| mode | deep research, internet tools off |
+| mode | chat, internet tools off |
 | collections in scope | every collection |
 | data needed | `enron` |
 
@@ -29,7 +29,7 @@ any text in the Enron collection discussing former CIA working for Enron ? if ye
 
 ## Expected result
 
-The answer names Andre Le Gallo with his sources, and says that a report mentions four former CIA officers in John W. Presley's team without naming them. It names nobody else as a former CIA officer. A plan has no section whose premise is a fact that no document holds. A revised plan keeps the findings of the earlier version.
+The answer names Andre Le Gallo with his sources, and says that a report mentions four former CIA officers in John W. Presley's team without naming them. It names nobody else as a former CIA officer, and it does not take the domain `the-cia.net` as evidence of an employer. When it searches for the four unnamed officers, it keeps the findings it already has.
 
 ## Requirements exercised
 

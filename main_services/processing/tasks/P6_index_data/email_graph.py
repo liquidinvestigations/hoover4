@@ -192,9 +192,6 @@ class EdgeBuildStats:
         )
 
 
-def _ordered(a: tuple[str, str], b: tuple[str, str]) -> tuple[tuple[str, str], tuple[str, str]]:
-    """The pair sorted, so an undirected edge is stored exactly once."""
-    return (a, b) if a <= b else (b, a)
 
 
 def build_identity_edges(identities) -> tuple[list[EmailEdge], EdgeBuildStats]:

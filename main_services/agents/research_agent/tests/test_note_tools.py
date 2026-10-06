@@ -45,7 +45,7 @@ def test_the_note_description_states_what_the_summary_does():
 
 
 def test_write_note_is_in_every_run():
-    assert WRITE_NOTE in allowed_tools("planner", "collections")
+    assert WRITE_NOTE in allowed_tools("chat", "collections")
     snapshot = build_snapshot([], allowed_tools("chat", "all"), "chat")
     assert WRITE_NOTE in snapshot.callable_names()
 

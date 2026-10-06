@@ -56,13 +56,13 @@ def fake(monkeypatch):
 #: The whole row, in the order both writers select it.
 COLUMNS = [
     "session_id", "username", "title", "collections", "summary",
-    "use_internet_tools", "deep_research", "options_locked",
+    "use_internet_tools", "options_locked",
     "created_at", "updated_at", "is_deleted", "peak_context_tokens",
 ]
 
 
 def _row(peak: int) -> list:
-    return ["s1", "u1", "a title", ["c"], "a summary", 1, 0, 1,
+    return ["s1", "u1", "a title", ["c"], "a summary", 1, 1,
             "2020-01-01", "2020-01-01", 0, peak]
 
 

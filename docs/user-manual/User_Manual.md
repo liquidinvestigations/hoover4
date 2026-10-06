@@ -342,15 +342,10 @@ The speech-bubble icon opens a new conversation.
 
 ![A new chat](img/chat-new.png)
 
-Two switches sit under the composer:
-
-* **Deep Research**. A longer, multi-step investigation that runs in the background rather
-  than inline.
-* **Internet tools**. Lets the assistant search the open web and open pages in a real browser.
-  With it off, the assistant may only read the collections.
-
-Both are fixed for the whole conversation once you send the first message: the composer shows
-**🔒 locked for this conversation**. Start a new chat to change them.
+The Internet tools option permits web searches and browser reads.
+With this option off, the assistant reads the selected collections.
+The option stays fixed after the first message.
+Start a new conversation to change it.
 
 ### While it works
 

@@ -4,7 +4,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 
 | Module | Role |
 |---|---|
-| `composer.rs` | Textarea + **Deep Research** / **Internet tools** checkboxes + send arrow. The checkboxes disappear once the conversation has a turn, see below. No paperclip / upload control: documents enter via the processing pipeline. |
+| `composer.rs` | Textarea + **Internet tools** checkbox + send arrow. The checkbox disappears once the conversation has a turn, see below. No paperclip / upload control: documents enter via the processing pipeline. |
 | `gate_overlay.rs` | Non-dismissible overlay over the composer when a new turn cannot start. Names which reason applies: no provider, missing API key, or chat switched off. History stays readable. |
 | `locked_options.rs` | The two switches, read-only, above the transcript once they are frozen. |
 | `session_card.rs` | Homepage / history card showing title + summary. |
@@ -13,9 +13,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `tool_cards/result_cards.rs` | Result-page, read, citation, todo, plan, and question cards. |
 | `tool_cards/web_search_card.rs` | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
 | `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
-| `tool_cards/subagent_card.rs` | `run_subagent` rows of older turns: each sub-agent's state, live tool calls and partial text from the poll's `subagent_runs` while the batch is open, a depth 2 sub-agent under its parent, then the reports from the tool row's `tool_output`. |
 | `tool_cards/entities_card.rs` | `list_document_entities`: the two tiers apart, each rule-validated value a link to its explainer card in the document viewer. |
-| `plan_card.rs` | The plan card of a deep-research request, under the planner's answer row. It reads the plan run and the tree through `chat_plan_view`, sends approve, ask for changes and stop through `chat_decide_plan`, and reads the plan again every 3 s until the plan ends. Approve is disabled for a tree with no section. While the plan runs it lists the sections from `sections_json` and the live sub-agent runs from the poll, and the header says when the organizer combines the reports. From execution on it reads the section reports through `chat_plan_section_reports`. A request that has no planner answer yet shows its card from the plan run that this tab started. |
 | `tool_run_summary.rs` | The summary line of a run of consecutive tool rows, see below. |
 | `tool_disclosure.rs` | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
 | `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet, see below. |
@@ -26,26 +24,13 @@ The transcript and persisted answer nodes expose stable attributes for browser h
 The transcript root carries `data-chat-turn`, the state of the newest turn: `active`, `queued-model`, `queued-tool`, `interrupted` or `idle`.
 A browser test reads the end of a turn from it and from the user message seq (`data-chat-user`).
 
-## The plan card shows what each section produced
+## The internet option stays fixed
 
-A completed plan is not a claim that its research is complete. The header of a completed plan
-with failed sections says how many failed, and each section shows its outcome, its end reason
-and its cause. Each section report shows the parts of its typed report apart from each other:
-the final text, the latest 3 contributions, notes, artifacts, citations, document and page
-reads, and the execution cause. A read shows its span, and a failed read or an unverified
-quote says so. A report document with no typed data shows its text and says it is a legacy
-report. The card never infers success from a report that has no typed data.
-
-## The two switches are frozen after the first message
-
-They decide **which agent answers**, so changing them mid-thread would give a transcript
-where some answers had web access and some did not, with nothing on screen saying which.
-The first message writes them to the session; the composer then drops the checkboxes and
-`LockedOptionsBar` shows them disabled, in the position the user left them, above the
-transcript. Enforced server-side too (`db_chat::lock_session_options`). Hiding the
-control is the UI half, not the mechanism.
-
-`Internet tools` defaults to **on**.
+The first message stores the internet option in the session.
+The composer then hides its checkbox.
+`LockedOptionsBar` shows the stored option above the transcript.
+The backend enforces the stored option through `db_chat::lock_session_options`.
+Internet tools default to on.
 
 ## Markdown rendering
 
@@ -58,19 +43,11 @@ source. Any HTML in the source shows as the text it is, and `[x](javascript:…)
 literal text rather than becoming an anchor. The cost is nested lists and quotes-inside-
 lists, which a full CommonMark renderer would handle; the trade is deliberate.
 
-A `[Dn]` handle in a finished answer is a chip only when a `cite_documents` result of the
-conversation gave it, at any run depth. The page takes the union of two lists. One comes
-from the citation rows of the transcript. The other is `run_cited_handles`, which the
-server reads from every run thread of the session on each load and each poll. A sub-agent writes no transcript row, so its handles
-come only from that list. Any other handle renders as plain text marked "not cited", because
-no document stands behind it. A handle that stored citation results give to two documents
-renders as plain text marked "names more than one document". It links to neither document, and
-its sources strip entry names the conflict. The organizer answer of an approved plan has no
-citation row of its own. Its strip lists the documents of the `run_cited_refs` handles that its
-text uses. A sub-agent citation result names only the file hash, so the server takes the
-dataset and path from the typed reports of the plan. Records from before the handle store can hold such a
-conflict. The live answer of a turn keeps every handle a chip, because its
-citation rows can still be in the stream.
+A successful `cite_documents` result assigns a handle to a document in the conversation.
+The transcript renders each issued handle as a source control.
+An unknown handle shows a citation warning.
+A handle assigned to two documents shows the conflict and links to neither document.
+Live output can show a handle before its citation result arrives.
 
 The heading scale tops out at **body + 3px** (18px against 15px). Chat headings are labels
 inside a message, not page titles. A browser-default `h1` at 2em towers over the
@@ -82,7 +59,7 @@ conversation. Weight and colour carry the hierarchy instead. A test pins this.
 button opens the cards of the run. `tool_run_summary` writes the line from rules, for
 example `Searched 20 terms, read 8 documents, 2 failed, took 8m12s`. The kinds of call
 always appear in one order: corpus search, document reads, web search, web page reads,
-browser actions, entities, citations, sub-agents, plan calls, todo calls, other calls. The
+browser actions, entities, citations, todo calls, other calls. The
 unit of each kind comes from the arguments, such as the queries of a search or the hashes of
 a read. The time runs from the row before the run to the last row of the run, so it holds
 the model time between the calls. The line always shows the time, and says

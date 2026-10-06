@@ -88,11 +88,6 @@ class TestIsCanonicalPage:
         assert rp.is_canonical_page(self.SLIM_EMPTY)
         assert rp.is_canonical_page(self.SLIM_FULL)
 
-    def test_true_for_a_page_stored_before_the_slim_format(self):
-        old = rp.canonical_json({"success": True, "kind": "result_page", "tool_name": "t", "shape": "rows",
-                                 "items": [], "returned_units": 0, "total_units": 0,
-                                 "raw_artifact_id": None, "continuation": None})
-        assert rp.is_canonical_page(old)
 
     def test_true_for_the_budget_exhausted_error_and_false_for_another_error(self):
         assert rp.is_canonical_page(rp.canonical_json({"success": False, "error": "budget_exhausted", "message": "m"}))

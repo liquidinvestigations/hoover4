@@ -146,11 +146,11 @@ user an administrator.
 `common_workers`, `worker_mem_limit`, and the per-queue concurrency keys
 (`common_concurrency`, `tika_concurrency`, `ocr_concurrency`, `nlp_concurrency`,
 `embed_concurrency`, `indexing_concurrency`, `chat_model_concurrency`,
-`chat_low_latency_concurrency`, `research_concurrency`, `agent_tool_concurrency`). Empty
-means the default, except the four agent keys, which are set. A slot of
-`chat_model_concurrency` or `research_concurrency` is one model call in flight, and a slot
-of `agent_tool_concurrency` is one tool call in flight. The templates set 3, 4, 3 and 16.
-An empty key gives 3 for `chat_model_concurrency` and `research_concurrency`, 8 for
+`chat_low_latency_concurrency`, `agent_tool_concurrency`). Empty
+means the default, except the three agent keys, which are set. A slot of
+`chat_model_concurrency` is one model call in flight, and a slot
+of `agent_tool_concurrency` is one tool call in flight. The templates set 3, 4 and 16.
+An empty key gives 3 for `chat_model_concurrency` and 8 for
 `chat_low_latency_concurrency` and 16 for `agent_tool_concurrency`.
 
 `common_max_cached_workflows` (default `100`) is the number of workflow runs that each
@@ -163,19 +163,11 @@ slots, 1 by default. The email graph runs in one more process of its own, on
 
 `browser_max_contexts` is live Chromium processes on `hoover4-mcp-browser`, one per chat.
 `mcp_browser_mem_limit` is that container's memory ceiling.
-A research plan starts one sub-agent for each of its sections, and has at most 4 sections.
-No key changes that. `./deploy` prints a warning for an `agent_plan_run_budget` key and
-ignores it.
-`agent_packs_chat`, `agent_packs_planner` and `agent_packs_organizer` give the tool packs
-of the chat lead, the planner and the organizer, as a comma list of pack names or `all`.
-The default is `all` for each of them. A sub-agent has no key of its own. It runs one
-section of a plan and gets the packs of `agent_packs_organizer`. `deploy.py` prints a
-warning for an `agent_packs_subagent` key and ignores it. The packs are
-`catalogue`, `skills`, `collections`, `conversation`, `plan`, `web` and `browser`. A setting
-that names the retired `delegation` pack gets nothing from that name. Every run kind gets the `skills` pack (`search_skills`, `read_skill`,
-`read_tool`, `ask_user` and `write_note`), also when its setting leaves it out, because
-the system prompt of every run lists skills that the model can read with `read_skill`.
-A sub-agent cannot call `ask_user`. The agent service sends all
+`agent_packs_chat` selects chat tool packs as a comma-separated list or `all`.
+The available packs are `catalogue`, `skills`, `collections`, `conversation`, `web`, and `browser`.
+Every chat receives the `skills` pack.
+Removed research configuration keys produce a deployment warning and have no effect.
+The agent service sends all
 available tools with each model call and refuses an unknown pack name.
 The results of one model step share 24,000 bytes, and each call gets an equal part. No key
 changes that. `./deploy` prints a warning for an `agent_max_page_tokens` or
@@ -384,10 +376,10 @@ is the map back to the group above that explains it.
 - `regex_scanner_queue_depth`, `website_release_mode`, `search_max_parallelism`, `search_timeout_seconds`
 - `common_workers`, `common_concurrency`, `common_max_cached_workflows`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`, `indexing_workers`
-- `chat_model_concurrency`, `chat_low_latency_concurrency`, `research_concurrency`, `agent_tool_concurrency`
+- `chat_model_concurrency`, `chat_low_latency_concurrency`, `agent_tool_concurrency`
 - `max_held_polls_per_user`, `rate_chat_poll_per_minute`, `browser_max_contexts`
 - `mcp_browser_mem_limit`, `full_research_agent_workers`
-- `agent_packs_chat`, `agent_packs_planner`, `agent_packs_organizer`
+- `agent_packs_chat`
 - `agent_catalogue_match_count`
 - `agent_queue_wait_seconds`, `title_request_timeout_seconds`
 - `llm_request_timeout_seconds`

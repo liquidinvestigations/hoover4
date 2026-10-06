@@ -11,10 +11,7 @@ and result hold ids, counts and tool names.
   the call, a `compaction` row follows the `ai` message.
 * `tool_call` sends `POST /tool_call` for one stored call and writes its `tool` message and
   its finished tool row.
-* `prepare_continuation` adds the outcome of each section to the thread of a continued
-  organizer.
 * `record_step_failure` stores a `tool_unavailable` result for a tool step that failed.
-* `plan_has_sections` answers whether the planner's tree has a section: a child of the root.
 * `check_citations` checks the citation labels of an answer or a question, and writes the
   note of its one repair round when the check asks for one.
 * `write_empty_note` writes the note after the first reply with no text and no call. The
@@ -45,8 +42,8 @@ from temporalio.exceptions import CancelledError
 
 from tasks.heartbeat import with_heartbeat
 from tasks.P_agent.activities import (
-    CallRef, _add_section_reports, _finish_stream_rows_from, _insert_chat_row, agent_url_for,
-    call_refs, canonical_json,
+    CallRef, _finish_stream_rows_from, _insert_chat_row, agent_url_for,
+    call_refs,
 )
 from tasks.P_agent import thread_facts
 from tasks.P_agent.model_timeouts import STEP_HEARTBEAT_SECONDS
@@ -70,7 +67,7 @@ RETRY_MARKER_KEY = "retry_marker"
 EMPTY_RETRY_MARKER = "empty_reply"
 
 #: The chat role of a note to the model that the transcript shows: the empty-reply note,
-#: the citation note and the note of the planner's extra round. It is not
+#: and the citation note. It is not
 #: the user speaking. Mirrored as `ChatRole::Nag` in `website/common/src/chat_types.rs`.
 NOTE_ROLE = "nag"
 
@@ -79,11 +76,11 @@ NOTE_ROLE = "nag"
 #: `CITATION_NOTE_NAME` in `website/common/src/chat_types.rs`.
 CITATION_NOTE_NAME = "citation_check"
 
-#: The tools that read or change the plan tree or the todo list. The calls of one reply to
+#: The tools that read or change the todo list. The calls of one reply to
 #: these tools run one after the other, in the order of the reply, because each one reads
 #: the state that the call before it wrote.
 STATE_TOOLS = frozenset({
-    "write_plan", "read_plan", "write_todo", "edit_todo", "mark_todo", "read_todo",
+    "write_todo", "edit_todo", "mark_todo", "read_todo",
 })
 
 
@@ -104,13 +101,12 @@ def is_browser_tool(name: str) -> bool:
 def runs_in_order(call) -> bool:
     """Whether a call of a reply runs in the ordered chain of its reply: a call that the
     agent service classed `ordered`, or a call to one of `STATE_TOOLS`."""
-    return call.kind == "ordered" or (call.kind != "delegation" and call.name in STATE_TOOLS)
+    return call.kind == "ordered" or call.name in STATE_TOOLS
 
 
 def runs_in_browser(call) -> bool:
     """Whether a call of a reply runs in the browser chain of its reply."""
-    return (call.kind != "delegation" and not runs_in_order(call)
-            and is_browser_tool(call.name))
+    return not runs_in_order(call) and is_browser_tool(call.name)
 
 #: The stored result of a tool step that did not finish after its last attempt.
 TOOL_UNAVAILABLE_TEXT = ("The tool call did not finish ({error_class}). Try it again, or use "
@@ -213,18 +209,11 @@ class StepFailure(StepRef):
 def tool_idx(ai, position: int) -> int:
     """The thread index of the `tool` message of call `position` of the `ai` message.
 
-    The calls take the indexes after the `ai` message in reply order. A stored reply of an
-    older run placed its `delegation` calls after the others. When the reply has a
+    The calls take the indexes after the `ai` message in reply order. When the reply has a
     `compaction` row, the row takes the index after the `ai` message, and the results start
     one index later.
     """
-    entries = ai.tool_calls
-    first = ai.idx + 1 + (1 if ai.usage.get("compaction") else 0)
-    plain = [i for i, e in enumerate(entries) if e.get("kind") != "delegation"]
-    if position in plain:
-        return first + plain.index(position)
-    delegations = [i for i, e in enumerate(entries) if e.get("kind") == "delegation"]
-    return first + len(plain) + delegations.index(position)
+    return ai.idx + 1 + (1 if ai.usage.get("compaction") else 0) + position
 
 
 def reply_end_idx(ai) -> int:
@@ -253,8 +242,6 @@ def _step_run(row, params: StepRef) -> dict[str, Any]:
 
     return {
         "run_id": row.run_id,
-        "kind": row.kind,
-        "depth": row.depth,
         "username": row.username,
         "session_id": row.session_id,
         "allowed_collections": list(params.allowed_collections or []),
@@ -368,7 +355,7 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
             usage_json=json.dumps({"chat_seq": call.seq, "status": status, "measure": measure,
                                    "error_class": error_class, "evidence": evidence},
                                   default=str)))
-    if agent_runs.writes_transcript(row):
+    if True:
         _chat_row(row)(call.seq, "tool", **tool_row_fields(call.name, entry.get("args"), content, doc_refs))
         ToolCallWriter(row, turn_uuid, call.seq, call.name, entry.get("args")).finish()
 
@@ -382,8 +369,8 @@ def _read_thread(row):
 
 def _earlier_turns(row) -> list[dict[str, Any]]:
     """The stored threads of the earlier chat turns of the session, in turn order, as
-    `RunMessage` rows. Each thread is sent whole, with its tool calls and results. A
-    sub-agent thread is not sent, because its report is a result of the lead's thread."""
+    `RunMessage` rows. Each thread is sent whole, with its tool calls and results.
+    """
     from database import agent_runs
     from tasks.P_agent.stream_writer import prepare_thread, run_message
 
@@ -458,7 +445,7 @@ def _step_event(row, step: str, name: str, mode: str = "",
     attempt, task_queue, queue_wait_ms = events.attempt_fields()
     event = events.StepEvent(
         username=row.username, session_id=row.session_id, run_id=row.run_id,
-        run_kind=row.kind, step=step, name=name, task_queue=task_queue, attempt=attempt,
+        run_kind="chat", step=step, name=name, task_queue=task_queue, attempt=attempt,
         ok=False, mode=mode, tool_call_id=tool_call_id, queue_wait_ms=queue_wait_ms)
     started = time.monotonic()
     try:
@@ -538,7 +525,6 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
     or `empty_again` when the thread holds the retry marker (`is_retry_marker`). A reply of
     the citation round with no text keeps the answer row of the turn (`keeps_answer`).
     """
-    from database import agent_runs
     from tasks.P_agent.stream_writer import context_window_for, round_view
 
     first = row.next_seq if seq0 is None else seq0
@@ -549,7 +535,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
 
     repair_round = any(citations.is_citation_note(m) for m in earlier)
     if keeps_answer(row, ai.content or "", earlier):
-        transcript = agent_runs.writes_transcript(row)
+        transcript = True
         if transcript:
             _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid,
                                      row.start_seq)
@@ -563,7 +549,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
         # The workflow writes the retry marker at `next_idx` and asks again, once in a
         # thread. A second empty reply ends the run through `write_incomplete`.
         again = any(is_retry_marker(m) for m in earlier)
-        if agent_runs.writes_transcript(row):
+        if True:
             _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid,
                                      row.start_seq)
         writer.write(next_seq=first, model_steps=max(row.model_steps, params.step_no),
@@ -596,18 +582,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
     round_ai = [m for m in earlier[start:] if m.role == "ai"] + [ai]
     if any(m.usage.get("summarised") for m in round_ai):
         answer = answer + SUMMARY_NOTICE
-    plan_reference = ""
-    if row.plan_run_id and row.depth == 0:
-        from tasks.P_agent import plan_runs
-
-        # The organizer's final report names every failed section, whatever the model
-        # wrote. The planner's answer row carries the reference that the plan card reads.
-        if row.kind == "organizer":
-            answer = plan_runs.final_answer(row, answer)
-        elif row.kind == "planner":
-            answer = plan_runs.planner_visible_answer(row, answer)
-            plan_reference = plan_runs.plan_reference(row)
-    transcript = agent_runs.writes_transcript(row)
+    transcript = True
     written = row.model_steps >= params.step_no
     seq = row.next_seq - 1 if written and transcript else first
     if transcript:
@@ -618,7 +593,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
         _chat_row(row)(
             seq, "assistant",
             content=answer or "(the assistant returned an empty answer)",
-            plan_reference_json=plan_reference, reasoning=reasoning, model=model,
+            reasoning=reasoning, model=model,
             context_tokens=int(usage.get("input_tokens") or 0), peak_context_tokens=peak,
             context_window=context_window_for(model),
         )
@@ -720,7 +695,7 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
             and last_ai.usage.get("step_no") == params.step_no):
         earlier = [m for m in messages if m.idx < last_ai.idx]
         seq0 = row.next_seq
-        if (last_ai.usage.get("compaction") and agent_runs.writes_transcript(row)
+        if (last_ai.usage.get("compaction") and True
                 and row.model_steps < params.step_no):
             # The run row is not written, so the line is at `row.next_seq`, and the call
             # entries hold the seqs after it.
@@ -737,7 +712,7 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
     # wrote it.
     with _step_event(row, "model", params.llm_model or _step_run(row, params)["llm_model"],
                      mode=MODEL_STEP_MODE) as event:
-        transcript = agent_runs.writes_transcript(row)
+        transcript = True
         if activity.in_activity() and activity.info().attempt > 1 and transcript:
             _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid, row.next_seq)
         next_idx = max(m.idx for m in messages) + 1 if messages else 0
@@ -838,7 +813,7 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
 
     A call that already has a `tool` message returns its status and runs nothing. The
     request carries the idempotency key of the call, which is the same in every attempt,
-    so a plan tree tool applies one mutation once. A result that arrives after a stop, or
+    so a retried note write keeps its identity. A result that arrives after a stop, or
     after `record_step_failure` stored `tool_unavailable` for the call, is not written: the
     model already read the stored result. The run row is not written.
     """
@@ -918,12 +893,10 @@ def write_asked_answer(params: AskedAnswerParams) -> int:
     question = str((entry.get("args") or {}).get("question") or "")
     if not question:
         raise RuntimeError(f"run {row.run_id} has an empty question")
-    if agent_runs.writes_transcript(row):
-        from tasks.P_agent import plan_runs
-        reference = plan_runs.plan_reference(row) if row.kind == "planner" else ""
+    if True:
         # The model that asked, from the usage of the reply, as `write_incomplete` does.
         _chat_row(row)(row.next_seq, "assistant", content=question,
-                       plan_reference_json=reference, model=str(ai.usage.get("model") or ""))
+                       model=str(ai.usage.get("model") or ""))
         _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid, row.start_seq)
         next_seq = row.next_seq + 1
     else:
@@ -952,7 +925,7 @@ def _record_timeout_row(row, params: StepFailure) -> None:
         name = _step_run(row, params)["llm_model"]
     events.record(events.StepEvent(
         username=row.username, session_id=row.session_id, run_id=row.run_id,
-        run_kind=row.kind, step=params.step, mode=params.mode, name=name,
+        run_kind="chat", step=params.step, mode=params.mode, name=name,
         task_queue=params.task_queue, attempt=0, ok=False,
         tool_call_id=params.call.call_id if params.call is not None else "",
         error_class=params.error_class))
@@ -992,36 +965,6 @@ def record_step_failure(params: StepFailure) -> None:
                        error_class=params.error_class)
 
 
-@activity.defn
-@with_heartbeat
-def prepare_continuation(params: StepRef) -> None:
-    """Add the outcome of each section to the thread of a continued organizer
-    (`activities._add_section_reports`). A retry writes the message once."""
-    from database import agent_runs
-
-    row = _read_row(params)
-    if agent_runs.is_terminal(row) or not row.continues_run_id:
-        return
-    _add_section_reports(row, _read_thread(row))
-
-
-@activity.defn
-@with_heartbeat
-def plan_has_sections(params: StepRef) -> bool:
-    """Whether the newest snapshot of the planner's plan has a section, by the rule of
-    `agent_plans.sections`: a direct child of the root."""
-    from database import agent_plans
-
-    row = _read_row(params)
-    if not row.plan_run_id:
-        return False
-    plan_run = agent_plans.read_plan_run(row.username, row.session_id, row.plan_run_id)
-    if plan_run is None:
-        return False
-    snapshot = agent_plans.read_snapshot(row.username, row.session_id, plan_run.plan_id)
-    return bool(snapshot is not None and agent_plans.sections(snapshot))
-
-
 @dataclass
 class CitationCheckParams(StepRef):
     """The input of `check_citations`: the transcript seq of the note of the repair round.
@@ -1057,7 +1000,7 @@ def check_citations(params: CitationCheckParams) -> CitationRepair:
     if agent_runs.is_terminal(row) or row.end_reason:
         return CitationRepair(next_seq=params.seq)
     messages = _read_thread(row)
-    transcript = agent_runs.writes_transcript(row)
+    transcript = True
     if messages and citations.is_citation_note(messages[-1]):
         # A retry after the note: the chat row and the run row get the same writes again,
         # because the first attempt can have stopped before them.
@@ -1115,7 +1058,7 @@ def write_empty_note(params: EmptyNoteParams) -> int:
         agent_runs.RunMessageRow(idx=params.idx, role="human", content=EMPTY_REPLY_TEXT,
                                  usage_json=json.dumps({RETRY_MARKER_KEY: EMPTY_RETRY_MARKER}),
                                  run_id=row.run_id))
-    if not agent_runs.writes_transcript(row):
+    if not True:
         return params.seq
     _insert_chat_row(row.username, row.session_id, params.seq, NOTE_ROLE,
                      content=EMPTY_REPLY_TEXT)
@@ -1143,10 +1086,8 @@ def write_incomplete(params: IncompleteParams) -> int:
     """End the model steps of a run that stopped before an answer, with no model call.
 
     The result is `thread_facts.incomplete_text`: the reason, the newest text that the
-    model wrote in the thread, and the documents and searches of the stored results. An
-    organizer's result also names its failed sections, and a planner's row carries its plan
-    reference, as an answer does. For a run that writes the transcript, the result is the
-    assistant row at `row.next_seq`. The run row gets the result and `end_reason`. A retry
+    model wrote in the thread, and the documents and searches of the stored results. The
+    result is the assistant row at `row.next_seq`. The run row gets the result and `end_reason`. A retry
     after the run row write finds `end_reason` and writes nothing. Returns the next free seq.
     """
     from database import agent_runs
@@ -1156,21 +1097,11 @@ def write_incomplete(params: IncompleteParams) -> int:
         return row.next_seq
     messages = _read_thread(row)
     text = thread_facts.incomplete_text(messages, params.reason, params.limit)
-    plan_reference = ""
-    if row.plan_run_id and row.depth == 0:
-        from tasks.P_agent import plan_runs
-
-        if row.kind == "organizer":
-            text = plan_runs.final_answer(row, text)
-        elif row.kind == "planner":
-            text = plan_runs.planner_visible_answer(row, text)
-            plan_reference = plan_runs.plan_reference(row)
     seq = row.next_seq
-    if agent_runs.writes_transcript(row):
+    if True:
         last = _last_ai(messages)
         model = str(last.usage.get("model") or "") if last is not None else ""
-        _chat_row(row)(seq, "assistant", content=text, plan_reference_json=plan_reference,
-                       model=model)
+        _chat_row(row)(seq, "assistant", content=text, model=model)
         _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid,
                                  row.start_seq)
         seq += 1
@@ -1183,9 +1114,8 @@ __all__ = [
     "BROWSER_READ_TOOL", "BROWSER_TOOL_PREFIX", "EMPTY_REPLY_TEXT", "EMPTY_RESPONSE", "EmptyNoteParams",
     "INCOMPLETE_REASONS", "IncompleteParams", "ModelRequestRejected", "ModelStepParams",
     "CITATION_NOTE_NAME", "ModelStepResult", "NOTE_ROLE", "STEP_BUDGET", "StepFailure", "StepRef",
-    "ToolCallParams", "ToolCallResult", "canonical_json", "check_citations",
+    "ToolCallParams", "ToolCallResult", "check_citations",
     "CitationCheckParams", "CitationRepair",
-    "is_browser_tool", "is_retry_marker", "model_step", "plan_has_sections",
-    "prepare_continuation", "record_step_failure", "runs_in_browser", "runs_in_order",
+    "is_browser_tool", "is_retry_marker", "model_step", "record_step_failure", "runs_in_browser", "runs_in_order",
     "tool_call", "tool_idx", "write_asked_answer", "write_empty_note", "write_incomplete",
 ]

@@ -20,7 +20,6 @@ from agent_common.tool_packs import pack_of
 from research_agent import note_tools, skill_tools
 from research_agent.skill_store import (
     DEFAULT_PROFILE,
-    RUN_KIND_PROFILES,
     SkillContext,
     rank_matches,
 )
@@ -163,7 +162,7 @@ def build_snapshot(
     ).hexdigest()
     if skill_context is None:
         skill_context = SkillContext(
-            profile=RUN_KIND_PROFILES.get(kind, DEFAULT_PROFILE), tool_names=frozenset()
+            profile=DEFAULT_PROFILE, tool_names=frozenset()
         )
     skill_context = replace(skill_context, tool_names=frozenset(names))
     snapshot = CatalogueSnapshot(
@@ -220,8 +219,7 @@ def make_search_tool(snapshot_of) -> StructuredTool:
         description=(
             "Find tools for a task. Describe the task in a few words. Use it for work "
             "inside one document, a table, a "
-            "folder, facets, histograms, entity explainers, email details, PDF search, and "
-            "plan tools."
+            "folder, facets, histograms, entity explainers, email details and PDF search."
         ),
         args_schema=SearchAgentToolsArgs,
     )

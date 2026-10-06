@@ -1,4 +1,4 @@
-"""The served server lists the plan tools.
+"""The served server lists the todo tools.
 
 The image starts `python -m agent_todo_server`. Each case starts a fresh interpreter the same
 way, replaces `FastMCP.run` so that it prints the tools of the server it was asked to serve,
@@ -15,7 +15,6 @@ import sys
 import pytest
 
 TODO_TOOLS = {"read_todo", "write_todo", "edit_todo", "mark_todo"}
-PLAN_TOOLS = {"read_plan", "write_plan", "read_plan_document", "read_plan_report"}
 
 PROBE = """
 import asyncio, json, runpy, sys
@@ -41,7 +40,7 @@ def served_tools(module: str) -> set[str]:
 
 
 @pytest.mark.parametrize("module", ["agent_todo_server", "agent_todo_server.server"])
-def test_the_served_server_lists_the_plan_tools(module):
+def test_the_served_server_lists_the_todo_tools(module):
     tools = served_tools(module)
-    assert PLAN_TOOLS <= tools
+    assert TODO_TOOLS == tools
     assert TODO_TOOLS <= tools

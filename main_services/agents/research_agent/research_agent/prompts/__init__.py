@@ -50,9 +50,6 @@ AGENT_TEMPLATE = "agent.md.j2"
 PROFILE_KINDS: Dict[str, str] = {
     "internal_search": "chat",
     "full_research": "chat",
-    "research_subagent": "subagent",
-    "planner": "planner",
-    "organizer": "organizer",
 }
 
 #: The role line of each profile, as Jinja source. It reads `web_enabled` and
@@ -70,18 +67,6 @@ ROLE_LINES: Dict[str, str] = {
         "{% if not collections_hint %}\n\n"
         "This conversation can read no document collections.\n"
         "{% endif %}"
-    ),
-    "research_subagent": (
-        "You research one section of an approved research plan. Other researchers run the other\n"
-        "sections, and you cannot see their work. Answer your section and nothing else."
-    ),
-    "planner": (
-        "You plan a research project for a person who will read your plan before any research runs.\n"
-        "Do not answer the question yet. Build the plan, and then describe it."
-    ),
-    "organizer": (
-        "You combine the reports of an approved research plan. One researcher ran each section,\n"
-        "and the tree does not change now."
     ),
 }
 
@@ -130,14 +115,12 @@ def render(
     snapshot: Any,
     skills: Sequence[Skill],
     collections_hint: bool = True,
-    model_id: str = "",
     strict: bool = False,
 ) -> str:
     """Render the system prompt of one profile for one run.
 
     `snapshot` is the run's `CatalogueSnapshot`, and `skills` are its listed skills
-    (`skill_store.listed_skills`). `model_id` is the run's model, whose context window the
-    planner's role text states.
+    (`skill_store.listed_skills`).
 
     `strict` raises `UnboundToolError` when a listed skill names a tool that no pack holds,
     in its front matter or in its text. The tests render strict, and the running agent does
@@ -148,7 +131,7 @@ def render(
         raise KeyError(f"unknown agent profile: {profile!r}")
     tool_names = frozenset(snapshot.tools_by_name)
     ctx = SkillContext(profile=name, tool_names=tool_names,
-                       collections_hint=bool(collections_hint), model_id=model_id or "")
+                       collections_hint=bool(collections_hint))
     if strict:
         by_name = {skill.name: skill for skill in skills}
         for skill in skills:

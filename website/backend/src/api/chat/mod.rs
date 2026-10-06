@@ -27,8 +27,6 @@
 //!   An in-flight turn is left to finish.
 
 pub mod gate;
-pub mod llm_events;
-pub mod plans;
 pub mod run_queue;
 
 use std::time::{Duration, Instant};
@@ -37,7 +35,7 @@ use rand::RngCore;
 
 use common::chat_types::{
     citation_handles, title_from_message, ChatOptions, ChatPollResult, ChatRole, ChatSendResult, ChatSessionDetail,
-    ChatSessionItem, StreamToolRow, StreamTurn, SubagentBatchState, MAX_MESSAGE_CHARS,
+    ChatSessionItem, StreamToolRow, StreamTurn, MAX_MESSAGE_CHARS,
 };
 use common::current_user::CurrentUser;
 use time::format_description::well_known::Rfc3339;
@@ -82,7 +80,6 @@ pub async fn get_chat_session(
     let tail = stream_state(username, &session_id).await?;
     let (run_cited_handles, run_cited_refs) = run_citations(username, &session_id).await?;
     let todo_versions = todo_snapshots(username, &session_id, &messages).await?;
-    let subagent_batches = subagent_batches(username, &session_id, &messages).await?;
 
     let options = row.options();
     Ok(ChatSessionDetail {
@@ -106,7 +103,6 @@ pub async fn get_chat_session(
         run_cited_handles,
         run_cited_refs,
         todo_versions,
-        subagent_batches,
     })
 }
 
@@ -118,11 +114,7 @@ async fn run_citations(
     session_id: &str,
 ) -> anyhow::Result<(Vec<String>, Vec<common::chat_types::ChatDocRef>)> {
     let outputs = db_chat::session_citation_outputs(username, session_id).await?;
-    let mut refs = common::chat_types::citation_refs(outputs.iter().map(String::as_str));
-    if refs.iter().any(|r| r.collection_dataset.is_empty()) {
-        let known = db_chat::plans::session_report_citations(username, session_id).await?;
-        common::chat_types::fill_citation_identity(&mut refs, &known);
-    }
+    let refs = common::chat_types::citation_refs(outputs.iter().map(String::as_str));
     Ok((citation_handles(outputs.iter().map(String::as_str)), refs))
 }
 
@@ -159,30 +151,6 @@ async fn todo_snapshots(
     messages: &[common::chat_types::ChatMessageItem],
 ) -> anyhow::Result<Vec<common::chat_types::TodoSnapshot>> {
     db_chat::todo_snapshots(username, session_id, &todo_versions_in(messages)).await
-}
-
-fn subagent_batch_ids_in(messages: &[common::chat_types::ChatMessageItem]) -> Vec<String> {
-    let mut batch_ids = Vec::new();
-    for message in messages.iter().filter(|message| message.tool_name == "run_subagent") {
-        let root = serde_json::from_str::<serde_json::Value>(&message.tool_input).unwrap_or_default();
-        let input = root.get("input").unwrap_or(&root);
-        let Some(batch_id) = input.get("batch_id").and_then(|value| value.as_str()) else {
-            continue;
-        };
-        if !batch_id.is_empty() && !batch_ids.iter().any(|id| id == batch_id) {
-            batch_ids.push(batch_id.to_string());
-        }
-    }
-    batch_ids
-}
-
-async fn subagent_batches(
-    username: &str,
-    session_id: &str,
-    messages: &[common::chat_types::ChatMessageItem],
-) -> anyhow::Result<Vec<SubagentBatchState>> {
-    let rows = db_chat::subagent_batch_runs(username, session_id, &subagent_batch_ids_in(messages)).await?;
-    Ok(subagent_batch_states(&rows))
 }
 
 pub async fn delete_chat_session(user: &CurrentUser, session_id: String) -> anyhow::Result<()> {
@@ -341,10 +309,6 @@ pub async fn send_message(
     if stream_state(username, &session_id).await?.active {
         anyhow::bail!("a turn is already running in this conversation");
     }
-    // The pending plan rule: a plan that waits for review or runs owns the conversation.
-    if db_chat::plans::session_has_open_plan(username, &session_id).await? {
-        anyhow::bail!(plans::PLAN_PENDING_TEXT);
-    }
 
     // Everything that decides seqs happens before the dispatch, so the transcript this
     // returns is the one the poller continues from.
@@ -412,7 +376,6 @@ pub async fn send_message(
             "run_id": new_run_id(),
             "username": username,
             "session_id": &session_id,
-            "kind": "chat",
             "turn_seq": user_seq,
             "start_seq": start_seq,
             "turn_uuid": &turn_uuid,
@@ -527,10 +490,9 @@ impl Drop for HeldPollGuard {
 ///
 /// **Liveness comes from the transcript, the run rows and the stream table, and from
 /// nothing in this process.** A turn is unfinished when the last user row has no
-/// assistant or error row after it, or when a run of that turn is `running` or
-/// `waiting_for_children`. The second test holds a citation round and a delegation open,
-/// because both follow an assistant or tool row. The stream rows and the run rows say
-/// how recently something happened.
+/// assistant or error row after it, or when its agent run is `running`.
+/// A running row keeps a citation repair round active after the first answer.
+/// Stream and run timestamps identify the latest activity.
 ///
 /// A step that waits in its Temporal task queue for a free slot writes no row, and a long
 /// tool call writes no row while it runs. When the rows of an open turn are older than
@@ -549,14 +511,11 @@ impl Drop for HeldPollGuard {
 /// heartbeat from the moment it is accepted, and the worker keeps it beating.
 async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTail> {
     let (last_user_seq, last_answer_seq) = db_chat::turn_boundaries(username, session_id).await?;
-    // The runs of the last turn. A citation round writes an assistant row and then runs again,
-    // and a delegation waits for its sub-agents after its tool rows. In both cases the
-    // transcript test below reads the turn as closed while a run of it is still open.
+    // A citation repair round keeps the run open after its first answer.
     let runs = match last_user_seq {
         Some(user) => db_chat::turn_runs(username, session_id, user).await?,
         None => Vec::new(),
     };
-    let run_open = runs.iter().any(|r| r.is_open());
     let turn_open = turn_is_open(last_user_seq, last_answer_seq, &runs);
 
     let rows = db_chat::read_stream_rows(username, session_id).await?;
@@ -569,11 +528,6 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
         .map(|r| r.updated_at)
         .chain(runs.iter().map(|r| r.updated_ms))
         .max();
-    let subagent_runs = if run_open {
-        load_subagent_runs(username, session_id, &runs).await?
-    } else {
-        Vec::new()
-    };
     let now_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() as i64 / 1_000_000;
     let stall_ms = stream_stall().as_millis() as i64;
     let advancing = newest_ms.is_some_and(|ms| now_ms - ms <= stall_ms);
@@ -582,13 +536,9 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
     // ago. A turn that never wrote a stream row at all is not "interrupted": nothing has
     // claimed it yet, and `send_message` writes that row before it dispatches precisely
     // so the window does not exist for an accepted turn.
-    // A plan that waits for review or runs a long execution writes no stream rows for a
-    // while, so its turn is never reported as interrupted (the pending plan rule).
-    let plan_pending = db_chat::plans::session_has_open_plan(username, session_id).await?;
     // A step that waits for a slot writes no row, and a long tool call writes no row while
     // it runs. After the quiet time, Temporal says what the steps of the turn do. This
-    // holds for a plan run too: an organizer that waits for its sub-agents writes no row,
-    // and a sub-agent step that runs or waits for a slot keeps the turn active.
+    // identifies running and queued chat steps.
     let (working, queued_for) = if turn_is_quiet(turn_open, newest_ms, now_ms) {
         turn_step_state(&runs).await
     } else {
@@ -597,7 +547,6 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
     let (active, queued, interrupted) = run_queue::turn_verdict(
         turn_open,
         advancing || working,
-        plan_pending,
         newest_ms.is_some(),
         !queued_for.is_empty(),
     );
@@ -617,7 +566,7 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
         .collect();
     if live.is_empty() {
         return Ok(TurnTail {
-            stream: waiting_turn(subagent_runs, last_user_seq),
+            stream: None,
             active,
             queued,
             queued_for: queued_for.clone(),
@@ -636,7 +585,7 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
         .collect();
     if live.is_empty() {
         return Ok(TurnTail {
-            stream: waiting_turn(subagent_runs, last_user_seq),
+            stream: None,
             active,
             queued,
             queued_for: queued_for.clone(),
@@ -683,7 +632,6 @@ async fn stream_state(username: &str, session_id: &str) -> anyhow::Result<TurnTa
         tool_rows,
         updated_ms,
         server_now_ms: now_ms,
-        subagent_runs,
     };
 
     Ok(TurnTail {
@@ -700,8 +648,7 @@ const CHAT_QUIET_MS: i64 = 45_000;
 
 /// An open turn is quiet when it wrote no row, or its newest row or run update is older
 /// than [`CHAT_QUIET_MS`]. The poll then reads the step state of its `running` runs from
-/// Temporal. An open plan does not change the rule, because the sub-agents of a plan run
-/// are `running` runs of the same turn.
+/// Temporal.
 fn turn_is_quiet(turn_open: bool, newest_ms: Option<i64>, now_ms: i64) -> bool {
     turn_open && newest_ms.is_none_or(|ms| now_ms - ms > CHAT_QUIET_MS)
 }
@@ -733,7 +680,7 @@ async fn turn_step_state(runs: &[db_chat::AgentRunRow]) -> (bool, &'static str) 
 }
 
 /// A turn is open when its user row has no assistant or error row after it, or when a
-/// run of the turn is `running` or `waiting_for_children`.
+/// run of the turn is `running`.
 fn turn_is_open(
     last_user_seq: Option<u32>,
     last_answer_seq: Option<u32>,
@@ -748,235 +695,6 @@ fn turn_is_open(
         }
 }
 
-/// The in-flight turn while it has no live stream row and has sub-agent runs to show.
-///
-/// A delegating run writes its `run_subagent` tool rows and ends its stream rows, then
-/// waits for its sub-agents. The entries travel on an empty [`StreamTurn`], so the page
-/// shows the sub-agents and a working marker under the finished tool rows.
-fn waiting_turn(
-    subagent_runs: Vec<common::chat_types::SubagentRunEntry>,
-    last_user_seq: Option<u32>,
-) -> Option<StreamTurn> {
-    if subagent_runs.is_empty() {
-        return None;
-    }
-    Some(StreamTurn {
-        answer_seq: last_user_seq.unwrap_or(0) + 1,
-        content: String::new(),
-        reasoning: String::new(),
-        tool_rows: Vec::new(),
-        updated_ms: 0,
-        server_now_ms: time::OffsetDateTime::now_utc().unix_timestamp_nanos() as i64 / 1_000_000,
-        subagent_runs,
-    })
-}
-
-/// The `subagent_runs` of the poll: the entries of [`subagent_entries`], with the message
-/// tails of the running entries and the tool counts of every entry.
-async fn load_subagent_runs(
-    username: &str,
-    session_id: &str,
-    runs: &[db_chat::AgentRunRow],
-) -> anyhow::Result<Vec<common::chat_types::SubagentRunEntry>> {
-    let mut entries = subagent_entries(runs);
-    if entries.is_empty() {
-        return Ok(entries);
-    }
-    let threads: Vec<String> = entries.iter().map(|e| e.run_id.clone()).collect();
-    let running: Vec<String> = entries
-        .iter()
-        .filter(|e| e.state == "running")
-        .map(|e| e.run_id.clone())
-        .collect();
-    let counts: std::collections::HashMap<String, u64> =
-        db_chat::thread_tool_counts(username, session_id, &threads)
-            .await?
-            .into_iter()
-            .collect();
-    let tails = db_chat::thread_message_tails(
-        username,
-        session_id,
-        &running,
-        common::chat_types::SUBAGENT_MESSAGES_PER_RUN,
-    )
-    .await?;
-    for entry in &mut entries {
-        entry.tool_calls = counts.get(&entry.run_id).copied().unwrap_or(0) as u32;
-        if entry.state != "running" {
-            continue;
-        }
-        // The query returns the newest first. The card reads them oldest first.
-        let mut messages: Vec<&db_chat::RunMessageHead> =
-            tails.iter().filter(|m| m.thread == entry.run_id).collect();
-        messages.sort_by_key(|m| m.idx);
-        entry.messages = messages.into_iter().map(subagent_message).collect();
-    }
-    Ok(entries)
-}
-
-fn subagent_message(m: &db_chat::RunMessageHead) -> common::chat_types::SubagentMessage {
-    let calls = serde_json::from_str::<Vec<serde_json::Value>>(&m.tool_calls_json)
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|c| c.get("name").and_then(|n| n.as_str()).map(str::to_string))
-        .collect();
-    common::chat_types::SubagentMessage {
-        role: m.role.clone(),
-        content: m.text.clone(),
-        tool_name: m.tool_name.clone(),
-        calls,
-        is_final: m.is_final != 0,
-    }
-}
-
-/// The entries of the current delegation batches of one turn, without messages or tool
-/// counts.
-///
-/// For each depth 0 thread, take its newest run, which is the run that no other run
-/// continues. When that run waits for its children, list the children of its batch.
-/// For each listed thread, list the children of its newest waiting run the same way.
-/// Earlier runs of a thread also stay `waiting_for_children` until the last continuation
-/// ends, so reading every waiting run would list every past batch. The newest run of a
-/// thread is what bounds the list to 5 + 25 = 30 entries. A thread whose newest run no
-/// longer waits has a batch that ended, and its card reads the reports from the tool row.
-fn subagent_entries(runs: &[db_chat::AgentRunRow]) -> Vec<common::chat_types::SubagentRunEntry> {
-    let continued: std::collections::HashSet<&str> = runs
-        .iter()
-        .filter(|r| !r.continues.is_empty())
-        .map(|r| r.continues.as_str())
-        .collect();
-    // The newest run of a thread: the run of that thread that nothing continues.
-    fn newest_of<'a>(
-        runs: &'a [db_chat::AgentRunRow],
-        continued: &std::collections::HashSet<&str>,
-        thread: &str,
-    ) -> Option<&'a db_chat::AgentRunRow> {
-        runs.iter()
-            .filter(|r| r.thread == thread && !continued.contains(r.rid.as_str()))
-            .max_by_key(|r| r.started_ms)
-    }
-    let newest = |thread: &str| newest_of(runs, &continued, thread);
-    // The first runs of the batch that `waiting` started, in start order.
-    let children = |waiting: &db_chat::AgentRunRow| -> Vec<&db_chat::AgentRunRow> {
-        if waiting.state != "waiting_for_children" || waiting.delegated_batch.is_empty() {
-            return Vec::new();
-        }
-        runs.iter()
-            .filter(|r| {
-                r.parent_rid == waiting.rid
-                    && r.batch == waiting.delegated_batch
-                    && r.continues.is_empty()
-            })
-            .collect()
-    };
-    let entry = |first: &db_chat::AgentRunRow, parent_thread: &str| {
-        let last = newest(&first.thread).unwrap_or(first);
-        let objective = serde_json::from_str::<serde_json::Value>(&first.briefing)
-            .ok()
-            .and_then(|b| b.get("objective").and_then(|o| o.as_str()).map(str::to_string))
-            .unwrap_or_default();
-        let mut e = common::chat_types::SubagentRunEntry {
-            run_id: first.rid.clone(),
-            parent_run_id: parent_thread.to_string(),
-            depth: first.depth,
-            batch_id: first.batch.clone(),
-            tool_call_id: first.tool_call_id.clone(),
-            plan_node_id: first.plan_node.clone(),
-            state: last.state.clone(),
-            objective,
-            tool_calls: 0,
-            messages: Vec::new(),
-            report: String::new(),
-        };
-        if e.is_terminal() {
-            e.report = if last.error_head.is_empty() {
-                last.result_head.clone()
-            } else {
-                last.error_head.clone()
-            };
-        }
-        e
-    };
-
-    // Each entry with the start time of its batch's delegating run, for the cap below.
-    let mut out: Vec<(i64, common::chat_types::SubagentRunEntry)> = Vec::new();
-    let leads = runs
-        .iter()
-        .filter(|r| r.depth == 0 && r.continues.is_empty());
-    for lead in leads {
-        let Some(lead_last) = newest(&lead.thread) else {
-            continue;
-        };
-        for child in children(lead_last) {
-            out.push((lead_last.started_ms, entry(child, &lead.thread)));
-            if let Some(child_last) = newest(&child.thread) {
-                for grandchild in children(child_last) {
-                    out.push((child_last.started_ms, entry(grandchild, &child.thread)));
-                }
-            }
-        }
-    }
-    // The cap. A plan's organizer counts its runs against the plan budget, not the turn
-    // limit, so the 5 + 25 bound needs the cap to hold. Past it the newest batches stay.
-    if out.len() > SUBAGENT_ENTRIES_CAP {
-        out.sort_by_key(|(batch_ms, _)| std::cmp::Reverse(*batch_ms));
-        out.truncate(SUBAGENT_ENTRIES_CAP);
-    }
-    out.into_iter().map(|(_, e)| e).collect()
-}
-
-/// One state per depth-one sub-agent thread of each finished batch.
-///
-/// A continuation copies its first run's batch and tool call ids. The first row supplies
-/// the briefing and the last row supplies the state and report.
-fn subagent_batch_states(runs: &[db_chat::AgentRunRow]) -> Vec<SubagentBatchState> {
-    let continued: std::collections::HashSet<&str> = runs
-        .iter()
-        .filter(|run| !run.continues.is_empty())
-        .map(|run| run.continues.as_str())
-        .collect();
-    let mut threads: Vec<&str> = runs.iter().map(|run| run.thread.as_str()).collect();
-    threads.sort_unstable();
-    threads.dedup();
-    threads
-        .into_iter()
-        .filter_map(|thread| {
-            let first = runs
-                .iter()
-                .filter(|run| run.thread == thread)
-                .min_by_key(|run| run.started_ms)?;
-            let last = runs
-                .iter()
-                .filter(|run| run.thread == thread && !continued.contains(run.rid.as_str()))
-                .max_by_key(|run| run.started_ms)
-                .unwrap_or(first);
-            let task = serde_json::from_str::<serde_json::Value>(&first.briefing)
-                .ok()
-                .and_then(|briefing| {
-                    briefing
-                        .get("objective")
-                        .and_then(|objective| objective.as_str())
-                        .map(str::to_string)
-                })
-                .unwrap_or_default();
-            Some(SubagentBatchState {
-                batch_id: first.batch.clone(),
-                tool_call_id: first.tool_call_id.clone(),
-                task,
-                state: last.state.clone(),
-                report: if last.error_head.is_empty() {
-                    last.result_head.clone()
-                } else {
-                    last.error_head.clone()
-                },
-            })
-        })
-        .collect()
-}
-
-/// The most entries in the poll's `subagent_runs`: 5 depth 1 runs and 5 x 5 depth 2 runs.
-const SUBAGENT_ENTRIES_CAP: usize = 30;
-
 /// What the poll and the session load both need to know about the tail of a session.
 struct TurnTail {
     stream: Option<StreamTurn>,
@@ -989,29 +707,14 @@ struct TurnTail {
 }
 
 /// One version stamp for the poll's change detection. `updated_ms` moves on every
-/// stream write, the finished tail moves on every finalised row, and the hash of the
-/// sub-agent entries moves on every sub-agent message and state. Together they cover
-/// everything a client can see.
+/// stream write and the finished sequence moves on each finalised row.
 fn poll_sig(finished_max_seq: Option<u32>, tail: &TurnTail) -> String {
-    use std::hash::{Hash, Hasher};
     format!(
         "{}:{}:{}:{}:{}",
         finished_max_seq.map(|s| s.to_string()).unwrap_or_default(),
         tail.stream
             .as_ref()
-            .map(|t| {
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                serde_json::to_string(&t.subagent_runs)
-                    .unwrap_or_default()
-                    .hash(&mut hasher);
-                format!(
-                    "{}:{}:{}:{:x}",
-                    t.updated_ms,
-                    t.content.len(),
-                    t.tool_rows.len(),
-                    hasher.finish()
-                )
-            })
+            .map(|t| format!("{}:{}:{}", t.updated_ms, t.content.len(), t.tool_rows.len()))
             .unwrap_or_default(),
         tail.active,
         tail.interrupted,
@@ -1076,7 +779,6 @@ pub async fn poll_chat(
             }
             let (run_cited_handles, run_cited_refs) = run_citations(username, &session_id).await?;
             let todo_versions = todo_snapshots(username, &session_id, &messages).await?;
-            let subagent_batches = subagent_batches(username, &session_id, &messages).await?;
             return Ok(ChatPollResult {
                 messages,
                 stream: tail.stream,
@@ -1087,7 +789,6 @@ pub async fn poll_chat(
                 run_cited_handles,
                 run_cited_refs,
                 todo_versions,
-                subagent_batches,
                 sig: current_sig,
             });
         }
@@ -1100,9 +801,7 @@ pub async fn poll_chat(
 /// Three steps, in this order:
 ///
 /// 1. Write the stop row of the turn with a synchronous insert. A run whose workflow
-///    starts after this, such as a sub-agent that a delegation is starting now, reads the
-///    row in `open_run` and closes as `cancelled`, and a fan-in that reads it starts no
-///    continuation.
+///    starts after this reads the row in `open_run` and closes as `cancelled`.
 /// 2. Cancel the workflow of every `running` run of the turn, read from `agent_runs`.
 ///    `AgentRun` catches the cancellation and writes the ending of the run. A run that
 ///    waits for its children has no open workflow, and its children end it.
@@ -1186,157 +885,6 @@ fn stream_stall() -> Duration {
     Duration::from_secs(secs.clamp(5, 3600))
 }
 
-/// Start a deep-research request: a plan run whose first run is a planner.
-///
-/// The planner builds the plan tree and answers with an orientation. The plan then waits
-/// for review with no workflow open, and [`plans::decide_plan`] starts each later run. The
-/// planner runs on `research-queue`, so a research run never sits behind a chat turn, and
-/// a chat turn never sits behind it.
-///
-/// The internet switch is the conversation's frozen value, which `lock_session_options`
-/// returns. The request's value is ignored once the conversation is locked, as for a chat
-/// turn.
-///
-/// Returns the plan run id, or the retry delay of a rate limit.
-pub async fn start_research_task(
-    user: &CurrentUser,
-    session_id: String,
-    message: String,
-    requested_options: ChatOptions,
-) -> anyhow::Result<Result<String, u64>> {
-    gate::require_chat_open().await?;
-    let username = user.username.as_str();
-
-    if let Err(e) = check_and_record(username, RateLimitKind::ChatMessage) {
-        // Nothing written, consistent with send_message's rate-limit path.
-        return Ok(Err(e.retry_after_seconds));
-    }
-
-    let message = message.trim().to_string();
-    if message.is_empty() {
-        anyhow::bail!("message is empty");
-    }
-    if message.chars().count() > MAX_MESSAGE_CHARS {
-        anyhow::bail!("message is too long (max {MAX_MESSAGE_CHARS} characters)");
-    }
-
-    let session = db_chat::get_session(username, &session_id)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
-    let permitted = list_permitted_collections(user).await?;
-    let allowed = intersect_collections(&session.collections, &permitted);
-
-    // Deep research reserves transcript seqs exactly like a chat turn, so it takes the
-    // same lock, and it refuses rather than waits, as `send_message` does.
-    let _guard = db_chat::turn_lock(username, &session_id)
-        .try_lock_owned()
-        .map_err(|_| anyhow::anyhow!("a turn is already running in this conversation"))?;
-    if stream_state(username, &session_id).await?.active {
-        anyhow::bail!("a turn is already running in this conversation");
-    }
-    if db_chat::plans::session_has_open_plan(username, &session_id).await? {
-        anyhow::bail!(plans::PLAN_PENDING_TEXT);
-    }
-
-    // Deep research is one of the two frozen switches. A thread that started as a research
-    // thread stays one. The returned options are the frozen ones.
-    let frozen = db_chat::lock_session_options(
-        username,
-        &session_id,
-        ChatOptions {
-            deep_research: true,
-            ..requested_options
-        },
-    )
-    .await?;
-
-    // The model of the whole plan: the default of the conversation's profile. The worker
-    // freezes it in the plan's execution settings. Resolved before any row is written, as
-    // in `send_message`, so a failure leaves no open turn.
-    let llm_model = crate::api::admin::llm::resolve_chat_model(
-        None,
-        crate::api::admin::llm::ChatProfile::of(frozen),
-    )
-    .await?;
-
-    let is_first_turn = db_chat::list_messages(username, &session_id).await?.is_empty();
-    let turn_uuid = crate::db_auth::sessions::generate_session_id();
-    let user_seq = db_chat::next_seq(username, &session_id).await?;
-    db_chat::append_message(
-        username,
-        &session_id,
-        user_seq,
-        ChatRole::User,
-        &message,
-        AppendMessageExtras {
-            message_uuid: turn_uuid.clone(),
-            ..Default::default()
-        },
-    )
-    .await?;
-    db_chat::detect_seq_collision(username, &session_id, user_seq, &turn_uuid).await?;
-    if is_first_turn {
-        db_chat::touch_session(username, &session_id, Some(&title_from_message(&message)), None)
-            .await?;
-    } else {
-        db_chat::touch_session(username, &session_id, None, None).await?;
-    }
-
-    // The empty stream row tells the poller that the turn exists before the worker picks
-    // the run up, as in `send_message`.
-    let start_seq = user_seq + 1;
-    db_chat::append_stream_row(
-        username,
-        &session_id,
-        start_seq,
-        ChatRole::Assistant,
-        "",
-        "",
-        "",
-        0,
-        false,
-        &turn_uuid,
-    )
-    .await?;
-
-    let plan_run_id = new_run_id();
-    if let Err(e) = start_agent_workflow(AgentWorkflowStart {
-        workflow_type: "AgentRun",
-        task_queue: CHAT_TASK_QUEUE,
-        workflow_id: &plans::planner_workflow_id(&plan_run_id, 0),
-        input: plans::research_start_input(
-            frozen,
-            &llm_model,
-            &new_run_id(),
-            &plan_run_id,
-            username,
-            &session_id,
-            user_seq,
-            &turn_uuid,
-            &allowed,
-        ),
-    })
-    .await
-    {
-        tracing::error!("could not start the research plan for {session_id}: {e:#}");
-        let _ = db_chat::append_message(
-            username,
-            &session_id,
-            start_seq,
-            ChatRole::Error,
-            &format!("The research plan could not be started: {e}"),
-            AppendMessageExtras {
-                message_uuid: turn_uuid.clone(),
-                ..Default::default()
-            },
-        )
-        .await;
-        let _ = db_chat::mark_stream_final(username, &session_id).await;
-        return Err(e);
-    }
-    Ok(Ok(plan_run_id))
-}
-
 /// Every agent turn running anywhere right now. Admin only.
 ///
 /// A Temporal visibility query, not a registry in this process. That is the difference
@@ -1344,10 +892,7 @@ pub async fn start_research_task(
 /// see a turn started before the last website restart, and kept listing one whose
 /// process died. A restart mid-turn left a run in this panel for ever.
 ///
-/// Chat runs, sub-agent runs and research turns are all here, one entry for each open
-/// workflow, so a delegated turn shows its lead and each sub-agent that runs. An admin
-/// hunting "who is on the GPU" wants one table rather than a page that lists half of them
-/// and links elsewhere for the rest.
+/// Each open chat workflow has one entry.
 ///
 /// The session header behind each run is read from ClickHouse rather than carried in the
 /// workflow's memo: the title changes when the summariser writes a better one, and a memo
@@ -1399,7 +944,6 @@ pub async fn admin_list_live_runs(
             session_id: run.session_id,
             title: session.title.clone(),
             message_preview,
-            deep_research: options.deep_research,
             internet_tools: options.internet_tools,
             running_ms: now_ms.saturating_sub(run.started_ms).max(0) as u64,
             started_at: run.started_at,
@@ -1454,7 +998,7 @@ fn require_admin(user: &CurrentUser) -> anyhow::Result<()> {
 /// presents as chat hanging, so the queue names move in the same patch or not at all.
 const CHAT_TASK_QUEUE: &str = "chat-queue";
 
-/// The queue of the `model_step` activities of a chat turn and its sub-agents. The website
+/// The queue of the `model_step` activities of a chat turn. The website
 /// does not address this name. It is declared here so the queue names cannot drift from
 /// the Python worker that polls them. One slot is one model call in flight.
 #[allow(dead_code)]
@@ -1584,8 +1128,7 @@ struct RunningWorkflow {
 
 /// Every running `AgentRun`.
 ///
-/// An `AgentRun` takes its session and turn from its row in `agent_runs`, because a
-/// sub-agent or a continuation has the workflow id `run-{run_id}`, which names neither.
+/// `AgentRun` reads its session and turn identifiers from its stored run row.
 /// A lead whose row `open_run` has not written yet falls back to its workflow id, which
 /// is `chat-{session_id}-{start_seq}`.
 async fn list_running_agent_workflows() -> anyhow::Result<Vec<RunningWorkflow>> {
@@ -1627,20 +1170,12 @@ async fn list_running_agent_workflows() -> anyhow::Result<Vec<RunningWorkflow>> 
         open.push((workflow_id.to_string(), started_at, started_ms));
     }
 
-    let ids: Vec<String> = open.iter().map(|(id, _, _)| id.clone()).collect();
-    let rows = db_chat::runs_by_workflow_ids(&ids).await?;
-    let by_workflow: std::collections::HashMap<&str, &db_chat::AgentRunRow> =
-        rows.iter().map(|r| (r.workflow_id.as_str(), r)).collect();
-
     let mut out = Vec::new();
     for (workflow_id, started_at, started_ms) in open {
-        let (session_id, turn_seq) = match by_workflow.get(workflow_id.as_str()) {
-            Some(row) => (row.sid.clone(), row.turn_seq),
-            None => match split_agent_workflow_id(&workflow_id) {
-                Some((session_id, start_seq)) => (session_id, start_seq.saturating_sub(1)),
-                None => continue,
-            },
+        let Some((session_id, start_seq)) = split_agent_workflow_id(&workflow_id) else {
+            continue;
         };
+        let turn_seq = start_seq.saturating_sub(1);
         out.push(RunningWorkflow {
             workflow_id,
             session_id,
@@ -1731,186 +1266,26 @@ mod tests {
         assert_eq!(preview(&long).chars().count(), PREVIEW_CHARS + 1);
     }
 
-    fn run(rid: &str, depth: u8, state: &str) -> db_chat::AgentRunRow {
+    fn run(rid: &str, state: &str) -> db_chat::AgentRunRow {
         db_chat::AgentRunRow {
-            rid: rid.into(),
-            owner: "u".into(),
-            sid: "s".into(),
-            turn_seq: 1,
-            thread: rid.into(),
-            parent_rid: String::new(),
-            batch: String::new(),
-            continues: String::new(),
-            delegated_batch: String::new(),
-            depth,
-            kind: if depth == 0 { "chat".into() } else { "subagent".into() },
             state: state.into(),
             workflow_id: format!("run-{rid}"),
             queue: "chat-model-queue".into(),
-            briefing: String::new(),
-            tool_call_id: String::new(),
-            plan_node: String::new(),
-            result_head: String::new(),
-            error_head: String::new(),
             started_ms: 0,
             updated_ms: 0,
         }
-    }
-
-    fn child(rid: &str, parent: &str, batch: &str, call: &str, depth: u8, state: &str, at: i64) -> db_chat::AgentRunRow {
-        let mut r = run(rid, depth, state);
-        r.parent_rid = parent.into();
-        r.batch = batch.into();
-        r.tool_call_id = call.into();
-        r.briefing = format!("{{\"objective\":\"task {rid}\"}}");
-        r.started_ms = at;
-        r
-    }
-
-    fn continuation(rid: &str, of: &db_chat::AgentRunRow, state: &str, at: i64) -> db_chat::AgentRunRow {
-        let mut r = of.clone();
-        r.rid = rid.into();
-        r.continues = of.rid.clone();
-        r.state = state.into();
-        r.delegated_batch = String::new();
-        r.briefing = String::new();
-        r.started_ms = at;
-        r
     }
 
     #[test]
     fn a_citation_round_keeps_the_turn_open() {
         // A citation round: the assistant row at seq 3 follows the user row at seq 1, and the
         // lead run is still running. The transcript test alone reads the turn as closed.
-        let lead = run("lead", 0, "running");
+        let lead = run("lead", "running");
         assert!(turn_is_open(Some(1), Some(3), &[lead]));
-        let done = run("lead", 0, "completed");
+        let done = run("lead", "completed");
         assert!(!turn_is_open(Some(1), Some(3), &[done]));
         assert!(turn_is_open(Some(1), None, &[]));
         assert!(!turn_is_open(None, None, &[]));
-    }
-
-    #[test]
-    fn a_delegation_keeps_the_turn_open() {
-        let mut lead = run("lead", 0, "waiting_for_children");
-        lead.delegated_batch = "b0".into();
-        let kid = child("k1", "lead", "b0", "c1", 1, "running", 1);
-        assert!(turn_is_open(Some(1), Some(1), &[lead, kid]));
-    }
-
-    #[test]
-    fn a_quiet_delegation_asks_temporal_for_the_subagent_steps() {
-        // An organizer waits for its children, and a sub-agent runs a tool call that
-        // writes no row for five minutes. The newest row is three minutes old.
-        let now = 1_000_000_000;
-        let mut lead = run("lead", 0, "waiting_for_children");
-        lead.delegated_batch = "b0".into();
-        let kid = child("k1", "lead", "b0", "c1", 1, "running", 1);
-        let open = turn_is_open(Some(1), Some(3), &[lead, kid]);
-        assert!(turn_is_quiet(open, Some(now - 180_000), now));
-        // Temporal says the sub-agent's tool step runs on a worker, so the turn is active
-        // although the plan is open and no row moved within the stall window.
-        let (active, queued, interrupted) = run_queue::turn_verdict(open, true, true, true, false);
-        assert!(active && !queued && !interrupted);
-        // A fresh row needs no Temporal read, and a closed turn is never quiet.
-        assert!(!turn_is_quiet(true, Some(now - 1_000), now));
-        assert!(!turn_is_quiet(false, None, now));
-        assert!(turn_is_quiet(true, None, now));
-    }
-
-    #[test]
-    fn a_delegated_turn_stays_open_until_its_last_run_ends() {
-        // The run rows of one delegated turn, in the order the worker writes them. The
-        // transcript already holds an answer row after the user row at every step.
-        let mut lead = run("lead", 0, "waiting_for_children");
-        lead.delegated_batch = "b0".into();
-        let k1 = child("k1", "lead", "b0", "c1", 1, "running", 1);
-        let k2 = child("k2", "lead", "b0", "c2", 1, "running", 2);
-        let ended = |r: &db_chat::AgentRunRow| {
-            let mut r = r.clone();
-            r.state = "completed".into();
-            r
-        };
-        // One child ended, and then both, before the continuation row exists.
-        assert!(turn_is_open(Some(1), Some(3), &[lead.clone(), ended(&k1), k2.clone()]));
-        assert!(turn_is_open(Some(1), Some(3), &[lead.clone(), ended(&k1), ended(&k2)]));
-        // The continuation runs. `write_ending` ends the original lead first.
-        let cont = continuation("cont", &lead, "running", 3);
-        assert!(turn_is_open(Some(1), Some(3), &[lead.clone(), ended(&k1), ended(&k2), cont.clone()]));
-        assert!(turn_is_open(Some(1), Some(3), &[ended(&lead), ended(&k1), ended(&k2), cont.clone()]));
-        // Only the terminal row of the last run closes the turn.
-        assert!(!turn_is_open(Some(1), Some(3), &[ended(&lead), ended(&k1), ended(&k2), ended(&cont)]));
-    }
-
-    #[test]
-    fn the_poll_lists_only_the_newest_batch_of_each_thread() {
-        // The lead delegated batch b0 (two children), was continued by lead2, which
-        // delegated batch b1 (one child). The chain rule keeps lead waiting, but only b1
-        // is listed. Child k3 delegated batch b2 and was continued by k3c, which runs.
-        let mut lead = run("lead", 0, "waiting_for_children");
-        lead.delegated_batch = "b0".into();
-        let k1 = child("k1", "lead", "b0", "c1", 1, "completed", 1);
-        let k2 = child("k2", "lead", "b0", "c1", 1, "completed", 2);
-        let mut lead2 = continuation("lead2", &lead, "waiting_for_children", 3);
-        lead2.delegated_batch = "b1".into();
-        let mut k3 = child("k3", "lead2", "b1", "c2", 1, "waiting_for_children", 4);
-        k3.delegated_batch = "b2".into();
-        let g1 = child("g1", "k3", "b2", "d1", 2, "completed", 5);
-        let mut k3c = continuation("k3c", &k3, "running", 6);
-        k3c.delegated_batch = String::new();
-        let entries = subagent_entries(&[lead.clone(), k1, k2, lead2, k3, g1, k3c]);
-        let ids: Vec<&str> = entries.iter().map(|e| e.run_id.as_str()).collect();
-        // k3's newest run k3c no longer waits, so batch b2 ended and g1 leaves the poll.
-        assert_eq!(ids, vec!["k3"]);
-        assert_eq!(entries[0].state, "running");
-        assert_eq!(entries[0].batch_id, "b1");
-        assert_eq!(entries[0].tool_call_id, "c2");
-        assert_eq!(entries[0].parent_run_id, "lead");
-        assert_eq!(entries[0].objective, "task k3");
-    }
-
-    #[test]
-    fn a_depth_2_batch_nests_under_its_thread_and_carries_reports() {
-        let mut lead = run("lead", 0, "waiting_for_children");
-        lead.delegated_batch = "b0".into();
-        let mut k1 = child("k1", "lead", "b0", "c1", 1, "waiting_for_children", 1);
-        k1.delegated_batch = "b1".into();
-        let mut g1 = child("g1", "k1", "b1", "d1", 2, "completed", 2);
-        g1.result_head = "found it".into();
-        let mut g2 = child("g2", "k1", "b1", "d1", 2, "failed", 3);
-        g2.error_head = "timed out".into();
-        let entries = subagent_entries(&[lead, k1, g1, g2]);
-        let shape: Vec<(&str, &str, u8, &str)> = entries
-            .iter()
-            .map(|e| (e.run_id.as_str(), e.parent_run_id.as_str(), e.depth, e.report.as_str()))
-            .collect();
-        assert_eq!(
-            shape,
-            vec![("k1", "lead", 1, ""), ("g1", "k1", 2, "found it"), ("g2", "k1", 2, "timed out")]
-        );
-    }
-
-    #[test]
-    fn an_ended_batch_leaves_the_poll() {
-        let mut lead = run("lead", 0, "waiting_for_children");
-        lead.delegated_batch = "b0".into();
-        let k1 = child("k1", "lead", "b0", "c1", 1, "completed", 1);
-        let lead2 = continuation("lead2", &lead, "running", 2);
-        assert!(subagent_entries(&[lead, k1, lead2]).is_empty());
-    }
-
-    #[test]
-    fn a_finished_batch_keeps_one_state_for_a_continued_thread() {
-        let first = child("first", "lead", "batch", "call", 1, "waiting_for_children", 1);
-        let mut last = continuation("last", &first, "completed", 2);
-        last.result_head = "reported".into();
-        let states = subagent_batch_states(&[first, last]);
-        assert_eq!(states.len(), 1);
-        assert_eq!(states[0].batch_id, "batch");
-        assert_eq!(states[0].tool_call_id, "call");
-        assert_eq!(states[0].task, "task first");
-        assert_eq!(states[0].state, "completed");
-        assert_eq!(states[0].report, "reported");
     }
 
     #[test]

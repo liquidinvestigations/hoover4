@@ -29,16 +29,6 @@ import pyarrow as pa
 log = logging.getLogger(__name__)
 
 
-def key_for_run(run) -> str:
-    """Return the todo key of an agent run.
-
-    A planner and a sub-agent own separate lists. A chat lead and an organizer use the
-    conversation list that the page reads.
-    """
-    if run.kind == "subagent":
-        return str(run.thread_id)
-    return str(run.run_id if run.kind == "planner" else run.session_id)
-
 #: Every status an item can hold. The last two are resolved, the first two are open.
 ITEM_STATUSES = ("pending", "in_progress", "done", "cancelled")
 

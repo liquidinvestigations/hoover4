@@ -1,37 +1,8 @@
-"""Typed evidence of tool results, and the report of a run thread.
+"""Store typed evidence from tool results.
 
-**Evidence.** `_write_tool_result` stores the evidence of each tool result in the `evidence`
-list of the `usage_json` of its `tool` message, at every run depth. `normalize` makes the
-list from the result, the call arguments and the `doc_refs` that the collection server
-sent beside the page. Each entry has this shape.
-
-| key | value |
-|---|---|
-| `version` | `EVIDENCE_VERSION` |
-| `source` | `{thread_id, message_idx, item_key}` |
-| `kind` | `document_read`, `discovery`, `citation`, `note` or `artifact` |
-| `status` | `ok`, `partial` or `error` |
-| `reference` | the document, citation, note, page or artifact identity |
-| `range` | the page, byte or character span of a read, when the result states it |
-| `error` | the error text of a failed item |
-
-The `source` names the logical thread and the index of the message in it, so an entry keeps
-its identity when a continuation runs the thread under another run id. `item_key` names one
-item of the result: several items of one message have distinct keys. A search result gives
-`discovery` entries only, never `document_read`. A failed item stays `error` when its batch
-succeeded. A read that the page cut is `partial`, with the span that the page states.
-
-A tool message stored before this module has no `evidence` list. `thread_evidence` then
-normalizes its stored content with no `doc_refs`, so it gives only what that content shows.
-
-**The report.** `project` is a pure function of the committed messages and the run state.
-It selects the final answer, the latest `RECENT_TEXTS` texts that the model wrote (never
-its reasoning and never a note to the model), the evidence lists, the calls with no result,
-and the citation check of the answer. `render` writes the text body. `materialize` writes
-both as the `report` and `report_data` documents of a plan sub-agent thread, keyed by the
-thread's first run. `ensure_reports` writes a missing pair from the committed messages, with
-no model call, no tool call and no change of state. `read_run_report` projects the thread of
-any run of the owner, and a chat run has no plan document.
+Each entry records its source, kind, status, reference, span, and error.
+Search results record discovery. Document text and table cells record reads.
+The worker stores these entries in each tool message's usage.
 """
 
 from __future__ import annotations
@@ -44,7 +15,6 @@ from typing import Any, Iterable, Optional
 log = logging.getLogger(__name__)
 
 EVIDENCE_VERSION = 1
-REPORT_VERSION = 1
 
 KIND_READ = "document_read"
 KIND_DISCOVERY = "discovery"
@@ -56,25 +26,11 @@ STATUS_OK = "ok"
 STATUS_PARTIAL = "partial"
 STATUS_ERROR = "error"
 
-#: The texts of the model that a report selects, newest last.
-RECENT_TEXTS = 3
-
 #: The most entries of one kind that one tool message stores. A result page holds fewer.
 MAX_ENTRIES_PER_MESSAGE = 60
 
-#: The most entries of each list of a report. The report counts the entries it left out.
-MAX_REPORT_ENTRIES = 400
-
 #: The most characters of a note, a quote or an error text in an entry.
 MAX_ENTRY_TEXT = 2000
-
-#: The tools whose result reads the text of a document.
-READ_TOOLS = frozenset({"read_documents", "read_more", "read_page", "table_page",
-                        "table_cell"})
-
-#: The report document kinds.
-REPORT_KIND = "report"
-REPORT_DATA_KIND = "report_data"
 
 #: The `cut` text of a `read_documents` item: `<shown> of <total> bytes`.
 _CUT_TEXT = re.compile(r"^\s*(\d+)\s+of\s+(\d+)\s+bytes")
@@ -440,7 +396,7 @@ def normalize(tool_name: str, args: Any, content: str, status: str,
         entries = _citations(parsed, args, doc_refs, error)
     elif tool_name == "write_note":
         entries = _note(parsed, error)
-    elif error or tool_name == "run_subagent":
+    elif error:
         entries = []
     else:
         entries = _discovery(tool_name, parsed, args, doc_refs)
@@ -472,39 +428,12 @@ def with_source(entries: Iterable[dict], thread_id: str, message_idx: int) -> li
     return out
 
 
-def _call_args(messages, message) -> dict:
-    for m in messages:
-        if m.role == "ai":
-            for entry in m.tool_calls:
-                if str(entry.get("id") or "") == message.tool_call_id:
-                    args = entry.get("args")
-                    return args if isinstance(args, dict) else {}
-    return {}
 
 
-def message_evidence(messages, message, thread_id: str) -> tuple[list[dict], bool]:
-    """The evidence of one stored `tool` message, and whether it is legacy (no stored
-    list)."""
+def message_evidence(message) -> list[dict]:
+    """Read the stored evidence of one tool message."""
     stored = message.usage.get("evidence")
-    if isinstance(stored, list):
-        return [e for e in stored if isinstance(e, dict)], False
-    entries = normalize(message.tool_name or "", _call_args(messages, message),
-                        message.content or "", str(message.usage.get("status") or "ok"))
-    return with_source(entries, thread_id, message.idx), True
-
-
-def thread_evidence(messages, thread_id: str) -> tuple[list[dict], int]:
-    """Every evidence entry of a thread in message order, and the count of legacy tool
-    messages among them."""
-    out: list[dict] = []
-    legacy = 0
-    for message in messages:
-        if message.role != "tool":
-            continue
-        entries, old = message_evidence(messages, message, thread_id)
-        legacy += int(old)
-        out.extend(entries)
-    return out, legacy
+    return [entry for entry in stored if isinstance(entry, dict)] if isinstance(stored, list) else []
 
 
 # ------------------------------------------------------------------ citation labels
@@ -593,338 +522,6 @@ def session_citation_entries(username: str, session_id: str) -> list[dict]:
     for thread_id, messages in agent_runs.read_session_tool_messages(
             username, session_id, "cite_documents").items():
         for message in messages:
-            entries, _ = message_evidence([], message, thread_id)
+            entries = message_evidence(message)
             out.extend(e for e in entries if e.get("kind") == KIND_CITATION)
     return out
-
-
-# ---------------------------------------------------------------------- projection
-
-
-def _text_source(thread_id: str, idx: int) -> dict:
-    return {"thread_id": thread_id, "message_idx": int(idx)}
-
-
-def _final_source(messages, asked: bool) -> Optional[int]:
-    """The index of the `ai` message that gave the final answer: the newest one with text
-    and no call, or for a question the newest one that called `ask_user`."""
-    for m in reversed(messages):
-        if m.role != "ai":
-            continue
-        if asked and any(c.get("name") == "ask_user" for c in m.tool_calls):
-            return m.idx
-        if not asked and not m.tool_calls and (m.content or "").strip():
-            return m.idx
-    return None
-
-
-def _asked(messages) -> bool:
-    last = next((m for m in reversed(messages) if m.role == "ai"), None)
-    if last is None:
-        return False
-    ids = {str(c.get("id") or "") for c in last.tool_calls if c.get("name") == "ask_user"}
-    return any(m.role == "tool" and m.tool_call_id in ids
-               and m.usage.get("status") == "ok" for m in messages)
-
-
-def _bounded(entries: list[dict], name: str, left_out: dict) -> list[dict]:
-    if len(entries) > MAX_REPORT_ENTRIES:
-        left_out[name] = len(entries) - MAX_REPORT_ENTRIES
-        return entries[-MAX_REPORT_ENTRIES:]
-    return entries
-
-
-def project(messages, *, thread_id: str, first_run_id: str, state: str, result: str = "",
-            end_reason: str = "", error: str = "", plan_run_id: str = "",
-            section_node_id: str = "", session_citations: Optional[list[dict]] = None) -> dict:
-    """The typed report of one thread, from its committed messages and its run state.
-
-    `messages` is the thread in index order, partials left out. `result` is the stored
-    result of the newest run. `session_citations` is the citation evidence of the whole
-    chat session, which the citation check reads. Without it the check reads the thread.
-    """
-    from database import agent_runs
-
-    evidence, legacy = thread_evidence(messages, thread_id)
-    texts = [{"source": _text_source(thread_id, m.idx), "text": (m.content or "").strip()}
-             for m in messages if m.role == "ai" and (m.content or "").strip()]
-    completed = state == agent_runs.COMPLETED and not end_reason
-    final = None
-    if completed and (result or "").strip():
-        asked = _asked(messages)
-        idx = _final_source(messages, asked)
-        final = {"source": _text_source(thread_id, idx) if idx is not None else None,
-                 "text": result, "asked": asked}
-    answered = {m.tool_call_id for m in messages if m.role == "tool"}
-    unanswered = []
-    for m in messages:
-        if m.role == "ai":
-            for entry in m.tool_calls:
-                if str(entry.get("id") or "") not in answered:
-                    unanswered.append({"source": _text_source(thread_id, m.idx),
-                                       "tool": str(entry.get("name") or "")})
-    left_out: dict[str, int] = {}
-    by_kind = {kind: [e for e in evidence if e.get("kind") == kind]
-               for kind in (KIND_READ, KIND_DISCOVERY, KIND_CITATION, KIND_NOTE,
-                            KIND_ARTIFACT)}
-    citations_seen = (session_citations if session_citations is not None
-                      else by_kind[KIND_CITATION])
-    check = check_labels(final["text"] if final else "", label_bindings(citations_seen),
-                         citations_seen)
-    failed = [e for e in evidence if e.get("status") == STATUS_ERROR]
-    diagnostics: dict[str, Any] = {
-        "failed_items": len(failed),
-        "unanswered_calls": unanswered,
-        "legacy_tool_messages": legacy,
-        "citation_check": check,
-        "repair_round": any(is_repair_marker(m) for m in messages),
-    }
-    report = {
-        "version": REPORT_VERSION,
-        "thread_id": thread_id,
-        "first_run_id": first_run_id,
-        "plan_run_id": plan_run_id or "",
-        "section_node_id": section_node_id or "",
-        "execution": {"state": state, "end_reason": end_reason or "",
-                      "incomplete": not completed, "error": error or ""},
-        "final_answer": final,
-        "recent_text": texts[-RECENT_TEXTS:],
-        "documents_read": _bounded(by_kind[KIND_READ], "documents_read", left_out),
-        "documents_found": _bounded(by_kind[KIND_DISCOVERY], "documents_found", left_out),
-        "citations": _bounded(one_citation_per_document(by_kind[KIND_CITATION]), "citations",
-                              left_out),
-        "notes": _bounded(by_kind[KIND_NOTE], "notes", left_out),
-        "artifacts": _bounded(by_kind[KIND_ARTIFACT], "artifacts", left_out),
-        "diagnostics": diagnostics,
-    }
-    diagnostics["left_out"] = left_out
-    return report
-
-
-def is_repair_marker(message) -> bool:
-    """Whether a thread message is the note of the citation repair round."""
-    from tasks.P_agent import citations
-
-    return citations.is_citation_note(message)
-
-
-# -------------------------------------------------------------------------- the body
-
-
-def _document_line(entry: dict) -> str:
-    reference = entry.get("reference") or {}
-    name = (reference.get("path") or reference.get("url") or reference.get("continuation")
-            or _hash_start(reference.get("file_hash")) or "unknown document")
-    parts = [f"- {name}"]
-    if reference.get("file_hash"):
-        parts.append(f"({reference.get('collectionname') or ''} "
-                     f"{_hash_start(reference['file_hash'])})")
-    range_ = entry.get("range") or {}
-    if "page" in range_:
-        parts.append(f"page {range_['page']}")
-    if "end_bytes" in range_:
-        parts.append(f"bytes {range_.get('start_bytes', 0)} to {range_['end_bytes']} "
-                     f"of {range_.get('total_bytes', 0)}")
-    if "end_chars" in range_:
-        parts.append(f"characters {range_.get('start_chars', 0)} to {range_['end_chars']} "
-                     f"of {range_.get('total_chars', 0)}")
-    elif "start_chars" in range_:
-        parts.append(f"from character {range_['start_chars']}")
-    if entry.get("status") == STATUS_PARTIAL:
-        parts.append("partial read")
-    if entry.get("status") == STATUS_ERROR:
-        parts.append(f"failed: {_clip(entry.get('error') or 'unknown error', 200)}")
-    return " ".join(parts)
-
-
-def render(report: dict) -> str:
-    """The text body of a report: the answer or the newest model text, then the
-    evidence and the diagnostics that code wrote. The model text and the code text are in
-    separate sections."""
-    execution = report.get("execution") or {}
-    lines: list[str] = []
-    final = report.get("final_answer")
-    if final:
-        lines.append(str(final.get("text") or "").rstrip())
-    else:
-        state = execution.get("state") or "unknown"
-        reason = execution.get("end_reason")
-        lines.append(f"The run ended {state}" + (f" ({reason})" if reason else "")
-                     + " with no answer.")
-        if execution.get("error"):
-            lines.append(f"Error: {execution['error']}")
-        recent = report.get("recent_text") or []
-        if recent:
-            lines += ["", "## Latest model text", ""]
-            lines += [str(t.get("text") or "") + "\n" for t in recent]
-    # A failed citation call names no document, so the body counts those calls in the
-    # diagnostics and lists the citations that have a handle.
-    cited = [e for e in report.get("citations") or [] if e.get("status") == STATUS_OK]
-    failed_citations = len(report.get("citations") or []) - len(cited)
-    sections = [("Documents read", report.get("documents_read")),
-                ("Citations", cited),
-                ("Notes", report.get("notes"))]
-    evidence_lines: list[str] = []
-    for title, entries in sections:
-        if not entries:
-            continue
-        evidence_lines += ["", f"### {title}", ""]
-        for entry in entries:
-            if entry.get("kind") == KIND_NOTE:
-                evidence_lines.append(f"- {(entry.get('reference') or {}).get('text', '')}")
-            elif entry.get("kind") == KIND_CITATION:
-                reference = entry.get("reference") or {}
-                line = _document_line(entry)
-                handle = reference.get("handle")
-                if handle:
-                    line = f"- {handle} " + line[2:]
-                if not reference.get("quote_verified"):
-                    line += " (quote not verified)"
-                evidence_lines.append(line)
-            else:
-                evidence_lines.append(_document_line(entry))
-    diagnostics = report.get("diagnostics") or {}
-    check = diagnostics.get("citation_check") or {}
-    notes = []
-    if check.get("unresolved"):
-        notes.append("Labels with no citation result: " + ", ".join(check["unresolved"]))
-    if check.get("conflicting"):
-        notes.append("Labels bound to more than one document: "
-                     + ", ".join(check["conflicting"]))
-    if diagnostics.get("unanswered_calls"):
-        notes.append(f"Calls with no result: {len(diagnostics['unanswered_calls'])}")
-    failed_reads = sum(1 for e in report.get("documents_read") or []
-                       if e.get("status") == STATUS_ERROR)
-    if failed_reads:
-        notes.append(f"Reads that failed: {failed_reads}")
-    if failed_citations:
-        notes.append(f"Citation results that failed: {failed_citations}")
-    if evidence_lines or notes:
-        lines += ["", "## Evidence of the run", "",
-                  "This section is written from the stored tool results, not by the model."]
-        lines += evidence_lines
-        if notes:
-            lines += ["", "### Diagnostics", ""] + [f"- {n}" for n in notes]
-    return "\n".join(lines).strip() + "\n"
-
-
-# ------------------------------------------------------------------ documents
-
-
-def _thread_rows(username: str, session_id: str, thread_id: str):
-    from tasks.P_agent.activities import _read_rows
-
-    return _read_rows("thread_id = {t:UUID}",
-                      {"u": username, "s": session_id, "t": thread_id})
-
-
-def report_for_rows(rows, messages=None, session_citations=None, state: str = "",
-                    error: str = "") -> dict:
-    """The report of a thread from its run rows, oldest first. `state` and `error` replace
-    the newest row's values, for an ending that has not written its row yet."""
-    from database import agent_runs
-    from tasks.P_agent.stream_writer import prepare_thread
-
-    first, newest = rows[0], rows[-1]
-    if messages is None:
-        messages = prepare_thread(agent_runs.read_messages(first.username, first.session_id,
-                                                           first.thread_id))
-    if session_citations is None:
-        session_citations = session_citation_entries(first.username, first.session_id)
-    return project(messages, thread_id=first.thread_id, first_run_id=first.run_id,
-                   state=state or newest.state, result=newest.result,
-                   end_reason=newest.end_reason, error=error or newest.error,
-                   plan_run_id=first.plan_run_id or "",
-                   section_node_id=first.plan_node_id or "",
-                   session_citations=session_citations)
-
-
-def _report_node(first) -> str:
-    from database import agent_plans
-
-    if first.plan_node_id:
-        return first.plan_node_id
-    plan_run = agent_plans.read_plan_run(first.username, first.session_id, first.plan_run_id)
-    return agent_plans.root_node_id(plan_run.plan_id) if plan_run else first.plan_run_id
-
-
-def write_report_documents(first, report: dict) -> None:
-    """Write the `report` and `report_data` documents of a plan sub-agent thread. Both ids
-    come from the thread's first run, so a retry writes the same rows."""
-    from database import agent_plans
-
-    node = _report_node(first)
-    attempt = 1 if first.purpose == "correct" else 0
-    agent_plans.write_document(first.username, first.session_id, first.plan_run_id,
-                               first.run_id, node, "executor", REPORT_KIND, render(report),
-                               attempt=attempt)
-    agent_plans.write_document(first.username, first.session_id, first.plan_run_id,
-                               first.run_id, node, "executor", REPORT_DATA_KIND,
-                               json.dumps(report, sort_keys=True, ensure_ascii=False),
-                               attempt=attempt)
-
-
-def materialize(x, state: str, chain: list, error: str = "") -> Optional[dict]:
-    """Write the report pair of the plan sub-agent thread whose run `x` ends in `state`.
-    `chain` is the earlier runs of the thread, newest first. Returns the report, or None
-    for a run that is not a plan sub-agent."""
-    if not x.plan_run_id or x.depth < 1:
-        return None
-    rows = list(reversed(chain)) + [x]
-    report = report_for_rows(rows, state=state, error=error)
-    write_report_documents(rows[0], report)
-    return report
-
-
-def ensure_reports(children) -> int:
-    """Write the missing report pair of each plan sub-agent thread whose newest run is
-    terminal. The report comes from the committed messages. No model runs, no tool runs,
-    and no run state changes. Returns the count of pairs written."""
-    from database import agent_plans, agent_runs
-
-    written = 0
-    by_plan: dict[str, set[str]] = {}
-    for child in children:
-        if not child.plan_run_id or child.depth < 1:
-            continue
-        if child.plan_run_id not in by_plan:
-            by_plan[child.plan_run_id] = {
-                d.document_id for d in agent_plans.read_documents(
-                    child.username, child.session_id, child.plan_run_id)}
-        rows = _thread_rows(child.username, child.session_id, child.thread_id)
-        if not rows or not agent_runs.is_terminal(rows[-1]):
-            continue
-        first = rows[0]
-        want = {agent_plans.document_id(first.run_id, REPORT_KIND),
-                agent_plans.document_id(first.run_id, REPORT_DATA_KIND)}
-        if want <= by_plan[child.plan_run_id]:
-            continue
-        write_report_documents(first, report_for_rows(rows))
-        by_plan[child.plan_run_id] |= want
-        written += 1
-        log.info("[P_agent] wrote the missing report of thread %s", first.thread_id)
-    return written
-
-
-def read_run_report(username: str, session_id: str, run_id: str) -> Optional[dict]:
-    """The report of the thread of one run of the owner, projected from the committed
-    messages. None when the owner has no such run. A chat run has no plan document, so
-    this is its report reader. It writes nothing."""
-    from database import agent_runs
-
-    row = agent_runs.read_run(username, session_id, run_id)
-    if row is None:
-        return None
-    rows = _thread_rows(username, session_id, row.thread_id) or [row]
-    return report_for_rows(rows)
-
-
-__all__ = [
-    "EVIDENCE_VERSION", "KIND_ARTIFACT", "KIND_CITATION", "KIND_DISCOVERY", "KIND_NOTE",
-    "KIND_READ", "RECENT_TEXTS", "REPORT_DATA_KIND", "REPORT_KIND", "REPORT_VERSION",
-    "answer_labels", "check_labels", "ensure_reports", "label_bindings", "materialize",
-    "one_citation_per_document",
-    "message_evidence", "normalize", "project", "read_run_report", "render",
-    "report_for_rows", "session_citation_entries", "thread_evidence", "with_source",
-    "write_report_documents",
-]

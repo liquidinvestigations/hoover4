@@ -102,8 +102,6 @@ class StepRun(BaseModel):
     """The fields of every step request. The worker sends them from the run row."""
 
     run_id: str = Field(description="The agent run id. It keys the context and the browser.")
-    kind: Literal["chat", "subagent", "planner", "organizer"]
-    depth: int = Field(description="0 for a lead, 1 for a sub-agent of a plan section")
     username: str
     session_id: str
     allowed_collections: List[str] = Field(default_factory=list)
@@ -117,15 +115,13 @@ class ModelStepRequest(StepRun):
     )
     messages: List[RunMessage] = Field(description="The run thread. messages[0] is human")
     earlier: List[RunMessage] = Field(
-        default_factory=list, description="Earlier turns of the chat, depth 0 only"
+        default_factory=list, description="Earlier turns of the chat"
     )
 
     @model_validator(mode="after")
     def _opening(self):
         if not self.messages or self.messages[0].role != "human":
             raise ValueError("messages[0] must be the opening human message")
-        if self.depth > 0 and self.earlier:
-            raise ValueError("a sub-agent gets no earlier turns")
         return self
 
 
@@ -308,7 +304,7 @@ def _callbacks_config(agent: Any, request: StepRun) -> Dict[str, Any]:
 async def _context(agent: Any, request: StepRun) -> Any:
     return await agent.context_for(
         request.username, request.allowed_collections, request.session_id,
-        request.llm_model, request.run_id, request.kind,
+        request.llm_model, request.run_id,
     )
 
 

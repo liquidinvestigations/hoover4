@@ -10,16 +10,6 @@ import pytest
 from database import chat_todos as todos
 
 
-def test_subagent_continuation_keeps_the_thread_todo_key():
-    from types import SimpleNamespace
-
-    first = SimpleNamespace(run_id="first", thread_id="thread", session_id="chat", kind="subagent")
-    continued = SimpleNamespace(run_id="second", thread_id="thread", session_id="chat", kind="subagent")
-    assert todos.key_for_run(first) == todos.key_for_run(continued) == "thread"
-    assert todos.key_for_run(SimpleNamespace(run_id="lead", thread_id="lead",
-                                             session_id="chat", kind="chat")) == "chat"
-
-
 def _items(*specs):
     return [
         {"id": i, "text": t, "status": s, "note": n}

@@ -61,7 +61,7 @@ pub async fn chat_set_collections(
 /// poll says the turn is no longer active.
 ///
 /// `options.internet_tools` routes to the full research agent
-/// (`HOOVER4_FULL_AGENT_URL`) instead of the internal search agent. The options are
+///  instead of the internal search agent. The options are
 /// honoured on the **first** turn only and frozen onto the session; later turns reuse
 /// the frozen values whatever the client sends. When rate-limited,
 /// `retry_after_seconds` is set and `messages` is empty (nothing was written).
@@ -74,66 +74,6 @@ pub async fn chat_send_message(
 ) -> Result<ChatSendResult, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::chat::send_message(&user, session_id, message, options, model_id)
-        .await
-        .map_err(to_server_fn_error)
-}
-
-/// Hand the question to the long-running Temporal research task instead of waiting.
-///
-/// Returns the Temporal run id on success. On rate-limit, returns an error string
-/// containing `retry_after_seconds` so the composer can show "try again in N s".
-#[server]
-pub async fn chat_start_research(
-    session_id: String,
-    message: String,
-    options: ChatOptions,
-) -> Result<String, ServerFnError> {
-    let user = crate::api::server_auth::extract_user().await?;
-    match backend::api::chat::start_research_task(&user, session_id, message, options)
-        .await
-        .map_err(to_server_fn_error)?
-    {
-        Ok(run_id) => Ok(run_id),
-        Err(retry_after_seconds) => Err(ServerFnError::new(format!(
-            "rate_limited:{retry_after_seconds}"
-        ))),
-    }
-}
-
-/// Approve, reject or cancel a deep-research plan. The outcome is typed.
-#[server]
-pub async fn chat_decide_plan(
-    request: common::plan_types::PlanDecisionRequest,
-) -> Result<common::plan_types::PlanDecisionOutcome, ServerFnError> {
-    let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::plans::decide_plan(&user, request)
-        .await
-        .map_err(to_server_fn_error)
-}
-
-/// The plan run state and the tree at `version`, or the newest tree when it is 0. `None`
-/// for a missing or foreign plan run.
-#[server]
-pub async fn chat_plan_view(
-    session_id: String,
-    plan_run_id: String,
-    version: u64,
-) -> Result<Option<common::plan_types::PlanView>, ServerFnError> {
-    let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::plans::get_plan_view(&user, session_id, plan_run_id, version)
-        .await
-        .map_err(to_server_fn_error)
-}
-
-/// The report of each section of a plan run: typed, a text report of an older run, or
-/// absent from the list. `None` for a missing or foreign plan run.
-#[server]
-pub async fn chat_plan_section_reports(
-    session_id: String,
-    plan_run_id: String,
-) -> Result<Option<Vec<common::report_types::SectionReportView>>, ServerFnError> {
-    let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::plans::get_section_reports(&user, session_id, plan_run_id)
         .await
         .map_err(to_server_fn_error)
 }

@@ -59,8 +59,6 @@ services:
       # The tool packs of each kind of agent run, rendered by deploy.py from
       # hoover4.ini. See agent_common/tool_packs.py.
       - AGENT_PACKS_CHAT=${AGENT_PACKS_CHAT:-all}
-      - AGENT_PACKS_PLANNER=${AGENT_PACKS_PLANNER:-all}
-      - AGENT_PACKS_ORGANIZER=${AGENT_PACKS_ORGANIZER:-all}
       # The probe key. Empty keeps six catalogue matches.
       - AGENT_CATALOGUE_MATCH_COUNT=${AGENT_CATALOGUE_MATCH_COUNT:-}
       # Left EMPTY on purpose, and emptier than it looks: the prompt is not a constant
@@ -72,7 +70,7 @@ services:
       # experiment; it replaces the words and deliberately not the profile, which is what
       # decides tool binding.
       - SYSTEM_PROMPT=${INTERNAL_SEARCH_AGENT_SYSTEM_PROMPT:-}
-      # Collections, plus the todo server: a plan is not a research tool and both
+      # Collections, plus the todo server: a todo list is not a research tool and both
       # profiles keep one.
       - MCP_SERVERS=http://hoover4-mcp-collections:8085/mcp,http://hoover4-mcp-todo:8088/mcp
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
@@ -109,11 +107,10 @@ services:
     networks:
       - hoover4
 
-  # Full research agent: collections plus the open-web tools. Two callers: the chat
-  # page when "Internet tools" is ticked (HOOVER4_FULL_AGENT_URL on the website
-  # service), and the Temporal long-running research task (RESEARCH_AGENT_URL on the
-  # worker). Both address it by container name over the shared `hoover4` network, the
-  # published loopback port below is for host-side debugging only.
+  # Full research agent: collections plus the open-web tools. The worker calls it for
+  # a chat turn of a conversation with "Internet tools" on (RESEARCH_AGENT_URL on the
+  # worker), by container name over the shared `hoover4` network. The published
+  # loopback port below is for host-side debugging only.
   hoover4-full-research-agent:
     logging: *logging
     build:
@@ -148,15 +145,10 @@ services:
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
-      # No run kind receives a delegation tool. The Temporal worker starts one sub-agent
-      # run for each section of an approved plan, as an `AgentRun` of its own, which
-      # calls this service again. A sub-agent reads AGENT_PACKS_ORGANIZER.
       - AGENT_PROFILE=full_research
       # The tool packs of each kind of agent run, rendered by deploy.py from
       # hoover4.ini. See agent_common/tool_packs.py.
       - AGENT_PACKS_CHAT=${AGENT_PACKS_CHAT:-all}
-      - AGENT_PACKS_PLANNER=${AGENT_PACKS_PLANNER:-all}
-      - AGENT_PACKS_ORGANIZER=${AGENT_PACKS_ORGANIZER:-all}
       # The probe key. Empty keeps six catalogue matches.
       - AGENT_CATALOGUE_MATCH_COUNT=${AGENT_CATALOGUE_MATCH_COUNT:-}
       # As above: empty means "render this profile's templates against the bound tools".

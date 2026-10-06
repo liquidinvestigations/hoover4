@@ -5,8 +5,7 @@ They differ in which agent they reach and which queue they wait on, not in what 
 The website holds nothing open, so a browser reload, a website restart and a worker crash
 all cost the turn nothing.
 
-This module holds the short activities of `AgentRun`: open, section dispatch, note, ending,
-fan-in and the title. The step activities, one model call or one tool call each, are in
+This module holds the short activities of `AgentRun`: open, ending and the title. The step activities, one model call or one tool call each, are in
 `steps.py`.
 
 The ACL travels with the task. These activities never resolve permissions themselves.
@@ -15,15 +14,12 @@ passed the resulting collection list in. The same goes for the model id: a forge
 to be refused where the user is known, which is not here.
 """
 
-import contextlib
-import json
 import logging
 import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-import requests
 from temporalio import activity
 from tasks.heartbeat import with_heartbeat
 
@@ -88,8 +84,6 @@ class WriteResultParams:
     #: The model's context window as the catalog knew it at the time of the turn. 0 means
     #: the provider never stated one, and readers must show unknown rather than divide.
     context_window: int = 0
-    #: The plan the plan card shows, as JSON, on a planner's answer row. Empty otherwise.
-    plan_reference_json: str = ""
 
 
 def write_chat_message(params: WriteResultParams) -> int:
@@ -122,7 +116,6 @@ def write_chat_message(params: WriteResultParams) -> int:
                 params.context_tokens,
                 params.peak_context_tokens,
                 params.context_window,
-                params.plan_reference_json,
             ]],
             column_names=[
                 "session_id",
@@ -140,7 +133,6 @@ def write_chat_message(params: WriteResultParams) -> int:
                 "context_tokens",
                 "peak_context_tokens",
                 "context_window",
-                "plan_reference_json",
             ],
         )
     if params.peak_context_tokens:
@@ -166,7 +158,7 @@ def _raise_session_peak(username: str, session_id: str, peak: int) -> None:
 
     columns = [
         "session_id", "username", "title", "collections", "summary",
-        "use_internet_tools", "deep_research", "options_locked",
+        "use_internet_tools", "options_locked",
         "created_at", "updated_at", "is_deleted", "peak_context_tokens",
     ]
     try:
@@ -251,7 +243,7 @@ def _set_session_title(username: str, session_id: str, title: str, summary: str)
 
     columns = [
         "session_id", "username", "title", "collections", "summary",
-        "use_internet_tools", "deep_research", "options_locked",
+        "use_internet_tools", "options_locked",
         "created_at", "updated_at", "is_deleted", "peak_context_tokens",
     ]
     with get_global_client() as client:
@@ -347,19 +339,13 @@ def _provider_label() -> str:
 class AgentRunInput:
     """The input of one `AgentRun` workflow. Ids and settings, never text.
 
-    A sub-agent and a continuation carry their own `run_id` and `kind`, and copy every
-    other field from the input of the run that starts them, except `plan_run_id` and
-    `decision_id`, which are empty. The row has no columns for `allowed_collections`,
-    `llm_model`, `internet_tools` and `turn_uuid`. Their row already exists, written by the
-    run that created them. A run of a plan takes `llm_model` and `internet_tools` from the
-    plan's execution settings (`OpenedRun`), whatever its input holds.
+    The row has no columns for `allowed_collections`, `llm_model`, `internet_tools` and
+    `turn_uuid`.
     """
 
     run_id: str
     username: str
     session_id: str
-    #: Read by `open_run` only, for a new top-level run.
-    kind: str = "chat"
     #: Seq of the user row of the turn.
     turn_seq: int = 0
     #: First transcript seq the run may write.
@@ -375,14 +361,6 @@ class AgentRunInput:
     llm_model: str = ""
     #: The conversation's frozen switch. It selects the agent service.
     internet_tools: bool = False
-    plan_run_id: str = ""
-    #: The decision row that started a planner round or an organizer step.
-    decision_id: str = ""
-    #: The extra planner round for a plan with no section already ran.
-    planner_retry_done: bool = False
-    #: How the website resolved `llm_model` for a plan run from before the execution
-    #: settings: `legacy_planner` or `configured_default`. Empty for every other start.
-    model_source: str = ""
 
     def __post_init__(self):
         if self.allowed_collections is None:
@@ -399,7 +377,7 @@ class CallRef:
     call_id: str
     #: A tool name.
     name: str
-    #: `parallel` or `ordered`. A stored call of an older run can hold `delegation`.
+    #: `parallel` or `ordered`.
     kind: str
     #: The transcript seq of the call's tool row.
     seq: int
@@ -421,87 +399,37 @@ def call_refs(message) -> list[CallRef]:
 
 
 def pending_calls(row, messages) -> list[CallRef]:
-    """The calls of the last `ai` message of the thread that have no `tool` message.
-
-    A stored `delegation` call of an older run is left out. It was a `run_subagent` call,
-    which no tool answers now.
-    """
+    """The calls of the last `ai` message of the thread that have no `tool` message."""
     last_ai = next((m for m in reversed(messages) if m.role == "ai"), None)
     if last_ai is None:
         return []
     answered = {m.tool_call_id for m in messages if m.role == "tool" and m.idx > last_ai.idx}
     return [c for c in call_refs(last_ai)
-            if c.call_id not in answered and c.kind != "delegation"]
+            if c.call_id not in answered]
 
 
 @dataclass
 class OpenedRun:
-    """What `open_run` returns: `closed`, or the row's routing fields and its steps."""
+    """What `open_run` returns: `closed`, or the run's steps and unanswered calls."""
 
     state: str
-    queue: str = ""
-    kind: str = ""
-    depth: int = 0
-    is_chat_lead: bool = False
-    #: The run serves a plan run. No step reads this field.
-    plan: bool = False
-    #: For `closed` after a stop: a continuation that `fan_in` wrote, for the workflow to
-    #: start. A stopped turn continues no run, so it is empty in practice.
-    continuation_run_id: str = ""
     #: `agent_runs.model_steps`, the model calls of the run thread so far.
     model_steps: int = 0
-    #: The row continues another run, so the loop first adds the children's reports.
-    continues: bool = False
     #: The unanswered calls of the thread, which the loop runs before its next model step.
     pending: list[CallRef] = field(default_factory=list)
-    #: The model and the internet switch of a run of a plan, from the plan's execution
-    #: settings. `frozen` is true when the plan has settings. The switch then replaces the
-    #: input switch, and a model that is not empty replaces the input model. A run of no
-    #: plan keeps its input.
-    frozen: bool = False
-    llm_model: str = ""
-    internet_tools: bool = False
-    #: The run is an organizer that starts the sections of its plan before any model call.
-    dispatch: bool = False
 
 
 @dataclass
 class RunSummary:
-    """How a round of the loop ended. Ids and counts only, well under 4 KiB with five
-    children."""
+    """How a round of the loop ended. Ids and counts only."""
 
     outcome: str
     next_seq: int = 0
     next_idx: int = 0
-    children: list[str] = field(default_factory=list)
-    batch_id: str = ""
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
     #: Empty for an answer. `step_budget` or `empty_response` for a run that stopped
     #: before an answer (`steps.write_incomplete`).
     end_reason: str = ""
     asked: bool = False
-
-
-@dataclass
-class Continuation:
-    """A continuation run that `fan_in` or `continue_run` wrote, or empty for none."""
-
-    run_id: str = ""
-    workflow_id: str = ""
-
-
-@dataclass
-class AppendNagParams:
-    """One note that starts a round. `message` is text that this worker holds: the note of
-    the planner's extra round."""
-
-    run_id: str
-    username: str
-    session_id: str
-    seq: int
-    idx: int
-    message: str
 
 
 @dataclass
@@ -563,23 +491,10 @@ def _opened(row) -> OpenedRun:
     from database import agent_runs
     from tasks.P_agent.stream_writer import prepare_thread
 
-    from tasks.P_agent import plan_runs
-
     messages = prepare_thread(
         agent_runs.read_messages(row.username, row.session_id, row.thread_id))
-    settings = plan_runs.frozen_settings(row.username, row.session_id,
-                                         row.plan_run_id or "") or {}
-    return OpenedRun(
-        state=row.state, queue=row.queue, kind=row.kind, depth=row.depth,
-        is_chat_lead=agent_runs.is_chat_lead(row), plan=bool(row.plan_run_id),
-        model_steps=row.model_steps, continues=bool(row.continues_run_id),
-        pending=pending_calls(row, messages),
-        frozen=bool(settings),
-        llm_model=str(settings.get("model") or ""),
-        internet_tools=bool(settings.get("internet_tools")),
-        dispatch=(row.kind == "organizer" and row.depth == 0 and bool(row.plan_run_id)
-                  and not row.continues_run_id and row.state == agent_runs.RUNNING),
-    )
+    return OpenedRun(state=row.state, model_steps=row.model_steps,
+                     pending=pending_calls(row, messages))
 
 
 @activity.defn
@@ -587,39 +502,28 @@ def _opened(row) -> OpenedRun:
 def open_run(inp: AgentRunInput) -> OpenedRun:
     """Create a new top-level run, or read an existing one, and close a stopped turn.
 
-    1. For a top-level run whose row does not exist, write the opening message at `idx` 0
-       and then the row. Both keys come from the run id, so a retry writes the same rows.
-       For a planner or organizer, first write the plan run state and the plan's execution
-       settings (`plan_runs`).
+    1. When the row does not exist, write the opening message at `idx` 0 and then the row.
+       Both keys come from the run id, so a retry writes the same rows.
     2. A terminal row returns `closed`.
-    3. When the turn has a stop row, write the `cancelled` ending and run `fan_in` here, and
-       return `closed`, so a workflow that starts after a stop never calls the agent.
-    4. An organizer at depth 0 writes the plan run's `sections_json` from the rows, so each
-       organizer step starts from the sections as they stand.
-    5. Return the row's routing fields, `model_steps`, the unanswered calls of the thread
-       (`pending_calls`), so a continue-as-new or a restarted run resumes there, and for a
-       run of a plan the frozen model and internet switch.
+    3. When the turn has a stop row, write the `cancelled` ending and return `closed`, so a
+       workflow that starts after a stop never calls the agent.
+    4. Return `model_steps` and the unanswered calls of the thread (`pending_calls`), so a
+       continue-as-new or a restarted run resumes there.
     """
     from database import agent_runs
-    from tasks.P_agent import plan_runs
 
     row = agent_runs.read_run(inp.username, inp.session_id, inp.run_id)
     if row is None:
-        if inp.kind not in ("chat", *plan_runs.PLAN_KINDS):
-            raise RuntimeError(f"open_run cannot create a {inp.kind!r} run")
         text = _user_row_text(inp.username, inp.session_id, inp.turn_seq)
-        if inp.kind in plan_runs.PLAN_KINDS:
-            text = plan_runs.open_plan_run(inp, text)
         agent_runs.write_message(
             inp.username, inp.session_id, inp.run_id, inp.run_id,
             agent_runs.RunMessageRow(idx=0, role="human", content=text, run_id=inp.run_id),
         )
         agent_runs.create_run(agent_runs.RunRow(
             run_id=inp.run_id, username=inp.username, session_id=inp.session_id,
-            turn_seq=inp.turn_seq, thread_id=inp.run_id, depth=0, kind=inp.kind,
-            queue=agent_runs.LEAD_QUEUES[inp.kind], workflow_id=activity.info().workflow_id,
+            turn_seq=inp.turn_seq, thread_id=inp.run_id,
+            queue=agent_runs.CHAT_MODEL_QUEUE, workflow_id=activity.info().workflow_id,
             state=agent_runs.RUNNING, start_seq=inp.start_seq, next_seq=inp.start_seq,
-            plan_run_id=inp.plan_run_id or None,
         ))
         row = agent_runs.read_run(inp.username, inp.session_id, inp.run_id)
         if row is None:
@@ -629,275 +533,8 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
     if agent_runs.turn_is_stopped(row.username, row.session_id, row.turn_seq):
         _write_ending(WriteEndingParams(row.run_id, row.username, row.session_id,
                                         agent_runs.CANCELLED, turn_uuid=inp.turn_uuid))
-        # A stopped child still continues its parent: `fan_in` reads the sibling set, and
-        # `continue_run` then ends the parent as `cancelled`, up to depth 0.
-        continuation = _fan_in(row.username, row.session_id, row.run_id)
-        return OpenedRun(state="closed", continuation_run_id=continuation.run_id)
-    if row.kind == "organizer" and row.depth == 0 and row.plan_run_id:
-        plan_runs.refresh_sections(row.username, row.session_id, row.plan_run_id)
+        return OpenedRun(state="closed")
     return _opened(row)
-
-
-# ---------------------------------------------------------------------- the sections
-
-
-def canonical_json(value) -> str:
-    """One text for one value, so a retry writes the same bytes."""
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
-def _read_rows(where: str, parameters: dict):
-    """Run rows of one owner that match `where`, oldest first."""
-    from database import agent_runs
-
-    with agent_runs._client() as client:
-        rows = client.query(
-            f"SELECT {', '.join(agent_runs.RUN_COLUMNS)} FROM agent_runs FINAL "
-            "WHERE username = {u:String} AND session_id = {s:String} AND " + where +
-            " ORDER BY started_at, run_id",
-            parameters=parameters,
-        ).result_rows
-    return [agent_runs._from_db(r) for r in rows]
-
-
-def _batch_children(row, batch_id: str):
-    """The sub-agent rows of a batch in section order. Continuations are left out."""
-    from database import agent_runs
-
-    rows = _read_rows(
-        "parent_run_id = {p:UUID} AND batch_id = {b:UUID} AND continues_run_id IS NULL",
-        {"u": row.username, "s": row.session_id, "p": row.run_id, "b": batch_id},
-    )
-    order = {agent_runs.child_run_id(batch_id, i): i for i in range(len(rows) + 25)}
-    return sorted(rows, key=lambda r: order.get(r.run_id, len(order)))
-
-
-def _sibling_rows(row):
-    """Every row of `row`'s parent and batch, continuations included."""
-    return _read_rows(
-        "parent_run_id = {p:UUID} AND batch_id = {b:UUID}",
-        {"u": row.username, "s": row.session_id, "p": row.parent_run_id, "b": row.batch_id},
-    )
-
-
-def _plan_node_paths(row) -> dict[str, str]:
-    """The number path of each node of the approved tree of the run's plan, or empty."""
-    if not row.plan_run_id:
-        return {}
-    from database import agent_plans
-
-    plan_run = agent_plans.read_plan_run(row.username, row.session_id, row.plan_run_id)
-    if plan_run is None or not plan_run.approved_version:
-        return {}
-    snapshot = agent_plans.read_snapshot(row.username, row.session_id, plan_run.plan_id,
-                                         plan_run.approved_version)
-    return agent_plans.node_paths(snapshot) if snapshot else {}
-
-
-#: The usage key of the message that gives an organizer the outcome of its sections. Its
-#: value is the batch id, so a retry finds the message and writes it once.
-SECTION_REPORTS_KEY = "section_reports"
-
-
-def _add_section_reports(row, messages):
-    """The message that gives a continued organizer the outcome of each section
-    (`prepare_continuation`).
-
-    The continued run started one sub-agent for each section of its plan. This writes one
-    `human` message at the next index: `plan_runs.SECTIONS_ENDED_TEXT`, then the canonical
-    JSON `{"sections": [...]}` with the outcome of each section in tree order
-    (`plan_runs.section_outcome`), its `failed` flag and its cause from `sections_json`.
-    Returns the thread with the message. A thread that holds the message already is
-    returned as it is.
-    """
-    from database import agent_runs
-    from tasks.P_agent import plan_runs
-
-    continued = agent_runs.read_run(row.username, row.session_id, row.continues_run_id)
-    if continued is None or continued.kind != "organizer" or not continued.delegated_batch_id:
-        return messages
-    batch_id = continued.delegated_batch_id
-    if any(m.usage.get(SECTION_REPORTS_KEY) == batch_id for m in messages):
-        return messages
-    paths = _plan_node_paths(row)
-    causes = {e.get("node_id"): e for e in plan_runs.section_entries(
-        row.username, row.session_id, row.plan_run_id or "")}
-    outcomes = []
-    for child in _batch_children(continued, batch_id):
-        outcome = plan_runs.section_outcome(child, paths)
-        entry = causes.get(child.plan_node_id) or {}
-        outcome["failed"] = bool(entry.get("failed"))
-        if entry.get("cause"):
-            outcome["cause"] = entry["cause"]
-        outcomes.append(outcome)
-    content = f"{plan_runs.SECTIONS_ENDED_TEXT}\n\n{canonical_json({'sections': outcomes})}"
-    message = agent_runs.RunMessageRow(
-        idx=max(m.idx for m in messages) + 1, role="human", content=content,
-        run_id=row.run_id, usage_json=json.dumps({SECTION_REPORTS_KEY: batch_id}))
-    agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, message)
-    return [*messages, message]
-
-
-def _dispatch_sections(row, collections: list[str], writer) -> "RunSummary":
-    """Start the sections of an approved plan: one sub-agent for each direct child of the
-    approved root, before the organizer's first model call.
-
-    First it reads the row under the writer lock. A terminal row returns `closed`, and
-    nothing below is written. A row that already waits for its batch returns its children,
-    so a retry starts no second set.
-
-    1. Prepare every assignment (`plan_runs.section_briefings`) from the approved version
-       that `open_plan_run` froze.
-    2. For each section at index `i`, write the child's opening message, its `prompt`
-       document and its row, with the run id `child_run_id(batch_id_for(run_id), i)`. A
-       child row that exists is not written again.
-    3. Write this run's waiting state.
-
-    No model call and no `run_subagent` call is written. Every key comes from the run id and
-    the section index, and the organizer's workflow id is fixed for its plan run, so a
-    retry and a competing start write the same rows.
-    """
-    from database import agent_runs
-    from tasks.P_agent import plan_runs
-
-    current = writer.read()
-    if current is None or agent_runs.is_terminal(current):
-        return RunSummary(outcome="closed", next_seq=current.next_seq if current else 0)
-    if current.state == agent_runs.WAITING_FOR_CHILDREN and current.delegated_batch_id:
-        children = [c.run_id for c in _batch_children(current, current.delegated_batch_id)]
-        return RunSummary(outcome="delegated", next_seq=current.next_seq, children=children,
-                          batch_id=current.delegated_batch_id)
-    settings = plan_runs.frozen_settings(row.username, row.session_id,
-                                         row.plan_run_id or "") or {}
-    batch_id = agent_runs.batch_id_for(row.run_id)
-    assignments = plan_runs.section_briefings(row.username, row.session_id,
-                                              row.plan_run_id or "", collections, settings)
-    children = []
-    for i, (node_id, briefing, text) in enumerate(assignments):
-        child_id = agent_runs.child_run_id(batch_id, i)
-        children.append(child_id)
-        if agent_runs.read_run(row.username, row.session_id, child_id) is not None:
-            continue
-        agent_runs.write_message(
-            row.username, row.session_id, child_id, child_id,
-            agent_runs.RunMessageRow(idx=0, role="human", run_id=child_id, content=text))
-        child = agent_runs.RunRow(
-            run_id=child_id, username=row.username, session_id=row.session_id,
-            turn_seq=row.turn_seq, thread_id=child_id, parent_run_id=row.run_id,
-            batch_id=batch_id, depth=row.depth + 1, kind="subagent",
-            plan_run_id=row.plan_run_id, plan_node_id=node_id, purpose=briefing["purpose"],
-            queue=row.queue, workflow_id=f"run-{child_id}", state=agent_runs.RUNNING,
-            briefing=canonical_json(briefing))
-        plan_runs.write_prompt_document(child, text)
-        agent_runs.create_run(child)
-    writer.write(state=agent_runs.WAITING_FOR_CHILDREN, delegated_batch_id=batch_id,
-                 delegate_seq=current.next_seq, refused_json="[]")
-    log.info("[P_agent] organizer %s started %d sections, batch %s", row.run_id,
-             len(children), batch_id)
-    return RunSummary(outcome="delegated", next_seq=current.next_seq, children=children,
-                      batch_id=batch_id)
-
-
-@dataclass
-class DispatchParams:
-    """The organizer run whose sections start, and the collections of its input."""
-
-    run_id: str
-    username: str
-    session_id: str
-    allowed_collections: list[str] | None = field(default_factory=list)
-
-
-@activity.defn
-@with_heartbeat
-def dispatch_sections(params: DispatchParams) -> RunSummary:
-    """Start the sections of the organizer's approved plan (`_dispatch_sections`). A turn
-    with a stop row ends the organizer as `cancelled` here and starts nothing."""
-    from database import agent_runs
-
-    row = agent_runs.read_run(params.username, params.session_id, params.run_id)
-    if row is None or agent_runs.is_terminal(row):
-        return RunSummary(outcome="closed", next_seq=row.next_seq if row else 0)
-    if agent_runs.turn_is_stopped(row.username, row.session_id, row.turn_seq):
-        _write_ending(WriteEndingParams(row.run_id, row.username, row.session_id,
-                                        agent_runs.CANCELLED))
-        return RunSummary(outcome="closed", next_seq=row.next_seq)
-    return _dispatch_sections(row, list(params.allowed_collections or []),
-                              agent_runs.RunRowWriter(row))
-
-
-def _fan_in(username: str, session_id: str, run_id: str) -> Continuation:
-    """Continue the parent when the last sibling ends.
-
-    Returns nothing for a run with no parent, and while one row of the sibling set is not
-    terminal. A continuation row copies its parent and batch, so it takes the place of the
-    run it continues in the set. Before the continuation, each plan sub-agent thread of the
-    set that has no report documents gets them (`reports.ensure_reports`). That writes no
-    run state and runs no model or tool.
-    """
-    from database import agent_runs
-
-    row = agent_runs.read_run(username, session_id, run_id)
-    if row is None or not row.parent_run_id or not row.batch_id:
-        return Continuation()
-    siblings = _sibling_rows(row)
-    if not all(agent_runs.is_terminal(s) for s in siblings):
-        return Continuation()
-    # A plan sub-agent whose ending stopped before its report documents gets them here,
-    # from its committed messages, before the parent reads the reports.
-    from tasks.P_agent import reports
-
-    reports.ensure_reports(siblings)
-    return _continue_run(username, session_id, row.parent_run_id)
-
-
-def _continue_run(username: str, session_id: str, parent_run_id: str) -> Continuation:
-    """Write the continuation of a parent in `waiting_for_children`.
-
-    A parent in another state returns nothing. A stopped turn ends the parent as `cancelled`
-    and runs `fan_in` for it, up to depth 0. Up to three writers create the same row, two
-    siblings and the sweep, and each writes it at `state_version` 1.
-    """
-    from database import agent_runs
-
-    parent = agent_runs.read_run(username, session_id, parent_run_id)
-    if parent is None or parent.state != agent_runs.WAITING_FOR_CHILDREN:
-        return Continuation()
-    if agent_runs.turn_is_stopped(parent.username, parent.session_id, parent.turn_seq):
-        _write_ending(WriteEndingParams(parent.run_id, parent.username, parent.session_id,
-                                        agent_runs.CANCELLED))
-        _fan_in(parent.username, parent.session_id, parent.run_id)
-        return Continuation()
-    run_id = agent_runs.continuation_run_id(parent.delegated_batch_id)
-    if agent_runs.read_run(username, session_id, run_id) is None:
-        agent_runs.create_run(agent_runs.RunRow(
-            run_id=run_id, username=parent.username, session_id=parent.session_id,
-            turn_seq=parent.turn_seq, thread_id=parent.thread_id,
-            parent_run_id=parent.parent_run_id, batch_id=parent.batch_id,
-            continues_run_id=parent.run_id, depth=parent.depth, kind=parent.kind,
-            plan_run_id=parent.plan_run_id, plan_node_id=parent.plan_node_id,
-            purpose=parent.purpose, queue=parent.queue, workflow_id=f"run-{run_id}",
-            state=agent_runs.RUNNING, tool_call_id=parent.tool_call_id,
-            start_seq=parent.next_seq, next_seq=parent.next_seq,
-            model_steps=parent.model_steps, prompt_tokens=parent.prompt_tokens,
-            completion_tokens=parent.completion_tokens,
-            subagent_share=parent.subagent_share,
-        ))
-    return Continuation(run_id=run_id, workflow_id=f"run-{run_id}")
-
-
-@activity.defn
-@with_heartbeat
-def fan_in(ref: RunRef) -> Continuation:
-    """Continue the parent of a run that ended, when it was the last of its batch."""
-    return _fan_in(ref.username, ref.session_id, ref.run_id)
-
-
-@activity.defn
-@with_heartbeat
-def continue_run(ref: RunRef) -> Continuation:
-    """Continue an organizer whose approved plan gave no section to start."""
-    return _continue_run(ref.username, ref.session_id, ref.run_id)
 
 
 def _finish_stream_rows_from(username: str, session_id: str, turn_uuid: str, seq: int) -> None:
@@ -925,34 +562,6 @@ def _finish_stream_rows_from(username: str, session_id: str, turn_uuid: str, seq
         stream._mark_final(row_seq, role, content, reasoning, tool_name, idx)
 
 
-@activity.defn
-@with_heartbeat
-def append_nag(params: AppendNagParams) -> int:
-    """Write a note that starts a round: a note row at `seq` for a run that writes the
-    transcript, and the note text into the thread at `idx`.
-
-    Every key comes from the parameters, so a retry writes the same rows. No counter is
-    written. Returns the next free seq.
-    """
-    from database import agent_runs
-    from tasks.P_agent.steps import NOTE_ROLE
-
-    row = agent_runs.read_run(params.username, params.session_id, params.run_id)
-    if row is None or agent_runs.is_terminal(row):
-        return params.seq
-    transcript = agent_runs.writes_transcript(row)
-    if transcript:
-        _insert_chat_row(row.username, row.session_id, params.seq, NOTE_ROLE,
-                         content=params.message)
-    agent_runs.write_message(
-        row.username, row.session_id, row.thread_id, row.run_id,
-        agent_runs.RunMessageRow(idx=params.idx, role="human", content=params.message,
-                                 run_id=row.run_id),
-    )
-    agent_runs.write_run(row, next_seq=params.seq + int(transcript))
-    return params.seq + int(transcript)
-
-
 #: The ending rows of a run that did not complete. The website shows them as they are.
 STOPPED_TEXT = "This turn was stopped."
 FAILED_TEXT = "The assistant could not answer: {error}"
@@ -965,52 +574,16 @@ def _write_ending(params: WriteEndingParams) -> None:
     x = agent_runs.read_run(params.username, params.session_id, params.run_id)
     if x is None or agent_runs.is_terminal(x):
         return
-    chain = []
-    earlier = x.continues_run_id
-    while earlier:
-        row = agent_runs.read_run(x.username, x.session_id, earlier)
-        if row is None:
-            break
-        chain.append(row)
-        earlier = row.continues_run_id
-    for row in chain:
-        agent_runs.write_run(row, state=params.state, error=params.error, result=x.result)
-    if params.state == agent_runs.CANCELLED:
-        # A stop that lands while `_dispatch_sections` writes this run's children ends the
-        # run before its workflow starts them. Each open child of its own batch then has no workflow,
-        # and it ends here with the run.
-        for child in _batch_children(x, agent_runs.batch_id_for(x.run_id)):
-            if not agent_runs.is_terminal(child):
-                _write_ending(WriteEndingParams(child.run_id, child.username,
-                                                child.session_id, agent_runs.CANCELLED))
-    if agent_runs.writes_transcript(x):
-        if params.state == agent_runs.FAILED:
-            _insert_chat_row(x.username, x.session_id, x.next_seq, "error",
-                             content=FAILED_TEXT.format(error=params.error))
-        elif params.state == agent_runs.CANCELLED:
-            _insert_chat_row(x.username, x.session_id, x.next_seq, "error",
-                             content=STOPPED_TEXT)
-        if params.turn_uuid:
-            _finish_stream_rows_from(x.username, x.session_id, params.turn_uuid, x.start_seq)
-    if x.plan_run_id:
-        from tasks.P_agent import plan_runs
-
-        plan_runs.write_plan_ending(x, params.state, chain, params.error)
-    for row in [x, *chain]:
-        release_browser(row.run_id)
-    next_seq = x.next_seq + (1 if params.state != agent_runs.COMPLETED
-                             and agent_runs.writes_transcript(x) else 0)
+    if params.state == agent_runs.FAILED:
+        _insert_chat_row(x.username, x.session_id, x.next_seq, "error",
+                         content=FAILED_TEXT.format(error=params.error))
+    elif params.state == agent_runs.CANCELLED:
+        _insert_chat_row(x.username, x.session_id, x.next_seq, "error", content=STOPPED_TEXT)
+    if params.turn_uuid:
+        _finish_stream_rows_from(x.username, x.session_id, params.turn_uuid, x.start_seq)
+    release_browser(x.run_id)
+    next_seq = x.next_seq + (1 if params.state != agent_runs.COMPLETED else 0)
     agent_runs.write_run_terminal(x, params.state, error=params.error, next_seq=next_seq)
-    if x.plan_run_id and x.depth >= 1:
-        # The report pair follows the terminal row, so a report failure cannot keep the
-        # run open. `fan_in` writes a missing pair from the stored messages.
-        from tasks.P_agent import reports
-
-        try:
-            reports.materialize(x, params.state, chain, params.error)
-        except Exception:  # noqa: BLE001 - `ensure_reports` in `fan_in` repairs it
-            log.exception("[P_agent] run %s: the report documents were not written, the "
-                          "fan-in writes them", x.run_id)
 
 
 @activity.defn
@@ -1018,14 +591,10 @@ def _write_ending(params: WriteEndingParams) -> None:
 def write_ending(params: WriteEndingParams) -> None:
     """Write the terminal state of a run, its ending row, and release its browsers.
 
-    Returns at once for a terminal row. Otherwise it writes the state into each earlier run
-    of the chain, ends each open child of the run's own batch for a `cancelled` ending (the
-    run's workflow never started them), writes the ending row for a run that owns the transcript, marks the turn's
-    stream rows final, releases the browsers, and writes this run's own row. The row is the
+    Returns at once for a terminal row. Otherwise it writes the ending row, marks the turn's
+    stream rows final, releases the browser, and writes this run's own row. The row is the
     completion marker, so a retry after a partial attempt runs every step again, and every
-    step writes the same keys. After the row, a plan sub-agent thread gets its report
-    documents. A failure there is logged and does not fail the ending, and `fan_in` writes
-    the missing documents.
+    step writes the same keys.
     """
     _write_ending(params)
 
@@ -1042,7 +611,7 @@ def summarize_if_first_turn(ref: RunRef) -> str:
 
     try:
         row = agent_runs.read_run(ref.username, ref.session_id, ref.run_id)
-        if row is None or not agent_runs.is_chat_lead(row):
+        if row is None:
             return ""
         if _earlier_user_rows(row.username, row.session_id, row.turn_seq):
             return ""

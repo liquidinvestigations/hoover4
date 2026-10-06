@@ -37,10 +37,6 @@ EXPECTED_GLOBAL_TABLES = {
     "agent_run_messages",
     "agent_step_events",
     "agent_turn_stops",
-    "agent_plan_snapshots",
-    "agent_plan_runs",
-    "agent_plan_documents",
-    "agent_plan_decisions",
     "api_events",
     "chat_artifacts",
     "chat_compactions",
@@ -253,7 +249,8 @@ def test_no_comment_only_statement_fragment(path):
 
 def test_global_tables_match_expected():
     created = set(_table_names(GLOBAL_MIGRATIONS_PATH))
-    assert created - {"operations_row_version"} == EXPECTED_GLOBAL_TABLES
+    dropped = _dropped_table_names(GLOBAL_MIGRATIONS_PATH)
+    assert created - {"operations_row_version"} - dropped == EXPECTED_GLOBAL_TABLES
     migration = Path(GLOBAL_MIGRATIONS_PATH, "00030_operations_row_version.sql").read_text()
     assert "FROM operations FINAL" in migration
     assert "operations_row_version TO operations" in migration

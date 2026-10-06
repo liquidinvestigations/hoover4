@@ -26,7 +26,6 @@ NEXT_KEY = "next"
 
 
 TODO_TOOLS = frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"})
-PLAN_TOOLS = frozenset({"read_plan", "write_plan", "read_plan_document", "read_plan_report"})
 #: The tools whose `not_found` error means a document id that no readable dataset holds.
 DOCUMENT_TOOLS = frozenset({"read_documents", "list_document_entities"})
 
@@ -40,7 +39,6 @@ CAUSE_SKILLS = {
     "query_syntax": "search",
     "todo_arguments": "todo_upkeep",
     "tool_arguments": "call_arguments",
-    "plan_tree_arguments": "plan_editing",
     "browser_error": "browser_use",
 }
 
@@ -104,8 +102,6 @@ def _cause(name: str, content: str, args: Dict[str, Any]) -> Optional[str]:
     if "negations alone" in message or message.startswith("queries:") \
             or "filename_only" in message:
         return "query_syntax"
-    if name in PLAN_TOOLS:
-        return "plan_tree_arguments"
     if name in TODO_TOOLS:
         return "todo_arguments"
     if "stored page" in message or "no column" in message or "no node" in message:

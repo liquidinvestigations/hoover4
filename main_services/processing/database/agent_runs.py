@@ -15,8 +15,6 @@ Three rules hold for every function in this module:
   uses version 1, so a late creation write never replaces a row that has started. No write
   changes a terminal row.
 
-`writes_transcript` and `is_chat_lead` are the two named properties that every other module
-uses in place of a kind and depth test.
 """
 
 from __future__ import annotations
@@ -31,41 +29,18 @@ from typing import Any, Iterator
 
 log = logging.getLogger(__name__)
 
-#: The namespace of every `uuid5` run id: child runs, batches and continuations. One constant,
-#: so two writers of one child or continuation row compute the same id.
+#: The namespace of the `uuid5` idempotency key of a tool call (`steps.tool_call`).
 RUN_ID_NAMESPACE = uuid.UUID("5d0c3b4e-8f1a-4b8e-9a53-2f6e0a7c1d42")
 
-#: The states a run row can hold. The last three are terminal.
 RUNNING = "running"
-WAITING_FOR_CHILDREN = "waiting_for_children"
 COMPLETED = "completed"
 FAILED = "failed"
 CANCELLED = "cancelled"
 TERMINAL_STATES = (COMPLETED, FAILED, CANCELLED)
 
-#: The queue of the agent activity for each top-level kind. The workflow itself runs on
-#: `chat-queue`. These names are mirrored in `tasks/P_agent/workflows.py`.
-LEAD_QUEUES = {
-    "chat": "chat-model-queue",
-    "planner": "research-queue",
-    "organizer": "research-queue",
-}
-
-
-def batch_id_for(run_id: str) -> str:
-    """The batch id of the sub-agents that a run starts. An organizer starts one batch, the
-    sections of its plan, so the id is unique."""
-    return str(uuid.uuid5(RUN_ID_NAMESPACE, f"{run_id}:batch"))
-
-
-def child_run_id(batch_id: str, index: int) -> str:
-    """The run id of briefing `index` in a batch."""
-    return str(uuid.uuid5(uuid.UUID(batch_id), str(index)))
-
-
-def continuation_run_id(batch_id: str) -> str:
-    """The run id of the continuation that a batch starts."""
-    return str(uuid.uuid5(uuid.UUID(batch_id), "continuation"))
+#: The queue of the `model_step` activity of every run. The workflow itself runs on
+#: `chat-queue`. The name is mirrored in `tasks/P_agent/workflows.py`.
+CHAT_MODEL_QUEUE = "chat-model-queue"
 
 
 def _now() -> datetime:
@@ -82,38 +57,19 @@ class RunRow:
     session_id: str
     turn_seq: int = 0
     thread_id: str = ""
-    parent_run_id: str | None = None
-    batch_id: str | None = None
-    continues_run_id: str | None = None
-    depth: int = 0
-    kind: str = "chat"
-    plan_run_id: str | None = None
-    plan_node_id: str | None = None
-    purpose: str = ""
     queue: str = ""
     workflow_id: str = ""
     state: str = RUNNING
-    briefing: str = ""
-    tool_call_id: str = ""
-    delegated_batch_id: str | None = None
-    delegate_seq: int = 0
-    refused_json: str = "[]"
-    subagent_share: int = 0
     result: str = ""
     error: str = ""
     start_seq: int = 0
     next_seq: int = 0
-    tool_turns_used: int = 0
-    extra_tool_turns: int = 0
-    #: The nag counters of older runs. No code writes them now.
-    nags_this_turn: int = 0
-    nags_without_progress: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
-    #: The model calls of the run thread so far. A continuation copies it.
+    #: The model calls of the run thread so far.
     model_steps: int = 0
     #: Empty for an answer. `step_budget` or `empty_response` for a run that stopped before
-    #: an answer (`steps.write_incomplete`). Older rows can hold `repeated_call`.
+    #: an answer (`steps.write_incomplete`).
     end_reason: str = ""
     started_at: datetime | None = None
     state_version: int = 1
@@ -122,20 +78,7 @@ class RunRow:
 
 RUN_COLUMNS = [f.name for f in fields(RunRow)]
 _UUID_COLUMNS = {"run_id", "thread_id"}
-_NULLABLE_UUID_COLUMNS = {
-    "parent_run_id", "batch_id", "continues_run_id", "plan_run_id", "plan_node_id",
-    "delegated_batch_id",
-}
-
-
-def writes_transcript(row: RunRow) -> bool:
-    """The run owns its turn's transcript: its tool rows, answer and ending row."""
-    return row.depth == 0
-
-
-def is_chat_lead(row: RunRow) -> bool:
-    """The run nags and titles the session."""
-    return writes_transcript(row) and row.kind == "chat"
+_NULLABLE_UUID_COLUMNS: set[str] = set()
 
 
 def is_terminal(row: RunRow) -> bool:
@@ -162,9 +105,8 @@ def _from_db(values) -> RunRow:
     for name in _UUID_COLUMNS | _NULLABLE_UUID_COLUMNS:
         if data[name] is not None:
             data[name] = str(data[name])
-    for name in ("turn_seq", "depth", "delegate_seq", "subagent_share", "start_seq",
-                 "next_seq", "tool_turns_used", "extra_tool_turns", "nags_this_turn",
-                 "nags_without_progress", "prompt_tokens", "completion_tokens",
+    for name in ("turn_seq", "start_seq",
+                 "next_seq", "prompt_tokens", "completion_tokens",
                  "model_steps", "state_version"):
         data[name] = int(data[name] or 0)
     return RunRow(**data)
@@ -395,20 +337,6 @@ def read_messages(username: str, session_id: str, thread_id: str) -> list[RunMes
     ]
 
 
-def read_plan_threads(username: str, session_id: str, plan_run_id: str) -> list[RunRow]:
-    """The first run of each sub-agent thread of a plan run, oldest first. A continuation
-    is left out, so each row names one thread and the id its report documents use."""
-    with _client() as client:
-        rows = client.query(
-            f"SELECT {', '.join(RUN_COLUMNS)} FROM agent_runs FINAL "
-            "WHERE username = {u:String} AND session_id = {s:String} "
-            "AND plan_run_id = {p:UUID} AND depth >= 1 AND continues_run_id IS NULL "
-            "ORDER BY started_at, run_id",
-            parameters={"u": username, "s": session_id, "p": plan_run_id},
-        ).result_rows
-    return [_from_db(r) for r in rows]
-
-
 def read_session_tool_messages(username: str, session_id: str,
                                tool_name: str) -> dict[str, list[RunMessageRow]]:
     """The final `tool` messages of one tool in every thread of a chat session, by thread
@@ -433,15 +361,14 @@ def read_session_tool_messages(username: str, session_id: str,
 def read_earlier_threads(username: str, session_id: str, turn_seq: int) -> list[str]:
     """The thread ids of the chat turns of the session before `turn_seq`, in turn order.
 
-    A turn is a lead chat run (`kind = 'chat'`, `depth = 0`) in a terminal state. A
-    continuation keeps the thread of the run it continues, so a thread appears once.
+    A turn is a run in a terminal state.
     """
     with _client() as client:
         rows = client.query(
             "SELECT thread_id, min(turn_seq) AS first_turn, min(started_at) AS first_start "
             "FROM agent_runs FINAL "
             "WHERE username = {u:String} AND session_id = {s:String} "
-            "AND kind = 'chat' AND depth = 0 AND turn_seq < {t:UInt32} "
+            "AND turn_seq < {t:UInt32} "
             "AND state IN {states:Array(String)} "
             "GROUP BY thread_id ORDER BY first_turn, first_start",
             parameters={"u": username, "s": session_id, "t": int(turn_seq),
@@ -482,12 +409,10 @@ def iter_thread_tool_seqs(messages: list[RunMessageRow]) -> Iterator[int]:
 
 
 __all__ = [
-    "CANCELLED", "COMPLETED", "FAILED", "LEAD_QUEUES", "RUNNING", "RUN_COLUMNS",
-    "RUN_ID_NAMESPACE", "RunMessageRow", "RunRow", "RunRowWriter", "TERMINAL_STATES",
-    "WAITING_FOR_CHILDREN", "batch_id_for", "child_run_id", "continuation_run_id",
-    "create_run", "is_chat_lead", "is_terminal", "iter_thread_tool_seqs",
-    "read_earlier_threads", "read_messages", "read_plan_threads", "read_session_tool_messages",
-    "read_run", "read_turn_runs", "turn_is_stopped", "write_message", "write_messages",
-    "write_run",
-    "write_run_terminal", "write_turn_stop", "writes_transcript",
+    "CANCELLED", "CHAT_MODEL_QUEUE", "COMPLETED", "FAILED", "RUNNING", "RUN_COLUMNS",
+    "RUN_ID_NAMESPACE",
+    "RunMessageRow", "RunRow", "RunRowWriter", "TERMINAL_STATES", "create_run",
+    "is_terminal", "iter_thread_tool_seqs", "read_earlier_threads", "read_messages",
+    "read_session_tool_messages", "read_run", "read_turn_runs", "turn_is_stopped",
+    "write_message", "write_messages", "write_run", "write_run_terminal", "write_turn_stop",
 ]

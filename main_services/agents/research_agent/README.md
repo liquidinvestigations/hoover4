@@ -4,16 +4,10 @@ A FastAPI-based research agent with MCP (Model Context Protocol) tool integratio
 
 ## The agent profiles
 
-One image, two containers, different tool sets, and the difference is deliberate. A third
-profile, `research_subagent`, has no container of its own: it is the profile of a sub-agent
-run. See "Sub-agents of a plan" below. The `planner` and `organizer` profiles are the
-profiles of the two run kinds of a deep research plan.
-
-| | `hoover4-internal-search-agent` (21936) | `hoover4-full-research-agent` (21937) |
-|---|---|---|
-| `AGENT_PROFILE` | `internal_search` | `full_research` |
-| MCP servers | collections **only** | collections + metasearch + browser + ddg + whois + wikipedia |
-| Used by | the runs of a thread with internet tools off | the runs of a thread with internet tools on |
+One image serves two chat profiles with different tools.
+`internal_search` uses collection and conversation tools.
+`full_research` can also use internet tools.
+The worker selects the profile from the conversation's stored internet option.
 
 `hoover4-full-research-agent` runs four uvicorn worker processes (`UVICORN_WORKERS`).
 Each process holds its own cache of step contexts. Citation `[Dn]` handles
@@ -71,27 +65,14 @@ tool is the first sentence of its description, at most 160 characters. `_create_
 renders the prompt once for each step context. The prompt cache holds the system text for
 the run.
 
-The method text is in the skill store, `research_agent/skills/` (`skill_store.py`). Each
-skill is one `.md.j2` file with front matter (`name`, `group`, `description`, `tools`) and a
-Jinja body. The groups are `role`, `general`, `technique` and `stumble`. The role skills
-(`method_chat_full`, `method_chat_internal`, `method_subagent`, `method_planner`,
-`method_organizer`) state the objective of the role, its sources, its evidence rule and its
-duty. They do not require a search for an unrelated general question or a todo update. The
-planner's role text states the context window of the run's model when the catalog knows it.
-For a selected collection, the chat role starts with its documents before it uses web
-context. A requested web context keeps direct page links in the answer. Comparison
-requests end with coverage and disagreement lines based on the evidence read. Other
-answers do not get those lines. The planner writes a plan after enough sizing evidence.
-A run lists each skill of the other groups whose `tools` list is empty or names a tool of
-the run. The general skills (`search`, `thorough`, `citation`) hold the search rules, the
-investigation rule and the citation protocol. The technique skills (`browser_use`,
-`web_research`, `spreadsheets`, `emails`, `folders_and_files`, `passages`, `entities`,
-`plan_editing`, `deep_research`) teach the use of one group of tools. The stumble skills
-(`after_a_result`, `todo_upkeep`, `document_ids`, `call_arguments`, `collection_names`,
-`no_results`, `reviewing_a_report`) teach the fix of one kind of failed call. A technique or
-stumble skill stays under 2,600 characters. A body names a tool only through `tool()`, and a
-sentence that names a tool renders only when `has()` finds that tool in the run.
-`tests/test_skill_store.py` fails when a skill names a tool that no pack holds.
+The method text is in `research_agent/skills/`.
+Each skill has a Jinja body and front matter with its name, group, description, and tools.
+The role skills are `method_chat_full` and `method_chat_internal`.
+They define the role's sources and evidence requirements.
+The other groups provide search, citation, tool use, and failed-call instructions.
+A technique or stumble skill has at most 2,600 characters.
+A skill renders a tool name only when the run has that tool.
+`tests/test_skill_store.py` verifies skill rendering and tool membership.
 
 The model finds a skill with `search_skills` and reads one with `read_skill` when it chooses
 to. The result of a read starts with the line ``Skill `name`.``. A role skill and a skill of
@@ -103,42 +84,20 @@ with `read_tool`. The Manticore match syntax reaches the model through the skill
 the descriptions of the search tools. The collection MCP server also renders it into its
 `instructions`, which this agent does not pass to the model.
 
-## Sub-agents of a plan
-
-No run kind has a delegation tool. The worker starts one sub-agent for each section of an
-approved plan before the organizer's first model call, and each runs as an `AgentRun` of its
-own with the `research_subagent` profile. Its opening message is the briefing of its
-section: the whole subtree, the person's request, the clarifications, the planner's
-orientation and documents, and the permitted collections. When the last one ends, a
-continuation of the organizer receives the outcome of each section in one message and
-combines the reports. See `processing/tasks/Readme.md` for the runs. A call to the older
-name `run_subagent` gets `tool_unavailable`, as any name outside the run's packs does.
-
-**Sub-agents share the conversation's session header, and that is the citation contract.**
-Citation handles are allocated per chat session by the collection-search server, keyed by
-the session header. Every run of a turn sends the conversation's session id, so a sub-agent's
-`[D1]` resolves in the lead's answer.
-
 ## Tool packs and the catalogue
 
-A tool pack is a named set of tools (`agent_common/tool_packs.py`): `catalogue`,
-`skills`, `collections`, `conversation`, `plan`, `web` and `browser`. The
-`chat`, `planner` and `organizer` runs get the packs that `AGENT_PACKS_CHAT`,
-`AGENT_PACKS_PLANNER` and `AGENT_PACKS_ORGANIZER` name, as a comma list or `all`. A
-`subagent` run reads `AGENT_PACKS_ORGANIZER`, so it gets the packs of its plan's organizer.
-A setting that names the retired `delegation` pack gets nothing from that name. Every run kind
-also gets the `skills` pack (`search_skills`, `read_skill`, `read_tool`, `ask_user`,
-`write_note`), whatever its setting says. `deploy.py` renders them from `hoover4.ini`. The
-service refuses to start on an unknown pack name. A tool that an MCP server lists and no pack
-names is refused for every run.
+A tool pack is a named set of tools in `agent_common/tool_packs.py`.
+`agent_packs_chat` selects chat packs. Its default is `all`.
+The available packs are `catalogue`, `skills`, `collections`, `conversation`, `web`, and `browser`.
+Every run receives the `skills` pack.
+The prompt lists the tools that the selected packs permit.
+The catalogue exposes those tools with their descriptions and schemas.
 
-Each step builds a `CatalogueSnapshot` (`tool_catalogue.py`) from the run's packs. Every
-model call receives all callable tools in that snapshot, each with its schema as
 `tool_args.model_schema` shows it (see [Tool arguments](#tool-arguments)). `read_tool` returns one tool's
 description and schema. `search_agent_tools` finds tool names from words in a request.
 Both tools provide information and do not change which tools the model can call. The
 service returns `tool_unavailable` for a name outside the run's callable tools. The
-worker runs the plan and todo calls of a reply in call order, the browser calls of a reply
+worker runs the todo calls of a reply in call order, the browser calls of a reply
 (`read_page` and every `browser_*` tool, `execution.is_browser_tool`) in call order in a
 second chain, and the other calls in parallel.
 
@@ -209,7 +168,7 @@ A call entry is one call of the reply as the service classifies it:
 | `name`, `args` | the call, with its arguments after `tool_args.normalize_arguments`. Damaged arguments stay as the model wrote them |
 | `argument_repairs` | one line for each change that the normalization made |
 | `argument_error` | set when the model client could not read the arguments as JSON (`steps.unreadable_call`). `args` is then empty |
-| `kind` | `ordered` for `write_plan`, `read_plan` and the todo tools, `parallel` for every other call |
+| `kind` | `ordered` for the todo tools, `parallel` for every other call |
 | `page_share` | the call's share of the batch result budget, in bytes |
 | `retry` | false for each browser tool that can change the page: every `browser_` tool except the reads in `steps.BROWSER_READS`. The worker gives such a call one attempt |
 
@@ -279,8 +238,7 @@ no authority. It is an **isolation key**. `hoover4-mcp-browser` uses it to give 
 conversation its own Chromium browser context, so cookies and storage from one chat do not
 follow the next one. A step request also sends `X-Hoover4-Agent-Run` with the run
 id, and the browser server then keys the browser by the run. The chat session stays the
-key for citations and artifacts. The todo server keys chat and organizer lists by session.
-It keys planner lists by run id and sub-agent lists by thread id. Sessions are dropped when
+key for citations and artifacts. The todo server keys each list by conversation session. Sessions are dropped when
 the chat ends, or after `BROWSER_SESSION_IDLE_SECONDS` (1 h) idle. See
 [`../browser_use_server/README.md`](../browser_use_server/README.md).
 

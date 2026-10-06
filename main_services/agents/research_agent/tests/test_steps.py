@@ -167,24 +167,24 @@ async def test_a_streamed_reply_sends_the_same_frames(model, monkeypatch):
 
 
 async def test_a_reply_with_three_calls_is_classified(model):
-    names = ["search_collections", "write_plan"]
+    names = ["search_collections", "write_todo"]
     tools = [dict_tool(n, EMPTY_SCHEMA, []) for n in names]
-    agent = FakeAgent(tools, set(names) | {"read_tool"}, kind="planner")
+    agent = FakeAgent(tools, set(names) | {"read_tool"}, kind="chat")
     # The thread binds the plan tool with an earlier `read_tool` call.
     thread = [
         {"role": "human", "content": "Find the lease."},
         {"role": "ai", "content": "", "tool_calls": [
-            {"id": "r1", "name": "read_tool", "args": {"name": "write_plan"}}]},
-        {"role": "tool", "content": '{"tool": "write_plan"}', "tool_call_id": "r1",
+            {"id": "r1", "name": "read_tool", "args": {"name": "write_todo"}}]},
+        {"role": "tool", "content": '{"tool": "write_todo"}', "tool_call_id": "r1",
          "name": "read_tool"},
     ]
     model.replies.append(AIMessage(content="", tool_calls=[
         {"id": "a", "name": "search_collections", "args": {"query": "lease"}},
-        {"id": "b", "name": "write_plan", "args": {}},
-        {"id": "c", "name": "run_subagent", "args": {"tasks": [{"objective": "A"}]}},
+        {"id": "b", "name": "write_todo", "args": {}},
+        {"id": "c", "name": "unknown_tool", "args": {"tasks": [{"objective": "A"}]}},
     ]))
     entries = turn_of(await frames_of(agent, step_request(thread, step_no=2)))["tool_calls"]
-    # No call is a delegation: `run_subagent` is an ordinary name that no pack holds.
+    # The unknown name has no pack.
     assert [e["kind"] for e in entries] == ["parallel", "ordered", "parallel"]
     assert "briefings" not in entries[0]
     assert sum(e["page_share"] for e in entries) <= SAFE_MODE_BATCH_BYTES
@@ -192,11 +192,11 @@ async def test_a_reply_with_three_calls_is_classified(model):
     assert "args_digest" not in entries[0] and "budget_exhausted" not in entries[0]
 
 
-async def test_a_run_subagent_call_is_refused_as_an_unknown_tool(model):
+async def test_a_unknown_tool_call_is_refused_as_an_unknown_tool(model):
     agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, [])],
-                      {"search_collections"}, kind="organizer")
+                      {"search_collections"}, kind="chat")
     result = await steps.run_tool_call(agent, tool_request(
-        "run_subagent", {"tasks": [{"objective": "A"}]}))
+        "unknown_tool", {"tasks": [{"objective": "A"}]}))
     assert (result["status"], result["error_class"]) == ("error", "tool_unavailable")
 
 
@@ -313,7 +313,7 @@ def test_every_browser_tool_that_can_change_the_page_gets_one_attempt():
                  "browser_tabs", "browser_evaluate"):
         assert steps.retries(name) is False, name
     for name in ("read_page", "browser_snapshot", "browser_take_screenshot",
-                 "browser_wait_for", "search_collections", "write_plan"):
+                 "browser_wait_for", "search_collections", "write_todo"):
         assert steps.retries(name) is True, name
 
 
@@ -530,11 +530,6 @@ def refusal_of(result):
     return data["message"]
 
 
-async def test_a_plan_tool_of_a_planner_is_callable():
-    seen: List[Any] = []
-    agent = pack_agent("planner", "collections,web,plan", seen)
-    result = await steps.run_tool_call(agent, tool_request("write_plan"))
-    assert result["status"] == "ok" and seen
 
 
 async def test_a_web_tool_of_a_chat_lead_is_callable():
@@ -548,25 +543,25 @@ async def test_a_name_outside_every_pack_names_search_agent_tools_when_the_run_h
     chat = pack_agent("chat", "all", [])
     message = refusal_of(await steps.run_tool_call(chat, tool_request("no_such_tool")))
     assert message == "No tool of this run is named 'no_such_tool'. Find tools with search_agent_tools."
-    planner = pack_agent("planner", "collections,web,plan", [])
-    message = refusal_of(await steps.run_tool_call(planner, tool_request("no_such_tool")))
+    narrow = pack_agent("chat", "collections,web", [])
+    message = refusal_of(await steps.run_tool_call(narrow, tool_request("no_such_tool")))
     assert message == "No tool of this run is named 'no_such_tool'. Find tools with search_agent_tools."
 
 
 def test_the_refusal_text_of_an_unavailable_tool_names_no_skill():
     for text in ("No tool of this run is named 'x'.",):
         content = json.dumps({"success": False, "message": text})
-        assert stumbles.stumble_skill("write_plan", content, "error", {}) is None, text
+        assert stumbles.stumble_skill("write_todo", content, "error", {}) is None, text
 
 
 async def test_the_mcp_server_receives_the_idempotency_key_and_the_share():
     seen: List[Any] = []
-    agent = FakeAgent([dict_tool("write_plan", EMPTY_SCHEMA, seen)], {"write_plan"}, kind="planner")
+    agent = FakeAgent([dict_tool("write_todo", EMPTY_SCHEMA, seen)], {"write_todo"}, kind="chat")
     result = await steps.run_tool_call(
-        agent, tool_request("write_plan", idempotency_key="K", page_share=5000))
+        agent, tool_request("write_todo", idempotency_key="K", page_share=5000))
     assert result["status"] == "ok"
     headers = seen[0][2]
-    assert headers["x-hoover4-idempotency-key"] == "K"
+    assert "x-hoover4-idempotency-key" not in headers
     assert headers["x-hoover4-page-share"] == "5000"
     # The values belong to the call, and do not leak into the next one.
     assert execution._IDEMPOTENCY_KEY.get() is None and execution._PAGE_SHARE.get() is None
@@ -617,8 +612,8 @@ async def test_a_call_with_no_repair_keeps_its_measure():
 async def test_a_call_runs_whatever_the_request_says_about_the_context():
     """An older worker sends `budget_exhausted`. The field is ignored, and the tool runs."""
     seen: List[Any] = []
-    agent = FakeAgent([dict_tool("read_plan", EMPTY_SCHEMA, seen)], {"read_plan"}, kind="planner")
-    result = await steps.run_tool_call(agent, tool_request("read_plan", budget_exhausted=True))
+    agent = FakeAgent([dict_tool("read_todo", EMPTY_SCHEMA, seen)], {"read_todo"}, kind="chat")
+    result = await steps.run_tool_call(agent, tool_request("read_todo", budget_exhausted=True))
     assert seen and result["status"] == "ok" and result["error_class"] == ""
 
 

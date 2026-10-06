@@ -47,11 +47,11 @@ NEW_DESCRIPTIONS = {
 }
 TECHNIQUE_SKILLS = sorted([
     "browser_use", "web_research", "spreadsheets", "emails", "folders_and_files", "passages",
-    "entities", "plan_editing", "deep_research",
+    "entities",
 ])
 STUMBLE_SKILLS = sorted([
     "after_a_result", "todo_upkeep", "document_ids", "call_arguments", "collection_names",
-    "no_results", "reviewing_a_report",
+    "no_results",
 ])
 #: The most characters of a technique or stumble skill.
 NEW_SKILL_MAX_CHARS = 2600
@@ -81,8 +81,7 @@ def test_the_store_holds_the_migrated_and_the_new_skills():
     groups = {group: sorted(n for n, s in skills.items() if s.group == group)
               for group in skill_store.GROUPS}
     assert groups == {
-        "role": sorted(["method_chat_full", "method_chat_internal", "method_planner",
-                        "method_organizer", "method_subagent"]),
+        "role": sorted(["method_chat_full", "method_chat_internal"]),
         "general": sorted(["search", "thorough", "citation"]),
         "technique": TECHNIQUE_SKILLS,
         "stumble": STUMBLE_SKILLS,
@@ -94,10 +93,6 @@ def test_a_general_skill_keeps_its_description(name):
     assert load_skills()[name].description == GENERAL_DESCRIPTIONS[name]
 
 
-def test_a_worker_citation_names_the_lead():
-    text = render_skill("citation", context("research_subagent"))
-    assert "The lead researcher resolves them" in normalised(text)
-    assert text.startswith("Skill `citation`.\n\n")
 
 
 # ------------------------------------------------------------------------ boundary
@@ -127,15 +122,6 @@ def test_no_run_lists_a_role_skill_and_each_profile_gets_its_own_role_text():
         assert skill_store.role_method(context(profile)) == body
 
 
-def test_the_planner_role_text_states_a_known_window_and_no_task_formula(monkeypatch):
-    from research_agent import compaction
-
-    monkeypatch.setattr(compaction, "context_window", lambda model_id: 131_072)
-    text = normalised(skill_store.role_method(context("planner", model_id="m")))
-    assert "context window of 131072 tokens" in text
-    assert "packing" not in text and "class" not in text
-    unknown = normalised(skill_store.role_method(context("planner")))
-    assert "context window" not in unknown
 
 
 @pytest.mark.parametrize("profile", sorted(skill_store.ROLE_SKILLS))
@@ -214,7 +200,6 @@ ROLE_SOURCES = {
         "full_research",
         [("full_research.md.j2", 23, 33), ("full_research.md.j2", 36, 40)],
     ),
-    "method_subagent": ("research_subagent", [("research_subagent.md.j2", 31, 38)]),
 }
 
 #: Old text that a skill holds in a corrected form, and the form it holds. The old text

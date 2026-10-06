@@ -7,7 +7,7 @@ Copy this file once for each run. Fill every field. Write "not seen" when a fiel
 | field | value |
 |---|---|
 | story | the story file, for example `05-nili-priell-barak-fortress.md` |
-| mode | chat or deep research, internet tools on or off |
+| mode | chat, internet tools on or off |
 | session id | the 64-character id |
 | chat page | `/ai_chat/c/<session id>/9g==/9g==` on the site under test |
 | account | the account that owns the chat |
@@ -35,7 +35,6 @@ Give each required category PASS, FAIL or PARTIAL. Give each optional todo categ
 | Document cards. `cite_documents` shows the user each document the answer talks about. | | | |
 | Passage. Each card carries a verbatim quote that the page can open at. | | | |
 | Completion. The answer does what the prompt asked. | | | |
-| Deep research only. The plan has one node for each part of the question, and each sub-agent runs on a real plan node id. | | | |
 
 The run passes when "Reads before claims", "Document cards" and "Completion" pass and no other category fails.
 
@@ -82,7 +81,6 @@ Read these on the host that ran the chat. The chat tables are in the database `H
 | What did the user see, in order? | `chat_messages FINAL`, ordered by `seq`. `tool_input`, `tool_output` and `doc_refs` hold the call, the result and the cards. |
 | What did the model receive and send on each call? | `agent_run_messages FINAL`, ordered by `thread_id` and `idx`. `tool_calls_json` holds the raw call as the model wrote it, before argument decoding. |
 | Which runs took part, and why did each end? | `agent_runs FINAL`. Read `kind`, `purpose`, `state`, `error`, `refused_json` and `tool_turns_used`. |
-| Did a plan section fail? | `agent_plan_runs FINAL`. Read `sections_json`, and the section reports in `agent_plan_documents FINAL`. |
 | What did the todo list hold at each step? | `chat_todos`, ordered by `version`. |
 | Which cards and page captures exist? | `chat_artifacts FINAL`. `kind` is `agent_raw_result`, `search_detail` or a page capture. |
 | Did a model call fail or take long? | `llm_call_events`. Read `ok`, `error`, `latency_ms` and `prompt_tokens`. |

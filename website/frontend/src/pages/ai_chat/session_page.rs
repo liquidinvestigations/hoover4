@@ -12,7 +12,7 @@ use dioxus::prelude::*;
 use crate::api::admin_api::{chat_list_models, chat_llm_configured};
 use crate::api::chat_api::{
     chat_dismiss_interrupted, chat_get_session, chat_poll, chat_send_message,
-    chat_start_research, chat_stop,
+    chat_stop,
 };
 use crate::components::chat_components::{
     ChatComposer, ChatGateOverlay, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
@@ -312,9 +312,6 @@ fn ChatConversationPanel(
     // included. The server sends the whole list on each load and each poll.
     let mut run_cited_handles = use_signal(Vec::<String>::new);
     let mut run_cited_refs = use_signal(Vec::<common::chat_types::ChatDocRef>::new);
-    // Finished batch states survive after the live stream stops. A poll returns states
-    // only for its newly finalised rows, so the page retains earlier batch states.
-    let mut subagent_batches = use_signal(Vec::<common::chat_types::SubagentBatchState>::new);
     let mut todo_versions = use_signal(Vec::<common::chat_types::TodoSnapshot>::new);
     let mut loaded_for = use_signal(String::new);
     let mut find_query = use_signal(String::new);
@@ -358,7 +355,6 @@ fn ChatConversationPanel(
         queued_for.set(detail.queued_for.clone());
         run_cited_handles.set(detail.run_cited_handles.clone());
         run_cited_refs.set(detail.run_cited_refs.clone());
-        subagent_batches.set(detail.subagent_batches.clone());
         todo_versions.set(detail.todo_versions.clone());
         loaded_for.set(detail.session.session_id.clone());
         // A refresh mid-answer picks the turn up exactly where a poller left it.
@@ -405,21 +401,6 @@ fn ChatConversationPanel(
                         }
                         if *run_cited_refs.peek() != result.run_cited_refs {
                             run_cited_refs.set(result.run_cited_refs.clone());
-                        }
-                        if !result.subagent_batches.is_empty() {
-                            let mut known = subagent_batches.read().clone();
-                            for batch in result.subagent_batches {
-                                if let Some(index) = known.iter().position(|stored| {
-                                    stored.batch_id == batch.batch_id
-                                        && stored.tool_call_id == batch.tool_call_id
-                                        && stored.task == batch.task
-                                }) {
-                                    known[index] = batch;
-                                } else {
-                                    known.push(batch);
-                                }
-                            }
-                            subagent_batches.set(known);
                         }
                         if !result.todo_versions.is_empty() {
                             let mut known = todo_versions.read().clone();
@@ -482,17 +463,6 @@ fn ChatConversationPanel(
     // before that would read the turn as not started, stop, and clear `sending` while the
     // turn runs.
     let mut poll_resumed = use_signal(|| false);
-
-    // The plan card's decisions open a new turn, which this panel then polls.
-    use_context_provider(|| crate::components::chat_components::plan_card::PlanCardContext {
-        session_id,
-        on_turn_started: Callback::new(move |_: ()| {
-            error.set(None);
-            poll_resumed.set(true);
-            sending.set(true);
-            start_polling.call(());
-        }),
-    });
 
     // Resume polling after a refresh that found a turn in flight.
     if *sending.read() && !*poll_resumed.read() && !loaded_for.read().is_empty() {
@@ -559,32 +529,7 @@ fn ChatConversationPanel(
         queued_for.set(String::new());
         stream_turn.set(None);
         spawn(async move {
-            if opts.deep_research {
-                match chat_start_research(id.clone(), text, opts).await {
-                    Ok(run_id) => {
-                        crate::components::chat_components::plan_card::remember_started_plan(
-                            id.clone(),
-                            run_id,
-                        );
-                        // The Temporal task streams into the same table the poll loop
-                        // reads, so a research turn renders live like an inline one.
-                        let mut o = *options.peek();
-                        o.locked = true;
-                        options.set(o);
-                        start_polling.call(());
-                    }
-                    Err(e) => {
-                        let msg = e.to_string();
-                        // Searched for, not stripped: ServerFnError wraps the message.
-                        if let Some(secs) = rate_limited_seconds(&msg) {
-                            retry_after.set(Some(secs));
-                        } else {
-                            error.set(Some(msg));
-                        }
-                        sending.set(false);
-                    }
-                }
-            } else {
+            {
                 let model_id = if model.is_empty() { None } else { Some(model) };
                 match chat_send_message(id, text, opts, model_id).await {
                     Ok(result) => {
@@ -689,14 +634,8 @@ fn ChatConversationPanel(
                 queued_for: queued_for.read().clone(),
                 run_cited_handles: run_cited_handles.read().clone(),
                 run_cited_refs: run_cited_refs.read().clone(),
-                subagent_batches: subagent_batches.read().clone(),
                 todo_versions: todo_versions.read().clone(),
-                deep_research: detail.session.options.deep_research,
                 turn: turn_state(*sending.read(), &queued_for.read(), *interrupted.read()).to_string(),
-                // A plan that has no planner answer row yet shows its card from here.
-                pending_plan: crate::components::chat_components::plan_card::started_plan(
-                    &session_id.read(),
-                ),
             }
             if *interrupted.read() {
                 div {

@@ -308,45 +308,6 @@ fn UnparseableSearch(query: String, raw: String) -> Element {
     }
 }
 
-#[component]
-fn SearchSummaryStrip(
-    sources_used: Vec<String>,
-    degraded: Vec<String>,
-    unknown_sources: Vec<String>,
-    rerank_applied: bool,
-    rerank_error: String,
-    total_ms: f64,
-    before: u64,
-    after: u64,
-) -> Element {
-    let used = sources_used.join(", ");
-    let dead = degraded.join(", ");
-    let unknown = unknown_sources.join(", ");
-    rsx! {
-        div {
-            style: "font-size: 11px; opacity: 0.85; line-height: 1.6; \
-                    border-bottom: 1px solid #FDE68A; padding-bottom: 6px;",
-            div { "sources: {used}" }
-            if !dead.is_empty() {
-                div { style: "color: #991B1B;", "returned nothing: {dead}" }
-            }
-            if !unknown.is_empty() {
-                div { style: "color: #92400E;", "ignored (no such source): {unknown}" }
-            }
-            div { "{before} results from the sources, {after} after deduplication, in {total_ms:.0} ms" }
-            if !rerank_applied {
-                div {
-                    style: "color: #3730A3;",
-                    if rerank_error.is_empty() {
-                        "Reranking did not run; these are in fusion order."
-                    } else {
-                        "Reranking did not run ({rerank_error}); these are in fusion order."
-                    }
-                }
-            }
-        }
-    }
-}
 
 #[component]
 fn ResultRow(row: Row) -> Element {

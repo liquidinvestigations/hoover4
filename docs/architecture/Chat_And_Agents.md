@@ -8,7 +8,7 @@ durable research path is `main_services/processing/tasks/P_agent/`.
 
 ## Contents
 
-- [The two switches are frozen at the first turn](#the-two-switches-are-frozen-at-the-first-turn)
+- [The internet option stays fixed](#the-internet-option-stays-fixed)
 - [Reaching the agents](#reaching-the-agents)
 - [Citations, and why they are not the search cards](#citations-and-why-they-are-not-the-search-cards)
 - [Streaming a turn](#streaming-a-turn)
@@ -38,35 +38,18 @@ a per-attempt error to the row's writer. The column and the disclosure that rend
 kept because a future writer would want exactly that shape, and an empty column renders
 nothing.
 
-## The two switches are frozen at the first turn
+## The internet option stays fixed
 
-`Deep Research` and `Internet tools` decide **which agent answers**, and therefore which
-tools exist. Changing them mid-thread would produce a transcript where some answers had
-web access and some did not, with nothing on screen saying which was which. So the first
-message writes them to `chat_sessions` (`use_internet_tools`, `deep_research`,
-`options_locked`) and the UI moves them out of the composer to a read-only bar above the
-transcript.
-
-The freeze is enforced **server-side** in `db_chat::lock_session_options`, not just by
-hiding the checkboxes: later turns reuse the stored values whatever the client sends.
-
-`Internet tools` defaults to **on** (`ChatOptions::default`). The chat is more useful with
-them than without, and a user who wants a documents-only answer can untick before sending.
+The first message stores `use_internet_tools` and locks the session options.
+The composer then shows the stored option above the transcript.
+The internet option defaults to on.
 
 ## Reaching the agents
 
-Two services, and **both URLs must be set explicitly in compose**:
-
-| Env | Service | Used when |
-|---|---|---|
-| `HOOVER4_AGENT_URL` | `hoover4-internal-search-agent` | Internet tools **off** |
-| `HOOVER4_FULL_AGENT_URL` | `hoover4-full-research-agent` | Internet tools **on** |
-
-The code defaults (`localhost:21936` / `localhost:21937`) are the loopback ports published
-on the *host*, for running the website outside Docker. Inside the container `localhost` is
-the container itself. `HOOVER4_FULL_AGENT_URL` being unset is what made every
-internet-tools turn fail with `AI agent unreachable at http://localhost:21937` while the
-agent itself was perfectly healthy. This is the same trap as `TEMPORAL_HTTP_URL`.
+The worker selects the agent from the stored internet option.
+It sends turns with internet tools to the full research agent.
+It sends other turns to the internal search agent.
+The agent service names remain unchanged.
 
 The same switch also picks the **model**. Each agent profile has a `server_settings` key
 of its own (`llm_model_internal_search`, `llm_model_full_research`,
@@ -110,10 +93,7 @@ raw call text or a label that does not resolve. A revised answer without labels 
 citation status. The round does not repeat.
 
 The worker stores the typed evidence of each tool result beside it: the reads with their
-spans, the failed items, the citations, the notes and the artifacts. A plan sub-agent
-thread gets a text report and a typed report when it ends, in every state, and the
-organizer reads the typed report with `read_plan_report`. The typed report keeps the model
-text apart from what code wrote. `website/common/src/report_types.rs` reads it.
+spans, failed items, citations, notes, and artifacts.
 Table row windows and cell text count as document reads. Table metadata and search results
 count as discovery. A page find with no match does not count as a content read. The read
 record keeps its source version and unread continuation when the page gives them.
@@ -136,161 +116,12 @@ takes the session's **turn lock**, writes the user row, reserves the answer's `s
 empty stream row, dispatches `AgentRun` to `chat-queue` and returns the transcript
 *including* the message just sent. The start sends the ids of the turn and no text, and it
 rejects a duplicate workflow id. Temporal answers a duplicate with HTTP 409, which the
-website counts as started. The model call runs on `chat-model-queue`. A deep research
-request is a plan run, described in the next section.
+website counts as started. The model call runs on `chat-model-queue`.
+Each tool call runs on `agent-tool-queue`.
+The worker stores the model thread and transcript rows in ClickHouse.
+The page reads persisted rows through `chat_poll`.
+The agent run sweep closes running rows whose workflows have ended.
 
-### The plan layer
-
-A deep research request starts a **plan run**. `start_research_task` starts a planner
-`AgentRun` with the conversation's frozen internet switch and the resolved model of the
-conversation's profile. Before the first model call, the worker writes both into the plan's
-`execution_settings` document, and every later run of the plan uses them. The planner can
-ask the person a question or write the whole plan tree with `write_plan`. Its answer row
-carries the plan reference that the plan card reads. The plan run then waits in
-`awaiting_review`, and no workflow of the session is open.
-
-The planner writes the tree after it has enough evidence to size its sections. A request
-for web context gets a web section when internet tools are enabled. An unknown node id gets
-the allowed number paths and the form for a new node. The visible answer gives an
-orientation or an incomplete-plan status. Raw plan JSON does not become that answer.
-
-A decision starts a new run. `decide_plan`
-(`api/chat/plans.rs`) holds the turn lock, checks the decision id, the version and the state,
-and returns a typed outcome. A rejection starts the next planner round with the comment as
-its opening message. An approval freezes the tree and starts the organizer. A second
-approval of the plan starts nothing. A cancel of a plan in review writes `cancelled`, and a
-cancel of a running plan writes the stop row and cancels its runs. While a plan waits or
-runs, the conversation refuses a new message.
-
-A section is a direct child of the approved root, with its whole subtree. A plan has at
-most 4 sections. Before the organizer's first model call, the worker starts one sub-agent
-for each section (`dispatch_sections`). Its briefing holds the request, the clarifications,
-the orientation, the documents that the planner read, the section's subtree and the
-permitted collections. Each sub-agent thread writes its prompt and report as plan
-documents. When every section has ended and has its report, one continuation of the
-organizer receives the outcome of each section and combines the reports. The organizer
-cannot start a sub-agent. A section stays running while its run is open. It fails when its
-run ends without completion, stops at a limit, writes no report or reports incomplete
-execution. The plan completes when the organizer answers. The final report ends with a
-generated table of the failed sections
-and the cause of each. The plan runs take their model steps on `research-queue`.
-
-The plan card reads the plan through `get_plan_view`. For an executing plan it derives the
-phase from the plan's agent runs. When every section run has ended and a lead run is
-`running`, the organizer combines the reports. No stored plan state records that phase.
-The card reads the section reports through `get_section_reports`. It parses the typed
-`report_data` document of each section. Without it, the text `report` document is a legacy
-report. A section with neither has no report, and the card does not infer its success.
-
-`AgentRun` keeps the run in `agent_runs` and its model conversation in
-`agent_run_messages`, and runs the agent loop. Each model call is one `model_step`
-activity: the worker sends the stored thread to the agent's `POST /model_step` and writes
-the reply as it streams, the messages into `agent_run_messages` and the live rows into
-`chat_message_stream`. Each tool call of the reply is one `tool_call` activity on
-`agent-tool-queue`: the worker sends the stored call to `POST /tool_call` and writes its
-result and its finished tool row into `chat_messages` at the seq the model step gave it.
-The answer row follows the last model step. The page follows the turn with `chat_poll`.
-
-**The sections run through run rows.** The organizer's first run writes one sub-agent run
-for each section and waits, and each sub-agent runs as an `AgentRun` of its own. A
-sub-agent writes no transcript row, and no model call starts it. When the last sub-agent
-ends, `fan_in` writes any missing report and starts one continuation of the organizer,
-which writes the answer. An agent run sweep on `operations-queue` ends a run whose workflow
-closed without an ending, and continues its parent.
-
-**The `run_subagent` card shows the sub-agents of an older turn.** A turn from before the
-controller's section start can hold `run_subagent` tool rows. While a batch is open, `chat_poll`
-returns its entries in `stream.subagent_runs`, one for each briefing, with the state, the
-count of tool calls, and for a running entry the last 20 messages of its thread, each cut
-to 2,000 characters. For each thread it lists only the batch of the newest run, which
-bounds the list to 30 entries. A terminal entry carries its report. The card finds its
-entries by the `batch_id` and `tool_call_id` in the tool row's `tool_input`, and shows a
-depth 2 entry under its depth 1 entry. When the batch ends, the entries leave the poll and
-the card reads the reports from the tool row's `tool_output`. Deleting a session deletes its
-rows in `agent_runs`, `agent_run_messages` and `agent_turn_stops`.
-
-That is what makes a turn survive things it used to die of: a website restart, a closed
-tab, a request that timed out. The turn carries on and the page picks it back up, because
-nothing about it ever lived in the website's memory.
-
-The lock is `try_lock`: one turn at a time per session, and a second send is refused with
-a message rather than blocking a request. It only covers this process, so both entry
-points also ask `stream_state(...).active`. The same question the poller asks, and the
-one that holds across processes.
-
-| Piece | Where |
-|---|---|
-| dispatch | `api::chat::start_agent_workflow`, `CHAT_TASK_QUEUE`, `RESEARCH_TASK_QUEUE` |
-| the workflow | `main_services/processing/tasks/P_agent/workflows.py`, `AgentRun` |
-| run storage | `main_services/processing/database/agent_runs.py` |
-| section dispatch and fan-in | `P_agent/activities.py` (`dispatch_sections`, `fan_in`, `continue_run`), `P_agent/plan_runs.py` |
-| the agent run sweep | `main_services/processing/tasks/P_agent/supervise.py` |
-| stream consumer, fold into rows | `main_services/processing/tasks/P_agent/stream_writer.py` |
-| stream table I/O | `db_chat::{append_stream_row, read_stream_rows, mark_stream_final}` |
-| long-poll | `api::chat::poll_chat`, `RateLimitKind::ChatPoll` |
-
-**Chat turns, chat model calls and deep research each have their own queue, and none of
-them is the ingestion queue.** An ingestion backlog delaying a person waiting at a screen
-is the one failure a shared queue guarantees. The queue names are declared in the workflow
-module and mirrored in `api::chat`: a workflow addressed to a queue nothing polls waits for
-ever with no error anywhere, and presents as chat hanging. **Deploy the worker before the
-website**, for the same reason. A `chat-model-queue` slot is one agent run in flight, not
-one model call, and a running plan takes one slot for each running sub-agent.
-
-Three rules that are commonly broken and hard to notice:
-
-- **`read_stream_rows` aggregates in a subquery.** `max(updated_at) AS updated_at`
-  shadows the column, so sibling `argMax(…, updated_at)` calls become aggregates inside
-  aggregates (`Code: 184`); but `clickhouse::Row` also matches columns **by name**, so
-  renaming the alias alone breaks this. Aggregate as `last_*` inside, rename outside.
-- **Liveness comes from the transcript, the run rows and the stream table, and from
-  nothing in the website.** `ChatPollResult` carries `active`. A turn is open while the
-  last user row has no assistant/error row after it (`db_chat::turn_boundaries`), or while
-  a run of that turn in `agent_runs` is `running` or `waiting_for_children`. The second
-  test keeps a citation round and a plan's running sections open, because both follow an
-  assistant row. `active` also needs the stream rows or the run rows to have moved recently. There is deliberately no registry of runs the
-  website is holding, because there are none: a registry would empty on a restart while
-  the turns themselves carried on, and every one of them would read as interrupted.
-- **A turn always keeps exactly one non-final stream row open**, from before the agent
-  call until finalisation. That is what the interrupted detector points at: a process
-  killed with nothing open leaves a transcript that just stops, with no marker.
-
-Poll cadence: holds up to 15 s when nothing changes, and every poll after the first takes
-at least 500 ms, with content flowing each poll returns immediately, so without that
-floor the client spins as fast as the network allows. Concurrently-held polls are capped
-per user (`MAX_HELD_POLLS_PER_USER`, 8). The poll ceiling is 1800 per minute per user.
-
-**Rate limiting a poll loop is not rate limiting a person.** `RateLimitKind::ChatPoll` has
-a *flat* window ladder (factor 1.0 everywhere), unlike chat messages and API calls, whose
-budget decays the longer a burst lasts. That decay distinguishes a burst of human activity
-from an hour of it; a streaming turn polls at the 500 ms floor for as long as the model
-generates, so for this limiter "sustained" is "working". Under a decaying ladder
-one tab sits exactly on the one-hour window's ceiling and two or three trip it, at which
-point the page declares the chat lost mid-turn. The refusal is
-also typed (`rate_limited:<secs>`, parsed with `chat_types::rate_limited_seconds`), so the
-poll loop waits and retries instead of counting it toward `failures >= 3` and declaring
-"lost contact with the chat" while the turn is still running. The parser searches for the
-marker rather than stripping a prefix: `ServerFnError` may wrap the message.
-
-Stop and interruption: the composer's stop button first writes the turn's row in
-`agent_turn_stops` with a synchronous insert. It then sends a **Temporal cancellation** to
-the workflow of every `running` run of the turn, read from `agent_runs`, and counts a 404
-as success. A run whose workflow starts after the stop row reads it in `open_run` and
-closes as `cancelled`, and a fan-in that reads it starts no continuation. `AgentRun`
-catches the cancellation and writes an ending into the transcript inside
-`asyncio.shield`. A cancelled workflow
-that vanished would leave a user row with nothing after it, and the page would
-follow a turn that will never speak again. A turn whose rows stop advancing for
-`CHAT_STREAM_STALL_SECONDS` (default 180) renders as **interrupted** with a Dismiss button,
-never a spinner, and never promoted into `chat_messages`. A stopped turn's partial answer
-is therefore never saved into the conversation: the agent writes `chat_messages` only when
-its run finishes, so a cancelled run has written none of them, and the partial survives only
-as a leftover stream row until the next question takes its seq. The transcript keeps the
-question and the stop, and the stop control says so rather than promising the partial back.
-
-Both kinds of turn write the empty stream row before they dispatch. It is the only thing
-telling the poller a turn exists before the worker picks the activity up, and the worker
-rewrites that seq, keepalive included.
 
 ## Timeouts and retries
 
@@ -346,13 +177,10 @@ a model that hits its token limit every time must not look like one that never r
 
 ## Admin: live chats
 
-`/admin/metrics` lists the agent runs running right now (user, conversation, both
-switches, elapsed time) with a **Kill** button. It is a **Temporal visibility query** on
+`/admin/metrics` lists the agent runs running right now (user, conversation, the internet option, elapsed time) with a **Kill** button. It is a **Temporal visibility query** on
 `WorkflowType = 'AgentRun'`, so it is true in both directions across a
 website restart: it does not lose the runs that were already running, and it does not keep
-listing one whose process died. Each open workflow is one entry, so a running plan shows
-each sub-agent that runs. An `AgentRun` takes its session and turn from its row in
-`agent_runs`, because a sub-agent's workflow id `run-{run_id}` names neither.
+listing one whose process died. Each open workflow is one entry. `AgentRun` reads session and turn identifiers from its stored row.
 
 Kill is the same cancellation the user's own stop button sends, so an admin-stopped turn
 ends the way a user-stopped one does: with an ending in the transcript rather than a

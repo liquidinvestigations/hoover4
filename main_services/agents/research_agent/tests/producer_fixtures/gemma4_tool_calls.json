@@ -60,23 +60,6 @@
       "cause": "A well-formed call. Each query keeps its phrase quotes."
     },
     {
-      "case": "empty_string_lost_one_delimiter",
-      "tool": "run_subagent",
-      "raw_kind": "inferred",
-      "raw": "<|tool_call>call:run_subagent{tasks:[{bring_back:<|\"|>Research the technical valuation models used (e.g., two-factor models) and determine the priorities and values of the research groups (e.g., ECT).<|\"|>,known:<|\"|>,objective:<|\"|>Research the technical valuation models used (e.g., two-factor models) and determine the priorities and values of the research groups (e.g., ECT) regarding LJM and Raptor between late 1999 and the end of 2000.<|\"|>,plan_node_id:<|\"|>2<|\"|>,purpose:<|\"|>execute<|\"|>}]}<tool_call|>",
-      "parser_result": {
-        "tasks": [
-          {
-            "bring_back": "Research the technical valuation models used (e.g., two-factor models) and determine the priorities and values of the research groups (e.g., ECT).",
-            "known": ",objective:",
-            "Research the technical valuation models used (e.g., two-factor models) and determine the priorities and values of the research groups (e.g., ECT) regarding LJM and Raptor between late 1999 and the end of 2000.<|\"|>,plan_node_id": "2",
-            "purpose": "execute"
-          }
-        ]
-      },
-      "cause": "The empty value of `known` has one delimiter where it needs two. The parser at the verified revision gives the stored result from this raw text. The intended object cannot be read from it."
-    },
-    {
       "case": "objects_written_as_lists",
       "tool": "cite_documents",
       "raw_kind": "inferred",

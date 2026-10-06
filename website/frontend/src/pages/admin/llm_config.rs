@@ -189,7 +189,7 @@ fn DefaultsPanel(
                     "Thinking"
                 }
                 p { style: "{HELP_TEXT} margin: 0 0 14px;",
-                    "The model reasons before each tool call and each answer. Titles, compaction summaries and the planning call never reason."
+                    "The model reasons before each tool call and each answer. Titles and compaction summaries never reason."
                 }
                 div { style: "display: flex; flex-wrap: wrap; gap: 16px; align-items: end;",
                     label { style: LABEL,

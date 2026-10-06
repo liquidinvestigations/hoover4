@@ -41,7 +41,6 @@ def _iter_execute_activity():
 def test_queue_name_constants():
     assert agent_workflows.CHAT_TASK_QUEUE == "chat-queue"
     assert agent_workflows.CHAT_MODEL_TASK_QUEUE == "chat-model-queue"
-    assert agent_workflows.RESEARCH_TASK_QUEUE == "research-queue"
 
 
 def _queue(call: ast.Call) -> str | None:
@@ -65,10 +64,10 @@ def test_agent_activities_declare_their_task_queue():
     )
 
 
-def test_the_model_step_goes_to_the_queue_in_the_run_row():
+def test_the_model_step_goes_to_the_chat_model_queue():
     queues = [_queue(call) for call in _iter_execute_activity()
               if _name(call.args[0]) == "model_step"]
-    assert queues == ["row"], queues
+    assert queues == ["CHAT_MODEL_TASK_QUEUE"], queues
 
 
 def test_the_tool_call_goes_to_the_tool_queue():
@@ -77,18 +76,10 @@ def test_the_tool_call_goes_to_the_tool_queue():
     assert queues == ["AGENT_TOOL_TASK_QUEUE"], queues
 
 
-def test_plan_runs_go_to_the_research_queue():
-    from database import agent_runs
-    from tasks.P_agent import workflows
-
-    assert agent_runs.LEAD_QUEUES["planner"] == workflows.RESEARCH_TASK_QUEUE
-    assert agent_runs.LEAD_QUEUES["organizer"] == workflows.RESEARCH_TASK_QUEUE
-
-
 def test_short_agent_activities_go_to_the_low_latency_queue():
-    for activity in ("open_run", "append_nag", "write_ending",
-                     "summarize_if_first_turn", "dispatch_sections", "prepare_continuation",
-                     "record_step_failure", "plan_has_sections",
+    for activity in ("open_run", "write_ending",
+                     "summarize_if_first_turn",
+                     "record_step_failure",
                      "check_citations", "write_empty_note", "write_incomplete"):
         queues = [
             _name(_kwarg(call, "task_queue"))
@@ -119,8 +110,7 @@ def test_an_empty_slot_key_gives_three_model_slots_and_sixteen_tool_slots(monkey
     from tasks.run_worker import worker_concurrency
 
     defaults = _chat_worker_slot_defaults()
-    assert defaults == {"chat_model": 3, "chat_low_latency": 8, "research": 3,
-                        "agent_tool": 16}
-    for name in ("chat_model", "research", "agent_tool"):
+    assert defaults == {"chat_model": 3, "chat_low_latency": 8, "agent_tool": 16}
+    for name in ("chat_model", "agent_tool"):
         monkeypatch.setenv(f"HOOVER4_{name.upper()}_CONCURRENCY", "")
         assert worker_concurrency(name, defaults[name]) == defaults[name]

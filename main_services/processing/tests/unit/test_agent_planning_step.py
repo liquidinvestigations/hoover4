@@ -120,19 +120,6 @@ def test_the_next_index_is_the_index_after_the_last_row_of_the_reply(
     assert result.next_idx == steps.reply_end_idx(store["messages"][1])
 
 
-def test_a_note_after_a_compacted_answer_keeps_the_compaction_row(store, monkeypatch):
-    monkeypatch.setattr(agent_runs, "write_run", lambda row, **changes: None)
-    _serve(monkeypatch, store, _reply_frames("The answer.", [], True))
-    result = _step()
-    assert result.next_idx == 3
-    activities.append_nag(activities.AppendNagParams(
-        run_id=RUN_ID, username="u", session_id="s", seq=result.next_seq,
-        idx=result.next_idx, message="nag"))
-    rows = {m.idx: m for m in store["messages"]}
-    assert rows[2].role == "compaction" and json.loads(rows[2].content) == COMPACTION
-    assert (rows[3].role, rows[3].content) == ("human", "nag")
-
-
 # ---------------------------------------------------------------- the todo store
 
 

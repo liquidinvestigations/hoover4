@@ -106,13 +106,6 @@ def test_a_citation_keeps_its_reason_and_an_older_row_has_none():
     assert refs[2]["quote_reason"] == ""
 
 
-def test_a_pre_batch_entities_row_still_renders():
-    # The single-document shape the tool answered with before it was batched. Stored
-    # transcripts still hold these rows and a card that cannot render one loses the record.
-    refs = extract_doc_refs(
-        "list_document_entities", {"file_hash": "abc", "collection_dataset": "d"}
-    )
-    assert len(refs) == 1 and refs[0]["file_hash"] == "abc"
 
 
 def test_a_result_with_no_documents_yields_nothing():
@@ -167,8 +160,7 @@ def test_truncate_leaves_short_text_alone():
 _PAGE_ENVELOPE = {
     "continuation": None,
     "items": [{"path": "a.txt"}],
-    "kind": "result_page",
-    "raw_artifact_id": None,
+        "raw_artifact_id": None,
     "returned_units": 1,
     "shape": "rows",
     "success": True,
@@ -202,7 +194,7 @@ def test_an_ordinary_result_is_unaffected_by_the_page_guard():
 
 def _search_page(items):
     """A broker result page as the broker serialises it: canonical JSON text."""
-    return _canonical_json({"kind": "result_page", "items": items, "success": True,
+    return _canonical_json({"items": items, "success": True,
                             "tool_name": "search_collections", "total_units": len(items)})
 
 
@@ -230,7 +222,7 @@ def test_a_search_card_takes_the_first_of_queries():
 
 
 def test_a_read_documents_page_yields_its_items():
-    page = _canonical_json({"kind": "result_page", "items": [
+    page = _canonical_json({"items": [
         {"collectionname": "enron", "collection_dataset": "enron_maildir", "file_hash": "aaa"}]})
     refs = json.loads(_row("read_documents", page).doc_refs)
     assert [(r["file_hash"], r["collection_dataset"], r["find_query"]) for r in refs] == [
@@ -246,7 +238,7 @@ def test_a_citation_carries_its_find_query():
 
 
 def test_a_stored_search_row_with_only_the_short_dataset_gets_the_composed_key():
-    refs = extract_doc_refs("search_collections", {"kind": "result_page", "items": [
+    refs = extract_doc_refs("search_collections", {"items": [
         {"collectionname": "enron", "dataset": "maildir", "file_hash": "aaa"}]})
     assert refs[0]["collection_dataset"] == "enron_maildir"
 

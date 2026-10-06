@@ -2,7 +2,7 @@
 
 | field | value |
 |---|---|
-| mode | deep research, internet tools off |
+| mode | chat, internet tools off |
 | collections in scope | every collection |
 | data needed | `testdata`, and `epstein` for the second turn |
 
@@ -29,11 +29,10 @@ How many PDF documents does the epstein collection hold? List the 10 largest.
 
 ## Expected tool calls
 
-1. The planner sees that one filtered search answers the request. It answers without sections, or writes a plan with one section.
-2. It calls `search_collections` with `collectionname` `["testdata"]`, a file type filter for PDF, no query words, and the sort `file_size` descending.
-3. It calls `read_more` until it has every row, or it uses the total of the result.
-4. It calls `cite_documents` with the three largest files.
-5. In the second turn it calls `search_facet_values` or `search_collections` with the file type facet on `epstein`, and it reads the PDF count of 0 from the result.
+1. It calls `search_collections` with `collectionname` `["testdata"]`, a file type filter for PDF, no query words, and the sort `file_size` descending.
+2. It calls `read_more` until it has every row, or it uses the total of the result.
+3. It calls `cite_documents` with the three largest files.
+4. In the second turn it calls `search_facet_values` or `search_collections` with the file type facet on `epstein`, and it reads the PDF count of 0 from the result.
 
 ## Expected result
 

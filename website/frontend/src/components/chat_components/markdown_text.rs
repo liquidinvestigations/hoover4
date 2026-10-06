@@ -279,11 +279,6 @@ pub enum Block {
     Rule,
 }
 
-/// Turn each `Span::Handle` that is not in `issued` into a `Span::UncitedHandle`.
-pub fn mark_uncited_handles(blocks: Vec<Block>, issued: &[String]) -> Vec<Block> {
-    mark_handles(blocks, issued, &[])
-}
-
 /// A block with each `Span::UncitedHandle` back as a `Span::Handle`, for a text that
 /// is rendered with no list of issued handles.
 fn unmark_uncited(block: Block) -> Block {
@@ -732,7 +727,7 @@ mod tests {
     #[test]
     fn a_handle_that_no_citation_gave_is_marked_not_cited() {
         let blocks = parse_blocks("see [D1] and [D2]\n\n- item [D2]\n\n| a |\n|---|\n| [D2] |");
-        let marked = mark_uncited_handles(blocks, &["[D1]".to_string()]);
+        let marked = mark_handles(blocks, &["[D1]".to_string()], &[]);
         assert_eq!(
             marked[0],
             Block::Paragraph(vec![

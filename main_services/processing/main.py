@@ -932,7 +932,7 @@ def worker(worker_type: str | None = None):
     log.info("Spawning %d common workers and %d index workers", common_count, indexing_count)
     # `chat` is one process and is listed first on purpose: it is the only process with a
     # person waiting on the other end, so it must exist before anything competes for the
-    # host's memory. It polls chat-queue, chat-model-queue and research-queue, and never
+    # host's memory. It polls chat-queue, chat-model-queue and agent-tool-queue, and never
     # the ingestion queue.
     for wt in (["chat", "tika", "ocr", "nlp", "embed"]
                + ["indexing"] * indexing_count

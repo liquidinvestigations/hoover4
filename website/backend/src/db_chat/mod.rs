@@ -6,7 +6,6 @@
 //! session id alone is never sufficient to read a conversation.
 
 pub mod artifacts;
-pub mod plans;
 
 use common::chat_types::{ChatMessageItem, ChatOptions, ChatRole, ChatSessionItem, TodoItemView, TodoSnapshot};
 use time::format_description::well_known::Rfc3339;
@@ -30,8 +29,6 @@ pub struct ChatSessionRow {
     #[serde(default)]
     pub use_internet_tools: u8,
     #[serde(default)]
-    pub deep_research: u8,
-    #[serde(default)]
     pub options_locked: u8,
     /// Running maximum of `ChatMessageRow::peak_context_tokens` over the conversation's
     /// turns, written by the worker. **Carried through every read-modify-write here**,
@@ -50,7 +47,6 @@ impl ChatSessionRow {
             return ChatOptions::default();
         }
         ChatOptions {
-            deep_research: self.deep_research != 0,
             internet_tools: self.use_internet_tools != 0,
             locked: true,
         }
@@ -108,10 +104,6 @@ pub struct ChatMessageRow {
     /// means the provider never stated one and the percentage must not be shown.
     #[serde(default)]
     pub context_window: u32,
-    /// The plan reference of a planner's answer row, as JSON. The worker writes it, and
-    /// the website writes it empty.
-    #[serde(default)]
-    pub plan_reference_json: String,
 }
 
 /// One version of an in-flight row in `chat_message_stream`.
@@ -137,13 +129,13 @@ pub struct ChatStreamRow {
 }
 
 const SESSION_SELECT: &str = "SELECT session_id, username, title, summary, collections, created_at, \
-     updated_at, is_deleted, use_internet_tools, deep_research, options_locked, \
+     updated_at, is_deleted, use_internet_tools, options_locked, \
      peak_context_tokens FROM chat_sessions FINAL";
 
 const MESSAGE_SELECT: &str = "SELECT session_id, username, seq, role, content, tool_name, \
      tool_input, tool_output, doc_refs, created_at, updated_at, created_ms, agent_duration_ms, \
      retry_errors, model, reasoning, message_uuid, context_tokens, peak_context_tokens, \
-     context_window, plan_reference_json FROM chat_messages FINAL";
+     context_window FROM chat_messages FINAL";
 
 fn fmt(dt: time::OffsetDateTime) -> String {
     dt.format(&Rfc3339).unwrap_or_else(|_| dt.to_string())
@@ -179,7 +171,6 @@ pub async fn create_session(
         updated_at: now(),
         is_deleted: 0,
         use_internet_tools: 0,
-        deep_research: 0,
         options_locked: 0,
         // Nothing has been counted yet. The worker raises it as turns complete.
         peak_context_tokens: 0,
@@ -297,7 +288,6 @@ pub async fn list_messages(
             context_tokens: r.context_tokens,
             peak_context_tokens: r.peak_context_tokens,
             context_window: r.context_window,
-            plan_reference_json: r.plan_reference_json,
             streaming: false,
         })
         .collect())
@@ -339,7 +329,6 @@ pub async fn list_messages_after(
             context_tokens: r.context_tokens,
             peak_context_tokens: r.peak_context_tokens,
             context_window: r.context_window,
-            plan_reference_json: r.plan_reference_json,
             streaming: false,
         })
         .collect())
@@ -520,7 +509,6 @@ pub async fn append_message(
         context_tokens: extras.context_tokens,
         peak_context_tokens: extras.peak_context_tokens,
         context_window: extras.context_window,
-        plan_reference_json: String::new(),
     };
     insert_row("chat_messages", &row).await
 }
@@ -626,32 +614,12 @@ pub async fn lock_session_options(
         return Ok(row.options());
     }
     row.use_internet_tools = u8::from(requested.internet_tools);
-    row.deep_research = u8::from(requested.deep_research);
     row.options_locked = 1;
     row.updated_at = now();
     insert_row("chat_sessions", &row).await?;
     Ok(row.options())
 }
 
-/// Set title and/or summary without clearing the other.
-pub async fn set_session_title_summary(
-    username: &str,
-    session_id: &str,
-    title: Option<&str>,
-    summary: Option<&str>,
-) -> anyhow::Result<()> {
-    let Some(mut row) = get_session(username, session_id).await? else {
-        anyhow::bail!("chat session not found");
-    };
-    if let Some(t) = title {
-        row.title = t.to_string();
-    }
-    if let Some(s) = summary {
-        row.summary = s.to_string();
-    }
-    row.updated_at = now();
-    insert_row("chat_sessions", &row).await
-}
 
 pub async fn delete_session(username: &str, session_id: &str) -> anyhow::Result<()> {
     let Some(mut row) = get_session(username, session_id).await? else {
@@ -829,31 +797,6 @@ pub async fn turn_boundaries(
     ))
 }
 
-/// Mark one stream row final (a finalised tool row, or an assistant partial whose seq
-/// a starting tool is taking over). Re-inserts the newest version with `is_final = 1`.
-pub async fn mark_stream_row_final(
-    username: &str,
-    session_id: &str,
-    seq: u32,
-) -> anyhow::Result<()> {
-    let rows = read_stream_rows(username, session_id).await?;
-    for row in rows.into_iter().filter(|r| r.seq == seq && r.is_final == 0) {
-        append_stream_row(
-            username,
-            session_id,
-            row.seq,
-            ChatRole::from_str(&row.role),
-            &row.content,
-            &row.reasoning,
-            &row.tool_name,
-            row.tool_call_index,
-            true,
-            &row.message_uuid,
-        )
-        .await?;
-    }
-    Ok(())
-}
 
 /// Mark every stream row of a session final. The turn is over (one way or another)
 /// and the rows are only kept around for the TTL to collect. Reads filter on
@@ -888,29 +831,10 @@ pub async fn mark_stream_final(username: &str, session_id: &str) -> anyhow::Resu
 /// null UUID comes as an empty string.
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
 pub struct AgentRunRow {
-    pub rid: String,
-    pub owner: String,
-    pub sid: String,
-    pub turn_seq: u32,
-    pub thread: String,
-    pub parent_rid: String,
-    pub batch: String,
-    pub continues: String,
-    pub delegated_batch: String,
-    pub depth: u8,
-    pub kind: String,
     pub state: String,
     pub workflow_id: String,
     /// The Temporal task queue of the run's agent activity.
     pub queue: String,
-    pub briefing: String,
-    pub tool_call_id: String,
-    /// The plan section node that the run executes, or empty.
-    pub plan_node: String,
-    /// The result, cut to the poll's text limit.
-    pub result_head: String,
-    /// The error, cut to the poll's text limit.
-    pub error_head: String,
     pub started_ms: i64,
     pub updated_ms: i64,
 }
@@ -918,27 +842,18 @@ pub struct AgentRunRow {
 impl AgentRunRow {
     /// The run is open: its workflow runs, or it waits for the runs it delegated to.
     pub fn is_open(&self) -> bool {
-        matches!(self.state.as_str(), "running" | "waiting_for_children")
+        self.state == "running"
     }
 }
 
 /// The select list of [`AgentRunRow`]. The aliases have names no column has, because
 /// ClickHouse resolves an alias before the column of the same name.
-const RUN_SELECT: &str = "SELECT toString(run_id) AS rid, username AS owner, session_id AS sid, \
-     turn_seq, toString(thread_id) AS thread, \
-     ifNull(toString(parent_run_id), '') AS parent_rid, \
-     ifNull(toString(batch_id), '') AS batch, \
-     ifNull(toString(continues_run_id), '') AS continues, \
-     ifNull(toString(delegated_batch_id), '') AS delegated_batch, \
-     depth, kind, state, workflow_id, queue, briefing, tool_call_id, \
-     ifNull(toString(plan_node_id), '') AS plan_node, \
-     substringUTF8(result, 1, 2000) AS result_head, \
-     substringUTF8(error, 1, 2000) AS error_head, \
+const RUN_SELECT: &str = "SELECT state, workflow_id, queue, \
      toUnixTimestamp64Milli(started_at) AS started_ms, \
      toUnixTimestamp64Milli(updated_at) AS updated_ms \
      FROM agent_runs FINAL";
 
-/// Every run of one turn: the lead, its continuations, and every sub-agent run.
+/// Each agent run of one chat turn.
 pub async fn turn_runs(
     username: &str,
     session_id: &str,
@@ -957,88 +872,7 @@ pub async fn turn_runs(
     Ok(rows)
 }
 
-/// Every depth-one run of the named completed delegation batches.
-///
-/// The caller selects the newest run of each thread. Continuations have their own run
-/// id, so selecting a bare terminal row here would show one briefing more than once.
-pub async fn subagent_batch_runs(
-    username: &str,
-    session_id: &str,
-    batch_ids: &[String],
-) -> anyhow::Result<Vec<AgentRunRow>> {
-    if batch_ids.is_empty() {
-        return Ok(Vec::new());
-    }
-    let rows = get_global_client()
-        .query(&format!(
-            "{RUN_SELECT} WHERE username = ? AND session_id = ? AND depth = 1 \
-             AND batch_id IN ? ORDER BY started_at, run_id"
-        ))
-        .bind(username)
-        .bind(session_id)
-        .bind(batch_ids)
-        .fetch_all::<AgentRunRow>()
-        .await?;
-    Ok(rows)
-}
-
-/// The run rows of the named workflows, for every owner. Only the admin live-runs list
-/// calls this, after its admin check.
-pub async fn runs_by_workflow_ids(workflow_ids: &[String]) -> anyhow::Result<Vec<AgentRunRow>> {
-    if workflow_ids.is_empty() {
-        return Ok(Vec::new());
-    }
-    let rows = get_global_client()
-        .query(&format!("{RUN_SELECT} WHERE has(?, workflow_id)"))
-        .bind(workflow_ids)
-        .fetch_all::<AgentRunRow>()
-        .await?;
-    Ok(rows)
-}
-
-/// One `agent_run_messages` row, as the poll reads it.
-#[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
-pub struct RunMessageHead {
-    pub thread: String,
-    pub idx: u32,
-    pub role: String,
-    /// The content, cut to the poll's text limit.
-    pub text: String,
-    pub tool_name: String,
-    pub tool_calls_json: String,
-    pub is_final: u8,
-}
-
-/// The last `per_thread` messages of each named thread, newest first within a thread.
-pub async fn thread_message_tails(
-    username: &str,
-    session_id: &str,
-    threads: &[String],
-    per_thread: usize,
-) -> anyhow::Result<Vec<RunMessageHead>> {
-    if threads.is_empty() {
-        return Ok(Vec::new());
-    }
-    let rows = get_global_client()
-        .query(&format!(
-            "SELECT toString(thread_id) AS thread, idx, role, \
-                    substringUTF8(content, 1, 2000) AS text, tool_name, tool_calls_json, \
-                    is_final \
-             FROM agent_run_messages FINAL \
-             WHERE username = ? AND session_id = ? AND has(?, toString(thread_id)) \
-             ORDER BY thread_id, idx DESC LIMIT {per_thread} BY thread_id"
-        ))
-        .bind(username)
-        .bind(session_id)
-        .bind(threads)
-        .fetch_all::<RunMessageHead>()
-        .await?;
-    Ok(rows)
-}
-
-/// The text of every finished `cite_documents` result of a session, from every run
-/// thread at every depth. A sub-agent writes no transcript row, so this table is the only
-/// record of the handles its citations issued.
+/// Each finished citation result stored in the conversation's run threads.
 pub async fn session_citation_outputs(username: &str, session_id: &str) -> anyhow::Result<Vec<String>> {
     let rows = get_global_client()
         .query(
@@ -1050,30 +884,6 @@ pub async fn session_citation_outputs(username: &str, session_id: &str) -> anyho
         .bind(username)
         .bind(session_id)
         .fetch_all::<String>()
-        .await?;
-    Ok(rows)
-}
-
-/// The count of tool results in each named thread, as `(thread, count)`.
-pub async fn thread_tool_counts(
-    username: &str,
-    session_id: &str,
-    threads: &[String],
-) -> anyhow::Result<Vec<(String, u64)>> {
-    if threads.is_empty() {
-        return Ok(Vec::new());
-    }
-    let rows = get_global_client()
-        .query(
-            "SELECT toString(thread_id) AS thread, countIf(role = 'tool') AS tools \
-             FROM agent_run_messages FINAL \
-             WHERE username = ? AND session_id = ? AND has(?, toString(thread_id)) \
-             GROUP BY thread_id",
-        )
-        .bind(username)
-        .bind(session_id)
-        .bind(threads)
-        .fetch_all::<(String, u64)>()
         .await?;
     Ok(rows)
 }
@@ -1101,14 +911,10 @@ pub async fn write_turn_stop(username: &str, session_id: &str, turn_seq: u32) ->
 
 /// The tables that hold the agent runs and the plans of a session. Each has `username` and
 /// `session_id` columns.
-pub(crate) const SESSION_RUN_TABLES: [&str; 7] = [
+pub(crate) const SESSION_RUN_TABLES: [&str; 3] = [
     "agent_runs",
     "agent_run_messages",
     "agent_turn_stops",
-    "agent_plan_runs",
-    "agent_plan_snapshots",
-    "agent_plan_documents",
-    "agent_plan_decisions",
 ];
 
 /// Delete the run rows, run messages, stop rows and plan rows of one session. Each failure

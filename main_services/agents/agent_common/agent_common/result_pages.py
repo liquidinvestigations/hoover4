@@ -8,8 +8,7 @@ transcript stores. A page is recognised with no side channel, by a fixed-point t
 text is a page when it parses to an object that holds a list under `items`, or is the
 `budget_exhausted` error, and re-serializing that object, sorted and compact, reproduces
 the text byte for byte. Anything that reformatted, reordered, escaped or re-parsed the page
-fails that test. A page stored before the slim format has `"kind": "result_page"`, and it
-still passes.
+fails that test.
 
 A page holds its units under `items`, the table columns under `columns`, and its route
 fields at the top level, with `query_notes` renamed `notes` and every empty value left
@@ -29,9 +28,6 @@ import json
 import os
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
-
-#: The `kind` value that marks a page stored before the slim format.
-KIND_RESULT_PAGE = "result_page"
 
 #: The error code of the page that had no room for one unit.
 STATUS_BUDGET_EXHAUSTED_ERROR = "budget_exhausted"
@@ -91,9 +87,7 @@ def continuation_handle(token: str) -> str:
 
 def is_canonical_page(text: str) -> bool:
     """True when `text` is a broker page whose canonical re-serialization is `text`
-    itself, byte for byte. A page is an object with a list under `items`, the
-    `budget_exhausted` error, or an object with `"kind": "result_page"`, which a page
-    stored before the slim format has.
+    itself, byte for byte. A page is an object with a list under `items`, the `budget_exhausted` error.
 
     This is the fixed-point test the byte rule relies on: canonical JSON is idempotent
     under `canonical_json`, so anything that reformatted, reordered, escaped or re-parsed
@@ -107,7 +101,7 @@ def is_canonical_page(text: str) -> bool:
     if not isinstance(value, dict):
         return False
     if not (isinstance(value.get("items"), list) or value.get("error") == STATUS_BUDGET_EXHAUSTED_ERROR
-            or value.get("kind") == KIND_RESULT_PAGE):
+           ):
         return False
     return canonical_json(value) == text
 

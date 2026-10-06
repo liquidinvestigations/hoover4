@@ -89,23 +89,6 @@ class TestIdentity:
         caller = parse_caller(HEADERS)
         assert (caller.username, caller.session_id) == ("ann", "s1")
 
-    def test_a_subagent_write_keeps_the_lead_list(self, monkeypatch, store):
-        runs = {
-            "child-1": SimpleNamespace(kind="subagent", run_id="child-1", thread_id="child-thread", session_id="s1"),
-            "child-2": SimpleNamespace(kind="subagent", run_id="child-2", thread_id="child-thread", session_id="s1"),
-        }
-        monkeypatch.setattr(server.agent_runs, "read_run", lambda u, s, r: runs.get(r))
-        call(server.write_todo, goal="Lead", steps=["lead step"])
-        monkeypatch.setattr(server, "get_http_headers",
-                            lambda: {**HEADERS, "X-Hoover4-Agent-Run": "child-1"})
-        call(server.write_todo, goal="Child", steps=["child step"])
-        assert store[("ann", "s1")]["goal"] == "Lead"
-        assert store[("ann", "child-thread")]["goal"] == "Child"
-        monkeypatch.setattr(server, "get_http_headers",
-                            lambda: {**HEADERS, "X-Hoover4-Agent-Run": "child-2"})
-        assert call(server.read_todo).goal == "Child"
-        assert set(store) == {("ann", "s1"), ("ann", "child-thread")}
-
     def test_header_casing_does_not_matter(self):
         caller = parse_caller(
             {
@@ -309,8 +292,6 @@ EXPECTED_SCHEMAS = {
 def served_schemas() -> dict:
     import asyncio
 
-    from agent_todo_server import plan_tools  # noqa: F401  registers the plan tools
-
     tools = asyncio.run(server.mcp.get_tools())
     return {name: tool.parameters for name, tool in tools.items()}
 
@@ -322,12 +303,6 @@ def test_the_served_schema_of_a_todo_tool_is_the_designed_one(name):
     assert got["type"] == "object"
     assert sorted(got.get("required", [])) == sorted(want["required"])
     assert got["properties"] == want["properties"]
-
-
-def test_the_plan_document_offset_is_a_whole_number_from_0():
-    schemas = served_schemas()
-    assert schemas["read_plan_document"]["properties"]["offset"] == {
-        "type": "integer", "minimum": 0, "default": 0}
 
 
 def test_no_todo_tool_text_holds_a_json_example():

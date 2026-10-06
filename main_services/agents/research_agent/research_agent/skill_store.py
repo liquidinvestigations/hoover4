@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
 
 from jinja2 import Environment, StrictUndefined
 
@@ -37,32 +37,18 @@ DESCRIPTION_MAX_CHARS = 200
 _NAME = re.compile(r"[a-z_]{1,64}")
 _KEYS = ("name", "group", "description", "tools")
 
-#: The prompt profile of each run kind that has its own. A chat lead keeps the profile of its
-#: container, `internal_search` or `full_research`.
-RUN_KIND_PROFILES = {
-    "subagent": "research_subagent",
-    "planner": "planner",
-    "organizer": "organizer",
-}
-
 #: The profile of a chat lead when the caller names none.
 DEFAULT_PROFILE = "internal_search"
 
 ROLE_SKILLS = {
     "internal_search": "method_chat_internal",
     "full_research": "method_chat_full",
-    "research_subagent": "method_subagent",
-    "planner": "method_planner",
-    "organizer": "method_organizer",
 }
 
 #: The values of `citation_artefact` and `citation_resolver` for each profile.
 ROLE_CONTEXT = {
     "internal_search": ("answer", "reader"),
     "full_research": ("report", "reader"),
-    "research_subagent": ("report", "lead"),
-    "planner": ("orientation", "reader"),
-    "organizer": ("report", "reader"),
 }
 
 class UnboundToolError(RuntimeError):
@@ -92,8 +78,6 @@ class SkillContext:
     profile: str  # one of the keys of ROLE_SKILLS
     tool_names: FrozenSet[str]  # every tool of the run's snapshot
     collections_hint: bool = True
-    # The model of the run. The planner's role text states its context window.
-    model_id: str = ""
 
 
 # ------------------------------------------------------------------------ loading
@@ -205,18 +189,7 @@ def skill_variables(ctx: SkillContext, strict: bool = False) -> Dict[str, object
         "citation_resolver": resolver,
         "collections_hint": bool(ctx.collections_hint),
         "profile": ctx.profile,
-        "model_window": _model_window(ctx),
     }
-
-
-def _model_window(ctx: SkillContext) -> int:
-    """The stated context window of the run's model, which the planner's role text gives.
-    0 when the model or its window is unknown. Only a planner reads the catalog."""
-    if ctx.profile != "planner" or not ctx.model_id:
-        return 0
-    from research_agent import compaction
-
-    return compaction.context_window(ctx.model_id)
 
 
 def render_body(name: str, ctx: SkillContext, *, strict: bool = False,
@@ -303,7 +276,7 @@ def search_skills(query: str, ctx: SkillContext, limit: int = 6,
 
 __all__ = [
     "DEFAULT_PROFILE", "GROUPS", "ROLE_CONTEXT",
-    "ROLE_SKILLS", "RUN_KIND_PROFILES", "SKILLS", "SKILL_DIR", "Skill", "SkillContext",
+    "ROLE_SKILLS", "SKILLS", "SKILL_DIR", "Skill", "SkillContext",
     "SkillFileError", "UnboundToolError", "listed_skills", "load_skills",
     "rank_matches", "render_body", "render_skill", "role_method", "search_skills",
     "skill_variables", "words",

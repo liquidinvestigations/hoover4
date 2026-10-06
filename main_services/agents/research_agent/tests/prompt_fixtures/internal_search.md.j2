@@ -26,14 +26,6 @@ Say that plainly instead of searching again in different words.
 
 {% include '_blocks/method_chat_internal.md.j2' %}
 
-{% if subagents_enabled %}
-
-When the question is several independent questions, split it and send the parts to
-{{ tool('run_subagent') }} in one call. Each worker starts fresh, so tell it what you have
-already established and what its report must contain. Do the work yourself when it is one
-thread, because a delegated turn costs several times what a plain one costs. The reports come
-back to you as the result of the call, with the citation handles the workers allocated.
-{% endif %}
 
 {% include '_blocks/citation.md.j2' %}
 

@@ -17,7 +17,7 @@ import tasks.P_agent.workflows as agent_workflows
 from database import agent_runs
 from tasks.P_agent import activities, citations, steps, stream_writer
 from tasks.P_agent.activities import (
-    AgentRunInput, AppendNagParams, CallRef, OpenedRun, RunRef, RunSummary, WriteEndingParams,
+    AgentRunInput, CallRef, OpenedRun, RunRef, RunSummary, WriteEndingParams,
 )
 from tasks.P_agent.steps import (
     ModelStepParams, ModelStepResult, StepFailure, StepRef, ToolCallParams,
@@ -58,16 +58,14 @@ def test_agent_run_and_its_activities_are_registered_on_their_queues():
     workers = _chat_worker_calls()
     chat_workflows, chat_acts = workers["CHAT_TASK_QUEUE"]
     assert chat_workflows == ["AgentRun"]
-    for name in ("open_run", "append_nag", "write_ending", "summarize_if_first_turn",
-                 "dispatch_sections", "prepare_continuation",
-                 "record_step_failure", "plan_has_sections",
+    for name in ("open_run", "write_ending", "summarize_if_first_turn",
+                 "record_step_failure",
                  "check_citations", "write_empty_note", "write_incomplete"):
         assert name in chat_acts, name
     for removed in ("read_chat_todo", "preload_reads", "write_repeat_note",
                     "write_found_documents", "delegate_step"):
         assert removed not in chat_acts, removed
     assert workers["CHAT_MODEL_TASK_QUEUE"][1] == ["model_step"]
-    assert workers["RESEARCH_TASK_QUEUE"][1] == ["model_step"]
     assert workers["AGENT_TOOL_TASK_QUEUE"][1] == ["tool_call"]
 
 
@@ -84,11 +82,6 @@ def test_the_agent_run_sweep_is_registered_on_the_operations_queue():
     raise AssertionError("no operations-queue worker")
 
 
-def test_fan_in_and_continue_run_are_registered_on_the_chat_queue():
-    _, chat_acts = _chat_worker_calls()["CHAT_TASK_QUEUE"]
-    assert {"fan_in", "continue_run"} <= set(chat_acts)
-
-
 def test_chat_turn_is_removed_and_unregistered():
     assert not hasattr(agent_workflows, "ChatTurn")
     assert "ChatTurn" not in RUN_WORKER.read_text()
@@ -102,20 +95,11 @@ def test_every_activity_agent_run_schedules_is_registered_on_its_queue():
         if isinstance(call, ast.Call) and getattr(call.func, "attr", "") == "execute_activity":
             name = call.args[0].id
             queue = next(k.value for k in call.keywords if k.arg == "task_queue")
-            if isinstance(queue, ast.Name):
-                assert name in workers[queue.id][1], (name, queue.id)
-            else:
-                # The model step goes to the queue in the row.
-                assert name == "model_step"
-                for lead_queue in agent_runs.LEAD_QUEUES.values():
-                    constant = {"chat-model-queue": "CHAT_MODEL_TASK_QUEUE",
-                                "research-queue": "RESEARCH_TASK_QUEUE"}[lead_queue]
-                    assert name in workers[constant][1]
+            assert name in workers[queue.id][1], (name, queue.id)
 
 
 def test_lead_queues_mirror_the_workflow_queue_names():
-    assert agent_runs.LEAD_QUEUES["chat"] == agent_workflows.CHAT_MODEL_TASK_QUEUE
-    assert agent_runs.LEAD_QUEUES["planner"] == agent_workflows.RESEARCH_TASK_QUEUE
+    assert agent_runs.CHAT_MODEL_QUEUE == agent_workflows.CHAT_MODEL_TASK_QUEUE
 
 
 # ---------------------------------------------------------------- workflow input
@@ -123,9 +107,8 @@ def test_lead_queues_mirror_the_workflow_queue_names():
 
 def test_agent_run_input_holds_ids_and_settings_only():
     assert {f.name for f in fields(AgentRunInput)} == {
-        "run_id", "username", "session_id", "kind", "turn_seq", "start_seq", "turn_uuid",
-        "allowed_collections", "llm_model", "internet_tools", "plan_run_id", "decision_id",
-        "planner_retry_done", "model_source",
+        "run_id", "username", "session_id", "turn_seq", "start_seq", "turn_uuid",
+        "allowed_collections", "llm_model", "internet_tools",
     }
     for params in (StepRef, ModelStepParams, ModelStepResult, ToolCallParams, StepFailure,
                    CallRef, RunRef, RunSummary, OpenedRun, WriteEndingParams):
@@ -150,7 +133,7 @@ def test_agent_run_input_reads_null_collections_as_an_empty_list(stored):
 
 def _row(**changes):
     base = dict(run_id=RUN_ID, username="u", session_id="s", turn_seq=4, thread_id=RUN_ID,
-                depth=0, kind="chat", queue="chat-model-queue", start_seq=5, next_seq=5)
+                queue="chat-model-queue", start_seq=5, next_seq=5)
     base.update(changes)
     return agent_runs.RunRow(**base)
 
@@ -224,14 +207,11 @@ def _entry(call_id, name, args, kind="parallel", retry=True):
             "page_share": 24000, "retry": retry}
 
 
-@pytest.mark.parametrize("kind,reference", [("chat", ""), ("planner", '{"plan_id":"p"}')])
-def test_a_successful_question_writes_the_turn_answer(monkeypatch, store, kind, reference):
-    from tasks.P_agent import plan_runs
-    monkeypatch.setattr(plan_runs, "plan_reference", lambda row: reference)
+def test_a_successful_question_writes_the_turn_answer(monkeypatch, store):
     question = "Bigger or smaller than 50?"
     call = activities.CallRef(ai_idx=1, position=0, call_id="ask-1", name="ask_user",
                               kind="parallel", seq=5)
-    store["row"] = _row(next_seq=6, kind=kind)
+    store["row"] = _row(next_seq=6)
     store["messages"].extend([
         agent_runs.RunMessageRow(idx=1, role="ai", content="", run_id=RUN_ID,
                                  usage_json=json.dumps({"model": "asking-model"}),
@@ -248,7 +228,7 @@ def test_a_successful_question_writes_the_turn_answer(monkeypatch, store, kind, 
                                                               session_id="s", call=call))
     assert result == 7
     assert store["chat"][-1] == {"seq": 6, "role": "assistant", "content": question,
-                                  "plan_reference_json": reference, "model": "asking-model"}
+                                  "model": "asking-model"}
     assert store["run"][-1] == {"result": question, "next_seq": 7}
 
 
@@ -306,7 +286,7 @@ def test_each_model_call_sends_the_thinking_switch_it_reads(store, monkeypatch):
 def test_a_reply_with_calls_takes_seqs_in_call_order(store, monkeypatch):
     entries = [_entry(LONG_ID_A, "search_collections", {"query": "alpha"}),
                _entry("t1", "read_todo", {}, kind="ordered"),
-               _entry(LONG_ID_B, "write_plan", {"version": 1, "children": []},
+               _entry(LONG_ID_B, "write_todo", {"goal": "Review documents", "steps": []},
                       kind="ordered")]
     _serve(monkeypatch, store, _frames(entries=entries))
     result = _step()
@@ -423,10 +403,8 @@ def _citation_round(store, marked=False):
     store["messages"].append(agent_runs.RunMessageRow(
         idx=1, role="ai", run_id=RUN_ID, content="The memo sets the budget [D1].",
         usage_json=json.dumps({"step_no": 1})))
-    note = (agent_runs.RunMessageRow(idx=2, role="human", content="Cite [D1].",
+    note = agent_runs.RunMessageRow(idx=2, role="human", content="Cite [D1].",
                                      usage_json=json.dumps({"repair_marker": "citation"}))
-            if marked else agent_runs.RunMessageRow(idx=2, role="human",
-                                                    content=citations.LEGACY_CITATION_NOTE))
     store["messages"].append(note)
     store["row"] = _row(next_seq=8, model_steps=1, result="The memo sets the budget [D1].")
 
@@ -523,11 +501,11 @@ def _check(store, seq=9):
         run_id=RUN_ID, username="u", session_id="s", seq=seq))
 
 
-def _answer_with_tool(store, text, kind="chat", citation_tool=True, **changes):
+def _answer_with_tool(store, text, citation_tool=True, **changes):
     store["messages"].append(agent_runs.RunMessageRow(
         idx=1, role="ai", run_id=RUN_ID, content=text,
         usage_json=json.dumps({"step_no": 1, "citation_tool": citation_tool})))
-    store["row"] = _row(kind=kind, result=text, **changes)
+    store["row"] = _row(result=text, **changes)
 
 
 @pytest.mark.parametrize("changes, expected", [
@@ -581,35 +559,6 @@ def test_an_earlier_valid_handle_resolves_with_no_new_citation(citations_store):
     assert _check(citations_store).needed is False
 
 
-@pytest.mark.parametrize("kind", ["chat", "planner", "subagent", "organizer"])
-def test_every_role_with_the_citation_tool_gets_one_repair_round(citations_store, kind):
-    _answer_with_tool(citations_store, "The memo says so [D4].", kind=kind,
-                      depth=0 if kind != "subagent" else 1)
-    first = _check(citations_store)
-    assert first.needed is True
-    # A retry of the activity finds the note as the newest message. It writes no second
-    # message, and for a run that writes the transcript it writes the same rows again.
-    count = len(citations_store["messages"])
-    chat_rows = list(citations_store["chat"])
-    assert _check(citations_store) == first
-    assert len(citations_store["messages"]) == count
-    if kind != "subagent":
-        assert citations_store["chat"][-1] == chat_rows[-1]
-        assert citations_store["run"][-1] == {"next_seq": 10}
-    # A later answer of the thread gets no second round.
-    citations_store["messages"].append(agent_runs.RunMessageRow(
-        idx=count, role="ai", run_id=RUN_ID, content="Still [D4].",
-        usage_json=json.dumps({"step_no": 2, "citation_tool": True})))
-    citations_store["row"] = _row(kind=kind, result="Still [D4].")
-    assert _check(citations_store).needed is False
-
-
-def test_a_role_without_the_citation_tool_gets_no_check(citations_store):
-    _answer_with_tool(citations_store, "The memo says so [D4].", kind="organizer",
-                      citation_tool=False)
-    assert _check(citations_store).needed is False
-
-
 def test_a_document_name_with_no_label_still_gets_the_round_after_a_citation_call(
         citations_store):
     """A citation call in the thread does not stop the check."""
@@ -622,10 +571,9 @@ def test_a_document_name_with_no_label_still_gets_the_round_after_a_citation_cal
     assert citations_store["messages"][-1].content == citations.CITATION_NOTE
 
 
-@pytest.mark.parametrize("kind", ["chat", "planner", "organizer", "subagent"])
 @pytest.mark.parametrize("reader", ["read_documents", "table_page", "table_cell"])
 def test_a_read_result_without_a_named_file_starts_one_citation_round(
-        citations_store, kind, reader):
+        citations_store, reader):
     citations_store["messages"].append(agent_runs.RunMessageRow(
         idx=1, role="tool", tool_name=reader, tool_call_id="r",
         content=json.dumps({"items": [{"file_hash": "a" * 16,
@@ -633,7 +581,7 @@ def test_a_read_result_without_a_named_file_starts_one_citation_round(
         usage_json=json.dumps({"status": "ok", "evidence": [
             {"kind": "document_read", "status": "partial", "reference": {
                 "file_hash": "a" * 64, "collectionname": "c"}}]})))
-    _answer_with_tool(citations_store, "The budget is 5.", kind=kind)
+    _answer_with_tool(citations_store, "The budget is 5.")
     assert _check(citations_store).needed is True
     assert _check(citations_store).needed is True
     assert len([m for m in citations_store["messages"]
@@ -877,12 +825,6 @@ def test_an_attempt_that_lost_its_heartbeat_writes_no_row(store, step_events, mo
     assert step_events == []
 
 
-def test_the_tool_index_of_an_older_reply_puts_delegations_after_the_other_calls():
-    ai = agent_runs.RunMessageRow(idx=4, role="ai", tool_calls_json=json.dumps([
-        {"kind": "delegation"}, {"kind": "parallel"}, {"kind": "ordered"}]))
-    assert [steps.tool_idx(ai, p) for p in range(3)] == [7, 5, 6]
-
-
 def test_run_message_sends_the_call_fields_and_the_tool_status():
     ai = agent_runs.RunMessageRow(idx=1, role="ai", tool_calls_json=json.dumps([
         dict(_entry("a", "t", {"x": 1}), position=0, seq=5)]))
@@ -896,35 +838,7 @@ def test_run_message_sends_the_call_fields_and_the_tool_status():
 # ---------------------------------------------------------------- open_run
 
 
-def test_pending_calls_leave_out_the_stored_delegations_of_an_older_run():
-    ai = agent_runs.RunMessageRow(idx=1, role="ai", run_id="other", tool_calls_json=json.dumps([
-        dict(_entry("s", "search_collections", {}), position=0, seq=5),
-        dict(_entry("d", "run_subagent", {}, kind="delegation"), position=1, seq=6)]))
-    messages = [agent_runs.RunMessageRow(idx=0, role="human"), ai]
-    assert [c.call_id for c in activities.pending_calls(_row(), messages)] == ["s"]
-    own = agent_runs.RunMessageRow(**{**ai.__dict__, "run_id": RUN_ID})
-    assert [c.call_id for c in activities.pending_calls(_row(), [messages[0], own])] == ["s"]
-
-
 # ---------------------------------------------------------------- payloads and writer
-
-
-def test_a_summary_with_five_children_stays_under_the_bound():
-    summary = RunSummary(outcome="delegated", next_seq=4_000_000_000, next_idx=4_000_000_000,
-                         children=[RUN_ID] * 5, batch_id=RUN_ID,
-                         prompt_tokens=10**15, completion_tokens=10**15,
-                         end_reason="step_budget")
-    assert _payload_bytes(summary) < agent_workflows.AGENT_RUN_PAYLOAD_BYTES
-    inp = AgentRunInput(run_id=RUN_ID, username="u" * 64, session_id="s" * 64,
-                        allowed_collections=["c" * 64] * 20, turn_uuid="t" * 64)
-    assert _payload_bytes(inp) < agent_workflows.AGENT_RUN_PAYLOAD_BYTES
-
-
-def test_named_properties():
-    assert agent_runs.writes_transcript(_row(depth=0, kind="planner"))
-    assert not agent_runs.writes_transcript(_row(depth=1, kind="subagent"))
-    assert agent_runs.is_chat_lead(_row())
-    assert not agent_runs.is_chat_lead(_row(kind="organizer"))
 
 
 def test_the_row_writer_refuses_a_terminal_row_and_adds_one_to_the_version(monkeypatch):
@@ -946,19 +860,6 @@ def test_the_row_writer_refuses_a_terminal_row_and_adds_one_to_the_version(monke
 
 def test_the_run_row_carries_the_step_columns():
     assert {"model_steps", "end_reason"} <= set(agent_runs.RUN_COLUMNS)
-
-
-def test_append_nag_writes_the_note_and_no_counter(monkeypatch, store):
-    row = _row(next_seq=9)
-    run_writes = []
-    monkeypatch.setattr(agent_runs, "read_run", lambda *a: row)
-    monkeypatch.setattr(agent_runs, "write_run", lambda r, **c: run_writes.append(c))
-    nxt = ActivityEnvironment().run(activities.append_nag, AppendNagParams(
-        run_id=RUN_ID, username="u", session_id="s", seq=9, idx=6, message="note text"))
-    assert nxt == 10
-    assert store["chat"] == [{"seq": 9, "role": "nag", "content": "note text"}]
-    assert [(m.idx, m.role) for m in store["messages"]] == [(0, "human"), (6, "human")]
-    assert run_writes == [{"next_seq": 10}]
 
 
 # ------------------------------------------------------- the empty reply and the limits
@@ -1000,14 +901,6 @@ def test_write_empty_note_writes_the_marker_and_no_counter(monkeypatch, store):
     # A retry writes the same rows.
     assert ActivityEnvironment().run(steps.write_empty_note, params) == 10
     assert len([m for m in store["messages"] if m.idx == 6]) == 1
-
-
-def test_write_empty_note_of_a_sub_agent_writes_no_chat_row(monkeypatch, store):
-    store["row"] = _row(kind="subagent", depth=1)
-    monkeypatch.setattr(agent_runs, "write_run", lambda r, **c: pytest.fail("no run write"))
-    params = steps.EmptyNoteParams(run_id=RUN_ID, username="u", session_id="s", seq=9, idx=6)
-    assert ActivityEnvironment().run(steps.write_empty_note, params) == 9
-    assert store["chat"] == []
 
 
 def _thread_with_evidence(store):
@@ -1059,40 +952,12 @@ def test_write_incomplete_writes_the_evidence_with_no_model_call(store, monkeypa
     assert (row["seq"], row["content"], row["model"]) == (7, text, "selected-model")
 
 
-def test_an_incomplete_section_keeps_prose_and_the_call_refusal(store):
-    from tasks.P_agent import thread_facts
-
-    raw = ('The report has a dated timeline. '
-           '[cite_documents(citations=[{"collectionname:<|"|>enron<|"|>"}])]')
-    store["messages"].extend([
-        agent_runs.RunMessageRow(idx=1, role="ai", content=raw, run_id=RUN_ID),
-        agent_runs.RunMessageRow(
-            idx=2, role="tool", tool_name="unnamed_call", run_id=RUN_ID,
-            usage_json=json.dumps({"status": "error", "error_class": "invalid_arguments"})),
-        agent_runs.RunMessageRow(idx=3, role="ai", content="", run_id=RUN_ID),
-    ])
-    result = thread_facts.incomplete_text(store["messages"], "empty_response", 600)
-    assert "The report has a dated timeline." in result
-    assert thread_facts.CALL_REFUSAL in result
-    assert "cite_documents(" not in result and '<|"|>' not in result
-
-
 def test_write_incomplete_retried_after_its_write_writes_nothing(store):
     store["row"] = _row(next_seq=8, end_reason="step_budget", result="done")
     params = steps.IncompleteParams(run_id=RUN_ID, username="u", session_id="s",
                                     reason="step_budget")
     assert ActivityEnvironment().run(steps.write_incomplete, params) == 8
     assert store["run"] == [] and store["chat"] == []
-
-
-def test_write_incomplete_of_a_sub_agent_writes_the_result_only(store):
-    _thread_with_evidence(store)
-    store["row"] = _row(kind="subagent", depth=1)
-    ActivityEnvironment().run(steps.write_incomplete, steps.IncompleteParams(
-        run_id=RUN_ID, username="u", session_id="s", reason="step_budget"))
-    [changes] = store["run"]
-    assert changes["end_reason"] == "step_budget" and "memo.txt" in changes["result"]
-    assert store["chat"] == []
 
 
 # ---------------------------------------------------------------- the call chains
@@ -1106,7 +971,7 @@ def _refs(*specs):
 def test_browser_calls_form_their_own_ordered_chain():
     calls = _refs(("browser_navigate", "parallel"), ("search_collections", "parallel"),
                   ("read_page", "parallel"), ("mark_todo", "ordered"),
-                  ("browser_click", "parallel"), ("run_subagent", "delegation"))
+                  ("browser_click", "parallel"))
     assert [c.name for c in calls if steps.runs_in_browser(c)] == [
         "browser_navigate", "read_page", "browser_click"]
     assert [c.name for c in calls if steps.runs_in_order(c)] == ["mark_todo"]

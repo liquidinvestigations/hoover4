@@ -2,105 +2,14 @@
 
 from __future__ import annotations
 
-import base64
-import json
-import logging
-import os
-import re
-import ssl
-import sys
-import warnings
-from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
-from functools import partial
-from io import BytesIO
-from json import JSONDecodeError
-from math import ceil
-from operator import itemgetter
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Literal,
-    Optional,
-    TypedDict,
-    TypeVar,
-    Union,
-    cast,
-)
-from urllib.parse import urlparse
+from collections.abc import Mapping
+from typing import Any, Optional, Union, cast
 
-import certifi
 import openai
-import tiktoken
-from langchain_core._api.deprecation import deprecated
-from langchain_core.callbacks import (
-    AsyncCallbackManagerForLLMRun,
-    CallbackManagerForLLMRun,
-)
-from langchain_core.language_models import LanguageModelInput
-from langchain_core.language_models.chat_models import (
-    BaseChatModel,
-    LangSmithParams,
-    agenerate_from_stream,
-    generate_from_stream,
-)
-from langchain_core.messages import (
-    AIMessage,
-    AIMessageChunk,
-    BaseMessage,
-    BaseMessageChunk,
-    ChatMessage,
-    ChatMessageChunk,
-    FunctionMessage,
-    FunctionMessageChunk,
-    HumanMessage,
-    HumanMessageChunk,
-    InvalidToolCall,
-    SystemMessage,
-    SystemMessageChunk,
-    ToolCall,
-    ToolMessage,
-    ToolMessageChunk,
-    convert_to_openai_data_block,
-    is_data_content_block,
-)
-from langchain_core.messages.ai import (
-    InputTokenDetails,
-    OutputTokenDetails,
-    UsageMetadata,
-)
+from langchain_core.messages import AIMessageChunk, BaseMessageChunk, ChatMessageChunk, FunctionMessageChunk, HumanMessageChunk, SystemMessageChunk, ToolMessageChunk
+from langchain_core.messages.ai import UsageMetadata
 from langchain_core.messages.tool import tool_call_chunk
-from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser
-from langchain_core.output_parsers.openai_tools import (
-    JsonOutputKeyToolsParser,
-    PydanticToolsParser,
-    make_invalid_tool_call,
-    parse_tool_call,
-)
-from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
-from langchain_core.runnables import (
-    Runnable,
-    RunnableLambda,
-    RunnableMap,
-    RunnablePassthrough,
-)
-from langchain_core.runnables.config import run_in_executor
-from langchain_core.tools import BaseTool
-from langchain_core.tools.base import _stringify
-from langchain_core.utils import get_pydantic_field_names
-from langchain_core.utils.function_calling import (
-    convert_to_openai_function,
-    convert_to_openai_tool,
-)
-from langchain_core.utils.pydantic import (
-    PydanticBaseModel,
-    TypeBaseModel,
-    is_basemodel_subclass,
-)
-from langchain_core.utils.utils import _build_model_kwargs, from_env, secret_from_env
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
-from pydantic.v1 import BaseModel as BaseModelV1
-from typing_extensions import Self
+from langchain_core.outputs import ChatGenerationChunk, ChatResult
 
 from langchain_openai import ChatOpenAI
 from langchain_openai.chat_models.base import _create_usage_metadata

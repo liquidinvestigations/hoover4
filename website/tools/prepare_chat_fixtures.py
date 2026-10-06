@@ -76,11 +76,8 @@ def user(text: str) -> dict:
     return {"role": "user", "content": text}
 
 
-def answer(text: str, plan_reference: dict | None = None) -> dict:
-    row = {"role": "assistant", "content": text}
-    if plan_reference:
-        row["plan_reference_json"] = json.dumps(plan_reference)
-    return row
+def answer(text: str) -> dict:
+    return {"role": "assistant", "content": text}
 
 
 def search_row() -> dict:
@@ -224,73 +221,20 @@ def compaction(_name: str, _username: str) -> dict:
 
 
 def question(name: str, username: str) -> dict:
-    plan_id = fixture_uuid(name, username, "plan")
-    run_id = fixture_uuid(name, username, "run")
-    root = fixture_uuid(name, username, "root")
     text = "Which period of the unit tables do you want the research to cover?"
     options = ["Tables from 2007", "All tables"]
-    reference = {"plan_id": plan_id, "run_id": run_id, "reviewed_version": 1}
-    nodes = [{"node_id": root, "ordinal": 1, "parent_id": None,
-              "text": "Research the unit tables in the testdata collection."}]
-    return {"title": "Browser fixture: planner question", "deep_research": True, "rows": [
+    return {"title": "Browser fixture: chat question", "rows": [
         user("Research the unit tables in the testdata collection."),
         tool("ask_user", {"question": text, "options": options},
              {"success": True, "asked": True, "question": text, "options": options}),
-        answer(text, reference),
-    ], "plan": {"plan_id": plan_id, "run_id": run_id, "nodes": nodes}}
+        answer(text),
+    ]}
 
 
-def plan_completed(name: str, username: str) -> dict:
-    plan_id = fixture_uuid(name, username, "plan")
-    run_id = fixture_uuid(name, username, "run")
-    root = fixture_uuid(name, username, "root")
-    section = fixture_uuid(name, username, "section")
-    reference = {"plan_id": plan_id, "run_id": run_id, "reviewed_version": 1}
-    nodes = [
-        {"node_id": root, "ordinal": 1, "parent_id": None, "text": "Research the unit table."},
-        {"node_id": section, "ordinal": 1, "parent_id": root, "text": "Read the sample document."},
-    ]
-    sections = [{"node_id": section, "title": "Read the sample document.", "tasks": 1,
-                 "state": "completed", "end_reason": "", "cause": "", "failed": False}]
-    return {"title": "Browser fixture: completed plan", "deep_research": True,
-            "rows": [user("Research the sample document's unit table."),
-                     answer("The plan has one section.", reference),
-                     answer("The sample document gives an energy density conversion.", reference)],
-            "plan": {"plan_id": plan_id, "run_id": run_id, "nodes": nodes,
-                     "state": "completed", "sections": sections}}
 
 
-def plan_revising(name: str, username: str) -> dict:
-    plan_id = fixture_uuid(name, username, "plan")
-    run_id = fixture_uuid(name, username, "run")
-    root = fixture_uuid(name, username, "root")
-    reference = {"plan_id": plan_id, "run_id": run_id, "reviewed_version": 1}
-    return {"title": "Browser fixture: plan awaiting review", "deep_research": True,
-            "rows": [user("Research the sample document's unit table."),
-                     answer("Review the plan before it runs.", reference)],
-            "plan": {"plan_id": plan_id, "run_id": run_id,
-                     "nodes": [{"node_id": root, "ordinal": 1, "parent_id": None,
-                                "text": "Research the unit table."}]}}
 
 
-def plan_failed(name: str, username: str) -> dict:
-    plan_id = fixture_uuid(name, username, "plan")
-    run_id = fixture_uuid(name, username, "run")
-    root = fixture_uuid(name, username, "root")
-    section = fixture_uuid(name, username, "section")
-    reference = {"plan_id": plan_id, "run_id": run_id, "reviewed_version": 1}
-    return {"title": "Browser fixture: failed plan", "deep_research": True,
-            "rows": [user("Research the sample document's unit table."),
-                     answer("The plan could not complete.", reference)],
-            "plan": {"plan_id": plan_id, "run_id": run_id,
-                     "nodes": [{"node_id": root, "ordinal": 1, "parent_id": None,
-                                "text": "Research the unit table."},
-                               {"node_id": section, "ordinal": 1, "parent_id": root,
-                                "text": "Read the sample document."}],
-                     "state": "failed", "sections": [{"node_id": section,
-                     "title": "Read the sample document.", "tasks": 1,
-                     "state": "failed", "end_reason": "tool_error",
-                     "cause": "The document read failed.", "failed": True}]}}
 
 
 FIXTURES = {
@@ -301,9 +245,6 @@ FIXTURES = {
     "web": web,
     "compaction": compaction,
     "question": question,
-    "plan_completed": plan_completed,
-    "plan_revising": plan_revising,
-    "plan_failed": plan_failed,
 }
 
 
@@ -315,39 +256,35 @@ def write_fixture(client, name: str, username: str, now: datetime) -> str:
     turn = fixture_uuid(name, username, "turn")
     insert_durable(client, "chat_sessions", [[
         sid, username, spec["title"], [COLLECTION], "", int(spec.get("internet", False)),
-        int(spec.get("deep_research", False)), 1, now, now, 0,
+        1, now, now, 0,
     ]], column_names=["session_id", "username", "title", "collections", "summary",
-                      "use_internet_tools", "deep_research", "options_locked", "created_at",
+                      "use_internet_tools", "options_locked", "created_at",
                       "updated_at", "is_deleted"])
     rows = []
     for seq, row in enumerate(spec["rows"]):
         rows.append([
             sid, username, seq, row["role"], row.get("content", ""), row.get("tool_name", ""),
             row.get("tool_input", ""), row.get("tool_output", ""), row.get("doc_refs", ""),
-            now, now, now, turn, row.get("plan_reference_json", ""),
+            now, now, now, turn,
         ])
     insert_durable(client, "chat_messages", rows, column_names=[
         "session_id", "username", "seq", "role", "content", "tool_name", "tool_input",
-        "tool_output", "doc_refs", "created_ms", "created_at", "updated_at", "message_uuid",
-        "plan_reference_json"])
+        "tool_output", "doc_refs", "created_ms", "created_at", "updated_at", "message_uuid"])
     for version, goal, items in spec.get("todos", []):
         insert_durable(client, "chat_todos", [[sid, username, version, goal, json.dumps(items), now]],
                        column_names=["session_id", "username", "version", "goal", "items",
                                      "updated_at"])
     for artifact_id, kind, tool_name, title, detail in spec.get("artifacts", []):
         write_artifact(client, sid, username, artifact_id, kind, tool_name, title, detail, now)
-    if "plan" in spec:
-        write_plan(client, sid, username, spec["plan"], now)
     return sid
 
 
 def write_artifact(client, sid, username, artifact_id, kind, tool_name, title, detail, now):
     from database import s3
-    from database.agent_plans import artifact_key
     from database.clickhouse import insert_durable
 
     data = json.dumps(detail).encode()
-    key = artifact_key(sid, artifact_id)
+    key = f"derived/chat-artifacts/{sid}/{artifact_id}/body.json"
     store = s3.get_s3_client()
     if not store.bucket_exists(s3.SYSTEM_BUCKET):
         store.make_bucket(s3.SYSTEM_BUCKET)
@@ -361,26 +298,6 @@ def write_artifact(client, sid, username, artifact_id, kind, tool_name, title, d
                       "created_at", "updated_at", "is_deleted"])
 
 
-def write_plan(client, sid, username, plan, now):
-    from database.clickhouse import insert_durable
-
-    nodes_json = json.dumps(plan["nodes"], separators=(",", ":"), sort_keys=True)
-    insert_durable(client, "agent_plan_snapshots", [[
-        plan["plan_id"], username, sid, 1, nodes_json,
-        hashlib.sha256(nodes_json.encode()).hexdigest(),
-        str(uuid.uuid5(FIXTURE_NAMESPACE, plan["plan_id"] + "/snapshot")), now,
-    ]], column_names=["plan_id", "username", "session_id", "version", "nodes_json", "checksum",
-                      "idempotency_key", "created_at"])
-    # The state version stays above every state that a real workflow could write for
-    # this run, because no workflow of this run exists.
-    insert_durable(client, "agent_plan_runs", [[
-        plan["run_id"], plan["plan_id"], username, sid, 0,
-        plan.get("state", "awaiting_review"), 1, 0, 0,
-        json.dumps(plan.get("sections", [])),
-        1, now,
-    ]], column_names=["run_id", "plan_id", "username", "session_id", "start_seq", "state",
-                      "reviewed_version", "approved_version", "review_round", "sections_json",
-                      "state_version", "updated_at"])
 
 
 def main() -> int:

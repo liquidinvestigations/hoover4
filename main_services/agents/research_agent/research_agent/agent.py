@@ -94,10 +94,6 @@ CHAT_SESSION_HEADER = "X-Hoover4-Chat-Session"
 #: keys a browser by it, so each run gets its own browser. It carries no authority either.
 AGENT_RUN_HEADER = "X-Hoover4-Agent-Run"
 
-#: The prompt profile of each run kind that has its own. A chat lead keeps the profile of
-#: its container, `internal_search` or `full_research`.
-RUN_KIND_PROFILES = skill_store.RUN_KIND_PROFILES
-
 
 def acl_headers(
     username: Optional[str],
@@ -330,24 +326,20 @@ class MCPGatewayAgent:
         log.info("%s", compaction.describe())
 
         # The tool packs of this run kind decide what the context runs and lists in
-        # its catalogue. A sub-agent reads the organizer's setting, so it gets the packs
-        # of the organizer of its plan.
+        # its catalogue.
         configured = tool_packs.configured_packs(kind)
         allowed = tool_packs.allowed_tools(kind, configured)
-        if kind == "subagent":
-            allowed = allowed - {"ask_user"}
 
         # One snapshot for this context. `/model_step` and `/tool_call` use its tools.
-        # The run kind selects the profile, and a chat lead
-        # keeps the container's profile. `collections_hint` is the caller's ACL: an empty
+        # The container's profile. `collections_hint` is the caller's ACL: an empty
         # one means every collection search will come back empty, which the model should
         # be told rather than left to discover.
-        profile = RUN_KIND_PROFILES.get(kind, self.profile)
+        profile = self.profile
         snapshot = build_snapshot(
             tools, allowed, kind,
             skill_store.SkillContext(
                 profile=profile, tool_names=frozenset(),
-                collections_hint=bool(allowed_collections), model_id=model_id,
+                collections_hint=bool(allowed_collections),
             ),
         )
         skill_context = snapshot.skill_context
@@ -364,7 +356,6 @@ class MCPGatewayAgent:
             snapshot=snapshot,
             skills=skill_store.listed_skills(skill_context),
             collections_hint=bool(allowed_collections),
-            model_id=model_id,
         )
 
         return AgentContext(

@@ -103,14 +103,6 @@ def test_the_client_factory_sends_the_share_of_the_current_call():
     assert execution.PAGE_SHARE_HEADER not in execution.page_share_client().headers
 
 
-def test_the_client_factory_sends_the_idempotency_key_of_the_current_call():
-    token = execution._IDEMPOTENCY_KEY.set("key-1")
-    try:
-        client = execution.page_share_client(headers={"X-Hoover4-User": "alice"})
-        assert client.headers[execution.IDEMPOTENCY_HEADER] == "key-1"
-    finally:
-        execution._IDEMPOTENCY_KEY.reset(token)
-    assert execution.IDEMPOTENCY_HEADER not in execution.page_share_client().headers
 
 
 def test_the_measure_and_the_doc_refs_are_taken_out_of_the_artifact():
@@ -124,11 +116,11 @@ def test_the_measure_and_the_doc_refs_are_taken_out_of_the_artifact():
     assert execution.split_resources(None) == (None, None, None)
 
 
-def test_the_ordered_tools_are_the_plan_tools_and_the_todo_tools():
+def test_the_ordered_tools_are_the_todo_tools():
     """The worker runs `STATE_TOOLS` of `processing/tasks/P_agent/steps.py` in reply order.
     This list is the same set, so the stored kind says what the worker does."""
     assert execution.ORDERED_TOOLS == frozenset({
-        "write_plan", "read_plan", "write_todo", "edit_todo", "mark_todo", "read_todo",
+        "write_todo", "edit_todo", "mark_todo", "read_todo",
     })
 
 

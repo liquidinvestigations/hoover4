@@ -29,7 +29,6 @@ pub const EVENT_USER_SEARCH: &str = "user_search";
 pub const EVENT_USER_GET_DOCUMENT: &str = "user_get_document";
 pub const EVENT_USER_OTHER_REQUEST: &str = "user_other_request";
 pub const EVENT_LLM_CHAT_MESSAGE: &str = "llm_chat_message";
-pub const EVENT_LLM_MCP_TOOL_CALL: &str = "llm_mcp_tool_call";
 
 /// Insert batch size; the buffer flushes early once it holds this many events.
 const BATCH_SIZE: usize = 64;

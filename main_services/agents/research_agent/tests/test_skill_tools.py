@@ -25,8 +25,6 @@ class FakeTool:
 
 def snapshot(kind="chat", packs="all", profile=None):
     allowed = allowed_tools(kind, packs)
-    if kind == "subagent":
-        allowed -= {"ask_user"}
     tools = [FakeTool(n) for n in sorted(allowed) if n not in LOCAL_TOOLS]
     ctx = SkillContext(profile=profile, tool_names=frozenset()) if profile else None
     return build_snapshot(tools, allowed, kind, ctx)
@@ -65,7 +63,7 @@ async def test_search_skills_ranks_by_description():
 
 
 async def test_read_skill_renders_for_the_run():
-    snap = snapshot(profile="research_subagent", kind="subagent")
+    snap = snapshot(profile="full_research")
     status, content = await call(snap, "read_skill", name="citation")
     assert status == "success"
     assert content.startswith("Skill `citation`.\n\n")
@@ -73,7 +71,7 @@ async def test_read_skill_renders_for_the_run():
 
 async def test_read_skill_of_another_profile_is_refused():
     snap = snapshot(profile="full_research")
-    status, content = await call(snap, "read_skill", name="method_organizer")
+    status, content = await call(snap, "read_skill", name="unknown_method")
     data = json.loads(content)
     assert status == "error"
     assert data["error"] == "unknown_skill"
@@ -91,15 +89,13 @@ async def test_read_tool_of_an_unknown_name_is_refused():
 
 @pytest.mark.parametrize("kind,profile", [
     ("chat", "full_research"), ("chat", "internal_search"),
-    ("subagent", "research_subagent"), ("planner", "planner"),
-    ("organizer", "organizer"),
 ])
 def test_each_run_kind_lists_its_tools_and_has_its_role_text(kind, profile):
     snap = snapshot(kind, profile=profile)
     assert "read_skill" in snap.callable_names()
     assert "read_tool" in snap.callable_names()
     assert role_method(snap.skill_context)
-    assert ("ask_user" in snap.callable_names()) == (kind != "subagent")
+    assert "ask_user" in snap.callable_names()
 
 
 async def test_the_role_skill_is_not_listed_and_is_not_read_with_read_skill():

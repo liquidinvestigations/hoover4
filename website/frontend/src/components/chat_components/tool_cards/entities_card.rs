@@ -306,7 +306,7 @@ mod tests {
         let batched = serde_json::json!({ "documents": [single.clone(), single.clone()] });
         assert_eq!(parse_documents(&batched).len(), 2);
 
-        let page = serde_json::json!({"kind": "result_page", "items": [single], "fields": {"note": "n"}});
+        let page = serde_json::json!({"items": [single], "fields": {"note": "n"}});
         assert_eq!(parse_documents(&page).len(), 1);
         assert_eq!(parse_documents(&page)[0].file_hash, "abc");
     }

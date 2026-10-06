@@ -66,21 +66,6 @@ pub fn ChatComposer(
                                 color: #475569; cursor: pointer; user-select: none;",
                         input {
                             r#type: "checkbox",
-                            checked: options.read().deep_research,
-                            disabled: disabled,
-                            onchange: move |e| {
-                                let mut o = *options.read();
-                                o.deep_research = e.checked();
-                                options.set(o);
-                            },
-                        }
-                        "Deep Research"
-                    }
-                    label {
-                        style: "display: flex; align-items: center; gap: 6px; font-size: 13px; \
-                                color: #475569; cursor: pointer; user-select: none;",
-                        input {
-                            r#type: "checkbox",
                             checked: options.read().internet_tools,
                             disabled: disabled,
                             onchange: move |e| {

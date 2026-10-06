@@ -14,8 +14,7 @@ no text keeps the earlier answer. A reply with invalid labels or raw call text k
 that answer with a notice. A reply without labels shows its citation status.
 
 A logical thread gets one repair round at most. The note in the thread is the stored marker
-(`REPAIR_MARKER_KEY` in its usage). A thread from before the marker holds
-`LEGACY_CITATION_NOTE` with no usage, and `is_citation_note` reads both.
+(`REPAIR_MARKER_KEY` in its usage). `is_citation_note` reads this marker.
 `steps.check_citations` runs the rule after an answer or a question of every run kind whose
 model had `cite_documents`. A stopped run and a run that ended at a limit (`end_reason`) get
 no round. The rules here are pure.
@@ -32,15 +31,6 @@ CITATION_NOTE = (
     "document card. Call `cite_documents` now with each document that your answer names, "
     "quotes or relies on. Then write the whole answer again, with the handles that the "
     "successful calls returned."
-)
-
-#: The note of the same round in a thread from before `REPAIR_MARKER_KEY`. Only
-#: `is_citation_note` reads it.
-LEGACY_CITATION_NOTE = (
-    "Your answer names documents, but this turn has no `cite_documents` call, so the "
-    "reader sees no document card. Call `cite_documents` now with each document that "
-    "your answer names, quotes or relies on. Then write the whole answer again, with the "
-    "handles that the call returned."
 )
 
 #: The note of the repair round of an answer with labels that do not resolve.
@@ -124,17 +114,16 @@ def is_citation_note(message) -> bool:
     """Whether a thread message is the note of the repair round."""
     return message.role == "human" and (
         message.usage.get(REPAIR_MARKER_KEY) == REPAIR_MARKER
-        or (message.content or "") in (CITATION_NOTE, LEGACY_CITATION_NOTE))
+)
 
 
 def has_citation_tool(row, messages) -> bool:
     """Whether the model of the run had `cite_documents`, by the newest `ai` message. A
-    message from before the key counts as having it for a chat run only."""
+    message from before the key counts as having it."""
     last = next((m for m in reversed(messages) if m.role == "ai"), None)
-    default = row.kind == "chat"
     if last is None:
-        return default
-    return bool(last.usage.get(CITATION_TOOL_KEY, default))
+        return True
+    return bool(last.usage.get(CITATION_TOOL_KEY, True))
 
 
 def repair_note(check: dict) -> str:
@@ -186,7 +175,7 @@ def repair_reply_problem(answer: str, session_entries) -> str:
 
 
 __all__ = [
-    "CITATION_NOTE", "CITATION_TOOL_KEY", "CITE_TOOL", "LABEL_NOTE", "LEGACY_CITATION_NOTE",
+    "CITATION_NOTE", "CITATION_TOOL_KEY", "CITE_TOOL", "LABEL_NOTE",
     "REPAIR_MARKER",
     "REPAIR_MARKER_KEY", "has_citation_tool", "is_citation_note", "names_documents",
     "needs_repair", "read_documents", "repair_note", "repair_reply_problem",

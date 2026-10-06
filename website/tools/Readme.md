@@ -44,11 +44,6 @@ Failed manual phases also retain the current PDF registry, viewer generation, so
 Both browser entry points use `browser_lifecycle.py` for bounded startup and awaited process cleanup.
 Chromium writes process diagnostics to `chromium.log` in the run output.
 
-After a person approves a plan, `observe-chat.sh --follow-plan /ai_chat/c/ID/9g==/9g==`
-observes the current plan. `--follow-plan-seconds` sets its observation limit.
-The run records the executing, combining, and final plan states in interval snapshots.
-It waits for an organizer answer newer than the planner answer.
-
 Run the capture-driver tests in the browser container.
 
 ```sh

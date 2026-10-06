@@ -2,7 +2,7 @@
 
 | field | value |
 |---|---|
-| mode | deep research, internet tools on |
+| mode | chat, internet tools on |
 | collections in scope | all seven |
 | data needed | `enron`, datasets `maildir`, `kaminski_v` and `mann_k` |
 
@@ -28,9 +28,9 @@ A full ingest of `enron` can hold more documents than these facts name, so a rev
 
 ## Expected tool calls
 
-1. The planner writes a plan with one node for each question: the research group, the legal work, the timeline, and the web context.
-2. After the approval, the organizer runs one sub-agent for each node, with the plan node ids the plan tree gives.
-3. Each sub-agent searches with no `collectionname` or with `["enron"]`, for example `search_collections` with `{"query": "LJM | Raptor", "sort": {"field": "date", "direction": "asc"}}` and `search_passages` with `{"queries": ["LJM put valuation", "Raptor hedges", "Project Raptor warrants", "Rhythms LJM"]}`. A todo list is optional.
+1. If it uses a todo list, it calls `write_todo` with one item for each question: the research group, the legal work, the timeline, and the web context.
+2. It works through the questions in one chat turn.
+3. It searches with no `collectionname` or with `["enron"]`, for example `search_collections` with `{"query": "LJM | Raptor", "sort": {"field": "date", "direction": "asc"}}` and `search_passages` with `{"queries": ["LJM put valuation", "Raptor hedges", "Project Raptor warrants", "Rhythms LJM"]}`. A todo list is optional.
 4. It calls `doc_email` or `read_documents` on each email the timeline cites.
 5. A web search for public context, for example `["LJM2 Enron Fastow Raptor", "Raptor vehicles Enron Powers report"]`, and a `read_page` of one source.
 6. It calls `cite_documents` with each email of the timeline, then the report.
@@ -41,4 +41,4 @@ A timeline where each row has a date, a sender, a subject, one sentence of conte
 
 ## Requirements exercised
 
-The story exercises these requirements and optional behavior: todo use when needed, in each sub-agent, search over all collections, query variants, more than one in one call, todo updates when used, web search and page reads, document cards shown to the user, a task completed.
+The story exercises these requirements and optional behavior: todo use when needed, search over all collections, query variants, more than one in one call, todo updates when used, web search and page reads, document cards shown to the user, a task completed.

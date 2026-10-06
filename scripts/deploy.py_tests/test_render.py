@@ -257,24 +257,24 @@ def test_settings_defaults():
     assert env["HOOVER4_COMMON_MAX_CACHED_WORKFLOWS"] == "100"
 
 
-#: A sub-agent reads the organizer's key, so it has no key of its own.
-PACK_KEYS = ("AGENT_PACKS_CHAT", "AGENT_PACKS_PLANNER", "AGENT_PACKS_ORGANIZER")
+#: The chat run is the one run kind, with one pack key.
+PACK_KEYS = ("AGENT_PACKS_CHAT",)
 
 
-#: The default of each run kind is every available pack.
-PACK_DEFAULTS = ["all", "all", "all"]
+#: The default is every available pack.
+PACK_DEFAULTS = ["all"]
 
 
 def test_agent_packs_default_to_all():
     env = _env("settings-defaults.ini")
     assert [env[key] for key in PACK_KEYS] == PACK_DEFAULTS
-    assert "AGENT_PACKS_SUBAGENT" not in env
+    assert not {"AGENT_PACKS_SUBAGENT", "AGENT_PACKS_PLANNER", "AGENT_PACKS_ORGANIZER"} & set(env)
 
 
 def test_a_narrowed_agent_pack_value_is_rendered_and_an_empty_one_is_all(capsys):
     env = _env("agent-packs.ini")
     assert env["AGENT_PACKS_CHAT"] == "collections,catalogue,conversation"
-    assert env["AGENT_PACKS_PLANNER"] == "all"
+    assert "AGENT_PACKS_PLANNER" not in env
     assert "agent_packs_subagent" not in capsys.readouterr().err
 
 
@@ -1003,8 +1003,8 @@ def test_the_templates_carry_the_slots_and_the_provider_temperature_rule(templat
     cfg = deploy.Config(REPO_ROOT / template_name)
     main = cfg.values["main_services"]
     assert [main[f"{tier}_concurrency"] for tier in
-            ("chat_model", "chat_low_latency", "research", "agent_tool")] == [
-                "3", "4", "3", "16"]
+            ("chat_model", "chat_low_latency", "agent_tool")] == ["3", "4", "16"]
+    assert "research_concurrency" not in main
     assert main["agent_queue_wait_seconds"] == "5400"
     assert main["llm_request_timeout_seconds"] == "3600"
     assert "chat_run_timeout_seconds" not in main and "plan_run_timeout_seconds" not in main

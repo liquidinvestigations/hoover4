@@ -47,12 +47,7 @@ impl ChatGate {
         matches!(self, Self::Open)
     }
 
-    pub fn closed_reason(self) -> Option<ChatGateClosed> {
-        match self {
-            Self::Open => None,
-            Self::Closed(reason) => Some(reason),
-        }
-    }
+
 }
 
 impl ChatGateClosed {

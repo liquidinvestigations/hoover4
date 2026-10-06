@@ -234,17 +234,13 @@ DEFAULTS = {
         "indexing_workers": "",
         "chat_model_concurrency": "",
         "chat_low_latency_concurrency": "",
-        "research_concurrency": "",
         "agent_tool_concurrency": "",
         # Chat poll and browser caps. Empty would fall back to the code defaults.
         "max_held_polls_per_user": "8",
         "rate_chat_poll_per_minute": "1800",
         "browser_max_contexts": "16",
-        # Tool packs for each kind of agent run: a comma list of pack names, or `all`.
-        # A sub-agent gets the organizer's packs.
+        # Tool packs of a chat run: a comma list of pack names, or `all`.
         "agent_packs_chat": "all",
-        "agent_packs_planner": "all",
-        "agent_packs_organizer": "all",
         # The catalogue match count that the probe selects. Empty keeps six matches.
         "agent_catalogue_match_count": "",
         # The step limits of an agent run, in whole seconds. Empty keeps the code
@@ -472,6 +468,12 @@ AI_OVERLAYS = [
     ("ai_server_enabled", "compose/ai-server.yaml", "hoover4-ai-server"),
     ("easyocr_enabled", "compose/easyocr.yaml", "hoover4-easyocr-gpu"),
 ]
+#: The `[main_services]` keys of the removed deep research. A host ini can still hold them.
+REMOVED_DEEP_RESEARCH_KEYS = ("agent_packs_planner", "agent_packs_organizer",
+                              "agent_packs_subagent", "agent_plan_run_budget",
+                              "research_concurrency")
+
+
 def research_agents_enabled(cfg):
     """The two research agents need a language model, so they start only with one."""
     return cfg.active_llm_provider() is not None
@@ -1471,7 +1473,7 @@ def render_main_env(cfg):
         env["HOOVER4_COMMON_MAX_CACHED_WORKFLOWS"] = str(
             whole_number(cfg, "common_max_cached_workflows"))
     for tier in ("common", "tika", "ocr", "nlp", "embed", "indexing",
-                 "chat_model", "chat_low_latency", "research", "agent_tool"):
+                 "chat_model", "chat_low_latency", "agent_tool"):
         value = cfg.get(m, "%s_concurrency" % tier)
         if value:
             env["HOOVER4_%s_CONCURRENCY" % tier.upper()] = value
@@ -1516,14 +1518,11 @@ def render_main_env(cfg):
     env["HOOVER4_MAX_HELD_POLLS_PER_USER"] = cfg.get(m, "max_held_polls_per_user")
     env["HOOVER4_RATE_CHAT_POLL_PER_MINUTE"] = cfg.get(m, "rate_chat_poll_per_minute")
     env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")
-    if "agent_plan_run_budget" in cfg.extra.get(m, []):
-        print("warning: [main_services] agent_plan_run_budget is ignored. A plan starts one "
-              "sub-agent for each of its sections, and has at most 4", file=sys.stderr)
-    for kind in ("chat", "planner", "organizer"):
-        env[f"AGENT_PACKS_{kind.upper()}"] = cfg.get(m, f"agent_packs_{kind}") or "all"
-    if "agent_packs_subagent" in cfg.extra.get(m, []):
-        print("warning: [main_services] agent_packs_subagent is ignored. A sub-agent "
-              "gets the packs of agent_packs_organizer", file=sys.stderr)
+    for key in REMOVED_DEEP_RESEARCH_KEYS:
+        if key in cfg.extra.get(m, []):
+            print("warning: [main_services] %s is ignored. Deep research is removed." % key,
+                  file=sys.stderr)
+    env["AGENT_PACKS_CHAT"] = cfg.get(m, "agent_packs_chat") or "all"
     env.update(agent_probe_env(cfg))
     env.update(agent_model_env(cfg))
     env["HOOVER4_MCP_BROWSER_MEM_LIMIT"] = cfg.get(m, "mcp_browser_mem_limit")

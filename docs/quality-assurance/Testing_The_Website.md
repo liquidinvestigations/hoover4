@@ -143,8 +143,7 @@ website/observe-chat.sh --target URL --prompts p1,p2,p3 --no-followup    # skip 
 
 Every selected prompt runs as a concurrent conversation, not one after another, so an
 overlap claim measures generations that actually ran at the same time. A local generation
-uses the CPU model twins. One turn can take several minutes, a Deep Research turn tens of
-minutes. The observer never cancels a live generation and never retries a submitted prompt.
+uses the CPU model twins. A chat turn can take several minutes. The observer never cancels a live generation and never retries a submitted prompt.
 A submission failure ends that conversation's own observation and is recorded. The
 observation of one turn ends when the page shows the turn as ended, and after 4 hours at
 most, because `AgentRun` sets no time limit on a run. A turn that is still running then is

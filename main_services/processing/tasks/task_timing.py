@@ -119,7 +119,8 @@ KNOWN_TASK_QUEUES: Tuple[str, ...] = (
     "processing-index-planner-queue",
     "chat-queue",
     "chat-model-queue",
-    "research-queue",
+    "agent-tool-queue",
+    "processing-email-graph-queue",
 )
 
 #: Parameter attributes that identify the artifact an execution worked on, most specific

@@ -31,7 +31,6 @@ pub struct ChatSessionItem {
 /// (`locked`), and from then on the UI shows them read-only above the transcript.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChatOptions {
-    pub deep_research: bool,
     pub internet_tools: bool,
     /// Set when the first message is sent. `false` means the composer may still change
     /// them and the values above are only defaults.
@@ -44,7 +43,6 @@ impl Default for ChatOptions {
     /// Deep research off: it costs a Temporal workflow and minutes of GPU time.
     fn default() -> Self {
         Self {
-            deep_research: false,
             internet_tools: true,
             locked: false,
         }
@@ -58,7 +56,7 @@ impl Default for ChatOptions {
 /// where it failed.
 ///
 /// `Nag` is a note from the worker to its own agent: the note after an empty reply, the
-/// citation note, the note of the planner's extra round and the note warning. It has its
+/// citation repair note and context warnings. It has its
 /// own role for one reason: it must never look like the user speaking. Rendering it as
 /// a user bubble would put words in their mouth, and rendering it as an error would
 /// call a working protocol a failure.
@@ -284,11 +282,6 @@ pub struct ChatMessageItem {
     /// past. **0 means the provider never said**: render unknown, never a percentage.
     #[serde(default)]
     pub context_window: u32,
-    /// A [`ChatPlanReference`](crate::plan_types::ChatPlanReference) as JSON, on the answer
-    /// row of a planner run. Empty on every other row. The plan card reads it to find its
-    /// plan run and the version the person reviews.
-    #[serde(default)]
-    pub plan_reference_json: String,
     /// Transient, never stored: true on entries synthesised from the in-flight stream
     /// (`chat_message_stream`) rather than read from `chat_messages`. The transcript
     /// renders these with a pending/running treatment instead of the finished one.
@@ -342,15 +335,6 @@ impl ChatMessageItem {
         ))
     }
 
-    /// The plan this row shows a card for, or `None` when `plan_reference_json` is empty
-    /// or invalid.
-    pub fn plan_reference(&self) -> Option<crate::plan_types::ChatPlanReference> {
-        if self.plan_reference_json.is_empty() {
-            return None;
-        }
-        serde_json::from_str(&self.plan_reference_json).ok()
-    }
-
     /// Parsed [`ChatDocRef`] list, or empty when the column is blank / invalid.
     pub fn parsed_doc_refs(&self) -> Vec<ChatDocRef> {
         if self.doc_refs.is_empty() {
@@ -382,7 +366,6 @@ pub struct LiveChatRun {
     pub title: String,
     /// First ~200 chars of the message being answered.
     pub message_preview: String,
-    pub deep_research: bool,
     pub internet_tools: bool,
     /// Milliseconds since this run started.
     pub running_ms: u64,
@@ -440,75 +423,6 @@ pub struct StreamTurn {
     /// elapsed counter independent from the browser clock.
     #[serde(default)]
     pub server_now_ms: i64,
-    /// The sub-agent runs of the current delegation batches of this turn, at most 30.
-    /// Empty when no batch is open. The `run_subagent` card finds its entries by
-    /// `batch_id` and `tool_call_id`. A batch that ended leaves this list, and the card
-    /// then reads the reports from the tool row's `tool_output`.
-    #[serde(default)]
-    pub subagent_runs: Vec<SubagentRunEntry>,
-}
-
-/// Characters kept of each sub-agent message, report and error in a poll.
-pub const SUBAGENT_TEXT_CHARS: usize = 2_000;
-
-/// Messages of a running sub-agent thread that a poll returns, newest last.
-pub const SUBAGENT_MESSAGES_PER_RUN: usize = 20;
-
-/// One sub-agent thread of an open delegation batch, as the poll returns it.
-///
-/// A continuation folds into the first run of its thread, so one entry stands for one
-/// briefing.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SubagentRunEntry {
-    /// The first run of the thread.
-    pub run_id: String,
-    /// The entry `run_id` of the thread that delegated this one.
-    pub parent_run_id: String,
-    /// 1 or 2.
-    pub depth: u8,
-    /// The delegation batch, as the `run_subagent` tool row holds it in `tool_input`.
-    pub batch_id: String,
-    /// The `run_subagent` call this thread answers.
-    pub tool_call_id: String,
-    /// The plan section node that the thread executes, or empty outside a plan.
-    #[serde(default)]
-    pub plan_node_id: String,
-    /// The state of the newest run of the thread: `running`, `waiting_for_children`,
-    /// `completed`, `failed` or `cancelled`.
-    pub state: String,
-    /// The objective of the briefing.
-    pub objective: String,
-    /// The count of tool results in the thread.
-    pub tool_calls: u32,
-    /// For a `running` entry only: the last messages of the thread, oldest first.
-    #[serde(default)]
-    pub messages: Vec<SubagentMessage>,
-    /// For a terminal entry: the report, or the error of a failed run.
-    #[serde(default)]
-    pub report: String,
-}
-
-impl SubagentRunEntry {
-    pub fn is_terminal(&self) -> bool {
-        matches!(self.state.as_str(), "completed" | "failed" | "cancelled")
-    }
-}
-
-/// One message of a running sub-agent thread.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SubagentMessage {
-    /// `human`, `ai` or `tool`.
-    pub role: String,
-    /// The text, cut to [`SUBAGENT_TEXT_CHARS`].
-    pub content: String,
-    /// The tool of a `tool` message.
-    #[serde(default)]
-    pub tool_name: String,
-    /// The tools an `ai` message calls.
-    #[serde(default)]
-    pub calls: Vec<String>,
-    /// False while the message is a streaming partial.
-    pub is_final: bool,
 }
 
 /// One poll of the tail of a transcript.
@@ -543,21 +457,15 @@ pub struct ChatPollResult {
     /// Empty when `queued` is false.
     #[serde(default)]
     pub queued_for: String,
-    /// Every handle that a `cite_documents` result of the session issued, at every run
-    /// depth ([`citation_handles`]). The whole list on every poll. A sub-agent writes no
-    /// transcript row, so its handles reach the page only through this list.
+    /// Each citation handle issued in the conversation.
     #[serde(default)]
     pub run_cited_handles: Vec<String>,
-    /// The document of each handle in `run_cited_handles` ([`citation_refs`]). The sources
-    /// strip of a plan's organizer answer reads it, because the sections issued its handles.
+    /// Each document identified by a stored citation handle.
     #[serde(default)]
     pub run_cited_refs: Vec<ChatDocRef>,
     /// Todo snapshots named by tool rows returned in this poll.
     #[serde(default)]
     pub todo_versions: Vec<TodoSnapshot>,
-    /// Completed depth-one sub-agent runs of batches named by returned tool rows.
-    #[serde(default)]
-    pub subagent_batches: Vec<SubagentBatchState>,
     /// Opaque change-detection token: the client echoes it back on the next poll, and
     /// the server returns early when the current state produces a different one.
     pub sig: String,
@@ -612,9 +520,6 @@ pub struct ChatSessionDetail {
     /// The lead todo snapshots named by this transcript's todo writes.
     #[serde(default)]
     pub todo_versions: Vec<TodoSnapshot>,
-    /// Completed depth-one sub-agent runs of batches named by this transcript.
-    #[serde(default)]
-    pub subagent_batches: Vec<SubagentBatchState>,
 }
 
 /// One stored version of the conversation's todo list.
@@ -636,17 +541,6 @@ pub struct TodoItemView {
     pub note: String,
 }
 
-/// The terminal state of one depth-one sub-agent thread.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SubagentBatchState {
-    pub batch_id: String,
-    pub tool_call_id: String,
-    pub task: String,
-    pub state: String,
-    #[serde(default)]
-    pub report: String,
-}
-
 /// Maximum length of one user message. Guards the agent's context window and keeps a
 /// pasted document out of the chat table (that is what the collections are for).
 pub const MAX_MESSAGE_CHARS: usize = 8_000;
@@ -663,8 +557,7 @@ pub const TOOL_PAYLOAD_CHARS: usize = 24_000;
 
 /// True when `text` is a broker result page whose canonical re-serialization (sorted
 /// keys, compact separators) reproduces `text` byte for byte. A page is an object with a
-/// list under `items`, the `budget_exhausted` error, or an object with
-/// `"kind": "result_page"`, which a page stored before the slim format has.
+/// list under `items` or the `budget_exhausted` error.
 ///
 /// Mirrors `agent_common.result_pages.is_canonical_page` and
 /// `tasks.P_agent.trajectory.is_canonical_page` on the Python side. `serde_json::Value`'s
@@ -683,8 +576,7 @@ pub fn is_canonical_page(text: &str) -> bool {
         return false;
     };
     let is_page = obj.get("items").is_some_and(|items| items.is_array())
-        || obj.get("error").and_then(|v| v.as_str()) == Some("budget_exhausted")
-        || obj.get("kind").and_then(|v| v.as_str()) == Some("result_page");
+        || obj.get("error").and_then(|v| v.as_str()) == Some("budget_exhausted");
     if !is_page {
         return false;
     }
@@ -948,9 +840,6 @@ fn extract_doc_refs_from_output(tool_name: &str, tool_output_json: &str) -> Vec<
         "search_collections" => extract_from_search_results(content),
         "read_documents" | "list_document_entities" => extract_from_document_list(content),
         "cite_documents" => extract_from_citations(content),
-        "get_document_text" | "show_document" => {
-            doc_ref_from_value(content).into_iter().collect()
-        }
         _ => {
             // Generic: walk for document-shaped objects (have file_hash + a dataset key).
             let mut out = Vec::new();
@@ -1031,7 +920,7 @@ pub fn merge_citations(refs: Vec<ChatDocRef>) -> Vec<ChatDocRef> {
 ///
 /// Parses each result with the rule of [`extract_doc_refs`], so a handle counts only when
 /// the transcript would render a card for its document. The backend passes the tool
-/// results of every run thread of a session, because a sub-agent writes no transcript row.
+/// results stored in the session's run threads.
 pub fn citation_handles<'a>(outputs: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let mut handles: Vec<String> = Vec::new();
     for output in outputs {
@@ -1057,21 +946,6 @@ pub fn citation_refs<'a>(outputs: impl IntoIterator<Item = &'a str>) -> Vec<Chat
     refs
 }
 
-/// Replace each reference that names no dataset with the known reference of the same
-/// handle and file hash. A sub-agent's citation result names only the hash, and its
-/// typed report keeps the whole identity.
-pub fn fill_citation_identity(refs: &mut [ChatDocRef], known: &[ChatDocRef]) {
-    for doc in refs.iter_mut().filter(|d| d.collection_dataset.is_empty()) {
-        if let Some(full) = known.iter().find(|k| {
-            k.handle == doc.handle
-                && !k.collection_dataset.is_empty()
-                && (doc.file_hash.is_empty() || k.file_hash.starts_with(&doc.file_hash))
-        }) {
-            *doc = full.clone();
-        }
-    }
-}
-
 /// The number inside a `[Dn]` handle, or `None` when the string is not one.
 pub fn handle_number(handle: &str) -> Option<u32> {
     handle
@@ -1086,25 +960,21 @@ pub fn handle_number(handle: &str) -> Option<u32> {
 /// but a transcript row written before it did (or one where two entries named the same
 /// document through different argument shapes) must still render as one card.
 /// **A row with no `documents` array is an old single-document row**, not an empty result.
-/// `list_document_entities` answered with one document object before it was batched, and
 /// every such row in a stored transcript would otherwise render as nothing at all.
 fn extract_from_document_list(content: &serde_json::Value) -> Vec<ChatDocRef> {
     let documents = result_page_items(content).or_else(|| content.get("documents").and_then(|v| v.as_array()));
     let Some(documents) = documents else {
-        return doc_ref_from_value(content).into_iter().collect();
+        return Vec::new();
     };
     collapse_by_document(documents.iter().filter_map(doc_ref_from_value).collect())
 }
 
 /// The units of a broker result page, or `None` for content that is not a result page.
 ///
-/// A current page holds its units under `items` and has no `kind`. A page stored before
-/// the slim format also has `"kind": "result_page"`. Content with another `kind` is not
-/// a page.
+/// A result page stores its units under `items` and has no `kind`.
 pub fn result_page_items(content: &serde_json::Value) -> Option<&Vec<serde_json::Value>> {
     match content.get("kind") {
         None => {}
-        Some(kind) if kind.as_str() == Some("result_page") => {}
         Some(_) => return None,
     }
     content.get("items").and_then(|items| items.as_array())
@@ -1258,7 +1128,6 @@ mod tests {
             context_tokens: context,
             peak_context_tokens: peak,
             context_window: window,
-            plan_reference_json: String::new(),
             streaming: false,
         }
     }
@@ -1367,7 +1236,7 @@ mod tests {
     #[test]
     fn extract_doc_refs_from_a_search_result_page() {
         // A broker page stored as its own bytes, with the rows under `items`.
-        let page = r#"{"kind":"result_page","items":[{"collectionname":"enron","collection_dataset":"enron_maildir","dataset":"maildir","file_hash":"aaa","path":"/a.eml","snippet":"s"},{"collectionname":"enron","collection_dataset":"enron_maildir","dataset":"maildir","file_hash":"bbb","path":"/b.eml","snippet":"t","matched_queries":["talking points"]}]}"#;
+        let page = r#"{"items":[{"collectionname":"enron","collection_dataset":"enron_maildir","dataset":"maildir","file_hash":"aaa","path":"/a.eml","snippet":"s"},{"collectionname":"enron","collection_dataset":"enron_maildir","dataset":"maildir","file_hash":"bbb","path":"/b.eml","snippet":"t","matched_queries":["talking points"]}]}"#;
         let output = serde_json::json!({"output": {"content": page}}).to_string();
         let refs = extract_doc_refs_with_query("search_collections", &output, "hearings");
         assert_eq!(refs.len(), 2);
@@ -1387,7 +1256,7 @@ mod tests {
 
     #[test]
     fn a_search_row_with_only_the_short_dataset_gets_the_composed_key() {
-        let page = r#"{"kind":"result_page","items":[{"collectionname":"enron","dataset":"maildir","file_hash":"aaa"}]}"#;
+        let page = r#"{"items":[{"collectionname":"enron","dataset":"maildir","file_hash":"aaa"}]}"#;
         let refs = extract_doc_refs("search_collections", page);
         assert_eq!(refs[0].collection_dataset, "enron_maildir");
     }
@@ -1419,24 +1288,6 @@ mod tests {
         // than an unrelated passage of the same file.
         assert_eq!(refs[0].snippet, "the board approved");
         assert_eq!(refs[0].quote_reason, "");
-    }
-
-    #[test]
-    fn a_sub_agent_citation_takes_its_identity_from_the_typed_report() {
-        let mut refs: Vec<ChatDocRef> = serde_json::from_str(
-            r#"[{"handle": "[D1]", "collection_dataset": "", "file_hash": "aa11"},
-                {"handle": "[D2]", "collection_dataset": "", "file_hash": "bb22"}]"#,
-        )
-        .unwrap();
-        let known: Vec<ChatDocRef> = serde_json::from_str(
-            r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa11ff", "path": "/a.eml"},
-                {"handle": "[D2]", "collection_dataset": "c_ds", "file_hash": "cc33"}]"#,
-        )
-        .unwrap();
-        fill_citation_identity(&mut refs, &known);
-        assert_eq!(refs[0].collection_dataset, "c_ds");
-        assert_eq!(refs[0].path, "/a.eml");
-        assert_eq!(refs[1].collection_dataset, "");
     }
 
     #[test]
@@ -1751,7 +1602,6 @@ mod tests {
     /// itself would build, which is the property under test.
     fn canonical_page_fixture() -> String {
         let value = serde_json::json!({
-            "kind": "result_page",
             "success": true,
             "tool_name": "doc_metadata",
             "shape": "rows",
@@ -1882,17 +1732,6 @@ mod tests {
         assert_eq!(refs[1].file_hash, "bbb");
     }
 
-    #[test]
-    fn a_pre_batch_entities_row_still_renders() {
-        // The single-document shape `list_document_entities` answered with before it was
-        // batched. Stored transcripts still hold these rows and they must keep rendering.
-        let output = r#"{"content":
-            {"collectionname": "t", "collection_dataset": "d", "file_hash": "aaa",
-             "entities": {"person": ["A"]}}}"#;
-        let refs = extract_doc_refs("list_document_entities", output);
-        assert_eq!(refs.len(), 1);
-        assert_eq!(refs[0].file_hash, "aaa");
-    }
 
     #[test]
     fn read_documents_collapses_a_repeated_document() {
@@ -1921,7 +1760,7 @@ mod tests {
     #[test]
     fn a_result_page_of_documents_gives_one_ref_each() {
         let page = serde_json::json!({
-            "kind": "result_page", "success": true, "shape": "rows",
+            "success": true, "shape": "rows",
             "items": [
                 {"collectionname": "testdata", "collection_dataset": "testdata_testfiles", "file_hash": "a1", "path": "/a"},
                 {"collectionname": "testdata", "collection_dataset": "testdata_testfiles", "file_hash": "b2", "path": "/b"},

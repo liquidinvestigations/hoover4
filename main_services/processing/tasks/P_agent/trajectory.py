@@ -30,7 +30,7 @@ def _canonical_json(value: Any) -> str:
 def is_canonical_page(text: str) -> bool:
     """Mirrors `agent_common.result_pages.is_canonical_page`. See `_canonical_json` for
     why this is a copy. True when `text` parses to an object that holds a list under
-    `items`, is the `budget_exhausted` error, or has `"kind": "result_page"`, and whose
+    `items` or the `budget_exhausted` error, and whose
     canonical re-serialization is `text` itself, byte for byte. That is the fixed-point
     test the byte rule relies on to recognise a broker page with no side channel."""
     try:
@@ -40,7 +40,7 @@ def is_canonical_page(text: str) -> bool:
     if not isinstance(value, dict):
         return False
     if not (isinstance(value.get("items"), list) or value.get("error") == "budget_exhausted"
-            or value.get("kind") == "result_page"):
+           ):
         return False
     return _canonical_json(value) == text
 
@@ -177,18 +177,7 @@ def _dumps(value: Any) -> str:
         return str(value)
 
 
-#: Tools whose result is a single document rather than a result set.
-#:
-#: `get_document_text` is retired and no live call produces one. **The arm stays anyway**,
-#: because transcripts written before the batch form still hold its rows and a card that
-#: cannot render an old row loses the evidence base this design was built on.
-_SINGLE_DOCUMENT_TOOLS = {"get_document_text", "show_document"}
-
-#: Tools whose result is a list of documents under a named key.
-#:
-#: `list_document_entities` answered with one document object before it was batched, so a
-#: row here with no list under its key falls back to the single-document shape rather than
-#: rendering as nothing.
+#: Tools that return document lists.
 _DOCUMENT_LIST_TOOLS = {"read_documents": "documents", "list_document_entities": "documents"}
 
 
@@ -285,13 +274,8 @@ def _extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:
     if key is not None:
         entries = _result_rows(result, key)
         if not isinstance(entries, list):
-            one = _doc_ref(result)
-            return [one] if one else []
+            return []
         return [d for d in (_doc_ref(item) for item in entries) if d]
-
-    if tool_name in _SINGLE_DOCUMENT_TOOLS:
-        one = _doc_ref(result)
-        return [one] if one else []
 
     found: list[dict[str, Any]] = []
     _collect_document_shaped(result, found)

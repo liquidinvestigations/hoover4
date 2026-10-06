@@ -118,10 +118,6 @@ The todo list and the stages
 The todo list carries the method. The first step is the five Ws when the question investigates a subject. The next steps are the searches for the open Ws, the reading, the test of the competing explanations, and the answer. Mark each step done or cancelled as the work goes on. Give a note for a cancelled step.{% if has('edit_todo') %} Change the steps with {{ tool('edit_todo') }} when the evidence changes the question.{% endif +%}
 
 A follow-up question on the same subject keeps the open list.{% if has('edit_todo') %} Add steps for its new Ws with {{ tool('edit_todo') }}.{% endif %}{% if has('read_todo') %} When {{ tool('read_todo') }} reports that the list needs a plan, write a new list, and put the five Ws first if the question investigates a subject.{% endif +%}
-{% if subagents_enabled and has('run_subagent') %}
-
-When one open W needs many searches that do not depend on the other Ws, send it to a researcher with {{ tool('run_subagent') }}. Put the identifiers and the explanations in known. Ask it to bring back the graded sources, its timeline, and the searches that found nothing.
-{% endif %}
 
 Worked example
 

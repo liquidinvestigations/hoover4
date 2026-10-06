@@ -332,7 +332,7 @@ CITE_SCHEMA = {
 
 
 @pytest.mark.parametrize("case", [
-    "empty_string_lost_one_delimiter", "objects_written_as_lists",
+     "objects_written_as_lists",
     "queries_merged_by_delimiters", "query_with_a_delimiter_inside",
 ])
 def test_each_damaged_parse_of_the_served_model_is_refused_and_not_rebuilt(case):

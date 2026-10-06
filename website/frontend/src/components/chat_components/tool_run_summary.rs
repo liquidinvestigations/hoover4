@@ -18,8 +18,6 @@ enum Kind {
     Browser,
     Entities,
     Cite,
-    Subagent,
-    Plan,
     Skill,
     Note,
     Todo,
@@ -38,11 +36,6 @@ impl Kind {
             "read_page" => Kind::WebRead,
             "list_document_entities" => Kind::Entities,
             "cite_documents" => Kind::Cite,
-            "run_subagent" => Kind::Subagent,
-            "write_plan" | "read_plan" | "read_plan_document" | "read_plan_report"
-            | "append_node" | "append_child" | "move_node" | "edit_node" | "remove_node" => {
-                Kind::Plan
-            }
             "write_todo" | "edit_todo" | "mark_todo" | "read_todo" => Kind::Todo,
             "search_skills" | "read_skill" | "read_tool" | "search_agent_tools" => Kind::Skill,
             "write_note" => Kind::Note,
@@ -62,8 +55,6 @@ impl Kind {
             Kind::Browser => format!("{n} browser {}", s("action", "actions")),
             Kind::Entities => format!("listed the entities of {n} {}", s("document", "documents")),
             Kind::Cite => format!("cited {n} {}", s("document", "documents")),
-            Kind::Subagent => format!("ran {n} {}", s("sub-agent", "sub-agents")),
-            Kind::Plan => format!("{n} plan {}", s("call", "calls")),
             Kind::Skill => format!("read {n} {} and tool texts", s("skill", "skills")),
             Kind::Note => format!("saved {n} {}", s("note", "notes")),
             Kind::Todo => format!("{n} todo list {}", s("call", "calls")),
@@ -99,7 +90,6 @@ fn units(kind: Kind, args: &serde_json::Value) -> u64 {
         Kind::Read | Kind::Entities => items(args, "file_hash") + items(args, "documents"),
         Kind::WebRead => items(args, "urls") + items(args, "url"),
         Kind::Cite => items(args, "citations"),
-        Kind::Subagent => items(args, "briefings") + items(args, "tasks"),
         _ => 1,
     };
     n.max(1)
@@ -227,7 +217,6 @@ mod tests {
             context_tokens: 0,
             peak_context_tokens: 0,
             context_window: 0,
-            plan_reference_json: String::new(),
             streaming: false,
         }
     }
@@ -272,16 +261,15 @@ mod tests {
     }
 
     #[test]
-    fn sub_agents_web_calls_and_unknown_tools_have_their_own_phrases() {
+    fn web_calls_and_unknown_tools_have_their_own_phrases() {
         let rows = vec![
-            tool("run_subagent", r#"{"briefings": [{"objective": "a"}, {"objective": "b"}]}"#, "{}", ""),
             tool("web_search", r#"{"queries": ["a"]}"#, "{}", ""),
             tool("read_page", r#"{"urls": ["https://a.example", "https://b.example"]}"#, "{}", ""),
             tool("whois_lookup", r#"{"domains": ["a.example"]}"#, "{}", ""),
         ];
         assert_eq!(
             tool_run_summary(&rows, Some(5_000)),
-            "Searched the web for 1 term, read 2 web pages, ran 2 sub-agents, 1 other call, took 5s"
+            "Searched the web for 1 term, read 2 web pages, 1 other call, took 5s"
         );
     }
 }

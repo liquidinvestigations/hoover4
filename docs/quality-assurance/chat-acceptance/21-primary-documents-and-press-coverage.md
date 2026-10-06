@@ -2,7 +2,7 @@
 
 | field | value |
 |---|---|
-| mode | deep research, internet tools off |
+| mode | chat, internet tools off |
 | collections in scope | every collection |
 | data needed | `enron`, dataset `maildir` |
 

@@ -45,7 +45,7 @@ class StepEvent:
     username: str
     session_id: str
     run_id: str
-    #: `chat`, `subagent`, `planner`, `organizer` or `title`.
+    #: `chat` or `title`.
     run_kind: str
     #: `model`, `tool` or `title`. Older rows can hold `preload`.
     step: str

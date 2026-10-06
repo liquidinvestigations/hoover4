@@ -103,198 +103,43 @@ every failed file, in `processing_errors`, and does not write `operation_failure
 
 ### P_agent - every AI agent turn
 
-**Every agent run runs here.** `AgentRun` owns an ordinary chat message on `chat-queue`, and
-each planner and organizer run of a deep research plan. The workflow runs the agent loop.
-Each model call is one `model_step` activity on the queue in its run row, `chat-model-queue`
-for a chat turn and `research-queue` for a plan run. Each tool call is one `tool_call`
-activity on `agent-tool-queue`. The step activities are in `P_agent/steps.py`.
-`plan_runs.py` writes the plan run state in `open_run` and `write_ending`, the section
-documents, and `sections_json`. A decision of the person starts the next run from the
-website, so no workflow waits for review.
+`AgentRun` runs each chat turn on `chat-queue`.
+Each model call runs on `chat-model-queue`.
+Each tool call runs on `agent-tool-queue`.
+The worker selects the agent from the conversation's stored internet option.
 
-`AgentRun` keeps its state in `agent_runs` and `agent_run_messages`
-(`database/agent_runs.py`). Its input holds ids and settings only. `open_run` writes the
-row and the opening message from the user row, and returns the unanswered calls of the
-stored thread. `model_step` sends the stored thread to the agent's `POST /model_step`, and
-writes the reply: the `ai` message with its call entries, one live tool row for each call,
-or the answer row. `tool_call` sends one stored call to `POST /tool_call` with an
-idempotency key from the thread, the reply and the place of the call, and writes its `tool`
-message and tool row. `write_ending` writes the terminal state and the ending row. No
-answer or tool result crosses a Temporal payload. Each write has a fixed key, so a retry, a
-worker restart and a continue-as-new resume from the stored thread. A step that finds its
-own `ai` message makes no second model call, and a call that has a result runs nothing.
-A turn with a stop row in `agent_turn_stops` closes in `open_run`.
+The worker stores run state and model messages in `agent_runs` and `agent_run_messages`.
+It stores visible output in the chat tables.
+Activity inputs carry identifiers and settings. They carry no answer or tool result text.
+Each write has a stable key. Retries resume from stored messages.
+A call with a stored result runs no tool again.
 
-**The limits of the loop** are in `P_agent/model_timeouts.py`. A model step has 3,600 s
-(`llm_request_timeout_seconds`) and a tool call 300 s. Each waits at most
-`agent_queue_wait_seconds` for a slot. A model step that waits longer fails the run with
-"The model queue wait passed ... s.", and a tool call that fails after its last attempt gets
-a stored `tool_unavailable` result, which the model reads.
+Todo calls run in reply order. Browser calls run in a separate ordered sequence.
+Other calls can run concurrently.
+Browser calls that change a page get one attempt.
+The workflow continues as new after 250 model steps or 30,000 history events.
+After 600 model steps, it writes an incomplete result from stored evidence.
+A second empty reply also ends the run with an incomplete result.
 
-**Every call of a reply runs.** No call is refused because it repeats an earlier call, and
-no call is refused for the length of the conversation. The agent service sizes the next
-model request after the results are stored (`research_agent/request_size.py`).
+The agent service compacts the model thread when it exceeds its size threshold.
+The worker stores the compaction status in the transcript.
+Request preparation failures end the run and preserve the stored thread.
+An answer ends the run with its todo list unchanged.
+A citation repair round can replace an answer after the model supplies citation handles.
+The worker stores typed evidence beside each tool result.
+Evidence identifies document reads, discovery, citations, notes, artifacts, spans, and errors.
 
-**The run ends with no model call at a limit.** When the model steps of the thread reach
-600 (`RUN_MODEL_STEPS`), counted across continue-as-new and continuations, the calls of the
-last reply have their results, and `write_incomplete` ends the model steps. Its result is
-code text from the stored thread (`thread_facts.incomplete_text`): the reason, the newest
-text that the model wrote, the documents that the run read, the documents that its searches
-returned, and the searches that found nothing. A chat lead's transcript gets that text as
-its assistant row. The run ends `completed` with `end_reason` `step_budget`. The first reply
-of a thread with no text and no call gets `EMPTY_REPLY_TEXT` as a `human` row, whose usage
-holds the retry marker (`retry_marker: empty_reply`), and one more model step. A second such
-reply ends the run the same way, with `end_reason` `empty_response`. The marker holds no
-counter, and a thread from before the marker is read by its text.
+Each model, tool, and title attempt records an `agent_step_events` row.
+The row records queue wait, duration, status, error class, and token counts.
+The worker reads the thinking setting before each model call.
 
-A model step that compacts writes one `compaction` chat row for a run that writes the
-transcript, at the first seq of the step, and every other row of the step moves one seq on.
-The row holds the running state when the `compaction` frame arrives, and the done state
-(`steps.compaction_line`) after the `end` frame. Both states are written at the same seq, so
-an open page reads the row again while it shows the running state
-(`session_page::poll_after_seq`). The done state of a version 3 record holds
-`summary_state`, `ok` or `failed`, and the summary as `record`. A version 2 record of an
-older thread gives `part_states`. The service ends a request that cannot fit with an `error`
-frame of class `context_size` or `context_preparation`, and the step does not retry it, so
-the run ends `failed` with that text and the stored thread stays whole. The stored `ai`
-message holds the model that the service answered with (`model` of the
-`model_turn` frame) and the `request_size` of the request in its usage.
+The agent run sweep closes a running row whose workflow has ended or is absent.
+It records cancellation for a stopped turn and failure for other ended workflows.
+It leaves rows younger than 120 seconds unchanged.
 
-The calls of one reply to the plan tree and todo tools run one after the other, in the
-order of the reply. The calls of one reply to the browser server (`read_page` and
-every `browser_*` tool it can list, `steps.is_browser_tool`) run one after the other in a
-second chain,
-because they drive the one browser of the run. The other calls run beside both chains. A
-browser tool that can change the page gets one attempt (the `retry` of its call entry). A
-call entry with `argument_error` is sent with that error, and the agent service refuses it
-with the reason. Every run starts with a normal model step, which binds the
-run's tools. The workflow continues as new every 250 model steps, or past 30,000 history
-events. A planner that answers with no plan section gets one more round with a note, and
-then fails.
-
-**Each attempt of a model step, a tool step and a title call writes one row of
-`agent_step_events`** (`database/agent_step_events.py`). The row holds the queue wait, the
-duration, the status, the error class and the tokens. The step activities write it from a `finally`
-block through the buffer of `task_timing.py`. A step that returns a stored result writes no
-row. Each attempt that starts writes one row, except an attempt that lost its heartbeat.
-An attempt that the worker cancels with the reason `timed_out` compares its elapsed time
-with its start-to-close limit. At the limit its row has the class `start_to_close_timeout`.
-Before the limit it lost its heartbeat and writes no row. `record_step_failure` writes the
-row of a step that never started or lost its heartbeat, with `attempt` 0 and the `mode` of a
-model step, which is `tools`. Older rows can hold the step `preload` and the modes `final`
-and `plan`. The table keeps 90 days.
-
-**Thinking.** `model_step` reads `server_settings.llm_thinking` before each model call and
-sends `thinking` in the request. Only the value `off` turns it off, and a failed read sends
-on. The admin sets it on `/admin/llm`.
-
-**A change to `AgentRun` needs the drain.** A running `AgentRun` replays its history on the
-new code, and a history that does not match fails as nondeterministic, so the turn never
-ends. No workflow versioning exists. Before a worker with a changed `AgentRun` starts,
-write the stop row of each open agent turn and cancel every running `AgentRun`, with the
-old worker still up, until the count of running `AgentRun` workflows is 0. The Temporal CLI
-in the `temporal` container needs `--address` with the address that the worker connects to,
-because the default address of the CLI has no server.
-
-**Sections run through run rows.** An organizer's first run makes no model call. Its
-`dispatch_sections` reads the approved tree and writes, for each direct child of the root at
-index `i`, a sub-agent row `child_run_id(batch_id_for(organizer), i)` with purpose
-`execute`, its opening message (the briefing of `plan_runs.section_briefings`) and its
-`prompt` document, and then puts the organizer's row in `waiting_for_children`. A turn with a
-stop row ends the organizer as `cancelled` there and writes no child. The workflow starts
-one abandoned child `AgentRun` for each child, with the organizer's collections, model and
-internet switch in its input, and returns. When a run ends, `fan_in` reads its sibling set.
-When every sibling is terminal, it writes the missing report documents
-(`reports.ensure_reports`), and `continue_run` writes a continuation row of the organizer
-unless the turn has a stop row, and the workflow starts it. The continuation's
-`prepare_continuation` adds one `human` message with the outcome of each section
-(`activities._add_section_reports`), marked by its batch id so a retry writes it once. The
-organizer cannot start a sub-agent. `write_ending` of a continuation writes its state into
-every run it continues. Child and continuation ids are `uuid5` values, and the organizer's
-workflow id is fixed for its plan run, so a retry and a second writer write the same rows,
-and a refused duplicate workflow start counts as started.
-
-**Every run of a plan uses its execution settings.** The first planner run writes the
-plan's `execution_settings` document: the model of its input, or the configured default,
-and the internet switch. `open_run` of every later run of the plan returns them, and the
-workflow replaces the model and the switch of its input with them, so its children and
-continuations copy them too. A plan run from before the document gets one at its next
-start, with the model that the website resolved and the source in `model_source`.
-
-A section fails when its run did not complete, stopped at a limit, wrote no report or
-reports incomplete execution (`agent_plans.section_states`). A plan run from before the
-execution settings keeps its stored `sections_json`.
-
-**The agent run sweep** (`supervise.py`) runs on `operations-queue` after the operation sweep
-of each `CollectEtaSamples` pass. It ends a running row whose workflow closed or does not
-exist, as `failed` or, for a stopped turn, `cancelled`, and runs `fan_in` for it. It
-continues a waiting row whose workflow closed and whose batch is terminal. It leaves a row
-younger than 120 s, and a child whose parent's workflow still runs. A child whose parent
-is terminal is ended when its own workflow is closed or absent, because no attempt of a
-terminal parent starts it.
-
-The website holds nothing open for either: it writes the user row, reserves the answer's
-seq and dispatches. That is what makes a turn survive a browser reload, a website restart
-and a worker crash.
-
-None of the three queues is the ingestion queue. An ingestion backlog delaying
-somebody waiting at a screen is the one failure a shared queue guarantees. **The worker
-deploys before the website**: a workflow addressed to a queue nothing polls waits for ever
-with no error anywhere. A `chat-model-queue` slot is one agent run in flight, not one model
-call, and a running plan takes one slot for each running sub-agent.
-
-**After an answer.** An answer ends the run, whatever the state of the run's todo list, and
-an open item stays open. Two rounds can follow an answer, and each starts with a note,
-which is written as a `nag` chat row and into the thread. The answer or the question of every
-run kind whose model had `cite_documents` (`citation_tool` in the reply's usage) gets the
-citation check (`AgentRun._finish_citations`, `steps.check_citations`,
-`citations.needs_repair`). The check compares the `[Dn]` labels of the text with the
-successful `cite_documents` results of the whole session, so a failed call does not satisfy
-it and an earlier valid handle does. An unresolved label, a label that results give for two
-documents, or a document name with no label (a file hash, or a path or file name that a
-tool of the thread returned) gets one repair round. Its note names the labels, and asks for
-the citations and then the answer again. The reply of that round replaces the answer when
-it has text. The `nag` chat row of the note has the `tool_name` `citation_check`
-(`steps.CITATION_NOTE_NAME`), and the transcript shows the answer before it as replaced when
-the round writes an answer with text. The note is the marker of the round (`repair_marker` in its usage, with the
-check), so a logical thread gets one. After a question, the reply of the round is the
-question the person reads, and the planner's plan check does not apply to it. A planner
-that answers with no plan section gets one round with `PLANNER_NO_SECTION_NOTE`. A run that
-ended at a limit gets no round. The answer row never holds the model's reasoning.
-
-**Evidence and reports.** `_write_tool_result` stores the typed evidence of each result
-(`reports.normalize`) in the `evidence` list of the usage of its `tool` message, at every
-run depth: reads with their page or byte span, a `find` in a web page with the spans that it
-showed, failed items, documents that searches found,
-citations, notes and artifacts. Each entry is keyed by the thread, the message index and the
-item, so a continuation keeps its identity. `reports.project` makes the report of a thread
-from its committed messages: the ending, the final answer, the latest three texts of the
-model, the evidence lists and the diagnostics, with the model text apart from what code
-wrote. Its citation list has one entry for each document, and a verified quote replaces an
-unverified one (`reports.one_citation_per_document`), so a document that the repair round
-cites again is listed once. The ending of a plan sub-agent thread, in every state, writes it as the `report`
-text and the `report_data` JSON documents of the thread's first run
-(`plan_runs.write_plan_ending`). `fan_in` writes the pair of a finished thread that has none
-before the parent continues (`reports.ensure_reports`), with no model call, no tool call
-and no change of state. `reports.read_run_report` projects any run of the owner, a chat run
-included. A body above 256 KiB is a required artifact (`agent_plans.write_document`). The nag counter columns of
-`agent_runs` stay for older rows, and no code writes them.
-
-`trajectory.py` turns the agent's raw event list into transcript rows, and
-`stream_writer.py` mirrors the same events live while they arrive. The two must agree, and
-for a while they did not: this path wrote `json.dumps(event)[:400]` as the message body
-with the tool name hardcoded to `"tool"` and none of `tool_input` / `tool_output` /
-`doc_refs` populated, so a transcript rendered as a wall of JSON in a card whose expand
-panel opened onto nothing. **If you change the event format, change both.**
-
-`summarize.py` names a conversation from its first exchange. It runs as an activity after
-the answer is written, and it **cannot fail the turn**: one attempt, a short timeout, every
-exception swallowed in the activity and again in the workflow. The provisional title the
-website wrote from the user's first message is the fallback.
-
-The one shape fact that catches everyone: there is **no tool name on a start event**. It
-appears only at `output.name` on the end event, so events have to be paired before a call
-can be labelled at all.
+Stop active turns before changing the workflow's command sequence.
+Cancellation must finish while the old worker still runs.
+Deploy the worker before the website so every dispatched queue has a poller.
 
 ## Temporal visibility
 
@@ -485,15 +330,10 @@ Workers are split into dedicated queues to control throughput and resource usage
 - `processing-email-graph-queue`, `build_email_graph` (`main.py worker email-graph`).
   MUST run at exactly one worker process of one slot. A run deletes its collection's
   rows that are older than its own start. Two runs at once can delete each other's rows.
-- `chat-queue`, `AgentRun` plus `open_run`, `append_nag`, `write_ending`, `fan_in`,
-  `continue_run`, `dispatch_sections`, `prepare_continuation`, `record_step_failure`,
-  `plan_has_sections`, `check_citations`, `write_empty_note`, `write_incomplete`,
-  `write_asked_answer` and session titles (`main.py worker chat`, concurrency
-  from `chat_low_latency_concurrency`).
-- `chat-model-queue`, `model_step` for those chat turns and their sub-agents
+- `chat-queue` runs `AgentRun`, run state activities, citation verification, and session titles.
+- `chat-model-queue`, `model_step` for chat turns
   (`chat_model_concurrency`, 3 slots). A slot is one model call in flight.
-- `research-queue`, `model_step` of a plan run (`research_concurrency`, 3 slots), outside
-  the chat-model slots.
+
 - `agent-tool-queue`, `tool_call` of every agent run (`agent_tool_concurrency`, 16 slots).
   A slot is one tool call in flight. A section dispatch takes no tool slot.
 

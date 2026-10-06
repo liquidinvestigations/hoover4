@@ -11,7 +11,6 @@ use dioxus::prelude::*;
 use crate::components::chat_components::{
     doc_ref_card::{ChatDocRefCard, ChatDocRefRow},
     markdown_text::{MarkdownishText, source_anchor_id},
-    plan_card::{PlanCard, PlanCardContext},
     tool_cards::{ElapsedCounter, ToolCard},
     tool_run_summary::{run_duration_ms, timestamp_ms, tool_run_summary},
 };
@@ -33,27 +32,15 @@ pub fn ChatTranscript(
     /// of the turn, under its tool rows too.
     #[props(default)]
     queued_for: String,
-    /// The plan run id of a deep-research request that has no planner answer row yet. The
-    /// transcript shows its card at the end while the planner writes the plan.
-    #[props(default)]
-    pending_plan: Option<String>,
     /// The handles that the `cite_documents` results of every run of the session issued,
-    /// sub-agents included. A sub-agent writes no transcript row, so the rows alone miss
-    /// its handles.
+    /// Stored citation handles stay available across conversation turns.
     #[props(default)]
     run_cited_handles: Vec<String>,
-    /// The document of each handle in `run_cited_handles`. The sources strip of a plan's
-    /// organizer answer reads it.
+    /// Each stored handle identifies one document.
     #[props(default)]
     run_cited_refs: Vec<ChatDocRef>,
-    /// Finished delegation batches read with the stored transcript.
-    #[props(default)]
-    subagent_batches: Vec<common::chat_types::SubagentBatchState>,
     #[props(default)]
     todo_versions: Vec<common::chat_types::TodoSnapshot>,
-    /// Plain chats keep each todo write outside a tool group.
-    #[props(default)]
-    deep_research: bool,
     /// The state of the newest turn, from `turn_state`. The root element carries it as
     /// `data-chat-turn`, so a browser test reads the turn state from the page.
     #[props(default)]
@@ -93,24 +80,6 @@ pub fn ChatTranscript(
     // any run gave is a real one. The answers mark every other handle as not cited.
     let cited_handles = issued_handles(&messages, &run_cited_handles);
     let conflicting = conflicting_handles(&messages);
-    let subagent_runs = stream
-        .as_ref()
-        .map(|t| t.subagent_runs.clone())
-        .unwrap_or_default();
-    // The newest plan run of the transcript and the seq of the last row. The line that
-    // says why a research run stopped goes under the last row.
-    let last_plan_run = messages
-        .iter()
-        .rev()
-        .find_map(|m| m.plan_reference())
-        .map(|r| (r.run_id, messages.last().map(|m| m.seq).unwrap_or_default()));
-    // The pending card goes once a planner answer row names the same plan run.
-    let pending_card = pending_plan.filter(|run_id| {
-        !messages
-            .iter()
-            .filter_map(|m| m.plan_reference())
-            .any(|r| &r.run_id == run_id)
-    });
     // One row as `MessageEntry`. A run of tool rows renders the same entries inside its
     // group when the group is open.
     let entry = |i: usize| -> Element {
@@ -122,34 +91,9 @@ pub fn ChatTranscript(
         let replaced = answer_replaced(&messages, i);
         // A replaced answer shows no strip. The answer that replaces it lists its citations.
         let sources = if m.role == ChatRole::Assistant && !replaced {
-            let own = citations_for_answer(&messages, i);
-            if is_plan_answer(&messages, i) {
-                let mut all = own;
-                all.extend(plan_answer_citations(&m.content, &run_cited_refs));
-                merge_citations(all)
-            } else {
-                own
-            }
+            citations_for_answer(&messages, i)
         } else {
             Vec::new()
-        };
-        // A planner answer that a later answer of the same plan run follows shows its card
-        // as an earlier version, with no action.
-        let plan_superseded = m.plan_reference().is_some_and(|r| {
-            messages[i + 1..]
-                .iter()
-                .filter_map(|later| later.plan_reference())
-                .any(|later| later.run_id == r.run_id)
-        });
-        let plan_question = if m.plan_reference().is_some() {
-            asked_question(&messages[..i])
-        } else {
-            String::new()
-        };
-        let plan_question_options = if plan_question.is_empty() {
-            Vec::new()
-        } else {
-            asked_options(&messages[..i])
         };
         let read_more_source = if m.tool_name == "read_more" {
             read_more_source(&messages, i)
@@ -157,18 +101,6 @@ pub fn ChatTranscript(
         let repeat_question = m.role == ChatRole::Assistant
             && asked_question(&messages[..i]) == m.content
             && !m.content.is_empty();
-        // Only a delegation row reads the entries. The others get an empty list, so a poll
-        // that moves a sub-agent re-renders that row alone.
-        let runs = if m.tool_name == "run_subagent" || !m.plan_reference_json.is_empty() {
-            subagent_runs.clone()
-        } else {
-            Vec::new()
-        };
-        let batches = if m.tool_name == "run_subagent" {
-            subagent_batches.clone()
-        } else {
-            Vec::new()
-        };
         rsx! {
             MessageEntry {
                 key: "{m.seq}",
@@ -178,12 +110,7 @@ pub fn ChatTranscript(
                 cited_handles: cited_handles.clone(),
                 conflicting_handles: conflicting.clone(),
                 datasets: datasets.clone(),
-                subagent_runs: runs,
-                subagent_batches: batches,
                 todo_versions: todo_versions.clone(),
-                plan_superseded,
-                plan_question,
-                plan_question_options,
                 read_more_source,
                 repeat_question,
                 replaced,
@@ -192,14 +119,14 @@ pub fn ChatTranscript(
         }
     };
     // Runs of tool and instruction rows, and every other row on its own, as index ranges.
-    let segments = tool_run_segments(&messages, !deep_research);
+    let segments = tool_run_segments(&messages, true);
     let live_tools = stream
         .as_ref()
         .map(|turn| turn.tool_rows.clone())
         .unwrap_or_default();
-    let live_segments = live_tool_segments(&live_tools, !deep_research);
+    let live_segments = live_tool_segments(&live_tools, true);
     let can_join = live_segments.first().is_some_and(|(_, _, todo)| !todo);
-    let live_group_start = live_group_start(&messages, &segments, !deep_research, can_join);
+    let live_group_start = live_group_start(&messages, &segments, true, can_join);
     let joined_live_end = if live_group_start.is_some() {
         live_segments.first().map(|(_, end, _)| *end).unwrap_or(0)
     } else { 0 };
@@ -273,19 +200,6 @@ pub fn ChatTranscript(
                             }
                         }
                     }
-                }
-            }
-            if let (Some((run_id, last_seq)), None) = (last_plan_run.clone(), stream.as_ref()) {
-                ResearchEndLine { run_id, last_seq }
-            }
-            if let Some(run_id) = pending_card {
-                PlanCard {
-                    key: "pending-plan-{run_id}",
-                    reference: common::plan_types::ChatPlanReference {
-                        plan_id: String::new(),
-                        run_id: run_id.clone(),
-                        reviewed_version: 0,
-                    },
                 }
             }
             if let Some(turn) = stream {
@@ -607,17 +521,6 @@ fn asked_question(messages: &[ChatMessageItem]) -> String {
         .unwrap_or_default()
 }
 
-fn asked_options(messages: &[ChatMessageItem]) -> Vec<String> {
-    messages.iter().rev()
-        .take_while(|message| message.role == ChatRole::Tool || message.role.is_instruction())
-        .filter(|message| message.tool_name == "ask_user")
-        .last()
-        .and_then(|message| serde_json::from_str::<serde_json::Value>(&message.tool_input).ok())
-        .map(|value| value.get("input").cloned().unwrap_or(value))
-        .and_then(|value| value.get("options").and_then(|options| options.as_array()).cloned())
-        .unwrap_or_default().iter().filter_map(|option| option.as_str().map(str::to_string)).collect()
-}
-
 fn read_more_source(messages: &[ChatMessageItem], index: usize) -> Option<(String, u32, u32)> {
     let input: serde_json::Value = serde_json::from_str(&messages.get(index)?.tool_input).ok()?;
     let input = input.get("input").unwrap_or(&input);
@@ -669,41 +572,6 @@ fn citations_for_answer(messages: &[ChatMessageItem], answer_index: usize) -> Ve
     merge_citations(refs)
 }
 
-/// The text of the user row that approving a plan writes, before its version number.
-const APPROVAL_TEXT: &str = "Approved plan version ";
-
-/// Whether the answer at `index` is the organizer answer of an approved plan. It answers
-/// the approval message, which follows the planner answer that holds the plan card.
-fn is_plan_answer(messages: &[ChatMessageItem], index: usize) -> bool {
-    let Some(user) = messages[..index].iter().rposition(|m| m.role == ChatRole::User) else {
-        return false;
-    };
-    if !messages[user].content.starts_with(APPROVAL_TEXT) {
-        return false;
-    }
-    let answered_before = messages[user + 1..index]
-        .iter()
-        .any(|m| m.role == ChatRole::Assistant);
-    !answered_before
-        && messages[..user]
-            .iter()
-            .rev()
-            .find(|m| m.role == ChatRole::Assistant || m.role == ChatRole::User)
-            .is_some_and(|m| m.role == ChatRole::Assistant && m.plan_reference().is_some())
-}
-
-/// The documents of the handles that a plan's organizer answer uses. The sections issued
-/// them, so no citation row of the transcript holds them.
-fn plan_answer_citations(answer: &str, run_cited_refs: &[ChatDocRef]) -> Vec<ChatDocRef> {
-    let mut refs: Vec<ChatDocRef> = run_cited_refs
-        .iter()
-        .filter(|r| !r.handle.is_empty() && answer.contains(r.handle.as_str()))
-        .cloned()
-        .collect();
-    refs.sort_by_key(|r| common::chat_types::handle_number(&r.handle).unwrap_or(u32::MAX));
-    merge_citations(refs)
-}
-
 fn is_citation_note(message: &ChatMessageItem) -> bool {
     message.role == ChatRole::Nag && message.tool_name == CITATION_NOTE_NAME
 }
@@ -749,23 +617,8 @@ fn MessageEntry(
     /// See [`dataset_by_hash`]. Read by the entities card and by nothing else.
     #[props(default)]
     datasets: HashMap<String, String>,
-    /// The sub-agent entries of the open turn, for a `run_subagent` row and a row with a
-    /// plan card only.
-    #[props(default)]
-    subagent_runs: Vec<common::chat_types::SubagentRunEntry>,
-    /// Terminal depth-one entries of a finished delegation batch.
-    #[props(default)]
-    subagent_batches: Vec<common::chat_types::SubagentBatchState>,
     #[props(default)]
     todo_versions: Vec<common::chat_types::TodoSnapshot>,
-    /// True when a later planner answer names the same plan run.
-    #[props(default)]
-    plan_superseded: bool,
-    /// The planner question that ended this answer's tool group.
-    #[props(default)]
-    plan_question: String,
-    #[props(default)]
-    plan_question_options: Vec<String>,
     #[props(default)]
     read_more_source: Option<(String, u32, u32)>,
     #[props(default)]
@@ -796,7 +649,6 @@ fn MessageEntry(
             // counts arrive with the finished row, and a footer that appears mid-answer
             // showing zeros would read as a measurement of nothing.
             let context_footer = message.context_footer();
-            let plan = message.plan_reference();
             rsx! {
                 div {
                     style: "align-self: stretch; max-width: 96%; padding: 4px 2px; {ring}",
@@ -842,15 +694,6 @@ fn MessageEntry(
                     if !sources.is_empty() {
                         SourcesStrip { sources: sources.clone(), conflicting: conflicting_handles.clone() }
                     }
-                    if let Some(reference) = plan {
-                        PlanCard {
-                            reference,
-                            subagent_runs: subagent_runs.clone(),
-                            superseded: plan_superseded,
-                            question: plan_question.clone(),
-                            question_options: plan_question_options.clone(),
-                        }
-                    }
                     // A turn that only succeeded on retry is a healthy answer over an
                     // unhealthy agent tier. Worth saying, quietly, rather than hiding.
                     if !retries.is_empty() {
@@ -888,8 +731,6 @@ fn MessageEntry(
                         doc_refs: refs.clone(),
                         content_summary: message.content.clone(),
                         datasets: datasets.clone(),
-                        subagent_runs: subagent_runs.clone(),
-                        subagent_batches: subagent_batches.clone(),
                         todo_versions: todo_versions.clone(),
                         read_more_source: read_more_source.clone(),
                         draft: Some(draft),
@@ -990,29 +831,6 @@ fn CompactionLine(content: String, ring: String) -> Element {
                     "Show the record"
                 }
                 if *record_open.read() { MarkdownishText { text: record.to_string() } }
-            }
-        }
-    }
-}
-
-/// "Research stopped: <reason>." under the last row, for a terminal plan run that stopped
-/// short. Read again when a row is added, because the last rows of a run arrive as it ends.
-#[component]
-fn ResearchEndLine(run_id: String, last_seq: u32) -> Element {
-    let session_id = try_consume_context::<PlanCardContext>().map(|c| c.session_id);
-    let view = use_resource(use_reactive!(|(run_id, last_seq)| async move {
-        let _ = last_seq;
-        let session_id = session_id?;
-        let sid = session_id.peek().clone();
-        crate::api::chat_api::chat_plan_view(sid, run_id, 0).await.ok().flatten()
-    }));
-    let reason = view.read().as_ref().and_then(|v| v.as_ref()).and_then(|v| v.stop_reason());
-    rsx! {
-        if let Some(reason) = reason {
-            div {
-                class: "x-chat-research-stopped",
-                style: "align-self: flex-start; color: #92400E; font-size: 13px;",
-                "Research stopped: {reason}."
             }
         }
     }
@@ -1232,7 +1050,7 @@ fn SourcesStrip(
 mod tests {
     use super::*;
     use crate::components::chat_components::markdown_text::{
-        Block, Span, mark_uncited_handles, parse_blocks,
+        Block, Span, mark_handles, parse_blocks,
     };
 
     #[test]
@@ -1273,7 +1091,6 @@ mod tests {
             context_tokens: 0,
             peak_context_tokens: 0,
             context_window: 0,
-            plan_reference_json: String::new(),
             streaming: false,
         }
     }
@@ -1281,13 +1098,13 @@ mod tests {
     /// The spans of the answer `text` as the transcript marks them.
     fn marked(messages: &[ChatMessageItem], run_cited: &[String], text: &str) -> Vec<Span> {
         let issued = issued_handles(messages, run_cited);
-        match mark_uncited_handles(parse_blocks(text), &issued).into_iter().next() {
+        match mark_handles(parse_blocks(text), &issued, &[]).into_iter().next() {
             Some(Block::Paragraph(spans)) => spans,
             other => panic!("expected one paragraph, got {other:?}"),
         }
     }
 
-    /// A transcript whose only citation row issued `[D1]`, then an organizer answer.
+    /// A transcript whose only citation row issued `[D1]`, then a chat answer.
     fn transcript_with_d1(answer: &str) -> Vec<ChatMessageItem> {
         vec![
             row(1, ChatRole::User, "", "", "question"),
@@ -1328,61 +1145,6 @@ mod tests {
             .map(|r| r.handle)
             .collect();
         assert_eq!(handles, vec!["[D1]", "[D2]"]);
-    }
-
-    #[test]
-    fn a_plan_organizer_answer_lists_the_section_citations_it_uses() {
-        let mut planner = row(2, ChatRole::Assistant, "", "", "The plan is ready.");
-        planner.plan_reference_json =
-            r#"{"plan_id": "p", "reviewed_version": 1, "run_id": "r"}"#.to_string();
-        let messages = vec![
-            row(1, ChatRole::User, "", "", "question"),
-            planner,
-            row(3, ChatRole::User, "", "", "Approved plan version 1."),
-            row(4, ChatRole::Assistant, "", "", "Findings [D2] and [D1]."),
-            row(5, ChatRole::User, "", "", "next"),
-            row(6, ChatRole::Assistant, "", "", "Again [D1]."),
-        ];
-        assert!(is_plan_answer(&messages, 3));
-        assert!(!is_plan_answer(&messages, 5));
-        let refs: Vec<ChatDocRef> = serde_json::from_str(
-            r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"},
-                {"handle": "[D2]", "collection_dataset": "c_ds", "file_hash": "bb"},
-                {"handle": "[D3]", "collection_dataset": "c_ds", "file_hash": "cc"}]"#,
-        )
-        .unwrap();
-        let handles: Vec<String> = plan_answer_citations(&messages[3].content, &refs)
-            .into_iter()
-            .map(|r| r.handle)
-            .collect();
-        assert_eq!(handles, vec!["[D1]", "[D2]"]);
-        let mut revision = messages.clone();
-        revision[2].content = "Please add a section on dates.".to_string();
-        assert!(!is_plan_answer(&revision, 3));
-    }
-
-    #[test]
-    fn an_organizer_answer_with_its_own_citation_keeps_the_section_citations() {
-        let mut planner = row(2, ChatRole::Assistant, "", "", "The plan is ready.");
-        planner.plan_reference_json =
-            r#"{"plan_id": "p", "reviewed_version": 1, "run_id": "r"}"#.to_string();
-        let own = r#"[{"handle": "[D3]", "collection_dataset": "c_ds", "file_hash": "cc"}]"#;
-        let messages = vec![
-            row(1, ChatRole::User, "", "", "question"),
-            planner,
-            row(3, ChatRole::User, "", "", "Approved plan version 1."),
-            row(4, ChatRole::Tool, "cite_documents", own, ""),
-            row(5, ChatRole::Assistant, "", "", "Findings [D1] and [D3]."),
-        ];
-        let refs: Vec<ChatDocRef> = serde_json::from_str(
-            r#"[{"handle": "[D1]", "collection_dataset": "c_ds", "file_hash": "aa"}]"#,
-        )
-        .unwrap();
-        assert!(is_plan_answer(&messages, 4));
-        let mut all = citations_for_answer(&messages, 4);
-        all.extend(plan_answer_citations(&messages[4].content, &refs));
-        let handles: Vec<String> = merge_citations(all).into_iter().map(|r| r.handle).collect();
-        assert_eq!(handles, vec!["[D1]", "[D3]"]);
     }
 
     #[test]
@@ -1502,7 +1264,7 @@ mod tests {
     }
 
     #[test]
-    fn a_handle_that_only_a_sub_agent_citation_issued_stays_a_chip() {
+    fn a_handle_from_a_stored_run_citation_stays_a_chip() {
         let messages = transcript_with_d1("See [D2].");
         let spans = marked(&messages, &["[D2]".to_string()], "See [D2].");
         assert!(spans.contains(&Span::Handle("[D2]".to_string())), "{spans:?}");

@@ -27,14 +27,6 @@
   "group": "technique",
   "description": "how to list the people, organisations, places, e-mail addresses and amounts that documents name"
  },
- "plan_editing": {
-  "group": "technique",
-  "description": "how to change a research plan tree: add, rename, move or remove a section or a task, and approve or continue the plan"
- },
- "deep_research": {
-  "group": "technique",
-  "description": "how to start in-depth research with a plan and helpers, and when a question needs it"
- },
  "after_a_result": {
   "group": "stumble",
   "description": "what to do after each call returns: use its result, change the arguments or take the next step, and never send the same call again"
@@ -58,9 +50,5 @@
  "no_results": {
   "group": "stumble",
   "description": "what to do when a search finds nothing: remove filters, split a phrase, try other forms of a name, then say what is missing"
- },
- "reviewing_a_report": {
-  "group": "stumble",
-  "description": "how to review, grade or check a report given in the brief: search for the facts of each claim, never for the report title"
  }
 }

@@ -60,7 +60,7 @@ def _chat_model() -> str:
     """The model a research turn runs on, and the one its transcript row records.
 
     `server_settings.llm_default_chat_model`, the same key the website resolves against,
-    so a deep-research answer and an inline one in the same conversation say the same
+    so answers in the same conversation use the same
     thing. The worker used to write `os.getenv("LLM_MODEL")` into the row instead: unset
     in this container, so every research row recorded an empty model, while the agent
     quietly answered with whatever *its* container's env said.
@@ -389,11 +389,9 @@ class ModelStepWriter(ResearchStreamWriter):
 
     def __init__(self, row, turn_uuid: str, seq: int, idx: int, plan_prose: str = "",
                  reasoning: str = ""):
-        from database import agent_runs
-
         super().__init__(_TurnParams(row.username, row.session_id, seq, turn_uuid))
         self.row = row
-        self.transcript = agent_runs.writes_transcript(row)
+        self.transcript = True
         self.idx = idx
         self.plan_prose = plan_prose
         self.reasoning = reasoning
@@ -461,10 +459,8 @@ class ToolCallWriter(ResearchStreamWriter):
     call runs, and marked final when it ends."""
 
     def __init__(self, row, turn_uuid: str, seq: int, name: str, args: Any):
-        from database import agent_runs
-
         super().__init__(_TurnParams(row.username, row.session_id, seq, turn_uuid))
-        self.transcript = agent_runs.writes_transcript(row)
+        self.transcript = True
         self.seq = seq
         self.name = name
         self.index = seq - row.start_seq
@@ -488,22 +484,10 @@ class ToolCallWriter(ResearchStreamWriter):
                          tool_call_index=self.index)
 
 
-#: The start of the note warning that earlier versions wrote as a `human` row. A stored
-#: thread can still hold one.
-LEGACY_NOTE_WARNING_HEAD = "Your context is at "
-
-
-def _opens_round(content: Any) -> bool:
-    """False for a stored note warning. Every other human message opens a round."""
-    text = content if isinstance(content, str) else ""
-    return not text.startswith(LEGACY_NOTE_WARNING_HEAD)
-
-
 def round_view(messages) -> tuple[str, str, bool]:
     """The plan-first prose, the reasoning and the opening state of the current round.
 
-    The round starts after the last `human` message of the thread that is not a stored note
-    warning. No step keeps state, so each step derives these from the stored `ai` messages
+    The round starts after the last `human` message. No step keeps state, so each step derives these from the stored `ai` messages
     of the round:
 
     * the opening holds while every call so far is in `PLAN_FIRST_TOOLS`, and only in the
@@ -515,7 +499,7 @@ def round_view(messages) -> tuple[str, str, bool]:
 
     Returns `(plan_prose, reasoning, in_opening)`.
     """
-    humans = [i for i, m in enumerate(messages) if m.role == "human" and _opens_round(m.content)]
+    humans = [i for i, m in enumerate(messages) if m.role == "human"]
     start = humans[-1] + 1 if humans else 0
     plan, reasoning, in_opening = [], [], len(humans) <= 1
     for message in messages[start:]:

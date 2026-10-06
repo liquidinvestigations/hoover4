@@ -80,13 +80,3 @@ STORED_NOTE_WARNING = (
     "Your context is at 91 percent of its limit. The older steps of this run will soon be "
     "replaced by a record. Save each fact that you need later with `write_note` now."
 )
-
-
-def test_a_stored_note_warning_does_not_start_a_round():
-    messages = _thread(("I understand the task as X.", ["read_todo"]),
-                       ("Let me search.", ["search_collections"]))
-    messages.append(agent_runs.RunMessageRow(idx=len(messages), role="human",
-                                             content=STORED_NOTE_WARNING))
-    prose, reasoning, _ = round_view(messages)
-    assert prose == "I understand the task as X."
-    assert "Let me search." in reasoning

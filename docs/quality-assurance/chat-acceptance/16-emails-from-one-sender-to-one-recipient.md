@@ -2,7 +2,7 @@
 
 | field | value |
 |---|---|
-| mode | deep research, internet tools off |
+| mode | chat, internet tools off |
 | collections in scope | every collection |
 | data needed | `enron`, datasets `maildir` and `mann_k` |
 
@@ -23,11 +23,10 @@ List all emails sent by kay.mann@enron.com to sara.shackleton@enron.com and arra
 
 ## Expected tool calls
 
-1. The planner sees that one filtered search answers the request. It answers without sections, or writes a plan with one section.
-2. It calls `search_collections` with the filters `email_from` `["kay.mann@enron.com"]` and `email_to` `["sara.shackleton@enron.com"]`, no query words, and the date sort descending.
-3. It calls `read_more` until it has every row.
-4. It calls `doc_email` or `doc_metadata` with a list of hashes when it needs a header that the rows do not give.
-5. It calls `cite_documents` with one copy of each message.
+1. It calls `search_collections` with the filters `email_from` `["kay.mann@enron.com"]` and `email_to` `["sara.shackleton@enron.com"]`, no query words, and the date sort descending.
+2. It calls `read_more` until it has every row.
+3. It calls `doc_email` or `doc_metadata` with a list of hashes when it needs a header that the rows do not give.
+4. It calls `cite_documents` with one copy of each message.
 
 ## Expected result
 

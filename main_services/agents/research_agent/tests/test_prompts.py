@@ -51,8 +51,6 @@ def fake_tools(names):
 def snapshot_for(profile, packs="all", tools=None):
     kind = prompts.PROFILE_KINDS[profile]
     allowed = allowed_tools(kind, packs)
-    if kind == "subagent":
-        allowed = allowed - {"ask_user"}
     return build_snapshot(
         fake_tools(tools if tools is not None else allowed), allowed, kind,
         SkillContext(profile=profile, tool_names=frozenset()),
@@ -81,12 +79,12 @@ def listed_lines(text):
 
 def test_the_full_chat_lead_lists_every_tool_and_every_skill():
     skills = all_skills("full_research")
-    assert len(skills) == 19
+    assert len(skills) == 16
     text = rendered("full_research", skills=skills)
     names = listed_lines(text)
     tools = [n for n in names if n in EVERY_TOOL]
     assert sorted(tools) == sorted(EVERY_TOOL)
-    assert len(tools) == 48
+    assert len(tools) == len(EVERY_TOOL)
     assert [n for n in names if n not in EVERY_TOOL] == [s.name for s in skills]
 
 
@@ -114,7 +112,7 @@ def test_every_profile_renders_strictly_and_names_only_its_tools(profile):
 @pytest.mark.parametrize("web", [False, True])
 @pytest.mark.parametrize("collections", [False, True])
 def test_each_role_prompt_renders_for_web_and_collection_state(profile, web, collections):
-    packs = "all" if web else "catalogue,skills,collections,conversation,plan"
+    packs = "all" if web else "catalogue,skills,collections,conversation"
     snap = snapshot_for(profile, packs=packs)
     prompt = prompts.render(profile, snapshot=snap,
                             skills=listed_skills(snap.skill_context),
@@ -122,7 +120,7 @@ def test_each_role_prompt_renders_for_web_and_collection_state(profile, web, col
     if profile in {"internal_search", "full_research"}:
         assert bool("no document collections" in prompt) is not collections
     assert bool("`web_search`" in prompt) is web
-    assert bool("`ask_user`" in prompt) is not (profile == "research_subagent")
+    assert "`ask_user`" in prompt
 
 
 def test_every_run_tool_has_one_prompt_line():
@@ -152,15 +150,11 @@ def test_the_prompt_stays_inside_its_size_budget(profile):
 
 
 def test_a_run_with_no_todo_writers_has_no_todo_rule():
-    planner = rendered("planner", packs="collections,web,plan")
-    assert "Your todo list" not in planner
+    narrow = rendered("full_research", packs="collections,web")
+    assert "Your todo list" not in narrow
     assert "Your todo list" in rendered("full_research")
 
 
-def test_no_role_renders_a_verdict_block_or_a_delegation_tool():
-    for profile in ("research_subagent", "organizer", "planner"):
-        text = rendered(profile)
-        assert "verdict" not in text and "run_subagent" not in text
 
 
 def test_no_readable_collection_is_said_plainly():

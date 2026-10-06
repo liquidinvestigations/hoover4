@@ -75,7 +75,6 @@ pub fn LiveChatsPanel() -> Element {
                                     th { style: TH, "User" }
                                     th { style: TH, "Conversation" }
                                     th { style: TH, "Question" }
-                                    th { style: TH, "Research" }
                                     th { style: TH, "Internet" }
                                     th { style: TH, "Running" }
                                     th { style: TH, "Started" }
@@ -128,7 +127,6 @@ fn LiveChatRow(
                 style: "{TD} max-width: 320px; font-size: 12px; color: #555;",
                 "{run.message_preview}"
             }
-            td { style: TD, {yes_no(run.deep_research)} }
             td { style: TD, {yes_no(run.internet_tools)} }
             td { style: duration_style, "{humanize_duration(run.running_ms)}" }
             td { style: "{TD} font-size: 12px; color: #555;", "{run.started_at}" }

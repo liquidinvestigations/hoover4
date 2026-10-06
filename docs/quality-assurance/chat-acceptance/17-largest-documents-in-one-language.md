@@ -2,7 +2,7 @@
 
 | field | value |
 |---|---|
-| mode | deep research, internet tools off |
+| mode | chat, internet tools off |
 | collections in scope | every collection |
 | data needed | `textfiles`, dataset `extra` |
 
@@ -36,8 +36,8 @@ Now find the 10 largest Russian language documents.
 
 ## Expected result
 
-A table of the 10 Hungarian articles, largest first, with sizes and cards, and a note that the archive is left out. The second answer says that no document is in Russian, and names two documents that only quote Russian. Neither answer lists a document in another language as a match. A plan has no section that needs the result of another section.
+A table of the 10 Hungarian articles, largest first, with sizes and cards, and a note that the archive is left out. The second answer says that no document is in Russian, and names two documents that only quote Russian. Neither answer lists a document in another language as a match.
 
 ## Requirements exercised
 
-The story exercises these requirements and optional behavior: a filter by language or by folder, a sort by size, an empty result reported as empty, independent plan sections, document cards shown to the user, a task completed.
+The story exercises these requirements and optional behavior: a filter by language or by folder, a sort by size, an empty result reported as empty, document cards shown to the user, a task completed.

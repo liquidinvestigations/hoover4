@@ -81,8 +81,6 @@ pub struct AgentPageInfo {
 // collections/list
 // ---------------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct CollectionsListRequest {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentDatasetSummary {
