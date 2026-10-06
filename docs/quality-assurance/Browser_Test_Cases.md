@@ -1,6 +1,6 @@
 # Browser test cases
 
-This catalogue has one row per scenario file in `website/browser-tests/`. There are 140 files.
+This catalogue has one row per scenario file in `website/browser-tests/`. There are 166 files.
 The slug is the file stem. `--names` selects the ini section name, shown in
 the reproduce column.
 
@@ -12,14 +12,14 @@ A missing `requires_dataset` value is recorded as `none named`. The literal
 - [How to reproduce a case](#how-to-reproduce-a-case)
 - [How to read a result](#how-to-read-a-result)
 - [Entry pages](#entry-pages) (3)
-- [Search, filters, and sort](#search-filters-and-sort) (33)
-- [Document view](#document-view) (15)
+- [Search, filters, and sort](#search-filters-and-sort) (35)
+- [Document view](#document-view) (18)
 - [Storage and folder tree](#storage-and-folder-tree) (26)
 - [Table viewer](#table-viewer) (15)
-- [Chat](#chat) (3)
-- [Admin](#admin) (23)
+- [Chat](#chat) (10)
+- [Admin](#admin) (34)
 - [Manual QA procedures](#manual-qa-procedures) (19)
-- [PDF source switch](#pdf-source-switch) (3)
+- [PDF source switch](#pdf-source-switch) (6)
 
 ## How to reproduce a case
 
@@ -110,6 +110,8 @@ Search results, filter panes, sort menus, and query chips.
 | `131-search-filename-only-hit-900px` | Exercises the search filename only hit 900px case. | `testdata_filenames` | `--names search-filename-only-hit-900px` |
 | `132-search-collections-filter-tree` | Exercises the search collections filter tree case. | none named | `--names search-collections-filter-tree` |
 | `133-search-collections-filter-expanded` | Exercises the search collections filter expanded case. | none named | `--names search-collections-filter-expanded` |
+| `134-filter-pane-language` | Verifies language labels and applies the English filter. | `any` | `--names filter-pane-language` |
+| `135-filter-pane-red-flags` | Applies a scored red flag category from the Entities filter. | `any` | `--names filter-pane-red-flags` |
 
 ## Document view
 
@@ -132,6 +134,9 @@ PDF, image, email, text, metadata, file locations, and entity cards.
 | `213-view-doc-file-locations-tab` | Exercises the view doc file locations tab case. | `testdata_emails` | `--names view-doc-file-locations-tab` |
 | `214-view-doc-entity-card` | Exercises the view doc entity card case. | `testdata_testfiles` | `--names view-doc-entity-card` |
 | `215-view-doc-entity-card-stale` | Exercises the view doc entity card stale case. | `testdata_testfiles` | `--names view-doc-entity-card-stale` |
+| `216-signal-terms` | Verifies category definitions, calibration, recall notes, and expandable terms. | none named | `--names signal-terms` |
+| `217-view-doc-red-flags` | Verifies the document signal section and its category definition link. | `testdata_testfiles` | `--names view-doc-red-flags` |
+| `219-view-doc-empty-archive` | Verifies the completed state of a document without text sources. | `testdata_manualqa` | `--names view-doc-empty-archive` |
 
 ## Storage and folder tree
 
@@ -201,13 +206,13 @@ A case that opens the newest conversation needs that conversation in the named s
 | `501-ai-chat` | Exercises the ai chat case. | none named | `--names ai-chat` |
 | `502-ai-chat-history` | Exercises the ai chat history case. | none named | `--names ai-chat-history` |
 | `503-ai-chat-session-missing` | Exercises the ai chat session missing case. | none named | `--names ai-chat-session-missing` |
-| `506-ai-chat-entities-card` | Opens the newest conversation and shows the list_document_entities card of a live call over a paged result. | a finished `list_document_entities` call in the newest conversation of the capture identity | `--names ai-chat-entities-card` |
-| `515-ai-chat-tool-cards` | Selects the named cards chat and checks search, read, citation, and document actions. | the `cards` chat fixture | `--names ai-chat-tool-cards` |
-| `516-ai-chat-read-more` | Selects the named continuation chat and checks its source and part number. | the `read_more` chat fixture | `--names ai-chat-read-more` |
-| `517-ai-chat-todo-element` | Selects the named todo chat and checks the separate card and changed item state. | the `todo` chat fixture | `--names ai-chat-todo-element` |
-| `518-ai-chat-web-search` | Selects the named web chat and checks slim form fields and the detail control. | the `web` chat fixture | `--names ai-chat-web-search` |
-| `520-ai-chat-compaction-line` | Selects the named compaction chat and opens its visible record. | the `compaction` chat fixture | `--names ai-chat-compaction-line` |
-| `521-ai-chat-question-card` | Selects the named question chat and checks an option fills the reply box. | the `question` chat fixture | `--names ai-chat-question-card` |
+| `506-ai-chat-entities-card` | Opens a named conversation and shows the paged document entities card. | none named | `--names ai-chat-entities-card` |
+| `515-ai-chat-tool-cards` | Selects the named cards chat and checks search, read, citation, and document actions. | none named | `--names ai-chat-tool-cards` |
+| `516-ai-chat-read-more` | Selects the named continuation chat and checks its source and part number. | none named | `--names ai-chat-read-more` |
+| `517-ai-chat-todo-element` | Selects the named todo chat and checks the separate card and changed item state. | none named | `--names ai-chat-todo-element` |
+| `518-ai-chat-web-search` | Selects the named web chat and checks slim form fields and the detail control. | none named | `--names ai-chat-web-search` |
+| `520-ai-chat-compaction-line` | Selects the named compaction chat and opens its visible record. | none named | `--names ai-chat-compaction-line` |
+| `521-ai-chat-question-card` | Selects the named question chat and checks an option fills the reply box. | none named | `--names ai-chat-question-card` |
 
 ## Admin
 
@@ -225,7 +230,7 @@ Admin dashboard, collections, users, groups, settings, metrics, and operations.
 | `608-admin-settings` | Exercises the admin settings case. | none named | `--names admin-settings` |
 | `609-admin-metrics` | Exercises the admin metrics case. | none named | `--names admin-metrics` |
 | `610-admin-ai-status` | Exercises the admin ai status case. | none named | `--names admin-ai-status` |
-| `611-admin-llm` | Exercises the admin llm case. | none named | `--names admin-llm` |
+| `611-admin-llm` | Exercises the admin llm page and runs each of its four reports. | none named | `--names admin-llm` |
 | `612-admin-collection-detail` | Exercises the admin collection detail case. | none named | `--names admin-collection-detail` |
 | `613-admin-dataset-detail` | Exercises the admin dataset detail case. | `testdata_testfiles` | `--names admin-dataset-detail` |
 | `614-admin-operations` | Exercises the admin operations case. | none named | `--names admin-operations` |
@@ -243,12 +248,12 @@ Admin dashboard, collections, users, groups, settings, metrics, and operations.
 | `626-admin-failures-sort` | Exercises signature sort in both directions on the failures list. | none named | `--names admin-failures-sort` |
 | `627-admin-failures-page-two` | Exercises page two of the grouped failures list. | none named | `--names admin-failures-page-two` |
 | `628-admin-failures-expand` | Exercises expanding a grouped failure row to its instances. | none named | `--names admin-failures-expand` |
-| `629-admin-failure-detail` | Exercises the failure tree detail page. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-failure-detail --operation-id ID` |
-| `630-admin-operations-failure-link` | Exercises the operations-page link into a captured failure tree. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-operations-failure-link --operation-id ID` |
+| `629-admin-failure-detail` | Exercises the failure tree detail page. | none named | `--names admin-failure-detail` |
+| `630-admin-operations-failure-link` | Exercises the operations-page link into a captured failure tree. | none named | `--names admin-operations-failure-link` |
 | `631-admin-operations-temporal-link` | Exercises the Temporal deep link on an operations row. | none named | `--names admin-operations-temporal-link` |
-| `632-admin-failure-scrubbed` | Exercises the scrubbed-copy control on a failure tree. | `reruns`, after `main_services/verify-reruns.sh` | `--names admin-failure-scrubbed --operation-id ID` |
-| `633-admin-operation-detail` | Exercises both second-page controls and rows on the operation detail page. | `reruns`, with the failed import from `main_services/verify-reruns.sh` | `--names admin-operation-detail --operation-id ID` |
-| `634-admin-metrics-live-runs` | Shows the live chats panel while a delegated turn runs, with one row for each open run. | a running agent turn | `--names admin-metrics-live-runs` |
+| `632-admin-failure-scrubbed` | Exercises the scrubbed-copy control on a failure tree. | none named | `--names admin-failure-scrubbed` |
+| `633-admin-operation-detail` | Exercises both second-page controls and rows on the operation detail page. | none named | `--names admin-operation-detail` |
+| `634-admin-metrics-live-runs` | Shows the live chats panel while a delegated turn runs, with one row for each open run. | none named | `--names admin-metrics-live-runs` |
 
 ## Manual QA procedures
 
@@ -285,3 +290,6 @@ Switching PDF sources in the full viewer and in the preview.
 | `801-qa-pdf-full-source-switch` | Exercises the qa pdf full source switch case. | none named | `--names qa-pdf-full-source-switch` |
 | `802-qa-pdf-full-delayed-source-switch` | Exercises the qa pdf full delayed source switch case. | none named | `--names qa-pdf-full-delayed-source-switch` |
 | `803-qa-pdf-preview-source-switch` | Exercises the qa pdf preview source switch case. | none named | `--names qa-pdf-preview-source-switch` |
+| `804-qa-viewer-regressions` | Verifies viewer controls, filename matches, hit navigation, and folder disclosure. | none named | `--names qa-viewer-regressions` |
+| `805-qa-pdf-pointer-selection` | Measures PDF drag coordinates at four heights in two documents and two viewport widths. | none named | `--names qa-pdf-pointer-selection` |
+| `806-qa-search-page-limit` | Verifies that a page beyond the first 1,000 results is refused. | none named | `--names qa-search-page-limit` |

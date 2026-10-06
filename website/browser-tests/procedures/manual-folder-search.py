@@ -7,6 +7,7 @@ import json
 from manual_qa_runtime import (
     FIND,
     folder_route,
+    route,
 )
 
 PROCEDURE_NAME = 'manual-folder-search'
@@ -42,6 +43,9 @@ async def run(r):
         await r.type('input[placeholder="Search in folder…"]', "invoice")
         await r.text("1 matches in this folder and below")
         await r.click("invoice-batch.docx", "table")
+        root = route({"container_hash": "", "path": "/"})
+        await r.action("click_css", f'a[href="/file_browser/testdata_manualqa/{root}/9g==/9g=="]')
+        await r.check("return location.pathname.split('/')[3]===%s;" % json.dumps(root))
         await r.action("history_back")
         return await r.check("return document.querySelector('input[placeholder=\"Search in folder…\"]')?.value==='invoice';")
 

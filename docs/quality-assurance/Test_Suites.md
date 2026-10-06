@@ -55,7 +55,7 @@ Cost and the claim table are [Running the checks](Running_Checks.md).
 
 | suite | path | how it runs | what it does not cover |
 |---|---|---|---|
-| Screenshot scenarios | `website/browser-tests/*.ini` (140 files) | `website/take-screenshots.sh` | Ingest. A page whose dataset is missing is `incomplete_execution` and does not pass. Other pages still run. |
+| Screenshot scenarios | `website/browser-tests/*.ini` (one file for each case) | `website/take-screenshots.sh` | Ingest. A page whose dataset is missing is `incomplete_execution` and does not pass. Other pages still run. |
 | Manual QA matrix | `website/tools/manual_qa.py`, `website/browser-tests/procedures/` | `website/run-manual-qa.sh` | Rows you did not select. Use `--select` for a row list and `--skip-chat` when the list has no chat row. |
 | Chat observer | `website/tools/chat_observer.py` | `website/observe-chat.sh` | An empty credential pair. This wrapper requires an identity. |
 
