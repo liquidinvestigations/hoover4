@@ -66,9 +66,9 @@ VOLUMES = (
     Volume("clickhouse_monitoring", "main", "clickhouse-monitoring", 1001, 65533,
            "ghcr.io/duyet/clickhouse-monitoring:2cc8058", "data"),
     Volume("manticore_data_v14", "main", "manticore", 999, 999,
-           "manticoresearch/manticore:14.1.0", "data"),
+           "manticoresearch/manticore:29.9.0@sha256:461b419739a2bbbffb4be0b32db26c41d7b435bf7fd1fce95b414ca5ccbb3775", "data"),
     Volume("manticore_vectors_data_v14", "main", "manticore-vectors", 999, 999,
-           "manticoresearch/manticore:14.1.0", "data"),
+           "manticoresearch/manticore:29.9.0@sha256:461b419739a2bbbffb4be0b32db26c41d7b435bf7fd1fce95b414ca5ccbb3775", "data"),
     Volume("temporal_cassandra", "main", "temporal-cassandra", 999, 999,
            CASSANDRA_IMAGE, "temporal"),
     # Elasticsearch writes as uid 1000 with group 0.
@@ -966,6 +966,13 @@ def resolve_image(template, env):
 def chown_command(folder, row, image):
     """The one-shot container that gives a volume folder its owner. Not recursive,
     because every folder starts empty."""
+    if row.image_service in ("manticore", "manticore-vectors"):
+        seed = MAIN_COMPOSE_DIR / "manticore" / "auth.json.seed"
+        return ["run", "--rm", "--user", "0", "--entrypoint", "sh",
+                "-v", "%s:/d" % folder, "-v", "%s:/auth.json.seed:ro" % seed,
+                image, "-ec",
+                "if [ ! -e /d/auth.json ]; then cp /auth.json.seed /d/auth.json; fi; "
+                "chmod 600 /d/auth.json; chown 999:999 /d /d/auth.json"]
     return ["run", "--rm", "--user", "0", "--entrypoint", "chown",
             "-v", "%s:/d" % folder, image, "%d:%d" % (row.uid, row.gid), "/d"]
 

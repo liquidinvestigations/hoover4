@@ -1,11 +1,7 @@
 """URL admission control for the browser tool.
 
-**This is not optional.** The caller of this server is an LLM, and the server sits
-*inside* the `hoover4` podman network, where `clickhouse:8123`, `temporal:7233`,
-`manticore:9308` and every MCP server answer unauthenticated HTTP. A fetcher that will
-retrieve any URL it is handed is, from inside that network, an arbitrary read of the
-whole stack, and the URL can arrive from a web page the model was asked to summarise,
-so "the user would not do that" is not a defence.
+The server can reach internal services. A page can supply a URL that targets those services.
+Manticore requires authentication. URL admission still refuses internal destinations.
 
 The rules, in order:
 

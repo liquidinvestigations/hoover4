@@ -1623,7 +1623,7 @@ def collect_manticore(r, c, name="manticore"):
              "grep -E 'VmRSS|RssAnon|RssFile|Threads' /proc/%d/status; echo; "
              "cat /proc/%d/smaps_rollup 2>&1" % (pid, pid), timeout=30)
     mysql = [r.engine, "exec", name, "mysql", "-h127.0.0.1", "-P9306",
-             "--protocol=tcp", "-e"]
+             "--protocol=tcp", "-umanticore", "-pmanticore", "-e"]
     up = r.run(j + "probe.txt", mysql + ["SELECT 1"], timeout=30, capture=True)
     with r.lock:
         probe = next(entry for entry in reversed(r.manifest)
@@ -1688,7 +1688,7 @@ def collect_performance(r, samples, interval, running):
             if name not in running:
                 continue
             mysql = [r.engine, "exec", name, "mysql", "-h127.0.0.1", "-P9306",
-                     "--protocol=tcp", "-e"]
+                     "--protocol=tcp", "-umanticore", "-pmanticore", "-e"]
             r.run(folder + name + "-status.txt", mysql + ["SHOW STATUS"], timeout=10)
             r.run(folder + name + "-threads.txt",
                   mysql + ["SHOW THREADS OPTION format=all"], timeout=10)

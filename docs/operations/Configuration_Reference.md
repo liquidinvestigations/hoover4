@@ -58,6 +58,9 @@ command that starts containers and the reset flags refuse an empty or relative v
 `--down` runs with any value, and `--print-env` prints the refusal as a warning. The reset
 flags empty folders. They never remove a folder.
 
+Manticore uses version 29.9.0. Its data folders retain the `_v14` names for existing installations.
+Deployment creates each daemon's authentication file when it is absent and preserves an existing file.
+
 ## `[ai_services]`
 
 Forty-eight keys. Read by `deploy.py`, by the tier's compose overlays, and by the model

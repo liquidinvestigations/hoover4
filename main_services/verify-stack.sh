@@ -151,8 +151,8 @@ MAX_SHARD_TEXT_BYTES=4000000000
 MAX_SHARD_ROWS=2500000
 
 CH() { docker exec clickhouse clickhouse-client -u hoover4 --password hoover4 -q "$1"; }
-MC() { docker exec manticore mysql -h0 -P9306 -N -B -e "$1" 2>/dev/null; }
-MCV() { docker exec manticore-vectors mysql -h0 -P9306 -N -B -e "$1" 2>/dev/null; }
+MC() { docker exec manticore mysql -h0 -P9306 -umanticore -pmanticore -N -B -e "$1" 2>/dev/null; }
+MCV() { docker exec manticore-vectors mysql -h0 -P9306 -umanticore -pmanticore -N -B -e "$1" 2>/dev/null; }
 
 FAILURES=0
 ok()   { echo "OK   - $1"; }

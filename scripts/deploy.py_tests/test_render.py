@@ -727,6 +727,12 @@ def test_owner_commands_with_a_stand_in_runtime(tmp_path):
     assert ["run", "--rm", "--user", "0", "--entrypoint", "chown",
             "-v", "%s/temporal_elasticsearch:/d" % tmp_path, "elasticsearch:7.17.27",
             "1000:0", "/d"] in commands
+    for command in commands:
+        if command[5] == "sh":
+            assert "/auth.json.seed:ro" in command[9]
+            assert "if [ ! -e /d/auth.json ]" in command[-1]
+            assert "chmod 600 /d/auth.json" in command[-1]
+            assert "chown 999:999 /d /d/auth.json" in command[-1]
     changed = sorted(c[7].split(":")[0].rsplit("/", 1)[1] for c in commands)
     assert changed == sorted(r.name for r in deploy.VOLUMES
                              if r.side == "main" and r.uid != 0)

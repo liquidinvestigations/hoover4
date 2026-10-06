@@ -170,6 +170,28 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     Ok(response)
 }
 
+/// Build an authenticated request to a Manticore endpoint.
+pub(crate) fn manticore_request(
+    client: &reqwest::Client,
+    url: impl reqwest::IntoUrl,
+) -> reqwest::RequestBuilder {
+    client.post(url).basic_auth("manticore", Some("manticore"))
+}
+
+fn validate_manticore_status(status: reqwest::StatusCode, body: &str) -> anyhow::Result<()> {
+    if status.is_success() {
+        return Ok(());
+    }
+    let refused = !matches!(status.as_u16(), 401 | 403)
+        && serde_json::from_str::<serde_json::Value>(body)
+            .ok()
+            .is_some_and(|value| value.get("error").is_some_and(serde_json::Value::is_string));
+    if refused {
+        anyhow::bail!(ManticoreRefused(format!("Error: {status}: {body}")));
+    }
+    anyhow::bail!("Error: {status}: {body}")
+}
+
 /// POST one statement to Manticore's `/sql` endpoint and return its body.
 ///
 /// The request carries the same budget as the `OPTION` clause plus a few seconds of
@@ -182,8 +204,7 @@ async fn manticore_post(sql: String) -> anyhow::Result<String> {
         std::env::var("MANTICORE_URL").unwrap_or("http://127.0.0.1:21903".to_string());
     let database_url = format!("{}/sql", database_url);
     let client = reqwest::Client::new();
-    let response = client
-        .post(database_url)
+    let response = manticore_request(&client, database_url)
         .timeout(Duration::from_secs(
             search_timeout_seconds() + CLIENT_TIMEOUT_GRACE_SECONDS,
         ))
@@ -202,15 +223,7 @@ async fn manticore_post(sql: String) -> anyhow::Result<String> {
         })?;
     let status = response.status();
     let response_txt = response.text().await?;
-    if status.is_client_error() || status.is_server_error() {
-        let refused = serde_json::from_str::<serde_json::Value>(&response_txt)
-            .ok()
-            .is_some_and(|body| body.get("error").is_some_and(serde_json::Value::is_string));
-        if refused {
-            anyhow::bail!(ManticoreRefused(format!("Error: {}: {}", status, response_txt)));
-        }
-        anyhow::bail!("Error: {}: {}", status, response_txt);
-    }
+    validate_manticore_status(status, &response_txt)?;
     Ok(response_txt)
 }
 
@@ -244,14 +257,17 @@ const RAW_SQL_TIMEOUT_SECONDS: u64 = 10;
 /// reads. It bypasses the result cache, because a status value is only correct when it is
 /// fresh.
 pub async fn manticore_raw_sql(base: &str, sql: &str) -> anyhow::Result<Vec<ManticoreRawRow>> {
-    let response = reqwest::Client::new()
-        .post(format!("{}/sql?mode=raw", base.trim_end_matches('/')))
-        .timeout(Duration::from_secs(RAW_SQL_TIMEOUT_SECONDS))
-        .form(&[("query", sql)])
-        .send()
-        .await?;
+    let response = manticore_request(
+        &reqwest::Client::new(),
+        format!("{}/sql?mode=raw", base.trim_end_matches('/')),
+    )
+    .timeout(Duration::from_secs(RAW_SQL_TIMEOUT_SECONDS))
+    .form(&[("query", sql)])
+    .send()
+    .await?;
     let status = response.status();
     let body = response.text().await?;
+    validate_manticore_status(status, &body)?;
     parse_raw_sql_response(&body)
         .map_err(|e| e.context(format!("Manticore answered {status} to {sql:?}")))
 }
@@ -355,8 +371,8 @@ mod tests {
     /// how a truncated count reaches the screen looking merely incomplete.
     #[test]
     fn a_timeout_is_recognisable_through_the_error_chain() {
-        let error = anyhow::Error::from(SearchTimedOut("too slow".to_string()))
-            .context("shard testdata_1");
+        let error =
+            anyhow::Error::from(SearchTimedOut("too slow".to_string())).context("shard testdata_1");
         assert!(is_search_timeout(&error));
         assert!(!is_search_timeout(&anyhow::anyhow!("connection refused")));
     }
@@ -381,5 +397,32 @@ mod tests {
         let error = parse_raw_sql_response(r#"[{"data":[],"error":"bad query"}]"#).unwrap_err();
         assert!(error.to_string().contains("bad query"));
         assert!(parse_raw_sql_response("<html>").is_err());
+    }
+
+    #[test]
+    fn authentication_errors_are_server_failures() {
+        for status in [401, 403] {
+            let error = validate_manticore_status(
+                reqwest::StatusCode::from_u16(status).unwrap(),
+                r#"{"error":"access denied"}"#,
+            )
+            .unwrap_err();
+            assert!(!is_manticore_refusal(&error));
+        }
+        let error =
+            validate_manticore_status(reqwest::StatusCode::BAD_REQUEST, r#"{"error":"bad query"}"#)
+                .unwrap_err();
+        assert!(is_manticore_refusal(&error));
+    }
+
+    #[test]
+    fn requests_include_basic_authentication() {
+        let request = manticore_request(&reqwest::Client::new(), "http://example.invalid/sql")
+            .build()
+            .unwrap();
+        assert_eq!(
+            request.headers()["authorization"],
+            "Basic bWFudGljb3JlOm1hbnRpY29yZQ=="
+        );
     }
 }

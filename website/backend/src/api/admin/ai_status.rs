@@ -553,7 +553,11 @@ async fn probe_knn_dims(http: &reqwest::Client, manticore: &str, table: &str) ->
     // Manticore HTTP SQL returns [{columns, data:[{"Create Table":"..."}]}].
     let url = format!("{}/sql?mode=raw", manticore.trim_end_matches('/'));
     let body = format!("SHOW CREATE TABLE {table}");
-    let resp = http.post(&url).body(body).send().await.ok()?;
+    let resp = crate::db_utils::manticore_utils::manticore_request(http, &url)
+        .body(body)
+        .send()
+        .await
+        .ok()?;
     if !resp.status().is_success() {
         return None;
     }

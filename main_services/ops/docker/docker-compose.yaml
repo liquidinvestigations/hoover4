@@ -22,7 +22,7 @@ services:
 
   manticore:
     logging: *logging
-    image: manticoresearch/manticore:14.1.0
+    image: manticoresearch/manticore:29.9.0@sha256:461b419739a2bbbffb4be0b32db26c41d7b435bf7fd1fce95b414ca5ccbb3775
     container_name: manticore
     ports:
       - '${INFRA_BIND_IP:-0.0.0.0}:${MANTICORE_SQL_PORT}:9306'
@@ -45,13 +45,14 @@ services:
     environment:
       - TELEMETRY=0
       - searchd_rt_flush_period=900
+      - searchd_auth=1
     user: 999:999
     healthcheck:
       # Proves the daemon answers its own MySQL wire protocol, the one every writer and
       # every search query uses. Without this check, a container that Docker still shows
       # as running, but whose daemon answers nothing, looks the same as a working one
       # until a person tries a search.
-      test: ["CMD-SHELL", "mysql -h0 -P9306 -e 'SELECT 1;' || exit 1"]
+      test: ["CMD-SHELL", "mysql -h0 -P9306 -umanticore -pmanticore -e 'SELECT 1;' || exit 1"]
       interval: 15s
       timeout: 13s
       retries: 6
@@ -59,7 +60,7 @@ services:
 
   manticore-vectors:
     logging: *logging
-    image: manticoresearch/manticore:14.1.0
+    image: manticoresearch/manticore:29.9.0@sha256:461b419739a2bbbffb4be0b32db26c41d7b435bf7fd1fce95b414ca5ccbb3775
     container_name: manticore-vectors
     ports:
       - '${INFRA_BIND_IP:-0.0.0.0}:${MANTICORE_VECTORS_SQL_PORT}:9306'
@@ -82,9 +83,10 @@ services:
     environment:
       - TELEMETRY=0
       - searchd_rt_flush_period=900
+      - searchd_auth=1
     user: 999:999
     healthcheck:
-      test: ["CMD-SHELL", "mysql -h0 -P9306 -e 'SELECT 1;' || exit 1"]
+      test: ["CMD-SHELL", "mysql -h0 -P9306 -umanticore -pmanticore -e 'SELECT 1;' || exit 1"]
       interval: 15s
       timeout: 13s
       retries: 6

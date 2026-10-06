@@ -4,8 +4,9 @@
 arguments**. Once Chromium is loading a page, everything after that is the browser's own
 business: an HTTP 302, a `<meta http-equiv=refresh>`, `location = …` in a script, an
 `<img src>`, none of them pass through a tool call, so none of them are checked. A public
-page that redirects to `http://manticore:9308/sql?query=…` was fetched and returned to the
-model. Measured, not assumed: with the filter off, that redirect answered with data.
+page can redirect to an internal service without another tool call.
+Manticore requires authentication. The browser still blocks all internal services before
+it opens a connection.
 
 playwright-mcp's `--blocked-origins` cannot close this. Its own documentation says the
 flag "does not serve as a security boundary and *does not affect redirects*", and its

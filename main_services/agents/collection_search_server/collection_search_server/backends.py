@@ -92,6 +92,7 @@ def _manticore_query(url: str, sql: str) -> list[dict]:
     response = requests.post(
         f"{url}/sql",
         params={"mode": "raw"},
+        auth=("manticore", "manticore"),
         data={"query": sql},
         timeout=DEFAULT_TIMEOUT,
     )

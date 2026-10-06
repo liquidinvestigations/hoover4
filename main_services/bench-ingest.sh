@@ -35,7 +35,7 @@ WEBSITE_URL="${WEBSITE_URL:-$(website_url_default)}"
 WEB() { curl -s --max-time 30 "$@" || true; }
 
 CH() { docker exec clickhouse clickhouse-client -u hoover4 --password hoover4 -q "$1"; }
-MC() { docker exec manticore mysql -h0 -P9306 -N -B -e "$1" 2>/dev/null; }
+MC() { docker exec manticore mysql -h0 -P9306 -umanticore -pmanticore -N -B -e "$1" 2>/dev/null; }
 
 ok()   { echo "OK   - $1"; }
 fail() { echo "FAIL - $1"; exit 1; }

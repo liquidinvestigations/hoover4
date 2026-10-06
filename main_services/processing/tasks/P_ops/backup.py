@@ -96,7 +96,7 @@ _DESTINATION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 #: The manifest's own version. A restore reads this before anything else and refuses a
 #: number it does not know, rather than misreading a later layout as this one.
 FORMAT = "hoover4-collection-backup"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 def validate_destination(destination: str) -> str:
