@@ -84,9 +84,10 @@ async def run(r):
     async def entity():
         await r.full("shipping_manifest")
         await r.action("wait_css", '.x-entity-chip[title="+24762889"]')
-        await r.action("click_css", '.x-entity-chip[title="+24762889"]')
+        await r.check("return document.querySelector('.x-entity-chip[title=\"+24762889\"]').innerText.includes('mentions in all sources');")
+        await r.action("click_css", 'div:has(> div > .x-entity-chip[title="+24762889"]) > div > button')
         await r.action("wait_css", '[data-entity-card-value="true"]')
-        return await r.check("const value=document.querySelector('[data-entity-card-value=true]');const chip=document.querySelector('.x-entity-chip[title=\"+24762889\"]');return {ok:!!value&&parseFloat(getComputedStyle(value).fontSize)===16&&value.textContent==='+24762889'&&chip.innerText.includes('mentions in all sources'),value:value?.textContent,chip:chip?.innerText};")
+        return await r.check("const value=[...document.querySelectorAll('[data-entity-card-value=true]')].find(e=>e.textContent==='+24762889');return {ok:!!value&&parseFloat(getComputedStyle(value).fontSize)===16,value:value?.textContent};")
     await r.phase("entity-value-and-count", "The entity value appears first at 16 pixels. The count names all sources.", entity)
 
     async def pages():

@@ -28,13 +28,13 @@ selection.onMarqueeChange(event=>{if(event.rect)window.__qa_marquees.push(event)
 window.__qa_pdf_registry=registry;
 return true;
 """)
-                    await r.check("const root=document.querySelector('embedpdf-container')?.shadowRoot;return [...(root?.querySelectorAll('canvas')||[])].some(e=>e.getBoundingClientRect().height>200);")
+                    await r.check("const root=document.querySelector('embedpdf-container')?.shadowRoot;return [...(root?.querySelectorAll('img')||[])].some(e=>e.getBoundingClientRect().height>200);")
                     for fraction in (.15, .35, .55, .75):
                         points = await r.action("async_eval", """
 const root=document.querySelector('embedpdf-container').shadowRoot;
-const canvas=[...root.querySelectorAll('canvas')].find(e=>{const b=e.getBoundingClientRect();return b.width>100&&b.height>200&&b.top<innerHeight-200&&b.bottom>200});
-if(!canvas)throw Error('No visible PDF page canvas');
-const box=canvas.getBoundingClientRect();
+const image=[...root.querySelectorAll('img')].find(e=>{const b=e.getBoundingClientRect();return b.width>100&&b.height>200&&b.top<innerHeight-200&&b.bottom>200});
+if(!image)throw Error('No visible PDF page image');
+const box=image.getBoundingClientRect();
 const documents=window.__qa_pdf_registry.getPlugin('document-manager').provides();
 const state=documents.getDocumentState('x-pdf-viewer-doc-id');
 const page=state.document.pages[0];

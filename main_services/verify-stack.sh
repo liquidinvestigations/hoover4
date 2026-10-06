@@ -381,28 +381,10 @@ restart_resilience() {
         sleep 2
     done
 
-    # `-t` explicitly, and not because the default is merely short. podman drops
-    # stop_grace_period at container creation and cannot set it afterwards, so the
-    # container carries a 10-second stop timeout however the stack is configured. A
-    # restart that SIGKILLs after ten seconds tests the old behaviour, not the new one:
-    # the drain would be cut off part-way and this check would fail for a reason that has
-    # nothing to do with the pipeline. Read the period from the worker's own environment
-    # so this cannot drift from the ini key that set it.
-    local grace
-    grace=$(docker exec "$WORKER" sh -lc 'echo ${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}' 2>/dev/null | tr -d '\r')
-    grace="${grace:-60}"
-    echo "     restarting the worker with a ${grace}s drain"
-    # STOP then START, never `restart`. Under a rootless runtime `restart` refuses with
-    # "some dependencies of container ... are not started" because `garage-init` is
-    # `Exited (0)` -- which is its correct final state, not a fault. The error names the
-    # wrong container and reads as a broken stack.
-    if ! docker stop -t "$grace" "$WORKER" >/dev/null 2>&1; then
-        fail "restart resilience: could not stop the worker"
-        kill "$ingest_pid" 2>/dev/null || true
-        return 1
-    fi
-    if ! docker start "$WORKER" >/dev/null 2>&1; then
-        fail "restart resilience: the worker did not come back up"
+    # The supported restart gives both workers time to drain their active work.
+    echo "     restarting both workers with the configured drain period"
+    if ! ./restart-worker.sh; then
+        fail "restart resilience: the workers did not restart"
         kill "$ingest_pid" 2>/dev/null || true
         return 1
     fi
@@ -410,10 +392,8 @@ restart_resilience() {
     wait_for_worker
     wait_for_temporal
 
-    # Re-drive: the restart killed the client, not the work. Only the SEQUENCING of the
-    # three stages lived in that client, so this hands it back.
-    echo "== restart resilience: re-driving the client after the restart =="
-    run_step add-disk-dataset "$coll" "$ds" "$root" --wait || true
+    # The operation workflow resumes after restart and retains its dataset lock.
+    echo "== restart resilience: waiting for the existing operation =="
 
     deadline=$(( $(date +%s) + POLL_TIMEOUT ))
     while true; do

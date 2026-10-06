@@ -45,7 +45,7 @@ The two worker skips are the suite's own skips. They are not failures.
 | Rust stack | `website/backend/tests/stack_integration.rs` | `website/run-stack-tests.sh` | A non-local `HOOVER4_SITE_URL`. Slow cases (`slow_` prefix) unless `--slow`. Any corpus other than the one `verify-stack.sh` ingests. |
 | Pipeline integration | `main_services/processing/tests/integration/` | `docker exec hoover4-worker uv run pytest tests/integration --integration -q` | A run without `--integration` or `HOOVER4_INTEGRATION=1`. Those tests skip. `pytest-unit.sh` does not pass that flag. |
 | Whole-stack verification | `main_services/verify-stack.sh` | `main_services/verify-stack.sh` | A non-local website URL. A worker restart mid-run, which kills the script. Cost is tens of minutes, so it is off the per-commit path. |
-| Restart resilience | `main_services/verify-stack.sh --restart-resilience` | the same script with that flag, instead of the checks above | The full ingest matrix. It ingests one fixture, restarts the worker, and asserts per-document chunks, vectors, and an index row. |
+| Restart resilience | `main_services/verify-stack.sh --restart-resilience` | the same script with that flag, instead of the checks above | The full ingest matrix. It ingests one fixture, restarts both workers with the supported drain, and asserts per-document chunks, vectors, and an index row. |
 
 The stack suite needs a live stack. Every test is `#[ignore]` because they all need that stack, so slowness is a `slow_` name prefix rather than the ignore attribute.
 `run-stack-tests.sh` runs `dx check` first.
