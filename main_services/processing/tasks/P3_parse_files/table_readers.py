@@ -91,6 +91,7 @@ class RawCell:
     time_value: Optional[datetime] = None
     link: str = ""
     formula: str = ""
+    is_blob: bool = False
 
 
 CellStream = Iterator[tuple[int, str, RawCell]]
@@ -802,7 +803,8 @@ def _calamine_cell(value) -> Optional[RawCell]:
 
 
 def read_cells(path: str, reader: str, *, encodings: Sequence[str] = (),
-               on_progress: Optional[Callable[[str, int], None]] = None) -> CellStream:
+               on_progress: Optional[Callable[[str, int], None]] = None,
+               time_limit_seconds: float = 300) -> CellStream:
     """The one entry point: a stream of `(sheet_id, sheet_name, RawCell)` for `reader`."""
     if reader == READER_CSV:
         return read_csv_cells(path, encodings=encodings, on_progress=on_progress)
@@ -812,6 +814,15 @@ def read_cells(path: str, reader: str, *, encodings: Sequence[str] = (),
         return read_ods_cells(path, on_progress=on_progress)
     if reader == READER_CALAMINE:
         return read_calamine_cells(path, on_progress=on_progress)
+    if reader in {"html_table", "mhtml_table", "spreadsheetml"}:
+        from tasks.P3_parse_files.table_markup import read_html_table_cells, read_mhtml_workbook_cells, read_spreadsheetml_cells
+        return {"html_table": read_html_table_cells, "mhtml_table": read_mhtml_workbook_cells,
+                "spreadsheetml": read_spreadsheetml_cells}[reader](path)
+    if reader == "sqlite":
+        from tasks.P3_parse_files.table_sqlite import read_sqlite_cells, SqliteLimits
+        from tasks.P3_parse_files.table_formats import MAX_ROWS_PER_SHEET, MAX_SHEETS
+        return read_sqlite_cells(path, SqliteLimits(max_rows=MAX_ROWS_PER_SHEET + 1,
+            max_sheets=MAX_SHEETS + 1, time_limit_seconds=time_limit_seconds), on_progress=on_progress)
     raise ValueError(f"no table reader named {reader!r}")
 
 

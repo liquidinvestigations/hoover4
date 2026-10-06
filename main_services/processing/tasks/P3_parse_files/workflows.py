@@ -15,7 +15,8 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.parse_tika import TIKA_PARSE_FAILED
     from tasks.P3_parse_files.temp_dirs import has_application_error_type, is_temp_copy_missing
     from tasks.P3_parse_files.parse_mime import LOCAL_DETECTORS
-    from tasks.P3_parse_files.table_formats import is_table_mime
+    from tasks.P3_parse_files.table_formats import is_table_mime, BINARY_TABLE_MIMES, DELIMITED_TABLE_MIMES, DELIMITED_EXTENSIONS
+    from tasks.P3_parse_files.content_types import AUTHORITATIVE_SNIFF_MIMES, AUTHORITATIVE_ALIASES
     from tasks.P0_scan_disk.mime_type_mapper import is_zip_based_document_mime, should_expand_as_archive
 
 
@@ -155,25 +156,41 @@ def _as_list(result: Any, key: str) -> List[str]:
     values = result.get(key) if isinstance(result, dict) else []
     if not values:
         return []
-    return list({str(value) for value in values if isinstance(value, str) and value})
+    return list(dict.fromkeys(value for value in values if isinstance(value, str) and value))
 
 
 def combine_detector_results(detector_results: List[Any]) -> Dict[str, List[str]]:
-    """The union of the types that the detectors of one file found."""
-    all_coarse: List[str] = []
-    all_mime: List[str] = []
-    all_enc: List[str] = []
-    for result in detector_results:
-        if isinstance(result, Exception):
-            continue
-        all_coarse += _as_list(result, "coarse_types")
-        all_mime += _as_list(result, "mime_types")
+    """Keep authoritative sniffs separate from the other detector types."""
+    detections = dict(zip(LOCAL_DETECTORS, detector_results))
+    sniff = _as_list(detections.get("content_sniff"), "mime_types")
+    authoritative = sorted(set(sniff) & AUTHORITATIVE_SNIFF_MIMES)
+    file_types = _as_list(detections.get("file"), "mime_types")
+    content_text = bool(file_types and file_types[0].startswith("text/"))
+    all_mime = []
+    all_enc = []
+    coarse = []
+    permitted_delimited = set()
+    for name, result in detections.items():
+        mimes = _as_list(result, "mime_types")
+        original_mimes = list(mimes)
+        if name != "content_sniff":
+            mimes = [m for m in mimes if m not in AUTHORITATIVE_ALIASES
+                     and not (name == "extension" and content_text and m in BINARY_TABLE_MIMES)]
+        all_mime += mimes
         all_enc += _as_list(result, "mime_encodings")
-    return {
-        "coarse_types": sorted(set(all_coarse)),
-        "mime_types": sorted(set(all_mime)),
-        "mime_encodings": sorted(set(all_enc)),
-    }
+        if name in ("content_sniff", "file", "extension"):
+            permitted_delimited.update(set(mimes) & DELIMITED_TABLE_MIMES)
+        # Preserve coarse results when every MIME value remains eligible.
+        if mimes == original_mimes:
+            coarse += _as_list(result, "coarse_types")
+    from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
+    coarse += [coarse_file_type(m) for m in all_mime]
+    name_extensions = _as_list(detections.get("extension"), "extensions")
+    if set(name_extensions) & DELIMITED_EXTENSIONS:
+        permitted_delimited.add("extension")
+    return {"coarse_types": sorted(set(coarse)), "mime_types": sorted(set(all_mime)),
+            "mime_encodings": sorted(set(all_enc)), "authoritative_types": authoritative,
+            "permitted_delimited": sorted(permitted_delimited)}
 
 
 def detector_results_for_file(detect_result: FileResult) -> List[Any]:
@@ -202,6 +219,9 @@ def route_stages(combined: Dict[str, List[str]]) -> List[str]:
     Mail containers take only the archive route.
     Other files take each applicable route from their detected types.
     """
+    authoritative = combined.get("authoritative_types") or []
+    if authoritative:
+        return ["text"] if authoritative[0] == "text/vcard" else ["table"]
     coarse_types = combined["coarse_types"]
     mime_types = combined["mime_types"]
     routes: List[str] = []
@@ -224,7 +244,8 @@ def route_stages(combined: Dict[str, List[str]]) -> List[str]:
         routes.append("office_xml")
     # A tabular document also gets a structural reading into cells. The text readers
     # still index the same values as text.
-    if any(is_table_mime(m) for m in mime_types):
+    if any(is_table_mime(m) for m in mime_types) and (
+            set(mime_types) & BINARY_TABLE_MIMES or combined.get("permitted_delimited", ["legacy"])):
         routes.append("table")
     if "pdf" in coarse_types:
         routes.append("pdf")

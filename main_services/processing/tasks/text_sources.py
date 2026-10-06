@@ -10,7 +10,7 @@ deliberate, like `collectionname` validation: neither runtime may depend on the 
 being right, and `tests/unit/test_text_sources.py` plus a cargo test keep the two
 conventions from drifting.
 
-    native:       binary_word | pdftotext | extractous | office_xml | email_parser | email_html | email_rtf | email_richtext | raw_text | qpdf
+    native:       binary_word | pdftotext | extractous | office_xml | table_text | email_parser | email_html | email_rtf | email_richtext | raw_text | qpdf
     OCR variants: ocr_<engine>_<languages>   e.g. ocr_tesseract_eng+ron, ocr_easyocr_en
 
 Language codes are joined with `+`, which is Tesseract's own convention, for both
@@ -73,6 +73,9 @@ RAW_TEXT = "raw_text"
 
 #: The text of a binary Word file after bounded DOCX conversion.
 BINARY_WORD = "binary_word"
+
+#: Readable SQLite cells, without binary values.
+TABLE_TEXT = "table_text"
 
 #: The selected readable email body, without the MIME envelope.
 EMAIL_PARSER = "email_parser"

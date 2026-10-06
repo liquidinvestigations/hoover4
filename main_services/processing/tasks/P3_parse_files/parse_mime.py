@@ -1,7 +1,7 @@
 """MIME detection activities using GNU file and Magika."""
 
 from temporalio import activity
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, List, Tuple, Set
 import subprocess
 import threading
@@ -21,6 +21,7 @@ class DetectMimeParams:
     file_path: str
     timeout_seconds: int
     op_id: str = ""
+    file_names: List[str] = field(default_factory=list)
 
 
 def _run_file_multi(file_path: str) -> Tuple[List[str], List[str], List[str]]:
@@ -423,7 +424,7 @@ def detect_mime_batch(params: StageBatchParams) -> BatchResult:
             file_hash=file.item_hash,
             file_path=file.file_path,
             timeout_seconds=try_budget_seconds("detect_mime_batch", file.file_size_bytes),
-            op_id=params.op_id,
+            op_id=params.op_id, file_names=file.file_names,
         ))
 
     return run_batch("detect_mime_batch", params.files, key=lambda f: f.item_hash,
@@ -441,7 +442,9 @@ def _detect_from_name(params: DetectMimeParams) -> Dict[str, Any]:
     """
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
 
-    mime_types, extensions = mime_types_from_name(params.file_path)
+    name_results = [mime_types_from_name(name) for name in (params.file_names or [params.file_path])]
+    mime_types = sorted({m for types, _ in name_results for m in types})
+    extensions = sorted({e for _, exts in name_results for e in exts})
     coarse_types = sorted({coarse_file_type(m) for m in mime_types if m})
     return {
         "mime_types": mime_types,
@@ -485,6 +488,12 @@ def _detect_by_content(params: DetectMimeParams,
     from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
     from tasks.P3_parse_files.sniff_email import should_check_email, sniff_email_path
     from tasks.P3_parse_files.sniff_table import should_check_table, sniff_table_path
+
+    from tasks.P3_parse_files.content_types import sniff_authoritative
+    authoritative = sniff_authoritative(params.file_path, params.file_names)
+    if authoritative:
+        return {"mime_types": [authoritative], "mime_encodings": [],
+                "coarse_types": [coarse_file_type(authoritative)], "extensions": []}
 
     magic_output = _magic_output(params.file_path)
     base_mimes, _encodings, _exts = file_multi or _run_file_multi(params.file_path)

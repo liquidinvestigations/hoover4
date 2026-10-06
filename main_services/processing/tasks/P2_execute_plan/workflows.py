@@ -327,7 +327,7 @@ class ExecuteSinglePlan:
         # 2) Download locally (TODO: pin activity to worker)
         dl = await workflow.execute_activity(
             download_plan_files,
-            DownloadPlanFilesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, items=items, base_temp_dir=params.base_temp_dir),
+            DownloadPlanFilesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, items=[{k: v for k, v in it.items() if k != "file_names"} for it in items], base_temp_dir=params.base_temp_dir),
             start_to_close_timeout=timedelta(seconds=dl_secs),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
@@ -531,6 +531,7 @@ class ProcessItemsBatched:
                 item_hash=(it.get("item_hash") or "") if isinstance(it, dict) else "",
                 file_path=f"{params.out_dir}/{(it.get('item_hash') or '') if isinstance(it, dict) else ''}",
                 file_size_bytes=int((it.get("file_size_bytes") or 0) if isinstance(it, dict) else 0),
+                file_names=list(it.get("file_names") or []) if isinstance(it, dict) else [],
             )
             for it in params.items
         ]
@@ -608,7 +609,9 @@ class ProcessItemsBatched:
             items = [
                 batch_file(i, mime_types=combined[i]["mime_types"],
                            mime_encodings=combined[i]["mime_encodings"],
-                           sniff_mime_type=((detect[i].value.get("detectors", {}).get("content_sniff", {}).get("mime_types") or [""])[0]
+                           file_mime_type=((detect[i].value.get("detectors", {}).get("file", {}).get("mime_types") or [""])[0]
+                                           if isinstance(detect[i].value, dict) else ""),
+                           sniff_mime_type=((combined[i].get("authoritative_types") or detect[i].value.get("detectors", {}).get("content_sniff", {}).get("mime_types") or [""])[0]
                                             if isinstance(detect[i].value, dict) else ""))
                 if with_types else files[i]
                 for i in indexes

@@ -68,6 +68,12 @@ def should_expand_as_archive(coarse_types: Iterable[str], mime_types: Iterable[s
 
 def coarse_file_type(mime_type: str) -> str:
 
+    if mime_type in {"application/vnd.ms-spreadsheetml", "application/x-hoover-html-table",
+                     "application/x-hoover-mhtml-workbook"}:
+        return "xls"
+    if mime_type in {"text/vcard", "text/x-vcard", "text/directory"}:
+        return "text"
+
     if mime_type in (
         'text/html', 'text/xhtml+xml', 'application/xhtml+xml', 'application/xaml+xml',
         'application/x-hush-pgp-encrypted-html-body', 'application/x-hush-pgp-encrypted-html-body-multipart',

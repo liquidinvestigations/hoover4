@@ -136,7 +136,7 @@ def test_ocr_skip_writer_uses_bracketed_task_and_op_id(monkeypatch):
 def test_table_without_reader_is_skipped(monkeypatch):
     calls = []
     monkeypatch.setattr(parse_table, "_record_skip", lambda *args: calls.append(args))
-    monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args: None)
+    monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args, **_kwargs: None)
     params = parse_table.ParseTableParams(
         collectionname="collection",
         collection_dataset="dataset",
@@ -159,8 +159,8 @@ def test_non_table_releases_temporary_cells(monkeypatch):
 
     client = _CommandClient()
     monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
-    monkeypatch.setattr(clickhouse, "insert_arrow_idempotent", lambda *_args: None)
-    monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args: READER_CSV)
+    monkeypatch.setattr(clickhouse, "insert_arrow_idempotent", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args, **_kwargs: READER_CSV)
     monkeypatch.setattr(parse_table, "table_format_for", lambda *_args: "csv")
     monkeypatch.setattr(
         table_readers,
@@ -179,12 +179,7 @@ def test_non_table_releases_temporary_cells(monkeypatch):
     result = parse_table.parse_table_and_store(params)
 
     assert isinstance(result, SkippedOutcome)
-    assert [query.split()[2] for query, _parameters in client.commands] == [
-        "table_cells",
-        "table_documents",
-    ]
-    assert client.commands[0][1] == {"h": "hash"}
-    assert client.commands[1][1] == {"cd": "dataset", "h": "hash"}
+    assert client.commands == []
 
 
 def test_table_reader_failure_records_op_id(monkeypatch):
@@ -192,11 +187,11 @@ def test_table_reader_failure_records_op_id(monkeypatch):
 
     calls = []
     monkeypatch.setattr(parse_table, "_record_skip", lambda *args: calls.append(args))
-    monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args: "reader")
+    monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args, **_kwargs: "reader")
     monkeypatch.setattr(parse_table, "table_format_for", lambda *_args: "format")
     monkeypatch.setattr(table_readers, "fallback_reader", lambda _reader: None)
     monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: _NoRowsClient())
-    monkeypatch.setattr(clickhouse, "insert_arrow_idempotent", lambda *_args: None)
+    monkeypatch.setattr(clickhouse, "insert_arrow_idempotent", lambda *_args, **_kwargs: None)
 
     def fail_reader(*_args, **_kwargs):
         raise RuntimeError("reader failed")

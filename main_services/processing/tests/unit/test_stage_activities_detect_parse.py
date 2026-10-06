@@ -89,11 +89,13 @@ def _expected(stage: Stage, file: BatchFile, engine: str):
     )
     if stage.batch == "tika_text_batch":
         kwargs.update(mime_types=file.mime_types, routes=file.routes,
-                      file_mime_type=file.file_mime_type, file_name=file.file_name)
+                      file_mime_type=file.file_mime_type, file_name=(file.file_names or [""])[0])
     if stage.batch == "extract_plaintext_batch":
         kwargs.update(mime_types=file.mime_types, sniff_mime_type=file.sniff_mime_type)
     if stage.extra.get("table"):
-        kwargs.update(mime_types=file.mime_types, mime_encodings=file.mime_encodings)
+        kwargs.update(mime_types=file.mime_types, mime_encodings=file.mime_encodings,
+                      file_names=file.file_names, sniff_mime_type=file.sniff_mime_type,
+                      file_mime_type=file.file_mime_type)
     if stage.extra.get("engine"):
         kwargs.update(engine=engine)
     return stage.params(**kwargs)

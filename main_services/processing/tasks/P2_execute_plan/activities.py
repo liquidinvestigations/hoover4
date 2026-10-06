@@ -104,10 +104,21 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
     sql = f"""
         SELECT h.item_hash,
                b.blob_size_bytes,
-               b.s3_path
+               b.s3_path,
+               n.names
         FROM processing_plan_hits h
         LEFT JOIN blobs b
           ON b.collection_dataset = h.collection_dataset AND b.blob_hash = h.item_hash
+        LEFT JOIN (
+            SELECT hash, groupUniqArray(splitByChar('/', path)[-1]) AS names
+            FROM vfs_files
+            PREWHERE collection_dataset = '{_escape(collection_dataset)}'
+                AND hash IN (SELECT item_hash FROM processing_plan_hits
+                    WHERE collection_dataset = '{_escape(collection_dataset)}'
+                      AND plan_hash = '{_escape(plan_hash)}')
+            WHERE is_deleted = 0
+            GROUP BY hash
+        ) n ON n.hash = h.item_hash
         WHERE h.collection_dataset = '{_escape(collection_dataset)}'
           AND h.plan_hash = '{_escape(plan_hash)}'
         ORDER BY h.item_hash ASC, b.blob_size_bytes DESC NULLS LAST
@@ -119,6 +130,8 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
         results: List[Dict[str, Any]] = []
         if not tbl or tbl.num_rows == 0:
             return results
+        from tasks.P3_parse_files.file_names import bounded_file_names
+        names = tbl.column("names") if "names" in tbl.column_names else None
         ch = tbl.column("item_hash")
         sz = tbl.column("blob_size_bytes") if "blob_size_bytes" in tbl.column_names else None
         sp = tbl.column("s3_path") if "s3_path" in tbl.column_names else None
@@ -129,6 +142,7 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
                 "item_hash": ch[i].as_py(),
                 "file_size_bytes": int(size_v) if (size_v is not None and size_v != "") else 0,
                 "s3_url": s3_v if s3_v is not None else "",
+                "file_names": bounded_file_names(names[i].as_py() or []) if names is not None else [],
             })
         return results
 

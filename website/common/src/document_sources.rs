@@ -69,6 +69,7 @@ impl TextSource {
                 "pdftotext" => "PDF text".to_string(),
                 "extractous" => "Extracted text".to_string(),
                 "office_xml" => "Office XML".to_string(),
+                "table_text" => "Table text".to_string(),
                 "email_parser" => "Email body".to_string(),
                 "email_html" => "Email HTML".to_string(),
                 "email_rtf" => "Email RTF".to_string(),
@@ -143,7 +144,7 @@ mod tests {
 
     #[test]
     fn native_extractors_are_not_ocr() {
-        for native in ["binary_word", "pdftotext", "extractous", "office_xml", "email_parser", "raw_text", "qpdf"] {
+        for native in ["binary_word", "pdftotext", "extractous", "office_xml", "table_text", "email_parser", "raw_text", "qpdf"] {
             assert!(!TextSource::parse(native).is_ocr(), "{native}");
         }
     }
@@ -162,6 +163,7 @@ mod tests {
             "OCR · Tesseract · eng+ron"
         );
         assert_eq!(text_source_label("pdftotext"), "PDF text");
+        assert_eq!(text_source_label("table_text"), "Table text");
         assert_eq!(text_source_label("binary_word"), "Word text");
         // An unknown extractor is shown verbatim rather than hidden.
         assert_eq!(text_source_label("some_new_parser"), "some_new_parser");

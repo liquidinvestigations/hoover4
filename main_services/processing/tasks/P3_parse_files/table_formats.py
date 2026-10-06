@@ -60,7 +60,13 @@ DELIMITED_TABLE_MIMES = frozenset({
     "application/tab-separated-values",
 })
 
-TABLE_MIMES = BINARY_TABLE_MIMES | DELIMITED_TABLE_MIMES
+MARKUP_TABLE_READERS = {
+    "application/x-hoover-html-table": "html_table",
+    "application/x-hoover-mhtml-workbook": "mhtml_table",
+    "application/vnd.ms-spreadsheetml": "spreadsheetml",
+    "application/vnd.sqlite3": "sqlite", "application/x-sqlite3": "sqlite",
+}
+TABLE_MIMES = BINARY_TABLE_MIMES | DELIMITED_TABLE_MIMES | MARKUP_TABLE_READERS.keys()
 
 #: Extensions that decide the reader when the MIME set is ambiguous, which it always is
 #: for delimited text, and often is for a `.xlsb` that libmagic calls a zip.
@@ -140,13 +146,17 @@ def _extension(path: str) -> str:
     return os.path.splitext(path)[1].lower()
 
 
-def table_reader_for(mime_types, path: str) -> str:
-    """Which reader opens this file, or `""` when nothing here does.
+def table_reader_for(mime_types, path: str, *, authoritative_type: str = "", content_type: str = "") -> str:
+    """Select a reader from authoritative content, text type, filename, and MIME types.
 
-    The extension wins over the MIME set wherever it is decisive, because the MIME set is
-    a union of five disagreeing detectors and a `.xlsb` is `application/zip` to three of
-    them. A file with a table MIME and no useful extension falls back to the MIME.
+    An authoritative sniff selects its reader first.
+    Delimited content selects the text reader before a spreadsheet filename.
     """
+    if authoritative_type in MARKUP_TABLE_READERS:
+        return MARKUP_TABLE_READERS[authoritative_type]
+    mimes = {m for m in (mime_types or []) if m}
+    if content_type.startswith("text/") and mimes & DELIMITED_TABLE_MIMES:
+        return READER_CSV
     extension = _extension(path)
     if extension in _XLSX_EXTENSIONS:
         return READER_XLSX_STREAM
@@ -158,6 +168,9 @@ def table_reader_for(mime_types, path: str) -> str:
         return READER_CSV
 
     mimes = {m for m in (mime_types or []) if m}
+    for mime, reader in MARKUP_TABLE_READERS.items():
+        if mime in mimes:
+            return reader
     if mimes & DELIMITED_TABLE_MIMES:
         return READER_CSV
     if "application/vnd.oasis.opendocument.spreadsheet" in mimes \
@@ -182,6 +195,8 @@ def table_format_for(reader: str, path: str) -> str:
     Independent of what the detectors said: it is the reader's own answer, so a `.txt`
     that the sniff named `text/csv` still reports `csv`.
     """
+    if reader in {"html_table", "mhtml_table", "spreadsheetml", "sqlite"}:
+        return reader
     extension = _extension(path).lstrip(".")
     if reader == READER_CSV:
         return extension if extension in {"csv", "tsv", "tab", "psv"} else "csv"
@@ -207,6 +222,7 @@ _LIMIT_MAXIMUMS = {
     LIMIT_COLUMNS_PER_SHEET: MAX_COLUMNS_PER_SHEET,
     LIMIT_SHEETS: MAX_SHEETS,
     LIMIT_CELL_BYTES: MAX_CELL_BYTES,
+    "text_characters": 20_000_000,
 }
 
 _LIMIT_SENTENCES = {
@@ -215,6 +231,7 @@ _LIMIT_SENTENCES = {
     LIMIT_COLUMNS_PER_SHEET: "columns in a sheet",
     LIMIT_SHEETS: "sheets in the document",
     LIMIT_CELL_BYTES: "bytes in a cell",
+    "text_characters": "characters in table text",
 }
 
 

@@ -1,41 +1,9 @@
-"""P3 activity: read a tabular document into cells and store the grid.
+"""Read table cells and store accepted grids.
 
-This runs *alongside* the text extractors, never instead of them. A `.xlsx` still gets
-its office-XML flattening and its Tika text, a `.csv` still gets its raw text stored, and
-a search for a value inside cell G4713 still finds the file through Manticore. What this
-adds is the structural reading: which columns exist, what type each one is, and a grid
-that can be sorted, filtered and paged without loading the document.
-
-The claim order, and why it is the opposite of the OCR one
------------------------------------------------------------
-`parse_ocr_pdf` writes its Garage object before its ClickHouse row, because there an
-object with no row is findable by a prefix scan while a row with no object is a broken
-link. Here the order is reversed for the mirrored reason: `table_cells` has no
-`collection_dataset` column, so **cells with no `table_documents` row are invisible to
-the permission check and to the orphan sweeper alike**. The manifest row is therefore
-written first, as `status = 'parsing'`, and rewritten as `ok` when the cells are in.
-
-A concurrent claim from a second dataset is possible -- ClickHouse has no uniqueness --
-and it is harmless: both runs produce byte-identical cell rows for identical positions
-and ReplacingMergeTree collapses them.
-
-Failure is data, not a retry
------------------------------
-A password-protected workbook, a truncated zip, a `.csv` that is really prose: the row
-gets `status = 'failed'`, a `processing_errors` row explains why, and the activity
-**succeeds**. Consuming three retries on a file that will never parse is the failure mode
-`parse_office_xml._record_skip` and `parse_ocr._record_skip` both exist to avoid.
-
-Where the 2x2 rule is applied
-------------------------------
-Delimited text has to produce at least `MIN_DELIMITED_ROWS` rows and
-`MIN_DELIMITED_COLUMNS` columns in one sheet before it is a table. The activity removes
-its temporary cells and manifest when the threshold fails. It then returns normally,
-wrapped in `SkippedOutcome` so `processing_task_runs.outcome` reads `skipped`, never
-`error`, and `table_not_a_table` names the reason in the worker log rather than in
-`processing_errors`. A binary spreadsheet is a table on the strength of its format and
-only has to produce `MIN_BINARY_CELLS` cells. See `table_formats` for why the asymmetry
-is the point.
+Delimited inputs must meet the minimum table shape before any write.
+Readers with a fallback store accepted batches in a temporary Arrow file.
+Only a successful reader writes those batches to ClickHouse.
+The manifest lands before the cell rows.
 """
 
 from __future__ import annotations
@@ -43,10 +11,12 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, Optional
 
 from temporalio import activity
+from temporalio.exceptions import CancelledError
+from asyncio import CancelledError as AsyncCancelledError
 
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.task_timing import SkippedOutcome
@@ -90,7 +60,7 @@ log = logging.getLogger(__name__)
 #: BaseException and is invisible to an ordinary `except Exception`. Catching only
 #: `Exception` meant a workbook with a blank sheet killed the activity, consumed three
 #: retries and left a `parsing` row behind on a file that would never parse.
-_NOT_THE_FILES_FAULT = (KeyboardInterrupt, SystemExit, GeneratorExit)
+_NOT_THE_FILES_FAULT = (KeyboardInterrupt, SystemExit, GeneratorExit, CancelledError, AsyncCancelledError)
 
 
 #: Cells per ClickHouse insert. Large enough that a million-cell sheet is a few hundred
@@ -112,6 +82,9 @@ class ParseTableParams:
     #: codec instead of a guess.
     mime_encodings: list[str] | None = None
     op_id: str = ""
+    file_names: list[str] = field(default_factory=list)
+    sniff_mime_type: str = ""
+    file_mime_type: str = ""
 
 
 @dataclass
@@ -175,11 +148,9 @@ def _column_type(kinds: Counter) -> str:
 
 
 class _Collector:
-    """Consumes a reader's cell stream into ClickHouse batches, applying every cap.
+    """Collect accepted cells within shared limits.
 
-    The caps live here rather than in the readers so that a reader can never be the thing
-    that runs the box out of memory: when a cap fires the collector stops pulling and the
-    generator is closed.
+    Readers with a fallback use a temporary Arrow file.
     """
 
     def __init__(self, params: ParseTableParams, reader: str):
@@ -195,14 +166,22 @@ class _Collector:
         self._current_source_row = -1
         self._row_id = 0
         self._done = False
+        self.parsing_started = False
+        self.spool = None
+        self.spool_writer = None
+        from tasks.P3_parse_files.table_text import TableText
+        self.text = TableText() if reader == "sqlite" else None
 
     def consume(self, stream: Iterable, client) -> None:
-        for sheet_id, sheet_name, cell in stream:
-            if self._done:
-                break
-            if not self._accept(sheet_id, sheet_name, cell, client):
-                break
-        self._flush(client)
+        try:
+            for sheet_id, sheet_name, cell in stream:
+                if self._done or not self._accept(sheet_id, sheet_name, cell, client):
+                    break
+            self._flush(client)
+        finally:
+            close = getattr(stream, "close", None)
+            if close:
+                close()
 
     def _accept(self, sheet_id: int, sheet_name: str, cell, client) -> bool:
         if sheet_id not in self.sheets:
@@ -259,12 +238,18 @@ class _Collector:
             stats = sheet.columns[cell.column_id] = _ColumnStats()
         self._observe(sheet, stats, self._row_id, cell, text)
 
+        if self.text is not None:
+            self.text.add(sheet_id, sheet.name, cell, text)
+
         self.batch.append((
             self.params.file_hash, sheet_id, cell.column_id, self._row_id,
             cell.source_row, cell.kind, text, cell.int_value, cell.float_value,
             cell.time_value, cell.link, cell.formula,
         ))
         if len(self.batch) >= INSERT_BATCH_CELLS:
+            if not self.meets_threshold():
+                self._done = True
+                return False
             self._flush(client)
         return True
 
@@ -304,7 +289,7 @@ class _Collector:
                     bounds[2:4] = [key, text]
 
     def _flush(self, client) -> None:
-        if not self.batch:
+        if not self.batch or not self.meets_threshold():
             return
         import pyarrow as pa
 
@@ -326,7 +311,49 @@ class _Collector:
             "cell_link": pa.array([r[10] for r in rows], type=pa.string()),
             "cell_formula": pa.array([r[11] for r in rows], type=pa.string()),
         })
-        insert_arrow_idempotent(client, "table_cells", table)
+        from tasks.P3_parse_files.table_readers import fallback_reader
+        if fallback_reader(self.reader):
+            import os
+            import tempfile
+            if self.spool is None:
+                self.spool = tempfile.TemporaryFile(dir=os.path.dirname(os.path.abspath(self.params.file_path)))
+                self.spool_writer = pa.ipc.new_file(self.spool, table.schema,
+                    options=pa.ipc.IpcWriteOptions(compression="lz4"))
+            self.spool_writer.write_table(table)
+        else:
+            self.start_manifest(client)
+            insert_arrow_idempotent(client, "table_cells", table)
+
+    def start_manifest(self, client) -> None:
+        if not self.parsing_started:
+            self.parsing_started = True
+            _write_manifest(client, self.params, status="parsing", reader=self.reader,
+                table_format=table_format_for(self.reader, (self.params.file_names or [self.params.file_path])[0]),
+                durable=True)
+
+    def commit_spool(self, client) -> None:
+        if self.spool_writer is None:
+            return
+        import pyarrow as pa
+        from database.clickhouse import insert_arrow_idempotent
+        self.spool_writer.close()
+        self.spool_writer = None
+        self.spool.seek(0)
+        try:
+            batches = pa.ipc.open_file(self.spool)
+            self.start_manifest(client)
+            for index in range(batches.num_record_batches):
+                insert_arrow_idempotent(client, "table_cells", pa.Table.from_batches([batches.get_batch(index)]))
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        if self.spool_writer is not None:
+            self.spool_writer.close()
+            self.spool_writer = None
+        if self.spool is not None:
+            self.spool.close()
+            self.spool = None
 
     def meets_threshold(self) -> bool:
         """Whether what was read is a table at all. See the module docstring."""
@@ -423,10 +450,10 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
                     table_format: str, sheet_count: int = 0, row_count: int = 0,
                     column_count: int = 0, cell_count: int = 0, stored_bytes: int = 0,
                     truncation: Optional[TruncationRecord] = None, parse_ms: int = 0,
-                    parse_error: str = "") -> None:
+                    parse_error: str = "", durable: bool = False) -> None:
     import pyarrow as pa
 
-    from database.clickhouse import insert_arrow_idempotent
+    from database.clickhouse import insert_arrow_idempotent, insert_arrow_durable
 
     truncation = truncation or TruncationRecord()
     table = pa.table({
@@ -449,7 +476,8 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
         "parse_ms": pa.array([parse_ms], type=pa.uint32()),
         "parse_error": pa.array([parse_error], type=pa.string()),
     })
-    insert_arrow_idempotent(client, "table_documents", table)
+    writer = insert_arrow_durable if durable else insert_arrow_idempotent
+    writer(client, "table_documents", table)
 
 
 def _record_skip(params: ParseTableParams, run_time_ms: int, reason: str) -> None:
@@ -522,10 +550,12 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
     from tasks.P3_parse_files.table_readers import fallback_reader, read_cells
 
     started = time.time()
-    reader = table_reader_for(params.mime_types or [], params.file_path)
+    file_name = (params.file_names or [params.file_path])[0]
+    reader = table_reader_for(params.mime_types or [], file_name,
+                              authoritative_type=params.sniff_mime_type, content_type=params.file_mime_type)
     if not reader:
         return SkippedOutcome({"status": "skipped", "reason": "no reader for this file"})
-    table_format = table_format_for(reader, params.file_path)
+    table_format = table_format_for(reader, file_name)
 
     with get_collection_client(params.collectionname) as client:
         existing = _existing_parse(client, params.file_hash)
@@ -542,15 +572,22 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
                 truncation=truncation, parse_ms=0,
             )
             _copy_structure(client, params, existing[12])
+            if existing[0] == "sqlite":
+                from tasks.P3_parse_files.parse_common import insert_text_pages
+                from tasks.text_sources import TABLE_TEXT
+                pages = client.query(
+                    "SELECT page_id, text FROM text_content FINAL "
+                    "WHERE collection_dataset = {ds:String} AND file_hash = {h:String} "
+                    "AND extracted_by = {source:String} ORDER BY page_id",
+                    parameters={"ds": existing[12], "h": params.file_hash, "source": TABLE_TEXT},
+                ).result_rows
+                insert_text_pages(params.collectionname, params.collection_dataset,
+                                  params.file_hash, TABLE_TEXT, pages)
+
             log.info("[P3] table %s already parsed by %s, claimed for %s",
                      params.file_hash, existing[12], params.collection_dataset)
             return {"status": "ok", "reader": existing[0], "deduped": True,
                     "cell_count": int(existing[5])}
-
-        # The manifest row before the cells: a cell with no manifest row is invisible to
-        # the permission check and to the orphan sweeper alike.
-        _write_manifest(client, params, status="parsing", reader=reader,
-                        table_format=table_format)
 
         heartbeat = HeartbeatClock()
 
@@ -559,15 +596,18 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
 
         collector = _Collector(params, reader)
         attempted = [reader]
+        reader_limits = {"time_limit_seconds": max(1, params.timeout_seconds - 60)} if reader == "sqlite" else {}
         try:
             collector.consume(
                 read_cells(params.file_path, reader,
-                           encodings=params.mime_encodings or [], on_progress=on_progress),
+                           encodings=params.mime_encodings or [], on_progress=on_progress, **reader_limits),
                 client,
             )
         except _NOT_THE_FILES_FAULT:
+            collector.close()
             raise
         except BaseException as first_error:  # noqa: BLE001 - every failure is data here
+            collector.close()
             alternative = fallback_reader(reader)
             if not alternative:
                 run_time_ms = max(int((time.time() - started) * 1000), 0)
@@ -587,8 +627,10 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
                     client,
                 )
             except _NOT_THE_FILES_FAULT:
+                collector.close()
                 raise
-            except BaseException as second_error:  # noqa: BLE001
+            except BaseException as second_error:
+                collector.close()  # noqa: BLE001
                 run_time_ms = max(int((time.time() - started) * 1000), 0)
                 _write_manifest(client, params, status="failed", reader=alternative,
                                 table_format=table_format, parse_ms=run_time_ms,
@@ -602,31 +644,28 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
         run_time_ms = max(int((time.time() - started) * 1000), 0)
 
         if not collector.meets_threshold():
-            # The buffered writes can contain a partial delimited file. It is text, so
-            # release its cells before removing the temporary manifest.
-            client.command(
-                "DELETE FROM table_cells WHERE file_hash = {h:String}",
-                parameters={"h": params.file_hash},
-            )
-            client.command(
-                "DELETE FROM table_documents WHERE collection_dataset = {cd:String} "
-                "AND hash = {h:String}",
-                parameters={"cd": params.collection_dataset, "h": params.file_hash},
-            )
-            # A decision, not a failure: below the minimum shape is a text file, not a
-            # table. Recorded as `outcome = 'skipped'` on `processing_task_runs`, never
-            # in `processing_errors`, so it costs no retry and does not count as a
-            # failure anywhere that counts that table.
+            collector.close()
             log.info("[P3] table skip for %s: table_not_a_table (%s) %d cell(s)",
                       params.file_hash, reader, collector.cell_count)
             return SkippedOutcome({"status": "skipped", "reader": reader,
                                     "cell_count": collector.cell_count,
                                     "reason": "below the minimum table shape"})
 
+        collector.commit_spool(client)
+
         insert_arrow_idempotent(client, "table_sheets", _sheet_rows(params, collector))
         columns = _column_rows(params, collector)
         if columns.num_rows:
             insert_arrow_idempotent(client, "table_columns", columns)
+
+        if collector.text is not None:
+            from tasks.P3_parse_files.parse_common import insert_text_pages
+            from tasks.text_sources import TABLE_TEXT
+            pages = collector.text.pages()
+            insert_text_pages(params.collectionname, params.collection_dataset,
+                              params.file_hash, TABLE_TEXT, pages)
+            if collector.text.truncated:
+                collector.truncation.record("text_characters")
 
         row_count = sum(s.row_count for s in collector.sheets.values())
         column_count = max((s.column_count for s in collector.sheets.values()), default=0)
@@ -666,7 +705,8 @@ def parse_table_batch(params: StageBatchParams) -> BatchResult:
             timeout_seconds=try_budget_seconds("parse_table_batch", file.file_size_bytes),
             mime_types=file.mime_types,
             mime_encodings=file.mime_encodings,
-            op_id=params.op_id,
+            op_id=params.op_id, file_names=file.file_names,
+            sniff_mime_type=file.sniff_mime_type, file_mime_type=file.file_mime_type,
         ))
 
     return run_batch("parse_table_batch", params.files, key=lambda f: f.item_hash,

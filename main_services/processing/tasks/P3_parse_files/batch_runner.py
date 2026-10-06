@@ -138,7 +138,7 @@ class BatchFile:
     pdf_size_bytes: int = 0
     sniff_mime_type: str = ""
     file_mime_type: str = ""
-    file_name: str = ""
+    file_names: List[str] = field(default_factory=list)
     routes: List[str] = field(default_factory=list)
 
 

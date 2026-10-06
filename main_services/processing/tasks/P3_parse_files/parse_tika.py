@@ -200,7 +200,7 @@ def tika_text_batch(params: StageBatchParams) -> BatchResult:
             file_hash=file.item_hash, file_path=file.file_path,
             timeout_seconds=try_budget_seconds("tika_text_batch", file.file_size_bytes),
             op_id=params.op_id, mime_types=file.mime_types, routes=file.routes,
-            file_mime_type=file.file_mime_type, file_name=file.file_name,
+            file_mime_type=file.file_mime_type, file_name=(file.file_names or [""])[0],
         ))
     return run_batch("tika_text_batch", params.files, key=lambda f: f.item_hash,
                      size=lambda f: f.file_size_bytes, step=step, task_name="run_tika_and_store")

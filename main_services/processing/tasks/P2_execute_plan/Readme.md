@@ -49,6 +49,11 @@ scan of one would remove the folder under the other.
 collapses that with `LIMIT 1 BY`, and `ExecuteSinglePlan` drops duplicates again before
 grouping.
 
+The metadata query also reads basenames for the plan hashes from the VFS.
+It keeps up to four names with distinct extensions within 120 serialized JSON bytes per item.
+The download activity receives no names.
+Each parser group receives the bounded names for detector and reader selection.
+
 ### One group runs one activity for each stage
 
 `ProcessItemsBatched` starts no child workflow. It schedules each stage activity of

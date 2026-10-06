@@ -139,6 +139,16 @@ distinct. Named text attachments and detached signatures do not enter the parent
 
 Magika is constructed once for each worker process.
 The local detectors select routes before Tika runs.
+The detectors receive up to four stored basenames with distinct extensions.
+Each name list occupies at most 120 serialized JSON bytes.
+The names retain extensions within that limit.
+
+Content sniffs identify cards, SQLite files, SpreadsheetML, and spreadsheet markup before the email and delimited-text sniffs.
+An authoritative card takes only the text route.
+Other authoritative types take only the table route.
+Filename and detector aliases cannot supply an authoritative type.
+A spreadsheet filename does not select a binary reader when the primary file type is text.
+A delimited type from Magika alone cannot select the table route.
 
 ## Tika server parsing
 
@@ -311,7 +321,22 @@ the bytes of prose, of mail and of a log file. A single-column list is a text fi
 single-line file is a text file. Below the threshold, no manifest row is written. The
 activity returns a skipped outcome and writes no `processing_errors` row.
 
-The activity removes its temporary cells and manifest before it returns the skipped outcome.
+The collector keeps cells in memory until the minimum table shape is met.
+A below-threshold input writes no cells or manifest.
+A parsing manifest uses a waited insert before the first published cell batch.
+Readers with a fallback write accepted batches to a temporary Arrow file with LZ4 compression.
+A failed reader removes that file before the fallback runs.
+A successful reader publishes the manifest and spooled batches.
+The input and spool files stay in the plan directory.
+
+HTML exports with spreadsheet names, Excel MHTML workbooks, and SpreadsheetML 2003 files use their own table readers.
+The SpreadsheetML reader refuses document type declarations.
+SQLite tables and views use a read-only connection with size, row, and time limits.
+BLOB cells show a size marker in the grid.
+SQLite also stores the `table_text` source, which omits binary cell values.
+That source uses sheet and source row labels in segments of at most 256 KiB.
+Its 20,000,000-character limit appears in the manifest.
+The text and cells come from the same accepted read.
 
 Every cap in `table_formats.py` that fires is recorded in three parallel arrays on the
 manifest row (the limit's stable name, its maximum and the sheet it fired on), so the

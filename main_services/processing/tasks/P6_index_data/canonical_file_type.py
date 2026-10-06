@@ -1,25 +1,9 @@
-"""Deciding the one definitive type of a document from five disagreeing detectors.
+"""Resolve a document type after the format readers finish.
 
-Detection is deliberately parallel and deliberately contradictory: `file`, Tika, Magika,
-the filename and the content sniff each write their own `file_types` row, every detected
-type is processed, and the losing detections stay on the record. That is what makes a
-.docx get its office text extracted even though libmagic calls it a zip.
-
-It is also what made the file-type facet unusable, because a document that three
-detectors describe three ways appeared under three headings at once. This module is the
-last pass: once every parser has run, it picks the winner.
-
-The resolution is a total order over *evidence*, not a vote:
-
-1. a parse succeeded and produced rows. The document is a docx because the docx parser
-   read text out of it, not because a lookup table says .docx is not a zip;
-2. a zip-based document MIME beats `archive`;
-3. the content sniff saying email beats `text`;
-4. the filename detector agreeing with any content detector beats that detector alone;
-5. otherwise the most specific coarse type present, by the ladder below.
-
-`decided_by` records which rule fired, so a wrong answer is diagnosable from the metadata
-tab without re-running anything.
+A successful reader has priority over detector results.
+An authoritative content sniff has the next priority.
+A specific Magika text type needs agreement from another detector.
+The result records the selected rule and the remaining detected types.
 """
 
 from __future__ import annotations
@@ -27,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type, is_zip_based_document_mime
+from tasks.P3_parse_files.content_types import AUTHORITATIVE_SNIFF_MIMES, AUTHORITATIVE_ALIASES
+from tasks.P3_parse_files.table_formats import BINARY_TABLE_MIMES
 
 #: Most specific first. A document that is both an email and text is an email, an image
 #: encoded as text is an image, and a docx that is also a zip is a document.
@@ -136,6 +122,16 @@ def resolve_canonical(
     office extractor, `archive` from `archives`. `archive_member_count` is how many
     members the archive branch actually produced.
     """
+    authoritative = sorted(set(detections.get("content_sniff", [])) & AUTHORITATIVE_SNIFF_MIMES)
+    file_types = detections.get("file", [])
+    content_text = bool(file_types and file_types[0].startswith("text/"))
+    detections = {name: [m for m in values if name == "content_sniff" or (
+        m not in AUTHORITATIVE_ALIASES
+        and not (name == "extension" and content_text and m in BINARY_TABLE_MIMES))]
+        for name, values in detections.items()}
+    other_types = {m for name, values in detections.items() if name != "magika" for m in values}
+    detections["magika"] = [m for m in detections.get("magika", [])
+        if not (m.startswith("text/") and m != "text/plain" and m not in other_types)]
     all_mimes: list[str] = sorted({m for mimes in detections.values() for m in mimes if m})
     coarse_present = {coarse_file_type(m) for m in all_mimes}
 
@@ -154,6 +150,10 @@ def resolve_canonical(
     if evidence:
         winner = _most_specific(evidence)
         decided_by = "parse_succeeded"
+    elif authoritative:
+        mime = authoritative[0]
+        return Canonical(mime_type=mime, file_type=coarse_file_type(mime),
+                         decided_by="content_sniff_type", losers=[m for m in all_mimes if m != mime])
     elif any(is_zip_based_document_mime(m) for m in all_mimes):
         winner = _most_specific(
             coarse_file_type(m) for m in all_mimes if is_zip_based_document_mime(m)
