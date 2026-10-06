@@ -10,6 +10,8 @@ from tasks.P3_parse_files.document_dates import (
     ResolveDocumentDatesParams, resolve_document_dates,
 )
 from tasks.P3_parse_files.parse_common import insert_text_chunks, insert_text_pages
+from tasks.P4_extract_entities.params import ScanRegexEntitiesParams
+from tasks.P4_extract_entities.scan_regex_entities import scan_regex_entities_for_hashes
 from tasks.P6_index_data import activities
 from tasks.P6_index_data.activities import index_text_pages
 from tasks.P6_index_data.params import IndexShardParams, PlanShardsParams
@@ -67,6 +69,12 @@ def test_reprocessing_replaces_only_successful_source_pages(temp_collection, mon
     })
     params = IndexShardParams(collection, dataset, "probe", shard, [file_hash, other_hash])
 
+    def index():
+        scan_regex_entities_for_hashes(
+            ScanRegexEntitiesParams(collection, dataset, "probe", params.hashes)
+        )
+        return index_text_pages(params)
+
     def write(source, pages, hash=file_hash):
         insert_text_pages(collection, dataset, hash, source, pages)
 
@@ -106,37 +114,37 @@ def test_reprocessing_replaces_only_successful_source_pages(temp_collection, mon
             return cursor.fetchall()
 
     write("pdftotext", [(1, "oldalpha"), (2, "oldbeta"), (3, "oldgamma")])
-    write("extractous", [(1, "independent source")])
+    write("tika", [(1, "independent source")])
     write("pdftotext", [(1, "untouchedword")], other_hash)
     assert resolve_document_dates(ResolveDocumentDatesParams(collection, dataset, "probe")) == (
         "0 dates (empty plan)"
     )
     assert stored("pdftotext") == [(1, "oldalpha"), (2, "oldbeta"), (3, "oldgamma")]
-    assert stored("extractous") == [(1, "independent source")]
-    assert index_text_pages(params) == sorted([file_hash, other_hash])
+    assert stored("tika") == [(1, "independent source")]
+    assert index() == sorted([file_hash, other_hash])
     check("pdftotext", [(1, "oldalpha"), (2, "oldbeta"), (3, "oldgamma")])
     assert matches("oldbeta") == [(file_hash, "pdftotext")]
 
     write("pdftotext", [])
-    assert index_text_pages(params) == sorted([file_hash, other_hash])
+    assert index() == sorted([file_hash, other_hash])
     check("pdftotext", [])
-    check("extractous", [(1, "independent source")])
+    check("tika", [(1, "independent source")])
     assert matches("oldbeta") == []
     assert matches("untouchedword") == [(other_hash, "pdftotext")]
 
     write("pdftotext", [(1, "newalpha"), (2, "newbeta"), (3, "newgamma")])
     resolve_document_dates(ResolveDocumentDatesParams(collection, dataset, "probe"))
     assert stored("pdftotext") == [(1, "newalpha"), (2, "newbeta"), (3, "newgamma")]
-    assert index_text_pages(params) == sorted([file_hash, other_hash])
+    assert index() == sorted([file_hash, other_hash])
     write("pdftotext", [(1, "shortalpha")])
-    assert index_text_pages(params) == sorted([file_hash, other_hash])
+    assert index() == sorted([file_hash, other_hash])
     check("pdftotext", [(1, "shortalpha")])
     assert matches("newbeta") == []
 
     write("pdftotext", [(1, "firstpage"), (2, "middlepage"), (3, "lastpage")])
-    assert index_text_pages(params) == sorted([file_hash, other_hash])
+    assert index() == sorted([file_hash, other_hash])
     write("pdftotext", [(1, "firstagain"), (2, ""), (3, "lastagain")])
-    assert index_text_pages(params) == sorted([file_hash, other_hash])
+    assert index() == sorted([file_hash, other_hash])
     check("pdftotext", [(1, "firstagain"), (3, "lastagain")])
     assert matches("middlepage") == []
 
@@ -144,20 +152,20 @@ def test_reprocessing_replaces_only_successful_source_pages(temp_collection, mon
     failed_pages = parse_pdf._pdftotext_pages("unreadable.pdf")
     assert failed_pages == []
     assert parse_pdf._insert_pdf_text_pages(collection, dataset, file_hash, failed_pages) == 0
-    assert index_text_pages(params) == sorted([file_hash, other_hash])
+    assert index() == sorted([file_hash, other_hash])
     check("pdftotext", [(1, "firstagain"), (3, "lastagain")])
-    check("extractous", [(1, "independent source")])
+    check("tika", [(1, "independent source")])
     assert matches("untouchedword") == [(other_hash, "pdftotext")]
 
-    insert_text_chunks(collection, dataset, file_hash, "extractous", "")
-    assert index_text_pages(params) == sorted([file_hash, other_hash])
-    check("extractous", [])
+    insert_text_chunks(collection, dataset, file_hash, "tika", "")
+    assert index() == sorted([file_hash, other_hash])
+    check("tika", [])
     check("pdftotext", [(1, "firstagain"), (3, "lastagain")])
 
     write("pdftotext", [(page, f"bulkword{page}") for page in range(1, 1006)])
     resolve_document_dates(ResolveDocumentDatesParams(collection, dataset, "probe"))
-    assert index_text_pages(params) == sorted([file_hash, other_hash])
+    assert index() == sorted([file_hash, other_hash])
     write("pdftotext", [])
-    assert index_text_pages(params) == sorted([file_hash, other_hash])
+    assert index() == sorted([file_hash, other_hash])
     check("pdftotext", [])
     assert matches("bulkword1005") == []

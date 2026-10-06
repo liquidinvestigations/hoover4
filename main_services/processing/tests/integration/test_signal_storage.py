@@ -71,7 +71,6 @@ def test_activity_reuses_regex_watermark_when_only_signal_scan_is_missing(storag
     from tasks.P4_extract_entities.params import ScanRegexEntitiesParams
     name, client, cluster, folder = storage
     migrate(client, cluster, folder)
-    monkeypatch.setenv("REGEX_SCANNER_URL", "http://127.0.0.1:19705")
     text = "We will pay a kickback and offer a bribe."
     insert_text_pages(name, "dataset", "file", "raw_text", [(1, text)])
     params = ScanRegexEntitiesParams(name, "dataset", "plan", ["file"])
