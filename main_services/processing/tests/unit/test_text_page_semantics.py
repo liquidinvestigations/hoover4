@@ -55,7 +55,7 @@ def test_successful_empty_reparse_removes_previous_pages(monkeypatch):
             return None
 
         def query(self, *_args, **_kwargs):
-            return type("Rows", (), {"result_rows": [(1,), (2,), (3,)]})()
+            return type("Rows", (), {"result_rows": [(1, 0), (2, 0), (3, 0)]})()
 
         def command(self, query, parameters):
             commands.append((query, parameters))

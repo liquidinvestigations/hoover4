@@ -87,6 +87,21 @@ parameter, so both runtimes must refuse a bad name on their own.
 any collection, and it is what resolves `collection_dataset -> collectionname`. Its
 `collectionname` column is fixed when the dataset is created and never changes.
 
+## Text and blob storage
+
+`text_content` uses `ReplacingMergeTree(version)` with a version assigned once for each complete source replacement.
+The version exceeds the stored source version, including when a worker clock moves backwards.
+A replacement deletes page identities absent from its complete new page list.
+
+Text uses `ZSTD(3)`. Text and blob tables use granules of 1,024 rows or 1 MiB, with no partition key.
+Both tables cap merged parts at 4 GiB.
+Merge blocks contain at most 1,024 text rows or 512 blob values.
+Migration creates replacement tables, copies `FINAL` rows, exchanges their names, and removes the old tables.
+The `text_storage_ready` table marks schema readiness.
+
+Segment-key batches use a ClickHouse external table in the request body.
+Only the dataset parameter enters the request URL.
+
 ## Picking a client
 
 ```python
@@ -118,7 +133,7 @@ re-runs until the anti-joins converge. Ledgers and watermarks go through
 
 The line is drawn by what re-derives the row, not by how important it is. New P3
 parser output qualifies: the parser runs again and writes the same content-addressed
-row. Source replacement waits for `text_content` visibility and deletion.
+row. Every `text_content` insert waits for visibility before obsolete pages are deleted.
 Date resolution flushes pending parse inserts before downstream reads. A P0 scan row
 does not qualify. Nothing rescans the disk, so a lost `blobs` row is never planned.
 The index planner flushes pending P4 and P5 inserts before it assigns shards.
@@ -126,8 +141,8 @@ Each flush acts on the server's whole async insert queue and propagates failure.
 
 | Wait | Tables |
 |---|---|
-| Do not wait | new P3 parser output: `file_types`, `text_content`, `tika_metadata`, `emails`, `email_headers`, `email_addresses`, `archives`, `pdfs`, `pdf_metadata`, `pdfs_image`, `pdf_ocr_results`, `raw_ocr_results`, `image`, `audio_metadata`, `video_metadata`, `document_dates`, `table_documents`, `table_sheets`, `table_columns`, `table_cells`; plus `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry`, `agent_step_events` |
-| Wait | replacement `text_content`; `blobs`, `blob_values`, `vfs_files`, `vfs_directories`, `processing_plan_finished`, `index_state`, `manticore_shards`, `manticore_shard_assignments`, `dataset`, `processing_plans`, `schema_versions` |
+| Do not wait | new P3 parser output: `file_types`, `tika_metadata`, `emails`, `email_headers`, `email_addresses`, `archives`, `pdfs`, `pdf_metadata`, `pdfs_image`, `pdf_ocr_results`, `raw_ocr_results`, `image`, `audio_metadata`, `video_metadata`, `document_dates`, `table_documents`, `table_sheets`, `table_columns`, `table_cells`; plus `entity_hit`, `nlp_processed`, `processing_task_runs`, `ai_service_telemetry`, `agent_step_events` |
+| Wait | all `text_content`; `blobs`, `blob_values`, `vfs_files`, `vfs_directories`, `processing_plan_finished`, `index_state`, `manticore_shards`, `manticore_shard_assignments`, `dataset`, `processing_plans`, `schema_versions` |
 
 The Error recorder waits for its row insert before it writes the operation event.
 This order lets a retry repair an event write without creating another logical Error.

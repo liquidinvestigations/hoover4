@@ -48,6 +48,17 @@ progress. When a copy is missing all the same, each reader raises the non-retrya
 
 Parses files by type (archives, email, PDF, audio, video, images, OCR, and Tika-based extraction) and writes structured content.
 
+Mail `raw_text` keeps message headers and decoded non-attachment text bodies.
+It keeps HTML markup and inline data URIs inside those bodies.
+A mail parse failure retains the outer header block without an Error row.
+A nested-message root keeps only its outer headers.
+Mail containers take the archive route, and their members provide the raw text.
+
+The text stage gives authoritative vCard detection priority over mail detection.
+Card and calendar text unfolds property lines and decodes quoted-printable values and text escapes.
+Card binary values become size markers. Calendar binary properties are omitted.
+Malformed property lines retain their source text.
+
 ### P4 - Extract Entities (NLP/NER)
 
 Runs named-entity recognition over parsed text content via the remote NER service, before indexing. Writes `entity_hit` rows and `nlp_processed` watermarks (including `text_bytes`). Texts are sent to the NER service in batches of `NLP_BATCH_TEXTS = 32`. NER failures are retried and then recorded in `processing_errors`, never silently swallowed.

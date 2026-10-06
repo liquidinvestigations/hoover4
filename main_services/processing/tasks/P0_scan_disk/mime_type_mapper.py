@@ -121,6 +121,7 @@ def coarse_file_type(mime_type: str) -> str:
     if mime_type in (
         "message/rfc822", "application/vnd.ms-outlook", "application/vnd.ms-exchange", "application/mbox",
         "message/x-emlx", "application/x-hoover-pst", "application/ms-tnef",
+        "application/vnd.ms-outlook-pst", "application/vnd.ms-tnef",
     ):
         return "email"
 

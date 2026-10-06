@@ -51,22 +51,24 @@ def fetch_text_batch(client, collection_dataset: str,
     """Read exactly the requested text segments from ``text_content FINAL``."""
     if not batch:
         return []
-    hashes = sorted({key[0] for key in batch})
+    import json
+    from clickhouse_connect.driver.external import ExternalData
+
+    data = "\n".join(json.dumps([file_hash, extractor, page_id], ensure_ascii=False)
+                     for file_hash, extractor, page_id in batch).encode("utf-8")
+    keys = ExternalData(file_name="keys", data=data, fmt="JSONCompactEachRow",
+                        structure="file_hash String, extracted_by String, page_id UInt32")
     return client.query_arrow("""
         SELECT collection_dataset, file_hash, extracted_by, page_id, text
         FROM text_content FINAL
         WHERE collection_dataset = {collection_dataset:String}
-          AND file_hash IN {hashes:Array(String)}
-          AND (file_hash, extracted_by, page_id) IN {keys:Array(Tuple(String, String, UInt32))}
+          AND file_hash IN (SELECT file_hash FROM keys)
+          AND (file_hash, extracted_by, page_id) IN (SELECT file_hash, extracted_by, page_id FROM keys)
         ORDER BY file_hash, extracted_by, page_id
-    """, {
-        "collection_dataset": collection_dataset,
-        "hashes": hashes,
-        "keys": batch,
-    }).to_pylist()
+    """, {"collection_dataset": collection_dataset}, external_data=keys).to_pylist()
 
-#: The file's own bytes, decoded and segmented, with nothing interpreted. For a mail file
-#: that is the MIME envelope: header block, boundaries, base64 attachment payloads.
+#: Decoded source text. Mail keeps headers and decoded bodies without attachments.
+#: Cards keep unfolded text properties and binary size markers.
 RAW_TEXT = "raw_text"
 
 #: The text of a binary Word file after bounded DOCX conversion.

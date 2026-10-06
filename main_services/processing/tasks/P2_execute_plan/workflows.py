@@ -585,8 +585,7 @@ class ProcessItemsBatched:
         )
         detector_results = [detector_results_for_file(d, t) for d, t in zip(detect, tika)]
         combined = [combine_detector_results(results) for results in detector_results]
-        expand_mail_containers = workflow.patched("mail-container-archive-route")
-        routes = [route_stages(types, expand_mail_containers) for types in combined]
+        routes = [route_stages(types) for types in combined]
 
         def with_route(route: str) -> List[int]:
             return [index for index, file_routes in enumerate(routes) if route in file_routes]
@@ -610,7 +609,9 @@ class ProcessItemsBatched:
             indexes = with_route(route)
             items = [
                 batch_file(i, mime_types=combined[i]["mime_types"],
-                           mime_encodings=combined[i]["mime_encodings"])
+                           mime_encodings=combined[i]["mime_encodings"],
+                           sniff_mime_type=((detect[i].value.get("detectors", {}).get("content_sniff", {}).get("mime_types") or [""])[0]
+                                            if isinstance(detect[i].value, dict) else ""))
                 if with_types else files[i]
                 for i in indexes
             ]
@@ -719,7 +720,7 @@ class ProcessItemsBatched:
 
         # Stage 2: every chain at once.
         stage_two = [
-            single("extract_plaintext_batch", "text", "extract_plaintext_chunks"),
+            single("extract_plaintext_batch", "text", "extract_plaintext_chunks", with_types=True),
             single("parse_office_xml_batch", "office_xml", "parse_office_xml_and_store"),
             single("parse_table_batch", "table", "parse_table_and_store", with_types=True),
             single("parse_image_metadata_batch", "image", "parse_image_metadata_and_store"),

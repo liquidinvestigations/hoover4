@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Sequence
 import logging
 import json
 import hashlib
+import time
 from dataclasses import dataclass
 from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
 from tasks.payload_guard import MAX_PAYLOAD_BYTES, payload_size
@@ -76,15 +77,15 @@ def split_text_segments(text_or_bytes: Any,
 
 
 def _existing_page_ids(client: Any, collection_dataset: str, file_hash: str,
-                       extracted_by: str) -> set[int]:
+                       extracted_by: str) -> tuple[set[int], int]:
     """Read this source's current page identities before a successful replacement."""
     rows = client.query(
-        "SELECT page_id FROM text_content FINAL "
+        "SELECT page_id, version FROM text_content FINAL "
         "WHERE collection_dataset = {cd:String} AND file_hash = {fh:String} "
         "AND extracted_by = {eb:String}",
         parameters={"cd": collection_dataset, "fh": file_hash, "eb": extracted_by},
     ).result_rows
-    return {int(row[0]) for row in rows}
+    return {int(row[0]) for row in rows}, max((int(row[1]) for row in rows), default=0)
 
 
 def _delete_obsolete_pages(client: Any, collection_dataset: str, file_hash: str,
@@ -130,12 +131,11 @@ def insert_text_pages(
     ``text_bytes`` is ``len(body.encode("utf-8"))`` of the stored text, written here so
     readers that need size (ETA sampling) never scan the body.
 
-    New sources enter ClickHouse's async insert queue. Date resolution flushes that
-    queue before downstream reads. A replacement insert waits for visibility before
-    removing obsolete pages.
+    Each call assigns one version from the current clock or above the previous source version.
+    The async insert waits for storage before obsolete pages are removed.
     """
     from database.clickhouse import (
-        get_collection_client, insert_arrow_durable, insert_arrow_idempotent,
+        get_collection_client, insert_arrow_durable,
     )
     import pyarrow as pa
 
@@ -151,7 +151,8 @@ def insert_text_pages(
             rows.append((page_id, body, len(body.encode("utf-8"))))
 
     with get_collection_client(collectionname) as client:
-        previous = _existing_page_ids(client, collection_dataset, file_hash, extracted_by)
+        previous, stored_version = _existing_page_ids(client, collection_dataset, file_hash, extracted_by)
+        version = max(time.time_ns(), stored_version + 1)
         obsolete = previous.copy()
         obsolete.difference_update(row[0] for row in rows)
         if rows:
@@ -163,12 +164,10 @@ def insert_text_pages(
                 "page_id": pa.array([r[0] for r in rows], type=pa.uint32()),
                 "text": pa.array([r[1] for r in rows], type=pa.string()),
                 "text_bytes": pa.array([r[2] for r in rows], type=pa.uint64()),
+                "version": pa.array([version] * len(rows), type=pa.uint64()),
             })
-            if previous:
-                insert_arrow_durable(client, "text_content", tbl_t,
-                                     settings={"async_insert": 0})
-            else:
-                insert_arrow_idempotent(client, "text_content", tbl_t)
+            insert_arrow_durable(client, "text_content", tbl_t,
+                                 settings={"async_insert": 1, "wait_for_async_insert": 1})
         _delete_obsolete_pages(client, collection_dataset, file_hash, extracted_by, obsolete)
 
     return len(rows)

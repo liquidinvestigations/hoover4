@@ -127,7 +127,7 @@ STAGE_BUDGETS: Dict[str, Tuple[int, int, int]] = {
 
 @dataclass
 class BatchFile:
-    """One file of a stage activity. The last four fields feed one stage each."""
+    """One stage input with detector fields that select format readers."""
 
     item_hash: str
     file_path: str
@@ -136,6 +136,7 @@ class BatchFile:
     mime_encodings: List[str] = field(default_factory=list)
     page_count: int = 0
     pdf_size_bytes: int = 0
+    sniff_mime_type: str = ""
 
 
 @dataclass

@@ -179,22 +179,24 @@ def detector_results_for_file(detect_result: FileResult, tika_result: FileResult
     return results
 
 
-def route_stages(combined: Dict[str, List[str]],
-                 expand_mail_containers: bool = True) -> List[str]:
+def route_stages(combined: Dict[str, List[str]]) -> List[str]:
     """The routes of one file, in the order of ROUTE_ERROR_NAMES.
 
-    A file takes every route whose condition one of its detectors meets, even when the
-    other detectors disagree.
+    Mail containers take only the archive route.
+    Other files take each applicable route from their detected types.
     """
     coarse_types = combined["coarse_types"]
     mime_types = combined["mime_types"]
     routes: List[str] = []
     mail_containers = {"application/x-hoover-pst", "application/vnd.ms-outlook",
-                       "application/mbox", "application/ms-tnef"}
-    is_mail_container = expand_mail_containers and bool(set(mime_types) & mail_containers)
-    if is_mail_container or should_expand_as_archive(coarse_types, mime_types):
+                       "application/mbox", "application/ms-tnef",
+                       "application/vnd.ms-outlook-pst", "application/vnd.ms-tnef"}
+    is_mail_container = bool(set(mime_types) & mail_containers)
+    if is_mail_container:
+        return ["archive"]
+    if should_expand_as_archive(coarse_types, mime_types):
         routes.append("archive")
-    if "email" in coarse_types and not is_mail_container:
+    if "email" in coarse_types:
         routes.append("email")
     if "text" in coarse_types:
         routes.append("text")

@@ -87,6 +87,8 @@ def _expected(stage: Stage, file: BatchFile, engine: str):
                                                                      file.file_size_bytes),
         op_id="op-1",
     )
+    if stage.batch == "extract_plaintext_batch":
+        kwargs.update(mime_types=file.mime_types, sniff_mime_type=file.sniff_mime_type)
     if stage.extra.get("table"):
         kwargs.update(mime_types=file.mime_types, mime_encodings=file.mime_encodings)
     if stage.extra.get("engine"):

@@ -33,7 +33,7 @@ class _FakeCHClient:
         self._text_rows = text_rows
         self.inserts = {}
 
-    def query_arrow(self, query, parameters=None):
+    def query_arrow(self, query, parameters=None, **_options):
         # The activity first reads keys and byte sizes, then variants, then one batch of
         # complete text rows at a time.
         if "groupUniqArray" in query:

@@ -349,3 +349,33 @@ def body_alternatives(message: Message) -> dict[str, str]:
         if content.strip():
             parts[kind].append(content.strip())
     return {kind: "\n\n".join(texts) for kind, texts in parts.items() if texts}
+
+
+def mail_raw_text(data: bytes) -> str:
+    """Keep message headers and decoded text bodies without attachment payloads."""
+    from tasks.P3_parse_files.sniff_email import strip_email_envelope
+
+    def header_text(part: Message) -> str:
+        headers = "\n".join(f"{name}: {value}" for name, value in part.raw_items())
+        return headers.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+
+    message = None
+    source = data
+    try:
+        source = strip_email_envelope(data)
+        message = BytesParser(policy=policy.default).parsebytes(source)
+        headers = header_text(message)
+        output = [headers]
+        for part in mail_parts(message):
+            if part.attachment or part.nested_message or part.message.is_multipart():
+                continue
+            if not part.content_type.startswith("text/"):
+                continue
+            if part.path != "1":
+                output.append(header_text(part.message))
+            output.append(decode_body(part))
+        return "\n\n".join(output)
+    except Exception:
+        if message is not None:
+            return header_text(message)
+        return re.split(rb"\r?\n\r?\n", source, maxsplit=1)[0].decode("utf-8", "replace")
