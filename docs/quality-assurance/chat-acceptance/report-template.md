@@ -80,7 +80,7 @@ Read these on the host that ran the chat. The chat tables are in the database `H
 |---|---|
 | What did the user see, in order? | `chat_messages FINAL`, ordered by `seq`. `tool_input`, `tool_output` and `doc_refs` hold the call, the result and the cards. |
 | What did the model receive and send on each call? | `agent_run_messages FINAL`, ordered by `thread_id` and `idx`. `tool_calls_json` holds the raw call as the model wrote it, before argument decoding. |
-| Which runs took part, and why did each end? | `agent_runs FINAL`. Read `kind`, `purpose`, `state`, `error`, `refused_json` and `tool_turns_used`. |
+| Which runs took part, and why did each end? | `agent_runs FINAL`. Read `run_id`, `thread_id`, `turn_seq`, `state`, `error`, `model_steps` and `end_reason`. |
 | What did the todo list hold at each step? | `chat_todos`, ordered by `version`. |
 | Which cards and page captures exist? | `chat_artifacts FINAL`. `kind` is `agent_raw_result`, `search_detail` or a page capture. |
 | Did a model call fail or take long? | `llm_call_events`. Read `ok`, `error`, `latency_ms` and `prompt_tokens`. |
