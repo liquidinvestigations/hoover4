@@ -29,6 +29,7 @@ with workflow.unsafe.imports_passed_through():
         reindex_collection_activity, sample_dataset_progress,
         tombstone_dataset_row,
     )
+    from tasks.failure_chain import is_cancellation as _is_cancellation, failure_message as _failure_message
     from tasks.operation_failure_capture import capture_failure_best_effort
     from .backup import (
         begin_export, export_clickhouse, export_manticore, export_object_store,
@@ -95,6 +96,8 @@ class RebuildCollectionPlans:
             retry_policy=ROW_RETRY,
         )
         if not plans:
+            if params.failed:
+                raise ApplicationError(f"{params.failed} index plans failed.", non_retryable=True)
             return params.completed
 
         async def run_plan(collection_dataset: str, plan_hash: str):
@@ -118,17 +121,19 @@ class RebuildCollectionPlans:
             return_exceptions=True,
         )
         failures = [result for result in results if isinstance(result, BaseException)]
-        if failures:
-            raise RuntimeError(
-                f"{len(failures)} of {len(plans)} index plan children failed: {failures[0]}"
-            )
+        for failure in failures:
+            if _is_cancellation(failure):
+                raise failure
+        failed = params.failed + len(failures)
         completed = params.completed + len(plans)
         if len(plans) == REBUILD_PLAN_PAGE_SIZE:
             dataset, plan_hash = plans[-1]
             workflow.continue_as_new(RebuildPlansParams(
                 params.op_id, params.collectionname, params.vectors_only,
-                dataset, plan_hash, completed,
+                dataset, plan_hash, completed, failed,
             ))
+        if failed:
+            raise ApplicationError(f"{failed} index plans failed.", non_retryable=True)
         return completed
 
 
@@ -349,13 +354,14 @@ class Operation:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
         child_result = await child
-        await self._sample_selector_counts(params, child_result["selector_counts"])
-        return f"ingested and processed {params.collection_dataset}"
+        progress = await self._sample_selector_counts(params, child_result["selector_counts"], child_result["execution_counts"])
+        return (f"Ingested and processed {params.collection_dataset}. "
+                f"The operation kept {progress['failed_documents']} document failures.")
 
     async def _sample_selector_counts(self, params: OperationParams,
-                                      counts: dict[str, int]) -> None:
-        """Write final selector counts through the progress activity."""
-        await workflow.execute_activity(
+                                      counts: dict[str, int], execution_counts: dict | None = None) -> dict:
+        """Verify ledger failures after reconciliation and final progress sampling."""
+        progress = await workflow.execute_activity(
             sample_dataset_progress,
             DatasetProgressParams(params.op_id, params.collectionname,
                                   params.collection_dataset, counts),
@@ -364,6 +370,16 @@ class Operation:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=ROW_RETRY,
         )
+        execution_counts = execution_counts or {}
+        plans = max(progress["failed_plans"], execution_counts.get("failed_plans", 0))
+        steps = max(progress["failed_dataset_steps"], execution_counts.get("failed_dataset_steps", 0))
+        if plans or steps:
+            sample = repr(progress["plan_samples"] + progress["step_samples"])
+            raise ApplicationError(
+                f"{plans} plans and {steps} dataset steps failed. Every round of plans ran. {sample}",
+                non_retryable=True,
+            )
+        return progress
 
     async def _compute_plans(self, params: OperationParams) -> str:
         """Turn the blobs a scan recorded into the dataset's processing plans.
@@ -435,14 +451,15 @@ class Operation:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
-        await self._sample_selector_counts(params, {
+        progress = await self._sample_selector_counts(params, {
             "errors_before_run": selection.errors_before_run,
             "selected_errors": selection.selected_errors,
             "removed_stage_off_errors": selection.removed_stage_off_errors,
             "without_plan_errors": selection.without_plan_errors,
             **reconciliation,
-        })
-        return result
+        }, result)
+        return (f"Executed {result['plans_run']} plans in {result['invocations']} invocations. "
+                f"The operation kept {progress['failed_documents']} document failures.")
 
     async def _record(self, op_id: str, done: int, total: int) -> None:
         """Write progress counters onto the row, without changing its state."""
@@ -555,7 +572,9 @@ class Operation:
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
         ))
-        return await child
+        result = await child
+        progress = await self._sample_selector_counts(params, {}, result.get("execution_counts", {}))
+        return f"Updated OCR languages. The operation kept {progress['failed_documents']} document failures."
 
     async def _collection_database(self, params: OperationParams) -> str:
         """Provision a collection's database, or drop it and its Manticore tables.
@@ -743,14 +762,15 @@ class Operation:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
-        await self._sample_selector_counts(params, {
+        progress = await self._sample_selector_counts(params, {
             "errors_before_run": selection.errors_before_run,
             "selected_errors": selection.selected_errors,
             "removed_stage_off_errors": selection.removed_stage_off_errors,
             "without_plan_errors": selection.without_plan_errors,
             **reconciliation,
-        })
-        return result
+        }, result)
+        return (f"Executed {result['plans_run']} plans in {result['invocations']} invocations. "
+                f"The operation kept {progress['failed_documents']} document failures.")
 
     async def _purge_unattributed_entities(self, params: OperationParams) -> str:
         """Re-run entity extraction and indexing after unattributed rows are deleted."""
@@ -799,18 +819,23 @@ class Operation:
                          else "ChunkEmbedForPlan")
                 prefix = ("purge-unattributed-ner" if mode == "purge-unattributed"
                           else "backfill-embed")
-                await workflow.execute_child_workflow(
-                    first, child_params,
-                    id=f"{prefix}-{params.op_id}-{collection_dataset}-{plan_hash}",
-                    task_queue="processing-common-queue",
-                    search_attributes=dataset_search_attributes(collection_dataset),
-                )
-                await workflow.execute_child_workflow(
-                    "IndexDatasetPlan", child_params,
-                    id=f"{mode}-index-{params.op_id}-{collection_dataset}-{plan_hash}",
-                    task_queue="processing-common-queue",
-                    search_attributes=dataset_search_attributes(collection_dataset),
-                )
+                try:
+                    await workflow.execute_child_workflow(
+                        first, child_params,
+                        id=f"{prefix}-{params.op_id}-{collection_dataset}-{plan_hash}",
+                        task_queue="processing-common-queue",
+                        search_attributes=dataset_search_attributes(collection_dataset),
+                    )
+                    await workflow.execute_child_workflow(
+                        "IndexDatasetPlan", child_params,
+                        id=f"{mode}-index-{params.op_id}-{collection_dataset}-{plan_hash}",
+                        task_queue="processing-common-queue",
+                        search_attributes=dataset_search_attributes(collection_dataset),
+                    )
+                except Exception as exc:
+                    if _is_cancellation(exc):
+                        raise
+                    params.plan_failed += 1
                 params.plan_done += 1
                 run_done += 1
                 params.plan_cursor = [collection_dataset, plan_hash]
@@ -819,48 +844,11 @@ class Operation:
                     workflow.continue_as_new(params)
             if params.plan_done >= params.plan_total:
                 break
+        if params.plan_failed:
+            raise ApplicationError(f"{params.plan_failed} collection plans failed.", non_retryable=True)
         if mode == "purge-unattributed":
             return f"re-ran entity extraction and indexing for {params.plan_done} plan(s)"
         return f"backfilled vectors and indexing for {params.plan_done} plan(s)"
-
-
-def _failure_message(exc: Exception) -> str:
-    """The failure, down to the exception that actually caused it.
-
-    An activity failure arrives at the workflow wrapped: the outer exception says only
-    "Activity task failed", and the sentence naming the missing column, the refused path
-    or the store that answered an error is the innermost cause. The row is the one place
-    a person reads afterwards, so it carries the whole chain rather than the wrapper.
-    """
-    parts, seen = [], 0
-    current: BaseException | None = exc
-    while current is not None and seen < 5:
-        text = str(current).strip()
-        label = f"{type(current).__name__}: {text}" if text else type(current).__name__
-        if label not in parts:
-            parts.append(label)
-        current = current.__cause__
-        seen += 1
-    return " <- ".join(parts)
-
-
-def _is_cancellation(exc: BaseException) -> bool:
-    """Whether a failure chain is really a cancellation wearing an error's clothes.
-
-    Matched on the exception's *name* rather than on an imported class, because three
-    different cancellations arrive here: `asyncio.CancelledError`, the SDK's own
-    `CancelledError` and the `ActivityError` that wraps either, and importing the SDK's
-    exception module into a workflow file only to compare against it drags more through
-    the sandbox importer than the comparison is worth.
-    """
-    seen = 0
-    current: BaseException | None = exc
-    while current is not None and seen < 5:
-        if type(current).__name__ == "CancelledError":
-            return True
-        current = current.__cause__
-        seen += 1
-    return False
 
 
 def ApplicationErrorDetail(kind: str, missing: str) -> Exception:

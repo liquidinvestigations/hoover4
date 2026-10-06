@@ -25,6 +25,7 @@ class ListPendingPlansParams:
     collection_dataset: str
     starting_plan_hash: str | None = None
     op_id: str = ""
+    exclude_failed_of_op: bool = False
 
 
 @activity.defn
@@ -39,6 +40,13 @@ def list_pending_plans(params: ListPendingPlansParams) -> List[str]:
     cond_start = (
         f" AND p.plan_hash >= '{_escape(starting_plan_hash)}'" if starting_plan_hash else ""
     )
+    cond_failed = ""
+    if params.exclude_failed_of_op and params.op_id:
+        cond_failed = f""" AND NOT EXISTS (
+            SELECT 1 FROM operation_plans o
+            WHERE o.collection_dataset = p.collection_dataset
+              AND o.plan_hash = p.plan_hash AND o.op_id = '{_escape(params.op_id)}'
+        )"""
     sql = f"""
         SELECT p.plan_hash
         FROM processing_plans p
@@ -48,6 +56,7 @@ def list_pending_plans(params: ListPendingPlansParams) -> List[str]:
             WHERE f.collection_dataset = p.collection_dataset AND f.plan_hash = p.plan_hash
           )
           {cond_start}
+          {cond_failed}
         ORDER BY p.plan_hash ASC
         LIMIT 1001
     """

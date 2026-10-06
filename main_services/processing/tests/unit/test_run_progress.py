@@ -24,7 +24,7 @@ class _Client:
 
     def query(self, query, parameters):
         self.queries.append((query, parameters))
-        return SimpleNamespace(result_rows=[(1, 2)])
+        return SimpleNamespace(result_rows=[(1, 2, 1)] if "uniqExactIf" in query else [("plan-a",)] if "operation_plans" in query else [("dataset_step:index_vfs_structure", "failed")])
 
 
 def test_list_pending_plans_records_each_listed_plan(monkeypatch):
@@ -77,11 +77,16 @@ def test_progress_uses_recorded_plans_and_operation_errors(monkeypatch):
         DatasetProgressParams("operation", "collection", "dataset")
     )
 
-    assert result == [3, 7]
+    assert result["done"] == 3
+    assert result["total"] == 7
+    assert result["failed_plans"] == 4
+    assert result["failed_dataset_steps"] == 1
     assert "op_id = {op:String}" in client.queries[0][0]
     assert client.queries[0][1] == {"ds": "dataset", "op": "operation"}
     assert len(details) == 1
     assert details[0]["base_row"]["row_version"] == 1
     assert json.loads(details[0]["detail"]) == {
-        "failed_documents": 1, "failed_tasks": 2,
+        "failed_documents": 1, "failed_tasks": 2, "failed_plans": 4,
+        "failed_dataset_steps": 1, "plan_samples": ["plan-a"],
+        "step_samples": [["dataset_step:index_vfs_structure", "failed"]],
     }

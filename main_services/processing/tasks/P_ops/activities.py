@@ -323,66 +323,67 @@ async def _cancel_target_operation(op_id: str) -> dict:
 
 @activity.defn
 @with_heartbeat
-def sample_dataset_progress(params: DatasetProgressParams) -> list[int]:
-    """Count this operation's plans and Error rows, and write them onto the row.
-
-    Plans rather than documents, because a plan is the unit the pipeline finishes and
-    the only one whose total is known before the work is done. The estimate is derived
-    from this operation's own elapsed time rather than from the global sampler, so it
-    is right for this run's data even when nothing comparable has ever been ingested.
-    The elapsed time counts from the real start, so a wait in `queued` does not slow it.
-
-    The Error counts cover this operation. Historical Error rows are recorded at
-    selection time, before the run changes them.
-
-    Returns `[done, total]`. A dataset whose scan has not produced plans yet is
-    `[0, 0]`, which the row records as "no estimate can be made" rather than as zero
-    progress out of zero work.
-    """
+def sample_dataset_progress(params: DatasetProgressParams) -> dict:
+    """Return bounded plan and failure evidence, and update a running operation."""
     from database.clickhouse import get_collection_client
     from database.operation_ledger import run_plan_counts
     from database.operations import get_operation, update_operation, TERMINAL_STATES, _now
 
     row = get_operation(params.op_id)
-    if row is None or row["state"] in ("finished", "errored", "cancelled"):
-        return [int(row["progress_done"]), int(row["progress_total"])] if row else [0, 0]
-
-    done = total = 0
-    failed_documents = failed_tasks = 0
-    if params.op_id:
-        done, total = run_plan_counts(
-            params.collectionname, params.op_id, params.collection_dataset
-        )
+    if row is None or row["state"] in TERMINAL_STATES:
+        detail = json.loads(row.get("detail") or "{}") if row else {}
+        return dict(done=int(row["progress_done"]) if row else 0,
+                    total=int(row["progress_total"]) if row else 0,
+                    failed_plans=int(detail.get("failed_plans", 0)),
+                    failed_dataset_steps=int(detail.get("failed_dataset_steps", 0)),
+                    failed_documents=int(detail.get("failed_documents", 0)),
+                    failed_tasks=int(detail.get("failed_tasks", 0)),
+                    plan_samples=detail.get("plan_samples", []), step_samples=detail.get("step_samples", []))
+    done, total = run_plan_counts(params.collectionname, params.op_id, params.collection_dataset) if params.op_id else (0, 0)
+    result = dict(done=done, total=total, failed_plans=max(0, total - done),
+                  failed_documents=0, failed_tasks=0, failed_dataset_steps=0,
+                  plan_samples=[], step_samples=[])
+    bound = {"ds": params.collection_dataset, "op": params.op_id}
     with get_collection_client(params.collectionname) as client:
         rows = client.query(
-            "SELECT uniqExactIf(hash, hash != '') AS failed_documents, count() AS failed_tasks "
+            "SELECT uniqExactIf(hash, hash != '') AS failed_documents, count() AS failed_tasks, "
+            "countIf(hash = '') AS failed_dataset_steps "
             "FROM processing_errors FINAL WHERE collection_dataset = {ds:String} "
-            "AND op_id = {op:String}",
-            parameters={"ds": params.collection_dataset, "op": params.op_id},
+            "AND op_id = {op:String}", parameters=bound,
         ).result_rows
-        failed_documents = int(rows[0][0])
-        failed_tasks = int(rows[0][1])
-
+        if rows:
+            result.update(failed_documents=int(rows[0][0]), failed_tasks=int(rows[0][1]),
+                          failed_dataset_steps=int(rows[0][2]))
+        if result["failed_plans"]:
+            result["plan_samples"] = [r[0] for r in client.query(
+                "SELECT DISTINCT o.plan_hash FROM operation_plans o "
+                "WHERE o.collection_dataset = {ds:String} AND o.op_id = {op:String} "
+                "AND NOT EXISTS (SELECT 1 FROM processing_plan_finished f "
+                "WHERE f.collection_dataset = o.collection_dataset AND f.plan_hash = o.plan_hash) "
+                "ORDER BY o.plan_hash LIMIT 5", parameters=bound,
+            ).result_rows]
+        if result["failed_dataset_steps"]:
+            result["step_samples"] = [list(r) for r in client.query(
+                "SELECT task_name, substringUTF8(error_logs, 1, 500) FROM processing_errors FINAL "
+                "WHERE collection_dataset = {ds:String} AND op_id = {op:String} "
+                "AND hash = '' "
+                "ORDER BY task_name LIMIT 5", parameters=bound,
+            ).result_rows]
     eta = 0
-    if row and total and done:
+    if total and done:
         elapsed = max(1.0, time.time() - real_start(row).timestamp())
         eta = max(0, int(elapsed / done * (total - done)))
-    detail = json.loads(row.get("detail") or "{}") if row else {}
-    detail.update(failed_documents=failed_documents, failed_tasks=failed_tasks)
+    detail = json.loads(row.get("detail") or "{}")
+    detail.update({key: value for key, value in result.items() if key not in ("done", "total")})
     detail.update(params.selector_counts)
-    changes = {
-        "progress_done": done, "progress_total": total,
-        "eta_seconds": eta, "detail": json.dumps(detail, sort_keys=True),
-    }
+    changes = dict(progress_done=done, progress_total=total, eta_seconds=eta,
+                   detail=json.dumps(detail, sort_keys=True))
     if params.terminal_state:
         if params.terminal_state not in TERMINAL_STATES:
             raise ValueError(f"Invalid terminal state: {params.terminal_state}")
-        changes.update(
-            state=params.terminal_state, finished_at=_now(),
-            error=params.terminal_error[:4000],
-        )
+        changes.update(state=params.terminal_state, finished_at=_now(), error=params.terminal_error[:4000])
     update_operation(params.op_id, base_row=row, **changes)
-    return [done, total]
+    return result
 
 
 #: Tables the purge deletes from and then writes to again, because they record the purge

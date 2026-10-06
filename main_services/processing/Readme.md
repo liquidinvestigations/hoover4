@@ -91,8 +91,8 @@ each date came from. `parse_email` writes structured `email_addresses` rows and 
   plans still rebuilds it, so a rescan of known bytes updates the tree.
 * `index_vfs_structure`, copies it into the collection's `<name>_vfs` Manticore table
   with multi-row REPLACE, then deletes Manticore rows whose `node_key` is not in the
-  current ClickHouse tree. No dataset-wide DELETE first. Once per terminal `ExecutePlans`
-  batch.
+  current ClickHouse tree. It runs once per `ExecutePlans` invocation.
+  Its activity decorator keeps the heartbeat pump active during Manticore calls.
 * `index_text_pages`, one row per text segment plus one synthetic `filename_index` row
   per document carrying its basenames, each row also carrying the document's typed
   attributes (`dates`, `date_min`, `date_max`, `file_size_bytes`, `struct_flags`,

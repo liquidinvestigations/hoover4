@@ -108,6 +108,7 @@ class HandleFoldersParams:
     after_name: str = ""
     container_hash: str = ""
     root_path_prefix: str = ""
+    op_id: str = ""
 
 
 @workflow.defn
@@ -120,7 +121,7 @@ class HandleFolders:
             ListDiskFolderParams(
                 params.collectionname, params.collection_dataset, params.dataset_path,
                 params.folder_path, params.after_name, params.container_hash,
-                params.root_path_prefix,
+                params.root_path_prefix, params.op_id,
             ),
             start_to_close_timeout=timedelta(minutes=50),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -138,7 +139,7 @@ class HandleFolders:
                 ScanFolderRangeParams(ListDiskFolderParams(
                     params.collectionname, params.collection_dataset, params.dataset_path,
                     params.folder_path, after_name, params.container_hash,
-                    params.root_path_prefix,
+                    params.root_path_prefix, params.op_id,
                 ), until_name),
                 start_to_close_timeout=timedelta(hours=6),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
@@ -199,6 +200,7 @@ class IngestDiskDataset:
             collection_dataset=params.collection_dataset,
             dataset_path=params.dataset_path,
             folder_path="/",
+            op_id=params.op_id,
         )
         await workflow.execute_child_workflow(
             HandleFolders.run,
@@ -244,7 +246,7 @@ class IngestAndProcessDataset:
     """
 
     @workflow.run
-    async def run(self, params: IngestDiskDatasetParams) -> str:
+    async def run(self, params: IngestDiskDatasetParams) -> dict | str:
         with workflow.unsafe.imports_passed_through():
             from tasks.P1_compute_plans.activities import ComputePlansParams
             from tasks.P1_compute_plans.workflows import ComputePlans
@@ -290,7 +292,7 @@ class IngestAndProcessDataset:
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             )
-        await workflow.execute_child_workflow(
+        execution_counts = await workflow.execute_child_workflow(
             ExecutePlans.run,
             ExecutePlansParams(
                 collectionname=params.collectionname,
@@ -317,6 +319,7 @@ class IngestAndProcessDataset:
             )
             return {
                 "message": f"ingested and processed {params.collection_dataset}",
+                "execution_counts": execution_counts,
                 "selector_counts": {
                     "errors_before_run": selection.errors_before_run,
                     "selected_errors": selection.selected_errors,

@@ -9,7 +9,13 @@ This directory contains Temporal workflows and activities that implement the mul
 Discovers datasets on disk, enumerates files, and writes the virtual filesystem (VFS) tables:
 
 - Top-level workflow: `IngestDiskDataset`
-- Outputs: `vfs_files` and `vfs_directories` in ClickHouse
+- Outputs: `vfs_files` and `vfs_directories` in ClickHouse.
+
+The scan writes small blob values before blob headers, then writes VFS rows.
+Each insert waits for ClickHouse to store its rows.
+A retry completes interrupted writes without exposing a blob header that has no value.
+An unreadable file records an error and does not stop readable files in the batch.
+Dataset purges delete VFS rows and blob headers before their values.
 
 ### P1 - Compute Plans
 
@@ -17,7 +23,21 @@ Builds processing plans from VFS statistics to chunk work into manageable batche
 
 ### P2 - Execute Plan
 
-Schedules plan chunks for distributed execution and manages temporary download and cleanup steps.
+`ExecutePlans` runs every pending plan round, including plans for extracted members.
+A failed plan does not stop later plans or dataset steps.
+Restart rounds exclude plans that already failed in the operation.
+Continuation rounds include their listed continuation hash.
+
+The first tree build must succeed before plan children start.
+Later dataset steps have six attempts, with exponential intervals from 30 seconds to ten minutes.
+Each failed dataset step stores its complete exception chain in `processing_errors` with an empty hash.
+Cancellation stops further work.
+The workflow returns four integer counts for plans, invocations, failed plans, and failed dataset steps.
+
+After reconciliation, `Operation` reads the plan and error ledgers.
+Failed plans, empty-hash failures, or missing ledger evidence make the operation `errored`.
+Document failures with hashes remain visible beside a `finished` operation.
+The progress sample returns at most five plan hashes and five step errors, each limited to 500 characters.
 `download_plan_files` copies each blob of a plan to `/tmp/hoover4/<collection_dataset>/<plan_hash>/`
 in the worker, and the P3 parse, email and archive activities read that copy. `/tmp/hoover4` is
 the volume `worker_temp_files`, so a recreated worker container keeps the copies of the plans in

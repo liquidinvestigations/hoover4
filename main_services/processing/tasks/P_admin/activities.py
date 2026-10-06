@@ -157,6 +157,8 @@ def purge_dataset_from_clickhouse(params: PurgeDatasetParams) -> str:
 
     with get_collection_client(params.collectionname) as client:
         tables = [row[0] for row in client.query("SHOW TABLES").result_rows]
+        # Remove path and blob headers before their stored values.
+        tables.sort(key=lambda name: ({"vfs_files": 0, "blobs": 1, "blob_values": 3}.get(name, 2), name))
         purged = []
         for table in tables:
             columns = {row[0] for row in client.query(f"DESCRIBE TABLE `{table}`").result_rows}

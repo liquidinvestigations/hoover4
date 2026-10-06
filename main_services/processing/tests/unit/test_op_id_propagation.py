@@ -36,16 +36,9 @@ SOURCE_FILES = (
 )
 
 EXEMPT_COLLECTION_DATASET_DICTS = {
-    ("tasks/P2_execute_plan/workflows.py", 161): "ComputePlans input writes no Error.",
-    ("tasks/P2_execute_plan/workflows.py", 348): "ComputePlans input writes no Error.",
-    ("tasks/P3_parse_files/parse_pdf.py", 257): "The PDF metadata Arrow row is not workflow input.",
-    ("tasks/P3_parse_files/parse_pdf.py", 268): "The PDF page Arrow row is not workflow input.",
-    ("tasks/P3_parse_files/parse_pdf.py", 360): "The image Arrow rows are not workflow input.",
-    ("tasks/P3_parse_files/parse_pdf.py", 369): "The link Arrow rows are not workflow input.",
-    ("tasks/P_ops/workflows.py", 312): "Location refresh does not write an Error.",
-    ("tasks/P_ops/workflows.py", 380): "ComputePlans input writes no Error.",
-    ("tasks/P_ops/workflows.py", 484): "PurgeDataset input writes no Error.",
+    "ComputePlans", "RefreshDocumentLocations", "PurgeDataset",
 }
+
 
 
 def _called_name(node: ast.expr) -> str | None:
@@ -86,20 +79,24 @@ def test_operation_inputs_pass_op_id_to_error_writer_workflows():
 
 
 def test_collection_dataset_dicts_are_operation_inputs_or_listed_exceptions():
-    seen_exemptions = set()
     missing = []
     for relative_path in SOURCE_FILES:
         tree = ast.parse((PROCESSING_ROOT / relative_path).read_text())
+        parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
         for node in ast.walk(tree):
             if not isinstance(node, ast.Dict):
                 continue
             keys = _dict_keys(node)
             if "collection_dataset" not in keys or "op_id" in keys:
                 continue
-            location = (relative_path, node.lineno)
-            if location in EXEMPT_COLLECTION_DATASET_DICTS:
-                seen_exemptions.add(location)
-                continue
+            parent = parents.get(node)
+            if isinstance(parent, ast.Call):
+                if _called_name(parent.func) == "table":
+                    continue
+                target = parent.args[0] if parent.args else None
+                name = target.value if isinstance(target, ast.Constant) else (
+                    _called_name(target.value) if isinstance(target, ast.Attribute) else "")
+                if name in EXEMPT_COLLECTION_DATASET_DICTS:
+                    continue
             missing.append(f"{relative_path}:{node.lineno}")
     assert not missing, "collection dataset dicts without op_id: " + ", ".join(missing)
-    assert seen_exemptions == set(EXEMPT_COLLECTION_DATASET_DICTS)

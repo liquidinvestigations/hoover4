@@ -2,7 +2,7 @@
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError
+from temporalio.exceptions import ActivityError, ApplicationError
 from datetime import timedelta
 import dataclasses
 import traceback
@@ -31,6 +31,7 @@ MAX_PLAN_DRIVERS = 8
 
 # Import activities and sibling workflows through the sandbox
 with workflow.unsafe.imports_passed_through():
+    from tasks.failure_chain import is_cancellation, failure_message
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P3_parse_files.batch_runner import (
         FILE_BASE_SECONDS,
@@ -67,6 +68,7 @@ with workflow.unsafe.imports_passed_through():
         ensure_temp_dir_exists,
         record_processing_errors,
         ListPendingPlansParams,
+        RecordProcessingErrorsParams,
         GetPlanItemsMetadataParams,
         DownloadPlanFilesParams,
         CleanupPlanDirParams,
@@ -75,7 +77,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P1_compute_plans.activities import count_new_blobs, CountNewBlobsParams
     from tasks.P1_compute_plans.workflows import ComputePlans
-    from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id
+    from tasks.P3_parse_files.parse_common import record_errors_from_results, source_execution_id, error_identity
     from tasks.P3_parse_files.document_dates import (
         resolve_document_dates,
         ResolveDocumentDatesParams,
@@ -113,22 +115,19 @@ class ExecutePlansParams:
     starting_plan_hash: str | None = None
     recursivity_depth: int | None = None
     op_id: str = ""
+    exclude_failed_of_op: bool = False
 
 
 @workflow.defn
 class ExecutePlans:
-    """Workflow that enumerates pending plans and runs them in batches."""
+    """Run every plan round and return bounded failure counts."""
+
     @workflow.run
-    async def run(self, params: ExecutePlansParams) -> str:
-        recursivity_depth: int = int(params.recursivity_depth or 0)
-
-        if recursivity_depth > 100:
-            from temporalio.exceptions import ApplicationError
-            raise ApplicationError(
-                f"recursivity_depth too large: {recursivity_depth}", non_retryable=True
-            )
-
-        # Ensure temp dir exists
+    async def run(self, params: ExecutePlansParams) -> dict[str, int]:
+        depth = int(params.recursivity_depth or 0)
+        if depth > 100:
+            raise ApplicationError(f"recursivity_depth too large: {depth}", non_retryable=True)
+        counts = dict(plans_run=0, invocations=1, failed_plans=0, failed_dataset_steps=0)
         await workflow.execute_activity(
             ensure_temp_dir_exists,
             EnsureTempDirExistsParams(base_temp_dir=params.base_temp_dir),
@@ -136,21 +135,121 @@ class ExecutePlans:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
-
-        # 1) Fetch up to 1001 plan hashes (to know if we need to execute_as_new)
         plan_hashes = await workflow.execute_activity(
             list_pending_plans,
-            ListPendingPlansParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, starting_plan_hash=(params.starting_plan_hash or ""), op_id=params.op_id),
+            ListPendingPlansParams(
+                params.collectionname, params.collection_dataset,
+                params.starting_plan_hash, op_id=params.op_id, exclude_failed_of_op=params.exclude_failed_of_op,
+            ),
             start_to_close_timeout=timedelta(minutes=15),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
+        continuation_hash = plan_hashes[1000] if len(plan_hashes) > 1000 else None
+        plan_hashes = plan_hashes[:1000]
+        counts["plans_run"] = len(plan_hashes)
+        vfs_params = BuildVfsNodesParams(params.collectionname, params.collection_dataset)
+        if plan_hashes:
+            # Plan writers need the tree before they build document metadata.
+            await workflow.execute_activity(
+                build_vfs_nodes, vfs_params,
+                start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+                task_queue=INDEXING_TASK_QUEUE,
+            )
 
-        if not plan_hashes:
-            # Check if there are new unplanned blobs; if so, compute more plans and restart
+            def plan_factory(plan_hash):
+                return lambda: workflow.execute_child_workflow(
+                    ExecuteSinglePlan.run,
+                    ExecuteSinglePlanParams(
+                        params.collectionname, params.collection_dataset, plan_hash,
+                        params.base_temp_dir, op_id=params.op_id,
+                    ),
+                    id=f"execute-plan-{params.collection_dataset}-{plan_hash}",
+                    task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(params.collection_dataset),
+                )
+
+            results = await run_with_window([plan_factory(ph) for ph in plan_hashes], 16)
+            for result in results:
+                if isinstance(result, BaseException):
+                    if is_cancellation(result):
+                        raise result
+                    counts["failed_plans"] += 1
+
+        async def run_dataset_step(activity_fn, step_params, minutes, queue=INDEXING_TASK_QUEUE):
+            started = workflow.now()
+            try:
+                await workflow.execute_activity(
+                    activity_fn, step_params,
+                    start_to_close_timeout=timedelta(minutes=minutes),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(
+                        maximum_attempts=6, initial_interval=timedelta(seconds=30),
+                        backoff_coefficient=2, maximum_interval=timedelta(minutes=10),
+                    ),
+                    task_queue=queue,
+                )
+            except Exception as exc:
+                if is_cancellation(exc):
+                    raise
+                counts["failed_dataset_steps"] += 1
+                task_name = f"dataset_step:{activity_fn.__name__}"
+                run_id = workflow.info().run_id
+                source_id = source_execution_id(run_id, task_name, 0)
+                try:
+                    await workflow.execute_activity(
+                        record_processing_errors,
+                        RecordProcessingErrorsParams(params.collectionname, [{
+                            "collection_dataset": params.collection_dataset,
+                            "hash": "", "task_name": task_name, "op_id": params.op_id,
+                            "error_logs": failure_message(exc),
+                            "run_time_ms": int((workflow.now() - started).total_seconds() * 1000),
+                            "workflow_run_id": run_id,
+                            "error_identity": error_identity(source_id, task_name, params.collection_dataset, ""),
+                        }]),
+                        start_to_close_timeout=timedelta(minutes=5),
+                        heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                        retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    )
+                except Exception as record_exc:
+                    if is_cancellation(record_exc):
+                        raise
+                    workflow.logger.error("Failed to store %s: %s", task_name, failure_message(record_exc))
+
+        # Refresh dataset indexes before a continuation or restart begins.
+        await run_dataset_step(build_vfs_nodes, vfs_params, 30)
+        if plan_hashes:
+            await run_dataset_step(
+                resolve_canonical_file_type,
+                ResolveCanonicalFileTypeParams(params.collectionname, params.collection_dataset, []), 30,
+            )
+        await run_dataset_step(
+            refresh_stale_document_locations,
+            RefreshDocumentLocationsParams(params.collectionname, params.collection_dataset, []), 45,
+        )
+        await run_dataset_step(index_vfs_structure, vfs_params, 30)
+        await run_dataset_step(index_entity_terms, vfs_params, 30)
+        if plan_hashes:
+            await run_dataset_step(
+                build_email_graph,
+                BuildEmailGraphParams(params.collectionname, params.collection_dataset),
+                60, EMAIL_GRAPH_TASK_QUEUE,
+            )
+
+        child_params = None
+        child_id = ""
+        if continuation_hash:
+            child_params = dataclasses.replace(
+                params, starting_plan_hash=continuation_hash, recursivity_depth=depth + 1,
+                exclude_failed_of_op=False,
+            )
+            child_id = f"execute-plans-{params.collection_dataset}-cont-{continuation_hash}"
+        else:
             count = await workflow.execute_activity(
                 count_new_blobs,
-                CountNewBlobsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
+                CountNewBlobsParams(params.collectionname, params.collection_dataset),
                 start_to_close_timeout=timedelta(minutes=15),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
@@ -163,215 +262,25 @@ class ExecutePlans:
                     task_queue="processing-common-queue",
                     search_attributes=dataset_search_attributes(params.collection_dataset),
                 )
-                # execute_as_new with no starting hash
-                return await workflow.execute_child_workflow(
-                    ExecutePlans.run,
-                    {
-                        "collectionname": params.collectionname,
-                        "collection_dataset": params.collection_dataset,
-                        "starting_plan_hash": None,
-                        "base_temp_dir": params.base_temp_dir,
-                        "recursivity_depth": recursivity_depth + 1,
-                        "op_id": params.op_id,
-                    },
-                    id=f"execute-plans-{params.collection_dataset}-restart",
-                    task_queue="processing-common-queue",
-                    search_attributes=dataset_search_attributes(params.collection_dataset),
+                child_params = dataclasses.replace(
+                    params, starting_plan_hash=None, recursivity_depth=depth + 1,
+                    exclude_failed_of_op=True,
                 )
-            log.info("[P2] No plans to execute; refreshing locations if they changed")
-
-        vfs_params = BuildVfsNodesParams(
-            collectionname=params.collectionname,
-            collection_dataset=params.collection_dataset,
-        )
-        continuation_hash = None
-
-        if plan_hashes:
-            # 2) If more than 1000, keep the 101st for continuation
-            if len(plan_hashes) > 1000:
-                continuation_hash = plan_hashes[1000]
-                plan_hashes = plan_hashes[:1000]
-                log.info(f"[P2] Continuation hash: {continuation_hash}")
-
-            # Dataset-scoped tree, once per ExecutePlans invocation, before any per-plan
-            # writer. document_metadata builds ancestor closures from ClickHouse vfs_nodes,
-            # so those writers must not run against an empty tree. Nested extraction
-            # restarts ExecutePlans after ComputePlans, and that next invocation rebuilds
-            # once for the new blobs.
-            #
-            # Canonical file type is NOT here. It reads `file_types`, which P3 writes inside
-            # the per-plan children below, so a pass at this point reads an empty table on a
-            # first ingest and writes nothing at all. Each plan resolves its own documents,
-            # and a dataset-wide sweep after the children catches the ones whose evidence
-            # crossed a plan boundary.
-            await workflow.execute_activity(
-                build_vfs_nodes,
-                vfs_params,
-                start_to_close_timeout=timedelta(minutes=30),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=2),
-                task_queue=INDEXING_TASK_QUEUE,
-            )
-
-            # 3) Run per-plan child workflows, 16 in flight. Plans differ in size by orders
-            # of magnitude, so a barrier here costs the largest plan in each group of 16.
-            CONCURRENCY = 16
-
-            def _plan_factory(ph):
-                return lambda: workflow.execute_child_workflow(
-                    ExecuteSinglePlan.run,
-                    {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset, "plan_hash": ph, "base_temp_dir": params.base_temp_dir, "op_id": params.op_id},
-                    id=f"execute-plan-{params.collection_dataset}-{ph}",
-                    task_queue="processing-common-queue",
-                    search_attributes=dataset_search_attributes(params.collection_dataset),
-                )
-
-            plan_results = await run_with_window(
-                [_plan_factory(ph) for ph in plan_hashes], CONCURRENCY)
-            for res in plan_results:
-                if isinstance(res, Exception):
-                    raise res
-
-        # Rebuild the tree over current vfs_files, rewrite page-row folder
-        # attributes for documents whose locations changed, then copy the tree
-        # into Manticore. This runs when the invocation executed plans and when it
-        # did not: a disk rescan of known bytes, and an archive member whose content
-        # already had a blob, add vfs_files rows without adding a plan.
-        #
-        # This sits BEFORE the continuation and restart returns on purpose. Placing
-        # it after them means the tree is only ever indexed by whichever invocation
-        # happens to be terminal, so a child that raises -- or one that finds no
-        # plans left to run -- leaves the browser showing the previous ingest.
-        await workflow.execute_activity(
-            build_vfs_nodes,
-            vfs_params,
-            start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=INDEXING_TASK_QUEUE,
-        )
-        if plan_hashes:
-            # The dataset-wide sweep, with the children's detections and evidence now all
-            # present. Each plan already resolved its own documents; this catches a document
-            # whose evidence arrived in a different plan from its detections, and it is what
-            # makes the empty-archive demotion see a container's real member count.
-            await workflow.execute_activity(
-                resolve_canonical_file_type,
-                ResolveCanonicalFileTypeParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    item_hashes=[],
-                ),
-                start_to_close_timeout=timedelta(minutes=30),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=2),
-                task_queue=INDEXING_TASK_QUEUE,
-            )
-        await workflow.execute_activity(
-            refresh_stale_document_locations,
-            RefreshDocumentLocationsParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                item_hashes=[],
-            ),
-            start_to_close_timeout=timedelta(minutes=45),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=INDEXING_TASK_QUEUE,
-        )
-        await workflow.execute_activity(
-            index_vfs_structure,
-            vfs_params,
-            start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=INDEXING_TASK_QUEUE,
-        )
-        # The facet-term index, alongside the structure index and for the same reason:
-        # it is one table per collection rebuilt from ClickHouse, and it is what lets the
-        # filter pane's search boxes ask the corpus instead of the buckets on screen.
-        await workflow.execute_activity(
-            index_entity_terms,
-            vfs_params,
-            start_to_close_timeout=timedelta(minutes=30),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-            task_queue=INDEXING_TASK_QUEUE,
-        )
-        # The email connection graph, once for each invocation that indexed plans, after
-        # every plan of the invocation has indexed. It sits before the continuation and
-        # restart returns for the reason the comment above gives. It reads the whole
-        # collection, so an invocation that indexed no plan skips it. Its queue has one
-        # process with one slot, because two runs on one collection can delete each
-        # other's rows.
-        if plan_hashes:
-            await workflow.execute_activity(
-                build_email_graph,
-                BuildEmailGraphParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                ),
-                start_to_close_timeout=timedelta(minutes=60),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=2),
-                task_queue=EMAIL_GRAPH_TASK_QUEUE,
-            )
-
-        if continuation_hash:
-            # Use execute_as_new semantics by re-invoking ourselves fresh via child
-            return await workflow.execute_child_workflow(
-                ExecutePlans.run,
-                {
-                    "collectionname": params.collectionname,
-                    "collection_dataset": params.collection_dataset,
-                    "starting_plan_hash": continuation_hash,
-                    "base_temp_dir": params.base_temp_dir,
-                    "recursivity_depth": recursivity_depth + 1,
-                    "op_id": params.op_id,
-                },
-                id=f"execute-plans-{params.collection_dataset}-cont-{continuation_hash}",
+                child_id = f"execute-plans-{params.collection_dataset}-restart-{depth + 1}"
+        if child_params:
+            child_counts = await workflow.execute_child_workflow(
+                ExecutePlans.run, child_params, id=child_id,
                 task_queue="processing-common-queue",
                 search_attributes=dataset_search_attributes(params.collection_dataset),
             )
-
-        # After finishing this batch, check for newly created blobs -> compute new plans and restart
-        count = await workflow.execute_activity(
-            count_new_blobs,
-            CountNewBlobsParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset),
-            start_to_close_timeout=timedelta(minutes=15),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-        )
-        if count:
-            await workflow.execute_child_workflow(
-                ComputePlans.run,
-                {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset},
-                id=f"compute-plans-{params.collection_dataset}",
-                task_queue="processing-common-queue",
-                search_attributes=dataset_search_attributes(params.collection_dataset),
+            for key in counts:
+                counts[key] += child_counts[key]
+        if not params.op_id and depth == 0 and (counts["failed_plans"] or counts["failed_dataset_steps"]):
+            raise ApplicationError(
+                f"{counts['failed_plans']} plans and {counts['failed_dataset_steps']} dataset steps failed. "
+                "Every round of plans ran.", non_retryable=True,
             )
-            try:
-                return await workflow.execute_child_workflow(
-                    ExecutePlans.run,
-                    {
-                        "collectionname": params.collectionname,
-                        "collection_dataset": params.collection_dataset,
-                        "starting_plan_hash": None,
-                        "base_temp_dir": params.base_temp_dir,
-                        "recursivity_depth": recursivity_depth + 1,
-                        "op_id": params.op_id,
-                    },
-                    id=f"execute-plans-{params.collection_dataset}-restart-{recursivity_depth+1}",
-                    task_queue="processing-common-queue",
-                    search_attributes=dataset_search_attributes(params.collection_dataset),
-                )
-            except Exception as e:
-                log.error(f"[P2] Error executing restart plans: {e}")
-                return f"error executing restart plans: {e}"
-
-        if not plan_hashes:
-            return "no plans"
-        return f"executed {len(plan_hashes)} plans"
+        return counts
 
 
 @dataclass
@@ -858,10 +767,12 @@ class ProcessItemsBatched:
                 op_id=params.op_id,
                 default_task_name="detector_error_unknown",
             )
-        except Exception:
-            # Best effort: a detector that failed must not also fail the parse. The log
-            # line keeps the loss visible.
-            log.exception("[P3] failed to record detector errors for %s group of plan %s",
+        except Exception as exc:
+            if is_cancellation(exc):
+                raise
+            # The error log records the failed write without stopping parser capture.
+            log.exception("[P3] failed to record up to %d detector errors for %s group of plan %s",
+                          sum(isinstance(result, Exception) for result in detector_inputs),
                           params.collection_dataset, params.plan_hash)
 
         parser_inputs: List[Any] = []

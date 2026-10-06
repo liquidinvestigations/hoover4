@@ -140,7 +140,7 @@ class ChangeOcrLanguages:
     """
 
     @workflow.run
-    async def run(self, params: "ApplyOcrLanguagesParams") -> str:
+    async def run(self, params: "ApplyOcrLanguagesParams") -> dict:
         async def progress(stage: str, extra: dict | None = None) -> None:
             await workflow.execute_activity(
                 report_ocr_language_progress,
@@ -168,7 +168,7 @@ class ChangeOcrLanguages:
             # The settings are already what was asked for. Saying so is better than
             # re-running the corpus to reach the state it is already in.
             await progress("no change")
-            return "no change"
+            return {"execution_counts": {}}
 
         reopened = await workflow.execute_activity(
             reopen_plans_for_ocr_change,
@@ -183,12 +183,13 @@ class ChangeOcrLanguages:
         )
         await progress("reopened plans", {"plans": reopened})
 
+        execution_counts = {}
         if reopened:
             # The re-run carries the whole downstream chain with it. Parse, OCR, NER,
             # chunk+embed and index are all stages of ExecutePlans, so "re-run" and
             # "reindex" in the spec are one call, not two.
             await progress("reprocessing")
-            await workflow.execute_child_workflow(
+            execution_counts = await workflow.execute_child_workflow(
                 ExecutePlans.run,
                 ExecutePlansParams(
                     collectionname=params.collectionname,
@@ -238,7 +239,7 @@ class ChangeOcrLanguages:
             "removed": diff.removed_variants,
             "purged": purged,
         })
-        return "done"
+        return {"execution_counts": execution_counts}
 
 
 @workflow.defn

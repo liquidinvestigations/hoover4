@@ -112,11 +112,15 @@ def _stage_order() -> list[str]:
         if not (isinstance(node, ast.ClassDef) and node.name == "ExecuteSinglePlan"):
             continue
         for child in ast.walk(node):
-            if not (isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute)):
-                continue
-            if not child.args:
+            if not isinstance(child, ast.Call) or not child.args:
                 continue
             target = child.args[0]
+            if isinstance(child.func, ast.Name) and child.func.id == "run_dataset_step":
+                if isinstance(target, ast.Name):
+                    found.append((child.lineno, target.id))
+                continue
+            if not isinstance(child.func, ast.Attribute):
+                continue
             if child.func.attr == "execute_child_workflow":
                 if isinstance(target, ast.Attribute) and target.attr == "run" \
                         and isinstance(target.value, ast.Name):
@@ -153,11 +157,15 @@ def _execute_targets(source: str, class_name: str) -> list[tuple[int, str]]:
         if not (isinstance(node, ast.ClassDef) and node.name == class_name):
             continue
         for child in ast.walk(node):
-            if not (isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute)):
-                continue
-            if not child.args:
+            if not isinstance(child, ast.Call) or not child.args:
                 continue
             target = child.args[0]
+            if isinstance(child.func, ast.Name) and child.func.id == "run_dataset_step":
+                if isinstance(target, ast.Name):
+                    found.append((child.lineno, target.id))
+                continue
+            if not isinstance(child.func, ast.Attribute):
+                continue
             if child.func.attr == "execute_child_workflow":
                 if isinstance(target, ast.Attribute) and target.attr == "run" \
                         and isinstance(target.value, ast.Name):
@@ -255,7 +263,7 @@ def test_execute_plans_refreshes_locations_before_returning_no_plans():
     )
     no_plans_return = next(
         n for n, text in enumerate(source.splitlines(), start=1)
-        if text.strip() == 'return "no plans"'
+        if text.strip() == "return counts"
     )
     assert refresh_line < no_plans_return, (
         f"refresh_stale_document_locations (line {refresh_line}) must precede "
@@ -299,11 +307,11 @@ def test_execute_plans_builds_the_email_graph_last_on_its_own_queue():
     tree = ast.parse(source)
     call = next(
         node for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "execute_activity" and node.args
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "run_dataset_step" and node.args
         and isinstance(node.args[0], ast.Name) and node.args[0].id == "build_email_graph"
     )
-    queue = next(kw.value for kw in call.keywords if kw.arg == "task_queue")
+    queue = call.args[3]
     assert isinstance(queue, ast.Name) and queue.id == "EMAIL_GRAPH_TASK_QUEUE", (
         "build_email_graph must run on EMAIL_GRAPH_TASK_QUEUE"
     )

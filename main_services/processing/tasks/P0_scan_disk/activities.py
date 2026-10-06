@@ -97,6 +97,7 @@ class ListDiskFolderParams:
     after_name: str = ""
     container_hash: str = ""
     root_path_prefix: str = ""
+    op_id: str = ""
 
 
 def list_disk_folder(params: ListDiskFolderParams) -> Dict[str, Any]:
@@ -293,7 +294,7 @@ def scan_folder_range(params: ScanFolderRangeParams) -> RangeResult:
     listed = _range_entries(
         ListDiskFolderParams(
             folder.collectionname, folder.collection_dataset, folder.dataset_path,
-            folder.folder_path, folder.after_name,
+            folder.folder_path, folder.after_name, op_id=folder.op_id,
         ),
         params.until_name,
     )
@@ -325,11 +326,12 @@ def scan_folder_range(params: ScanFolderRangeParams) -> RangeResult:
             root_path_prefix=folder.root_path_prefix,
             file_mtimes=[file["mtime"] for file in batch],
             file_sizes=[file["size"] for file in batch],
+            op_id=folder.op_id,
         ))
         files_ingested += len(batch)
         # Through send_heartbeat, so that inside the member scan of a group the batch
         # detail stays the first detail. The cursor then is not details[0], and a retry
-        # scans its range from the start, which is safe because every write is idempotent.
+        # scans its range from the start. Values precede blob headers, then VFS rows.
         send_heartbeat({"last_file_name": batch[-1]["path"].rsplit("/", 1)[-1]})
     return RangeResult(dirs, files_ingested, len(dirs))
 
@@ -422,6 +424,7 @@ class IngestFilesBatchParams:
     file_paths: List[str]
     container_hash: str = ""
     root_path_prefix: str = ""
+    op_id: str = ""
     #: Positionally aligned with ``file_paths``; empty when the caller has no stat data.
     file_mtimes: List[int] = None  # type: ignore[assignment]
     #: Positionally aligned with ``file_paths``; empty when the caller has no stat data.
@@ -542,12 +545,41 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
         else:
             unchanged.add(rel)
 
+    errors = []
+    unreadable_known = []
+
+    def unreadable(rel: str, exc: OSError) -> None:
+        from tasks.failure_chain import failure_message
+        info = activity.info() if activity.in_activity() else None
+        source = f"{info.workflow_run_id}:{info.activity_id}" if info else dataset_path
+        if _prefixed(rel) in known:
+            unreadable_known.append(known[_prefixed(rel)])
+        errors.append({
+            "collection_dataset": collection_dataset, "hash": "",
+            "task_name": "ingest_files_batch", "op_id": params.op_id,
+            "workflow_run_id": info.workflow_run_id if info else "",
+            "error_identity": hashlib.sha256(f"{source}:{rel}".encode()).hexdigest(),
+            "error_logs": f"Cannot read {rel}. {failure_message(exc)}",
+        })
+
+    def record_unreadable() -> None:
+        if errors:
+            from tasks.P2_execute_plan.activities import record_processing_errors, RecordProcessingErrorsParams
+            record_processing_errors(RecordProcessingErrorsParams(params.collectionname, errors))
+            if unreadable_known:
+                _touch_vfs_rows(params.collectionname, collection_dataset, container_hash, unreadable_known)
+                unreadable_known.clear()
+
     # The rehash. A file whose content is the same after all only needs its row touched,
     # so the scan that found it counts as authoritative for that path and the deletion
     # sweep does not tombstone it.
     touched: List[str] = []
     for rel in maybe_changed:
-        current_hash, _ = _compute_hashes_streaming(_rel_to_abs(dataset_path, rel))
+        try:
+            current_hash, _ = _compute_hashes_streaming(_rel_to_abs(dataset_path, rel))
+        except OSError as exc:
+            unreadable(rel, exc)
+            continue
         if current_hash["sha3_256"] != known[_prefixed(rel)]["hash"]:
             todo_paths.append(rel)
         else:
@@ -566,6 +598,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
 
     skipped = len(unchanged) + len(touched)
     if not todo_paths:
+        record_unreadable()
         return f"0 files ({skipped} unchanged)"
 
     # 2) Compute metadata for remaining files
@@ -578,16 +611,27 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     # MIME detection moved to P3 parse_mime; keep only structural metadata here
     abs_paths: List[str] = []
 
+    readable_paths = []
     for rel in todo_paths:
         abs_p = _rel_to_abs(dataset_path, rel)
+        try:
+            hm, size = _compute_hashes_streaming(abs_p)
+        except OSError as exc:
+            unreadable(rel, exc)
+            continue
+        readable_paths.append(rel)
         abs_paths.append(abs_p)
-        hm, size = _compute_hashes_streaming(abs_p)
         hashes.append(hm["sha3_256"])  # primary
         hashes_md5.append(hm["md5"])
         hashes_sha1.append(hm["sha1"])
         hashes_sha256.append(hm["sha256"])
         sizes.append(size)
         # Defer MIME/type detection to P3
+
+    todo_paths = readable_paths
+    record_unreadable()
+    if not todo_paths:
+        return f"0 files ({len(errors)} unreadable)"
 
     # 3) Dedup blobs and blob_values
     # The collection's own bucket. Named once here rather than at each upload so that a
@@ -658,12 +702,18 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
             hash_to_size[h] = s
             hash_to_abs[h] = ap
 
+    unreadable_hashes = set()
     for h in new_blob_hashes:
         size = hash_to_size[h]
         if size <= SMALL_BLOB_THRESHOLD_BYTES:
             if h not in existing_blob_values:
-                with open(hash_to_abs[h], "rb") as f:
-                    data = f.read()
+                try:
+                    with open(hash_to_abs[h], "rb") as f:
+                        data = f.read()
+                except OSError as exc:
+                    unreadable(todo_paths[hashes.index(h)], exc)
+                    unreadable_hashes.add(h)
+                    continue
                 bv_hash.append(h)
                 bv_len.append(size)
                 bv_val.append(data)
@@ -705,8 +755,27 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
             blob_rows_s3.append(s3_uri)
             blob_rows_inch.append(0)
 
-    # 5) Insert blobs and blob_values
+    if unreadable_hashes:
+        record_unreadable()
+        keep = [index for index, item_hash in enumerate(hashes) if item_hash not in unreadable_hashes]
+        todo_paths, hashes, hashes_md5, hashes_sha1, hashes_sha256, sizes = (
+            [values[index] for index in keep]
+            for values in (todo_paths, hashes, hashes_md5, hashes_sha1, hashes_sha256, sizes)
+        )
+        if not todo_paths:
+            return f"0 files ({len(errors)} unreadable)"
+
+    # Stored values must finish before their blob headers become visible.
     with get_collection_client(params.collectionname) as client:
+        if bv_hash:
+            table_bv = pa.table({
+                "collection_dataset": pa.array([collection_dataset] * len(bv_hash), type=pa.string()),
+                "blob_hash": pa.array(bv_hash, type=pa.string()),
+                "blob_length": pa.array(bv_len, type=pa.uint64()),
+                "blob_value": pa.array(bv_val, type=pa.binary()),
+            })
+            client.insert_arrow("blob_values", table_bv)
+
         if blob_rows_hash:
             table_blobs = pa.table({
                 "collection_dataset": pa.array(blob_rows_cd, type=pa.string()),
@@ -719,15 +788,6 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
                 "stored_in_clickhouse": pa.array(blob_rows_inch, type=pa.uint8()),
             })
             client.insert_arrow("blobs", table_blobs)
-
-        if bv_hash:
-            table_bv = pa.table({
-                "collection_dataset": pa.array([collection_dataset] * len(bv_hash), type=pa.string()),
-                "blob_hash": pa.array(bv_hash, type=pa.string()),
-                "blob_length": pa.array(bv_len, type=pa.uint64()),
-                "blob_value": pa.array(bv_val, type=pa.binary()),
-            })
-            client.insert_arrow("blob_values", table_bv)
 
     # 6) MIME/type insertion moved to P3; no file_types writes here
 

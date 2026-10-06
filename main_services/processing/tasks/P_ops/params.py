@@ -27,6 +27,7 @@ class OperationParams:
     plan_cursor: list[str] = field(default_factory=list)
     plan_total: int = 0
     plan_done: int = 0
+    plan_failed: int = 0
     clear_complete: bool = False
 @dataclass
 class OperationStateParams:
@@ -57,6 +58,7 @@ class RebuildPlansParams:
     cursor_dataset: str = ""
     cursor_hash: str = ""
     completed: int = 0
+    failed: int = 0
 
 
 @dataclass

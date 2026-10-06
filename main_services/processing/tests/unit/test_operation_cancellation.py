@@ -107,7 +107,7 @@ def test_final_sample_writes_counts_with_terminal_state(monkeypatch):
             return False
 
         def query(self, *_args, **_kwargs):
-            return SimpleNamespace(result_rows=[(2, 3)])
+            return SimpleNamespace(result_rows=[(2, 3, 0)])
 
     row = {
         "state": "running", "row_version": 10,
@@ -139,7 +139,8 @@ def test_progress_sample_stops_on_terminal_row(monkeypatch):
     })
     monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name:
                         pytest.fail("terminal sample reached collection database"))
-    assert sample_dataset_progress(DatasetProgressParams("op", "c", "d")) == [1, 2]
+    result = sample_dataset_progress(DatasetProgressParams("op", "c", "d"))
+    assert (result["done"], result["total"]) == (1, 2)
 
 
 def _pass_the_readiness_gate(monkeypatch) -> list:
@@ -271,10 +272,10 @@ def test_dedicated_retry_reaches_fourth_attempt(monkeypatch, failed_activity):
         return [0, 1]
 
     async def child_call(*_args, **_kwargs):
-        return "completed"
+        return dict(plans_run=1, invocations=1)
 
-    async def sample_counts(_self, _params, _counts):
-        return None
+    async def sample_counts(_self, _params, _counts, _execution):
+        return {"failed_documents": 0}
 
     monkeypatch.setattr(workflows.workflow, "execute_activity", activity_call)
     monkeypatch.setattr(workflows.workflow, "execute_child_workflow", child_call)
@@ -283,7 +284,7 @@ def test_dedicated_retry_reaches_fourth_attempt(monkeypatch, failed_activity):
         op_id="op", kind="retry_failed_files", collectionname="c",
         collection_dataset="d", detail={"hash": "hash"},
     )
-    assert asyncio.run(workflows.Operation()._retry_failed_files(params)) == "completed"
+    assert asyncio.run(workflows.Operation()._retry_failed_files(params)) == "Executed 1 plans in 1 invocations. The operation kept 0 document failures."
     assert attempts[failed_activity] == 4
 
 

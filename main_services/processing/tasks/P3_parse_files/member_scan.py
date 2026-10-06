@@ -40,7 +40,7 @@ CONTAINER_FOLDER_MISSING = "ContainerFolderMissing"
 
 
 def scan_folder_tree(collectionname: str, collection_dataset: str, dataset_path: str,
-                     container_hash: str) -> None:
+                     container_hash: str, op_id: str = "") -> None:
     """Scan every folder under `dataset_path` as members of `container_hash`.
 
     This is the loop of `HandleFolders.run`, with the same two activity functions and the
@@ -55,7 +55,7 @@ def scan_folder_tree(collectionname: str, collection_dataset: str, dataset_path:
         while True:
             plan = plan_folder_ranges(ListDiskFolderParams(
                 collectionname, collection_dataset, dataset_path, folder_path,
-                after_name, container_hash, "",
+                after_name, container_hash, "", op_id,
             ))
             edges = [after_name] + list(plan.boundaries)
             if not plan.more_after:
@@ -63,7 +63,7 @@ def scan_folder_tree(collectionname: str, collection_dataset: str, dataset_path:
             for start, until in zip(edges[:-1], edges[1:]):
                 result = scan_folder_range(ScanFolderRangeParams(ListDiskFolderParams(
                     collectionname, collection_dataset, dataset_path, folder_path,
-                    start, container_hash, "",
+                    start, container_hash, "", op_id,
                 ), until))
                 pending.extend(result.subfolders)
             if not plan.more_after:
@@ -104,7 +104,7 @@ def scan_container_folders(params: ScanContainerFoldersParams) -> BatchResult:
                 type=CONTAINER_FOLDER_MISSING, non_retryable=True)
         log.info("[P3] Scanning container folder %s", folder.out_dir)
         scan_folder_tree(params.collectionname, params.collection_dataset,
-                         folder.out_dir, folder.container_hash)
+                         folder.out_dir, folder.container_hash, params.op_id)
         cleanup_temp_dir(CleanupTempDirParams(out_dir=folder.out_dir))
         return {"status": "scanned"}
 

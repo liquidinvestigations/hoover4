@@ -85,8 +85,8 @@ def test_rebuild_waits_for_every_child_and_reports_a_failure(monkeypatch):
         release.set()
         try:
             await task
-        except RuntimeError as exc:
-            assert "vector child failed" in str(exc)
+        except workflows.ApplicationError as exc:
+            assert "1 index plans failed" in str(exc)
         else:
             raise AssertionError("failed vector child did not fail the rebuild")
 
