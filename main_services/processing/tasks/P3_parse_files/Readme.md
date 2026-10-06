@@ -286,7 +286,7 @@ Every heartbeat of a stage activity carries the batch detail first. The next att
 restores the finished files from it and does not run them again. A file that is in
 progress when 2 attempts end gets a failed result of type `StageAttemptLost`. A stage
 activity has no attempt limit, and the runner fails it with `StageNoProgress` after 5
-consecutive attempts that finish no new file.
+consecutive attempts that finish no new file or busy wait.
 
 ## A container that extracted nothing is not scanned
 
@@ -370,3 +370,15 @@ Both paths sit behind the same size gate: an image whose shorter edge is under
 `MIN_OCR_IMAGE_PX` (`tasks/text_sources.py`) records `ocr_skipped_too_small` and is never
 sent to an engine. Icons, bullets, rules and signature scraps are most of the images in a
 PDF corpus and none of them carries text.
+
+## Busy services
+
+A busy response delays another request without consuming a file try.
+The runner applies the service delay within 5 to 120 seconds.
+New files run before busy retries. Ordinary due retries retain their priority.
+Each activity shares one busy budget, half its stage timeout from the first busy response.
+Heartbeat details preserve that time and each waiting file across worker restarts.
+A busy wait must leave one try budget for each unfinished file before the attempt deadline.
+The runner reports `ServiceStayedBusy` when either limit ends the wait.
+A busy retry interrupted by worker loss does not consume the file's lost-attempt limit.
+The searchable PDF client uses a read timeout at least 60 seconds below its minimum file try budget.

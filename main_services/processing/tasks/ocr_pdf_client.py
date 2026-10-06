@@ -22,9 +22,8 @@ from tasks.text_sources import ENGINE_EASYOCR, ENGINE_TESSERACT
 
 log = logging.getLogger(__name__)
 
-#: Assembling a 300-page scan is 300 OCR calls behind one request. The service's own
-#: queue and per-page timeout are the real guards; this bounds the wait for a healthy one.
-OCR_PDF_READ_TIMEOUT = float(os.getenv("OCR_PDF_READ_TIMEOUT_SECONDS", "3600"))
+#: Keep the read timeout at least 60 seconds below the minimum file try budget.
+OCR_PDF_READ_TIMEOUT = min(3540.0, float(os.getenv("OCR_PDF_READ_TIMEOUT_SECONDS", "3540")))
 
 #: The one prefix a derived object may live under. Mirrors `DERIVED_PREFIX` in
 #: `main_services/ocr_pdf/ocr_pdf.py`, which refuses anything else. The duplication is

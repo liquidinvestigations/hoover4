@@ -16,6 +16,7 @@ from temporalio import activity
 
 from database.clickhouse import get_collection_client, insert_arrow_durable
 from tasks.entity_stoplist import filter_entity_values
+from tasks.remote_busy_retry import with_remote_busy_retry
 from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.plan_utils import clean_text
 from tasks.text_sources import fetch_text_batch, ner_reads_variant, plan_text_batches
@@ -82,6 +83,7 @@ def configured_nlp_model() -> str:
 
 
 @activity.defn
+@with_remote_busy_retry
 @with_heartbeat
 def extract_entities_for_hashes(params: ExtractEntitiesParams) -> ExtractEntitiesResult:
     """Run NER over the plan's text segments and write entity_hit + watermark rows.

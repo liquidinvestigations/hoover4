@@ -10,16 +10,9 @@ of the AI stack.
 
 ## Key Responsibilities
 
-- Read `text_content` **with `FINAL`** for a plan's hashes and chunk each segment with
-  `chunking.chunk_page_text`: word-boundary chunks of at most `CHUNK_MAX_BYTES = 1200`
-  bytes with ~`CHUNK_OVERLAP_BYTES = 200` overlap, addressed by **byte offsets into
-  the UTF-8 encoding** (never character offsets, because Python slices by character and
-  ClickHouse counts bytes, and mixing them corrupts multibyte text silently).
-  Chunking is deterministic, which is what makes the re-run key below correct. `FINAL`
-  is required here, because `text_content` is a `ReplacingMergeTree`, a re-parse leaves two rows
-  for the same segment until a merge collapses them, and the two copies chunk to
-  *identical* keys, so neither is excluded by the anti-join and the page is embedded
-  twice at full GPU cost.
+- Read the latest text segment version with `argMax`, before pagination.
+  Split each segment with `chunking.chunk_page_text` into word-boundary chunks of at most 1200 bytes and about 200 overlap bytes.
+  Chunk offsets refer to UTF-8 bytes. Current versions produce one chunk set per segment.
 - Hold back chunks that are not language (`tasks/text_quality.py`): base64 attachment
   bodies, XPM colour tables, XBM byte dumps. Extraction is greedy on purpose, so it
   produces these; embedding them buys a vector that then wins searches it has no business
@@ -61,9 +54,11 @@ of the AI stack.
 
 ## Failure Policy
 
-Same as P4: errors are not swallowed. The activity fails, Temporal retries
-(`maximum_attempts=3`), and an exhausted chunk becomes one `processing_errors` row per
-hash. A document with no vectors is a visible failure, never a silently empty result.
+The activity retries ordinary failures up to five times.
+Busy responses preserve ordinary failure tries and use `Retry-After` within 5 to 120 seconds.
+Heartbeat details preserve the first busy time across attempts.
+The busy budget is half the activity timeout. Its expiry reports `ServiceStayedBusy`.
+An exhausted chunk produces one Error row per hash. Cancellation propagates.
 An operation-owned successful chunk records one document outcome per member hash.
 
 ## Navigation

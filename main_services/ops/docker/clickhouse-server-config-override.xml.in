@@ -20,16 +20,6 @@
     <concurrent_threads_soft_limit_num>3</concurrent_threads_soft_limit_num>
     <max_concurrent_queries>512</max_concurrent_queries>
     <max_thread_pool_size>1024</max_thread_pool_size>
-    <!-- usersxml -->
-    
-    <profiles><default>
-        <max_block_size>8192</max_block_size>
-        <max_download_threads>1</max_download_threads>
-        <input_format_parallel_parsing>0</input_format_parallel_parsing>
-        <output_format_parallel_formatting>0</output_format_parallel_formatting>
-
-    </default></profiles>
-
     <!-- One backup and one restore at a time, server-side. The operations layer already
          gives its ClickHouse queue a single slot; this is the second check, on the side
          that a backup started from anywhere else also passes through. -->
@@ -46,9 +36,19 @@
     <asynchronous_metric_log remove="1"/>
     <metric_log remove="1"/>
     <query_thread_log remove="1" />  
-    <query_log remove="1" />
+    <query_log>
+        <database>system</database>
+        <table>query_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </query_log>
     <query_views_log remove="1" />
-    <part_log remove="1"/>
+    <part_log>
+        <database>system</database>
+        <table>part_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </part_log>
     <session_log remove="1"/>
     <text_log remove="1" />
     <trace_log remove="1"/>
@@ -57,6 +57,11 @@
     <zookeeper_log remove="1"/>
     <latency_log remove="1"/>
     <processors_profile_log remove="1"/>
-    <asynchronous_insert_log remove="1"/>
+    <asynchronous_insert_log>
+        <database>system</database>
+        <table>asynchronous_insert_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </asynchronous_insert_log>
 
 </clickhouse>

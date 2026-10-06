@@ -335,7 +335,7 @@ def test_four_attempts_without_progress_still_run(clock):
 
 
 def test_a_lost_file_counts_as_progress(clock):
-    detail = _detail_with(att=6, run=[0, 1, 1_790_000_000_000], lost={"0": 1})
+    detail = _detail_with(att=6, run=[0, 1, 1_790_000_000_000, False, 0], lost={"0": 1})
     calls = []
     result = _Run(attempt=7, detail=detail).run([0, 1], _record(calls))
     assert result.results[0].error_type == br.STAGE_ATTEMPT_LOST

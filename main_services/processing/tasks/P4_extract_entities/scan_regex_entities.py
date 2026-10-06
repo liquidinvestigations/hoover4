@@ -6,9 +6,8 @@ contract: `STAGE_INDEX` is a value in `processing_eta_samples` and is mirrored i
 website, so inventing a stage between P4 and P5 would move a number that other rows
 already hold.
 
-The scan is one HTTP call per batch to a service with no fallback twin. A 503 from it is
-admission control, which `tasks.remote.post_json` already raises as retryable. The right
-answer to a full scan queue is to come back, never to scan somewhere else.
+The scan makes one HTTP call per batch. A busy response preserves ordinary failure tries.
+The activity keeps its first busy time across retries and uses a bounded busy budget.
 
 **A segment boundary loses an entity.** `text_content.page_id` is a ~256 KB segment
 ordinal for unpaged formats, and a value that straddles two segments is seen by neither,
@@ -26,6 +25,7 @@ import pyarrow as pa
 from temporalio import activity
 
 from database.clickhouse import get_collection_client, insert_arrow_durable
+from tasks.remote_busy_retry import with_remote_busy_retry
 from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.plan_utils import clean_text
 from tasks.regex_entities import (
@@ -56,6 +56,7 @@ REGEX_BATCH_TEXTS = 64
 
 
 @activity.defn
+@with_remote_busy_retry
 @with_heartbeat
 def scan_regex_entities_for_hashes(params: ScanRegexEntitiesParams) -> ScanRegexEntitiesResult:
     """Scan the plan's text segments and write `regex_entity_hit` + watermark rows.

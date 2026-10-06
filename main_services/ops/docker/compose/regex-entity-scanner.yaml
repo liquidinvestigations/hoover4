@@ -32,8 +32,8 @@ services:
       - hoover4
     restart: unless-stopped
     # Admission bounds request bodies before they are retained or parsed.
-    memswap_limit: ${REGEX_SCANNER_MEM_LIMIT:-1000M}
-    mem_limit: ${REGEX_SCANNER_MEM_LIMIT:-1000M}
+    memswap_limit: ${REGEX_SCANNER_MEM_LIMIT:-4G}
+    mem_limit: ${REGEX_SCANNER_MEM_LIMIT:-4G}
     environment:
       - RES_BIND=0.0.0.0:19705
       # Async workers parse JSON and move bytes; the scanning is on the blocking pool.

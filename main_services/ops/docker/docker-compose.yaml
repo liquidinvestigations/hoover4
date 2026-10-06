@@ -122,6 +122,7 @@ services:
       # original, because the operations container holds this volume read-only.
       - ${HOOVER4_OPS_BACKUP_DIR:?deploy.py renders it from [storage] volumes_path}:/var/lib/clickhouse/backups
       - ./clickhouse-server-config-override.xml:/etc/clickhouse-server/config.d/clickhouse-server-config-override.xml
+      - ./clickhouse-users-override.xml:/etc/clickhouse-server/users.d/clickhouse-users-override.xml:ro
     healthcheck:
       test: wget --no-verbose --tries=1 http://127.0.0.1:8123/ping || exit 1
       interval: 13s

@@ -185,7 +185,7 @@ ocr_pdf_mem_limit = 8000M
 # 503 with a Retry-After, which the pipeline already treats as retryable.
 regex_scanner_threads     = 10
 regex_scanner_queue_depth = 32
-regex_scanner_mem_limit   = 1000M
+regex_scanner_mem_limit   = 4G             ; The scanner requires at least 4 GiB.
 
 # ---- how the website is served --------------------------------------------------
 # false: `dx serve` — hot rebuilds, and the development loop this repo is built around.

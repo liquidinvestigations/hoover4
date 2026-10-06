@@ -528,12 +528,8 @@ async def run_nlp_worker():
   log.info("Starting NLP worker...")
   client = await Client.connect("temporal:7233")
   await ensure_search_attributes(client)
-  # The NER service is remote; concurrency here is about pipelining HTTP, not local
-  # CPU, so the number to match is the server's own admission window (its
-  # ai_server_ner_concurrency, 4) rather than anything about this host. Below it the
-  # GPU idles between batches; above it the server sheds with 503 + Retry-After, which
-  # remote.py retries -- so the cost of being wrong is asymmetric and this sits at the
-  # window rather than under it.
+  # NER slots match the remote admission window.
+  # The activity retries busy answers with Retry-After and a persisted busy budget.
   CONCURRENCY = worker_concurrency("nlp", 4)
   with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
     worker = Worker(

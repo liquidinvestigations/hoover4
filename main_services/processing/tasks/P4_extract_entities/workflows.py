@@ -70,7 +70,7 @@ class ExtractEntitiesForPlan:
                     ExtractEntitiesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, hashes=chunk_hashes, op_id=params.op_id),
                     start_to_close_timeout=NLP_TIMEOUT,
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    retry_policy=RetryPolicy(maximum_attempts=0),
                     task_queue=NLP_TASK_QUEUE,
                 ),
             ))
@@ -150,7 +150,7 @@ class ScanRegexEntitiesForPlan:
                     ),
                     start_to_close_timeout=SCAN_TIMEOUT,
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    retry_policy=RetryPolicy(maximum_attempts=0),
                     task_queue=REGEX_TASK_QUEUE,
                 ),
             ))

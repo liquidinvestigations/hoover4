@@ -43,7 +43,7 @@ from tasks.heartbeat import (
 )
 
 #: The version of the heartbeat detail. A retry ignores a detail of another version.
-BATCH_DETAIL_VERSION = 2
+BATCH_DETAIL_VERSION = 3
 
 #: The tries of one file inside one attempt, and the wait before its second try. Each
 #: later wait is twice the one before, so the waits are 1, 2, 4 and 8 s, as the default
@@ -59,6 +59,12 @@ NO_PROGRESS_ATTEMPTS = 5
 STAGE_ATTEMPT_LOST = "StageAttemptLost"
 STAGE_NO_PROGRESS = "StageNoProgress"
 FILE_TRY_TIMED_OUT = "FileTryTimedOut"
+SERVICE_STAYED_BUSY = "ServiceStayedBusy"
+
+
+@dataclass
+class _BusyRetry:
+    retry_after_seconds: float
 
 #: The largest error text of one file, in bytes as the JSON payload converter writes it.
 FILE_ERROR_TYPE_BYTES = 64
@@ -327,7 +333,9 @@ def run_batch(
     """
     keys = [key(item) for item in items]
     names = [task_name(item) if callable(task_name) else task_name for item in items]
-    state = _State.start(stage, keys, names)
+    limits = [budget(item) if budget is not None else try_budget_seconds(stage, size(item))
+              for item in items]
+    state = _State.start(stage, keys, names, limits)
     from tasks.P3_parse_files.insert_batch import parser_insert_batch
 
     pending = {}
@@ -354,6 +362,7 @@ def run_batch(
 
         while True:
             stop_if_worker_is_stopping()
+            state.expire_busy()
             index = state.next_index()
             if index is None:
                 flush_pending()
@@ -361,9 +370,7 @@ def run_batch(
                     return BatchResult(stage=stage, results=state.results())
                 state.sleep_until_due()
                 continue
-            limit = (budget(items[index]) if budget is not None
-                     else try_budget_seconds(stage, size(items[index])))
-            state.start_try(index, limit)
+            state.start_try(index, limits[index])
             inserts.index = index
             result = _try_once(state, index, items[index], step)
             if index not in inserts.seen:
@@ -402,18 +409,36 @@ class _State:
         self.suspect: Optional[int] = None
         self.deadline: Optional[float] = None
         self.expired = False
+        self.busy_since: Dict[int, int] = {}
+        self.busy_waiting: set[int] = set()
+        self.busy0_ms = 0
+        self.running_busy = False
+        self.limits: List[int] = []
+        self.stage_timeout_s = 0.0
+        self.attempt_deadline_ms: Optional[int] = None
         self.lock = threading.Lock()
         self.detail: Dict[str, Any] = {}
         self._publish()
 
     @classmethod
-    def start(cls, stage: str, keys: List[str], names: List[str]) -> "_State":
+    def start(cls, stage: str, keys: List[str], names: List[str],
+              limits: Optional[List[int]] = None) -> "_State":
         """Restore the state of the last detail, then apply the lost-attempt and no-progress limits."""
         info = activity.info() if activity.in_activity() else None
         state = cls(stage, keys, names, info.attempt if info else 1)
+        state.limits = limits or []
+        timeout = getattr(info, "start_to_close_timeout", None)
+        state.stage_timeout_s = (timeout.total_seconds() if timeout else
+            sum(FILE_TRIES * limit + 15 for limit in state.limits))
+        started = getattr(info, "started_time", None)
+        if started is not None and timeout is not None:
+            state.attempt_deadline_ms = int((started.timestamp() + timeout.total_seconds()) * 1000)
         detail = info.heartbeat_details[0] if info and info.heartbeat_details else None
         if _is_detail_of(detail, stage, state.digest):
             state._restore(detail)
+        if state.busy_waiting:
+            state.progress_attempt = state.attempt
+        state.expire_busy()
         idle = state.attempt - 1 - state.progress_attempt
         if idle >= NO_PROGRESS_ATTEMPTS:
             raise ApplicationError(
@@ -430,21 +455,34 @@ class _State:
         for index, result in results_from_detail(detail, self.stage, self.keys).items():
             self.done[index] = result
             self.rows[index] = _detail_row(index, result)
-        for index, tries, due_ms, started_ms in detail.get("wait") or []:
+        self.busy0_ms = int(detail.get("busy0") or 0)
+        for index, tries, due_ms, started_ms, busy_since, busy_wait in detail.get("wait") or []:
             if index not in self.done:
                 self.due_ms[index], self.tries[index] = due_ms, tries
                 self.started_ms[index] = started_ms
+                if busy_wait:
+                    self.busy_waiting.add(index)
+                if busy_since:
+                    self.busy_since[index] = busy_since
         self.lost = {int(k): int(v) for k, v in (detail.get("lost") or {}).items()}
         self.progress_attempt = int(detail.get("prog") or 0)
         running = detail.get("run")
         if running and running[0] not in self.done:
-            index, tries, started_ms = running
+            index, tries, started_ms, busy_retry, busy_since = running
             # The attempt that wrote the detail ended while this file ran. An attempt
             # after it that sent no heartbeat restored the same detail and ran the same
             # file, so it counts too.
             ended = max(1, self.attempt - int(detail.get("att") or 0))
-            self.lost[index] = self.lost.get(index, 0) + ended
             self.tries[index], self.started_ms[index] = tries - 1, started_ms
+            if busy_retry:
+                import time
+                self.busy_waiting.add(index)
+                self.busy_since[index] = busy_since
+                self.due_ms[index] = int(time.time() * 1000)
+                self.progress_attempt = self.attempt
+                self._publish()
+                return
+            self.lost[index] = self.lost.get(index, 0) + ended
             self.due_ms.pop(index, None)
             if self.lost[index] >= LOST_ATTEMPTS_PER_FILE:
                 self._finish(index, _lost(self.keys[index], self.names[index],
@@ -454,7 +492,7 @@ class _State:
         self._publish()
 
     def next_index(self) -> Optional[int]:
-        """The suspect file first, then the earliest due retry, then the next new file."""
+        """Run ordinary retries, then new files, then busy retries."""
         import time
 
         if self.suspect is not None:
@@ -462,17 +500,22 @@ class _State:
             return index
         now_ms = int(time.time() * 1000)
         due = [index for index, due_ms in self.due_ms.items() if due_ms <= now_ms]
-        if due:
-            return min(due, key=lambda index: (self.due_ms[index], index))
+        ordinary = [index for index in due if index not in self.busy_waiting]
+        if ordinary:
+            return min(ordinary, key=lambda index: (self.due_ms[index], index))
         for index in range(len(self.keys)):
             if index not in self.done and index not in self.due_ms and index not in self.pending:
                 return index
+        if due:
+            return min(due, key=lambda index: (self.due_ms[index], index))
         return None
 
     def start_try(self, index: int, budget_seconds: int) -> None:
         import time
 
         self.due_ms.pop(index, None)
+        self.running_busy = index in self.busy_waiting
+        self.busy_waiting.discard(index)
         self.tries[index] = self.tries.get(index, 0) + 1
         self.started_ms.setdefault(index, int(time.time() * 1000))
         self.running = index
@@ -490,17 +533,48 @@ class _State:
                 f"{self.stage}: file {self.running} passed its try time limit",
                 type=FILE_TRY_TIMED_OUT)
 
-    def end_try(self, index: int, result: Optional[FileResult]) -> None:
+    def end_try(self, index: int, result: Union[FileResult, _BusyRetry, None]) -> None:
         import time
 
         self.running = None
-        if result is None:
+        if isinstance(result, _BusyRetry):
+            now_ms = int(time.time() * 1000)
+            self.tries[index] -= 1
+            self.busy_since.setdefault(index, now_ms)
+            self.busy0_ms = self.busy0_ms or now_ms
+            self.busy_waiting.add(index)
+            self.due_ms[index] = now_ms + int(result.retry_after_seconds * 1000)
+            self.progress_attempt = self.attempt
+            self.expire_busy()
+        elif result is None:
             wait = FILE_RETRY_FIRST_WAIT_SECONDS * 2 ** (self.tries[index] - 1)
             self.due_ms[index] = int(time.time() * 1000) + wait * 1000
         else:
             self._finish(index, result)
         self._publish()
         send_heartbeat()
+
+    def expire_busy(self) -> None:
+        """End busy waits that exceed the shared budget or the attempt deadline."""
+        import time
+
+        now_ms = int(time.time() * 1000)
+        for index in sorted(self.busy_waiting):
+            reason = ""
+            reserve_ms = sum(limit * 1000 for other, limit in enumerate(self.limits)
+                             if other != index and other not in self.done and other not in self.pending)
+            if self.busy0_ms and now_ms - self.busy0_ms >= self.stage_timeout_s * 500:
+                reason = "The activity busy budget is used."
+            elif (self.attempt_deadline_ms is not None and
+                  self.due_ms[index] + self.limits[index] * 1000 + reserve_ms > self.attempt_deadline_ms):
+                reason = "The wait leaves insufficient time for unfinished files."
+            if reason:
+                self.due_ms.pop(index, None)
+                self._finish(index, FileResult(
+                    item_hash=self.keys[index], task_name=self.names[index], status="failed",
+                    error_type=SERVICE_STAYED_BUSY, error_message=reason, non_retryable=True,
+                    attempts=self.tries.get(index, 0), started_at_ms=self.started_ms.get(index, 0)))
+        self._publish()
 
     def heartbeat_detail(self) -> Optional[Dict[str, Any]]:
         """The first detail of a heartbeat, or None after the try passed its limit."""
@@ -517,7 +591,10 @@ class _State:
         import time
 
         send_heartbeat()
-        _wait((min(self.due_ms.values()) - int(time.time() * 1000)) / 1000)
+        due = min(self.due_ms.values())
+        if self.busy_waiting and self.busy0_ms:
+            due = min(due, self.busy0_ms + self.stage_timeout_s * 500)
+        _wait((due - int(time.time() * 1000)) / 1000)
 
     def results(self) -> List[FileResult]:
         return [self.done[index] for index in range(len(self.keys))]
@@ -526,6 +603,8 @@ class _State:
         self.done[index] = result
         self.rows[index] = _detail_row(index, result)
         self.lost.pop(index, None)
+        self.busy_waiting.discard(index)
+        self.busy_since.pop(index, None)
         self.progress_attempt = self.attempt
 
     def _publish(self) -> None:
@@ -534,10 +613,13 @@ class _State:
             "v": BATCH_DETAIL_VERSION, "stage": self.stage, "keys": self.digest,
             "att": self.attempt, "prog": self.progress_attempt,
             "done": [self.rows[index] for index in sorted(self.rows)],
-            "wait": [[index, self.tries[index], due, self.started_ms[index]]
+            "wait": [[index, self.tries[index], due, self.started_ms[index],
+                      self.busy_since.get(index, 0), index in self.busy_waiting]
                      for index, due in sorted(self.due_ms.items())],
+            "busy0": self.busy0_ms,
             "run": None if running is None
-            else [running, self.tries[running], self.started_ms[running]],
+            else [running, self.tries[running], self.started_ms[running],
+                  self.running_busy, self.busy_since.get(running, 0)],
             "lost": {str(index): count for index, count in self.lost.items()},
         }
 
@@ -548,11 +630,12 @@ def _is_detail_of(detail: Any, stage: str, digest: str) -> bool:
 
 
 def _try_once(state: _State, index: int, item: Any,
-              step: Callable[[Any], Any]) -> Optional[FileResult]:
+              step: Callable[[Any], Any]) -> Union[FileResult, _BusyRetry, None]:
     """One try of one file. Return its result, or None when the file waits for a retry."""
     import time
 
     from tasks.task_timing import SkippedOutcome
+    from tasks.remote import RemoteBusy
 
     clock = time.monotonic()
     try:
@@ -561,6 +644,8 @@ def _try_once(state: _State, index: int, item: Any,
         state.close_try()
         if isinstance(exc, CancelledError) or worker_is_stopping():
             raise
+        if isinstance(exc, RemoteBusy):
+            return _BusyRetry(exc.retry_after_seconds)
         if _is_non_retryable(exc) or state.tries[index] >= FILE_TRIES:
             return _failed(state, index, exc, clock)
         return None

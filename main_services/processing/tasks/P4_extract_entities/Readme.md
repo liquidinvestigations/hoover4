@@ -105,7 +105,7 @@ rather than as one entity found twice.
 opens for 60 s after three consecutive connect failures, and work returns to
 `ner-gpu-xlmr` once the host is back.
 - Write `nlp_processed` watermark rows, including `text_bytes`. The byte
-  length of the cleaned text actually indexed (`len(clean_text(text).encode('utf-8'))`).
+  length of the cleaned source text (`len(clean_text(text).encode('utf-8'))`).
   The Manticore shard planner (part 6) sizes shards from this column.
 
 ## Regex entity scanning
@@ -185,3 +185,12 @@ A document with no entities is a visible failure, never a silently empty result.
 - [Go Back](../Readme.md)
 - [P3 - Parse Files](../P3_parse_files/Readme.md)
 - [P6 - Index Data](../P6_index_data/Readme.md)
+
+## Busy responses
+
+NER and scanner activities preserve busy state in heartbeat details.
+A busy response uses `Retry-After` within 5 to 120 seconds and preserves ordinary failure tries.
+The busy budget is half the activity timeout, measured from its first busy response across attempts.
+The activity reports `ServiceStayedBusy` when that budget ends.
+Ordinary failures stop after five tries. Cancellation still propagates.
+P6 can shorten encoded runs after the source text measurement.

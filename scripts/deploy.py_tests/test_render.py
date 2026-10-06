@@ -1319,3 +1319,11 @@ def test_manticore_expansion_limit_is_rendered_and_validated(monkeypatch):
         cfg.values["main_services"]["manticore_expansion_limit"] = value
         with pytest.raises(deploy.DeployError, match="manticore_expansion_limit"):
             deploy.render_main_env(cfg)
+
+
+@pytest.mark.parametrize("size", ["1G", "2G", "4095M"])
+def test_scanner_memory_below_four_gib_is_refused(size):
+    cfg = _config("settings-defaults.ini")
+    cfg.values["main_services"]["regex_scanner_mem_limit"] = size
+    with pytest.raises(deploy.DeployError, match="regex_scanner_mem_limit.*at least 4G"):
+        deploy.render_main_env(cfg)

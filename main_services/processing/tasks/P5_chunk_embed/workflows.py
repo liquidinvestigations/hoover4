@@ -66,7 +66,7 @@ class ChunkEmbedForPlan:
                     ChunkEmbedParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash, hashes=chunk_hashes, op_id=params.op_id),
                     start_to_close_timeout=EMBED_TIMEOUT,
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    retry_policy=RetryPolicy(maximum_attempts=0),
                     task_queue=EMBED_TASK_QUEUE,
                 ),
             ))

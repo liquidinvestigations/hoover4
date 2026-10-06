@@ -122,6 +122,14 @@ CPU count of the host. `deploy.py` prints a
 warning when `ocr_concurrency` is lower than `tesseract_cpu_concurrency`, because the
 worker then leaves Tesseract slots idle.
 
+### Scanner and ClickHouse settings
+
+`regex_scanner_mem_limit` defaults to `4G`. Deployment refuses values below 4 GiB.
+ClickHouse query, part, and async insert logs retain three days of events.
+The default user profile enables query logging and uses blocks of at most 8192 rows.
+It disables parallel input parsing and output formatting and uses one download thread.
+These profile settings load from the mounted `users.d` override.
+
 ### The website
 
 `manticore_expansion_limit` limits wildcard term expansion in page searches. It defaults to 5000.

@@ -27,6 +27,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from database.clickhouse import get_collection_client, get_server_setting
+from tasks.remote_busy_retry import with_remote_busy_retry
 from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.remote import post_json
 from tasks.text_quality import non_linguistic_reason
@@ -74,6 +75,7 @@ def _probed_serving() -> tuple[str, int]:
 
 
 @activity.defn
+@with_remote_busy_retry
 @with_heartbeat
 def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
     """Chunk the plan's text segments and embed the chunks that have no vector yet.

@@ -246,10 +246,7 @@ def post_json(
         if response.status_code == 503:
             retry_after = response.headers.get("Retry-After", "5")
             _record(service, provider, elapsed_ms, ok=False, detail="HTTP 503")
-            raise requests.HTTPError(
-                f"{provider} ({url}): queue is full (Retry-After: {retry_after})",
-                response=response,
-            )
+            raise RemoteBusy(retry_after)
         try:
             response.raise_for_status()
         except Exception:

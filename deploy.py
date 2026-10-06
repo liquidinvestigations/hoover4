@@ -198,7 +198,7 @@ DEFAULTS = {
         # regex entity scanning, always on, so the only knobs are its size
         "regex_scanner_threads": "10",
         "regex_scanner_queue_depth": "32",
-        "regex_scanner_mem_limit": "1000M",
+        "regex_scanner_mem_limit": "4G",
         # How the website is served. false = `dx serve` (the development loop). true =
         # build once with `dx build --release` and serve the binary, which is what a
         # visitor should get: no dev overlay, no rebuild-on-boot 500s. See
@@ -1338,6 +1338,8 @@ def render_main_env(cfg):
         if size_bytes(cfg, key) < 1:
             fail("[main_services] %s must be greater than zero" % key)
         env[key.upper()] = cfg.get(m, key)
+    if size_bytes(cfg, "regex_scanner_mem_limit") < 4 * 1024 ** 3:
+        fail("[main_services] regex_scanner_mem_limit must be at least 4G")
     cpu_count_value(cfg, "temporal_cpus")
     env["TEMPORAL_MEM_LIMIT"] = cfg.get(m, "temporal_mem_limit")
     env["TEMPORAL_CPUS"] = cfg.get(m, "temporal_cpus")

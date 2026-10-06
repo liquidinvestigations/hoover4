@@ -183,10 +183,10 @@ def test_http_503_is_retryable_and_does_not_fall_back(monkeypatch):
         return _Response(status_code=503, headers={"Retry-After": "5"})
 
     monkeypatch.setattr(requests, "post", post)
-    with pytest.raises(requests.HTTPError) as excinfo:
+    with pytest.raises(remote.RemoteBusy) as excinfo:
         remote.post_json([GPU, CPU], {})
     assert calls == [GPU[1]], "must not degrade to the CPU twin on 503"
-    assert excinfo.value.response.status_code == 503
+    assert excinfo.value.retry_after_seconds == 5
     assert not remote._BREAKER.is_open(GPU[1]), "503 must not open the breaker"
 
 
