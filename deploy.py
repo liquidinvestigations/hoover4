@@ -2518,7 +2518,7 @@ def report_worker_stop_timeout(cfg, rt):
 def podman_stale_image_fix(cfg, side, rt, files):
     """podman-compose sometimes leaves the old container running the old image id even
     after --force-recreate. Detect that and fall back to `rm -f --depend` + up."""
-    ps = rt.run(["ps", "--filter", "label=com.docker.compose.project=%s"
+    ps = rt.run(["ps", "--no-trunc", "--filter", "label=com.docker.compose.project=%s"
                  % project_name(side), "--format",
                  "{{.Names}} {{.Image}} {{.ImageID}}"], capture_output=True, text=True)
     stale = []

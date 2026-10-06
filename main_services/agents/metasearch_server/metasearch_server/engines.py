@@ -32,7 +32,7 @@ import os
 from urllib.parse import parse_qs, urlparse
 
 import httpx
-from selectolax.parser import HTMLParser
+from selectolax.lexbor import LexborHTMLParser as HTMLParser
 
 from agent_common.fusion import (
     RRF_K,

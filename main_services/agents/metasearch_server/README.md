@@ -1,7 +1,7 @@
 # Metasearch MCP server
 
-**The** web search server. Port `21931`, container `hoover4-mcp-metasearch`, wired into the
-**full research agent** only.
+The metasearch server provides web search tools for chat with internet tools enabled.
+Its HTML readers use the selectolax Lexbor parser.
 
 One tool searches the open web, and there must never be a second. A small model faced with
 several near-identical "search the web" descriptions picks badly and inconsistently, so

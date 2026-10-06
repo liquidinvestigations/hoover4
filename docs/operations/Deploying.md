@@ -48,6 +48,9 @@ of a failure they prevent:
    project**, so nothing a `down` or a `--reset` selects can take out the connection an agent
    is working through.
 
+After a Podman build, deployment compares complete image identifiers.
+It recreates services that still use an older image.
+
 ## Configuration flows one way
 
 `hoover4.ini` at the repository root is the single source. It is gitignored. Two

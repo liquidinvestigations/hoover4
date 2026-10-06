@@ -25,6 +25,29 @@ def _load_deploy():
 deploy = _load_deploy()
 
 
+@pytest.mark.parametrize("same_image", [True, False])
+def test_stale_image_detection_compares_complete_identifiers(same_image):
+    image_id = "142351ea5fcf" + "7" * 52
+    latest_id = image_id if same_image else "8" * 64
+    rt = mock.Mock()
+
+    def run(args, **kwargs):
+        if args[0] == "ps":
+            identifier = image_id if "--no-trunc" in args else image_id[:12]
+            return subprocess.CompletedProcess(args, 0, f"service image:local {identifier}\n", "")
+        if args[:2] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(args, 0, latest_id + "\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    rt.run.side_effect = run
+    with mock.patch.object(deploy, "compose_command", return_value=["compose", "up"]), \
+         mock.patch.object(deploy, "run_or_fail") as recreate:
+        deploy.podman_stale_image_fix(deploy.Config(None), "main", rt, [])
+    removals = [call for call in rt.run.call_args_list if call.args[0][0] == "rm"]
+    assert len(removals) == (0 if same_image else 1)
+    assert recreate.call_count == (0 if same_image else 1)
+
+
 def _render(fixture_name):
     cfg = _config(fixture_name)
     writes = []
