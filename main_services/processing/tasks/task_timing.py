@@ -51,14 +51,10 @@ Each write waits for ClickHouse storage.
 Inflight observations run each five seconds and queue observations each ten seconds.
 The observations share the minute write interval.
 
-The same thread samples what is *running* into ``processing_task_inflight``: a finished-row
-table cannot show a task that has been stuck for twenty minutes, and that is the one the
-live view most needs to name. Inflight is busy slots. Queue *waiters* are a different
-table, ``Hoover4_Processing.processing_queue_backlog``, filled from Temporal
-``DescribeTaskQueue`` on the same cadence: levels, nothing written while every queue's
-backlog is 0. DescribeTaskQueue is async and must not run on the activity path -- the
-operations worker hands this recorder its client and event loop at startup, and the daemon
-schedules the RPCs onto that loop.
+The recorder samples active activities into ``processing_task_inflight``.
+The operations worker samples queue waiters into ``Hoover4_Processing.processing_queue_backlog`` with Temporal ``DescribeTaskQueue``.
+It retains observations for queues with pollers or waiters.
+The operations worker supplies its client and event loop so the telemetry thread runs these RPCs outside the activity path.
 """
 
 from __future__ import annotations
