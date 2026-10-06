@@ -46,6 +46,8 @@ struct SearchForResultsResponse {
     /// the group, and a second round trip per result to learn it is not worth a snippet.
     has_text_match: i64,
     snippet_priority: i64,
+    /// The greatest matching page score, independent of the selected snippet.
+    relevance_score: i64,
 }
 
 impl HitIdentity for SearchForResultsResponse {
@@ -57,7 +59,7 @@ impl HitIdentity for SearchForResultsResponse {
     }
     fn sort_value(&self, sort: SortSpec) -> Option<SortValue> {
         match sort.key {
-            SortKey::Relevance => None,
+            SortKey::Relevance => Some(SortValue::Int(self.relevance_score)),
             // Same split as `search_sql::sort_column`: newest-first compares the LATEST
             // date a document carries, oldest-first the earliest.
             SortKey::Date if sort.desc => Some(SortValue::Int(self.date_max)),
@@ -83,7 +85,11 @@ fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) 
     let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, fetch_limit);
     let from_clause = &parts.from_clause;
     let sql_where_clause = &parts.where_clause;
-    let order_by = sort_order_by(&sort);
+    let order_by = if sort.key == SortKey::Relevance {
+        "ORDER BY relevance_score DESC, collection_dataset ASC, file_hash ASC".to_string()
+    } else {
+        sort_order_by(&sort)
+    };
     format!(
         "
     SELECT collection_dataset,
@@ -106,6 +112,7 @@ fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) 
         file_size_bytes,
 
         MAX(IF({EXCLUDE_FILENAME_ROW}, 1, 0)) AS has_text_match,
+        MAX(weight()) AS relevance_score,
         IF(extracted_by='email_parser' OR extracted_by='tika', 0,
            IF(extracted_by='filename_index', 3, IF(extracted_by='raw_text', 2, 1))) AS snippet_priority
 
@@ -417,13 +424,14 @@ mod tests {
                 date_max,
                 file_size_bytes,
                 MAX(IF(extracted_by != 'filename_index', 1, 0)) AS has_text_match,
+                MAX(weight()) AS relevance_score,
                 IF(extracted_by='email_parser' OR extracted_by='tika', 0,
                    IF(extracted_by='filename_index', 3, IF(extracted_by='raw_text', 2, 1))) AS snippet_priority
             FROM testdata_1_pages
             WHERE MATCH('easychair', testdata_1_pages)
             GROUP BY file_hash
             WITHIN GROUP ORDER BY snippet_priority ASC, id ASC
-            ORDER BY weight() DESC, collection_dataset ASC, file_hash ASC
+            ORDER BY relevance_score DESC, collection_dataset ASC, file_hash ASC
             LIMIT 21 OFFSET 0
             {options}
             ;
@@ -444,7 +452,7 @@ mod tests {
         );
         let sql = normalize(&build_results_sql(&parts, relevance(), 1));
         assert!(sql.contains("AND collection_dataset IN ('testdata_testfiles')"), "{sql}");
-        assert!(sql.contains("ORDER BY weight() DESC, collection_dataset ASC, file_hash ASC"), "{sql}");
+        assert!(sql.contains("ORDER BY relevance_score DESC, collection_dataset ASC, file_hash ASC"), "{sql}");
     }
 
     /// Every sort key must both order the query AND appear in the SELECT list. A key

@@ -392,3 +392,7 @@ The agent page offsets can differ after a shortened block or repeated spaces.
 Page queries use one configured wildcard expansion limit for results, counts, facets, and document search.
 The limit can omit documents that contain only less frequent matching terms. The engine reports no truncation.
 An infix query with fewer than three characters receives an explanation.
+
+Grouped results use the greatest matching page score for relevance order.
+The selected snippet can come from another matching page with a preferred parsed source.
+The shard query and cross-shard merge use the same document score.

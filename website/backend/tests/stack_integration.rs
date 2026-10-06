@@ -73,6 +73,18 @@ const SHAPES: &str = "testdata_shapes";
 const EMAILS: &str = "other_emails";
 const CORPUS_DATASETS: [&str; 4] = [TESTFILES, ZIPS, SHAPES, EMAILS];
 
+/// Select the canonical datasets without including unrelated restored collections.
+fn canonical_query() -> SearchQuery {
+    let mut query = SearchQuery::default();
+    query.facet_filters.insert(
+        "collection_dataset".to_string(),
+        CORPUS_DATASETS.iter().map(|dataset| {
+            common::search_result::FacetOriginalValue::String((*dataset).to_string())
+        }).collect(),
+    );
+    query
+}
+
 /// Classify a registry read without treating a failed read as an absent dataset.
 fn registry_dataset_present(
     dataset: &str,
@@ -313,10 +325,8 @@ async fn search_round_trip_returns_hits_from_fixture_collections() {
     skip_unless_corpus!();
     let _budget = Budget::start("search_round_trip_returns_hits_from_fixture_collections");
     let query = SearchQuery {
-        collection_datasets: vec![],
         query_string: "the".to_string(),
-        facet_filters: Default::default(),
-            ..Default::default()
+        ..canonical_query()
     };
     let results = backend::api::search::search_for_results(&admin_user(), query, 0)
         .await
@@ -324,9 +334,7 @@ async fn search_round_trip_returns_hits_from_fixture_collections() {
     assert!(!results.results.is_empty(), "expected search hits");
     assert!(!results.partial, "no shard may fail on a healthy stack");
     for hit in &results.results {
-        // By COLLECTION, not by dataset: verify-stack.sh gains datasets over time (zips,
-        // shapes) and an allowlist of dataset names turns every such addition into a
-        // failure of a test that is about fan-out, not about the fixture list.
+        // The query selects only the canonical fixture datasets.
         assert!(
             hit.collection_dataset.starts_with("testdata_")
                 || hit.collection_dataset.starts_with("other_"),
@@ -338,10 +346,8 @@ async fn search_round_trip_returns_hits_from_fixture_collections() {
     let hit_count = backend::api::search::search_for_results_hit_count(
         &admin_user(),
         SearchQuery {
-            collection_datasets: vec![],
             query_string: "the".to_string(),
-            facet_filters: Default::default(),
-            ..Default::default()
+            ..canonical_query()
         },
     )
     .await
@@ -431,7 +437,7 @@ async fn pagination_pages_are_disjoint_and_complete() {
     // exercising pagination whenever the fixture roots shrink. An empty query returns
     // every document: the largest result set available, and the one pagination is most
     // used on.
-    let mk_query = SearchQuery::default;
+    let mk_query = canonical_query;
     let hit_count = backend::api::search::search_for_results_hit_count(&admin_user(), mk_query())
         .await
         .unwrap();
@@ -634,10 +640,8 @@ async fn permissions_restrict_search_to_granted_collections() {
         groups: vec![groupname.clone()],
     };
     let query = SearchQuery {
-        collection_datasets: vec![],
         query_string: "the".to_string(),
-        facet_filters: Default::default(),
-            ..Default::default()
+        ..canonical_query()
     };
 
     // Capture outcomes first so cleanup always runs.
@@ -1510,7 +1514,7 @@ async fn date_histogram_bins_the_corpus_and_honours_the_cutoffs() {
     skip_unless_corpus!();
     let _budget = Budget::start("date_histogram_bins_the_corpus_and_honours_the_cutoffs");
 
-    let unfiltered = backend::api::search::search_date_histogram(&admin_user(), SearchQuery::default())
+    let unfiltered = backend::api::search::search_date_histogram(&admin_user(), canonical_query())
         .await
         .unwrap();
     assert!(!unfiltered.partial);
@@ -1528,7 +1532,7 @@ async fn date_histogram_bins_the_corpus_and_honours_the_cutoffs() {
     }
 
     // Every dated document is in exactly one bin, and the undated are in none of them.
-    let all = hits(SearchQuery::default()).await;
+    let all = hits(canonical_query()).await;
     assert_eq!(
         unfiltered.total_count() + unfiltered.unknown_count,
         all,
@@ -1538,8 +1542,10 @@ async fn date_histogram_bins_the_corpus_and_honours_the_cutoffs() {
     // A cutoff inside the domain becomes a bin edge, and the counts do NOT change:
     // the histogram must not filter itself.
     let split = unfiltered.buckets[unfiltered.buckets.len() / 2].start;
+    let mut filtered_query = dated_query(Some(split), None, false);
+    filtered_query.facet_filters = canonical_query().facet_filters;
     let filtered =
-        backend::api::search::search_date_histogram(&admin_user(), dated_query(Some(split), None, false))
+        backend::api::search::search_date_histogram(&admin_user(), filtered_query)
             .await
             .unwrap();
     assert!(

@@ -54,7 +54,7 @@ languages.
 | `F-search-05` | Filter by document date (before, after, between, or no confirmed date) as an interval overlap | `website/backend/src/api/search/search_sql.rs` |
 | `F-search-06` | Show a date histogram of the match without its own date filter, over computed bins | `website/backend/src/api/search/date_histogram.rs` |
 | `F-search-07` | Filter by file size, with unknown size distinct from zero | `website/backend/src/api/search/search_sql.rs` |
-| `F-search-08` | Sort by descending relevance, or by date, file size or name in either direction, consistently across shards | `api/search/`, `website/common/src/search_query.rs` |
+| `F-search-08` | Sort by the greatest matching page score across shards. Sort date, file size, or name in either direction. Keep score independent of snippet selection. | `api/search/`, `website/common/src/search_query.rs` |
 | `F-search-09` | Find a document by filename. A filename-only match does not seed the viewer row filter. | the synthetic filename row |
 | `F-search-10` | Narrow to a folder, including through containers, from the tree or the filter pane | `api/vfs/` |
 | `F-search-11` | Report a partial result when some collections could not be searched, and offer a retry | `website/backend/src/api/search/fanout.rs` |
