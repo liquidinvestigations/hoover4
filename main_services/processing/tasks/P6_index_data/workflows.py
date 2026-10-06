@@ -40,7 +40,7 @@ with workflow.unsafe.imports_passed_through():
 # with max_concurrent_activities=1. See shard_planner.py's module docstring.
 PLANNER_TASK_QUEUE = "processing-index-planner-queue"
 INDEXING_TASK_QUEUE = "processing-indexing-queue"
-# Manticore can restart while a collection is being indexed.  The six waits total
+# Manticore can restart while a collection is being indexed. The eleven waits total
 # 2,110 seconds, which lets an index activity outlast that restart without making a
 # data error retryable.
 MANTICORE_RETRY = RetryPolicy(
@@ -203,7 +203,12 @@ class IndexDatasetPlan:
                                          plan_hash=params.plan_hash),
                 start_to_close_timeout=timedelta(minutes=10),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=2),
+                retry_policy=RetryPolicy(
+                    maximum_attempts=6,
+                    initial_interval=timedelta(seconds=30),
+                    backoff_coefficient=2,
+                    maximum_interval=timedelta(minutes=10),
+                ),
                 task_queue=PLANNER_TASK_QUEUE,
             )
 

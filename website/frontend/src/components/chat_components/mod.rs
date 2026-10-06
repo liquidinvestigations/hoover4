@@ -1,9 +1,6 @@
-//! AI Chat UI building blocks: composer, transcript, tool disclosure, doc cards.
-//!
-//! Document cards reuse [`SearchResultItemCard`](crate::components::search_components::search_result_item_card::SearchResultItemCard)
-//! via a `SearchResultsState` context provided by the session page. The document pane
-//! reuses [`DocumentPreviewForSearchRoot`](crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot)
-//! unchanged (including `NoDocumentSelected`).
+//! Chat components show messages, tool results, and document references.
+//! Document cards include citation and search context.
+//! The session page opens a document preview after selection.
 
 pub mod composer;
 pub mod conversation_find;

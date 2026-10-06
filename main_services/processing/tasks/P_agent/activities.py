@@ -1,17 +1,8 @@
-"""Activities for durable AI agent turns.
+"""Activities open and finish durable chat turns and set conversation titles.
 
-**Every turn runs here**. An ordinary chat message and an exhaustive research run alike.
-They differ in which agent they reach and which queue they wait on, not in what they do.
-The website holds nothing open, so a browser reload, a website restart and a worker crash
-all cost the turn nothing.
-
-This module holds the short activities of `AgentRun`: open, ending and the title. The step activities, one model call or one tool call each, are in
-`steps.py`.
-
-The ACL travels with the task. These activities never resolve permissions themselves.
-The website resolved them against the caller's identity when the turn was submitted and
-passed the resulting collection list in. The same goes for the model id: a forged one has
-to be refused where the user is known, which is not here.
+Step activities in `steps.py` make model calls and tool calls.
+The website resolves the caller's collection permissions before submission.
+These activities use that collection list and the submitted model selection.
 """
 
 import logging
@@ -25,12 +16,7 @@ from tasks.heartbeat import with_heartbeat
 
 log = logging.getLogger(__name__)
 
-#: Where the full research agent lives on the shared `hoover4` network.
-#: The two agent services, which differ in the tools they carry. A durable research turn
-#: has to reach the same one an inline turn in that conversation would: the switch is a
-#: property of the conversation, and answering a documents-only thread from the agent
-#: that has the open web makes some answers in one transcript internet-backed and some
-#: not, with nothing on screen saying which.
+# The conversation's internet-tools setting selects the agent service.
 AGENT_URL = os.getenv("RESEARCH_AGENT_URL", "http://hoover4-full-research-agent:8000")
 INTERNAL_AGENT_URL = os.getenv(
     "INTERNAL_SEARCH_AGENT_URL", "http://hoover4-internal-search-agent:8000"
@@ -44,14 +30,7 @@ def agent_url_for(internet_tools: bool) -> str:
 
 @dataclass
 class WriteResultParams:
-    """One `chat_messages` row.
-
-    The payload fields mirror the columns the website's synchronous chat path writes
-    (`website/backend/src/db_chat`). They were missing here for a while, which is why
-    research transcripts rendered as a raw JSON blob with the tool type shown as
-    "tool" and an expand panel that opened onto nothing: the columns the UI reads were
-    never populated on this path.
-    """
+    """One transcript row with tool, model, reasoning, and evidence metadata."""
 
     username: str
     session_id: str
@@ -61,7 +40,7 @@ class WriteResultParams:
     tool_name: str = ""
     #: JSON arguments the model passed to the tool.
     tool_input: str = ""
-    #: JSON tool result, truncated to TOOL_PAYLOAD_CHARS.
+    #: Canonical JSON tool result, including its continuation metadata.
     tool_output: str = ""
     #: JSON array of documents this step surfaced, for the result cards.
     doc_refs: str = ""

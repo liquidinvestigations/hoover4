@@ -104,6 +104,14 @@ def test_p6_manticore_calls_use_the_restart_retry_policy(monkeypatch):
     plan_options = dict(calls)[index_workflows.plan_shards]
     assert plan_options["retry_policy"] == expected
     assert plan_options["task_queue"] == index_workflows.PLANNER_TASK_QUEUE
+    final_options = dict(calls)[index_workflows.finalize_index_batch]
+    assert final_options["retry_policy"] == index_workflows.RetryPolicy(
+        maximum_attempts=6,
+        initial_interval=timedelta(seconds=30),
+        backoff_coefficient=2,
+        maximum_interval=timedelta(minutes=10),
+    )
+    assert final_options["task_queue"] == index_workflows.PLANNER_TASK_QUEUE
 
 
 @pytest.mark.parametrize("patched,expected_entries", [

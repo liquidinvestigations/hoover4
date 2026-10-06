@@ -232,6 +232,7 @@ extension-less maildir: every other detector calls those files `text/plain`. It 
 strips Apple Mail's `.emlx` byte-count prefix and a leading BOM before the message is
 parsed, and it carries two rules libmagic still gets wrong (a PST named only in the
 human-readable output, and a legacy Excel workbook reported as a generic OLE container).
+The OLE rule requires a `Workbook` or `Book` stream before it adds the Excel type.
 The sniff runs behind a cheap gate, so it never touches a file another detector has
 confidently named.
 

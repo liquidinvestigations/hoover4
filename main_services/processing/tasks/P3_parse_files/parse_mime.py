@@ -534,7 +534,14 @@ def _detect_by_content(params: DetectMimeParams,
 
     if "application/x-ole-storage" in base_mimes and \
             "application/vnd.ms-outlook" not in mime_types:
-        mime_types.add("application/vnd.ms-excel")
+        import olefile
+
+        try:
+            with olefile.OleFileIO(params.file_path) as source:
+                if source.exists("Workbook") or source.exists("Book"):
+                    mime_types.add("application/vnd.ms-excel")
+        except (OSError, ValueError):
+            pass
 
     mime_list = sorted(mime_types)
     coarse_types = sorted({coarse_file_type(m) for m in mime_list if m})

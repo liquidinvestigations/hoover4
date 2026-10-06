@@ -30,6 +30,7 @@ when plans ran, `refresh_stale_document_locations`, `index_vfs_structure` and
 once, on `processing-email-graph-queue`. A batch that ran no plan, for example a rescan of
 known bytes, skips the graph, because the graph reads the whole collection and nothing it
 reads has changed. `IndexDatasetPlan` itself writes shards only.
+Its finalizer has six attempts, with delays from 30 seconds up to 10 minutes.
 `RefreshDocumentLocations` rebuilds the tree and rewrites page-row folder attributes
 for a dataset whose indexed locations lag `vfs_files`. It does not extract, OCR, or
 embed, and it is not started at deployment. It reads indexed `file_paths` from the
