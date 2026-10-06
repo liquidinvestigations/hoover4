@@ -228,7 +228,8 @@ def test_a_successful_question_writes_the_turn_answer(monkeypatch, store):
                                                               session_id="s", call=call))
     assert result == 7
     assert store["chat"][-1] == {"seq": 6, "role": "assistant", "content": question,
-                                  "model": "asking-model"}
+                                  "model": "asking-model", "usage_json": json.dumps({
+                                      "citation_status": "none", "tool_scope": "documents_only"})}
     assert store["run"][-1] == {"result": question, "next_seq": 7}
 
 
@@ -450,8 +451,10 @@ def test_a_no_label_correction_is_shown_with_its_status(store, monkeypatch):
     _serve(monkeypatch, store, _frames(text="I cannot verify the budget from these records."))
     assert _step(step_no=2).outcome == "answered"
     [answer] = [r["content"] for r in store["chat"] if r["role"] == "assistant"]
-    assert answer == ("The revised answer has no document citation.\n\n"
-                      "I cannot verify the budget from these records.")
+    assert answer == "I cannot verify the budget from these records."
+    metadata = json.loads(store["chat"][-1]["usage_json"])
+    assert metadata == {"citation_status": "missing", "tool_scope": "documents_only"}
+    assert store["messages"][-1].usage["citation_status"] == "missing"
     assert store["run"][-1]["result"] == answer
 
 
@@ -1015,3 +1018,43 @@ def test_model_view_persistence_keeps_complete_evidence(store):
     saved = store["messages"][-1]
     assert saved.content == "complete evidence"
     assert saved.usage["model_content"] == "first window"
+
+
+@pytest.mark.parametrize("reader, reference", [
+    ("read_more", {"file_hash": "a" * 64, "collectionname": "c"}),
+    ("read_page", {"url": "https://example.invalid/report"}),
+])
+def test_read_evidence_starts_repair_without_a_citation_tool(citations_store, reader, reference):
+    citations_store["messages"].append(agent_runs.RunMessageRow(
+        idx=2, role="tool", tool_name=reader, usage_json=json.dumps({"status": "ok", "evidence": [
+            {"kind": "document_read", "status": "partial", "reference": reference}]})))
+    _answer_with_tool(citations_store, "The budget is 5.", citation_tool=False)
+    assert _check(citations_store).needed
+    note = citations_store["messages"][-1]
+    assert note.usage["repair_marker"] == "citation"
+    if reader == "read_page":
+        assert note.usage["citation_check"]["web_missing"]
+    else:
+        assert note.usage["citation_check"]["unsupported_paragraphs"][0]["number"] == 1
+    _answer_with_tool(citations_store, "The budget is 5.", citation_tool=False)
+    assert not _check(citations_store).needed
+
+
+def test_document_and_web_findings_share_one_repair_note(citations_store):
+    for idx, reference in enumerate((
+            {"file_hash": "a" * 64}, {"url": "https://example.invalid/report"}), 2):
+        citations_store["messages"].append(agent_runs.RunMessageRow(
+            idx=idx, role="tool", tool_name="read_more", usage_json=json.dumps({"evidence": [
+                {"kind": "document_read", "status": "ok", "reference": reference}]})))
+    _answer_with_tool(citations_store, "The budget is 5.")
+    citations_store["messages"].sort(key=lambda message: message.idx)
+    assert _check(citations_store).needed
+    note = citations_store["messages"][-1]
+    assert "Read the web pages" in note.content
+    assert "Paragraph 1" in note.content
+    assert len([m for m in citations_store["messages"] if citations.is_citation_note(m)]) == 1
+
+
+def test_a_cited_paragraph_does_not_cover_the_next_claim():
+    findings = citations.unsupported_paragraphs("The budget is 5 [D1].\n\nȘtefan receives 12 payments.")
+    assert findings == [{"number": 2, "text": "Ștefan receives 12 payments."}]

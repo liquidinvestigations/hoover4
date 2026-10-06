@@ -925,8 +925,7 @@ def test_a_failed_citation_call_does_not_stop_the_label_check(monkeypatch):
         notes = [m for m in case.messages() if m.usage.get("repair_marker") == "citation"]
         assert len(notes) == 1
         assert notes[0].usage["citation_check"]["unresolved"] == ["[D1]"]
-        assert case.run_row().result == ("The revised answer has no document citation.\n\n"
-                                             "The memo sets the budget.")
+        assert case.run_row().result == "The memo sets the budget."
 
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 

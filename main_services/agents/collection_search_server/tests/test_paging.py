@@ -1012,3 +1012,13 @@ def test_email_graph_continuation_keeps_the_next_attachment_window(monkeypatch):
         pages.append(json.loads(paging.finish(paging.read_more.fn(pages[-1]["more"]))))
     assert len(seen) == 2
     assert any(item.get("value", {}).get("name") == "second" for page in pages for item in page["items"])
+
+
+def test_content_continuations_keep_their_document_read_reference():
+    document = {"collectionname": "c", "file_hash": "a" * 64, "text": "continued text"}
+    _, refs = paging.slim_items("read_documents", [document])
+    assert refs[0]["evidence_kind"] == "document_read"
+    assert paging.page_doc_refs(json.dumps({"items": ["continued table text"]}), refs) == refs
+    _, search_refs = paging.slim_items("search_collections", [document])
+    assert "evidence_kind" not in search_refs[0]
+    assert paging.page_doc_refs(json.dumps({"items": ["search text"]}), search_refs) == []

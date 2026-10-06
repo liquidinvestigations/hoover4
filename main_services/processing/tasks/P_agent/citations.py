@@ -15,9 +15,8 @@ that answer with a notice. A reply without labels shows its citation status.
 
 A logical thread gets one repair round at most. The note in the thread is the stored marker
 (`REPAIR_MARKER_KEY` in its usage). `is_citation_note` reads this marker.
-`steps.check_citations` runs the rule after an answer or a question of every run kind whose
-model had `cite_documents`. A stopped run and a run that ended at a limit (`end_reason`) get
-no round. The rules here are pure.
+`steps.check_citations` uses stored read evidence after each answer or question.
+A stopped run and a run that ended at a limit get no round. The rules here are pure.
 """
 
 from __future__ import annotations
@@ -33,22 +32,9 @@ CITATION_NOTE = (
     "successful calls returned."
 )
 
-#: The note of the repair round of an answer with labels that do not resolve.
-LABEL_NOTE = (
-    "Your answer uses citation labels that do not name one document. {problems} Call "
-    "`cite_documents` for each document that your answer relies on. Then write the whole "
-    "answer again, with the handles that the successful calls returned."
-)
-
 #: The usage key and value of the note of the repair round.
 REPAIR_MARKER_KEY = "repair_marker"
 REPAIR_MARKER = "citation"
-
-#: The tool whose call gives the reader a document card.
-CITE_TOOL = "cite_documents"
-
-#: The usage key of an `ai` message that states whether its model had `CITE_TOOL`.
-CITATION_TOOL_KEY = "citation_tool"
 
 #: A citation handle as the answer writes it, for example `[D1]`.
 HANDLE_PATTERN = re.compile(r"\[D\d+\]")
@@ -100,12 +86,12 @@ def names_documents(answer: str, messages) -> bool:
 def read_documents(messages) -> bool:
     """Whether a content reader gives successful document-read evidence."""
     for message in messages:
-        if message.role != "tool" or message.tool_name not in (
-                "read_documents", "table_page", "table_cell"):
+        if message.role != "tool":
             continue
         if message.usage.get("status") == "error":
             continue
         if any(e.get("kind") == "document_read" and e.get("status") in ("ok", "partial")
+               and (e.get("reference") or {}).get("file_hash")
                for e in (message.usage.get("evidence") or []) if isinstance(e, dict)):
             return True
     return False
@@ -118,20 +104,15 @@ def is_citation_note(message) -> bool:
 )
 
 
-def has_citation_tool(row, messages) -> bool:
-    """Whether the model of the run had `cite_documents`, by the newest `ai` message. A
-    message from before the key counts as having it."""
-    last = next((m for m in reversed(messages) if m.role == "ai"), None)
-    if last is None:
-        return True
-    return bool(last.usage.get(CITATION_TOOL_KEY, True))
-
-
 def repair_note(check: dict) -> str:
     """The note of a repair round for the citation check `check`."""
     problems = []
     if check.get("page_zero"):
         problems.append("The answer names page 0. Use the 1-based page from the verified cite_documents result.")
+    if check.get("web_missing"):
+        problems.append("Read the web pages behind each web claim. Put each read page address beside its claim.")
+    for paragraph in check.get("unsupported_paragraphs") or []:
+        problems.append(f"Paragraph {paragraph['number']} has a name or number without a source: {paragraph['text']} Add its citation or remove the claim.")
     if check.get("unresolved"):
         problems.append("No successful `cite_documents` result gives "
                         + ", ".join(check["unresolved"]) + ".")
@@ -140,7 +121,41 @@ def repair_note(check: dict) -> str:
                         + " for more than one document.")
     if not problems:
         return CITATION_NOTE
-    return LABEL_NOTE.format(problems=" ".join(problems))
+    return " ".join(problems) + " Write the complete answer again with the sources that support its claims."
+
+
+URL_PATTERN = re.compile(r"https?://[^\s<>\]\)]+")
+NAME_PATTERN = re.compile(r"\b[^\W\d_][^\W\d_'-]{2,}\b")
+OPENING_WORDS = frozenset({"The", "This", "There", "These", "Those", "However", "It", "They", "Their", "For", "From", "With", "Not", "None", "Some"})
+
+
+def unsupported_paragraphs(answer: str) -> list[dict]:
+    """Identify paragraphs with names or numbers and no citation marker or page address."""
+    findings = []
+    for number, paragraph in enumerate(re.split(r"\n\s*\n", answer), 1):
+        if HANDLE_PATTERN.search(paragraph) or URL_PATTERN.search(paragraph):
+            continue
+        names = {word for word in NAME_PATTERN.findall(paragraph) if word[0].isupper()} - OPENING_WORDS
+        if names or re.search(r"\b\d+(?:[.,]\d+)*\b", paragraph):
+            findings.append({"number": number, "text": paragraph[:500]})
+    return findings
+
+
+def web_evidence(messages) -> tuple[bool, list[str]]:
+    """Return web use and the addresses of pages that supplied readable evidence."""
+    used, urls = False, []
+    for message in messages:
+        if message.role != "tool" or message.usage.get("status") == "error":
+            continue
+        if message.tool_name in ("web_search", "read_page"):
+            used = True
+        for entry in message.usage.get("evidence") or []:
+            if entry.get("kind") == "document_read" and entry.get("status") in ("ok", "partial"):
+                url = (entry.get("reference") or {}).get("url")
+                if url:
+                    used = True
+                    urls.append(url)
+    return used, list(dict.fromkeys(urls))
 
 
 def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
@@ -154,12 +169,34 @@ def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
     check = reports.check_labels(answer, reports.label_bindings(session_entries),
                                  session_entries)
     check["page_zero"] = bool(PAGE_ZERO_PATTERN.search(answer))
+    documents_read = read_documents(messages)
+    web_used, urls = web_evidence(messages)
+    check["web_missing"] = web_used and not any(url in answer for url in urls)
+    check["unsupported_paragraphs"] = unsupported_paragraphs(answer) if documents_read else []
     if not answer.strip() or any(is_citation_note(m) for m in messages):
         return False, check
-    if check["unresolved"] or check["conflicting"] or check["page_zero"]:
+    if (check["unresolved"] or check["conflicting"] or check["page_zero"]
+            or check["web_missing"] or check["unsupported_paragraphs"]):
         return True, check
     return (not check["labels"] and
-            (names_documents(answer, messages) or read_documents(messages))), check
+            (names_documents(answer, messages) or documents_read)), check
+
+
+def answer_metadata(answer: str, messages, session_entries, internet_tools: bool) -> dict:
+    """Return citation status and the available tool scope for an answer."""
+    _, check = needs_repair(answer, messages, session_entries)
+    if check["unresolved"] or check["conflicting"] or check["page_zero"]:
+        status = "invalid"
+    elif check["web_missing"] or check["unsupported_paragraphs"]:
+        status = "missing"
+    elif check["labels"] or URL_PATTERN.search(answer):
+        status = "cited"
+    elif read_documents(messages) or any(is_citation_note(m) for m in messages):
+        status = "missing"
+    else:
+        status = "none"
+    return {"citation_status": status,
+            "tool_scope": "documents_and_web" if internet_tools else "documents_only"}
 
 
 def repair_reply_problem(answer: str, session_entries) -> str:
@@ -181,8 +218,8 @@ def repair_reply_problem(answer: str, session_entries) -> str:
 
 
 __all__ = [
-    "CITATION_NOTE", "CITATION_TOOL_KEY", "CITE_TOOL", "LABEL_NOTE",
+    "CITATION_NOTE", "answer_metadata",
     "REPAIR_MARKER",
-    "REPAIR_MARKER_KEY", "has_citation_tool", "is_citation_note", "names_documents",
+    "REPAIR_MARKER_KEY", "is_citation_note", "names_documents",
     "needs_repair", "read_documents", "repair_note", "repair_reply_problem",
 ]

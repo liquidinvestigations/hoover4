@@ -149,7 +149,7 @@ The response is a stream of `data: {json}` frames, in this order:
 | `reasoning` | `content` | each reasoning delta |
 | `response` | `content` | each text delta |
 | `compaction` | `state` (`running`), `tokens_before`, `target`, `parts` (1, or 0 when a failed summary of the same prefix is not sent again) | once, before the summary request, when this call compacts its input |
-| `model_turn` | `model` (the model that answered), `text`, `reasoning`, `tool_calls` (a list of call entries), `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`, `request_size`, `citation_tool`: whether the call bound `cite_documents`, which the worker's citation check reads), `summarised`, `compaction` (the version 3 record of this call's compaction, or null) | once, after the reply ends |
+| `model_turn` | `model` (the model that answered), `text`, `reasoning`, `tool_calls` (a list of call entries), `usage` (`input_tokens`, `output_tokens`, `total_tokens`, `reasoning_tokens`, `request_size`, `citation_tool`: whether the call bound `cite_documents`), `summarised`, `compaction` (the version 3 record of this call's compaction, or null) | once, after the reply ends |
 | `end` | `model`, `latency_ms`, `usage` (`prompt_tokens`, `completion_tokens`, `reasoning_tokens`) | once, last |
 | `error` | `error_class`, `retryable`, `content` | in place of `model_turn` and `end` |
 

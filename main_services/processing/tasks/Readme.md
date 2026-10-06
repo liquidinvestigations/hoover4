@@ -156,7 +156,12 @@ The agent service compacts the model thread when it exceeds its size threshold.
 The worker stores the compaction status in the transcript.
 Request preparation failures end the run and preserve the stored thread.
 An answer ends the run with its todo list unchanged.
-A citation repair round can replace an answer after the model supplies citation handles.
+The worker requests one citation repair round from stored read evidence.
+The note combines invalid labels, missing read-page addresses, and paragraphs with uncited names or numbers.
+Document reads through continuation pages also count.
+Search results and failed reads do not count as document reads.
+The answer stores citation status and tool scope in `usage_json`.
+The transcript shows this metadata below the answer.
 The worker stores typed evidence beside each tool result.
 Evidence identifies document reads, discovery, citations, notes, artifacts, spans, and errors.
 

@@ -218,6 +218,7 @@ mod tests {
             peak_context_tokens: 0,
             context_window: 0,
             streaming: false,
+            usage_json: String::new(),
         }
     }
 

@@ -33,7 +33,7 @@ import queue
 import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Iterator, Optional
 
 import requests
@@ -573,16 +573,19 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
                       if (row.result or "").strip() else
                       "The citation reply could not be used. " + detail
                       + " No earlier answer is available.")
-        elif not reports.answer_labels(ai.content or ""):
-            answer = ("The revised answer has no document citation.\n\n"
-                      + answer)
     start = 0
     for i, m in enumerate(earlier):
         if m.role == "human":
             start = i
     round_ai = [m for m in earlier[start:] if m.role == "ai"] + [ai]
+    from database import agent_runs
+
+    entries = reports.session_citation_entries(row.username, row.session_id)
+    metadata = citations.answer_metadata(answer, earlier, entries, params.internet_tools)
     if any(m.usage.get("summarised") for m in round_ai):
         answer = answer + SUMMARY_NOTICE
+    ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
+    agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
     transcript = True
     written = row.model_steps >= params.step_no
     seq = row.next_seq - 1 if written and transcript else first
@@ -594,7 +597,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
         _chat_row(row)(
             seq, "assistant",
             content=answer or "(the assistant returned an empty answer)",
-            reasoning=reasoning, model=model,
+            reasoning=reasoning, model=model, usage_json=json.dumps(metadata),
             context_tokens=int(usage.get("input_tokens") or 0), peak_context_tokens=peak,
             context_window=context_window_for(model),
         )
@@ -628,6 +631,7 @@ def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str,
         seq += 1
     usage = dict(turn.get("usage") or {})
     usage.update(step_no=params.step_no,
+                 tool_scope="documents_and_web" if params.internet_tools else "documents_only",
                  summarised=bool(turn.get("summarised")), model=model,
                  compaction=bool(turn.get("compaction")))
     ai = agent_runs.RunMessageRow(
@@ -918,8 +922,11 @@ def write_asked_answer(params: AskedAnswerParams) -> int:
         raise RuntimeError(f"run {row.run_id} has an empty question")
     if True:
         # The model that asked, from the usage of the reply, as `write_incomplete` does.
+        metadata = {"citation_status": "none", "tool_scope": ai.usage.get("tool_scope", "documents_only")}
+        ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
+        agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
         _chat_row(row)(row.next_seq, "assistant", content=question,
-                       model=str(ai.usage.get("model") or ""))
+                       model=str(ai.usage.get("model") or ""), usage_json=json.dumps(metadata))
         _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid, row.start_seq)
         next_seq = row.next_seq + 1
     else:
@@ -1010,11 +1017,10 @@ def check_citations(params: CitationCheckParams) -> CitationRepair:
     round (`citations.needs_repair`).
 
     The check reads the successful `cite_documents` results of the whole session. A run
-    that is terminal, that ended at a limit, or whose model had no `cite_documents` gets no
-    round. A round writes the note as a `human` row at `idx` with the repair marker and the
-    check in its usage, at the index after the newest message, and for a run that writes
-    the transcript, a note row at `seq`. A retry finds the marker as the newest message and
-    writes the same note row and run row again, with no second check.
+    that is terminal or that ended at a limit gets no round.
+    The note follows the newest message and stores its marker and check in usage.
+    The transcript also stores the note at `seq`.
+    A retry finds the newest marker and repeats the same writes without a second check.
     """
     from database import agent_runs
     from tasks.P_agent import citations, reports
@@ -1033,8 +1039,6 @@ def check_citations(params: CitationCheckParams) -> CitationRepair:
                              tool_name=CITATION_NOTE_NAME)
             agent_runs.write_run(row, next_seq=params.seq + 1)
         return CitationRepair(needed=True, next_seq=params.seq + int(transcript))
-    if not citations.has_citation_tool(row, messages):
-        return CitationRepair(next_seq=params.seq)
     entries = reports.session_citation_entries(row.username, row.session_id)
     needed, check = citations.needs_repair(row.result or "", messages, entries)
     if not needed:

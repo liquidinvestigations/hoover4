@@ -21,6 +21,9 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `markdown_text.rs` | Markdown → Dioxus nodes for assistant turns. |
 
 The transcript and persisted answer nodes expose stable attributes for browser history verification.
+Each finished answer shows stored citation status and tool scope below its body.
+The scope states whether the run uses documents only or documents and web.
+The `data-chat-answer-status` attribute identifies this line.
 The transcript root carries `data-chat-turn`, the state of the newest turn: `active`, `queued-model`, `queued-tool`, `interrupted` or `idle`.
 A browser test reads the end of a turn from it and from the user message seq (`data-chat-user`).
 

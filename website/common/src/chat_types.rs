@@ -287,6 +287,9 @@ pub struct ChatMessageItem {
     /// renders these with a pending/running treatment instead of the finished one.
     #[serde(default)]
     pub streaming: bool,
+    /// JSON metadata for citation status and available tools.
+    #[serde(default)]
+    pub usage_json: String,
 }
 
 /// A token count at a glance: `857`, `1.2k`, `23k`, `1.3M`.
@@ -304,6 +307,26 @@ pub fn compact_tokens(n: u32) -> String {
 }
 
 impl ChatMessageItem {
+    /// Return the stored citation status and available tools below an answer.
+    pub fn answer_status_line(&self) -> Option<String> {
+        if self.streaming || self.role != ChatRole::Assistant {
+            return None;
+        }
+        let usage: serde_json::Value = serde_json::from_str(&self.usage_json).ok()?;
+        let scope = match usage.get("tool_scope")?.as_str()? {
+            "documents_only" => "The run uses documents only.",
+            "documents_and_web" => "The run uses documents and web.",
+            _ => return None,
+        };
+        let status = match usage.get("citation_status").and_then(|v| v.as_str()) {
+            Some("cited") => "The answer includes source citations.",
+            Some("missing") => "Some source citations are missing.",
+            Some("invalid") => "Some document citations are invalid.",
+            _ => "The answer has no source citations.",
+        };
+        Some(format!("{status} {scope}"))
+    }
+
     /// The one-line token footer for an answer, or `None` when nothing counted the turn.
     ///
     /// Both numbers, always. They answer different questions and differ by an order of
@@ -1129,7 +1152,21 @@ mod tests {
             peak_context_tokens: peak,
             context_window: window,
             streaming: false,
+            usage_json: String::new(),
         }
+    }
+
+    #[test]
+    fn answer_status_uses_stored_scope_and_stays_out_of_streaming_rows() {
+        let mut row = counted(0, 0, 0);
+        row.usage_json = r#"{"citation_status":"missing","tool_scope":"documents_and_web"}"#.into();
+        assert_eq!(row.answer_status_line().unwrap(),
+            "Some source citations are missing. The run uses documents and web.");
+        row.streaming = true;
+        assert!(row.answer_status_line().is_none());
+        row.streaming = false;
+        row.role = ChatRole::Tool;
+        assert!(row.answer_status_line().is_none());
     }
 
     #[test]

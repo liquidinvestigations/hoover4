@@ -649,6 +649,7 @@ fn MessageEntry(
             // counts arrive with the finished row, and a footer that appears mid-answer
             // showing zeros would read as a measurement of nothing.
             let context_footer = message.context_footer();
+            let answer_status = message.answer_status_line();
             rsx! {
                 div {
                     style: "align-self: stretch; max-width: 96%; padding: 4px 2px; {ring}",
@@ -705,6 +706,13 @@ fn MessageEntry(
                             ),
                             errors: retries,
                             tone_color: "#B45309",
+                        }
+                    }
+                    if let Some(status) = answer_status.filter(|_| !replaced) {
+                        div {
+                            "data-chat-answer-status": "{message.seq}",
+                            style: "margin-top: 6px; font-size: 0.85em; color: #6B7280;",
+                            "{status}"
                         }
                     }
                     if let Some(footer) = context_footer.filter(|_| !replaced) {
@@ -1092,6 +1100,7 @@ mod tests {
             peak_context_tokens: 0,
             context_window: 0,
             streaming: false,
+            usage_json: String::new(),
         }
     }
 

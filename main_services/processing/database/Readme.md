@@ -48,6 +48,9 @@ every blob inline in ClickHouse never uploads, and the first thing to touch the 
 the searchable-PDF builder, which answers 500 and parks the plan behind an activity that
 can never succeed.
 
+`chat_messages.usage_json` stores answer citation status and the available tool scope.
+The worker also preserves this metadata in the stored model reply.
+
 ## The two databases
 
 ClickHouse storage is split across `1 + N` databases.

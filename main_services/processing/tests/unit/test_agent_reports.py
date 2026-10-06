@@ -252,3 +252,20 @@ def test_invalid_evidence_does_not_reconstruct_tool_content():
 
     message = RunMessageRow(idx=1, role="tool", usage_json='{"evidence":{"kind":"document_read"}}')
     assert reports.message_evidence(message) == []
+
+
+@pytest.mark.parametrize("items", [[{"collectionname": "c", "file_hash": HASH_A[:16], "text": "The budget is 5."}], ["continued table text"]])
+def test_document_continuations_keep_the_full_document_reference(items):
+    refs = [{"collectionname": "c", "file_hash": HASH_A, "evidence_kind": "document_read"}]
+    entries = reports.normalize("read_more", {"continuation": "abc"},
+                                json.dumps({"items": items}), "ok", refs)
+    assert entries[0]["kind"] == "document_read"
+    assert entries[0]["reference"]["file_hash"] == HASH_A
+    assert entries[0]["status"] == "ok"
+
+
+def test_search_continuation_references_do_not_establish_a_document_read():
+    entries = reports.normalize("read_more", {"continuation": "abc"},
+        json.dumps({"items": [{"file_hash": HASH_A[:16], "snippet": "5"}]}), "ok",
+        [{"collectionname": "c", "file_hash": HASH_A}])
+    assert not any(entry.get("reference", {}).get("file_hash") for entry in entries)

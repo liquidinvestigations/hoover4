@@ -84,6 +84,7 @@ class WriteResultParams:
     #: The model's context window as the catalog knew it at the time of the turn. 0 means
     #: the provider never stated one, and readers must show unknown rather than divide.
     context_window: int = 0
+    usage_json: str = "{}"
 
 
 def write_chat_message(params: WriteResultParams) -> int:
@@ -116,6 +117,7 @@ def write_chat_message(params: WriteResultParams) -> int:
                 params.context_tokens,
                 params.peak_context_tokens,
                 params.context_window,
+                params.usage_json,
             ]],
             column_names=[
                 "session_id",
@@ -133,6 +135,7 @@ def write_chat_message(params: WriteResultParams) -> int:
                 "context_tokens",
                 "peak_context_tokens",
                 "context_window",
+                "usage_json",
             ],
         )
     if params.peak_context_tokens:

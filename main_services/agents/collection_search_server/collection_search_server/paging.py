@@ -59,7 +59,7 @@ import json
 import re
 import uuid
 from collections import OrderedDict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable
 
 from fastmcp.server.dependencies import get_http_headers
@@ -180,7 +180,10 @@ def slim_items(tool_name: str, items: list[Any]) -> tuple[list[Any], list[dict[s
         if not isinstance(item, dict) or not isinstance(item.get("file_hash"), str):
             out.append(item)
             continue
-        refs.append(doc_ref(item))
+        ref = doc_ref(item)
+        if tool_name == "read_documents":
+            ref["evidence_kind"] = "document_read"
+        refs.append(ref)
         slim = {**item, "file_hash": hash_start(item["file_hash"])}
         if tool_name == "read_documents":
             slim = {key: value for key, value in slim.items()
@@ -214,6 +217,9 @@ def page_doc_refs(text: str, refs: list[dict[str, Any]]) -> list[dict[str, Any]]
         return refs
     if not isinstance(items, list):
         return []
+    content_refs = [ref for ref in refs if ref.get("evidence_kind") == "document_read"]
+    if content_refs and items and not any(isinstance(item, dict) and item.get("file_hash") for item in items):
+        return content_refs
     by_start: dict[tuple[str, str], dict[str, Any]] = {}
     for ref in refs:
         key = (ref.get("collectionname") or "", hash_start(ref.get("file_hash") or ""))
@@ -469,7 +475,13 @@ class PagedTool:
         result = result.model_dump(mode="json", by_alias=True)
         if source and result.get("source", "") != source:
             return canonical_json({"success": False, "error": "source_changed", "message": "the source changed after the prior page"})
-        return _live_page(self, request, window, self.window(result))
+        prepared = self.window(result)
+        values = _input(request)
+        has_content = bool(prepared.items) and (self.tool_name != "table_cell" or bool(result.get("text")))
+        if self.tool_name in ("table_page", "table_cell") and has_content and values.get("file_hash"):
+            prepared = replace(prepared, refs=[{"collectionname": values["collectionname"], "file_hash": values["file_hash"],
+                                               "evidence_kind": "document_read"}])
+        return _live_page(self, request, window, prepared)
 
 
 def _invalid(message: str) -> str:

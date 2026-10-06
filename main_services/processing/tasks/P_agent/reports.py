@@ -144,13 +144,22 @@ def _read_documents(parsed: Any, args: dict, doc_refs: Any, error: str) -> list[
     return out
 
 
-def _read_more(parsed: Any, args: dict, error: str) -> list[dict]:
+def _read_more(parsed: Any, args: dict, error: str, doc_refs: Any = None) -> list[dict]:
     handle = str(args.get("continuation") or "")[:64]
     reference = {"continuation": handle}
     if error:
         return [_entry(KIND_READ, STATUS_ERROR, reference, f"more:{handle}", error=error)]
     if not isinstance(parsed, dict):
         return []
+    refs = [ref for ref in doc_refs or [] if isinstance(ref, dict)
+            and ref.get("evidence_kind") == KIND_READ and ref.get("file_hash")]
+    items = parsed.get("items") or []
+    if refs and any(isinstance(item, dict) and item.get("file_hash") and item.get("text") for item in items):
+        return _read_documents(parsed, {}, refs, error)
+    if refs and items:
+        return [_entry(KIND_READ, STATUS_PARTIAL if parsed.get("more") or parsed.get("cut") else STATUS_OK,
+                       _doc_reference(ref), f"more:{handle}:{index}", {"continuation": handle})
+                for index, ref in enumerate(refs)]
     cut = parsed.get("cut")
     if isinstance(cut, dict) and isinstance(cut.get("start_bytes"), int):
         items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
@@ -387,7 +396,7 @@ def normalize(tool_name: str, args: Any, content: str, status: str,
     if tool_name == "read_documents":
         entries = _read_documents(parsed, args, doc_refs, error)
     elif tool_name == "read_more":
-        entries = _read_more(parsed, args, error)
+        entries = _read_more(parsed, args, error, doc_refs)
     elif tool_name == "read_page":
         entries = _read_page(parsed, args, error)
     elif tool_name in ("table_page", "table_cell"):
