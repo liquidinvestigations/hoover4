@@ -10,15 +10,18 @@ the research agent. `packs_for` adds it to every run kind, also when the configu
 omits it, because the system prompt of every run lists skills that the model can read with
 `read_skill`.
 
-Each tool name is in exactly one pack. A test in every MCP server image lists that server's
-tools with the server's own `list_tools` and checks this, so a new tool with no pack fails a
-test before it reaches a model.
+Each model tool belongs to one pack.
+Internal runtime tools belong to `INTERNAL_TOOLS` and stay outside model catalogues.
+Each MCP server verifies its registered names against these sets.
 """
 
 from __future__ import annotations
 
 import os
 from typing import Dict, FrozenSet, Optional
+
+#: Runtime tools are excluded from model catalogues and packs.
+INTERNAL_TOOLS = frozenset({"_page_tool_result"})
 
 PACKS: Dict[str, FrozenSet[str]] = {
     "catalogue": frozenset({"search_agent_tools"}),

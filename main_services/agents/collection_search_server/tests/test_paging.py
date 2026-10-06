@@ -47,12 +47,14 @@ SAMPLES = {
 }
 
 
-@pytest.mark.parametrize("name", sorted(set(SAMPLES) - {"search_collections"}))
+@pytest.mark.parametrize("name", sorted(set(SAMPLES) - {"search_collections", "doc_email"}))
 def test_route_fields_reach_page(name, monkeypatch):
     """A route page shows its units under `items` and its route fields at the top level,
     with every empty value, `source`, `total_count` and `next_position` left out."""
     tool = TOOLS[name]
     response = {**SAMPLES[name], "source": "fingerprint"}
+    if name == "search_histogram":
+        response["filter_notes"] = []
     monkeypatch.setattr("collection_search_server.paging.BackendClient.post", lambda self, route, request, response_model, expected_source=None: response_model.model_validate(response))
     request = tool.model.model_construct()
     page = json.loads(tool.render(request, {}, ""))
@@ -926,3 +928,87 @@ def test_a_collection_name_and_an_unknown_name_are_not_mapped(monkeypatch):
     assert tools_search.collections_for(["consulate", "enron_kean_s"]) == (
         ["consulate", "enron_kean_s"], [])
     assert tools_search.collections_for(None) == (None, [])
+
+
+def test_email_first_page_defers_graph_rows(monkeypatch):
+    Store(monkeypatch)
+    response = {**deepcopy(SAMPLES["doc_email"]), "source": "email-stable"}
+    response["graph"]["nodes"] *= 400
+    monkeypatch.setattr(paging.BackendClient, "post", lambda self, route, request, model, **kw: model.model_validate(response))
+    request = tools_document.DOC_EMAIL.model.model_validate({"collectionname": "c", "file_hash": "h"})
+    page = json.loads(paging.finish(tools_document.DOC_EMAIL.render(request, {}, "")))
+    assert page["graph_counts"]["nodes"] == 400
+    assert all(item["field"] == "attachments" for item in page["items"])
+    following = json.loads(paging.read_more.fn(page["more"]))
+    assert following["items"][0]["field"] == "graph_nodes"
+    assert len(canonical_json(following).encode()) <= paging.page_share()
+
+
+def test_runtime_reduction_recovers_all_utf8_bytes_after_retry(monkeypatch):
+    store = Store(monkeypatch)
+    headers = {"x-hoover4-chat-session": "one", "x-hoover4-user": "alice", "x-hoover4-agent-run": "run"}
+    monkeypatch.setattr(paging, "get_http_headers", lambda: headers)
+    monkeypatch.setattr("collection_search_server.server._caller", lambda: object())
+    content = "A statement. Χώρος. 中文。\n" * 10000
+    first = json.loads(paging.page_tool_result.fn("run", "call", content, 2000))
+    ids = set(store.bodies)
+    assert len(canonical_json(first).encode()) <= 2000
+    assert json.loads(paging.page_tool_result.fn("run", "call", content, 2000)) == first
+    assert set(store.bodies) == ids
+    paging._TOKENS.clear()
+    pages = [first]
+    while pages[-1].get("more"):
+        pages.append(json.loads(paging.finish(paging.read_more.fn(pages[-1]["more"]))))
+    assert "".join(page["items"][0] for page in pages) == content
+    headers["x-hoover4-chat-session"] = "another"
+    monkeypatch.setattr(paging, "_issued_handles", lambda: [])
+    assert json.loads(paging.read_more.fn(first["more"]))["error"] == "not_found"
+
+
+def test_handle_repair_requires_one_candidate_and_keeps_owner_scope(monkeypatch):
+    Store(monkeypatch)
+    original = "0123456789ab"
+    damaged = "1023456789ab"
+    monkeypatch.setattr(paging, "_issued_handles", lambda: [original])
+    monkeypatch.setattr(paging, "_handle_token", lambda value: "encoded" if value == original else None)
+    monkeypatch.setattr(paging, "decode_continuation", lambda value: {})
+    monkeypatch.setattr(paging, "_read_more_response", lambda value: '{"items":["complete"]}')
+    page = json.loads(paging.read_more.fn(damaged))
+    assert original in page["continuation_note"]
+    monkeypatch.setattr(paging, "_issued_handles", lambda: [original, "1023456789ac"])
+    assert json.loads(paging.read_more.fn(damaged))["error"] == "not_found"
+    assert not paging._one_character_damage("xx23456789ab", original)
+
+
+def test_metadata_batch_divides_the_page_share(monkeypatch):
+    seen = []
+    def render(tool, values, resolve=True):
+        seen.append((values["file_hash"], paging.page_share()))
+        return '{"items":[]}'
+    monkeypatch.setattr(tools_document, "_render", render)
+    monkeypatch.setattr(paging, "get_http_headers", lambda: {"x-hoover4-page-share": "6000"})
+    page = json.loads(tools_document.doc_metadata.fn("c", ["a", "b", "c"]))
+    assert len(page["documents"]) == 3
+    assert len({share for _, share in seen}) == 1
+    assert seen[0][1] < 2000
+    assert json.loads(tools_document.doc_metadata.fn("c", ["a"] * 11))["error"] == "invalid_argument"
+
+
+def test_email_graph_continuation_keeps_the_next_attachment_window(monkeypatch):
+    Store(monkeypatch)
+    seen = []
+    def post(self, route, request, model, **kw):
+        seen.append(request.position)
+        response = {**deepcopy(SAMPLES["doc_email"]), "source": "email-stable"}
+        if request.position is None:
+            response["next_position"] = {"kind": "Offset", "offset": 1}
+        else:
+            response["attachments"][0]["name"] = "second"
+        return model.model_validate(response)
+    monkeypatch.setattr(paging.BackendClient, "post", post)
+    request = tools_document.DOC_EMAIL.model.model_validate({"collectionname": "c", "file_hash": "h"})
+    pages = [json.loads(paging.finish(tools_document.DOC_EMAIL.render(request, {}, "")))]
+    while pages[-1].get("more"):
+        pages.append(json.loads(paging.finish(paging.read_more.fn(pages[-1]["more"]))))
+    assert len(seen) == 2
+    assert any(item.get("value", {}).get("name") == "second" for page in pages for item in page["items"])

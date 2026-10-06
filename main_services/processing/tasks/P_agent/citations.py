@@ -52,6 +52,7 @@ CITATION_TOOL_KEY = "citation_tool"
 
 #: A citation handle as the answer writes it, for example `[D1]`.
 HANDLE_PATTERN = re.compile(r"\[D\d+\]")
+PAGE_ZERO_PATTERN = re.compile(r"\bpage\s+0\b", re.IGNORECASE)
 
 #: A file hash as the answer writes it.
 HASH_PATTERN = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])")
@@ -129,6 +130,8 @@ def has_citation_tool(row, messages) -> bool:
 def repair_note(check: dict) -> str:
     """The note of a repair round for the citation check `check`."""
     problems = []
+    if check.get("page_zero"):
+        problems.append("The answer names page 0. Use the 1-based page from the verified cite_documents result.")
     if check.get("unresolved"):
         problems.append("No successful `cite_documents` result gives "
                         + ", ".join(check["unresolved"]) + ".")
@@ -150,9 +153,10 @@ def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
 
     check = reports.check_labels(answer, reports.label_bindings(session_entries),
                                  session_entries)
+    check["page_zero"] = bool(PAGE_ZERO_PATTERN.search(answer))
     if not answer.strip() or any(is_citation_note(m) for m in messages):
         return False, check
-    if check["unresolved"] or check["conflicting"]:
+    if check["unresolved"] or check["conflicting"] or check["page_zero"]:
         return True, check
     return (not check["labels"] and
             (names_documents(answer, messages) or read_documents(messages))), check
@@ -171,6 +175,8 @@ def repair_reply_problem(answer: str, session_entries) -> str:
         return "unresolved_label"
     if check["conflicting"]:
         return "conflicting_label"
+    if PAGE_ZERO_PATTERN.search(answer):
+        return "page_zero"
     return ""
 
 

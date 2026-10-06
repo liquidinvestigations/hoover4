@@ -57,7 +57,7 @@ from research_agent.run_messages import (
     RunMessage, ToolCallRecord, apply_compactions, close_unanswered, to_langchain,
 )
 from research_agent import thinking
-from research_agent.tool_args import model_schema, normalize_arguments
+from research_agent.tool_args import DamagedArguments, model_schema, normalize_arguments, repair_json_arguments
 from research_agent.tool_catalogue import SEARCH_TOOL, tool_schema
 
 log = logging.getLogger(__name__)
@@ -129,6 +129,8 @@ class ToolCallRequest(StepRun):
     call: ToolCallRecord
     page_share: Optional[int] = Field(default=None, description="bytes, None: the tool's default")
     idempotency_key: str
+    messages: List[RunMessage] = Field(default_factory=list)
+    earlier: List[RunMessage] = Field(default_factory=list)
 
 
 class CallEntry(BaseModel):
@@ -175,10 +177,15 @@ UNREADABLE_CHARS = 600
 
 
 def unreadable_call(call: Dict[str, Any]) -> Dict[str, Any]:
-    """A call whose arguments the model client could not read as JSON, as a call of the
-    reply with no arguments and its `argument_error`. The tool call parser of the model
-    server can stream an argument text that is not JSON. The call is kept, so the model
-    reads why it did not run, and the reply does not count as a reply with no call."""
+    """Repair known JSON key damage or retain the call with its damage position."""
+    raw = str(call.get("args") or "")
+    try:
+        args, repairs = repair_json_arguments(raw)
+    except DamagedArguments as exc:
+        call = dict(call, error=str(exc))
+    else:
+        return {"id": call.get("id"), "name": call.get("name") or UNNAMED_CALL,
+                "args": args, "argument_repairs": repairs}
     text = str(call.get("args") or "")
     if len(text) > UNREADABLE_CHARS:
         text = text[:UNREADABLE_CHARS] + "..."
@@ -238,11 +245,12 @@ def classify_calls(
         name = call.get("name") or ""
         args = call.get("args") or {}
         argument_error = str(call.get("argument_error") or "")
-        repairs: List[str] = []
+        repairs: List[str] = list(call.get("argument_repairs") or [])
         if name in tools and not argument_error:
             normalized = normalize_arguments(args, tool_schema(tools[name]))
             if not normalized.problem:
-                args, repairs = normalized.args, normalized.repairs
+                args = normalized.args
+                repairs.extend(normalized.repairs)
         entries.append(CallEntry(
             id=call_id, name=name, args=args,
             kind="ordered" if name in ORDERED_TOOLS else "parallel",
@@ -327,7 +335,9 @@ def model_input_rows(earlier: Sequence[RunMessage], messages: Sequence[RunMessag
     """The stored thread of one model call, with a `not_run` result for each unanswered
     call of an earlier turn, and the list after every stored compaction."""
     rows = close_unanswered(list(earlier)) + list(messages)
-    return rows, apply_compactions(rows)
+    views = [m.model_copy(update={"content": m.model_content})
+             if m.role == "tool" and m.model_content is not None else m for m in rows]
+    return rows, apply_compactions(views)
 
 
 def build_model_input(
@@ -383,18 +393,16 @@ class Prepared(BaseModel):
     size: Dict[str, Any]
     #: The report of this step's compaction, or None.
     report: Optional[Any] = None
+    reductions: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 async def _prepare(request: ModelStepRequest, context: Any, system_text: str,
                    schemas_json: str, rows: List[RunMessage], applied: List[RunMessage],
                    window: int, *, force: bool = False) -> AsyncIterator[Any]:
-    """The context preparation of one model step: measure the request, compact it when the
-    trigger fires, and measure it again. Yields the `compaction` frame when one is planned,
-    and a `Prepared` last.
+    """Measure input, summarize older steps, and page the largest newest results.
 
-    Raises `compaction.ContextError` when the request cannot fit: the fixed input and the
-    newest results pass the safe input, a failed summary leaves a list that does not fit,
-    or the list after the compaction still passes the safe input.
+    Raise `ContextError` when eligible reductions cannot make the request fit.
+    Yield the compaction frame when planned, then yield the prepared request.
     """
     size = await asyncio.to_thread(
         request_size.measure, system_text, schemas_json, applied,
@@ -402,36 +410,70 @@ async def _prepare(request: ModelStepRequest, context: Any, system_text: str,
     pending = await asyncio.to_thread(
         compaction.plan_compaction, applied, rows, system_text=system_text,
         schemas_json=schemas_json, model_id=context.model_id, window=window,
-        measured=size.tokens, safe_input=size.safe_input, force=force)
+        measured=size.tokens, safe_input=size.safe_input, force=force,
+        allow_oversized_newest=True)
     report = None
-    compacted = applied
+    compacted = list(applied)
     sent_size = size.record()
     if pending is not None:
         yield compaction_frame(pending)
         compacted, report = await asyncio.to_thread(compaction.finish_compaction, pending)
+        compacted = list(compacted)
         await asyncio.to_thread(
             compaction.record_compaction, report,
             username=request.username, session_id=request.session_id)
-        if report.status != "ok" and not size.fits:
-            raise compaction.ContextError(compaction.CONTEXT_PREPARATION, (
-                f"The summary of the older steps failed ({report.row.get('error')}), and "
-                f"the request of {size.tokens:,} tokens passes the model input of "
-                f"{size.safe_input:,} tokens. The run stops. The transcript keeps every "
-                "step."))
         before = size.tokens
         if report.status == "ok":
             size = await asyncio.to_thread(
                 request_size.measure, system_text, schemas_json, compacted,
                 model_id=context.model_id, window=window)
         sent_size = {**size.record(), "before_compaction": before}
+    reductions = []
+    pager = getattr(context, "result_pager", None)
+    groups = compaction.step_groups(compacted)
+    newest = groups[-1] if groups else []
+    originals = {(m.thread_id, m.idx): m for m in rows}
+    candidates = [index for index in newest if compacted[index].role == "tool"]
+    budgets = {index: 24000 for index in candidates}
+    while not size.fits and pager and candidates:
+        index = max(candidates, key=lambda i: len(compacted[i].content.encode("utf-8")))
+        message = compacted[index]
+        original = originals.get((message.thread_id, message.idx), message)
+        budget = min(budgets[index], max(1024, len(message.content.encode("utf-8")) // 2))
+        result = await pager.ainvoke({"run_id": request.run_id,
+            "call_id": str(message.tool_call_id), "content": original.content,
+            "max_bytes": budget, "doc_refs": original.doc_refs})
+        text = _text_of(result.content if isinstance(result, ToolMessage) else result)
+        try:
+            page = json.loads(text)
+        except (ValueError, TypeError):
+            page = {}
+        if page.get("error") or isinstance(result, ToolMessage) and result.status == "error":
+            raise RuntimeError(f"The complete tool result could not be paged: {text[:600]}")
+        if not page.get("more") or len(text.encode("utf-8")) >= len(message.content.encode("utf-8")):
+            candidates.remove(index)
+            continue
+        compacted[index] = message.model_copy(update={"content": text})
+        reductions = [r for r in reductions if (r["thread_id"], r["idx"]) != (message.thread_id, message.idx)]
+        reductions.append({"thread_id": message.thread_id, "idx": message.idx,
+                           "tool_call_id": message.tool_call_id, "model_content": text})
+        if budget <= 1024:
+            candidates.remove(index)
+        else:
+            budgets[index] = max(1024, budget // 2)
+        size = await asyncio.to_thread(request_size.measure, system_text, schemas_json,
+            compacted, model_id=context.model_id, window=window)
+    sent_size = {**sent_size, **size.record()}
     if not size.fits:
-        raise compaction.ContextError(compaction.CONTEXT_SIZE, (
+        error_class = compaction.CONTEXT_PREPARATION if report is not None and report.status != "ok" else compaction.CONTEXT_SIZE
+        raise compaction.ContextError(error_class, (
             f"The next model request is {size.tokens:,} tokens ({size.method}), and the model "
             f"accepts {size.safe_input:,} tokens of input. "
-            + ("The summary of the older steps did not make it fit. " if pending is not None
+            + ("The summary of the older steps failed. " if error_class == compaction.CONTEXT_PREPARATION
+               else "The summary of the older steps did not make it fit. " if pending is not None
                else "No complete older step is left to summarise. ")
             + "The run stops. The transcript keeps every step."))
-    yield Prepared(messages=compacted, size=sent_size, report=report)
+    yield Prepared(messages=compacted, size=sent_size, report=report, reductions=reductions)
 
 
 async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIterator[Dict[str, Any]]:
@@ -584,6 +626,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
         # True when a summary replaced older steps. A failed summary changes no message.
         "summarised": report is not None and report.status == "ok",
         "compaction": compaction_record(report) if report is not None else None,
+        "reductions": prepared.reductions,
     }
     yield {
         "type": "end",
@@ -706,6 +749,21 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
             request, _error("invalid_arguments", problem, tool=name), "error", "invalid_arguments",
             _with_repairs(None, repairs),
         )
+
+    if name.startswith(("search_", "read_documents", "doc_", "table_", "folder_", "list_document_")):
+        rows, visible = model_input_rows(request.earlier, request.messages)
+        whole = {(m.thread_id, m.idx) for m in visible if m.role == "tool" and m.status == "ok"
+                 and any(r.thread_id == m.thread_id and r.idx == m.idx and r.content == m.content
+                         for r in rows)}
+        answers = {m.tool_call_id: m for m in rows if m.role == "tool"
+                   and (m.thread_id, m.idx) in whole}
+        for message in rows:
+            if message.role != "ai":
+                continue
+            for call in message.tool_calls:
+                if (call.name == name and call.id in answers
+                        and normalize_arguments(call.args, schema).args == args):
+                    return _tool_response(request, f"This call repeats call {call.id}. Its result is above.", "ok")
 
     share_token = _PAGE_SHARE.set(request.page_share)
     key_token = _IDEMPOTENCY_KEY.set(request.idempotency_key or None)

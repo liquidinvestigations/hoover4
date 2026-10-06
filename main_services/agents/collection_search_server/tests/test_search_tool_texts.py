@@ -23,7 +23,7 @@ Query rules:
 
 Each row gives file_hash, path and collectionname. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has more, give that value to read_more to get the other rows.
 
-Set a filter only when the user asks for it. Dates are epoch seconds. size_min and size_max are in bytes. A facet_filters value accepts a term id from a facet count or search_facet_values. language also accepts a code or English name. red_flags also accepts a category identifier or title."""
+Use facet_filters with value text or term ids. An empty query lists every filter match. The result reports each applied filter and unknown value. Dates are epoch seconds. size_min and size_max are in bytes. For PDFs by size, use file_types: ["pdf"] and sort by file_size. For email between two people, use email_from and email_to with their addresses. For a location, use ner_loc: ["Chicago"]. language accepts a code or English name. red_flags accepts a category identifier or title."""
 
 SEARCH_PASSAGES = "Search the text passages of the user's documents by keywords and by meaning together. Use it for a question in plain words, when you do not know the words that the documents use. Leave out collectionname to search every collection of this chat. Give up to 12 queries in one call. Each row names the forms that found it in q, by number from 0. Copy file_hash from a row to read_documents. For an exact name, address or phrase, use search_collections."
 

@@ -430,6 +430,7 @@ def test_a_citation_round_reply_with_no_text_keeps_the_answer(store, monkeypatch
 
 @pytest.mark.parametrize("reply", [
     "The memo sets the budget [D9].",
+    "The memo sets the budget on page 0 [D2].",
     'The memo [cite_documents(citations=[{"file_hash":"a"}])] sets the budget [D2].',
 ])
 def test_an_invalid_citation_reply_keeps_the_prior_answer(store, monkeypatch, reply):
@@ -990,3 +991,27 @@ def test_the_browser_tools_are_the_tools_of_the_browser_server():
     calls = _refs(("browser_wait_for", "parallel"), ("browser_take_screenshot", "parallel"))
     assert [c.name for c in calls if steps.runs_in_browser(c)] == [
         "browser_wait_for", "browser_take_screenshot"]
+
+
+def test_page_zero_gets_a_repair_with_the_verified_page_instruction(citations_store):
+    from tasks.P_agent import citations
+    citations_store["session_citations"] = [_citation_result(5, "[D1]", "a" * 64)]
+    _answer_with_tool(citations_store, "The memo sets the budget on page 0 [D1].")
+    assert _check(citations_store).needed
+    assert "1-based page" in citations_store["messages"][-1].content
+    entries = [entry for message in citations_store["session_citations"] for entry in message.usage["evidence"]]
+    assert citations.repair_reply_problem("The budget is on page 0 [D1].", entries) == "page_zero"
+
+
+def test_model_view_persistence_keeps_complete_evidence(store):
+    row = store["row"]
+    from database import agent_runs
+    from tasks.P_agent import steps
+    message = agent_runs.RunMessageRow(idx=2, role="tool", content="complete evidence",
+        tool_call_id="a", tool_name="doc_email", usage_json='{"status":"ok","doc_refs":[]}', run_id=row.run_id)
+    store["messages"].append(message)
+    steps._store_reductions(row, [{"thread_id": row.thread_id, "idx": 2,
+        "tool_call_id": "a", "model_content": "first window"}])
+    saved = store["messages"][-1]
+    assert saved.content == "complete evidence"
+    assert saved.usage["model_content"] == "first window"

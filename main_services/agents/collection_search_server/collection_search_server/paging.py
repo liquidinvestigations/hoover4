@@ -246,7 +246,8 @@ def store_handle(token: str) -> str:
     artifact_id = handle_artifact_id(handle)
     artifacts.write_required(
         artifacts.ArtifactRequest(session_id=session, username=user,
-                                  kind=artifacts.KIND_AGENT_CONTINUATION, tool_name="read_more"),
+                                  kind=artifacts.KIND_AGENT_CONTINUATION, tool_name="read_more",
+                                  title=handle, detail={key.lower(): value for key, value in get_http_headers().items()}.get("x-hoover4-agent-run", "")),
         artifact_id, artifact_id, token.encode("utf-8"), "text/plain",
     )
     return handle
@@ -422,6 +423,12 @@ class PagedTool:
         elif self.item_key == "__metadata_entries":
             items = [{"field": "raw_metadata", "key": key, "value": value} for key, value in result["raw_metadata"].items()]
             excluded.add("raw_metadata")
+        elif self.item_key == "__email_entries":
+            graph = result.get("graph") or {}
+            items = [*({"field": "attachments", "value": value} for value in result.get("attachments", [])),
+                     *({"field": "graph_nodes", "value": value} for value in graph.get("nodes", [])),
+                     *({"field": "graph_edges", "value": value} for value in graph.get("edges", []))]
+            excluded.update(("attachments", "graph", "total"))
         else:
             raw_items = result.get(self.item_key, [])
             items = raw_items if isinstance(raw_items, list) else [raw_items]
@@ -434,10 +441,13 @@ class PagedTool:
         if self.columns_key:
             excluded.add(self.columns_key)
         fields = {key: value for key, value in result.items() if key not in excluded}
+        if self.item_key == "__email_entries":
+            fields["graph_counts"] = {"nodes": len(graph.get("nodes", [])), "edges": len(graph.get("edges", [])),
+                                      "cluster_size": graph.get("cluster_size", 0), "truncated": graph.get("truncated", False)}
         columns = result.get(self.columns_key) if self.columns_key else None
         next_position = result.get("next_position")
         total = result.get("total")
-        if not isinstance(total, int):
+        if not isinstance(total, int) or self.item_key == "__email_entries":
             total = len(items)
         return Window(items, fields, columns, next_position, total, refs)
 
@@ -527,10 +537,11 @@ def _envelope_bytes(tool: PagedTool, window: Window, request_input: dict[str, An
 
 
 def _store_window(tool: PagedTool, window: Window, request_input: dict[str, Any],
-                  window_position: dict | None) -> tuple[str, bytes, int, list[int]]:
+                  window_position: dict | None, *, artifact_id: str | None = None,
+                  stored_share: int | None = None) -> tuple[str, bytes, int, list[int]]:
     """Write the window as one artifact, and return its id, its body and the header length.
     The header records the page share that the lines were stored with."""
-    share = page_share()
+    share = stored_share or page_share()
     header = {"fields": window.fields, "columns": window.columns, "share": share}
     if window.refs:
         header["refs"] = window.refs
@@ -556,7 +567,7 @@ def _store_window(tool: PagedTool, window: Window, request_input: dict[str, Any]
         kind=artifacts.KIND_AGENT_RAW_RESULT,
         tool_name=tool.tool_name,
     )
-    artifact_id = str(uuid.uuid4())
+    artifact_id = artifact_id or str(uuid.uuid4())
     artifacts.write_required(request, artifact_id, artifact_id, body, ARTIFACT_CONTENT_TYPE)
     return artifact_id, body, len(head), ends
 
@@ -987,7 +998,8 @@ def _position_is_valid(handler: Any, position: dict[str, Any]) -> bool:
 def _read_more_response(token: dict[str, Any]) -> str:
     from collection_search_server import tools_document, tools_folder, tools_search, tools_table
 
-    handlers = {**tools_search.PAGED_TOOLS, **tools_document.PAGED_TOOLS, **tools_table.PAGED_TOOLS, **tools_folder.PAGED_TOOLS}
+    handlers = {**tools_search.PAGED_TOOLS, **tools_document.PAGED_TOOLS, **tools_table.PAGED_TOOLS, **tools_folder.PAGED_TOOLS,
+                RUNTIME_RESULT.tool_name: RUNTIME_RESULT}
     tool_name = token.get("tool")
     input_values = token.get("input")
     position = token.get("position")
@@ -1002,6 +1014,8 @@ def _read_more_response(token: dict[str, Any]) -> str:
     handler = handlers.get(tool_name)
     if handler is None:
         return canonical_json({"success": False, "error": "invalid_argument", "message": "continuation names an unavailable paged tool"})
+    if handler is RUNTIME_RESULT and not position.get("artifact"):
+        return _invalid("The runtime continuation must name a stored artifact.")
     if not _position_is_valid(handler, position):
         return _invalid("continuation position is invalid")
     try:
@@ -1028,18 +1042,94 @@ def _handle_token(handle: str) -> str | None:
 READ_MORE_TEXT = "Read the rest of a result. Give the more value of that result or item as continuation."
 
 
+class RuntimeResultRequest(BaseModel):
+    run_id: str
+    call_id: str
+
+
+RUNTIME_RESULT = PagedTool(RuntimeResultRequest, "", "_page_tool_result", "blob", "text")
+RUNTIME_RESULT_NAMESPACE = uuid.UUID("8ce209a8-d594-5aa2-9bb0-f482f46d38b0")
+
+
+@mcp.tool(name="_page_tool_result", description="Store a complete result and return its first page for the agent runtime.")
+def page_tool_result(run_id: str, call_id: str, content: str, max_bytes: int,
+                     doc_refs: list[dict[str, Any]] | None = None) -> str:
+    """Store the complete result under a stable run and call identity."""
+    from collection_search_server import server
+
+    server._caller()
+    headers = {key.lower(): value for key, value in get_http_headers().items()}
+    if not run_id or headers.get("x-hoover4-agent-run") != run_id:
+        return _invalid("The result run does not match the caller run.")
+    if not call_id or not 1024 <= max_bytes <= PAGE_LIMIT.max_bytes:
+        return _invalid("The result page size or call identity is invalid.")
+    request = RuntimeResultRequest(run_id=run_id, call_id=call_id)
+    artifact_id = str(uuid.uuid5(RUNTIME_RESULT_NAMESPACE, f"{run_id}:{call_id}"))
+    window = Window([content], {"source": f"{run_id}:{call_id}"}, None, None,
+                    len(content.encode("utf-8")), doc_refs)
+    artifact_id, body, head, _ = _store_window(
+        RUNTIME_RESULT, window, _input(request), None, artifact_id=artifact_id,
+        stored_share=PAGE_LIMIT.max_bytes)
+    token = _UNIT_SHARE.set(max_bytes)
+    try:
+        return finish(_stored_page(RUNTIME_RESULT, request,
+            {"artifact": artifact_id, "head": head, "start": head, "blob": 1}, _memory_reader(body)))
+    finally:
+        _UNIT_SHARE.reset(token)
+
+
+def _issued_handles() -> list[str]:
+    """Return continuation handles owned by the caller in this chat session."""
+    from collection_search_server import backends
+
+    session, user = _session_and_user()
+    run = {key.lower(): value for key, value in get_http_headers().items()}.get("x-hoover4-agent-run", "")
+    if not session or not user or not run:
+        return []
+    rows = backends.clickhouse_query(
+        "SELECT title FROM chat_artifacts FINAL WHERE username = {user:String} "
+        "AND session_id = {session:String} AND kind = {kind:String} "
+        "AND detail = {run:String} AND is_deleted = 0 AND status = 'ok' ORDER BY artifact_id",
+        backends.GLOBAL_DB, {"user": user, "session": session, "kind": artifacts.KIND_AGENT_CONTINUATION,
+                            "run": run})
+    return list(dict.fromkeys(row["title"] for row in rows if _HANDLE_RE.fullmatch(row.get("title", ""))))
+
+
+def _one_character_damage(value: str, candidate: str) -> bool:
+    if len(value) != len(candidate) or value == candidate:
+        return False
+    positions = [i for i, (a, b) in enumerate(zip(value, candidate)) if a != b]
+    if len(positions) == 1:
+        return True
+    return (len(positions) == 2 and positions[1] == positions[0] + 1
+            and value[positions[0]] == candidate[positions[1]]
+            and value[positions[1]] == candidate[positions[0]])
+
+
 @mcp.tool(name="read_more", description=READ_MORE_TEXT)
 def read_more(continuation: str) -> str:
     """Read only a continuation issued by this server, given as its `more` handle or as the
     encoded continuation of a page stored before the handles."""
     value = (continuation or "").strip()
-    if _HANDLE_RE.match(value):
+    repaired = None
+    if len(value) == 12:
         token = _handle_token(value)
         if token is None:
-            return canonical_json({"success": False, "error": "not_found",
-                                   "message": "No result has this more handle in this chat. Copy more from the result."})
+            issued = _issued_handles()
+            matches = [handle for handle in issued if _one_character_damage(value, handle)]
+            if len(matches) == 1:
+                repaired = matches[0]
+                token = _handle_token(repaired)
+            if token is None:
+                return canonical_json({"success": False, "error": "not_found", "available_handles": issued[:5],
+                                       "message": "No result has this more handle in this chat. Copy more from the result."})
         value = token
     try:
-        return _read_more_response(decode_continuation(value))
+        text = _read_more_response(decode_continuation(value))
+        if repaired:
+            body = json.loads(text)
+            body["continuation_note"] = f"The continuation was corrected to {repaired}."
+            return canonical_json(body)
+        return text
     except ContinuationInvalid as exc:
         return canonical_json({"success": False, "error": "invalid_argument", "message": str(exc)})

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Callable, Hashable, Iterable, TypeVar
+from typing import Callable, Hashable, TypeVar
 from urllib.parse import parse_qs, urlparse, urlunparse
 
 #: RRF constant. 60 is the value from the original Cormack et al. paper; it damps the

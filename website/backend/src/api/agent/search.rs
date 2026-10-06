@@ -73,6 +73,19 @@ fn refuse_reversed_range(name: &str, low: Option<i64>, high: Option<i64>) -> Res
     Ok(())
 }
 
+async fn facet_term_ids(
+    client: &clickhouse::Client,
+    facet: &str,
+    value: &str,
+) -> Result<Vec<u64>, AgentError> {
+    let Some(field) = search_facet(facet)? else {
+        return Ok(Vec::new());
+    };
+    client.query("SELECT term_id FROM string_term_text_to_id WHERE term_field = ? AND lowerUTF8(term_value) = lowerUTF8(?)")
+        .bind(field).bind(value).fetch_all::<u64>().await
+        .map_err(|error| AgentError::from_anyhow(error.into()))
+}
+
 /// Build the shared `SearchQuery` the search routes compose, from the agent's request
 /// shape. Every value is checked here, so a query that reaches the datastore has the
 /// types the index expects.
@@ -83,7 +96,7 @@ async fn build_search_query(
     query_string: &str,
     filters: &AgentSearchFilters,
     sort: SortSpec,
-) -> Result<SearchQuery, AgentError> {
+) -> Result<(SearchQuery, Vec<String>), AgentError> {
     validate_plain_text(query_string)?;
     if filters.date_confirmed_only == Some(true) {
         return Err(AgentError::invalid_argument(
@@ -130,36 +143,47 @@ async fn build_search_query(
         "collection_dataset".to_string(),
         datasets.iter().map(|dataset| FacetOriginalValue::String(dataset.collection_dataset.clone())).collect(),
     );
+    let mut notes = Vec::new();
     for (facet, values) in &filters.facet_filters {
         if facet == "collection_dataset" {
+            notes.push(format!("Applied dataset filter {}.", values.join(", ")));
             continue;
         }
         let mut ids = std::collections::BTreeSet::new();
         for value in values {
-            let id = if let Ok(id) = value.trim().parse::<u64>() {
-                id
-            } else if facet == "language" || facet == "red_flags" {
-                let normalized = if facet == "language" {
-                    common::signals::language_code(value).ok_or_else(|| AgentError::invalid_argument("The language is unknown."))?
-                } else {
-                    crate::api::documents::signals::signal_titles().await.map_err(AgentError::from_anyhow)?
-                        .into_iter().find(|(id, title)| id.eq_ignore_ascii_case(value.trim()) || title.eq_ignore_ascii_case(value.trim()))
-                        .map(|(id, _)| id).ok_or_else(|| AgentError::invalid_argument("The red flag category is unknown."))?
-                };
-                let mut found = None;
-                for collection in &selected {
-                    found = crate::db_utils::clickhouse_utils::get_collection_client(collection)
-                        .query("SELECT term_id FROM string_term_text_to_id WHERE term_field = ? AND term_value = ? LIMIT 1")
-                        .bind(facet).bind(&normalized).fetch_optional::<u64>().await.map_err(|error| AgentError::from_anyhow(error.into()))?;
-                    if found.is_some() { break; }
-                }
-                found.unwrap_or(0)
+            if let Ok(id) = value.trim().parse::<u64>() {
+                ids.insert(FacetOriginalValue::Int(id));
+                notes.push(format!("Applied {facet} term {id}."));
+                continue;
+            }
+            let normalized = if facet == "language" {
+                common::signals::language_code(value).unwrap_or_else(|| value.trim().to_string())
+            } else if facet == "red_flags" {
+                crate::api::documents::signals::signal_titles()
+                    .await
+                    .map_err(AgentError::from_anyhow)?
+                    .into_iter()
+                    .find(|(id, title)| {
+                        id.eq_ignore_ascii_case(value.trim())
+                            || title.eq_ignore_ascii_case(value.trim())
+                    })
+                    .map(|(id, _)| id)
+                    .unwrap_or_else(|| value.trim().to_string())
             } else {
-                return Err(AgentError::invalid_argument(format!(
-                    "The facet {facet:?} requires a term id. search_facet_values lists the ids."
-                )));
+                value.trim().to_string()
             };
-            ids.insert(FacetOriginalValue::Int(id));
+            let mut found = std::collections::BTreeSet::new();
+            for collection in &selected {
+                let client = crate::db_utils::clickhouse_utils::get_collection_client(collection);
+                found.extend(facet_term_ids(&client, facet, &normalized).await?);
+            }
+            if found.is_empty() {
+                ids.insert(FacetOriginalValue::Int(0));
+                notes.push(format!("The {facet} value {value:?} matched no term."));
+            } else {
+                ids.extend(found.into_iter().map(FacetOriginalValue::Int));
+                notes.push(format!("Applied {facet} value {value:?}."));
+            }
         }
         query.facet_filters.insert(facet.clone(), ids);
     }
@@ -196,7 +220,7 @@ async fn build_search_query(
             RangeFilter { min: filters.size_min, max: filters.size_max, include_unknown: false },
         );
     }
-    Ok(query)
+    Ok((query, notes))
 }
 
 /// Flatten decomposed highlight spans into one plain-text snippet, wrapping a matched
@@ -309,7 +333,7 @@ async fn search_results_body(
     let header = requested_collections_header(headers);
     let permitted = permitted_collectionnames(user, &header).await?;
     let sort = sort_spec_from_agent(body.sort.as_ref())?;
-    let query = build_search_query(user, &permitted, &body.collectionname, &body.query, &body.filters, sort).await?;
+    let (query, filter_notes) = build_search_query(user, &permitted, &body.collectionname, &body.query, &body.filters, sort).await?;
     let (_, source) = search_source(user, &query, body.expected_source.as_deref()).await?;
 
     let (results, hit_count, (facet_counts, facets_partial)) = tokio::try_join!(
@@ -360,7 +384,7 @@ async fn search_results_body(
         facet_counts,
         page,
         has_more: next_position.is_some(),
-        query_notes: query_notes(&body.query),
+        query_notes: [query_notes(&body.query), filter_notes].concat(),
         page_info: AgentPageInfo {
             source,
             next_position,
@@ -403,7 +427,7 @@ async fn search_facet_values_body(
     }
     let header = requested_collections_header(headers);
     let permitted = permitted_collectionnames(user, &header).await?;
-    let query = build_search_query(
+    let (query, _) = build_search_query(
         user, &permitted, &body.collectionname, "", &AgentSearchFilters::default(), SortSpec::default(),
     )
     .await?;
@@ -484,7 +508,7 @@ async fn search_histogram_body(
     }
     let header = requested_collections_header(headers);
     let permitted = permitted_collectionnames(user, &header).await?;
-    let query =
+    let (query, filter_notes) =
         build_search_query(user, &permitted, &body.collectionname, &body.query, &body.filters, SortSpec::default()).await?;
     let (_, source) = search_source(user, &query, None).await?;
 
@@ -520,7 +544,7 @@ async fn search_histogram_body(
                 .collect()
         }
     };
-    Ok(SearchDateHistogramResponse { buckets, date_field: body.date_field, source })
+    Ok(SearchDateHistogramResponse { buckets, date_field: body.date_field, source, filter_notes })
 }
 
 // ===================================================================================
@@ -586,4 +610,49 @@ async fn search_entity_explainer_body(
         }
     }
     Ok(SearchEntityExplainerResponse { explanation, documents, source })
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires an isolated ClickHouse URL in AGENT_FILTER_TEST_URL"]
+    async fn named_filters_resolve_dictionary_fields_and_unknown_values() {
+        let url = std::env::var("AGENT_FILTER_TEST_URL").expect("Set the isolated test URL.");
+        let database = format!("test_agent_facets_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+        let client = clickhouse::Client::default()
+            .with_url(url)
+            .with_user("hoover4")
+            .with_password("hoover4")
+            .with_option("async_insert", "1")
+            .with_option("wait_for_async_insert", "1");
+        client
+            .query(&format!("CREATE DATABASE {database}"))
+            .execute()
+            .await
+            .unwrap();
+        let scoped = client.clone().with_database(&database);
+        scoped.query("CREATE TABLE string_term_text_to_id (term_field String, term_value String, term_id UInt64) ENGINE = Memory")
+            .execute().await.unwrap();
+        scoped.query("INSERT INTO string_term_text_to_id VALUES ('filetype', 'pdf', 11), ('email_address', 'kay.mann@enron.com', 22), ('ner', 'Chicago', 33)")
+            .execute().await.unwrap();
+        for (facet, value, expected) in [
+            ("file_types", "PDF", vec![11]),
+            ("email_from", "KAY.MANN@ENRON.COM", vec![22]),
+            ("email_to", "kay.mann@enron.com", vec![22]),
+            ("ner_loc", "chicago", vec![33]),
+            ("ner_loc", "Missing location", vec![]),
+        ] {
+            assert_eq!(
+                facet_term_ids(&scoped, facet, value).await.unwrap_or_else(|error| panic!("{}", error.message)),
+                expected
+            );
+        }
+        client
+            .query(&format!("DROP DATABASE {database}"))
+            .execute()
+            .await
+            .unwrap();
+    }
 }

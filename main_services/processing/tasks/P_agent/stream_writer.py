@@ -543,6 +543,9 @@ def run_message(message, thread_id: str) -> dict[str, Any]:
         status = message.usage.get("status")
         if status in ("ok", "error"):
             out["status"] = status
+        if isinstance(message.usage.get("model_content"), str):
+            out["model_content"] = message.usage["model_content"]
+        out["doc_refs"] = message.usage.get("doc_refs") or []
     return out
 
 

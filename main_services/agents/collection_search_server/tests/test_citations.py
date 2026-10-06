@@ -144,6 +144,7 @@ class TestCiteOne:
             ),
         )
         assert result.quote_verified
+        assert result.page == 2 and result.extracted_by == "raw_text"
         assert result.quote_reason == ""
         assert result.error is None
         assert result.handle == "[D1]"

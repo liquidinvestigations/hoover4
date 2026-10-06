@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from agent_common.tool_packs import (
-    ALL, PACKS, RUN_KINDS, allowed_tools, configured_packs, env_name, pack_of, packs_for,
+    ALL, PACKS, RUN_KINDS, INTERNAL_TOOLS, allowed_tools, configured_packs, env_name, pack_of, packs_for,
 )
 
 # The image's own server sources are in the working directory, and some images import
@@ -116,5 +116,5 @@ def test_every_tool_this_image_lists_is_in_one_pack():
         pytest.skip("no MCP server package in this image")
     names = asyncio.run(_listed_names(*present))
     assert names, f"{present[0]} lists no tool"
-    unpacked = [name for name in names if pack_of(name) is None]
+    unpacked = [name for name in names if name not in INTERNAL_TOOLS and pack_of(name) is None]
     assert unpacked == [], f"{present[0]} lists tools that no pack names: {unpacked}"

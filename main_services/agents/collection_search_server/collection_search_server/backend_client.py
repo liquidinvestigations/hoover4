@@ -611,6 +611,7 @@ class SearchFacetValuesResponse(AgentModel):
 
 
 class SearchDateHistogramResponse(AgentModel):
+    filter_notes: list[str] = Field(default_factory=list)
     buckets: list[HistogramBucket]
     date_field: str
     source: str

@@ -59,6 +59,9 @@ class RunMessage(BaseModel):
     #: `tool` only: `error` when the call failed. The worker copies it from the stored
     #: usage of the row. A failed `search_agent_tools` result binds no name.
     status: Optional[Literal["ok", "error"]] = None
+    #: The persisted model view. The complete evidence stays in `content`.
+    model_content: Optional[str] = None
+    doc_refs: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 def _usage_metadata(usage: Optional[Dict[str, int]]) -> Optional[Dict[str, int]]:

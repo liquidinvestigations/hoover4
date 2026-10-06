@@ -748,7 +748,8 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
                     window: Optional[int] = None, fraction: Optional[float] = None,
                     estimator: Optional[Estimator] = None, measured: Optional[int] = None,
                     safe_input: int = 0, force: bool = False,
-                    summary_window: Optional[int] = None) -> Optional[CompactionPlan]:
+                    summary_window: Optional[int] = None,
+                    allow_oversized_newest: bool = False) -> Optional[CompactionPlan]:
     """The plan of a compaction, with no model call. `None` when the trigger does not fire or
     no complete group is older than the newest one that must stay.
 
@@ -781,7 +782,7 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
     sizes = [sum(est.tokens(applied[i]) for i in g) for g in steps]
     newest = sizes[-1] if sizes else 0
     header = est.tokens_text(RECORD_HEADER) + SUMMARY_TOKENS
-    if fixed + newest + (header if len(steps) > 1 else 0) > limit:
+    if not allow_oversized_newest and fixed + newest + (header if len(steps) > 1 else 0) > limit:
         raise ContextError(CONTEXT_SIZE, _too_large_text(est.fixed, user, newest, limit))
     if len(steps) < 2:
         return None

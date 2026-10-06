@@ -353,7 +353,7 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
             idx=idx, role="tool", content=content,
             tool_call_id=call.call_id, tool_name=call.name, run_id=row.run_id,
             usage_json=json.dumps({"chat_seq": call.seq, "status": status, "measure": measure,
-                                   "error_class": error_class, "evidence": evidence},
+                                   "error_class": error_class, "evidence": evidence, "doc_refs": doc_refs or []},
                                   default=str)))
     if True:
         _chat_row(row)(call.seq, "tool", **tool_row_fields(call.name, entry.get("args"), content, doc_refs))
@@ -566,6 +566,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
                 "raw_call": "It contains a tool call as text.",
                 "unresolved_label": "It uses a label that no document gives.",
                 "conflicting_label": "It uses a label for more than one document.",
+                "page_zero": "It names page 0 instead of the verified page.",
             }[problem]
             answer = ("The citation reply could not replace the earlier answer. "
                       + detail + "\n\n" + row.result
@@ -635,6 +636,25 @@ def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str,
         usage_json=json.dumps(usage), is_final=1, run_id=row.run_id)
     agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
     return ai
+
+
+def _store_reductions(row, reductions: list[dict]) -> None:
+    """Persist model views before the reply while retaining complete tool evidence."""
+    from dataclasses import replace
+    from database import agent_runs
+
+    for reduction in reductions:
+        thread_id = str(reduction.get("thread_id") or "")
+        if not thread_id:
+            raise ValueError("The reduced result has no thread identity.")
+        messages = agent_runs.read_messages(row.username, row.session_id, thread_id)
+        message = next((m for m in messages if m.idx == reduction.get("idx")
+                        and m.role == "tool" and m.tool_call_id == reduction.get("tool_call_id")), None)
+        if message is None or not isinstance(reduction.get("model_content"), str):
+            raise ValueError("The reduced result does not match a stored tool message.")
+        usage = {**message.usage, "model_content": reduction["model_content"]}
+        agent_runs.write_message(row.username, row.session_id, thread_id, message.run_id,
+                                 replace(message, usage_json=json.dumps(usage)))
 
 
 #: The `server_settings` key of the thinking switch on `/admin/llm`.
@@ -760,6 +780,7 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
                     stream.shift_seq(1, COMPACTION_ROLE, content)
                 elif kind == "model_turn" and ai is None:
                     # Written at once, so a retry after a later failure finds the reply.
+                    _store_reductions(row, frame.get("reductions") or [])
                     ai = _store_reply(row, params, frame, next_idx,
                                       str(frame.get("model") or body["llm_model"]),
                                       seq0=row.next_seq + shift)
@@ -818,7 +839,7 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
     model already read the stored result. The run row is not written.
     """
     from database import agent_runs
-    from tasks.P_agent.stream_writer import ToolCallWriter
+    from tasks.P_agent.stream_writer import ToolCallWriter, run_message
 
     call = params.call
     row = _read_row(params)
@@ -843,6 +864,8 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
                  "argument_error": str(entry.get("argument_error") or "") or None},
         "page_share": entry.get("page_share"),
         "idempotency_key": key,
+        "messages": [run_message(m, row.thread_id) for m in messages],
+        "earlier": _earlier_turns(row),
     }
     live = ToolCallWriter(row, params.turn_uuid, call.seq, call.name, entry.get("args"))
     with _step_event(row, "tool", call.name, tool_call_id=call.call_id) as event:

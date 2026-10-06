@@ -1439,6 +1439,8 @@ class CitationResult(BaseModel):
     #: The quoted span was found in the document's extracted text. False is not a
     #: refusal. The citation still stands and the reader sees it marked.
     quote_verified: bool = False
+    page: int | None = None
+    extracted_by: str | None = None
     #: Why an unverified quote failed the check: `short`, `absent`, or
     #: `lookup_failed`. Empty when the quote verified, and empty on stored results
     #: that never recorded a reason, so a later reader does not invent one.
@@ -1647,12 +1649,6 @@ def _as_citation_list(value: Any) -> list[Citation] | None:
     return out
 
 
-def _extracted_pages(collectionname: str, file_hash: str, collection_dataset: str):
-    """Yield extracted page texts in `extracted_by, page_id` order (`_extracted_page_rows`)."""
-    for _, _, text in _extracted_page_rows(collectionname, file_hash, collection_dataset):
-        yield text
-
-
 def _extracted_page_rows(collectionname: str, file_hash: str, collection_dataset: str):
     """Yield `(extracted_by, page_id, text)` in `extracted_by, page_id` order, one query
     batch at a time.
@@ -1736,6 +1732,13 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
         result.error = "file_hash must be a content hash from search_collections"
         return result
 
+    matched_page = {}
+
+    def page_texts():
+        for source, page, text in _extracted_page_rows(citation.collectionname, citation.file_hash, dataset):
+            matched_page.update(source=source, page=max(1, page))
+            yield text
+
     try:
         path_rows = clickhouse_query(
             "SELECT any(path) AS path, any(collection_dataset) AS collection_dataset "
@@ -1745,7 +1748,7 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
         )
         dataset = (path_rows[0].get("collection_dataset") or "") if path_rows else ""
         has_text, pages = _first_and_rest(
-            _extracted_pages(citation.collectionname, citation.file_hash, dataset)
+            page_texts()
         )
     except Exception as exc:  # noqa: BLE001
         result.error = f"lookup failed: {exc}"
@@ -1763,6 +1766,9 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
 
     match = quote_match_in_pages(citation.quote, pages)
     result.quote_verified = match == QUOTE_MATCH_VERIFIED
+    if result.quote_verified:
+        result.page = matched_page.get("page")
+        result.extracted_by = matched_page.get("source")
     if match != QUOTE_MATCH_VERIFIED:
         result.quote_reason = match
     if match == QUOTE_REASON_ABSENT:

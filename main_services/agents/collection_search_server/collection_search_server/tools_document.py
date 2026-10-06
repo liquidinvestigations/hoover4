@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from agent_common.result_pages import canonical_json
+from agent_common.result_pages import PageInput
 from collection_search_server import server
 from collection_search_server.acl import AccessDenied
 from collection_search_server.backend_client import (
@@ -47,11 +48,37 @@ class ReadDocumentsTool(PagedTool):
         return paging.render_document_reads(self, request)
 
 
+class EmailTool(PagedTool):
+    """Keep graph rows behind the first email page."""
+
+    def render(self, request: BaseModel, position: dict[str, Any], source: str) -> str:
+        if position:
+            return super().render(request, position, source)
+        result = paging.BackendClient().post(self.route, request, paging.RESPONSE_MODELS[self.route])
+        if isinstance(result, paging.AgentError):
+            return paging.error_text(result)
+        body = result.model_dump(mode="json", by_alias=True)
+        window = self.window(body)
+        count = len(body.get("attachments", []))
+        if count == len(window.items):
+            return paging._live_page(self, request, None, window)
+        artifact_id, data, head, ends = paging._store_window(self, window, paging._input(request), None)
+        after = lambda n: {"artifact": artifact_id, "head": head,
+                           "start": ends[n - 1] if n else head, "total": window.total,
+                           **({"next": window.next} if window.next else {})}
+        text, _ = paging._build(PageInput(self.tool_name, "rows", window.items[:count], None,
+            window.total, {}, window.fields.get("source", ""), paging._input(request), artifact_id,
+            after, window.fields), paging._page_limit())
+        if len(text.encode("utf-8")) <= paging.page_share():
+            return text
+        return paging._stored_page(self, request, after(0), paging._memory_reader(data))
+
+
 READ_DOCUMENTS = ReadDocumentsTool(DocumentsReadRequest, "documents/read", "read_documents", "rows", "documents")
 DOC_SEARCH_TEXT = PagedTool(DocumentsSearchTextRequest, "documents/search_text", "doc_search_text", "rows", "hits")
 DOC_SOURCES = PagedTool(DocumentsSourcesRequest, "documents/sources", "doc_sources", "rows", "sources")
 DOC_METADATA = PagedTool(DocumentsMetadataRequest, "documents/metadata", "doc_metadata", "rows", "__metadata_entries")
-DOC_EMAIL = PagedTool(DocumentsEmailRequest, "documents/email", "doc_email", "rows", "attachments")
+DOC_EMAIL = EmailTool(DocumentsEmailRequest, "documents/email", "doc_email", "rows", "__email_entries")
 DOC_DIFF_SOURCES = PagedTool(DocumentsDiffSourcesRequest, "documents/diff_sources", "doc_diff_sources", "blob", "unified_diff")
 PDF_SEARCH = PagedTool(DocumentsPdfSearchRequest, "documents/pdf_search", "pdf_search", "rows", "hit_positions")
 LIST_DOCUMENT_ENTITIES = LocalPagedTool(DocumentEntitiesRequest, "list_document_entities", "documents", _document_entities)
@@ -171,14 +198,33 @@ def doc_sources(collectionname: str, file_hash: str, query: str | None = None) -
     return _render(DOC_SOURCES, {"collectionname": collectionname, "file_hash": file_hash, "query": query})
 
 
-@mcp.tool(name="doc_metadata", description="Return metadata, dates, locations, and download links for one document. Use it for document properties outside extracted text. A value longer than 2,000 characters comes back cut, with a cut marker.")
-def doc_metadata(collectionname: str, file_hash: str) -> str:
-    return _render(DOC_METADATA, {"collectionname": collectionname, "file_hash": file_hash})
+def _render_batch(tool: PagedTool, collectionname: str, file_hash: str | list[str], **values) -> str:
+    """Give each document an equal page share and retain each continuation."""
+    if isinstance(file_hash, str):
+        return _render(tool, {"collectionname": collectionname, "file_hash": file_hash, **values})
+    if not 1 <= len(file_hash) <= 10:
+        return canonical_json({"success": False, "error": "invalid_argument", "message": "Give between one and ten document hashes."})
+    share = paging.page_share()
+    per_document = max(1, (share - 256 - len(file_hash) * 100) // len(file_hash))
+    results = []
+    token = paging._UNIT_SHARE.set(per_document)
+    try:
+        for value in file_hash:
+            text = paging.finish(_render(tool, {"collectionname": collectionname, "file_hash": value, **values}))
+            results.append({"file_hash": value, "result": json.loads(text)})
+    finally:
+        paging._UNIT_SHARE.reset(token)
+    return canonical_json({"documents": results})
 
 
-@mcp.tool(name="doc_email", description="Return email fields, the parent message, attachments, and the message graph for one document. Use it when the document is an email. Give node, a file hash in the graph, to centre the graph on another message.")
-def doc_email(collectionname: str, file_hash: str, node: str | None = None) -> str:
-    return _render(DOC_EMAIL, {"collectionname": collectionname, "file_hash": file_hash, "node": node})
+@mcp.tool(name="doc_metadata", description="Return metadata, dates, locations, and download links for one document or up to ten hashes. Each document gets an equal page share. Use read_more for each continuation.")
+def doc_metadata(collectionname: str, file_hash: str | list[str]) -> str:
+    return _render_batch(DOC_METADATA, collectionname, file_hash)
+
+
+@mcp.tool(name="doc_email", description="Return email fields, attachments, and graph counts for one document or up to ten hashes. Each document gets an equal page share. Use read_more for graph nodes and edges. Give node to centre the graph on another message.")
+def doc_email(collectionname: str, file_hash: str | list[str], node: str | None = None) -> str:
+    return _render_batch(DOC_EMAIL, collectionname, file_hash, node=node)
 
 
 @mcp.tool(name="doc_diff_sources", description="Return a unified diff between one page of two extracted document sources. Use it to compare parser or OCR output. page_a and page_b default to the first page of each source.")

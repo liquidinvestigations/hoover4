@@ -302,12 +302,12 @@ def test_a_second_normalization_changes_nothing_and_names_no_repair():
     assert second == (first.args, [], "")
 
 
-def test_damaged_arguments_come_back_unchanged_with_the_problem():
+def test_merged_queries_are_repaired_without_losing_phrase_quotes():
     args = {"queries": ['"LJM"', 'Raptor"<|"|><|"|>"LJM1"']}
     out = normalize_arguments(args, {"properties": {"queries": {"type": "array"}}})
-    assert out.args == args and out.repairs == []
-    assert out.problem.startswith("The call was not run, because its arguments arrived damaged")
-    assert "queries[1]" in out.problem
+    assert out.args == {"queries": ['"LJM"', '"Raptor"', '"LJM1"']}
+    assert out.problem == "" and out.repairs
+    assert normalize_arguments(out.args, None) == (out.args, [], "")
 
 
 # ------------------------------------------------------------------ the served model's calls
@@ -331,10 +331,7 @@ CITE_SCHEMA = {
 }
 
 
-@pytest.mark.parametrize("case", [
-     "objects_written_as_lists",
-    "queries_merged_by_delimiters", "query_with_a_delimiter_inside",
-])
+@pytest.mark.parametrize("case", ["objects_written_as_lists"])
 def test_each_damaged_parse_of_the_served_model_is_refused_and_not_rebuilt(case):
     parsed = CASES[case]["parser_result"]
     out = normalize_arguments(parsed, {"properties": {}})
@@ -419,3 +416,43 @@ def test_the_shown_schema_keeps_the_description_and_copies_a_reference_into_plac
     assert "$defs" not in shown
     # The tool's own schema is not changed.
     assert "anyOf" in schema["properties"]["node_id"]
+
+
+@pytest.mark.parametrize("case", ["queries_merged_by_delimiters", "query_with_a_delimiter_inside"])
+def test_captured_query_delimiters_are_repaired(case):
+    parsed = CASES[case]["parser_result"]
+    out = normalize_arguments(parsed, SEARCH_SCHEMA)
+    assert out.problem == "" and out.repairs
+    assert all('<|"|>' not in value for value in out.args["queries"])
+    assert normalize_arguments(out.args, SEARCH_SCHEMA) == (out.args, [], "")
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ('{children: [], "title": "Keep {children: as text"}', {"children": [], "title": "Keep {children: as text"}),
+    ('{"children": [],queries": ["one"]}', {"children": [], "queries": ["one"]}),
+])
+def test_missing_key_quotes_preserve_quoted_values(raw, expected):
+    out = normalize_arguments(raw, None)
+    assert out.problem == "" and out.args == expected and out.repairs
+
+
+def test_unrepairable_json_names_the_damage_position():
+    out = normalize_arguments('{children: [}', None)
+    assert "position" in out.problem
+    assert out.args == {}
+
+
+def test_captured_collection_list_contains_other_named_arguments():
+    args = {"collectionname": ["epstein", "filename_only:true", 'queries:[<|"|>.pdf<|"|>']}
+    schema = {**SEARCH_SCHEMA, "properties": {**SEARCH_SCHEMA["properties"], "queries": {"type": "array", "items": {"type": "string"}}}}
+    out = normalize_arguments(args, schema)
+    assert out.problem == ""
+    assert out.args == {"collectionname": ["epstein"], "filename_only": True, "queries": [".pdf"]}
+
+
+def test_captured_structural_key_prefixes_are_removed():
+    args = {"collectionname": "enron", "],queries": ['"franznp"']}
+    out = normalize_arguments(args, SEARCH_SCHEMA)
+    assert out.problem == "" and out.args["queries"] == ['"franznp"']
+    nested = {"children": [{"{children": [{"text": "Read documents"}]}]}
+    assert normalize_arguments(nested, None).args == {"children": [{"children": [{"text": "Read documents"}]}]}

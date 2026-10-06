@@ -15,6 +15,7 @@ import asyncio
 import re
 
 import pytest
+from agent_common.tool_packs import INTERNAL_TOOLS
 
 from collection_search_server import prompts
 
@@ -36,7 +37,7 @@ def test_the_declared_tools_are_the_tools_the_server_registers():
     """
     from collection_search_server.server import mcp
 
-    registered = set(asyncio.run(mcp.get_tools()))
+    registered = set(asyncio.run(mcp.get_tools())) - INTERNAL_TOOLS
     assert registered == set(prompts.SERVER_TOOLS), (
         "collection_search_server/prompts/ declares "
         f"{sorted(prompts.SERVER_TOOLS)} but the server registers {sorted(registered)}"

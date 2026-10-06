@@ -340,18 +340,18 @@ async def test_the_arguments_are_normalized_before_the_call_is_classified_and_st
     assert entries[1]["kind"] == "ordered"
 
 
-async def test_damaged_arguments_are_stored_as_sent_and_refused_by_the_tool_call(model):
+async def test_repaired_arguments_are_stored_and_executed(model):
     seen: List[Any] = []
-    agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, seen)], {"search_collections"})
+    schema = {"type": "object", "properties": {"queries": {"type": "array", "items": {"type": "string"}}}, "required": ["queries"]}
+    agent = FakeAgent([dict_tool("search_collections", schema, seen)], {"search_collections"})
     damaged = {"queries": ['"LJM"', 'Raptor"<|"|><|"|>"LJM1"']}
     model.replies.append(AIMessage(content="", tool_calls=[
         {"id": "a", "name": "search_collections", "args": damaged}]))
     entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
-    assert entries[0]["args"] == damaged and entries[0]["argument_repairs"] == []
-    result = await steps.run_tool_call(agent, tool_request("search_collections", damaged))
-    assert (result["status"], result["error_class"]) == ("error", "invalid_arguments")
-    assert "arrived damaged" in json.loads(result["content"])["message"]
-    assert seen == []
+    assert entries[0]["args"] == {"queries": ['"LJM"', '"Raptor"', '"LJM1"']}
+    assert entries[0]["argument_repairs"]
+    result = await steps.run_tool_call(agent, tool_request("search_collections", entries[0]["args"]))
+    assert result["status"] == "ok" and len(seen) == 1
 
 
 async def test_a_call_whose_arguments_are_not_json_is_kept_and_refused_with_the_text(model):
@@ -367,6 +367,7 @@ async def test_a_call_whose_arguments_are_not_json_is_kept_and_refused_with_the_
          "error": None}]))
     entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
     assert [(e["name"], e["args"]) for e in entries] == [("cite_documents", {})]
+    assert "position" in entries[0]["argument_error"]
     assert entries[0]["argument_error"].endswith("The model server sent: " + sent)
     result = await steps.run_tool_call(agent, steps.ToolCallRequest(
         **RUN, call={"id": "x", "name": "cite_documents", "args": {},
@@ -910,3 +911,44 @@ async def test_another_refusal_is_not_a_size_refusal(compacting, model):
     frames = await frames_of(agent, step_request(_long_thread(1), step_no=2))
     assert frames[-1]["type"] == "error" and frames[-1]["error_class"] == "http_400"
     assert len(model.inputs) == 1
+
+
+async def test_oversized_newest_results_reduce_largest_first_and_keep_full_evidence(monkeypatch):
+    from research_agent.run_messages import RunMessage
+    from research_agent.request_size import RequestSize
+    calls = []
+    class Pager:
+        async def ainvoke(self, args):
+            calls.append(args)
+            return json.dumps({"items": [args["content"][:500]], "more": "0123456789ab"})
+    context = SimpleNamespace(model_id="stub", result_pager=Pager())
+    rows = [RunMessage(role="human", content="question", thread_id="t", idx=0),
+            RunMessage(role="ai", content="", tool_calls=[{"id": "a", "name": "doc_email", "args": {}},
+                {"id": "b", "name": "doc_email", "args": {}}], thread_id="t", idx=1),
+            RunMessage(role="tool", content="a" * 10000, tool_call_id="a", name="doc_email", thread_id="t", idx=2),
+            RunMessage(role="tool", content="b" * 20000, tool_call_id="b", name="doc_email", thread_id="t", idx=3)]
+    def measure(system, schemas, messages, **kw):
+        return RequestSize(tokens=sum(len(m.content) for m in messages), method="test", window=14000, output_reserve=1000, reserve_source="test")
+    monkeypatch.setattr(steps.request_size, "measure", measure)
+    monkeypatch.setattr(steps.compaction, "plan_compaction", lambda *a, **kw: None)
+    request = step_request(messages=[m.model_dump() for m in rows])
+    frames = [item async for item in steps._prepare(request, context, "", "", rows, rows, 14000)]
+    prepared = frames[-1]
+    assert prepared.size["fits"] and calls[0]["call_id"] == "b"
+    assert prepared.reductions[0]["idx"] == 3
+    assert rows[3].content == "b" * 20000
+    assert calls[0]["content"] == rows[3].content
+
+
+async def test_repeated_read_runs_again_after_its_result_is_reduced(model):
+    seen = []
+    agent = FakeAgent([dict_tool("read_documents", LIST_SCHEMA, seen)], {"read_documents"})
+    messages = [{"role": "human", "content": "question", "thread_id": "t", "idx": 0},
+        {"role": "ai", "content": "", "tool_calls": [{"id": "old", "name": "read_documents", "args": {"query": "x"}}], "thread_id": "t", "idx": 1},
+        {"role": "tool", "content": "complete", "tool_call_id": "old", "name": "read_documents", "status": "ok", "thread_id": "t", "idx": 2}]
+    request = tool_request("read_documents", {"query": "x"}).model_copy(update={"messages": [steps.RunMessage(**m) for m in messages]})
+    repeated = await steps.run_tool_call(agent, request)
+    assert "repeats call old" in repeated["content"] and seen == []
+    request.messages[-1].model_content = "partial"
+    assert (await steps.run_tool_call(agent, request))["status"] == "ok"
+    assert len(seen) == 1

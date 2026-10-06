@@ -275,6 +275,8 @@ pub struct AgentHistogramBucket {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchDateHistogramResponse {
+    #[serde(default)]
+    pub filter_notes: Vec<String>,
     pub buckets: Vec<AgentHistogramBucket>,
     pub date_field: String,
     pub source: String,

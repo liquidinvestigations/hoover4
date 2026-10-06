@@ -268,7 +268,7 @@ field and gives the agent `reasoning_content`.
 ## The end of a run
 
 The model decides when it is finished: a reply with no call is the answer. The worker adds
-no repeat check and no todo round. Its limits are the step limit of the run and one retry
+no todo round. The service skips a repeated successful search or read while its complete result remains in model input. Its limits are the step limit of the run and one retry
 after a reply with no text and no call. At a limit, the worker ends the run with a result
 that code writes from the stored thread, and it sends no further model request. See
 `processing/tasks/Readme.md` for the loop.
@@ -335,15 +335,14 @@ request, the stream sends one `compaction` frame, and it sends keepalive lines w
 
 **The failures.** No failure edits the stored thread.
 
-* When the fixed input and the newest group pass the safe input, no summary can make the
-  request fit. The stream sends an `error` frame of class `context_size` that names the
-  sizes, before any summary request.
-* When the summary request fails or gives no text, the record has the status `failed` and
-  changes no message. The call sends the previous list only when it fits the safe input.
-  Otherwise the stream sends an `error` frame of class `context_preparation`. A later plan
-  over the same prefix does not send the summary request again.
-* After a compaction, `/model_step` measures the request again. A request that still passes
-  the safe input gives an `error` frame of class `context_size`.
+* After compaction, the service reduces the largest newest tool results until the request fits.
+  The collection broker stores each complete result under an identity derived from the run and call.
+  A reduced view contains the first window and a `read_more` continuation.
+  The worker persists each view before it stores the model reply.
+  The transcript retains complete evidence and document identities.
+* A failed summary changes no older message. The service can still reduce newest results.
+  When the request still exceeds the safe input, the stream returns `context_preparation` after a failed summary.
+  Other requests that remain too large return `context_size`.
 * When the provider refuses a request as too large before any output, `/model_step` reads
   the model's window again, uses the limit that the refusal states when it is lower, and
   prepares the request once more with a compaction under the trigger. It sends the new
@@ -427,18 +426,21 @@ The MCP servers validate arguments with pydantic in lax mode, which converts `"T
 `"5"` and refuses a string for a list or an object. `_create_context` wraps every MCP tool
 with `with_decoded_arguments` (`agent.py`), which runs the same normalization.
 
-**Refused arguments.** The normalization never drops a value, never rebuilds damaged
-arguments, never turns a list into a single value, and never makes several calls from one.
+Known parser damage repairs missing key quotes, structural key prefixes, merged query values, and delimiters inside query text.
+Named arguments inside a collection list move to their schema fields.
+Unrepairable JSON reports its damage position.
+
+**Refused arguments.** The normalization preserves values and refuses ambiguous damage.
+It never turns a list into a single value or makes several calls from one.
 `/tool_call` refuses these calls with `invalid_arguments` and a message that names the
 reason, and the stored call keeps the arguments as the model sent them:
 
-- A delimiter inside the text of a key or a value, or a repaired key that holds a space or
+- A delimiter inside a key or a value outside query text, or a repaired key that holds a space or
   one of `,:{}[]`. The parser split the call in the wrong place, so no value of it is
   certain.
 - Two keys that become one key with different values, and an alias beside its name with a
   different value. The same value twice gives one key.
-- A call that the model client lists as invalid, because the model server sent an argument
-  text that is not JSON. `/model_step` keeps it as a call with no arguments and an
+- A call whose argument text remains invalid JSON after key repair. `/model_step` keeps it as a call with no arguments and an
   `argument_error` that holds the start of the text, so the reply does not count as a reply
   with no call.
 - A reply with no parsed call whose text holds the served model's call syntax (`<|"|>` or

@@ -150,6 +150,7 @@ class AgentContext:
     model_id: str
     system_text_for: Callable[[Tuple[str, ...]], str]
     skill_context: Optional[skill_store.SkillContext] = None
+    result_pager: Optional[Any] = None
 
 
 class MCPGatewayAgent:
@@ -301,6 +302,8 @@ class MCPGatewayAgent:
         client = MultiServerMCPClient(servers)
         # Every MCP tool decodes JSON-string arguments before the call.
         tools = [with_decoded_arguments(tool) for tool in await client.get_tools()]
+        result_pager = next((tool for tool in tools if tool.name == "_page_tool_result"), None)
+        tools = [tool for tool in tools if tool.name != "_page_tool_result"]
 
         llm_api_key = _read_secret("LLM_API_KEY")
         llm_base_url = os.getenv("LLM_BASE_URL")
@@ -365,6 +368,7 @@ class MCPGatewayAgent:
             model_id=model_id,
             system_text_for=lambda _names: system_text,
             skill_context=skill_context,
+            result_pager=result_pager,
         )
 
 

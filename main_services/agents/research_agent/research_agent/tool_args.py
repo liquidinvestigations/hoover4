@@ -9,11 +9,10 @@ it.
 1. `repair_arguments`. The served model writes the token `<|"|>` around a string. The tool
    call parser of the model server does not always remove it, so a value or a key can hold
    the token, a key can keep a quote (`id"`), and a value can keep one layer of quotes. The
-   repair removes a token at the start or the end of a key or a value, the quotes of a key,
-   and that one layer. A token inside the text of a key or a value shows that the parser
-   split the call in the wrong place. The call is then refused as damaged, and nothing is
-   rebuilt from it. Two keys that become the same key with different values are refused
-   too, so no value is dropped.
+   repair removes the string delimiter tokens and retains literal phrase quotes.
+   It separates merged query values at paired delimiter tokens.
+   It refuses conflicting duplicate keys and damaged argument names.
+   Raw JSON repair adds missing key quotes outside string contents.
 2. `rename_aliases`. The model writes some arguments under another name, such as
    `collection` for `collectionname`. The key gets the schema's name when the schema has
    that name. An alias and its name with different values are refused.
@@ -31,6 +30,7 @@ docstring.
 """
 
 import json
+import re
 from json import JSONDecodeError
 from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
@@ -241,11 +241,62 @@ def _repair_key(key: str, where: str, repairs: List[str]) -> str:
     stripped = fixed.strip('"')
     if stripped and '"' not in stripped:
         fixed = stripped
+    if fixed.startswith("{ "):
+        fixed = fixed[2:]
+    elif fixed.startswith("{"):
+        fixed = fixed[1:]
+    elif fixed.startswith("],"):
+        fixed = fixed[2:]
     if not fixed or any(c in _NOT_IN_A_KEY for c in fixed):
         raise _damaged(where[:-1], f"the key {key!r} is not an argument name")
     if fixed != key:
         repairs.append(f"key {where}{key!r} became {fixed!r}")
     return fixed
+
+
+def repair_json_arguments(text: str) -> Tuple[dict, List[str]]:
+    """Repair unquoted JSON keys without changing quoted string contents."""
+    decoder = json.JSONDecoder()
+    parts, repairs = [], []
+    index, previous = 0, ""
+    while index < len(text):
+        character = text[index]
+        if character == '"':
+            try:
+                _value, end = decoder.raw_decode(text, index)
+            except JSONDecodeError as exc:
+                raise DamagedArguments(f"The arguments contain invalid JSON at position {exc.pos}.") from exc
+            parts.append(text[index:end])
+            index, previous = end, '"'
+            continue
+        if previous in ("{", ","):
+            key = re.match(r'([A-Za-z_][A-Za-z_0-9]*)"?\s*:', text[index:])
+            if key:
+                parts.append(json.dumps(key.group(1)) + ":")
+                repairs.append(f"The key at position {index} received its opening quote.")
+                index += key.end()
+                previous = ":"
+                continue
+        parts.append(character)
+        if not character.isspace():
+            previous = character
+        index += 1
+
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result and result[key] != value:
+                raise DamagedArguments(f"The argument {key!r} has conflicting values.")
+            result[key] = value
+        return result
+
+    try:
+        value = json.loads("".join(parts), object_pairs_hook=pairs)
+    except JSONDecodeError as exc:
+        raise DamagedArguments(f"The arguments contain invalid JSON at position {exc.pos}.") from exc
+    if not isinstance(value, dict):
+        raise DamagedArguments("The arguments of a tool call must be a JSON object.")
+    return value, repairs
 
 
 def _repair_value(value: Any, key: str, where: str, repairs: List[str]) -> Any:
@@ -267,13 +318,25 @@ def _repair_value(value: Any, key: str, where: str, repairs: List[str]) -> Any:
             sources[name] = raw_key
         return out
     if isinstance(value, list):
-        return [_repair_value(item, key, f"{where[:-1]}[{i}].", repairs)
-                for i, item in enumerate(value)]
+        repaired = []
+        for index, item in enumerate(value):
+            items = item.split(QUOTE_TOKEN * 2) if key == "queries" and isinstance(item, str) else [item]
+            if len(items) > 1:
+                repairs.append(f"The query at {where[:-1]}[{index}] contained merged values.")
+            for part in items:
+                repaired.append(_repair_value(part, key, f"{where[:-1]}[{index}].", repairs))
+        return repaired
     if not isinstance(value, str):
         return value
     fixed, inside = _strip_token(value)
     if inside:
-        raise _damaged(where[:-1], "a value holds a string delimiter inside its text")
+        if key not in QUOTED_TEXT_KEYS:
+            raise _damaged(where[:-1], "the value holds a string delimiter")
+        fixed = fixed.replace(QUOTE_TOKEN, "")
+        repairs.append(f"The value at {where[:-1]} contained a string delimiter.")
+    if key in QUOTED_TEXT_KEYS and fixed.endswith('"') and fixed.count('"') % 2:
+        fixed = '"' + fixed
+        repairs.append(f"The value at {where[:-1]} received its opening phrase quote.")
     if fixed != value:
         repairs.append(f"value {where[:-1]} lost the quote token")
     if key not in QUOTED_TEXT_KEYS:
@@ -291,8 +354,7 @@ def repair_arguments(args: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
     `QUOTED_TEXT_KEYS` keep their quotes. The second item names each repair, and is empty
     when nothing changed.
 
-    Raises `DamagedArguments` when a key or a value holds the token inside its text, when
-    a repaired key is not a name, and when two keys become one key with different values.
+    Refuse interior delimiters outside query text, invalid keys, and conflicting duplicate values.
     """
     if not isinstance(args, dict):
         return args, []
@@ -350,20 +412,56 @@ class Normalized(NamedTuple):
     problem: str = ""
 
 
+def _embedded_collection_arguments(args: dict, schema: Optional[dict]) -> Tuple[dict, List[str]]:
+    """Recover named arguments that the parser placed in the collection list."""
+    properties = (schema or {}).get("properties", {})
+    values = args.get("collectionname")
+    if not isinstance(values, list):
+        return args, []
+    result, kept, repairs = dict(args), [], []
+    for item in values:
+        match = re.fullmatch(r"([A-Za-z_][A-Za-z_0-9]*):(.*)", item, re.DOTALL) if isinstance(item, str) else None
+        if match is None or match[1] not in properties or match[1] == "collectionname":
+            kept.append(item)
+            continue
+        key, raw = match[1], match[2].strip()
+        if raw.startswith("[" + QUOTE_TOKEN) and raw.endswith(QUOTE_TOKEN):
+            value = [raw[1 + len(QUOTE_TOKEN):-len(QUOTE_TOKEN)]]
+        else:
+            try:
+                value = json.loads(raw)
+            except JSONDecodeError:
+                kept.append(item)
+                continue
+        if key in result and result[key] != value:
+            raise DamagedArguments(f"The argument {key!r} has conflicting values.")
+        result[key] = value
+        repairs.append(f"The argument {key!r} moved out of the collection list.")
+    result["collectionname"] = kept
+    return result, repairs
+
+
 def normalize_arguments(args: Any, schema: Optional[dict]) -> Normalized:
     """The arguments of one call, repaired, renamed and decoded for the tool's `schema`.
 
     A second run on the result changes nothing and names no repair. Damaged arguments come
     back unchanged, with `problem` set.
     """
+    raw_repairs = []
+    if isinstance(args, str):
+        try:
+            args, raw_repairs = repair_json_arguments(args)
+        except DamagedArguments as exc:
+            return Normalized({}, [], str(exc))
     if not isinstance(args, dict):
         return Normalized(args, [], "The arguments of a tool call must be a JSON object.")
     try:
+        args, embedded_repairs = _embedded_collection_arguments(args, schema)
         fixed, repairs = repair_arguments(args)
         fixed, renames = rename_aliases(fixed, schema)
     except DamagedArguments as exc:
         return Normalized(dict(args), [], str(exc))
-    return Normalized(decode_string_arguments(fixed, schema), repairs + renames)
+    return Normalized(decode_string_arguments(fixed, schema), raw_repairs + embedded_repairs + repairs + renames)
 
 
 # ----------------------------------------------------------------- the schema shown to a model
