@@ -67,6 +67,11 @@ EXTRACTED_BY_TABLES = (
     "text_content",
     "entity_hit",
     "nlp_processed",
+    "regex_entity_hit",
+    "regex_scanned",
+    "signal_hit",
+    "signal_scanned",
+    "signal_cluster",
     "text_chunks",
     "text_chunk_vectors",
 )

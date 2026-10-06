@@ -91,3 +91,29 @@ def test_activity_reuses_regex_watermark_when_only_signal_scan_is_missing(storag
     assert activity.scan_regex_entities_for_hashes(params).text_segments == 1
     assert routes == ["/signal_batch"]
     assert read_signal_pages(client, "dataset", ["file"])[0]
+
+
+def test_ocr_variant_purge_removes_scans_and_preserves_other_sources(storage):
+    import time
+    from tasks.P_admin.ocr_languages import PurgeVariantsParams, purge_dropped_ocr_variants
+
+    collection, client, cluster, folder = storage
+    migrate(client, cluster, folder)
+    tables = ["regex_entity_hit", "regex_scanned", "signal_hit", "signal_scanned", "signal_cluster"]
+    columns = ["collection_dataset", "file_hash", "extracted_by"]
+    values = [["dataset", "file", "ocr_tesseract_eng"],
+              ["dataset", "file", "raw_text"],
+              ["other", "file", "ocr_tesseract_eng"]]
+    for table in tables:
+        client.insert(table, values, column_names=columns)
+    purge_dropped_ocr_variants(PurgeVariantsParams(collection, "dataset", ["ocr_tesseract_eng"], []))
+    expected = [("dataset", "raw_text"), ("other", "ocr_tesseract_eng")]
+    deadline = time.monotonic() + 60
+    while True:
+        remaining = {table: client.query(
+            f"SELECT collection_dataset, extracted_by FROM {table} FINAL "
+            "ORDER BY collection_dataset, extracted_by").result_rows for table in tables}
+        if all(rows == expected for rows in remaining.values()):
+            break
+        assert time.monotonic() < deadline, remaining
+        time.sleep(0.2)

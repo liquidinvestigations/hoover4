@@ -124,3 +124,6 @@ Error for the pair. The operation record keeps separate counts for selection, re
 current failures, disabled stages, missing plans and unsupported task names.
 
 `main_services/processing/Readme.md` lists those entry points with their flags.
+
+Removing an OCR source also removes its regex hits, red flag evidence, scored passages, and scan markers.
+The purge keeps other sources and other datasets.
