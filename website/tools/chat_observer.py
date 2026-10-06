@@ -1190,7 +1190,7 @@ async def run_all(
                         fu_deadline = TURN_CEILING_S
                         fu_result = await submit_and_observe(
                             tabs[0], base_url, networks[0], whitelist, followup_probe,
-                            f"{name}-followup", "chat", FOLLOW_UPS[name], resolutions[0][0],
+                            f"{name}-followup", profile, FOLLOW_UPS[name], resolutions[0][0],
                             resolutions[0][1], followup_dir, fu_deadline, mode="followup",
                             run_started=run_started,
                         )
@@ -1199,7 +1199,8 @@ async def run_all(
                         for severity, message in fu_result.observations:
                             merged.observations.append((severity, f"follow-up: {message}"))
                     except Exception as exc:  # noqa: BLE001
-                        merged.observations.append((DIAGNOSTIC_WARNING, f"follow-up turn failed: {exc}"))
+                        merged.incomplete = True
+                        merged.observations.append((INCOMPLETE_EXECUTION, f"follow-up turn failed: {exc}"))
 
             write_conversation_report(conv_dir, merged)
             print(

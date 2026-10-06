@@ -1,6 +1,7 @@
 """Verify persisted-answer comparison independently of temporary interface text."""
 
 import asyncio
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -180,6 +181,54 @@ class FollowUpSubmitTests(unittest.IsolatedAsyncioTestCase):
             before, problem = await observer.submit_followup(AsyncMock(), "next question")
         self.assertEqual((before, problem), (1, ""))
         self.assertEqual(observer.turn_phase(states[1], before), "running")
+
+
+class FollowUpDriverTests(unittest.IsolatedAsyncioTestCase):
+    async def drive(self, followup):
+        browser = AsyncMock()
+        primary = observer.ConversationResult(
+            name="driver-test", profile="chat_local", prompt_text="first",
+            session_url="http://example.test/ai_chat/c/saved", submission_ok=True,
+            turn_started=True, turn_phase="answered", completed_answer_present=True,
+        )
+        submit = AsyncMock(side_effect=[primary, followup])
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.dict(observer.PROMPTS_BY_NAME, {"driver-test": ("driver-test", "chat_local", "first")}), \
+             patch.dict(observer.FOLLOW_UPS, {"driver-test": "second"}), \
+             patch("browser_lifecycle.start_browser", AsyncMock(return_value=browser)), \
+             patch("browser_lifecycle.stop_browser", AsyncMock()), \
+             patch.object(observer, "watch_network", AsyncMock()), \
+             patch.object(observer, "submit_and_observe", submit), \
+             patch.object(observer, "open_last_document_card", AsyncMock(return_value={"ok": False, "reason": "no_cards"})), \
+             patch.object(observer, "screenshot", AsyncMock(return_value=b"image")), \
+             patch.object(observer, "check_history", AsyncMock(return_value={
+                 "reload_survived": True, "before_answers": [{"seq": "2", "text": "answer"}],
+             })), \
+             patch.object(observer, "wait_for_app_mounted", AsyncMock()), \
+             patch.object(observer, "write_conversation_report"), \
+             patch.object(observer, "write_run_index"), \
+             patch.object(observer.asyncio, "sleep", AsyncMock()):
+            results, status = await observer.run_all(
+                ["driver-test"], "http://example.test", Path(folder),
+                [("test", (1366, 768))], [], "", "", True,
+            )
+        return results, status, submit
+
+    async def test_followup_exception_makes_the_run_incomplete(self):
+        results, status, submit = await self.drive(RuntimeError("The page failed."))
+        self.assertEqual(status, 2)
+        self.assertTrue(results[0].incomplete)
+        self.assertEqual(submit.await_count, 2)
+        self.assertIn(observer.INCOMPLETE_EXECUTION, [severity for severity, _ in results[0].observations])
+
+    async def test_followup_keeps_the_conversation_profile(self):
+        followup = observer.ConversationResult(
+            name="driver-test-followup", profile="chat_local", prompt_text="second",
+            submission_ok=True, turn_started=True, turn_phase="answered", completed_answer_present=True,
+        )
+        _results, status, submit = await self.drive(followup)
+        self.assertEqual(status, 0)
+        self.assertEqual(submit.await_args_list[1].args[6], "chat_local")
 
 
 if __name__ == "__main__":

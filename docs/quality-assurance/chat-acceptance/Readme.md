@@ -42,6 +42,7 @@ A driver can send the same requests through the website's server functions, in p
 
 `website/observe-chat.sh --prompts story-14,story-17` runs the named stories and their second turns.
 The observer reads prompt text and internet settings from these documents.
+It reports a failed second turn as incomplete execution.
 The `all` selection retains the fixed workload.
 
 ## When the data changes
