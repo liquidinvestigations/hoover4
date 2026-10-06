@@ -2,13 +2,12 @@
 
 import os
 import pytest
-FILE_TYPES = os.path.join(os.environ.get("HOOVER4_TESTDATA", "/testdata"), "file-types")
-pytestmark = pytest.mark.skipif(not os.path.isdir(FILE_TYPES), reason="Table samples are not mounted")
+FILE_TYPES = os.path.join(os.environ.get("HOOVER4_TESTDATA", "/testdata/hoover-testdata/data"), "file-types")
+pytestmark = [pytest.mark.integration,
+              pytest.mark.skipif(not os.path.isdir(FILE_TYPES), reason="Table samples are not mounted")]
 
 import hashlib
-import os
 import sqlite3
-import pytest
 from tasks.P3_parse_files.table_sqlite import SqliteLimits, SqliteReport, SqliteTimeLimit, is_sqlite_path, read_sqlite_cells
 SQLITE = os.path.join(FILE_TYPES, 'sqlite')
 

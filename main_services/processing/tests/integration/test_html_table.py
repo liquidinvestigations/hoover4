@@ -2,11 +2,10 @@
 
 import os
 import pytest
-FILE_TYPES = os.path.join(os.environ.get("HOOVER4_TESTDATA", "/testdata"), "file-types")
-pytestmark = pytest.mark.skipif(not os.path.isdir(FILE_TYPES), reason="Table samples are not mounted")
+FILE_TYPES = os.path.join(os.environ.get("HOOVER4_TESTDATA", "/testdata/hoover-testdata/data"), "file-types")
+pytestmark = [pytest.mark.integration,
+              pytest.mark.skipif(not os.path.isdir(FILE_TYPES), reason="Table samples are not mounted")]
 
-import os
-import pytest
 from tasks.P3_parse_files.table_markup import MIME_HTML_TABLE, MIME_SPREADSHEETML, read_html_table_cells, sniff_html_table, sniff_html_table_path
 HTML_XLS = os.path.join(FILE_TYPES, 'html-xls')
 
@@ -17,6 +16,8 @@ def grid(path):
     return {(sheet, c.source_row, c.column_id): c for sid, sheet, c in read_html_table_cells(path)}
 
 def html_xls_samples():
+    if not os.path.isdir(HTML_XLS):
+        return []
     return sorted((n for n in os.listdir(HTML_XLS) if n.lower().endswith(('.xls', '.xlsx'))))
 
 @pytest.mark.parametrize('name', html_xls_samples())

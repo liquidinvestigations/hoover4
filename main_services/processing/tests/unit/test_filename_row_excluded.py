@@ -1,18 +1,8 @@
-"""Every reader of a Manticore pages table must exclude the `filename_index` row.
+"""Verify document page queries exclude synthetic filename rows.
 
-That row is not a page. It carries a document's basenames so a query for a filename finds
-the document, and it has `page_id = -1`. A value chosen to be unreachable for a real
-extractor. The cost is that it leaks into every code path that assumes a pages row is a
-page:
-
-* the document endpoints deserialise `page_id` as `u32`, so `-1` is not an off-by-one,
-  it fails the whole query;
-* a "N other matches" count that includes it is one too high on every filename hit;
-* a viewer that offers to jump to "page -1" has nowhere to go.
-
-Grep-based, and deliberately so. The readers are in two languages across two crates, and
-the alternative (trusting each author to remember) is exactly what this row makes
-dangerous. It is blunt and it is effective.
+Filename rows use page_id=-1 and support document searches.
+Document page readers cannot deserialize those rows as u32.
+The source lint examines SELECT templates with page-table references.
 """
 
 import pathlib
@@ -52,16 +42,29 @@ def _rust_sources() -> list[pathlib.Path]:
 
 
 def _sql_blocks(text: str) -> list[str]:
-    """Rust `format!` string literals that look like a Manticore query over pages.
-
-    Split on `format!(` rather than parsed: this is a lint, not a compiler, and a false
-    positive here costs one exclusion clause while a false negative costs a 500.
-    """
+    """Read SELECT templates that reference page tables."""
     blocks = []
     for chunk in text.split("format!("):
-        if PAGES_TABLE_RE.search(chunk[:2000]):
-            blocks.append(chunk[:2000])
+        literal = re.match(
+            r'\s*(?:r(?P<hashes>\#*)"(?P<raw>.*?)"(?P=hashes)|"(?P<normal>(?:[^"\\]|\\.)*)")',
+            chunk, re.DOTALL,
+        )
+        if literal is None:
+            continue
+        sql = literal.group("raw") if literal.group("raw") is not None else literal.group("normal")
+        if re.search(r"\bSELECT\b", sql, re.IGNORECASE) and PAGES_TABLE_RE.search(sql):
+            blocks.append(sql)
     return blocks
+
+
+def test_query_templates_exclude_fragments_and_later_source_text():
+    fragment = 'format!("FROM {pages}"); // SELECT is documented here.'
+    assert _sql_blocks(fragment) == []
+    assert _sql_blocks('format!("SELECT id FROM {pages}")') == ['SELECT id FROM {pages}']
+    raw = 'format!(r#"SELECT id FROM {pages_table} WHERE name="value""#)'
+    assert _sql_blocks(raw) == ['SELECT id FROM {pages_table} WHERE name="value"']
+    unrelated = 'format!("error"); let query = "SELECT id FROM {pages}";'
+    assert _sql_blocks(unrelated) == []
 
 
 def test_the_website_backend_is_reachable_or_explicitly_skipped():

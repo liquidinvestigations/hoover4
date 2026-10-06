@@ -7,6 +7,11 @@
 | `fixtures/` | small inputs checked in beside the tests |
 | `conftest.py` | shared fixtures and collection settings for both |
 
+Format regression tests read `<HOOVER4_TESTDATA>/file-types`.
+`HOOVER4_TESTDATA` defaults to the mounted testdata repository's `data` folder.
+Set this variable when the mount differs.
+Missing format samples produce recorded skips.
+
 The migration parity test lives in `unit/` and covers the three ways the migration runner's
 naive `;` split breaks: a semicolon inside a quoted comment, a semicolon inside a `--`
 comment, and prose after the final terminator, which reaches the database as an empty query.
