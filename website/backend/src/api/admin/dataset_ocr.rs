@@ -77,6 +77,8 @@ struct OperationSummaryRow {
     /// name, and an alias carrying the column's own name shadows the column it derives
     /// from.
     last_update: i64,
+    progress_done: u64,
+    progress_total: u64,
 }
 
 /// The newest operation touching a dataset, whatever its kind or state.
@@ -97,7 +99,7 @@ pub async fn latest_operation(
                     error, \
                     toInt64(toUnixTimestamp(started_at)) AS started_at, \
                     toInt64(toUnixTimestamp(finished_at)) AS finished_at, \
-                    toInt64(toUnixTimestamp(updated_at)) AS last_update \
+                    toInt64(toUnixTimestamp(updated_at)) AS last_update, progress_done, progress_total \
              FROM operations FINAL \
              WHERE collection_dataset = ? \
              ORDER BY started_at DESC, op_id DESC LIMIT 1",
@@ -112,6 +114,8 @@ pub async fn latest_operation(
     let now = time::OffsetDateTime::now_utc().unix_timestamp();
     let running = matches!(row.state.as_str(), "pending" | "queued" | "running");
     Ok(Some(DatasetOperationStatus {
+        progress_done: row.progress_done,
+        progress_total: row.progress_total,
         op_id: row.op_id,
         kind: row.kind,
         stale_seconds: if running {

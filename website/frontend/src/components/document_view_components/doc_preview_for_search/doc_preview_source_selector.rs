@@ -48,14 +48,10 @@ pub fn DocumentPreviewSourceSelectorDropdown(
     let mut expand = use_signal(move || false);
     let sources = sources.read().clone().unwrap_or_default();
     if sources.is_empty() {
-        return rsx! {
-            "No Sources!"
-        };
+        return rsx! {};
     };
     let Some(selected_source) = selected_source.read().clone() else {
-        return rsx! {
-            "No Selected Source!"
-        };
+        return rsx! {};
     };
 
     rsx! {
@@ -96,14 +92,10 @@ pub fn DocumentPreviewSourceSelectorList(
 ) -> Element {
     let sources = sources.read().clone().unwrap_or_default();
     if sources.is_empty() {
-        return rsx! {
-            "No Sources!"
-        };
+        return rsx! {};
     };
     let Some(selected_source) = selected_source.read().clone() else {
-        return rsx! {
-            "No Selected Source!"
-        };
+        return rsx! {};
     };
     rsx! {
         SelectedItemList {

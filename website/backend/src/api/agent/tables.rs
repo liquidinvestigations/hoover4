@@ -406,7 +406,8 @@ async fn tables_column_values_body(
     };
     let context =
         table_context(user, headers, &body.collectionname, &body.file_hash, body.expected_source.as_deref(), deadline).await?;
-    let header_row = require_sheet(&context, body.sheet)?.header_row;
+    let sheet = require_sheet(&context, body.sheet)?;
+    let header_row = sheet.header_row;
     column_label(&context, body.sheet, body.column)?;
     let floor = if header_row > 0 { format!(" AND row_id > {header_row}") } else { String::new() };
     // The website's order, `n DESC, cell_text ASC`, is total, so the `HAVING` key
@@ -417,9 +418,10 @@ async fn tables_column_values_body(
         .table_client(&body.collectionname)
         .query(&format!(
             "SELECT cell_text, count() AS n FROM table_cells FINAL \
-             WHERE file_hash = ? AND sheet_id = ? AND column_id = ?{floor} \
+             WHERE file_hash = ? AND sheet_id = ? AND column_id = ?{floor} AND row_id <= {} AND column_id <= {} \
                AND (? = '' OR positionCaseInsensitiveUTF8(cell_text, ?) > 0) \
-             GROUP BY cell_text{having} ORDER BY n DESC, cell_text ASC LIMIT {limit}"
+             GROUP BY cell_text{having} ORDER BY n DESC, cell_text ASC LIMIT {limit}",
+            sheet.row_count, sheet.column_count
         ))
         .bind(&body.file_hash)
         .bind(body.sheet)
@@ -477,12 +479,15 @@ async fn tables_search_cells_body(
     let column_names: HashMap<u32, String> =
         context.overview.columns_of(body.sheet).into_iter().map(|c| (c.column_id, c.label())).collect();
     let dataset = &context.identifier.collection_dataset;
+    let sheet = require_sheet(&context, body.sheet)?;
 
     let hit_count: u64 = deadline
         .table_client(&body.collectionname)
-        .query("SELECT count() FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 AND row_id NOT IN (SELECT header_row FROM table_sheets FINAL WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? AND header_row > 0)")
+        .query("SELECT count() FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND row_id <= ? AND column_id <= ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 AND row_id NOT IN (SELECT header_row FROM table_sheets FINAL WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? AND header_row > 0)")
         .bind(&body.file_hash)
         .bind(body.sheet)
+        .bind(sheet.row_count)
+        .bind(sheet.column_count)
         .bind(&body.query)
         .bind(dataset)
         .bind(&body.file_hash)
@@ -495,9 +500,11 @@ async fn tables_search_cells_body(
     }
     let rows: Vec<(u64, u64, u32, String)> = deadline
         .table_client(&body.collectionname)
-        .query("SELECT source_row, row_id, column_id, cell_text FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 AND row_id NOT IN (SELECT header_row FROM table_sheets FINAL WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? AND header_row > 0) ORDER BY row_id, column_id LIMIT ? OFFSET ?")
+        .query("SELECT source_row, row_id, column_id, cell_text FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND row_id <= ? AND column_id <= ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 AND row_id NOT IN (SELECT header_row FROM table_sheets FINAL WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? AND header_row > 0) ORDER BY row_id, column_id LIMIT ? OFFSET ?")
         .bind(&body.file_hash)
         .bind(body.sheet)
+        .bind(sheet.row_count)
+        .bind(sheet.column_count)
         .bind(&body.query)
         .bind(dataset)
         .bind(&body.file_hash)

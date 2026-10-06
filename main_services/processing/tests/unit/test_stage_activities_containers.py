@@ -68,7 +68,7 @@ def test_email_attachments_count_and_empty_folder_removed(temp_root):
     assert [r.task_name for r in batch.results] == ["extract_email_attachments_to_temp"] * 2
     first, second = (r.value for r in batch.results)
     assert first["attachment_count"] == 1 and first["member_count"] == 1
-    assert os.listdir(first["out_dir"]) == ["part-1.2-notes.bin"]
+    assert os.listdir(first["out_dir"]) == ["notes.bin"]
     assert second["attachment_count"] == 0 and second["member_count"] == 0
     assert not os.path.exists(second["out_dir"])
 
@@ -259,3 +259,50 @@ def test_video_failure_records_nothing(monkeypatch):
 
     assert batch.results[0].status == "failed"
     assert recorded == []
+
+
+def test_email_attachment_names_are_safe_unique_and_stable_on_retry(temp_root):
+    msg = EmailMessage()
+    msg.set_content("body")
+    names = ["notes.bin", "notes.bin", "../notes.bin", ".", "notes (part 1.3).bin", "é" * 150 + ".bin"]
+    for index, name in enumerate(names):
+        msg.add_attachment(str(index).encode(), maintype="application", subtype="octet-stream", filename=name)
+    path = temp_root / "names.eml"
+    path.write_bytes(bytes(msg))
+    params = parse_email.ExtractEmailAttachmentsParams(collectionname="c", collection_dataset="c_d", email_hash="names", file_path=str(path), timeout_seconds=60)
+    first = parse_email.extract_email_attachments_to_temp(params)
+    folder = first["out_dir"]
+    saved = {name: (temp_root / folder / name).read_bytes() for name in os.listdir(folder)}
+    assert saved["notes.bin"] == b"0"
+    assert saved["notes (part 1.3).bin"] == b"1"
+    assert set(saved.values()) == {str(index).encode() for index in range(len(names))}
+    assert all(len(name.encode()) <= 255 and "/" not in name for name in saved)
+    parse_email.extract_email_attachments_to_temp(params)
+    assert {name: (temp_root / folder / name).read_bytes() for name in os.listdir(folder)} == saved
+
+
+def test_mail_error_samples_keep_the_total_and_bound_utf8_names():
+    from tasks.P3_parse_files.result_samples import ErrorSamples
+    errors = ErrorSamples()
+    for _ in range(100):
+        errors.append("é" * 300)
+    assert errors.total == 100
+    assert len(errors) == 20
+    assert all(len(error.encode()) <= 200 for error in errors)
+
+
+def test_missing_attachment_result_keeps_twenty_names_and_full_count(temp_root):
+    msg = EmailMessage()
+    msg.set_content("body")
+    for _ in range(30):
+        msg.add_attachment(b"", maintype="application", subtype="octet-stream", filename="é" * 200)
+        msg.get_payload()[-1]["X-Apple-Content-Length"] = "100"
+    path = temp_root / "missing.eml"
+    path.write_bytes(bytes(msg))
+    params = parse_email.ExtractEmailAttachmentsParams(collectionname="c", collection_dataset="c_d",
+        email_hash="missing", file_path=str(path), timeout_seconds=60)
+    result = parse_email.extract_email_attachments_to_temp(params)
+    assert result["missing_attachment_count"] == 30
+    assert len(result["missing_attachments"]) == 20
+    assert all(len(item["filename"].encode()) <= 200 for item in result["missing_attachments"])
+    assert result["attachment_count"] == 0

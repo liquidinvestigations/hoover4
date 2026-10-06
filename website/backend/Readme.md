@@ -31,3 +31,12 @@ Last error: <text>`, and an operation start then writes its row `errored`. Each 
 goes through `temporal_ready::start_client()`, which has a 30 s timeout. The constants and the
 text are mirrored in `main_services/processing/tasks/temporal_readiness.py`, and a unit test
 in each runtime compares them when the other file is reachable.
+
+## Document processing state
+
+The source response includes the document processing state.
+One query reads its plan, completion, file errors, and latest listed operation.
+An unfinished plan shows running only while its operation remains active.
+An ended operation gives stopped and its recorded state.
+A query failure remains an error beside any sources that loaded.
+Table value and match queries exclude cells outside the current sheet dimensions.

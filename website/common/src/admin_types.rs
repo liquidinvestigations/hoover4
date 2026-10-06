@@ -127,6 +127,10 @@ pub struct DatasetOperationStatus {
     pub started_at: String,
     pub finished_at: String,
     pub stale_seconds: u64,
+    #[serde(default)]
+    pub progress_done: u64,
+    #[serde(default)]
+    pub progress_total: u64,
 }
 
 impl DatasetOperationStatus {

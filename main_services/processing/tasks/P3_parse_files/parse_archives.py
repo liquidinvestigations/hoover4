@@ -30,6 +30,7 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
     import os
     import shutil
     import subprocess
+    from tasks.P3_parse_files.result_samples import short_name
     from tasks.P3_parse_files.temp_dirs import make_temp_dir
     from tasks.P3_parse_files.mail_containers import mail_format
     out_dir = make_temp_dir(params.collection_dataset, "extract", params.archive_hash)
@@ -76,8 +77,8 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
                 shutil.rmtree(out_dir, ignore_errors=True)
                 raise RuntimeError(f"{kind} extraction failed: {stderr[:300]!r}")
             return {"out_dir": out_dir, "entry_count": entry_count,
-                    "partial_errors": [f"{kind} reader exited {child.returncode}: "
-                                       f"{stderr[:300]!r}"]}
+                    "partial_errors": [short_name(f"{kind} reader exited {child.returncode}: {stderr[:300]!r}")],
+                    "partial_error_count": 1}
         try:
             details = json.loads(stdout)
         except (UnicodeDecodeError, ValueError) as exc:
@@ -86,7 +87,8 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
         if not entry_count:
             shutil.rmtree(out_dir, ignore_errors=True)
         return {"out_dir": out_dir, "entry_count": entry_count,
-                "partial_errors": details.get("partial_errors", [])}
+                "partial_errors": [short_name(error) for error in details.get("partial_errors", [])[:20]],
+                "partial_error_count": int(details.get("partial_error_count", len(details.get("partial_errors", []))))}
 
     log.info("[P3] Extracting archive to %s", out_dir)
     cmd = ["7z", "x", "-y", f"-o{out_dir}", params.archive_path]

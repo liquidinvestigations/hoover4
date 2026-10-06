@@ -784,20 +784,20 @@ pub async fn get_table_column_values(
     // The header row's text is this column's LABEL, not one of its values, and the column
     // statistics beside this list already exclude it. Offering it as a filterable value
     // would let a reader pick a value that matches no data row.
-    let header_row: u64 = client
+    let (header_row, row_count, column_count): (u64, u64, u32) = client
         .query(
-            "SELECT header_row FROM table_sheets FINAL \
+            "SELECT header_row, row_count, column_count FROM table_sheets FINAL \
              WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? LIMIT 1",
         )
         .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
         .bind(&document_identifier.collection_dataset)
         .bind(&document_identifier.file_hash)
         .bind(sheet_id)
-        .fetch_all::<u64>()
+        .fetch_all::<(u64, u64, u32)>()
         .await?
         .into_iter()
         .next()
-        .unwrap_or(0);
+        .unwrap_or((0, 0, 0));
     let floor = data_row_floor(header_row);
 
     // The search string is BOUND. See the module docstring: the Manticore escaping next
@@ -806,7 +806,7 @@ pub async fn get_table_column_values(
     let rows: Vec<(String, u64)> = client
         .query(&format!(
             "SELECT cell_text, count() AS n FROM table_cells FINAL \
-             WHERE file_hash = ? AND sheet_id = ? AND column_id = ?{floor} \
+             WHERE file_hash = ? AND sheet_id = ? AND column_id = ?{floor} AND row_id <= {row_count} AND column_id <= {column_count} \
                AND (? = '' OR positionCaseInsensitiveUTF8(cell_text, ?) > 0) \
              GROUP BY cell_text ORDER BY n DESC, cell_text ASC LIMIT {MAX_TABLE_COLUMN_VALUES}"
         ))
@@ -844,17 +844,18 @@ pub async fn count_table_cell_matches(
     // no row of the grid contains. The header is drawn once, as the column label.
     let count: u64 = client
         .query(
-            "SELECT count() FROM table_cells FINAL \
-             WHERE file_hash = ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 \
-               AND (sheet_id, row_id) NOT IN ( \
-                 SELECT sheet_id, header_row FROM table_sheets FINAL \
-                 WHERE collection_dataset = ? AND hash = ? AND header_row > 0)",
+            "SELECT count() FROM table_cells AS c FINAL \
+             INNER JOIN (SELECT sheet_id, row_count, column_count, header_row FROM table_sheets FINAL \
+                         WHERE collection_dataset = ? AND hash = ?) AS s ON s.sheet_id = c.sheet_id \
+             WHERE c.file_hash = ? AND positionCaseInsensitiveUTF8(c.cell_text, ?) > 0 \
+               AND c.row_id <= s.row_count AND c.column_id <= s.column_count \
+               AND c.row_id > s.header_row",
         )
         .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
-        .bind(&document_identifier.file_hash)
-        .bind(find_query)
         .bind(&document_identifier.collection_dataset)
         .bind(&document_identifier.file_hash)
+        .bind(&document_identifier.file_hash)
+        .bind(find_query)
         .fetch_one()
         .await?;
     Ok(count)

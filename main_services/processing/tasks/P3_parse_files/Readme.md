@@ -132,8 +132,8 @@ Apple `.emlx` parsing uses the declared byte count and excludes the trailing pro
 Detached `.emlxpart` files remain separate source files.
 The current VFS member contract does not link a detached part to its `.emlx` placeholder.
 The email parser does not create a child for a detached Apple attachment with no inline bytes.
-Nested `message/rfc822` parts become child EML files. MIME part paths keep duplicate names
-distinct. Named text attachments and detached signatures do not enter the parent body.
+Nested `message/rfc822` parts become child EML files. Attachments keep their safe filenames.
+A duplicate name gains ` (part <path>)` before its extension. Named text attachments and detached signatures do not enter the parent body.
 
 Magika is constructed once for each worker process.
 The local detectors select routes before Tika runs.
@@ -382,3 +382,7 @@ A busy wait must leave one try budget for each unfinished file before the attemp
 The runner reports `ServiceStayedBusy` when either limit ends the wait.
 A busy retry interrupted by worker loss does not consume the file's lost-attempt limit.
 The searchable PDF client uses a read timeout at least 60 seconds below its minimum file try budget.
+
+Extraction results keep the first twenty recoverable errors and their total count.
+Each error sample and missing attachment field has a 200-byte UTF-8 limit.
+Attachment retries remove the prior extraction directory before writing members.

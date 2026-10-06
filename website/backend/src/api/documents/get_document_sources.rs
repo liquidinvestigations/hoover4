@@ -5,7 +5,7 @@ use common::{
     current_user::CurrentUser,
     document_sources::{
         DocumentAudioSourceItem, DocumentEmailSourceItem, DocumentImageSourceItem,
-        DocumentPdfSourceItem, DocumentSourceItem, DocumentSourcesStatus, DocumentTableSourceItem,
+        DocumentPdfSourceItem, DocumentProcessingStatus, DocumentSourceItem, DocumentSourcesStatus, DocumentTableSourceItem,
         DocumentTextSourceItem, DocumentVideoSourceItem, BINARY_WORD_TEXT_EXTRACTOR,
         EMAIL_TEXT_EXTRACTOR,
     },
@@ -327,7 +327,7 @@ pub async fn get_document_sources_status(
 ) -> anyhow::Result<DocumentSourcesStatus> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let (txt, pdf, email, img, vid, aud, table) = tokio::join!(
+    let (txt, pdf, email, img, vid, aud, table, processing) = tokio::join!(
         get_text_sources(user, document_identifier.clone()),
         get_pdf_sources_with_status(user, document_identifier.clone()),
         get_email_sources(user, document_identifier.clone()),
@@ -335,6 +335,7 @@ pub async fn get_document_sources_status(
         get_video_sources(user, document_identifier.clone()),
         get_audio_sources(user, document_identifier.clone()),
         get_table_sources(user, document_identifier.clone()),
+        get_processing_status(&document_identifier),
     );
 
     let mut sources = vec![];
@@ -425,12 +426,90 @@ pub async fn get_document_sources_status(
     // the selector falls back to the first real source.
     sources.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    Ok(DocumentSourcesStatus { sources, errors })
+    let processing = processing.unwrap_or_else(|error| {
+        tracing::warn!(%error, "document processing query failed");
+        errors.push("The document processing state could not load".to_string());
+        DocumentProcessingStatus::QueryFailed
+    });
+    Ok(DocumentSourcesStatus { sources, errors, processing })
+}
+
+/// Read plan completion, file failures, and the latest operation in one query.
+const DOCUMENT_PROCESSING_SQL: &str = r#"
+WITH
+    plans AS (SELECT plan_hash FROM processing_plan_hits FINAL
+              WHERE collection_dataset = ? AND item_hash = ?),
+    latest_operation AS (
+        SELECT p.op_id AS op_id, o.state AS state
+        FROM operation_plans AS p FINAL
+        INNER JOIN Hoover4_Processing.operations AS o FINAL ON o.op_id = p.op_id
+        WHERE p.collection_dataset = ? AND p.plan_hash IN plans
+        ORDER BY p.listed_at DESC, o.started_at DESC, p.op_id DESC LIMIT 1)
+SELECT
+    (SELECT count() FROM plans) AS planned,
+    (SELECT count() FROM processing_plan_finished FINAL
+     WHERE collection_dataset = ? AND plan_hash IN plans) AS finished,
+    (SELECT groupUniqArray(20)(task_name) FROM processing_errors FINAL
+     WHERE collection_dataset = ? AND hash = ?
+       AND (op_id IN (SELECT op_id FROM latest_operation)
+            OR (op_id = '' AND (SELECT count() FROM latest_operation) = 0))) AS tasks,
+    (SELECT any(state) FROM latest_operation) AS operation_state
+"#;
+
+#[derive(clickhouse::Row, serde::Deserialize)]
+struct ProcessingStatusRow {
+    planned: u64,
+    finished: u64,
+    tasks: Vec<String>,
+    operation_state: String,
+}
+
+async fn get_processing_status(identifier: &DocumentIdentifier) -> anyhow::Result<DocumentProcessingStatus> {
+    let client = get_client_for_dataset(&identifier.collection_dataset).await?;
+    let row: ProcessingStatusRow = client
+        .query(DOCUMENT_PROCESSING_SQL)
+        .bind(&identifier.collection_dataset).bind(&identifier.file_hash)
+        .bind(&identifier.collection_dataset).bind(&identifier.collection_dataset)
+        .bind(&identifier.collection_dataset).bind(&identifier.file_hash)
+        .fetch_one().await?;
+    Ok(document_processing_status(row.planned, row.finished, row.tasks, row.operation_state))
+}
+
+fn document_processing_status(planned: u64, finished: u64, mut tasks: Vec<String>,
+                              operation_state: String) -> DocumentProcessingStatus {
+    if !tasks.is_empty() {
+        tasks.sort();
+        return DocumentProcessingStatus::Failed { tasks };
+    }
+    if planned == 0 {
+        return DocumentProcessingStatus::NotPlanned;
+    }
+    if finished >= planned {
+        return DocumentProcessingStatus::Done;
+    }
+    match operation_state.as_str() {
+        "pending" | "queued" | "running" => DocumentProcessingStatus::Running,
+        "" => DocumentProcessingStatus::NotPlanned,
+        _ => DocumentProcessingStatus::Stopped { operation_state },
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unfinished_plans_follow_their_operation_state() {
+        assert_eq!(document_processing_status(1, 0, vec![], "running".into()), DocumentProcessingStatus::Running);
+        assert_eq!(document_processing_status(1, 0, vec![], "".into()), DocumentProcessingStatus::NotPlanned);
+        for state in ["errored", "cancelled", "finished"] {
+            assert_eq!(document_processing_status(1, 0, vec![], state.into()),
+                       DocumentProcessingStatus::Stopped { operation_state: state.into() });
+        }
+        assert_eq!(document_processing_status(1, 1, vec![], "finished".into()), DocumentProcessingStatus::Done);
+        assert_eq!(document_processing_status(1, 1, vec!["parse".into()], "errored".into()),
+                   DocumentProcessingStatus::Failed { tasks: vec!["parse".into()] });
+    }
 
     #[test]
     fn ocr_query_failure_keeps_original_pdf_source() {

@@ -73,6 +73,10 @@ pub fn DocViewerRoot(
         }
     }));
 
+    let empty_source_message = use_memo(move || source_request.read().as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .map(|status| status.processing.empty_source_message()).unwrap_or_default());
+
     let control = use_context::<DocViewerStateControl>();
     let currently_selected_source: ReadSignal<Option<DocumentSourceItem>> = use_memo(move || {
         let sources = doc_sources.read().clone().unwrap_or_default();
@@ -160,7 +164,7 @@ pub fn DocViewerRoot(
                 page: rsx! {
                     div {
                         style: "padding: 12px; color: rgba(0,0,0,0.45); font-style: italic;",
-                        "No preview available for this document."
+                        "{empty_source_message()}"
                     }
                 },
             }

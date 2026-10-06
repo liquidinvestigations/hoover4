@@ -268,7 +268,14 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
 
     from tasks.P3_parse_files.email_parts import mail_parts
 
+    from tasks.P3_parse_files.result_samples import short_name
+    import shutil
+
+    shutil.rmtree(out_dir)
+    os.makedirs(out_dir)
     written = 0
+    used_names: set[str] = set()
+    missing_attachment_count = 0
     missing_attachments: list[dict[str, str]] = []
     for item in mail_parts(msg):
         if not item.attachment:
@@ -286,16 +293,30 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
         if payload is None or (not payload and part.get("X-Apple-Content-Length")):
             if part.get("X-Apple-Content-Length"):
                 log.warning("[P3] detached Apple attachment missing at MIME part %s", item.path)
-                missing_attachments.append({"part_path": item.path,
-                                            "filename": filename,
-                                            "declared_length": str(part.get("X-Apple-Content-Length"))})
+                missing_attachment_count += 1
+                if len(missing_attachments) < 20:
+                    missing_attachments.append({"part_path": short_name(item.path),
+                                                "filename": short_name(filename),
+                                                "declared_length": short_name(part.get("X-Apple-Content-Length"))})
             else:
                 log.warning("[P3] attachment has no payload at MIME part %s", item.path)
             continue
         # A file name has at most 255 bytes and no NUL or path separator.
         safe_name = re.sub(r"[\x00-\x1f\x7f/\\]", "_", filename)
-        safe_name = safe_name.encode("utf-8")[:200].decode("utf-8", "ignore")
-        safe_name = f"part-{item.path}-{safe_name}"
+        safe_name = short_name(safe_name).strip(" .") or "attachment"
+        candidate = safe_name
+        stem, extension = os.path.splitext(safe_name)
+        duplicate = 1
+        while candidate in used_names:
+            number = "" if duplicate == 1 else f" {duplicate}"
+            suffix = f" (part {short_name(item.path)[:40]}{number})"
+            kept_extension = extension.encode("utf-8")[:40].decode("utf-8", "ignore")
+            stem_limit = 255 - len((suffix + kept_extension).encode("utf-8"))
+            kept_stem = stem.encode("utf-8")[:stem_limit].decode("utf-8", "ignore")
+            candidate = kept_stem + suffix + kept_extension
+            duplicate += 1
+        safe_name = candidate
+        used_names.add(safe_name)
         target_path = os.path.join(out_dir, safe_name)
         with open(target_path, "wb") as out_f:
             out_f.write(payload)
@@ -309,7 +330,7 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
         except OSError:
             pass
     return {"out_dir": out_dir, "attachment_count": written,
-            "missing_attachments": missing_attachments}
+            "missing_attachments": missing_attachments, "missing_attachment_count": missing_attachment_count}
 
 
 @activity.defn

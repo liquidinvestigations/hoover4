@@ -32,19 +32,15 @@ const POLL_SECONDS: u64 = 3;
 /// cancellation, which is a decision a person makes with this number in front of them.
 const STALE_SECONDS: u64 = 900;
 
-/// `{"stage": "...", "added": [...], "removed": [...]}` as one readable line.
-///
-/// Falls back to the raw string: a detail blob this cannot parse is still the only thing
-/// the admin has to go on, and hiding it would leave the strip saying "running" and
-/// nothing else.
-fn describe(detail: &str) -> String {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(detail) else {
-        return detail.to_string();
-    };
-    let stage = value
-        .get("stage")
-        .and_then(|v| v.as_str())
-        .unwrap_or("working");
+/// Describe the recorded stage or the operation state and ingest plan counts.
+fn describe(operation: &DatasetOperationStatus) -> String {
+    let value = serde_json::from_str::<serde_json::Value>(&operation.detail)
+        .unwrap_or(serde_json::Value::Null);
+    let stage = value.get("stage").and_then(|v| v.as_str());
+    let mut parts = vec![stage.unwrap_or(&operation.state).to_string()];
+    if stage.is_none() && matches!(operation.kind.as_str(), "add_dataset" | "rescan_dataset") {
+        parts.push(format!("{} of {} plans", operation.progress_done, operation.progress_total));
+    }
     let list = |key: &str| -> String {
         value
             .get(key)
@@ -59,7 +55,6 @@ fn describe(detail: &str) -> String {
     };
     let added = list("added");
     let removed = list("removed");
-    let mut parts = vec![stage.to_string()];
     if !added.is_empty() {
         parts.push(format!("adding {added}"));
     }
@@ -159,8 +154,8 @@ pub fn DatasetOperationStrip(
                     span { style: "font-weight: 400;", " \u{b7} started {current.started_at}" }
                 }
             }
-            if !current.detail.is_empty() {
-                div { style: "margin-top: 3px;", "{describe(&current.detail)}" }
+            if !current.detail.is_empty() || matches!(current.kind.as_str(), "add_dataset" | "rescan_dataset") {
+                div { style: "margin-top: 3px;", "{describe(&current)}" }
             }
             if stale {
                 div { style: "margin-top: 3px; font-weight: 600;",
@@ -454,5 +449,22 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ingest_without_stage_uses_operation_state_and_plan_counts() {
+        let mut operation = DatasetOperationStatus {
+            op_id: "op".into(), kind: "add_dataset".into(), state: "running".into(),
+            detail: "{}".into(), error: String::new(), started_at: String::new(),
+            finished_at: String::new(), stale_seconds: 0, progress_done: 3, progress_total: 10,
+        };
+        assert_eq!(describe(&operation), "running · 3 of 10 plans");
+        operation.detail = r#"{"stage":"parsing"}"#.into();
+        assert_eq!(describe(&operation), "parsing");
     }
 }

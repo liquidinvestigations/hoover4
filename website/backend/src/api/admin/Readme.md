@@ -281,3 +281,6 @@ test result, and it is closed by the same two-non-admin-identities run.
 ## Navigation
 
 - [Go Back](../mod.rs)
+
+The dataset operation response includes its completed and total plan counts.
+The operation strip shows these counts for ingestion when no stage is recorded.

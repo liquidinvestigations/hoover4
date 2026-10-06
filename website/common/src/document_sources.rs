@@ -463,6 +463,35 @@ pub enum DocumentSourceItem {
 pub struct DocumentSourcesStatus {
     pub sources: Vec<DocumentSourceItem>,
     pub errors: Vec<String>,
+    #[serde(default)]
+    pub processing: DocumentProcessingStatus,
+}
+
+/// The processing state of this document in its dataset.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum DocumentProcessingStatus {
+    #[default]
+    NotPlanned,
+    Running,
+    Failed { tasks: Vec<String> },
+    Done,
+    Stopped { operation_state: String },
+    QueryFailed,
+}
+
+impl DocumentProcessingStatus {
+    pub fn empty_source_message(&self) -> String {
+        match self {
+            Self::NotPlanned => "Processing has not reached this document.".to_string(),
+            Self::Running => "Processing of this document is running.".to_string(),
+            Self::Failed { tasks } => format!("Processing failed in {}.", tasks.join(", ")),
+            Self::Done => "No text was found in this document.".to_string(),
+            Self::Stopped { operation_state } => format!(
+                "Processing of this document stopped when the operation ended with {operation_state}."),
+            Self::QueryFailed => "The document processing state could not load.".to_string(),
+        }
+    }
 }
 
 impl Eq for DocumentSourceItem {}

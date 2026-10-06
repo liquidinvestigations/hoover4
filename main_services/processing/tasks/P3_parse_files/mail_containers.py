@@ -656,14 +656,15 @@ def _extract_mbox(path: str, root: Path, errors: list[str]) -> int:
         # several `From ` lines reads as a mailbox and is split again.
         message = data[envelope_end + 1:end]
         _write(root / f"message-{index:08d}.eml", message)
-    return len(starts) - len(errors)
+    return len(starts) - getattr(errors, "total", len(errors))
 
 
 def extract(path: str, output: str, kind: str) -> dict:
-    """Return the member count and all recoverable extraction errors."""
+    """Return the member count, error count, and first twenty error samples."""
     root = Path(output)
     root.mkdir(parents=True, exist_ok=True)
-    errors: list[str] = []
+    from tasks.P3_parse_files.result_samples import ErrorSamples
+    errors = ErrorSamples()
     try:
         if kind == "pff":
             count = _extract_pff(path, root, errors)
@@ -680,7 +681,7 @@ def extract(path: str, output: str, kind: str) -> dict:
         count = sum(len(files) for _, _, files in os.walk(root))
     if count == 0 and not errors and kind != "pff":
         errors.append(f"{kind} source contains no readable items")
-    return {"entry_count": count, "partial_errors": errors}
+    return {"entry_count": count, "partial_errors": errors, "partial_error_count": errors.total}
 
 
 if __name__ == "__main__":

@@ -32,6 +32,11 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | column modal | a visibility or filter control is open | one named modal above the grid, with keyboard focus inside it |
 | email without body | the email parser stores no readable body | the envelope, attachments, and source selector remain available |
 | source failure | the source request fails | an error and retry button appear |
+| processing pending | no operation has reached the document | the page states that processing has not reached this document |
+| processing active | its unfinished plan belongs to an active operation | the page states that processing runs |
+| processing failure | its current operation recorded a file error | the page names the failed tasks |
+| processing stopped | its unfinished plan belongs to an ended operation | the page names the operation state |
+| processing complete without a source | the plan finished without a preview source | the page states that no text was found |
 
 The PDF source list keeps the original PDF when its OCR variant query fails.
 The source response reports the OCR query error beside the available source.
@@ -46,3 +51,5 @@ The Word text source precedes Extractous text for binary Word files.
 - The column modal closes from its backdrop and Escape.
 - The modal returns focus to its opening control.
 - The application uses the light palette for either browser color preference.
+
+The empty source selector stays hidden. A processing query failure remains separate from an empty extraction.
