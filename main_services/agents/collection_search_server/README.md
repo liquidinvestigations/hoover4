@@ -124,6 +124,10 @@ the block is then absent rather than an error.
 
 ## Citations
 
+A citation accepts an optional `term` from the search that found its document.
+The transcript can infer an omitted term from the newest earlier search for that document.
+The source card shows this term and the matching search passage.
+
 `cite_documents` is how the agent says which documents its answer rests on, as against
 which documents a search happened to return. Each citation names a document, a quote and
 one line of why, and gets back a handle (`[D1]`, `[D2]`) that the model writes into its

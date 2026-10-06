@@ -266,14 +266,16 @@ fn AiChatSessionRoot(
             style: "height: 100%; width: 100%; display: flex; flex-direction: row; \
                     background: #F5F6F8; overflow: hidden;",
             ChatConversationPanel { session_id, detail, messages, gate, choices }
-            // Right, document pane (≈40%)
-            div {
-                style: "height: 100%; width: 40%; min-width: 300px;",
-                SuspendWrapper {
-                    DocumentPreviewForSearchRoot {
-                        query: preview_query,
-                        selected_result_hash,
-                        show_finder: true,
+            if selected_result_hash.read().is_some() {
+                div {
+                    "data-chat-document-pane": "true",
+                    style: "height: 100%; width: 40%; min-width: 300px;",
+                    SuspendWrapper {
+                        DocumentPreviewForSearchRoot {
+                            query: preview_query,
+                            selected_result_hash,
+                            show_finder: true,
+                        }
                     }
                 }
             }
@@ -585,7 +587,7 @@ fn ChatConversationPanel(
 
     rsx! {
         div {
-            style: "height: 100%; width: 60%; min-width: 360px; display: flex; \
+            style: "height: 100%; flex: 1; min-width: 360px; display: flex; \
                     flex-direction: column; background: #ECEEF2; border-right: 1px solid #D1D5DB;",
             div {
                 style: "padding: 10px 14px; display: flex; align-items: center; gap: 12px; \

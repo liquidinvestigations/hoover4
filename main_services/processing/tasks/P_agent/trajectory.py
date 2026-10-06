@@ -231,7 +231,8 @@ def response_doc_refs(tool_name: str, refs: Any, query: str = "") -> list[dict[s
     itself does not show. A search ref opens its document at `query`."""
     if not isinstance(refs, list):
         return []
-    out = [d for d in (_doc_ref(ref) for ref in refs) if d]
+    out = (_extract_doc_refs(tool_name, {"citations": refs}) if tool_name == "cite_documents"
+           else [d for d in (_doc_ref(ref) for ref in refs) if d])
     if query and tool_name in _SEARCH_TOOLS:
         for ref in out:
             if not ref["find_query"]:
@@ -263,6 +264,7 @@ def _extract_doc_refs(tool_name: str, result: Any) -> list[dict[str, Any]]:
             one["quote_verified"] = bool(item.get("quote_verified"))
             one["quote_reason"] = str(item.get("quote_reason") or "")
             one["find_query"] = str(item.get("find_query") or "")
+            one["term"] = str(item.get("term") or "")
             # The snippet slot carries the quote, so the card shows what was cited
             # rather than an unrelated passage of the same file.
             if not one["snippet"]:

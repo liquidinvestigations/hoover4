@@ -117,6 +117,13 @@ those columns existed show the stored summary with a note, instead of a blank pa
 
 ### Document cards
 
+A citation card shows its search term and the matching search passage.
+When the citation omits the term, the transcript uses the newest earlier search that returned that document.
+The card highlights query words in the passage.
+The citation quote and document find phrase remain separate from this search context.
+The chat document pane opens when a card opens a document.
+Without a selected document, the conversation uses the available width.
+
 The `Search this` link resolves named collections through the permitted storage tree. Its search filter contains dataset IDs. A name with no permitted dataset has no scoped link.
 The `read_more` card shows scalar continuation text in page order and keeps the source and part in its title.
 

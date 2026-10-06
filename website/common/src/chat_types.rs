@@ -174,6 +174,12 @@ pub struct ChatDocRef {
     /// no find query.
     #[serde(default)]
     pub find_query: String,
+    /// The search term that led to a cited document.
+    #[serde(default)]
+    pub term: String,
+    /// The matching passage from an earlier search result.
+    #[serde(default)]
+    pub search_snippet: String,
 }
 
 impl ChatDocRef {
@@ -1101,6 +1107,8 @@ fn doc_ref_from_value(v: &serde_json::Value) -> Option<ChatDocRef> {
         why: String::new(),
         quote_verified: false,
         quote_reason: String::new(),
+        term: v.get("term").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+        search_snippet: String::new(),
         find_query: v
             .get("matched_queries")
             .and_then(|x| x.get(0))
@@ -1257,6 +1265,8 @@ mod tests {
             quote_verified: false,
             quote_reason: String::new(),
             find_query: String::new(),
+            term: String::new(),
+            search_snippet: String::new(),
         }
     }
 

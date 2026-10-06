@@ -83,7 +83,10 @@ pub fn ChatTranscript(
     // One row as `MessageEntry`. A run of tool rows renders the same entries inside its
     // group when the group is open.
     let entry = |i: usize| -> Element {
-        let m = messages[i].clone();
+        let mut m = messages[i].clone();
+        if m.tool_name == "cite_documents" {
+            m.doc_refs = serde_json::to_string(&citation_search_context(&messages, i)).unwrap_or_default();
+        }
         let highlight = active_msg == Some(i);
         // The strip belongs to the ANSWER, and the citations arrive on the tool rows before
         // it. Collected here rather than inside `MessageEntry`, which sees one message and
@@ -543,21 +546,49 @@ fn read_more_source(messages: &[ChatMessageItem], index: usize) -> Option<(Strin
     }
 }
 
-/// The citations of the turn that ends at `answer_index`.
-///
-/// Walks backwards over the tool rows of that turn and stops at the previous answer or
-/// the user's message: a handle from an earlier turn still resolves, but its strip
-/// belongs under the answer that used it, not under every answer after it.
+/// Add the newest earlier search context for each cited document.
+fn citation_search_context(messages: &[ChatMessageItem], index: usize) -> Vec<ChatDocRef> {
+    let mut refs = messages[index].parsed_doc_refs();
+    for doc in &mut refs {
+        for search in messages[..index].iter().rev().filter(|row| {
+            row.role == ChatRole::Tool && matches!(row.tool_name.as_str(), "search_collections" | "search_passages")
+        }) {
+            let input = serde_json::from_str::<serde_json::Value>(&search.tool_input).unwrap_or_default();
+            let input = input.get("input").unwrap_or(&input);
+            let query = input.get("query").and_then(|v| v.as_str())
+                .or_else(|| input.get("queries").and_then(|v| v.get(0)).and_then(|v| v.as_str()))
+                .unwrap_or_default();
+            let mut found = common::chat_types::extract_doc_refs_with_query(
+                &search.tool_name, &search.tool_output, query);
+            found.extend(search.parsed_doc_refs());
+            if let Some(hit) = found.into_iter().find(|hit| {
+                let length = hit.file_hash.len().min(doc.file_hash.len());
+                length >= 12 && (hit.file_hash.starts_with(&doc.file_hash) || doc.file_hash.starts_with(&hit.file_hash))
+                    && (hit.collectionname.is_empty() || doc.collectionname.is_empty()
+                        || hit.collectionname == doc.collectionname)
+            }) {
+                if doc.term.is_empty() {
+                    doc.term = if hit.find_query.is_empty() { query.to_string() } else { hit.find_query };
+                }
+                doc.search_snippet = hit.snippet;
+                break;
+            }
+        }
+    }
+    refs
+}
+
+/// Return citations from the answer turn, including its repair round.
 fn citations_for_answer(messages: &[ChatMessageItem], answer_index: usize) -> Vec<ChatDocRef> {
     let mut refs: Vec<ChatDocRef> = Vec::new();
     // True after the note of a citation repair round. The answer before that note is
     // replaced by this one, so the citations before it belong to this answer too.
     let mut after_note = false;
-    for message in messages[..answer_index].iter().rev() {
+    for (index, message) in messages[..answer_index].iter().enumerate().rev() {
         match message.role {
             ChatRole::Tool => {
                 if message.tool_name == "cite_documents" {
-                    refs.extend(message.parsed_doc_refs());
+                    refs.extend(citation_search_context(messages, index));
                 }
             }
             ChatRole::Nag if is_citation_note(message) => after_note = true,
@@ -1060,6 +1091,32 @@ mod tests {
     use crate::components::chat_components::markdown_text::{
         Block, Span, mark_handles, parse_blocks,
     };
+
+    #[test]
+    fn citation_context_uses_the_newest_earlier_search_for_its_document() {
+        let hash = "a".repeat(64);
+        let mut search = row(1, ChatRole::Tool, "search_collections", "", "");
+        search.tool_input = r#"{"queries":["old term"]}"#.into();
+        search.tool_output = serde_json::json!({"items":[{
+            "file_hash": &hash[..16], "collectionname":"c", "dataset":"d", "snippet":"old passage"
+        }]}).to_string();
+        let mut newer = search.clone();
+        newer.seq = 2;
+        newer.tool_input = r#"{"queries":["new term"]}"#.into();
+        newer.tool_output = newer.tool_output.replace("old passage", "new passage");
+        let citation = row(3, ChatRole::Tool, "cite_documents", &serde_json::json!([{
+            "file_hash":hash, "collectionname":"c", "collection_dataset":"c_d", "term":""
+        }]).to_string(), "");
+        let mut future = newer.clone();
+        future.seq = 4;
+        future.tool_output = future.tool_output.replace("new passage", "future passage");
+        let mut messages = vec![search, newer, citation, future];
+        let [doc]: [ChatDocRef; 1] = citation_search_context(&messages, 2).try_into().unwrap();
+        assert_eq!(doc.term, "new term");
+        assert_eq!(doc.search_snippet, "new passage");
+        messages[2].doc_refs = messages[2].doc_refs.replace(r#""term":"""#, r#""term":"explicit term""#);
+        assert_eq!(citation_search_context(&messages, 2)[0].term, "explicit term");
+    }
 
     #[test]
     fn a_paged_search_item_names_its_dataset() {

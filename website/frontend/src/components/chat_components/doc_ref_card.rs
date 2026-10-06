@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use common::chat_types::ChatDocRef;
+use common::chat_types::{ChatDocRef, clamp_display_text};
 use common::search_result::{DocumentIdentifier, SearchResultDocumentItem};
 use common::text_highlight::HighlightTextSpan;
 use dioxus::prelude::*;
@@ -114,9 +114,23 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
     };
 
     rsx! {
-        SearchResultItemCard {
-            result,
-            onmounted: |_| {},
+        div {
+            SearchResultItemCard {
+                result,
+                onmounted: |_| {},
+            }
+            if !doc.term.is_empty() {
+                div { "data-citation-search-term": "{doc.term}", style: "padding: 0 12px; font-size: 12px;",
+                    "The search term was {doc.term}."
+                }
+            }
+            if !doc.search_snippet.is_empty() {
+                div { "data-citation-search-snippet": "true", style: "padding: 4px 12px; font-size: 13px;",
+                    for (part, marked) in search_snippet_parts(&clamp_display_text(&doc.search_snippet, 400), &doc.term) {
+                        if marked { mark { "{part}" } } else { span { "{part}" } }
+                    }
+                }
+            }
         }
     }
 }
@@ -154,5 +168,47 @@ pub fn ChatDocRefRow(doc: ChatDocRef) -> Element {
                 },
             }
         }
+    }
+}
+
+
+fn search_snippet_parts(text: &str, query: &str) -> Vec<(String, bool)> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut marked = vec![false; chars.len()];
+    for word in query.split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty() && !matches!(*word, "AND" | "OR" | "NOT"))
+    {
+        let length = word.chars().count();
+        let needle = word.to_lowercase();
+        for start in 0..chars.len() {
+            if start + length <= chars.len()
+                && chars[start..start + length].iter().collect::<String>().to_lowercase() == needle
+            {
+                marked[start..start + length].fill(true);
+            }
+        }
+    }
+    let mut parts: Vec<(String, bool)> = Vec::new();
+    for (character, highlight) in chars.into_iter().zip(marked) {
+        if let Some(last) = parts.last_mut() && last.1 == highlight {
+            last.0.push(character);
+        } else {
+            parts.push((character.to_string(), highlight));
+        }
+    }
+    parts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::search_snippet_parts;
+
+    #[test]
+    fn search_highlighting_preserves_unicode_and_marks_query_words() {
+        let text = "ȘTEFAN approved the budget.";
+        let parts = search_snippet_parts(text, "Ștefan AND budget");
+        assert_eq!(parts.iter().map(|part| part.0.as_str()).collect::<String>(), text);
+        assert_eq!(parts.iter().filter(|part| part.1).map(|part| part.0.as_str()).collect::<Vec<_>>(),
+            vec!["ȘTEFAN", "budget"]);
     }
 }

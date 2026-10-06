@@ -274,3 +274,13 @@ def test_without_the_doc_refs_of_the_response_the_refs_come_from_the_content():
     fields = tool_row_fields("search_collections", {"query": "Raptor"}, _SLIM_FULL)
     stored = json.loads(fields["doc_refs"])
     assert [r["file_hash"] for r in stored] == ["5e8bb0ff3822761c"]
+
+
+def test_citation_response_references_keep_the_handle_quote_find_and_search_term():
+    reference = {"collectionname": "c", "collection_dataset": "c_d", "file_hash": "a" * 64,
+                 "handle": "[D1]", "quote": "The board approved the transfer.", "why": "The board approved it.",
+                 "quote_verified": True, "find_query": '"board approved"', "term": "board transfer"}
+    fields = tool_row_fields("cite_documents", {}, '{"citations":[{"file_hash":"aaaaaaaaaaaaaaaa","handle":"[D1]"}]}', [reference])
+    [stored] = json.loads(fields["doc_refs"])
+    for key in ("handle", "quote", "why", "quote_verified", "find_query", "term"):
+        assert stored[key] == reference[key]

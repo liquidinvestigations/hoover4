@@ -92,6 +92,9 @@ def search_row() -> dict:
 
 def cards(_name: str, _username: str) -> dict:
     quote = "energy density 1 erg/cm3 = 10^-1 J/m3"
+    citation_refs = doc_ref()
+    citation_refs[0].update(handle="[D1]", quote=quote, quote_verified=True,
+                            find_query='"energy density"', term="")
     return {"title": "Browser fixture: tool cards", "rows": [
         user("Which testdata document gives the energy density conversion? Cite it."),
         search_row(),
@@ -106,7 +109,7 @@ def cards(_name: str, _username: str) -> dict:
              {"citations": [{"collectionname": COLLECTION, "file_hash": DOC_SHORT, "quote": quote,
                              "why": "The table gives the unit conversion for energy density."}]},
              {"citations": [{"file_hash": DOC_SHORT, "handle": "[D1]", "quote_verified": True}]},
-             doc_ref()),
+             citation_refs),
         answer("The unit table in the sample document gives energy density as "
                "1 erg/cm3 = 10^-1 J/m3 [D1]."),
     ]}
@@ -266,10 +269,13 @@ def write_fixture(client, name: str, username: str, now: datetime) -> str:
             sid, username, seq, row["role"], row.get("content", ""), row.get("tool_name", ""),
             row.get("tool_input", ""), row.get("tool_output", ""), row.get("doc_refs", ""),
             now, now, now, turn,
+            json.dumps({"citation_status": "cited" if "[D1]" in row.get("content", "") else "none",
+                        "tool_scope": "documents_and_web" if spec.get("internet") else "documents_only"})
+            if row["role"] == "assistant" else "{}",
         ])
     insert_durable(client, "chat_messages", rows, column_names=[
         "session_id", "username", "seq", "role", "content", "tool_name", "tool_input",
-        "tool_output", "doc_refs", "created_ms", "created_at", "updated_at", "message_uuid"])
+        "tool_output", "doc_refs", "created_ms", "created_at", "updated_at", "message_uuid", "usage_json"])
     for version, goal, items in spec.get("todos", []):
         insert_durable(client, "chat_todos", [[sid, username, version, goal, json.dumps(items), now]],
                        column_names=["session_id", "username", "version", "goal", "items",

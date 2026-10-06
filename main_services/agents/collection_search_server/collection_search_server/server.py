@@ -1424,6 +1424,8 @@ class Citation(BaseModel):
     #: A short exact phrase of the quote. The card opens the document at this phrase.
     #: Empty means the whole quote.
     find: str = ""
+    #: The search term that led to this document.
+    term: str | None = None
     #: What this document supports, in the agent's own words. Shown on the card.
     why: str = ""
 
@@ -1448,6 +1450,7 @@ class CitationResult(BaseModel):
     #: The find query the card opens the document with: the `find` phrase in double
     #: quotes, or the quote in double quotes when `find` is empty or fails its check.
     find_query: str = ""
+    term: str = ""
     #: For a quote that is not in the text: an exact passage of the extracted text near
     #: it, with `extracted_by`, `page_id`, `start` and `end` (`citations.candidate_passage`).
     #: The citation keeps `quote` and stays unverified.
@@ -1512,17 +1515,13 @@ def _session_id() -> str:
 @mcp.tool(
     name="cite_documents",
     description=(
-        "Create citation handles for documents that support an answer. An answer that "
-        "names a document with no handle shows the reader no "
-        "document. Each citation names a "
-        "document, a quote copied verbatim from it, an optional find phrase (the "
-        "shortest exact part of the quote the reader must see, where the card opens the "
-        "document), and why it matters. You get back a "
-        "handle like [D1] for each; write those handles into your prose where the claim "
-        "is made, and the reader sees the document beside it. The quote is checked "
-        "against the document's extracted pages, and one that does not check out comes "
-        "back marked with the reason, so re-read rather than paraphrase. Cite what you "
-        "relied on, not everything a search returned."
+        "Create citation handles for documents that support an answer. "
+        "Each citation names a document and can include a verbatim quote, find phrase, search term, and reason. "
+        "The find phrase must be an exact part of the quote. The card opens the document at that phrase. "
+        "Write returned handles such as [D1] beside the claims they support. "
+        "The tool verifies quotes against extracted document pages. "
+        "An unverified quote retains its handle and reports the reason. Read the document again to correct the quote. "
+        "Cite each document used as evidence."
     ),
 )
 def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
@@ -1536,7 +1535,7 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
     if parsed is None:
         return CitationsResponse(
             success=False,
-            error="citations must be a list of {collectionname, file_hash, quote, find, why}",
+            error="citations must be a list of {collectionname, file_hash, quote, find, term, why}",
         )
     if not parsed:
         return CitationsResponse(success=False, error="no citations were given")
@@ -1610,7 +1609,7 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
         "collection_dataset": result.collection_dataset, "file_hash": result.file_hash,
         "path": result.path, "quote": result.quote, "why": result.why,
         "quote_verified": result.quote_verified, "quote_reason": result.quote_reason,
-        "find_query": result.find_query, "candidate": result.candidate,
+        "find_query": result.find_query, "term": result.term, "candidate": result.candidate,
     } for result in results])
     return CitationsResponse(
         success=True, citations=results, note=" ".join(note_parts)
@@ -1711,6 +1710,7 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
         quote=citation.quote,
         why=citation.why,
         find_query=citation_find_query(citation.find, citation.quote),
+        term=citation.term or "",
     )
     try:
         acl.check([citation.collectionname])

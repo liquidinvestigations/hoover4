@@ -158,6 +158,14 @@ class TestCiteOne:
         assert result.quote_verified
         assert result.find_query == '"Your notes look great"'
 
+    def test_a_search_term_stays_separate_from_the_quote_find(self, monkeypatch):
+        quote = "The board approved the transfer on 3 March."
+        self._stub_pages(monkeypatch, [quote])
+        result = _cite_one(_acl(), "s1", Citation(
+            collectionname="testdata", file_hash=HASH, quote=quote, term="board transfer"))
+        assert result.term == "board transfer"
+        assert result.find_query == '"The board approved the transfer on 3 March."'
+
     def test_a_find_phrase_outside_the_quote_falls_back_to_the_quote(self, monkeypatch):
         quote = "Your notes look great. Best of luck today."
         self._stub_pages(monkeypatch, [quote])
