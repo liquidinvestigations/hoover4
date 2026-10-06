@@ -78,6 +78,9 @@ def test_rebuild_reports_failure_after_remaining_pages(monkeypatch):
     continued = []
 
     async def list_page(_fn, params, **_kwargs):
+        if _fn is workflows.compact_collection_shards:
+            visited.append("compaction")
+            return []
         if not params.cursor_hash:
             return [("dataset", f"plan-{n:03d}") for n in range(100)]
         return [("dataset", "plan-100")]
@@ -100,8 +103,8 @@ def test_rebuild_reports_failure_after_remaining_pages(monkeypatch):
     assert continued[0].completed == 100
     with pytest.raises(ApplicationError, match="1 index plans failed"):
         asyncio.run(workflows.RebuildCollectionPlans().run(continued[0]))
-    assert len(visited) == 101
-    assert visited[-1] == "plan-100"
+    assert len(visited) == 102
+    assert visited[-2:] == ["plan-100", "compaction"]
 
 
 def test_collection_backfill_finishes_remaining_plans_before_failure(monkeypatch):

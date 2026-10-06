@@ -43,6 +43,7 @@ class World:
     roots: int = 1
     listings: list[Any] = field(default_factory=list)
     documents: int = 0
+    compactions: list[dict] = field(default_factory=list)
 
 
 world = World()
@@ -123,6 +124,8 @@ def dataset_step(name):
     @activity.defn(name=name)
     async def step(_params: Any) -> Any:
         world.steps.append(name)
+        if name == "compact_collection_shards":
+            world.compactions.append(_params)
         if world.block == name:
             await block()
         if world.fail_step == name:
@@ -188,7 +191,7 @@ async def run_operation(monkeypatch, configured, *, cancel=False, stop_worker=Fa
     activities = [ensure_temp, list_plans, plan_body, count_blobs, compute_body, record_errors,
         admit, state, sample, select, reconcile, capture] + [dataset_step(name) for name in (
             "build_vfs_nodes", "resolve_canonical_file_type", "refresh_stale_document_locations",
-            "index_vfs_structure", "index_entity_terms", "build_email_graph")]
+            "index_vfs_structure", "index_entity_terms", "build_email_graph", "compact_collection_shards")]
     runner = SandboxedWorkflowRunner(restrictions=SandboxRestrictions.default.with_passthrough_modules(
         "tasks", "database", __name__))
     async with await WorkflowEnvironment.start_time_skipping() as env:
@@ -236,6 +239,7 @@ def test_all_rounds_run_after_plan_failure(monkeypatch, failure):
     configured = World(fail_plan=failure)
     result = asyncio.run(run_operation(monkeypatch, configured))
     assert configured.generation == 2
+    assert [p["closed_only"] for p in configured.compactions] == [True, True, True, False]
     assert len(configured.runs) == 3
     assert configured.states[-1] == ("errored" if failure else "finished")
     assert configured.steps[-2:] == ["reconcile", "sample"]

@@ -53,6 +53,7 @@ from collection_search_server.citations import (
     quote_match_in_pages,
 )
 from collection_search_server.backends import (
+    manticore_query_options,
     GLOBAL_DB,
     clickhouse_query,
     collection_db,
@@ -788,7 +789,7 @@ def _search_one(
             sql = (
                 f"SELECT collection_dataset, file_hash, page_id, page_text, WEIGHT() AS score "
                 f"FROM {table} WHERE MATCH('{match_expr}') "
-                f"ORDER BY score DESC LIMIT {per_shard_limit} OPTION max_matches={per_shard_limit * 10}"
+                f"ORDER BY score DESC LIMIT {per_shard_limit} {manticore_query_options(per_shard_limit * 10)}"
             )
             try:
                 rows = manticore_query(sql)

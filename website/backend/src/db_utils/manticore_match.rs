@@ -450,6 +450,9 @@ pub fn prepare_match_query(query: &str) -> Result<PreparedMatch, MatchQueryError
     }
 
     let (cleaned, mut repairs) = rewrite_boolean_words(query);
+    if let Some(notice) = common::search_query::short_infix_notice(query) {
+        repairs.push(notice.to_string());
+    }
     let cleaned = escape_address_at(&cleaned);
     let (cleaned, quote_repairs) = balance_quotes(&cleaned);
     repairs.extend(quote_repairs);

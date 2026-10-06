@@ -208,6 +208,7 @@ DEFAULTS = {
         # falls back to its own defaults (8 concurrent shard queries, 30 s per query).
         "search_max_parallelism": "",
         "search_timeout_seconds": "",
+        "manticore_expansion_limit": "5000",
         "ocr_pdf_enabled": "true",
         # Datastore memory limits. The Manticore limits are mandatory values in the ini.
         "clickhouse_mem_limit": "19000M",
@@ -1488,6 +1489,10 @@ def render_main_env(cfg):
         env["HOOVER4_SEARCH_MAX_PARALLELISM"] = cfg.get(m, "search_max_parallelism")
     if cfg.get(m, "search_timeout_seconds"):
         env["HOOVER4_SEARCH_TIMEOUT_SECONDS"] = cfg.get(m, "search_timeout_seconds")
+    limit = cfg.get(m, "manticore_expansion_limit").strip()
+    if not limit.isdigit():
+        fail("[main_services] manticore_expansion_limit must be a nonnegative integer")
+    env["HOOVER4_MANTICORE_EXPANSION_LIMIT"] = limit
 
     # Chat context compaction. Rendered only when set, so the agent's own default is the
     # single place the shipped trigger is written down: an empty ini value reaching the

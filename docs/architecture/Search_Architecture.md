@@ -379,3 +379,16 @@ generation AND `server_settings.cache_epoch`. The generation covers data changes
 is the manual control for SEMANTICS changes, where every cached response is a correct answer
 to a question the code no longer asks. Bump it (any new value) after changing a query
 shape.
+
+## Encoded content and wildcard limits
+
+The Manticore page writer limits encoded blocks and long alphabet runs. ClickHouse retains the complete source text.
+Search snippets and in-document search use the indexed text and can show shortened blocks.
+A viewer without search hits reads the ClickHouse text.
+Agent document pages read ClickHouse text. Passage search reads indexed text.
+A citation that crosses a shortened block can fail quote verification.
+The agent page offsets can differ after a shortened block or repeated spaces.
+
+Page queries use one configured wildcard expansion limit for results, counts, facets, and document search.
+The limit can omit documents that contain only less frequent matching terms. The engine reports no truncation.
+An infix query with fewer than three characters receives an explanation.

@@ -87,6 +87,27 @@ def manticore_vectors_query(sql: str) -> list[dict]:
     return _manticore_query(url, sql)
 
 
+def manticore_search_timeout_seconds() -> int:
+    """Return the configured shard search budget."""
+    try:
+        return max(1, min(600, int(os.getenv("HOOVER4_SEARCH_TIMEOUT_SECONDS", "30"))))
+    except ValueError:
+        return 30
+
+
+def manticore_query_options(max_matches: int, *, pages: bool = True) -> str:
+    """Return the configured search budget and page expansion limit."""
+    seconds = manticore_search_timeout_seconds()
+    options = f"OPTION max_matches={max_matches},max_query_time={seconds * 1000}"
+    try:
+        expansion = int(os.getenv("HOOVER4_MANTICORE_EXPANSION_LIMIT", "0"))
+    except ValueError:
+        expansion = 0
+    if pages and expansion > 0:
+        options += f",expansion_limit={expansion}"
+    return options
+
+
 def _manticore_query(url: str, sql: str) -> list[dict]:
     """Run one Manticore SQL statement against one selected endpoint."""
     response = requests.post(
@@ -94,7 +115,7 @@ def _manticore_query(url: str, sql: str) -> list[dict]:
         params={"mode": "raw"},
         auth=("manticore", "manticore"),
         data={"query": sql},
-        timeout=DEFAULT_TIMEOUT,
+        timeout=manticore_search_timeout_seconds() + 5,
     )
     if response.status_code != 200:
         raise RuntimeError(f"Manticore error {response.status_code}: {response.text[:400]}")
@@ -408,6 +429,8 @@ def prepare_match_query(query: str) -> PreparedMatch:
         return PreparedMatch("", error="query is empty")
 
     cleaned, repairs = _rewrite_boolean_words(query)
+    if re.search(r"(?<![\w*])\*[^\W_]{1,2}\*(?![\w*])", query):
+        repairs.append("Infix searches require at least three characters between the asterisks.")
     cleaned, field_repairs = _rewrite_field_operators(cleaned)
     cleaned, quote_repairs = _balance_quotes(cleaned)
     cleaned, paren_repairs = _balance_parens(cleaned)

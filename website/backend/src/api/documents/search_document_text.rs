@@ -83,7 +83,7 @@ pub async fn search_document_text_for_hits(
     let Some(match_argument) = find_query_match_argument(&find_query) else {
         return Ok(vec![]);
     };
-    let options_clause = sql_options_clause(1000);
+    let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, 1000);
     let sql = format!(
         r#"
             SELECT
@@ -148,7 +148,7 @@ pub async fn search_document_text_all_hits(
     let Some(match_argument) = find_query_match_argument(&find_query) else {
         return Ok(vec![]);
     };
-    let options_clause = sql_options_clause(DOCUMENT_HIT_ROW_LIMIT as u64);
+    let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, DOCUMENT_HIT_ROW_LIMIT as u64);
     let sql = format!(
         r#"
         SELECT

@@ -1307,3 +1307,15 @@ def test_invalid_clickhouse_memory_ratio_is_refused(ratio):
     cfg.values['main_services']['clickhouse_server_memory_ratio'] = ratio
     with pytest.raises(deploy.DeployError):
         deploy.render_clickhouse_config(cfg)
+
+
+def test_manticore_expansion_limit_is_rendered_and_validated(monkeypatch):
+    monkeypatch.setattr(deploy, "container_reachable_host", lambda host: host)
+    cfg = _config("settings-defaults.ini")
+    assert deploy.render_main_env(cfg)["HOOVER4_MANTICORE_EXPANSION_LIMIT"] == "5000"
+    cfg.values["main_services"]["manticore_expansion_limit"] = "0"
+    assert deploy.render_main_env(cfg)["HOOVER4_MANTICORE_EXPANSION_LIMIT"] == "0"
+    for value in ("-1", "invalid"):
+        cfg.values["main_services"]["manticore_expansion_limit"] = value
+        with pytest.raises(deploy.DeployError, match="manticore_expansion_limit"):
+            deploy.render_main_env(cfg)

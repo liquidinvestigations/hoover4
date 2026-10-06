@@ -146,7 +146,7 @@ async fn probe_domain(
             let parts = fanout::shard_query_parts(&target, &query).await?;
             let from_clause = &parts.from_clause;
             let where_clause = &parts.where_clause;
-            let options_clause = sql_options_clause(1000);
+            let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, 1000);
             let low = format!(
                 "
                 SELECT mentioned_date_min AS bound
@@ -224,7 +224,7 @@ async fn count_days(
             let parts = fanout::shard_query_parts(&target, &query).await?;
             let from_clause = &parts.from_clause;
             let where_clause = &parts.where_clause;
-            let options_clause = sql_options_clause(DAY_BUCKET_LIMIT);
+            let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, DAY_BUCKET_LIMIT);
             let sql = format!(
                 "
                 SELECT groupby() term, count(distinct file_hash) AS mention_count
@@ -294,7 +294,7 @@ mod tests {
     fn the_bucket_cap_and_its_max_matches_are_the_same_number() {
         // A LIMIT above `max_matches` truncates silently, which is the failure this
         // histogram exists to avoid drawing.
-        assert!(sql_options_clause(DAY_BUCKET_LIMIT).contains(&format!(
+        assert!(sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, DAY_BUCKET_LIMIT).contains(&format!(
             "max_matches={DAY_BUCKET_LIMIT}"
         )));
         assert!(

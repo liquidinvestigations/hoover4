@@ -79,7 +79,7 @@ impl HitIdentity for SearchForResultsResponse {
 /// `(collection_dataset, file_hash)`), so the truncated per-shard result is a stable
 /// prefix of the merged order.
 fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) -> String {
-    let options_clause = sql_options_clause(fetch_limit);
+    let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, fetch_limit);
     let from_clause = &parts.from_clause;
     let sql_where_clause = &parts.where_clause;
     let order_by = sort_order_by(&sort);
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn build_results_sql_golden() {
         let sql = build_results_sql(&parts_for("easychair", &[]), relevance(), 21);
-        let options = crate::api::search::search_sql::sql_options_clause(21);
+        let options = crate::api::search::search_sql::sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, 21);
         let expected = format!("
             SELECT collection_dataset,
                 file_hash,

@@ -31,10 +31,8 @@ with workflow.unsafe.imports_passed_through():
         index_text_pages,
         index_vectors,
         index_vfs_structure,
-        optimize_shard_tables,
         refresh_stale_document_locations,
     )
-    from .params import OptimizeShardsParams
     from .shard_planner import finalize_index_batch, plan_shards, record_indexed
 
 # plan_shards mutates the shard ledger and must never run concurrently for the
@@ -207,25 +205,6 @@ class IndexDatasetPlan:
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=2),
                 task_queue=PLANNER_TASK_QUEUE,
-            )
-
-        # Compaction, once per plan and only for the shards it wrote to, never in the
-        # per-chunk loop, where it would compete with the writer for I/O on the table
-        # being written. The statement itself is asynchronous, so this returns as soon as
-        # the merges are queued.
-        if chunks and not params.vectors_only:
-            await workflow.execute_activity(
-                optimize_shard_tables,
-                OptimizeShardsParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    plan_hash=params.plan_hash,
-                    shard_names=sorted({c.shard_name for c in chunks}),
-                ),
-                start_to_close_timeout=timedelta(minutes=10),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=MANTICORE_RETRY,
-                task_queue=INDEXING_TASK_QUEUE,
             )
 
         log.info(f"[P6] Done: Indexing dataset plan {params.collection_dataset} {params.plan_hash}")

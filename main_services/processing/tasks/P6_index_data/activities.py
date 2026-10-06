@@ -34,6 +34,7 @@ from database.manticore import (
     DATE_UNKNOWN,
     DOCUMENT_COLUMNS,
     bind_manticore_sql,
+    limit_encoded_runs,
     manticore_execute,
     shard_table_from_name,
 )
@@ -41,7 +42,7 @@ from .params import (
     BuildEmailGraphParams,
     BuildVfsNodesParams,
     IndexShardParams,
-    OptimizeShardsParams,
+    CompactCollectionShardsParams,
     RefreshDocumentLocationsParams,
     RefreshDocumentLocationsResult,
     ResolveCanonicalFileTypeParams,
@@ -572,7 +573,7 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
                 'file_hash': row['file_hash'],
                 'extracted_by': row['extracted_by'],
                 'page_id': row['page_id'],
-                'page_text': clean_text(row['text']),
+                'page_text': limit_encoded_runs(clean_text(row['text'])),
             })
             for entity_type in ("PER", "ORG", "LOC", "MISC"):
                 field_name = f"ner_{entity_type.lower()}"
@@ -1016,59 +1017,33 @@ def should_optimize(status: dict) -> bool:
 
 @activity.defn
 @with_heartbeat
-def optimize_shard_tables(params: OptimizeShardsParams) -> str:
-    """Compact the shards this plan wrote to, when they have accumulated enough waste.
-
-    **A storage win, not a latency win**. Say so rather than selling it as a speedup.
-    Killed rows are cheap to skip at query time; what compaction buys is the disk back,
-    plus a small consistent gain from merging chunks.
-
-    ``OPTION cutoff=1`` is what actually compacts: `optimize_cutoff` defaults to 24, so a
-    plain OPTIMIZE barely moves a table sitting at 20 chunks. Never ``sync=1`` from an
-    activity, it blocks for the whole merge and Temporal times the activity out on a
-    large shard; the statement returns immediately and the daemon merges in the
-    background.
-
-    Skipped entirely while another plan of the same collection is still in flight: a
-    merge competing with a write batch for I/O is how a 2 GB table takes minutes instead
-    of seconds. The plan this activity belongs to is not counted. Its own row reaches
-    `processing_plan_finished` only after indexing returns.
-    """
+def compact_collection_shards(params: CompactCollectionShardsParams) -> list[str]:
+    """Submit eligible page-table merges and return their table names."""
     from database.manticore import get_manticore_client, shard_table_from_name
 
     with get_collection_client(params.collectionname) as client:
-        in_flight = client.query("""
-            SELECT count() FROM (
-                SELECT collection_dataset, plan_hash FROM processing_plans FINAL
-                WHERE plan_hash != {plan_hash:String}
-            ) AS p
-            WHERE (p.collection_dataset, p.plan_hash) NOT IN (
-                SELECT collection_dataset, plan_hash FROM processing_plan_finished FINAL
-            )
-        """, parameters={"plan_hash": params.plan_hash}).result_rows[0][0]
-    if in_flight:
-        log.info(
-            "[P6] optimize %s (plan %s): %d other plan(s) still in flight; skipping",
-            params.collectionname, params.plan_hash[:8], in_flight,
-        )
-        return "skipped: ingest in flight"
-
-    compacted = []
+        shards = client.query("""
+            SELECT shard_name FROM manticore_shards FINAL
+            WHERE NOT {closed_only:Bool} OR is_open = 0
+            ORDER BY shard_index
+        """, parameters={"closed_only": params.closed_only}).result_rows
+    submitted = []
     with get_manticore_client() as cnx:
-        for shard_name in sorted(set(params.shard_names)):
+        for (shard_name,) in shards:
             table = shard_table_from_name(shard_name)
-            cur = cnx.cursor()
-            cur.execute(f"SHOW TABLE {table} STATUS")
-            status = {row[0]: row[1] for row in cur.fetchall()}
-            if not should_optimize(status):
+            cursor = cnx.cursor()
+            cursor.execute(f"SHOW TABLE {table} STATUS")
+            status = dict(cursor.fetchall())
+            if str(status.get("optimizing", "0")) != "0" or not should_optimize(status):
                 continue
-            log.info(
-                "[P6] optimize %s: killed_rate=%s disk_chunks=%s; compacting",
-                table, status.get('killed_rate'), status.get('disk_chunks'),
-            )
-            cur.execute(f"OPTIMIZE TABLE {table} OPTION cutoff=1")
-            compacted.append(table)
-    return f"compacted {len(compacted)}: {', '.join(compacted)}" if compacted else "nothing to compact"
+            cursor.execute(f"OPTIMIZE TABLE {table} OPTION cutoff=1")
+            submitted.append(table)
+    message = f"Compaction was submitted for {len(submitted)} tables."
+    log.info("[P6] %s %s", params.collectionname, message)
+    if params.op_id:
+        from database.operations import merge_detail
+        merge_detail(params.op_id, compaction=message, compaction_submitted_tables=submitted)
+    return submitted
 
 
 @activity.defn

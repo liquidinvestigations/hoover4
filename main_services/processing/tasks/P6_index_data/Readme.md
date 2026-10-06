@@ -20,7 +20,7 @@ The planner groups text segment versions before it counts rows and bytes.
 ## Entry Points
 
 - Workflows: `IndexDatasetPlan`, `RefreshDocumentLocations` in `workflows.py`
-- Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `optimize_shard_tables`, `refresh_stale_document_locations` in `activities.py`
+- Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `compact_collection_shards`, `refresh_stale_document_locations` in `activities.py`
 - Helpers: `email_graph.py` (the pure edge rules), `document_metadata` (the per-document read half of the writer), `location_refresh.py` (stale folder-closure selection), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
 
 `build_vfs_nodes` runs once per `ExecutePlans` batch before the per-plan children;
@@ -44,7 +44,7 @@ Rows are inserted grouped by `(collection_dataset, file_hash, page_id)`. The col
 
 Every writer here binds corpus text with `database.manticore.bind_manticore_sql` or sends it with `manticore_execute`. The page writer sends already bound bytes with `cmd_query`. A MySQL cursor can change corpus text that contains `delimiter` followed by a quote. See [`../../database/Readme.md`](../../database/Readme.md).
 
-The page writer reads and writes one text batch at a time. It keeps no cleaned page text from a prior batch. It places the filename row before the first page of each document and writes filename-only documents last. It binds each row, then sends at most 128 rows or 4 MiB per transaction. A larger row uses its own transaction up to the 127 MiB encoded-row limit. It fails explicitly above that limit and does not shorten text. Each transaction has one `BEGIN`, one multirow `REPLACE`, and one `COMMIT`. A failed statement gets `ROLLBACK` where possible. Retries use the same row IDs. `index_state` records a hash only after its text writer returns after every commit. Entity MVAs (`ner_per/org/loc/misc`) come from `entity_hit` per segment. If a segment has no `nlp_processed` watermark, the stage logs a WARNING and indexes it with empty entity MVAs. A missing entity list does not block search. Deterministic hashes give string term IDs for reuse.
+The page writer reads and writes one text batch at a time. It keeps no cleaned page text from a prior batch. It places the filename row before the first page of each document and writes filename-only documents last. It binds each row, then sends at most 128 rows or 4 MiB per transaction. A larger row uses its own transaction up to the 127 MiB encoded-row limit. It fails explicitly above that limit. The encoded text rule runs before statement sizing. Each transaction has one `BEGIN`, one multirow `REPLACE`, and one `COMMIT`. A failed statement gets `ROLLBACK` where possible. Retries use the same row IDs. `index_state` records a hash only after its text writer returns after every commit. Entity MVAs (`ner_per/org/loc/misc`) come from `entity_hit` per segment. If a segment has no `nlp_processed` watermark, the stage logs a WARNING and indexes it with empty entity MVAs. A missing entity list does not block search. Deterministic hashes give string term IDs for reuse.
 
 After all replacements commit, the writer scans indexed IDs for its assigned files.
 It removes IDs absent from current text and filename rows. The scan uses bounded pages.
@@ -116,7 +116,9 @@ rows and any result set is capped at `max_matches` (default 1000), so an unbound
 would compare twenty arbitrary nodes against the tree and leave every other removed node
 in the index.
 
-`optimize_shard_tables` runs once at the end of the workflow, per shard the plan wrote to, and compacts a table whose `killed_rate` is over 20% or whose `disk_chunks` is over 12 (`OPTIMIZE TABLE … OPTION cutoff=1`, asynchronous). It is a **storage** win (a re-ingested corpus reclaimed 32–58% of its disk), and not a latency one: killed rows are cheap to skip at query time. It skips itself entirely while another plan of the same collection is still in flight, because a merge competing with a write batch for I/O turns seconds into minutes.
+`compact_collection_shards` submits a merge when `killed_rate` exceeds 20% or `disk_chunks` exceeds 12.
+It skips tables with an active merge. The collection ledger selects closed shards between plan batches.
+The final batch and collection reindex include open shards. Failed plans do not suppress submission.
 
 `build_email_graph` materialises the email connection graph into `email_identity`,
 `email_edges` and `email_clusters`. It is the one activity here that is COLLECTION-scoped
@@ -190,3 +192,17 @@ of its detections and logs a WARNING naming the hashes. The union is the pre-can
 behaviour and puts a document under every type a detector claimed, which is worse than one
 definitive answer and far better than a document with no type, no MIME and no extensions.
 A fallback nobody can see is a bug that hides, which is why it is loud.
+
+## Indexed text and compaction
+
+The page writer limits encoded blocks only in Manticore text. ClickHouse retains the source text.
+Consecutive alphabet lines of at least 60 characters retain their first 65 characters as one line.
+Other runs above 200 characters retain their first 65 characters and a space.
+The alphabet contains ASCII letters, digits, plus, slash, and equals signs.
+The rule preserves the next line and leaves filename rows unchanged.
+Hash and wallet lists can lose values after the first value.
+
+Each plan batch submits eligible closed-shard merges. The final batch also submits eligible open-shard merges.
+Collection reindex submits merges after its final plan page, including when a plan failed.
+Submission does not wait for completion. Submitted merges continue after operation cancellation.
+A table has completed compaction when its status reports no active merge and one disk chunk.

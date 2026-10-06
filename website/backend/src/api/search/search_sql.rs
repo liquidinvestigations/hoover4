@@ -126,21 +126,32 @@ pub fn search_field_name(field_name: &str) -> anyhow::Result<&'static str> {
         .with_context(|| format!("invalid search field name: {field_name:?}"))
 }
 
-/// Timeout options for every search query, on every path.
-///
-/// `max_matches` must cover the rows the caller wants back: Manticore silently caps
-/// result sets at `max_matches` (default 1000), which would corrupt deep pagination and
-/// large facet merges.
-///
-/// The budget is [`search_timeout_ms`] and is uniform. The MVA facet path once emitted
-/// no `OPTION` clause at all, which is how a query the proxy had already given up on
-/// went on burning daemon CPU. `max_query_time` is Manticore's own best-effort limit and
-/// does not cover a connect or read stall, so the client applies the same budget again
-/// (`manticore_search_sql`); this half is what stops the server working on an abandoned
-/// query.
-pub fn sql_options_clause(max_matches: u64) -> String {
+/// Identify the table family for query options.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QueryTable {
+    Pages,
+    Structure,
+}
+
+pub fn parse_expansion_limit(raw: Option<&str>) -> Option<u32> {
+    raw.and_then(|value| value.parse().ok()).filter(|value| *value > 0)
+}
+
+/// Apply the search time budget and the page-only wildcard expansion limit.
+pub fn sql_options_clause(table: QueryTable, max_matches: u64) -> String {
+    let expansion = parse_expansion_limit(std::env::var("HOOVER4_MANTICORE_EXPANSION_LIMIT").ok().as_deref());
+    sql_options_with_expansion(table, max_matches, expansion)
+}
+
+fn sql_options_with_expansion(table: QueryTable, max_matches: u64, expansion: Option<u32>) -> String {
     let budget = search_timeout_ms();
-    format!("OPTION agent_query_timeout={budget},max_query_time={budget},max_matches={max_matches}")
+    let mut options = format!("OPTION agent_query_timeout={budget},max_query_time={budget},max_matches={max_matches}");
+    if table == QueryTable::Pages {
+        if let Some(limit) = expansion.filter(|limit| *limit > 0) {
+            options.push_str(&format!(",expansion_limit={limit}"));
+        }
+    }
+    options
 }
 
 /// The `ORDER BY` column for one sort key, already qualified.
@@ -466,12 +477,24 @@ mod tests {
     #[test]
     fn options_clause_carries_the_search_budget_and_max_matches() {
         assert_eq!(
-            sql_options_clause(42),
+            sql_options_clause(QueryTable::Structure, 42),
             format!(
                 "OPTION agent_query_timeout={ms},max_query_time={ms},max_matches=42",
                 ms = search_timeout_ms()
             )
         );
+    }
+
+    #[test]
+    fn expansion_limit_accepts_positive_values_only() {
+        assert_eq!(parse_expansion_limit(Some("500")), Some(500));
+        assert!(sql_options_with_expansion(QueryTable::Pages, 42, Some(500)).ends_with(",expansion_limit=500"));
+        assert!(!sql_options_with_expansion(QueryTable::Structure, 42, Some(500)).contains("expansion_limit"));
+        assert!(!sql_options_with_expansion(QueryTable::Pages, 42, None).contains("expansion_limit"));
+        assert!(!sql_options_with_expansion(QueryTable::Pages, 42, Some(0)).contains("expansion_limit"));
+        for value in [None, Some("0"), Some(""), Some("-1"), Some("invalid")] {
+            assert_eq!(parse_expansion_limit(value), None);
+        }
     }
 
     /// Every facet field the frontend can send must be accepted, a whitelist that

@@ -207,6 +207,8 @@ search_max_parallelism =
 ; request rather than returning short counts, so this is a correctness knob as much as a
 ; latency one. Default 30.
 search_timeout_seconds =
+; Page queries expand at most this many wildcard terms per shard. Zero disables the limit.
+manticore_expansion_limit = 5000
 
 # ---- worker fleet ---------------------------------------------------------------
 ; The pipeline tiers stay empty: each default is a measurement of what that tier

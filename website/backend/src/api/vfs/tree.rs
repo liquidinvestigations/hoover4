@@ -145,7 +145,7 @@ pub async fn vfs_tree_children(
 ) -> anyhow::Result<VfsTreeChildren> {
     let table = structure_table(user, &collection_dataset).await?;
     let limit = limit.clamp(1, MAX_CHILDREN_PER_PAGE);
-    let options_clause = sql_options_clause((limit + offset).max(1000));
+    let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, (limit + offset).max(1000));
     let sql = children_sql(
         &table,
         &collection_dataset,
@@ -185,7 +185,7 @@ pub async fn vfs_tree_children_after(
         "SELECT collection_dataset, node_key, parent_key, container_hash, path, name, kind, file_hash, file_size_bytes, depth FROM {table} WHERE collection_dataset = {} AND node_key = {} LIMIT 1 {} ;",
         format_sql_query::QuotedData(&collection_dataset),
         format_sql_query::QuotedData(&after_key),
-        sql_options_clause(1),
+        sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, 1),
     );
     let Some(after) = manticore_search_sql_uncached::<NodeRow>(after_sql).await?.hits.hits.into_iter().next() else {
         return Err(crate::auth::guard::InvalidInput(format!("no node {after_key:?} in this dataset")).into());
@@ -196,7 +196,7 @@ pub async fn vfs_tree_children_after(
     }
     let started = std::time::Instant::now();
     let total = manticore_search_sql_uncached::<NodeRow>(children_sql(
-        &table, &collection_dataset, &node_key, 1, 0, false, &sql_options_clause(1000),
+        &table, &collection_dataset, &node_key, 1, 0, false, &sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, 1000),
     ))
     .await?
     .hits
@@ -217,7 +217,7 @@ pub async fn vfs_tree_children_after(
         format_sql_query::QuotedData(&collection_dataset),
         format_sql_query::QuotedData(&node_key),
         format_sql_query::QuotedData(&after.path),
-        sql_options_clause(limit.max(1000)),
+        sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, limit.max(1000)),
         kind = after.kind,
     );
     let response = manticore_search_sql_uncached::<NodeRow>(sql).await?;
@@ -274,7 +274,7 @@ pub async fn vfs_tree_path_with_stats(
             ;",
             format_sql_query::QuotedData(&collection_dataset),
             format_sql_query::QuotedData(&cursor),
-            sql_options_clause(1),
+            sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, 1),
         );
         datastore_queries += 1;
         let response = manticore_search_sql_uncached::<NodeRow>(sql).await?;
@@ -307,7 +307,7 @@ pub async fn vfs_tree_container_node(
         "SELECT collection_dataset, node_key, parent_key, container_hash, path, name, kind, file_hash, file_size_bytes, depth FROM {table} WHERE collection_dataset = {} AND file_hash = {} AND kind = 2 ORDER BY container_hash ASC, path ASC LIMIT 1 {} ;",
         format_sql_query::QuotedData(&collection_dataset),
         format_sql_query::QuotedData(&container_hash),
-        sql_options_clause(1),
+        sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, 1),
     );
     Ok(manticore_search_sql_uncached::<NodeRow>(sql)
         .await?
@@ -349,7 +349,7 @@ pub async fn vfs_search_in_folder(
     }
     let offset = offset.min(MAX_CHILDREN_PER_PAGE);
     let limit = limit.clamp(1, MAX_CHILDREN_PER_PAGE).min((MAX_CHILDREN_PER_PAGE - offset).max(1));
-    let options_clause = sql_options_clause((offset + limit).max(1000));
+    let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, (offset + limit).max(1000));
     let Some(ancestor_id) = node_term_id(&collection_dataset, &node_key).await? else {
         // The node has never been an ancestor of anything, so nothing is under it.
         return Ok(VfsTreeChildren {

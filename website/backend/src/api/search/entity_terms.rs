@@ -132,7 +132,7 @@ pub async fn search_entity_terms(
     let match_argument = prepare_match_query(&format!("*{needle}*"))
         .map_err(anyhow::Error::from)?
         .quoted();
-    let options_clause = sql_options_clause(TERM_HIT_LIMIT);
+    let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, TERM_HIT_LIMIT);
 
     let targets: Vec<FanoutTarget> = collections
         .iter()

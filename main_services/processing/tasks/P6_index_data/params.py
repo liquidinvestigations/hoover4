@@ -55,12 +55,11 @@ class FinalizeIndexBatchParams:
     plan_hash: str
 
 @dataclass
-class OptimizeShardsParams:
-    """The shards one plan wrote to, offered for compaction."""
+class CompactCollectionShardsParams:
+    """Select the collection and whether open shards are excluded."""
     collectionname: str
-    collection_dataset: str
-    plan_hash: str
-    shard_names: list[str]
+    closed_only: bool
+    op_id: str = ""
 
 @dataclass
 class RecordIndexedParams:

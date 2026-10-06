@@ -36,11 +36,9 @@ def fetch_plan_hashes(params: FetchPlanHashesParams) -> list[str]:
 
 
 def clean_text(text: str) -> str:
-    """Normalize text the same way in every stage that stores or measures it.
+    """Normalize source text before measurement or indexing.
 
-    The NLP stage records ``len(clean_text(text).encode('utf-8'))`` as
-    ``nlp_processed.text_bytes`` and the indexing stage indexes exactly this
-    cleaned text, so the byte count and the indexed content never diverge.
+    NLP records these UTF-8 bytes. P6 then limits encoded runs in its indexed copy.
     """
     if not text:
         return ''

@@ -172,6 +172,9 @@ fn SearchResultsView() -> Element {
     });
 
     rsx! {
+        if let Some(notice) = common::search_query::short_infix_notice(&search_result.query.query_string) {
+            div { role: "status", style: "padding: 8px 12px;", "{notice}" }
+        }
         // Partial-results notice: one or more shards could not be searched (see the
         // backend fan-out partial-failure policy). The list and the hit count may
         // be incomplete.

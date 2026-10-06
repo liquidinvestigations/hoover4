@@ -87,7 +87,7 @@ pub async fn list_permitted_collection_tree(
             "SELECT collection_dataset FROM {table} WHERE parent_key IN ({}) AND kind != 1 GROUP BY collection_dataset LIMIT {} {} ;",
             collection.datasets.iter().map(|dataset| format_sql_query::QuotedData(&dataset_root_key(&dataset.collection_dataset)).to_string()).collect::<Vec<_>>().join(", "),
             collection.datasets.len(),
-            crate::api::search::search_sql::sql_options_clause(collection.datasets.len() as u64),
+            crate::api::search::search_sql::sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, collection.datasets.len() as u64),
         ))
         .await;
         let rows: Vec<FolderPresenceRow> = match response {

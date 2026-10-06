@@ -32,6 +32,7 @@ from collection_search_server.backends import (
     clickhouse_query,
     collection_db,
     manticore_vectors_query,
+    manticore_query_options,
 )
 
 log = logging.getLogger(__name__)
@@ -154,7 +155,7 @@ def search(query_vector: list[float], collections: list[str]) -> list[VectorCand
                 f"knn_dist() AS dist FROM {table} "
                 f"WHERE knn(embedding, {VECTOR_PER_SHARD}, ({vector_csv}), "
                 f"{{rescore=1, oversampling={VECTOR_OVERSAMPLING}}}) "
-                f"ORDER BY dist ASC LIMIT {VECTOR_PER_SHARD}"
+                f"ORDER BY dist ASC LIMIT {VECTOR_PER_SHARD} {manticore_query_options(VECTOR_PER_SHARD, pages=False)}"
             )
             try:
                 rows = manticore_vectors_query(sql)

@@ -124,6 +124,11 @@ worker then leaves Tesseract slots idle.
 
 ### The website
 
+`manticore_expansion_limit` limits wildcard term expansion in page searches. It defaults to 5000.
+Zero disables the limit. Structure searches do not use it.
+The website and collection tools use the same expansion limit and search time budget.
+A limit can exclude documents that contain only less frequent matching terms.
+
 `website_release_mode` picks between the development server and a release build.
 `search_max_parallelism` and `search_timeout_seconds` bound the search fan-out; leaving them
 empty takes the code's defaults. `max_held_polls_per_user` is how many chat polls one user
@@ -389,7 +394,7 @@ is the map back to the group above that explains it.
 - `tesseract_cpu_enabled`, `tesseract_languages`, `ocr_pdf_enabled`, `regex_scanner_threads`
 - `manticore_mem_limit`, `manticore_vectors_mem_limit` (required), `clickhouse_mem_limit`, `ocr_pdf_mem_limit`
 - `tesseract_cpu_concurrency`, `tesseract_threads_per_page`, `tesseract_cpu_cpus`, `tesseract_cpu_mem_limit`
-- `regex_scanner_queue_depth`, `website_release_mode`, `search_max_parallelism`, `search_timeout_seconds`
+- `regex_scanner_queue_depth`, `website_release_mode`, `search_max_parallelism`, `search_timeout_seconds`, `manticore_expansion_limit`
 - `common_workers`, `common_concurrency`, `common_max_cached_workflows`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`, `indexing_workers`
 - `chat_model_concurrency`, `chat_low_latency_concurrency`, `agent_tool_concurrency`

@@ -745,6 +745,7 @@ services:
       # `${VAR:-}` renders an empty string, which the backend treats as unset.
       - HOOVER4_SEARCH_MAX_PARALLELISM=${HOOVER4_SEARCH_MAX_PARALLELISM:-}
       - HOOVER4_SEARCH_TIMEOUT_SECONDS=${HOOVER4_SEARCH_TIMEOUT_SECONDS:-}
+      - HOOVER4_MANTICORE_EXPANSION_LIMIT=${HOOVER4_MANTICORE_EXPANSION_LIMIT:-0}
       # Held chat polls per user, and the flat poll ceiling. Both are read once
       # at process start (LazyLock). A change needs a website restart, not a reload.
       - HOOVER4_MAX_HELD_POLLS_PER_USER=${HOOVER4_MAX_HELD_POLLS_PER_USER:-8}

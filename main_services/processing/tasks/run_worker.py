@@ -584,7 +584,7 @@ async def run_embed_worker():
 async def run_indexing_worker():
   from .P6_index_data.activities import (
       build_vfs_nodes, index_text_pages, index_vectors,
-      index_entity_terms, index_vfs_structure, optimize_shard_tables,
+      index_entity_terms, index_vfs_structure, compact_collection_shards,
       refresh_stale_document_locations, resolve_canonical_file_type,
   )
   from .visibility import ensure_search_attributes
@@ -605,7 +605,7 @@ async def run_indexing_worker():
       workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
       workflows=[],
       activities=[index_text_pages, index_vectors, build_vfs_nodes,
-                  index_vfs_structure, optimize_shard_tables,
+                  index_vfs_structure, compact_collection_shards,
                   resolve_canonical_file_type, index_entity_terms,
                   refresh_stale_document_locations],
       activity_executor=activity_executor,

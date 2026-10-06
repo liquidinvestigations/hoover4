@@ -98,13 +98,14 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P6_index_data.activities import (
         build_email_graph,
+        compact_collection_shards,
         build_vfs_nodes,
         index_entity_terms,
         index_vfs_structure,
         refresh_stale_document_locations,
         resolve_canonical_file_type,
     )
-    from tasks.P6_index_data.params import BuildEmailGraphParams, BuildVfsNodesParams, RefreshDocumentLocationsParams, ResolveCanonicalFileTypeParams
+    from tasks.P6_index_data.params import CompactCollectionShardsParams, BuildEmailGraphParams, BuildVfsNodesParams, RefreshDocumentLocationsParams, ResolveCanonicalFileTypeParams
     from tasks.visibility import dataset_search_attributes
 
 
@@ -239,6 +240,10 @@ class ExecutePlans:
                 60, EMAIL_GRAPH_TASK_QUEUE,
             )
 
+        await run_dataset_step(
+            compact_collection_shards,
+            CompactCollectionShardsParams(params.collectionname, True, params.op_id), 10,
+        )
         child_params = None
         child_id = ""
         if continuation_hash:
@@ -268,6 +273,11 @@ class ExecutePlans:
                     exclude_failed_of_op=True,
                 )
                 child_id = f"execute-plans-{params.collection_dataset}-restart-{depth + 1}"
+        if child_params is None:
+            await run_dataset_step(
+                compact_collection_shards,
+                CompactCollectionShardsParams(params.collectionname, False, params.op_id), 10,
+            )
         if child_params:
             child_counts = await workflow.execute_child_workflow(
                 ExecutePlans.run, child_params, id=child_id,

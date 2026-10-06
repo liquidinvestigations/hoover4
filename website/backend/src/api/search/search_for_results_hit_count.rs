@@ -39,7 +39,7 @@ pub async fn search_for_results_hit_count(user: &CurrentUser, query: SearchQuery
             let parts = fanout::shard_query_parts(&target, &query).await?;
             let from_clause = &parts.from_clause;
             let sql_where_clause = &parts.where_clause;
-            let options_clause = sql_options_clause(1000);
+            let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, 1000);
             let sql = format!(
                 "
                 SELECT count(distinct file_hash) as total_count

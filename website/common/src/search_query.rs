@@ -6,6 +6,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::search_result::FacetOriginalValue;
 
+/// Explain the minimum length of an infix query when it applies.
+pub fn short_infix_notice(query: &str) -> Option<&'static str> {
+    let short = query.split(|c: char| c.is_whitespace() || "()|\"".contains(c)).any(|token| {
+        let token = token.trim_start_matches(['-', '!', '^']).trim_end_matches('$');
+        if let Some(inner) = token.strip_prefix('*').and_then(|value| value.strip_suffix('*')) {
+            let size = inner.chars().count();
+            return (1..3).contains(&size) && inner.chars().all(char::is_alphanumeric);
+        }
+        false
+    });
+    short.then_some("Infix searches require at least three characters between the asterisks.")
+}
+
 /// `date_min`/`date_max` of a document with no confirmed historical date.
 ///
 /// Manticore attributes are not nullable, so "unknown" needs a reserved value and
@@ -227,5 +240,20 @@ mod tests {
         ciborium::into_writer(&query, &mut cbor).unwrap();
         let decoded: SearchQuery = ciborium::from_reader(std::io::Cursor::new(cbor)).unwrap();
         assert_eq!(decoded, query);
+    }
+}
+
+#[cfg(test)]
+mod infix_notice_tests {
+    use super::short_infix_notice;
+
+    #[test]
+    fn only_short_infix_terms_get_a_notice() {
+        for query in ["*a*", "(*ab*)", "word | *é*", "-*xy*"] {
+            assert!(short_infix_notice(query).is_some());
+        }
+        for query in ["ab*", "*abc*", "abc", "*"] {
+            assert!(short_infix_notice(query).is_none());
+        }
     }
 }

@@ -39,6 +39,8 @@ services:
       - CLICKHOUSE_USER=${CLICKHOUSE_USER:-hoover4}
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-hoover4}
       - MANTICORE_URL=${MANTICORE_URL:-http://manticore:9308}
+      - HOOVER4_SEARCH_TIMEOUT_SECONDS=${HOOVER4_SEARCH_TIMEOUT_SECONDS:-30}
+      - HOOVER4_MANTICORE_EXPANSION_LIMIT=${HOOVER4_MANTICORE_EXPANSION_LIMIT:-0}
       - MANTICORE_VECTORS_URL=${MANTICORE_VECTORS_URL:-http://manticore-vectors:9308}
       # Shared bearer token as a bind-mounted file (deploy.py); acl.py falls back to
       # it when MCP_SHARED_SECRET is unset.

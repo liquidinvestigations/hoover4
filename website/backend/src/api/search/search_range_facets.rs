@@ -95,7 +95,7 @@ pub async fn search_numeric_facet(
             let parts = fanout::shard_query_parts(&target, &query).await?;
             let from_clause = &parts.from_clause;
             let where_clause = &parts.where_clause;
-            let options_clause = sql_options_clause(1000);
+            let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, 1000);
             let sql = format!(
                 "
                 SELECT INTERVAL(file_size_bytes, {edges}) AS bucket,

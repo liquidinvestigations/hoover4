@@ -49,7 +49,8 @@ with workflow.unsafe.imports_passed_through():
     )
     from ..heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from ..visibility import dataset_search_attributes
-    from tasks.P6_index_data.params import IndexDatasetPlanParams
+    from tasks.P6_index_data.params import CompactCollectionShardsParams, IndexDatasetPlanParams
+    from tasks.P6_index_data.activities import compact_collection_shards
 
 #: How long the purge settle loop waits between row counts.
 PROGRESS_INTERVAL_SECONDS = 15
@@ -95,7 +96,19 @@ class RebuildCollectionPlans:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=ROW_RETRY,
         )
+        async def compact():
+            if not params.vectors_only:
+                await workflow.execute_activity(
+                    compact_collection_shards,
+                    CompactCollectionShardsParams(params.collectionname, False, params.op_id),
+                    task_queue="processing-indexing-queue",
+                    start_to_close_timeout=timedelta(minutes=10),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=ROW_RETRY,
+                )
+
         if not plans:
+            await compact()
             if params.failed:
                 raise ApplicationError(f"{params.failed} index plans failed.", non_retryable=True)
             return params.completed
@@ -132,6 +145,7 @@ class RebuildCollectionPlans:
                 params.op_id, params.collectionname, params.vectors_only,
                 dataset, plan_hash, completed, failed,
             ))
+        await compact()
         if failed:
             raise ApplicationError(f"{failed} index plans failed.", non_retryable=True)
         return completed

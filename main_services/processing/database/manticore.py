@@ -53,6 +53,37 @@ VECTORS = "vectors"
 VECTOR_QUANTIZATION = "1bit"
 
 
+ENCODED_LINE_MIN = 60
+ENCODED_RUN_KEEP = 65
+ENCODED_INLINE_MIN = 201
+_ENCODED_LINE = re.compile(r"[ \t]*([A-Za-z0-9+/=]+)")
+_ENCODED_RUN = re.compile(r"[A-Za-z0-9+/=]{%d,}" % ENCODED_INLINE_MIN)
+
+
+def limit_encoded_runs(text: str) -> str:
+    """Limit encoded blocks and long runs in indexed page text."""
+    lines = text.splitlines(keepends=True)
+    output = []
+    index = 0
+    while index < len(lines):
+        match = _ENCODED_LINE.fullmatch(lines[index].rstrip("\r\n"))
+        if match is None or len(match[1]) < ENCODED_LINE_MIN:
+            output.append(_ENCODED_RUN.sub(lambda item: item[0][:ENCODED_RUN_KEEP] + " ", lines[index]))
+            index += 1
+            continue
+        block = []
+        while index < len(lines):
+            match = _ENCODED_LINE.fullmatch(lines[index].rstrip("\r\n"))
+            if match is None or len(match[1]) < ENCODED_LINE_MIN:
+                break
+            block.append(match[1])
+            index += 1
+        last = lines[index - 1]
+        ending = last[len(last.rstrip("\r\n")):]
+        output.append("".join(block)[:ENCODED_RUN_KEEP] + ending)
+    return "".join(output)
+
+
 def endpoint_for_table(table: str) -> str:
     """Return the endpoint that owns `table`."""
     return VECTORS if table.endswith(f"_{VECTORS_TABLE_SUFFIX}") else TEXT
