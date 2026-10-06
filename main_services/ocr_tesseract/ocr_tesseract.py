@@ -34,6 +34,7 @@ filling `processing_errors` with noise.
 
 import base64
 import binascii
+import io
 import logging
 import os
 import shutil
@@ -46,6 +47,7 @@ from typing import List
 
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
+from PIL import Image
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 log = logging.getLogger("ocr_tesseract")
@@ -127,8 +129,26 @@ def _run_tesseract(image_bytes: bytes, languages: str, psm: int) -> tuple:
             handle.write(image_bytes)
 
         cmd = ["tesseract", src, "stdout", "-l", languages, "--psm", str(psm), "tsv"]
+        started = time.monotonic()
         res = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL,
                              timeout=OCR_SUBPROCESS_TIMEOUT_S)
+        if (res.returncode != 0 and image_bytes.startswith(b"\xff\xd8")
+                and b"pixReadStreamJpeg" in (res.stderr or b"")):
+            # Pillow can decode some JPEG scan headers that Leptonica rejects.
+            try:
+                with Image.open(io.BytesIO(image_bytes)) as image:
+                    image.load()
+                    if image.mode not in ("RGB", "L"):
+                        image = image.convert("RGB")
+                    image.save(src, format="PNG")
+            except (OSError, ValueError, Image.DecompressionBombError):
+                pass
+            else:
+                remaining = OCR_SUBPROCESS_TIMEOUT_S - (time.monotonic() - started)
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(cmd, OCR_SUBPROCESS_TIMEOUT_S)
+                res = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL,
+                                     timeout=remaining)
         if res.returncode != 0:
             stderr = (res.stderr or b"").decode("utf-8", "ignore")[:500]
             raise RuntimeError(f"tesseract failed ({res.returncode}): {stderr}")

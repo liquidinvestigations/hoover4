@@ -101,6 +101,8 @@ surface performs.
 The progress activity writes selector and reconciliation counts in the operations row.
 The child pipeline returns those counts to `Operation` after plan execution. A periodic
 sample preserves selector counts while it updates progress and current failures.
+An active progress sample does not classify unfinished plans as failed.
+After execution and reconciliation finish, the final sample verifies that every recorded plan finished.
 
 Progress is whatever that kind can actually count, and the unit differs by kind: an ingest,
 an OCR-language change and a plan execution count **plans**, a retry counts the plans it

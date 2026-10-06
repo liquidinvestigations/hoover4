@@ -69,6 +69,12 @@ The method text is in `research_agent/skills/`.
 Each skill has a Jinja body and front matter with its name, group, description, and tools.
 The role skills are `method_chat_full` and `method_chat_internal`.
 They define the role's sources and evidence requirements.
+The full chat role verifies every constraint for each listed item before an optional skill read.
+It requires reading each cited page and reports a shortage when fewer items match.
+It keeps items that fail a constraint outside the matching list.
+The system text records the observed UTC date when the run context is created.
+Current web claims require the latest dated source update.
+Repository data reads use raw addresses, returned continuation offsets, and surrounding record text when a match omits an identifying fact.
 The other groups provide search, citation, tool use, and failed-call instructions.
 A technique or stumble skill has at most 2,600 characters.
 A skill renders a tool name only when the run has that tool.

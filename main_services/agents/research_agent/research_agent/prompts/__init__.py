@@ -6,8 +6,8 @@ the listed skills by name and description, and the tools of the run's snapshot b
 summary in one list. The other method texts are in the skill store
 (`research_agent.skill_store`), which the model reads with `read_skill` when it chooses to.
 
-The prompt depends on the profile, `collections_hint`, the model and the snapshot. None of these changes during a run, so the step context renders it once, and the
-prompt cache of the system text holds for the whole run.
+The prompt uses the profile, `collections_hint`, model, snapshot, and observed UTC date.
+The step context renders it once and keeps that text for the run.
 
 `SYSTEM_PROMPT` overrides the rendered text outright, which is what an experiment wants. It
 does not change the tool list, which the tool packs of the run kind decide
@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -143,6 +144,7 @@ def render(
         web_enabled="web_search" in tool_names, collections_hint=bool(collections_hint),
     ).strip()
     return _environment().get_template(AGENT_TEMPLATE).render(
+        current_date=datetime.now(timezone.utc).date().isoformat(),
         role_line=role_line,
         role_method=role_method(ctx, strict=strict),
         skills=list(skills),

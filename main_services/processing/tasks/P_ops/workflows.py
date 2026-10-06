@@ -378,7 +378,7 @@ class Operation:
         progress = await workflow.execute_activity(
             sample_dataset_progress,
             DatasetProgressParams(params.op_id, params.collectionname,
-                                  params.collection_dataset, counts),
+                                  params.collection_dataset, counts, verify_plan_completion=True),
             task_queue="operations-queue",
             start_to_close_timeout=timedelta(minutes=2),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,

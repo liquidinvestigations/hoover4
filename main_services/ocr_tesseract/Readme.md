@@ -1,8 +1,8 @@
 # ocr_tesseract: Tesseract OCR over HTTP (CPU)
 
-The CPU half of the OCR tier. Its GPU twin is `ai_services/easyocr_server`, and both
-speak the same contract so `tasks/remote.py` can fall back from one to the other
-without the call site branching.
+This service runs Tesseract on the CPU.
+Its GPU counterpart, `ai_services/easyocr_server`, runs EasyOCR through the same request contract.
+The client preserves each engine's source identity and does not substitute one engine for the other.
 
 ## Why OCR is a service
 
@@ -33,6 +33,11 @@ POST /ocr     {"image_b64": "...", "languages": "eng+ron", "psm": 3}
 - **Per-word confidence is returned** because storing every language variant is only
   useful if they can be scored against each other and a winner marked for display.
 - **`words` carries boxes**, which is what an hOCR/searchable-PDF layer needs later.
+
+When Leptonica rejects a JPEG scan header, Pillow attempts to decode the complete image.
+A successful decode produces a lossless PNG for one Tesseract retry within the original subprocess timeout.
+The retry preserves the image dimensions and pixel orientation.
+An undecodable image keeps its original failure.
 
 ## Operational notes
 

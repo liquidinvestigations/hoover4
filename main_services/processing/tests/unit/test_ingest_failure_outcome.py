@@ -28,6 +28,7 @@ def test_each_ingest_kind_reports_ledger_or_counter_failure(monkeypatch, kind, l
         if name == "reconcile_selected_errors":
             return {}
         if name == "sample_dataset_progress":
+            assert params.verify_plan_completion
             return dict(failed_plans=int(ledger_has_failure), failed_dataset_steps=0,
                         failed_documents=2, plan_samples=["failed-plan"], step_samples=[])
         if name == "record_operation_state":

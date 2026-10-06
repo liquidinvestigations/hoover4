@@ -16,6 +16,7 @@ that answer with a notice. A reply without labels shows its citation status.
 A logical thread gets one repair round at most. The note in the thread is the stored marker
 (`REPAIR_MARKER_KEY` in its usage). `is_citation_note` reads this marker.
 `steps.check_citations` uses stored read evidence after each answer or question.
+A web check compares every answer link with readable page evidence and names each unread link.
 A stopped run and a run that ended at a limit get no round. The rules here are pure.
 """
 
@@ -111,6 +112,8 @@ def repair_note(check: dict) -> str:
         problems.append("The answer names page 0. Use the 1-based page from the verified cite_documents result.")
     if check.get("web_missing"):
         problems.append("Read the web pages behind each web claim. Put each read page address beside its claim.")
+    for url in check.get("web_unread") or []:
+        problems.append(f"The answer links an unread page: {url}. Read it before you use its claims, or remove those claims.")
     for paragraph in check.get("unsupported_paragraphs") or []:
         problems.append(f"Paragraph {paragraph['number']} has a name or number without a source: {paragraph['text']} Add its citation or remove the claim.")
     if check.get("unresolved"):
@@ -124,9 +127,17 @@ def repair_note(check: dict) -> str:
     return " ".join(problems) + " Write the complete answer again with the sources that support its claims."
 
 
-URL_PATTERN = re.compile(r"https?://[^\s<>\]\)]+")
+URL_PATTERN = re.compile(r"https?://[^\s<>\]]+")
 NAME_PATTERN = re.compile(r"\b[^\W\d_][^\W\d_'-]{2,}\b")
 OPENING_WORDS = frozenset({"The", "This", "There", "These", "Those", "However", "It", "They", "Their", "For", "From", "With", "Not", "None", "Some"})
+
+
+def page_address(url: str) -> str:
+    """Compare page addresses without a fragment or trailing sentence punctuation."""
+    url = url.rstrip(".,;:!?")
+    while url.endswith(")") and url.count(")") > url.count("("):
+        url = url[:-1]
+    return url.split("#", 1)[0]
 
 
 def unsupported_paragraphs(answer: str) -> list[dict]:
@@ -145,10 +156,12 @@ def web_evidence(messages) -> tuple[bool, list[str]]:
     """Return web use and the addresses of pages that supplied readable evidence."""
     used, urls = False, []
     for message in messages:
-        if message.role != "tool" or message.usage.get("status") == "error":
+        if message.role != "tool":
             continue
         if message.tool_name in ("web_search", "read_page"):
             used = True
+        if message.usage.get("status") == "error":
+            continue
         for entry in message.usage.get("evidence") or []:
             if entry.get("kind") == "document_read" and entry.get("status") in ("ok", "partial"):
                 url = (entry.get("reference") or {}).get("url")
@@ -171,7 +184,11 @@ def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
     check["page_zero"] = bool(PAGE_ZERO_PATTERN.search(answer))
     documents_read = read_documents(messages)
     web_used, urls = web_evidence(messages)
-    check["web_missing"] = web_used and not any(url in answer for url in urls)
+    read_urls = {page_address(url) for url in urls}
+    answer_urls = list(dict.fromkeys(page_address(url) for url in URL_PATTERN.findall(answer)))
+    check["web_unread"] = [url for url in answer_urls if url not in read_urls] if web_used else []
+    check["web_missing"] = web_used and (not any(url in read_urls for url in answer_urls)
+                                         or bool(check["web_unread"]))
     check["unsupported_paragraphs"] = unsupported_paragraphs(answer) if documents_read else []
     if not answer.strip() or any(is_citation_note(m) for m in messages):
         return False, check

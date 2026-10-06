@@ -126,8 +126,13 @@ _CHECK_JS = """
     || document.querySelector('#challenge-form, #challenge-running, #challenge-stage'));
   const titles = ['just a moment', 'attention required', 'checking your browser', 'please wait', 'ddos-guard', 'access denied'];
   const phrases = ['performing security verification', 'verify you are human', 'checking your browser',
+                   'verify that you are human', 'confirm that you are human',
                    'enable javascript and cookies to continue', 'verifies you are not a bot'];
-  const hit = dom ? 'dom' : (titles.find(x => t.includes(x)) || phrases.find(x => b.includes(x)) || '');
+  // Myra uses a separate title and human verification text in both languages.
+  const myra = ['security check', 'sicherheitsüberprüfung'].includes(t.trim())
+    && (b.includes('myra') || b.includes('unusual traffic') || b.includes('mensch'));
+  const hit = dom ? 'dom' : (myra ? 'security check' :
+    (titles.find(x => t.includes(x)) || phrases.find(x => b.includes(x)) || ''));
   return JSON.stringify({ text: hit, check: !!hit, url: location.href, title: document.title || '',
                           type: document.contentType || '' });
 }

@@ -1058,3 +1058,45 @@ def test_document_and_web_findings_share_one_repair_note(citations_store):
 def test_a_cited_paragraph_does_not_cover_the_next_claim():
     findings = citations.unsupported_paragraphs("The budget is 5 [D1].\n\nȘtefan receives 12 payments.")
     assert findings == [{"number": 2, "text": "Ștefan receives 12 payments."}]
+
+
+@pytest.mark.parametrize("unread_status", ["absent", "error"])
+def test_one_read_web_link_does_not_cover_an_unread_link(citations_store, unread_status):
+    evidence = [{"kind": "document_read", "status": "partial",
+                 "reference": {"url": "https://example.invalid/read"}}]
+    if unread_status == "error":
+        evidence.append({"kind": "document_read", "status": "error",
+                         "reference": {"url": "https://example.invalid/unread"}})
+    citations_store["messages"].append(agent_runs.RunMessageRow(
+        idx=2, role="tool", tool_name="read_page",
+        usage_json=json.dumps({"status": "ok", "evidence": evidence})))
+    answer = "One case [source](https://example.invalid/read#case).\n\nAnother case https://example.invalid/unread."
+    _answer_with_tool(citations_store, answer, citation_tool=False)
+    citations_store["messages"].sort(key=lambda message: message.idx)
+    assert _check(citations_store).needed
+    note = citations_store["messages"][-1]
+    assert note.usage["citation_check"]["web_unread"] == ["https://example.invalid/unread"]
+    assert "The answer links an unread page: https://example.invalid/unread." in note.content
+    assert citations.answer_metadata(answer, citations_store["messages"], [], True)["citation_status"] == "missing"
+    assert not citations.needs_repair(answer, citations_store["messages"], [])[0]
+
+
+@pytest.mark.parametrize("page", ["read", "report_(court)"])
+def test_all_read_web_links_with_fragments_have_cited_status(page):
+    messages = [agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
+        usage_json=json.dumps({"status": "ok", "evidence": [
+            {"kind": "document_read", "status": "ok", "reference": {"url": f"https://example.invalid/{page}"}},
+            {"kind": "document_read", "status": "partial", "reference": {"url": "https://example.invalid/next"}}]}))]
+    answer = f"[First](https://example.invalid/{page}#one). [Second](https://example.invalid/next#two)."
+    assert not citations.needs_repair(answer, messages, [])[0]
+    assert citations.answer_metadata(answer, messages, [], True)["citation_status"] == "cited"
+
+
+def test_a_failed_web_read_cannot_satisfy_its_answer_link():
+    url = "https://example.invalid/blocked"
+    messages = [agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
+        usage_json=json.dumps({"status": "error", "evidence": [
+            {"kind": "document_read", "status": "error", "reference": {"url": url}}]}))]
+    needed, check = citations.needs_repair(f"The source is {url}.", messages, [])
+    assert needed and check["web_unread"] == [url]
+    assert citations.answer_metadata(f"The source is {url}.", messages, [], True)["citation_status"] == "missing"

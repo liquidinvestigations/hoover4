@@ -192,6 +192,17 @@ def test_an_ordinary_result_is_unaffected_by_the_page_guard():
     assert paired[0].tool_output == '{"n": 1}'
 
 
+def test_a_bounded_web_read_keeps_its_continuation_and_archive_marker():
+    marker = '[hoover4:artifacts] {"artifacts":[{"artifact_id":"page-capture","kind":"page_capture"}]}'
+    text = ("## Data\nhttps://example.invalid/data\n\n" + '"entry": "α"\n' * 2200
+            + '\n[more: 1 matches from offset 22361184. Call read_page with this URL for the next matches]\n'
+            + marker)
+    fields = tool_row_fields("read_page", {"find": "chief of station"}, text)
+    assert len(fields["tool_output"]) > TOOL_PAYLOAD_CHARS
+    assert json.loads(fields["tool_output"]) == text
+    assert marker in fields["tool_output"].replace('\\"', '"')
+
+
 def _search_page(items):
     """A broker result page as the broker serialises it: canonical JSON text."""
     return _canonical_json({"items": items, "success": True,

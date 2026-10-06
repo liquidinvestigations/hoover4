@@ -340,7 +340,9 @@ def sample_dataset_progress(params: DatasetProgressParams) -> dict:
                     failed_tasks=int(detail.get("failed_tasks", 0)),
                     plan_samples=detail.get("plan_samples", []), step_samples=detail.get("step_samples", []))
     done, total = run_plan_counts(params.collectionname, params.op_id, params.collection_dataset) if params.op_id else (0, 0)
-    result = dict(done=done, total=total, failed_plans=max(0, total - done),
+    # Only the final verification can classify an unfinished plan as failed.
+    failed_plans = max(0, total - done) if params.verify_plan_completion else 0
+    result = dict(done=done, total=total, failed_plans=failed_plans,
                   failed_documents=0, failed_tasks=0, failed_dataset_steps=0,
                   plan_samples=[], step_samples=[])
     bound = {"ds": params.collection_dataset, "op": params.op_id}

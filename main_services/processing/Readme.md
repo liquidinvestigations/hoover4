@@ -14,6 +14,10 @@ This directory contains the ingestion and processing pipeline that populates Hoo
 - `main.py` provides a Click CLI for migrations, dataset onboarding, and worker orchestration.
 - `tasks/run_worker.py` defines worker types and task queues for Temporal.
 
+The worker image installs dependencies in `/opt/pysetup/.venv`.
+Each container uses its own environment outside the shared source mount.
+`uv run` selects this environment through `UV_PROJECT_ENVIRONMENT`.
+
 ## Subdirectories
 
 - `database/` - ClickHouse migrations, Manticore index utilities, Garage client helpers, and related scripts.

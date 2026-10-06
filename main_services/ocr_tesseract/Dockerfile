@@ -18,7 +18,8 @@ WORKDIR /app
 RUN pip install --no-cache-dir \
         "fastapi>=0.115" \
         "uvicorn[standard]>=0.34" \
-        "pydantic>=2.9"
+        "pydantic>=2.9" \
+        "pillow>=10.0"
 
 COPY ocr_tesseract.py /app/ocr_tesseract.py
 

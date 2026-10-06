@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 
 import pyarrow as pa
+import pytest
 
 from tasks.P2_execute_plan.activities import ListPendingPlansParams, list_pending_plans
 from tasks.P_ops.activities import sample_dataset_progress
@@ -49,7 +50,8 @@ def test_list_pending_plans_records_each_listed_plan(monkeypatch):
     ]
 
 
-def test_progress_uses_recorded_plans_and_operation_errors(monkeypatch):
+@pytest.mark.parametrize("verify_plan_completion", [False, True])
+def test_progress_uses_recorded_plans_and_operation_errors(monkeypatch, verify_plan_completion):
     import database.clickhouse as clickhouse
     import database.operation_ledger as ledger
     import database.operations as operations
@@ -74,19 +76,20 @@ def test_progress_uses_recorded_plans_and_operation_errors(monkeypatch):
     )
 
     result = sample_dataset_progress(
-        DatasetProgressParams("operation", "collection", "dataset")
+        DatasetProgressParams("operation", "collection", "dataset",
+                              verify_plan_completion=verify_plan_completion)
     )
 
     assert result["done"] == 3
     assert result["total"] == 7
-    assert result["failed_plans"] == 4
+    assert result["failed_plans"] == (4 if verify_plan_completion else 0)
     assert result["failed_dataset_steps"] == 1
     assert "op_id = {op:String}" in client.queries[0][0]
     assert client.queries[0][1] == {"ds": "dataset", "op": "operation"}
     assert len(details) == 1
     assert details[0]["base_row"]["row_version"] == 1
     assert json.loads(details[0]["detail"]) == {
-        "failed_documents": 1, "failed_tasks": 2, "failed_plans": 4,
-        "failed_dataset_steps": 1, "plan_samples": ["plan-a"],
+        "failed_documents": 1, "failed_tasks": 2, "failed_plans": 4 if verify_plan_completion else 0,
+        "failed_dataset_steps": 1, "plan_samples": ["plan-a"] if verify_plan_completion else [],
         "step_samples": [["dataset_step:index_vfs_structure", "failed"]],
     }

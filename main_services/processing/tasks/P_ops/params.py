@@ -71,6 +71,7 @@ class DatasetProgressParams:
     selector_counts: dict[str, int] = field(default_factory=dict)
     terminal_state: str = ""
     terminal_error: str = ""
+    verify_plan_completion: bool = False
 
 
 @dataclass

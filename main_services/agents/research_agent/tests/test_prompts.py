@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -228,3 +229,22 @@ async def test_the_system_text_is_the_same_for_each_model_step(monkeypatch):
     assert "Your role" in first and "`method_chat_full`" not in first
     assert context.skill_context.profile == "full_research"
     assert context.skill_context.tool_names == frozenset(context.snapshot.tools_by_name)
+
+
+def test_list_constraints_apply_before_any_optional_skill_read():
+    text = rendered("full_research")
+    assert "For each listed item, verify every constraint against the source text" in text
+    assert "Give fewer items when the sources establish fewer matches" in text
+    assert "Read every page that you cite before you answer." in text
+    assert "Search snippets and security check pages cannot establish a matching item." in text
+
+
+def test_the_prompt_uses_the_observed_utc_date(monkeypatch):
+    class Clock:
+        @staticmethod
+        def now(tz):
+            assert tz is timezone.utc
+            return datetime(2026, 10, 7, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(prompts, "datetime", Clock)
+    assert "The current UTC date is 2026-10-07." in rendered("full_research")

@@ -12,6 +12,7 @@ import base64
 import io
 import json
 import re
+import subprocess
 import time
 from types import SimpleNamespace
 
@@ -22,6 +23,21 @@ from browser_use_server import read_page
 from browser_use_server.read_page import PageRead, ReadResult
 
 CHECK_URL = "https://checked.example/article"
+
+
+@pytest.mark.parametrize("title, body, blocked", [
+    ("Security Check", "Myra. Our systems have detected unusual traffic. You must confirm that you are human.", True),
+    ("Sicherheitsüberprüfung", "Myra. Bitte bestätigen Sie, dass Sie ein Mensch sind.", True),
+    ("", "Please verify that you are human.", True),
+    ("Myra security check guide", "This article describes a security check.", False),
+])
+def test_the_probe_detects_human_verification_pages(title, body, blocked):
+    page = json.dumps({"title": title, "body": {"innerText": body}})
+    script = (f"global.document = {page}; document.querySelector = () => null; "
+              f"global.window = {{}}; global.location = {{href: {json.dumps(CHECK_URL)}}}; "
+              f"console.log(({read_page._CHECK_JS})());")
+    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+    assert json.loads(result.stdout)["check"] is blocked
 
 
 def _answer(payload: dict) -> SimpleNamespace:
