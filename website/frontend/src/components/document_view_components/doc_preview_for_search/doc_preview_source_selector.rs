@@ -64,7 +64,6 @@ pub fn DocumentPreviewSourceSelectorDropdown(
 
                 SelectedItemDropdownDisplay {
                     selected_item: selected_source.clone(),
-                    expand,
                     item_hit_counts: item_hit_counts,
                 }
             }
@@ -154,17 +153,11 @@ fn SelectedItemList(
 #[component]
 fn SelectedItemDropdownDisplay(
     selected_item: ReadSignal<DocumentSourceItem>,
-    expand: Signal<bool>,
     item_hit_counts: ReadSignal<ItemHitCounts>,
 ) -> Element {
     rsx! {
         div {
             "data-source-trigger": "true",
-            onclick: move |_e| {
-                _e.prevent_default();
-                _e.stop_propagation();
-                expand.toggle();
-            },
             style: "
             display: inline-flex;
             align-items: center;

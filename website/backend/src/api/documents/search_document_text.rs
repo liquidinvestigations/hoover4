@@ -68,6 +68,46 @@ fn find_query_match_argument(find_query: &str) -> Option<String> {
     }
 }
 
+/// Highlight header values with the document's index settings.
+pub async fn highlight_email_headers(
+    user: &CurrentUser,
+    identifier: &DocumentIdentifier,
+    find_query: &str,
+    envelope: &common::email_graph::EmailEnvelope,
+) -> anyhow::Result<std::collections::BTreeMap<String, Vec<common::text_highlight::HighlightTextSpan>>> {
+    permissions::assert_can_read(user, &identifier.collection_dataset).await?;
+    let mut result = std::collections::BTreeMap::new();
+    let Some(argument) = find_query_match_argument(find_query) else { return Ok(result); };
+    let Some((table, salt)) = pages_table_for_document(identifier).await? else { return Ok(result); };
+    let mut values = vec![envelope.subject.clone()];
+    values.push(envelope.from.iter().map(common::email_graph::EmailParty::full).collect::<Vec<_>>().join(", "));
+    values.extend(envelope.collapsed_recipients());
+    values.extend(envelope.date_sent.map(common::document_provenance::format_epoch_utc));
+    values.extend(envelope.from.iter().chain(&envelope.to).chain(&envelope.cc).chain(&envelope.bcc)
+        .map(common::email_graph::EmailParty::full));
+    values.sort();
+    values.dedup();
+    for batch in values.chunks(50) {
+        let columns = batch.iter().enumerate().map(|(index, text)| format!(
+            "HIGHLIGHT({{limit=0, force_all_words=1, html_strip_mode=retain, around=0, before_match='<hoover4_strong>', after_match='</hoover4_strong>', force_snippets=1}}, TO_STRING({}), {argument}) AS h{index}",
+            format_sql_query::QuotedData(text)
+        )).collect::<Vec<_>>().join(", ");
+        let options = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, 1);
+        let sql = format!("SELECT {columns} FROM {table} WHERE file_hash={} AND collection_dataset={} LIMIT 1 {options}",
+            format_sql_query::QuotedData(&identifier.file_hash),
+            format_sql_query::QuotedData(&identifier.collection_dataset));
+        let response = manticore_search_sql::<std::collections::BTreeMap<String, String>>(sql, &salt).await?;
+        if let Some(hit) = response.hits.hits.into_iter().next() {
+            for (index, text) in batch.iter().enumerate() {
+                if let Some(highlighted) = hit._source.get(&format!("h{index}")) {
+                    result.insert(text.clone(), decompose_text_into_spans(highlighted.clone()));
+                }
+            }
+        }
+    }
+    Ok(result)
+}
+
 pub async fn search_document_text_for_hits(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,

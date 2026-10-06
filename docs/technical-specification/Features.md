@@ -47,7 +47,7 @@ languages.
 
 | id | capability | owned by |
 |---|---|---|
-| `F-search-01` | Full-text search across selected collections and datasets, with phrase, exclusion, prefix, alternation and proximity operators | `backend/src/api/search/` |
+| `F-search-01` | Search selected collections and datasets with phrase, exclusion, prefix, alternation and proximity operators. Prefer parsed text in grouped snippets. Refuse pages beyond 1,000 results. | `backend/src/api/search/` |
 | `F-search-02` | Repair a query that is not valid engine syntax but is an ordinary thing to type, and explain infix queries below three characters. Refuse with an explanation the two shapes that have no searchable reading | `website/backend/src/db_utils/manticore_match.rs` |
 | `F-search-03` | Facet by collection and dataset, file type, file location, document language, red flag category, entity value and email attachment, with live counts within the rest of the query | `website/backend/src/api/search/search_facets.rs` |
 | `F-search-04` | Search the corpus for a facet value rather than filtering the buckets on screen | `website/backend/src/api/search/entity_terms.rs` |
@@ -55,7 +55,7 @@ languages.
 | `F-search-06` | Show a date histogram of the match without its own date filter, over computed bins | `website/backend/src/api/search/date_histogram.rs` |
 | `F-search-07` | Filter by file size, with unknown size distinct from zero | `website/backend/src/api/search/search_sql.rs` |
 | `F-search-08` | Sort by descending relevance, or by date, file size or name in either direction, consistently across shards | `api/search/`, `website/common/src/search_query.rs` |
-| `F-search-09` | Find a document by filename | the synthetic filename row |
+| `F-search-09` | Find a document by filename. A filename-only match does not seed the viewer row filter. | the synthetic filename row |
 | `F-search-10` | Narrow to a folder, including through containers, from the tree or the filter pane | `api/vfs/` |
 | `F-search-11` | Report a partial result when some collections could not be searched, and offer a retry | `website/backend/src/api/search/fanout.rs` |
 | `F-search-12` | Carry the whole query (words, filters, sort, page, selection, viewer arrangement) in the URL | `website/frontend/src/data_definitions/url_param.rs` |
@@ -66,21 +66,21 @@ languages.
 | id | capability | owned by |
 |---|---|---|
 | `F-doc-01` | Preview a result beside the list without leaving the search | `frontend/src/components/document_view_components/` |
-| `F-doc-02` | Choose every stored text source in the preview and full viewer, including identical text from different extractors. Label each source and retain the in-document query. Show a source request failure with a retry action. Distinguish unplanned, active, failed, stopped, and completed processing when no source exists. | `website/common/src/document_sources.rs`, `website/frontend/src/components/document_view_components/` |
-| `F-doc-03` | Render PDF search hits at their source-specific positions and show each source's own count. Prior controllers cannot change the current viewer. A scroll request for a document that has no strategy leaves the viewer running. | `api/search_document_pdf`, `website/frontend/assets/embed-pdf/_viewer/embed-pdf.js`, `components/pdf-viewer/` |
-| `F-doc-04` | Show an email's headers, body, and attachments. Keep the source selector available when no readable body exists. | `api/documents/`, `doc_preview_for_email.rs` |
-| `F-doc-05` | Browse a tabular document by sheet, with sorting, per-column filters, hidden columns and paging. Column visibility and filter controls open one centred modal with a closing backdrop. Exclude cells beyond the current sheet dimensions from values, search results, and counts. | `website/backend/src/api/documents/table_browse.rs`, `doc_preview_for_table.rs` |
+| `F-doc-02` | Choose every stored text source, including identical text from different extractors. Use a dropdown in the preview and a list in the full viewer. Label each source and retain the in-document query. Show a source request failure with a retry action. Distinguish unplanned, active, failed, stopped, and completed processing when no source exists. | `website/common/src/document_sources.rs`, `website/frontend/src/components/document_view_components/` |
+| `F-doc-03` | Render PDF search hits at their source-specific positions and show each source's own count. Prior controllers cannot change the current viewer. Compensate application zoom for PDF pointer coordinates. A scroll request for a document that has no strategy leaves the viewer running. | `api/search_document_pdf`, `website/frontend/assets/embed-pdf/_viewer/embed-pdf.js`, `components/pdf-viewer/` |
+| `F-doc-04` | Show an email's headers, body, and attachments. Highlight header values with the body engine. Open details when a header matches. Keep available sources when no body exists. | `api/documents/`, `doc_preview_for_email.rs` |
+| `F-doc-05` | Browse a tabular document by sheet, with sorting, per-column filters, hidden columns and paging. Column visibility and filter controls open one centred modal with a closing backdrop. Exclude cells beyond the current sheet dimensions from values, search results, and counts. Show a zero-row filter message and clear action. | `website/backend/src/api/documents/table_browse.rs`, `doc_preview_for_table.rs` |
 | `F-doc-06` | Show a document's extracted entities, filterable, with a detail card explaining a scanner value; a link may name one entity, which opens that card alone and says so when the document no longer carries the value | `api/documents/`, `main_services/regex_entity_scanner/` |
 | `F-doc-10` | Show scored red flag excerpts with marked matches and retain other signal hits in a closed pane. Open category definitions, calibration, low recall notices, and lexicon terms from an information control. Require sign-in for the read-only terms page. | `api/documents/signals.rs`, `pages/signal_terms.rs` |
 | `F-doc-07` | Show a document's dates with the provenance of each | `document_dates` |
 | `F-doc-08` | Show raw metadata, and download the original file or its searchable PDF | `website/backend/src/api/documents/download_document.rs` |
-| `F-doc-09` | Step to the previous or next result without returning to the list | `frontend/src/components/search_components/` |
+| `F-doc-09` | Step to the previous or next result without returning to the list. Next selects the first result when none is selected. | `frontend/src/components/search_components/` |
 
 ## Storage browsing
 
 | id | capability | owned by |
 |---|---|---|
-| `F-store-01` | Browse a collection's folder tree, including inside archives and emails | `website/backend/src/api/vfs/tree.rs` |
+| `F-store-01` | Browse a collection's folder tree, including inside archives and emails. Show disclosure only for nodes with child folders or containers. | `website/backend/src/api/vfs/tree.rs` |
 | `F-store-02` | Page folder children, reuse mounted-tree pages and paths for five seconds, window siblings and ancestors around the current focus, and keep common visible folder rows mounted across an elision resume change | `website/frontend/src/components/search_components/vfs_tree.rs` |
 | `F-store-03` | Resize the storage sidebar and remember its width | `website/frontend/src/components/resizable_sidebar.rs` |
 | `F-store-04` | Navigate by breadcrumb across container boundaries | `website/backend/src/api/vfs/tree.rs` |

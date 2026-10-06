@@ -13,7 +13,7 @@ use crate::{
         doc_preview_for_search::{
             doc_preview_find_query::DocPreviewFindQueryInputBox,
             doc_preview_source_selector::{
-                DocumentPreviewSourceSelectorDropdown, DocumentPreviewSourceSelectorList,
+                DocumentPreviewSourceSelectorList,
                 search_document_item_hit_counts,
             },
         },
@@ -102,6 +102,9 @@ pub fn DocViewerRoot(
     let on_find_query_changed = Callback::new(move |query: String| {
         let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
         state.find_query = query;
+        if let Some(table) = &mut state.table_state {
+            table.page = 0;
+        }
         control.set_doc_viewer_state.call(state);
     });
 
@@ -321,15 +324,6 @@ fn LeftControls(
             div {
                 style: "flex-shrink: 0;",
                 {controls}
-            }
-            div {
-                style: "flex-shrink: 0;",
-                DocumentPreviewSourceSelectorDropdown {
-                    sources,
-                    selected_source,
-                    on_source_selected,
-                    item_hit_counts,
-                }
             }
             div {
                 style: "flex-shrink: 0;",

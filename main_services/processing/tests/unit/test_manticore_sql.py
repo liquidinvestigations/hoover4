@@ -116,7 +116,8 @@ def test_vfs_table_ddl_golden():
             kind int,
             file_hash string,
             file_size_bytes bigint,
-            depth int
+            depth int,
+            subfolder_count int
         ) engine='columnar' min_infix_len='3'
     """)
 

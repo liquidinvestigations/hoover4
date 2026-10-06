@@ -461,7 +461,8 @@ def vfs_table_ddl(table_name: str) -> str:
             kind int,
             file_hash string,
             file_size_bytes bigint,
-            depth int
+            depth int,
+            subfolder_count int
         ) engine='columnar' {_INFIX_SETTING}
     """
 

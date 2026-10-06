@@ -303,7 +303,7 @@ return result;
                 await self.action("wait_css", argument)
             await self.action(verb, argument)
 
-    async def popup(self, selector, expected_text, expected_values=()):
+    async def popup(self, selector, expected_text, expected_values=(), inspect=None):
         import nodriver.cdp.target as target_cdp
         existing = {str(x.target_id) for x in await self.tab.send(target_cdp.get_targets())}
         parent_path = await self.h.js(self.tab, "return location.pathname;")
@@ -325,6 +325,8 @@ return result;
             for value in expected_values:
                 await self.h.wait_text(child, value)
             observed = await self.h.snapshot(child)
+            if inspect is not None:
+                observed["verification"] = await inspect(child)
             filename = f"{self.stem}.popup-{len(self.phases)}-{len(self.current['steps'])}.png"
             (self.directory / filename).write_bytes(await self.h.screenshot(child, False))
             return {"child": observed, "screenshot": filename}
@@ -350,7 +352,7 @@ async def email_envelope(r, full=False):
     else:
         await r.preview("romanian_email", "canicula")
     await r.action("wait_css", ".x-email-details-toggle")
-    await r.action("click_css", ".x-email-details-toggle")
+    await r.action("eval", "if(!document.querySelector('.x-email-details-panel'))document.querySelector('.x-email-details-toggle').click();return true;")
     await r.action("wait_css", ".x-email-details-panel")
     expected = r.profile["source_expectations"]["romanian_email"]
     panel = await r.action("eval", "return document.querySelector('.x-email-details-panel').innerText;")

@@ -1,14 +1,5 @@
-//! The email viewer: the parent banner, the envelope, the attachment cards, and the
-//! body.
-//!
-//! Everything above the body comes from ONE server call ([`get_email_envelope`]). It
-//! could have been four (headers, participants, attachments, cluster), but they all
-//! describe the same message and four resources on one card is four loading states that
-//! settle in an unpredictable order, which reads as the card rebuilding itself.
-//!
-//! The details panel expands IN FLOW rather than as a popover: it pushes the attachments
-//! and the body down. A popover over a document body hides the thing the reader is
-//! looking at, and the expanded state is a reading state, not a menu.
+//! The email viewer shows headers, attachments, and body text.
+//! Header values and body text use the same index highlight engine.
 
 use common::document_sources::{DocumentEmailSourceItem, DocumentTextSourceItem, EMAIL_TEXT_EXTRACTOR};
 use common::email_graph::{EmailEnvelope, EmailParty};
@@ -84,11 +75,13 @@ pub fn DocumentPreviewForEmail(
     source: ReadSignal<DocumentEmailSourceItem>,
 ) -> Element {
     let document_identifier_value = document_identifier();
+    let control = use_context::<crate::pages::search_page::DocViewerStateControl>();
+    let find_query = control.doc_viewer_state.read().clone().unwrap_or_default().find_query;
     // By value through `use_reactive`: a `ReadSignal` prop is a fresh signal on every
     // parent render, so a resource that subscribes to the prop never re-runs when the
     // selected document changes.
-    let envelope = use_resource(use_reactive!(|document_identifier_value| {
-        async move { get_email_envelope(document_identifier_value).await }
+    let envelope = use_resource(use_reactive!(|document_identifier_value, find_query| {
+        async move { get_email_envelope(document_identifier_value, find_query).await }
     }));
 
     // The fallback is the flat header blob the source item already carries, so a failed
@@ -113,6 +106,13 @@ pub fn DocumentPreviewForEmail(
                 }
             }
         },
+    };
+
+    let preamble = rsx! {
+        if let Some(Err(error)) = envelope() {
+            crate::components::error_boundary::ServerErrorDisplay { error }
+        }
+        {preamble}
     };
 
     // An email whose body was never extracted has no `email_parser` row to ask for, and
@@ -166,6 +166,12 @@ fn EmailEnvelopeCard(
     // has state, and it is deliberately NOT in the URL: it is a reading gesture, not a
     // place, and putting it in the URL would push a history entry per click.
     let mut show_details = use_signal(|| false);
+    let has_header_match = envelope.read().header_highlights.values().flatten().any(|span| span.is_highlighted);
+    use_effect(use_reactive!(|has_header_match| {
+        if has_header_match {
+            show_details.set(true);
+        }
+    }));
 
     let value = envelope.read().clone();
     let date_label = value.date_sent.map(common::document_provenance::format_epoch_utc);
@@ -231,18 +237,18 @@ fn EmailEnvelopeCard(
                 Icon { icon: MdEmail, style: "width: 20px; height: 20px; flex: 0 0 auto; align-self: center;" }
                 div {
                     style: "flex: 1 1 auto; min-width: 0; font-size: 17px; font-weight: 500; overflow-wrap: anywhere;",
-                    "{value.subject}"
+                    {email_header_text(&value.subject, &value)}
                 }
                 if let Some(date) = date_label.clone() {
-                    div { style: "flex: 0 0 auto; font-size: 14px; color: rgba(0,0,0,0.75);", "{date}" }
+                    div { style: "flex: 0 0 auto; font-size: 14px; color: rgba(0,0,0,0.75);", {email_header_text(&date, &value)} }
                 }
             }
 
             if !from_line.is_empty() {
-                div { style: "margin-top: 8px; font-size: 14px; overflow-wrap: anywhere;", "{from_line}" }
+                div { style: "margin-top: 8px; font-size: 14px; overflow-wrap: anywhere;", {email_header_text(&from_line, &value)} }
             }
             if let Some(line) = recipients {
-                div { style: "font-size: 14px; color: rgba(0,0,0,0.85); overflow-wrap: anywhere;", "to {line}" }
+                div { style: "font-size: 14px; color: rgba(0,0,0,0.85); overflow-wrap: anywhere;", "to " {email_header_text(&line, &value)} }
             }
 
             div {
@@ -323,6 +329,21 @@ fn EmailEnvelopeCard(
     }
 }
 
+fn email_header_text(text: &str, envelope: &EmailEnvelope) -> Element {
+    match envelope.header_highlights.get(text) {
+        Some(spans) => rsx! {
+            for span in spans {
+                if span.is_highlighted {
+                    mark { class: "x-email-header-hit", "{span.text}" }
+                } else {
+                    span { "{span.text}" }
+                }
+            }
+        },
+        None => rsx! { span { "{text}" } },
+    }
+}
+
 /// The expanded two-column participant table.
 #[component]
 fn EmailDetailsPanel(envelope: ReadSignal<EmailEnvelope>) -> Element {
@@ -357,7 +378,7 @@ fn EmailDetailsPanel(envelope: ReadSignal<EmailEnvelope>) -> Element {
                                 td {
                                     style: "padding: 1px 0; overflow-wrap: anywhere;",
                                     for person in people {
-                                        div { key: "{person.address}-{person.display_name}", "{person.full()}" }
+                                        div { key: "{person.address}-{person.display_name}", {email_header_text(&person.full(), &value)} }
                                     }
                                 }
                             }
@@ -384,9 +405,15 @@ fn AttachmentGlyph(coarse_type: String) -> Element {
 #[server]
 async fn get_email_envelope(
     document_identifier: DocumentIdentifier,
+    find_query: String,
 ) -> Result<Option<EmailEnvelope>, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::documents::get_email_graph::get_email_envelope(&user, document_identifier)
-        .await
-        .map_err(crate::api::error_util::to_server_fn_error)
+    let mut envelope = backend::api::documents::get_email_graph::get_email_envelope(&user, document_identifier.clone())
+        .await.map_err(crate::api::error_util::to_server_fn_error)?;
+    if let Some(value) = &mut envelope {
+        value.header_highlights = backend::api::documents::search_document_text::highlight_email_headers(
+            &user, &document_identifier, &find_query, value,
+        ).await.map_err(crate::api::error_util::to_server_fn_error)?;
+    }
+    Ok(envelope)
 }

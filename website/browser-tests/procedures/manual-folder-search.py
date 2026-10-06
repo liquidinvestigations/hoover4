@@ -20,22 +20,29 @@ async def run(r):
         await r.click("invoice-batch.docx", "table")
         await r.action("wait_css", FIND)
         await r.check("return document.querySelector('input[placeholder=\"Search in folder…\"]')?.value==='invoice';")
-        await r.click("Open in Search")
-        await r.check("return location.pathname.startsWith('/search/');")
         expected = {x["hash"] for x in r.metadata()["files"] if x["path"] in ('/entity-fixtures/generate.py', '/entity-fixtures/invoice-batch.docx')}
-        result = await r.expected_results(expected)
-        await r.text("File location", "#x-filter-chips")
-        return {"expected_folder_documents": result, "draft_members": ["generate.py", "invoice-batch.docx"]}
+        async def inspect(child):
+            await r.h.wait_css(child, '#x-search-panel-results-wrapper a[href^="/view_document/"]')
+            hrefs = await r.h.js(child, "return [...document.querySelectorAll('#x-search-panel-results-wrapper a[href^=\"/view_document/\"]')].map(a=>a.getAttribute('href'));")
+            from manual_qa_runtime import unroute
+            actual = {unroute(href.split('/')[2])["file_hash"] for href in hrefs}
+            if actual != expected:
+                raise AssertionError(f"folder result identities differ: {actual} != {expected}")
+            return {"identities": sorted(actual)}
+        result = await r.popup('a[title="Search the whole corpus, filtered to this folder and everything below it"]', "documents found", inspect=inspect)
+        await r.check("return location.pathname.startsWith('/file_browser/')&&document.querySelector('input[placeholder=\"Search in folder…\"]')?.value==='invoice';")
+        return result
+
     await r.phase("baseline", "Folder search selects the invoice and transfers the folder constraint to global search.", baseline)
     await r.phase("handoff", "Open in Search returns the source metadata identities below the selected folder.", baseline)
     async def return_clear():
         await baseline()
-        destination = await r.action("eval", "return location.pathname;")
+        await r.action("click_css", '.x-search-input button[title="Clear search"]')
+        await r.check("return document.querySelector('input[placeholder=\"Search in folder…\"]')?.value==='';")
+        await r.type('input[placeholder="Search in folder…"]', "invoice")
+        await r.text("1 matches in this folder and below")
+        await r.click("invoice-batch.docx", "table")
         await r.action("history_back")
-        await r.check("return location.pathname.startsWith('/file_browser/');")
-        await r.check("return document.querySelector('input[placeholder=\"Search in folder…\"]')?.value==='invoice';")
-        await r.action("history_forward")
-        await r.check("return location.pathname===%s;" % json.dumps(destination))
-        await r.action("click_css", '#x-filter-chips button[title="Remove this filter"]')
-        return await r.check("return !document.querySelector('#x-filter-chips')?.innerText.includes('File location');")
-    await r.phase("return-and-clear", "Back restores the folder filter text. Forward restores search and the folder chip can be removed.", return_clear)
+        return await r.check("return document.querySelector('input[placeholder=\"Search in folder…\"]')?.value==='invoice';")
+
+    await r.phase("return-and-clear", "Closing Search preserves the folder query. Clearing and history navigation preserve the expected folder state.", return_clear)

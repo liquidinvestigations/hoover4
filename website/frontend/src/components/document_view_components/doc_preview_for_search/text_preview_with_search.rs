@@ -115,6 +115,9 @@ pub fn DocumentPreviewTextWithSearch(
     let mut current_highlighted_word_index = use_signal(move || 0);
     use_effect(move || {
         let _max = *max_highlighted_word_index.read();
+        let _query = find_query.read().clone();
+        let _selection = current_text_selection.read().clone();
+        let _document = document_identifier.read().clone();
         current_highlighted_word_index.set(0);
     });
 

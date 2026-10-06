@@ -19,39 +19,11 @@ pub fn DocPreviewFindQueryInputBox(on_find_query_changed: Callback<String>) -> E
     });
 
     rsx! {
-        div {
-                style: "
-                    flex-grow: 0;
-                    flex-shrink: 0;
-                ",
-                input {
-                    r#type: "text",
-                    placeholder: "Search in document",
-                    style: "
-                        width: calc(100% - 24px);
-                        height: 100%;
-                        border: none;
-                        outline: none;
-                        background: white;
-                        border: 1px solid rgba(0, 0, 0, 0.5);
-                        border-radius: 14px;
-                        padding: 8px 12px;
-                        font-size: 14px;
-                        font-weight: 400;
-                        color: rgba(0, 0, 0, 0.8);
-                        margin-left: 12px;
-                        ",
-                    value: "{find_query.read()}",
-                    oninput: move |e| {
-                        let q = e.value();
-                        modified_find_query.set(q);
-                    },
-                    onkeydown: move |e| {
-                        if e.key() == Key::Enter {
-                            on_find_query_changed.call(modified_find_query.read().clone());
-                        }
-                    },
-                }
-            }
+        crate::components::search_input::SearchInput {
+            value: modified_find_query,
+            placeholder: "Search in document",
+            on_change: move |value: String| modified_find_query.set(value),
+            on_submit: move |_| on_find_query_changed.call(modified_find_query()),
+        }
     }
 }

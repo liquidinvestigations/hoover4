@@ -458,3 +458,20 @@ def test_ancestor_closure_unchanged():
         key("", "/location-1"),
         ROOT,
     }
+
+
+def test_subfolder_count_excludes_files_and_counts_container_children():
+    from tasks.P6_index_data.vfs_nodes import build_node_rows, make_node_key
+
+    nodes = build_node_rows(
+        "testdata_files",
+        [("", "/folder"), ("", "/folder/subfolder")],
+        [("", "/folder/plain.txt", "plain", 2),
+         ("", "/folder/archive.zip", "archive", 3),
+         ("archive", "/child.txt", "child", 1)],
+        {"archive"},
+    )
+    by_key = {node.node_key: node for node in nodes}
+    assert by_key[make_node_key("testdata_files", "", "/folder")].subfolder_count == 2
+    assert by_key[make_node_key("testdata_files", "", "/folder/subfolder")].subfolder_count == 0
+    assert by_key[make_node_key("testdata_files", "", "/folder/archive.zip")].subfolder_count == 0

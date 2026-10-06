@@ -45,6 +45,7 @@ struct SearchForResultsResponse {
     /// the synthetic filename row. Computed in the same grouped query. Knowing it needs
     /// the group, and a second round trip per result to learn it is not worth a snippet.
     has_text_match: i64,
+    snippet_priority: i64,
 }
 
 impl HitIdentity for SearchForResultsResponse {
@@ -104,13 +105,16 @@ fn build_results_sql(parts: &ShardQueryParts, sort: SortSpec, fetch_limit: u64) 
         date_max,
         file_size_bytes,
 
-        MAX(IF({EXCLUDE_FILENAME_ROW}, 1, 0)) AS has_text_match
+        MAX(IF({EXCLUDE_FILENAME_ROW}, 1, 0)) AS has_text_match,
+        IF(extracted_by='email_parser' OR extracted_by='tika', 0,
+           IF(extracted_by='filename_index', 3, IF(extracted_by='raw_text', 2, 1))) AS snippet_priority
 
     {from_clause}
 
     {sql_where_clause}
 
     GROUP BY file_hash
+    WITHIN GROUP ORDER BY snippet_priority ASC, id ASC
     {order_by}
     LIMIT {fetch_limit} OFFSET 0
 
@@ -182,12 +186,16 @@ pub async fn search_for_results(
     query: SearchQuery,
     current_search_result_page: u64,
 ) -> anyhow::Result<SearchResultDocuments> {
+    if current_search_result_page >= common::search_const::MAX_PAGINATION_DOCUMENT_LIMIT.div_ceil(common::search_const::PAGE_SIZE) {
+        anyhow::bail!("The requested page exceeds the search result limit.");
+    }
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_SEARCH, "");
     let perms = permissions::resolve_permissions(user).await?;
     let Some(query) = permissions::sanitize_query(query, &perms) else {
         return Ok(SearchResultDocuments {
             query: SearchQuery::default(),
             results: vec![],
+            filename_only_cursors: vec![],
             prev_hash: None,
             next_hash: None,
             page_number: current_search_result_page,
@@ -212,6 +220,7 @@ pub async fn search_for_results(
         return Ok(SearchResultDocuments {
             query,
             results: vec![],
+            filename_only_cursors: vec![],
             prev_hash: None,
             next_hash: None,
             page_number: current_search_result_page,
@@ -266,12 +275,16 @@ pub async fn search_for_results(
     // Cursor logic operates on the merged, sliced list: the first row of a non-zero
     // page is the prev-page cursor and is dropped; a row beyond PAGE_SIZE is the
     // next-page cursor and is dropped.
+    let mut filename_only_cursors = Vec::new();
     let mut prev_hash = None;
     if current_search_result_page > 0 && !search_results.is_empty() {
         prev_hash = Some(DocumentIdentifier {
             collection_dataset: search_results[0].collection_dataset.clone(),
             file_hash: search_results[0].file_hash.clone(),
         });
+        if search_results[0].matched_by_filename {
+            filename_only_cursors.extend(prev_hash.clone());
+        }
         search_results.remove(0);
     }
 
@@ -285,6 +298,9 @@ pub async fn search_for_results(
                 .file_hash
                 .clone(),
         });
+        if search_results[common::search_const::PAGE_SIZE as usize].matched_by_filename {
+            filename_only_cursors.extend(next_hash.clone());
+        }
         search_results.remove(common::search_const::PAGE_SIZE as usize);
     }
 
@@ -317,6 +333,7 @@ pub async fn search_for_results(
     let result = SearchResultDocuments {
         query: query.clone(),
         results: search_results,
+        filename_only_cursors,
         prev_hash,
         next_hash,
         page_number: current_search_result_page,
@@ -363,6 +380,18 @@ mod tests {
         sql.split_whitespace().collect::<Vec<_>>().join(" ")
     }
 
+    #[tokio::test]
+    async fn pages_beyond_the_result_limit_fail_before_datastore_access() {
+        let user = CurrentUser {
+            username: String::new(), fullname: String::new(), email: String::new(),
+            is_admin: false, groups: vec![],
+        };
+        for page in [50, u64::MAX] {
+            let error = search_for_results(&user, SearchQuery::default(), page).await.unwrap_err();
+            assert_eq!(error.to_string(), "The requested page exceeds the search result limit.");
+        }
+    }
+
     fn relevance() -> SortSpec {
         SortSpec { key: SortKey::Relevance, desc: true }
     }
@@ -387,10 +416,13 @@ mod tests {
                 date_min,
                 date_max,
                 file_size_bytes,
-                MAX(IF(extracted_by != 'filename_index', 1, 0)) AS has_text_match
+                MAX(IF(extracted_by != 'filename_index', 1, 0)) AS has_text_match,
+                IF(extracted_by='email_parser' OR extracted_by='tika', 0,
+                   IF(extracted_by='filename_index', 3, IF(extracted_by='raw_text', 2, 1))) AS snippet_priority
             FROM testdata_1_pages
             WHERE MATCH('easychair', testdata_1_pages)
             GROUP BY file_hash
+            WITHIN GROUP ORDER BY snippet_priority ASC, id ASC
             ORDER BY weight() DESC, collection_dataset ASC, file_hash ASC
             LIMIT 21 OFFSET 0
             {options}

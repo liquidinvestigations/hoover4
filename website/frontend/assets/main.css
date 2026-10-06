@@ -30,6 +30,8 @@ html, body, #main {
 
 /* Navbar styles */
 #x-nav-container {
+    --app-zoom: 1;
+    zoom: var(--app-zoom);
     display:flex;
     flex-direction:row;
     /* gap:1px; */
@@ -38,57 +40,57 @@ html, body, #main {
 }
 @media screen and (min-width: 200px) {
     #x-nav-container {
-        zoom: 0.10; /* 200/1920 */
+        --app-zoom: 0.10; /* 200/1920 */
     }
 }
 @media screen and (min-width: 300px) {
     #x-nav-container {
-        zoom: 0.15; /* 300/1920 */
+        --app-zoom: 0.15; /* 300/1920 */
     }
 }
 @media screen and (min-width: 350px) {
     #x-nav-container {
-        zoom: 0.18;
+        --app-zoom: 0.18;
     }
 }
 @media screen and (min-width: 400px) {
     #x-nav-container {
-        zoom: 0.20; /* 400/1920 */
+        --app-zoom: 0.20; /* 400/1920 */
     }
 }
 @media screen and (min-width: 600px) {
     #x-nav-container {
-        zoom: 0.31; /* 600/1920 */
+        --app-zoom: 0.31; /* 600/1920 */
     }
 }
 @media screen and (min-width: 800px) {
     #x-nav-container {
-        zoom: 0.41; /* 800/1920 */
+        --app-zoom: 0.41; /* 800/1920 */
     }
 }
 @media screen and (min-width: 1000px) {
     #x-nav-container {
-        zoom: 0.51; /* 1000/1920 */
+        --app-zoom: 0.51; /* 1000/1920 */
     }
 }
 @media screen and (min-width: 1200px) {
     #x-nav-container {
-        zoom: 0.62; /* 1200/1920 */
+        --app-zoom: 0.62; /* 1200/1920 */
     }
 }
 @media screen and (min-width: 1400px) {
     #x-nav-container {
-        zoom: 0.72; /* 1400/1920 */
+        --app-zoom: 0.72; /* 1400/1920 */
     }
 }
 @media screen and (min-width: 1600px) {
     #x-nav-container {
-        zoom: 0.83;
+        --app-zoom: 0.83;
     }
 }
 @media screen and (min-width: 1800px) {
     #x-nav-container {
-        zoom: 0.93;
+        --app-zoom: 0.93;
     }
 }
 
@@ -178,4 +180,8 @@ html, body, #main {
 @keyframes x-source-flash-fade {
     0% { background-color: rgba(199, 210, 254, 0.85); }
     100% { background-color: transparent; }
+}
+
+#x-pdf-viewer {
+    zoom: calc(1 / var(--app-zoom));
 }

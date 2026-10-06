@@ -18,7 +18,9 @@ The remembered query is specific to the dataset, container, and folder path.
 
 | id | control | does | constraint |
 |---|---|---|---|
-| `.query` | query input | the words to match | empty is legal and returns the whole collection selection |
+| `.query` | query input, submit icon, clear button | sets or clears the words to match | empty is legal and returns the whole collection selection |
+| `.folder.query` | folder search input, submit icon, clear button | searches the selected folder and its descendants | it retains its value during mounted return navigation |
+| `.folder.open_search` | Open in Search link | opens the folder constraint in Search | it opens a new tab and preserves the folder page |
 | `.collections` | collection selector | which collections and datasets are searched | an empty selection searches nothing and says so, rather than searching everything |
 | `.facet.<name>` | facet chips, collections, file types, file location, entities, email attachments, language, red flags | narrow by an indexed value; each carries a live count | a chip commits on click; counts are the count *within the rest of the query*, not the corpus |
 | `.range.dates` | date filter, before, after, between, no confirmed date | narrow by the document's date interval | a document with no confirmed date matches only through "no confirmed date": it can never fall inside a range |
@@ -27,7 +29,7 @@ The remembered query is specific to the dataset, container, and folder path.
 | `.sort` | sort menu (Relevance, Date, File size, Name) plus a direction toggle | the order of the result list | Relevance sorts descending for empty and non-empty queries. Its direction control is disabled. Date, File size, and Name support both directions. |
 | `.search_button` | Search button | commits the pending query, filters and sort into the applied query and runs the search | disabled while the pending query matches the applied one; the magnifier icon beside the query input runs the same action |
 | `.pager` | previous/next page | walks the result list | 20 results a page, and the pager stops at 1000 documents however large the match is; the page says so beside the count instead of pretending the rest are reachable |
-| `.result_step` | previous/next result | moves the selection within the list, crossing a page boundary when it runs out | disabled at the ends rather than hidden |
+| `.result_step` | previous/next result | moves the selection within the list, crossing a page boundary when it runs out | next selects the first result when none is selected; controls are disabled at the ends |
 | `.result_card` | a result | selects it into the preview pane | selection is part of the URL, so the browser's back button steps through selections |
 | `.card_actions` | per-result actions, open the document page, open its folder | leave the search for another page | opens in the same tab: an action that silently opens a background tab reads as an action that did nothing |
 | `.tree` | folder tree | narrows to a path within a collection | Each endpoint request is uncached. Navigation or remount revalidates browser entries older than five seconds while retaining current rows. A shared keyed visible-row sequence keeps common folder rows mounted when the elision resume parent changes. Each visible row is a keyed element sibling. |
@@ -65,3 +67,10 @@ backend). The fan-out, the match builder and the caching boundary are
 Language values show English names and accept a code or name in facet search.
 The Red flags child of Entities shows category titles from the scanner catalog.
 Counts retain the other active filters.
+
+The backend refuses pages beyond the first 1,000 results.
+The page count uses ceiling division.
+Grouped snippets prefer parsed body text, other text, raw text, then the filename.
+Folder disclosure appears only when a node has child folders or containers.
+The folder icon remains the same after expansion.
+The folder page opens Search in a new tab and retains the folder view.

@@ -93,6 +93,9 @@ fn DocumentPreviewForSearchContent(
     let on_find_query_changed = Callback::new(move |query: String| {
         let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
         state.find_query = query;
+        if let Some(table) = &mut state.table_state {
+            table.page = 0;
+        }
         control.set_doc_viewer_state.call(state);
     });
 

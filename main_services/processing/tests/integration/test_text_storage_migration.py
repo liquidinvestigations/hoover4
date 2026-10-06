@@ -106,3 +106,15 @@ def test_external_segment_keys_exceed_url_field_limits(storage):
         expected.extend(fetch_text_batch(client, "dataset", keys[start:start + 572]))
     assert len(actual) == 24000
     assert actual == expected
+
+
+def test_vfs_subfolder_count_preserves_existing_nodes(storage):
+    _collection, client, cluster, folder = storage
+    client.insert("vfs_nodes", [["dataset", "", "/", "root", "", "dir", "", -1, 0]],
+                  column_names=["collection_dataset", "container_hash", "path", "node_key",
+                                "parent_key", "kind", "file_hash", "file_size_bytes", "depth"])
+    migrate(client, cluster, folder)
+    assert client.query("SELECT node_key, subfolder_count FROM vfs_nodes FINAL").result_rows == [("root", 0)]
+    client.command("ALTER TABLE vfs_nodes UPDATE subfolder_count=2 WHERE node_key='root' SETTINGS mutations_sync=2")
+    migrate(client, cluster, folder)
+    assert client.query("SELECT node_key, subfolder_count FROM vfs_nodes FINAL").result_rows == [("root", 2)]

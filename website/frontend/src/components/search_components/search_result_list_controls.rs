@@ -173,7 +173,7 @@ fn ControlNextPrevDocument() -> Element {
     });
     let can_go_to_next_result = use_memo(move || {
         let idx = total_result_index();
-        idx.map(|idx| idx < *hit_count.read()).unwrap_or(false)
+        idx.map(|idx| idx < *hit_count.read()).unwrap_or_else(|| !result_hashes().is_empty())
     });
 
     let go_previous = move |_e| {
@@ -208,11 +208,13 @@ fn ControlNextPrevDocument() -> Element {
     };
 
     let go_next = move |_e| {
-        let current_list_position = current_list_position();
-        let Some(current_list_position) = current_list_position else {
+        let result_hashes = result_hashes();
+        let Some(current_list_position) = current_list_position() else {
+            if let Some(first) = result_hashes.first() {
+                search_results_state.set_selected_result_hash.call(Some(first.clone()));
+            }
             return;
         };
-        let result_hashes = result_hashes();
         if current_list_position == result_hashes.len() as u64 - 1 {
             let search_result = search_results_state.search_result.read();
             let search_result = search_result.as_ref();
@@ -279,8 +281,7 @@ fn ControlNextPrevPage() -> Element {
     });
     let max_pages = use_memo(move || {
         let hit_count = *hit_count.read();
-        let page_count = hit_count / common::search_const::PAGE_SIZE;
-        if hit_count > 0 { page_count + 1 } else { 0 }
+        hit_count.div_ceil(common::search_const::PAGE_SIZE)
     });
     let selected_page = use_memo(move || {
         let current_page = *search_result_page.read() + 1;
@@ -323,9 +324,9 @@ fn ControlNextPrevPage() -> Element {
                 disabled: !can_go_to_previous_page(),
                 onclick: move |_| {set_current_page(search_result_page() - 1);}
             }
-            div {style: "width: 1px; height: 32px; background: rgba(128,128,128,0.5);"}
-            // current page counter
+            // The counter shows the current page and reachable page count.
             div {
+                "data-result-page-counter": "true",
                 style: "
                     font-size: 20px;
                     line-height: 28px;
@@ -333,6 +334,10 @@ fn ControlNextPrevPage() -> Element {
                     align-items: center;
                     align-content: center;
                     height:31px;
+                    border: 1px solid rgba(128,128,128,0.5);
+                    border-radius: 6px;
+                    padding: 0 6px;
+                    flex-shrink: 0;
                     width: fit-content;
                 ",
                 "{selected_page()}"
@@ -341,7 +346,6 @@ fn ControlNextPrevPage() -> Element {
                     "/{*max_pages.read()}"
                 }
             }
-            div {style: "width: 1px; height: 32px; background: rgba(128,128,128,0.5);"}
 
             // next page
             NavigationButton2 {
@@ -389,6 +393,7 @@ pub fn NavigationButton<I: dioxus_free_icons::IconShape + Clone + PartialEq + 's
         HoverCard {
             HoverCardTrigger {
                 button {
+                    aria_label: "{label}",
                     disabled: *disabled.read(),
                     style: "
                         width: 32px;
@@ -468,6 +473,7 @@ pub fn NavigationButton2<I: dioxus_free_icons::IconShape + Clone + PartialEq + '
         HoverCard {
             HoverCardTrigger {
                 button {
+                    aria_label: "{label}",
                     disabled: *disabled.read(),
                     style: "
                         width: 32px;

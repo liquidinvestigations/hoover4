@@ -15,7 +15,7 @@ use common::search_query::SearchQuery;
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
-    icons::{md_action_icons::MdSearch, md_content_icons::MdFilterList},
+    icons::md_content_icons::MdFilterList,
 };
 
 const CONTROL_BUTTON_STYLE: &str = "
@@ -36,13 +36,6 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
     });
     let query_has_changed =
         use_memo(move || modified_search_query.read().clone() != original_query.read().clone());
-    let search_button_color = use_memo(move || {
-        if query_has_changed() {
-            "blue"
-        } else {
-            "#6B7280"
-        }
-    });
     let trigger_search = move |_: ()| {
         navigator().push(Route::search_page_from_query(
             modified_search_query.read().clone(),
@@ -65,15 +58,7 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
         }
     });
     let search_button_opacity = use_memo(move || if query_has_changed() { "1" } else { "0.6" });
-    let search_oninput = move |event: Event<FormData>| {
-        let new_q = event.value();
-        modified_search_query.write().query_string = new_q;
-    };
-    let search_onkeydown = move |event: Event<KeyboardData>| {
-        if event.key() == Key::Enter {
-            trigger_search(());
-        }
-    };
+    let input_value = use_memo(move || modified_search_query.read().query_string.clone());
 
     // `None` means closed; `Some(category)` both opens the modal and selects its pane, so
     // a chip click can land on the pane that owns it.
@@ -92,43 +77,12 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
 
                 div {
                     id: "x-search-input-search-box",
-                    style: "
-                        display:flex;
-                        align-items:center;
-                        gap: 16px;
-                        background-color: white;
-                        border-radius: 9999px;
-                        padding: 10px 14px;
-                        height: 44px;
-                        color: #111827;
-                        border: 1px solid rgba(101, 101, 101, 0.8);
-                        width: 500px;
-                        max-width: 100%;
-                        margin-left: 16px;
-                    ",
-
-                    button {
-                        style: "border: none; background: none; cursor: pointer;",
-                        onclick: move |_| trigger_search(()),
-                        Icon { icon: MdSearch, style: "width: 20px; height: 20px; color:{search_button_color()};" }
-                    }
-                    input {
-                        r#type: "text",
+                    style: "width: 500px; max-width: 100%; margin-left: 16px;",
+                    crate::components::search_input::SearchInput {
+                        value: input_value,
                         placeholder: "Search in knowledgebase",
-                        style: "
-                            flex:1;
-                            border: none;
-                            outline: none;
-                            background: transparent;
-                            color: #111827;
-                            font-size: 20px;
-                            font-weight: 400;
-                            font-family: Roboto, sans-serif;
-                            min-width: 0;
-                        ",
-                        value: "{modified_search_query.read().query_string}",
-                        oninput: search_oninput,
-                        onkeydown: search_onkeydown,
+                        on_change: move |value: String| modified_search_query.write().query_string = value,
+                        on_submit: move |_| trigger_search(()),
                     }
                 }
 

@@ -8,10 +8,9 @@ use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::go_icons::GoDatabase;
 use dioxus_free_icons::icons::go_icons::GoFileZip;
-use dioxus_free_icons::icons::md_action_icons::{MdOpenInNew, MdSearch};
+use dioxus_free_icons::icons::md_action_icons::MdOpenInNew;
 use dioxus_free_icons::icons::md_device_icons::MdStorage;
 use dioxus_free_icons::icons::md_file_icons::MdFolder;
-use dioxus_free_icons::icons::md_navigation_icons::MdClose;
 
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::resizable_sidebar::ResizableSidebar;
@@ -1226,38 +1225,21 @@ fn FolderToolbar(
                 padding: 8px 14px; border-bottom: 1px solid #E5E7EB;
             ",
             div {
-                style: "
-                    display: flex; align-items: center; gap: 6px; flex: 1 1 260px; min-width: 0;
-                    border: 1px solid rgba(0,0,0,0.3); border-radius: 100px; padding: 4px 10px;
-                ",
-                Icon { icon: MdSearch, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.5);" }
-                input {
-                    r#type: "text",
-                    style: "flex: 1 1 auto; min-width: 0; border: none; outline: none; font-size: 15px; background: transparent;",
+                style: "flex: 1 1 260px; min-width: 0;",
+                crate::components::search_input::SearchInput {
+                    value: needle,
                     placeholder: "Search in folder…",
-                    value: "{needle}",
-                    oninput: move |event| needle.set(event.value()),
-                }
-                if !needle.read().is_empty() {
-                    button {
-                        style: "border: none; background: none; cursor: pointer; display: flex; padding: 0;",
-                        class: "x-hover-color-red",
-                        title: "Clear",
-                        onclick: move |_| {
-                            needle.set(String::new());
-                            matches.set(None);
-                        },
-                        Icon { icon: MdClose, style: "width: 16px; height: 16px;" }
-                    }
+                    on_change: move |value: String| {
+                        needle.set(value);
+                        if needle.peek().is_empty() { matches.set(None); }
+                    },
                 }
             }
 
-            // A real link, not a button: middle-click and "open in new tab" still work and
-            // the URL is visible on hover. It navigates in place, like every other link
-            // here. A plain left click that only ever opened a background tab read as a
-            // control that did nothing.
+            // Keep the folder view available while the corpus search opens in a new tab.
             Link {
                 to: open_in_search_route(),
+                new_tab: true,
                 style: "
                     display: inline-flex; align-items: center; gap: 6px;
                     padding: 5px 12px; border: 1px solid rgba(0,0,0,0.35); border-radius: 100px;

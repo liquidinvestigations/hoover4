@@ -1,7 +1,5 @@
 //! Document preview text viewer component.
 
-use std::collections::BTreeMap;
-
 use common::{document_sources::DocumentTextSourceItem, search_result::DocumentIdentifier};
 use dioxus::prelude::*;
 
@@ -13,28 +11,27 @@ use crate::{
 
 #[component]
 pub fn TextDataViewer() -> Element {
-    let mounts: Signal<BTreeMap<u32, Event<MountedData>>> = use_signal(|| BTreeMap::new());
-    let current_highlighted_word_index =
-        use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
+    let store = use_context::<DocumentViewerResultStore>();
+    let control = use_context::<crate::pages::search_page::DocViewerStateControl>();
     use_effect(move || {
-        let current = *current_highlighted_word_index.read();
-        if let Some(mount) = mounts.read().get(&(current as u32)) {
-            let _x = mount.scroll_to_with_options(ScrollToOptions {
-                behavior: ScrollBehavior::Smooth,
-                vertical: ScrollLogicalPosition::Center,
-                horizontal: ScrollLogicalPosition::Center,
-            });
-        }
-        // No `else`: an index with no mounted span is the ordinary state while the text
-        // is still rendering, not something to say anything about.
+        let current = *store.current_highlighted_word_index.read();
+        let _query = control.doc_viewer_state.read().clone();
+        let _document = store.document_identifier.read().clone();
+        let _source = store.source.read().clone();
+        let _page = store.current_text_data.read().clone();
+        document::eval(&format!(r#"
+            requestAnimationFrame(() => {{
+                const root = document.getElementById('x-document-text-viewer');
+                const hit = root?.querySelector('[data-text-hit="{current}"]');
+                hit?.scrollIntoView({{block:'center', inline:'nearest'}});
+            }});
+        "#));
     });
-    rsx! {
-        TextDataInner { mounts }
-    }
+    rsx! { TextDataInner {} }
 }
 
 #[component]
-fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Element {
+fn TextDataInner() -> Element {
     let current_text_data = use_context::<DocumentViewerResultStore>().current_text_data;
     let document_identifier = use_context::<DocumentViewerResultStore>().document_identifier;
     let source = use_context::<DocumentViewerResultStore>().source;
@@ -78,12 +75,12 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
         .map(|(nth, i)| {
             let i = i.clone();
             let index = i.index as u32;
-            let key = format!("{document_identifier:?}-{nth}-{source:?}");
+            let key = format!("{document_identifier:?}-{nth}-{source:?}-{}", text_data.page_id);
             rsx! {
                 if i.is_highlighted {
-                    TextDataSpan { mounts, index, text: i.text,  key2: key.clone() , onclick}
+                    TextDataSpan { key: "{key}", index, text: i.text, key2: key.clone(), onclick}
                 } else {
-                    TextDataSpanClean { text: i.text,  key2: key.clone() }
+                    TextDataSpanClean { key: "{key}", text: i.text, key2: key.clone() }
                 }
             }
         })
@@ -91,6 +88,7 @@ fn TextDataInner(mut mounts: Signal<BTreeMap<u32, Event<MountedData>>>) -> Eleme
 
     rsx! {
         div {
+            id: "x-document-text-viewer",
             style: "
                 height: 100%;
                 width: 100%;
@@ -176,7 +174,6 @@ fn TextDataFallback(
 
 #[component]
 fn TextDataSpan(
-    mounts: Signal<BTreeMap<u32, Event<MountedData>>>,
     index: u32,
     text: String,
     key2: String,
@@ -184,20 +181,14 @@ fn TextDataSpan(
 ) -> Element {
     let current_highlighted_word_index =
         use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
-    let is_selected = use_memo(move || {
-        index == *current_highlighted_word_index.read() as u32
-    });
-
-    let is_selected = is_selected();
+    let is_selected = index == *current_highlighted_word_index.read();
 
     let text = text_to_span_html(text, true, is_selected);
 
     rsx! {
         span {
             key: "{key2}",
-            onmounted:  move |event| async move {
-                mounts.write().insert(index, event.clone());
-            },
+            "data-text-hit": "{index}",
             onclick: move |_| onclick.call(index),
             
             dangerous_inner_html: text,

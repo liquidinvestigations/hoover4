@@ -198,6 +198,7 @@ class VfsNode:
     file_hash: str
     file_size_bytes: int
     depth: int
+    subfolder_count: int = 0
 
     @property
     def name(self) -> str:
@@ -322,6 +323,9 @@ def build_node_rows(
             ) or root_key
 
     _assign_depths(nodes, root_key)
+    for node in nodes.values():
+        if node.kind != KIND_FILE and node.parent_key in nodes and node.parent_key != node.node_key:
+            nodes[node.parent_key].subfolder_count += 1
 
     if rejected:
         log.warning(

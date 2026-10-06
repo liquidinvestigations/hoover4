@@ -591,7 +591,12 @@ fn EntityCard(
 fn EntityCardBody(explanation: EntityExplanation, value: String) -> Element {
     rsx! {
         div {
-            style: "font-weight: 700; font-size: 14px;",
+            "data-entity-card-value": "true",
+            style: "font-size: 16px; word-break: break-all; color: rgba(0,0,0,0.8);",
+            "{value}"
+        }
+        div {
+            style: "font-weight: 700; font-size: 14px; margin-top: 6px;",
             "{explanation.title}"
         }
         if !explanation.subtitle.is_empty() {
@@ -599,11 +604,6 @@ fn EntityCardBody(explanation: EntityExplanation, value: String) -> Element {
                 style: "font-size: 12px; color: rgba(0,0,0,0.6); margin-top: 1px;",
                 "{explanation.subtitle}"
             }
-        }
-        div {
-            style: "font-family: ui-monospace, monospace; font-size: 12px; margin-top: 6px; \
-                    word-break: break-all; color: rgba(0,0,0,0.8);",
-            "{value}"
         }
         if !explanation.body.is_empty() {
             div {
@@ -720,7 +720,7 @@ fn EntityChip(item: DocumentEntityItem, show_provider: bool) -> Element {
                     padding-left: 8px;
                     flex-shrink: 0;
                 ",
-                "{item.hit_count}"
+                "{item.hit_count} mentions in all sources"
             }
         }
     }

@@ -129,6 +129,8 @@ pub struct VfsTreeNode {
     pub file_hash: String,
     pub file_size_bytes: i64,
     pub depth: i64,
+    #[serde(default)]
+    pub subfolder_count: u32,
 }
 
 impl VfsTreeNode {

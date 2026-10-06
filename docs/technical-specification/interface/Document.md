@@ -20,7 +20,9 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | `.table.column_filter` | column filter control | opens typed filter controls for one column | it opens one centred modal with a closing backdrop |
 | `.table.sort` | column sort control | cycles ascending, descending and no order | the changed order resets the result page |
 | `.table.sheet` | sheet selector | selects a workbook sheet | it clears sheet-specific columns, sorting and filters |
-| `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview and full viewer; a change resets the selected page |
+| `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview; the full viewer uses the source list; a change resets the selected page |
+| `.find.clear` | clear search button | clears the in-document query | the main search, document find, and folder search share the input control |
+| `.table.clear_filters` | clear filters button | clears the document query and column filters | it appears when filters return zero rows |
 | `.source.retry` | retry button | requests document sources again | it appears when the source request fails |
 
 ## States
@@ -59,3 +61,11 @@ Other signal hits remain in a closed pane.
 The information control opens the read-only category and terms page in a new tab.
 Document permission checks apply before signal evidence queries.
 A signal query failure appears as an error.
+
+Email header values use the body highlight engine.
+A matching header value opens the details panel.
+Entity cards show the value before the category.
+Entity counts state that they include all sources.
+Text hit navigation finds the current rendered span after query, source, or page changes.
+PDF pointer coordinates remain correct at each application zoom.
+A filename-only search match opens the table without a row filter.

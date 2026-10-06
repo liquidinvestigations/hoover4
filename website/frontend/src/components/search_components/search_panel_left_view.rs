@@ -71,13 +71,21 @@ pub fn SearchPanelLeftView(
         };
         navigator().push(route);
     });
+    let viewer_find_query = move |hash: &Option<DocumentIdentifier>| {
+        let by_filename = search_result.read().as_ref().and_then(|result| result.as_ref().ok())
+            .map(|result| hash.as_ref().is_some_and(|identifier| result.filename_only_cursors.contains(identifier))
+                || result.results.iter().any(|item| Some(item.document_identifier()) == *hash && item.matched_by_filename))
+            .unwrap_or(false);
+        if by_filename { String::new() } else { query.read().query_string.clone() }
+    };
     let set_selected_result_hash = Callback::new(move |hash: Option<DocumentIdentifier>| {
+        let find_query = viewer_find_query(&hash);
         let route = Route::SearchPage {
             query: query.read().clone().into(),
             current_search_result_page: *current_search_result_page.read(),
             selected_result_hash: hash.into(),
             doc_viewer_state: Some(DocViewerState::from_find_query(
-                query.read().clone().query_string.clone(),
+                find_query,
             ))
             .into(),
         };
@@ -85,12 +93,13 @@ pub fn SearchPanelLeftView(
     });
     let set_selected_result_hash_and_page =
         Callback::new(move |(hash, page): (Option<DocumentIdentifier>, u64)| {
+            let find_query = viewer_find_query(&hash);
             let route = Route::SearchPage {
                 query: query.read().clone().into(),
                 current_search_result_page: page,
                 selected_result_hash: hash.into(),
                 doc_viewer_state: Some(DocViewerState::from_find_query(
-                    query.read().clone().query_string.clone(),
+                    find_query,
                 ))
                 .into(),
             };

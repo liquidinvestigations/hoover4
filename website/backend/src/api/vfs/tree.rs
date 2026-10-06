@@ -51,6 +51,7 @@ struct NodeRow {
     file_hash: String,
     file_size_bytes: i64,
     depth: i64,
+    subfolder_count: u32,
 }
 
 impl From<NodeRow> for VfsTreeNode {
@@ -66,6 +67,7 @@ impl From<NodeRow> for VfsTreeNode {
             file_hash: row.file_hash,
             file_size_bytes: row.file_size_bytes,
             depth: row.depth,
+            subfolder_count: row.subfolder_count,
         }
     }
 }
@@ -107,7 +109,7 @@ fn children_sql(
     format!(
         "
         SELECT collection_dataset, node_key, parent_key, container_hash, path, name,
-               kind, file_hash, file_size_bytes, depth
+               kind, file_hash, file_size_bytes, depth, subfolder_count
         FROM {table}
         WHERE collection_dataset = {}
           AND parent_key = {}{kind_clause}
@@ -182,7 +184,7 @@ pub async fn vfs_tree_children_after(
     let table = structure_table(user, &collection_dataset).await?;
     let limit = limit.clamp(1, MAX_CHILDREN_PER_PAGE);
     let after_sql = format!(
-        "SELECT collection_dataset, node_key, parent_key, container_hash, path, name, kind, file_hash, file_size_bytes, depth FROM {table} WHERE collection_dataset = {} AND node_key = {} LIMIT 1 {} ;",
+        "SELECT collection_dataset, node_key, parent_key, container_hash, path, name, kind, file_hash, file_size_bytes, depth, subfolder_count FROM {table} WHERE collection_dataset = {} AND node_key = {} LIMIT 1 {} ;",
         format_sql_query::QuotedData(&collection_dataset),
         format_sql_query::QuotedData(&after_key),
         sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, 1),
@@ -205,7 +207,7 @@ pub async fn vfs_tree_children_after(
     let sql = format!(
         "
         SELECT collection_dataset, node_key, parent_key, container_hash, path, name,
-               kind, file_hash, file_size_bytes, depth
+               kind, file_hash, file_size_bytes, depth, subfolder_count
         FROM {table}
         WHERE collection_dataset = {}
           AND parent_key = {}
@@ -266,7 +268,7 @@ pub async fn vfs_tree_path_with_stats(
         let sql = format!(
             "
             SELECT collection_dataset, node_key, parent_key, container_hash, path, name,
-                   kind, file_hash, file_size_bytes, depth
+                   kind, file_hash, file_size_bytes, depth, subfolder_count
             FROM {table}
             WHERE collection_dataset = {} AND node_key = {}
             LIMIT 1
@@ -304,7 +306,7 @@ pub async fn vfs_tree_container_node(
 ) -> anyhow::Result<Option<VfsTreeNode>> {
     let table = structure_table(user, &collection_dataset).await?;
     let sql = format!(
-        "SELECT collection_dataset, node_key, parent_key, container_hash, path, name, kind, file_hash, file_size_bytes, depth FROM {table} WHERE collection_dataset = {} AND file_hash = {} AND kind = 2 ORDER BY container_hash ASC, path ASC LIMIT 1 {} ;",
+        "SELECT collection_dataset, node_key, parent_key, container_hash, path, name, kind, file_hash, file_size_bytes, depth, subfolder_count FROM {table} WHERE collection_dataset = {} AND file_hash = {} AND kind = 2 ORDER BY container_hash ASC, path ASC LIMIT 1 {} ;",
         format_sql_query::QuotedData(&collection_dataset),
         format_sql_query::QuotedData(&container_hash),
         sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, 1),
@@ -363,7 +365,7 @@ pub async fn vfs_search_in_folder(
     let sql = format!(
         "
         SELECT collection_dataset, node_key, parent_key, container_hash, path, name,
-               kind, file_hash, file_size_bytes, depth
+               kind, file_hash, file_size_bytes, depth, subfolder_count
         FROM {table}
         WHERE collection_dataset = {}
           AND ancestor_keys = {ancestor_id}

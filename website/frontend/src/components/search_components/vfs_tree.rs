@@ -51,7 +51,7 @@ use dioxus_free_icons::{
     Icon,
     icons::{
         go_icons::GoFileZip,
-        md_file_icons::{MdFolder, MdFolderOpen},
+        md_file_icons::MdFolder,
         md_navigation_icons::{MdChevronRight, MdExpandMore, MdMoreHoriz},
         md_toggle_icons::{MdCheckBox, MdCheckBoxOutlineBlank, MdIndeterminateCheckBox},
     },
@@ -1044,6 +1044,7 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
             style: "{ROW_STYLE} padding-left: {indent}; background: {row_background};",
             class: "x-facet-list-item",
             "data-node-key": "{node_key}",
+            "data-subfolder-count": "{node.subfolder_count}",
             "aria-current": if is_selected { "location" } else { "false" },
             // The full path, always. It is the only place a truncated label can be read
             // in full, and truncation is the normal case here rather than the exception.
@@ -1055,17 +1056,19 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
                 on_activate.call(activate_node.clone());
             },
 
-            // Disclosure. Always present, even for a leaf, so the labels of siblings
-            // line up rather than jittering by 18 px.
-            button {
-                style: "border: none; background: none; cursor: pointer; padding: 0; display: flex; align-items: center; flex-shrink: 0;",
-                "aria-expanded": if is_expanded { "true" } else { "false" },
-                onclick: toggle,
-                if is_expanded {
-                    Icon { icon: MdExpandMore, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
-                } else {
-                    Icon { icon: MdChevronRight, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+            if node.subfolder_count > 0 {
+                button {
+                    style: "border: none; background: none; cursor: pointer; padding: 0; display: flex; align-items: center; flex-shrink: 0;",
+                    "aria-expanded": if is_expanded { "true" } else { "false" },
+                    onclick: toggle,
+                    if is_expanded {
+                        Icon { icon: MdExpandMore, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+                    } else {
+                        Icon { icon: MdChevronRight, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+                    }
                 }
+            } else {
+                span { style: "width: 18px; flex-shrink: 0;" }
             }
 
             if skin == TreeSkin::Picker {
@@ -1079,8 +1082,6 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
                 style: "display: flex; align-items: center; flex-shrink: 0;",
                 if node.kind == VfsNodeKind::Container {
                     Icon { icon: GoFileZip, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.7);" }
-                } else if is_expanded {
-                    Icon { icon: MdFolderOpen, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.7);" }
                 } else {
                     Icon { icon: MdFolder, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.7);" }
                 }
@@ -1218,7 +1219,7 @@ mod tests {
             collection_dataset: "testdata_shapes".into(), node_key: key.into(),
             parent_key: "parent".into(), container_hash: String::new(),
             path: format!("/{key}"), name: key.into(), kind: VfsNodeKind::Dir,
-            file_hash: String::new(), file_size_bytes: 0, depth: 1,
+            file_hash: String::new(), file_size_bytes: 0, depth: 1, subfolder_count: 0,
         }
     }
 

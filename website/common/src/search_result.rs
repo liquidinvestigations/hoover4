@@ -8,6 +8,9 @@ use crate::{search_query::SearchQuery, text_highlight::HighlightTextSpan};
 pub struct SearchResultDocuments {
     pub query: SearchQuery,
     pub results: Vec<SearchResultDocumentItem>,
+    /// Filename-only matches among the previous and next page cursors.
+    #[serde(default)]
+    pub filename_only_cursors: Vec<DocumentIdentifier>,
     pub prev_hash: Option<DocumentIdentifier>,
     pub next_hash: Option<DocumentIdentifier>,
     pub page_number: u64,

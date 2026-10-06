@@ -235,3 +235,7 @@ A failed attempt leaves index_state incomplete, and a retry replaces its cluster
 Only categories with qualifying clusters enter the page red_flags attribute.
 Filename rows have no red flags.
 A calibration change requires reindexing and does not require another scan.
+
+Each VFS node stores the count of its immediate child folders and containers.
+The structure writer copies this count into the search index.
+The folder tree uses it to control disclosure.

@@ -24,7 +24,7 @@ async def run(r):
         for item in expected:
             await r.type('input[placeholder="Filter Entities ..."]', item["value"])
             await r.text(item["value"])
-            await r.check("const e=[...document.querySelectorAll('.x-entity-chip')].find(x=>x.title===%s);return {ok:!!e&&e.lastElementChild?.textContent.trim()===%s,text:e?.innerText};" % (json.dumps(item["value"]), json.dumps(str(item["count"]))))
+            await r.check("const e=[...document.querySelectorAll('.x-entity-chip')].find(x=>x.title===%s);return {ok:!!e&&e.lastElementChild?.textContent.trim()===%s,text:e?.innerText};" % (json.dumps(item["value"]), json.dumps(f'{item["count"]} mentions in all sources')))
             await r.action("click_css", '.x-entity-chip[title=%s]' % json.dumps(item["value"]))
             await r.check("return document.querySelector(%s)?.value.includes(%s);" % (json.dumps(FIND), json.dumps(item["value"])))
             await r.text(item["value"])

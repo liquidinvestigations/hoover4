@@ -211,6 +211,7 @@ _VFS_SCALAR_COLUMNS = (
     "file_hash",
     "file_size_bytes",
     "depth",
+    "subfolder_count",
 )
 
 
@@ -227,11 +228,11 @@ def vfs_replace_sql(vfs_table: str, rows: list[dict]) -> tuple[str, tuple]:
     params: list = []
     for row in rows:
         ancestors = row.get("ancestor_keys") or "()"
-        groups.append(f"(%s, %s, %s, %s, %s, {ancestors}, %s, %s, %s, %s, %s, %s)")
+        groups.append(f"(%s, %s, %s, %s, %s, {ancestors}, %s, %s, %s, %s, %s, %s, %s)")
         params.extend(row[name] for name in _VFS_SCALAR_COLUMNS)
     columns = (
         "id, collection_dataset, container_hash, node_key, parent_key, "
-        "ancestor_keys, name, path, kind, file_hash, file_size_bytes, depth"
+        "ancestor_keys, name, path, kind, file_hash, file_size_bytes, depth, subfolder_count"
     )
     return (
         f"REPLACE INTO {vfs_table} ({columns}) VALUES " + ", ".join(groups),
@@ -1145,6 +1146,7 @@ def build_vfs_nodes(params: BuildVfsNodesParams) -> str:
             "file_hash": pa.array([n.file_hash for n in nodes], type=pa.string()),
             "file_size_bytes": pa.array([n.file_size_bytes for n in nodes], type=pa.int64()),
             "depth": pa.array([n.depth for n in nodes], type=pa.uint16()),
+            "subfolder_count": pa.array([n.subfolder_count for n in nodes], type=pa.uint32()),
         }))
         client.command(
             "DELETE FROM vfs_nodes WHERE collection_dataset = {cd:String} "
@@ -1363,7 +1365,7 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
     with get_collection_client(params.collectionname) as client:
         nodes = client.query_arrow("""
             SELECT container_hash, path, node_key, parent_key, kind, file_hash,
-                   file_size_bytes, depth
+                   file_size_bytes, depth, subfolder_count
             FROM vfs_nodes FINAL
             WHERE collection_dataset = {cd:String}
         """, {"cd": collection_dataset}).to_pylist()
@@ -1404,6 +1406,7 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
             "file_hash": node["file_hash"] or "",
             "file_size_bytes": int(node["file_size_bytes"]),
             "depth": int(node["depth"]),
+            "subfolder_count": int(node["subfolder_count"]),
         })
 
     with get_manticore_client() as client:

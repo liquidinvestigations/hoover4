@@ -258,6 +258,30 @@ pub fn DocumentPreviewForTable(
             } else {
                 match page_value.clone() {
                     None => rsx! { LoadingIndicator {} },
+                    Some(page_value) if page_value.total_rows == 0 => rsx! {
+                        div {
+                            role: "status",
+                            style: "padding: 12px;",
+                            if !find_query.is_empty() || active_filters > 0 {
+                                p { "No rows match the current filters." }
+                                button {
+                                    style: CONTROL_BUTTON_STYLE,
+                                    onclick: move |_| {
+                                        let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
+                                        state.find_query.clear();
+                                        let mut table = state.table_state();
+                                        table.filters.clear();
+                                        table.page = 0;
+                                        state.table_state = Some(table);
+                                        control.set_doc_viewer_state.call(state);
+                                    },
+                                    "Clear filters"
+                                }
+                            } else {
+                                p { "This sheet has no rows." }
+                            }
+                        }
+                    },
                     Some(page_value) => rsx! {
                         TableGrid {
                             columns: sheet_columns.clone(),

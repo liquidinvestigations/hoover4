@@ -275,6 +275,7 @@ def _vfs_row(node_key="k1", ancestors="()", **overrides):
         "file_hash": "",
         "file_size_bytes": 0,
         "depth": 1,
+        "subfolder_count": 2,
     }
     row.update(overrides)
     return row
@@ -287,9 +288,9 @@ class TestVfsReplaceSql:
             _vfs_row(id=22, node_key="k2", ancestors="()"),
         ])
         assert sql.count("REPLACE INTO") == 1
-        assert sql.count("%s") == 22  # 11 bound columns x 2 rows
+        assert sql.count("%s") == 24  # Each row has 12 bound columns.
         assert "(1,2)" in sql
-        assert params[0] == 11 and params[11] == 22
+        assert params[0] == 11 and params[12] == 22
         assert "VALUES" in sql and sql.count("), (") == 1
 
     def test_empty_chunk_is_refused(self):

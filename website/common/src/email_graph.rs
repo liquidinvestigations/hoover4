@@ -114,6 +114,9 @@ impl EmailRelation {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct EmailEnvelope {
     pub subject: String,
+    /// Header text uses the document index highlight engine.
+    #[serde(default)]
+    pub header_highlights: std::collections::BTreeMap<String, Vec<crate::text_highlight::HighlightTextSpan>>,
     /// `None` when the `Date:` header never parsed, never the epoch.
     pub date_sent: Option<i64>,
     pub from: Vec<EmailParty>,
