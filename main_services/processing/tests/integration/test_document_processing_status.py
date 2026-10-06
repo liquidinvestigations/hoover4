@@ -59,7 +59,11 @@ def test_viewer_processing_query_distinguishes_ended_pending_active_and_empty(st
                     "queued": (1, 0, [], "pending"), "empty": (1, 1, [], "finished"),
                     "failed": (1, 0, ["tika_text_batch"], "errored"), "unplanned": (0, 0, [], "")}
         for name, row in expected.items():
-            assert client.query(sql, parameters={"dataset": dataset, "hash": name}).result_rows == [row], name
+            result = client.query(sql, parameters={"dataset": dataset, "hash": name})
+            assert result.result_rows == [row], name
+            assert [column.name for column in result.column_types] == [
+                "UInt64", "UInt64", "Array(String)", "String",
+            ], name
     finally:
         with get_global_client() as global_client:
             global_client.command("ALTER TABLE operations DELETE WHERE startsWith(op_id, {prefix:String}) "

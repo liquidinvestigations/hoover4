@@ -84,7 +84,7 @@ the model without it produces vectors the store rejects or silently truncates.
 
 ## `[main_services]`
 
-`deploy.py` defines 123 keys. Read by `deploy.py`, the main compose files, the worker and the website.
+`deploy.py`, the main compose files, the worker, and the website read these keys.
 
 ### Which provider serves what
 
@@ -105,7 +105,7 @@ endpoint stays out of rotation.
 `tesseract_languages` is what the CPU OCR image can serve. It is baked into the image, so a
 language added here needs a rebuild. `regex_scanner_threads` and `regex_scanner_queue_depth`
 bound the pattern scanner's runtime and its admission control. The scanner takes a slot
-before it reads or parses a scan request body. `regex_scanner_mem_limit` (default `1000M`)
+before it reads or parses a scan request body. `regex_scanner_mem_limit` (default `4G`)
 sets its container memory limit.
 
 `clickhouse_ui_mem_limit` and `clickhouse_monitoring_mem_limit` set the memory

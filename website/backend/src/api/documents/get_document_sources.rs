@@ -446,14 +446,14 @@ WITH
         WHERE p.collection_dataset = ? AND p.plan_hash IN plans
         ORDER BY p.listed_at DESC, o.started_at DESC, p.op_id DESC LIMIT 1)
 SELECT
-    (SELECT count() FROM plans) AS planned,
-    (SELECT count() FROM processing_plan_finished FINAL
-     WHERE collection_dataset = ? AND plan_hash IN plans) AS finished,
-    (SELECT groupUniqArray(20)(task_name) FROM processing_errors FINAL
+    ifNull((SELECT count() FROM plans), 0) AS planned,
+    ifNull((SELECT count() FROM processing_plan_finished FINAL
+     WHERE collection_dataset = ? AND plan_hash IN plans), 0) AS finished,
+    ifNull((SELECT groupUniqArray(20)(task_name) FROM processing_errors FINAL
      WHERE collection_dataset = ? AND hash = ?
        AND (op_id IN (SELECT op_id FROM latest_operation)
-            OR (op_id = '' AND (SELECT count() FROM latest_operation) = 0))) AS tasks,
-    (SELECT any(state) FROM latest_operation) AS operation_state
+            OR (op_id = '' AND (SELECT count() FROM latest_operation) = 0))), []) AS tasks,
+    ifNull((SELECT any(state) FROM latest_operation), '') AS operation_state
 "#;
 
 #[derive(clickhouse::Row, serde::Deserialize)]

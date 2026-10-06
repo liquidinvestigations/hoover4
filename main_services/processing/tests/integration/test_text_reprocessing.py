@@ -114,13 +114,13 @@ def test_reprocessing_replaces_only_successful_source_pages(temp_collection, mon
             return cursor.fetchall()
 
     write("pdftotext", [(1, "oldalpha"), (2, "oldbeta"), (3, "oldgamma")])
-    write("tika", [(1, "independent source")])
+    write("extractous", [(1, "independent source")])
     write("pdftotext", [(1, "untouchedword")], other_hash)
     assert resolve_document_dates(ResolveDocumentDatesParams(collection, dataset, "probe")) == (
         "0 dates (empty plan)"
     )
     assert stored("pdftotext") == [(1, "oldalpha"), (2, "oldbeta"), (3, "oldgamma")]
-    assert stored("tika") == [(1, "independent source")]
+    assert stored("extractous") == [(1, "independent source")]
     assert index() == sorted([file_hash, other_hash])
     check("pdftotext", [(1, "oldalpha"), (2, "oldbeta"), (3, "oldgamma")])
     assert matches("oldbeta") == [(file_hash, "pdftotext")]
@@ -128,7 +128,7 @@ def test_reprocessing_replaces_only_successful_source_pages(temp_collection, mon
     write("pdftotext", [])
     assert index() == sorted([file_hash, other_hash])
     check("pdftotext", [])
-    check("tika", [(1, "independent source")])
+    check("extractous", [(1, "independent source")])
     assert matches("oldbeta") == []
     assert matches("untouchedword") == [(other_hash, "pdftotext")]
 
@@ -154,12 +154,12 @@ def test_reprocessing_replaces_only_successful_source_pages(temp_collection, mon
     assert parse_pdf._insert_pdf_text_pages(collection, dataset, file_hash, failed_pages) == 0
     assert index() == sorted([file_hash, other_hash])
     check("pdftotext", [(1, "firstagain"), (3, "lastagain")])
-    check("tika", [(1, "independent source")])
+    check("extractous", [(1, "independent source")])
     assert matches("untouchedword") == [(other_hash, "pdftotext")]
 
-    insert_text_chunks(collection, dataset, file_hash, "tika", "")
+    insert_text_chunks(collection, dataset, file_hash, "extractous", "")
     assert index() == sorted([file_hash, other_hash])
-    check("tika", [])
+    check("extractous", [])
     check("pdftotext", [(1, "firstagain"), (3, "lastagain")])
 
     write("pdftotext", [(page, f"bulkword{page}") for page in range(1, 1006)])
