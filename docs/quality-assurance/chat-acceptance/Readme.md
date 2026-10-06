@@ -1,6 +1,6 @@
 # Chat acceptance stories
 
-Each story is a request that an investigative journalist could make of the chat, on the test corpora. A story gives the prompt, the mode, and the facts that a correct answer rests on. It names the document that holds each fact, the tool calls a good run makes, and the result. A run of a story is reviewed with [report-template.md](report-template.md).
+Each story is a request that an investigative journalist could make of the chat, on the test corpora. Stories 14 to 23 each test one distinct operation that a reviewer of the demo chats tried. Stories 18 to 20 and 23 rest on the web, so they give checks of the answer's sources in place of fixed facts. A story gives the prompt, the mode, and the facts that a correct answer rests on. It names the document that holds each fact, the tool calls a good run makes, and the result. A run of a story is reviewed with [report-template.md](report-template.md).
 
 ## The stories
 
@@ -19,6 +19,16 @@ Each story is a request that an investigative journalist could make of the chat,
 | [11-darren-indyke-across-collections.md](11-darren-indyke-across-collections.md) | deep research | off | `epstein`, `tables` | counts per collection, a person with the same surname |
 | [12-easychair-authors-and-web.md](12-easychair-authors-and-web.md) | chat | on | `testdata` | a document fact and a web fact kept apart |
 | [13-greenvelope-domain-and-campaigns.md](13-greenvelope-domain-and-campaigns.md) | chat | on | `consulate`, `tables` | folder tools, WHOIS and web reads |
+| [14-largest-files-of-one-type.md](14-largest-files-of-one-type.md) | deep research | off | `testdata`, `epstein` | a file type filter, a size sort, an empty result |
+| [15-word-count-and-entity-count.md](15-word-count-and-entity-count.md) | chat | off | `enron` | a count by word and by entity, the difference explained |
+| [16-emails-from-one-sender-to-one-recipient.md](16-emails-from-one-sender-to-one-recipient.md) | deep research | off | `enron` | sender and recipient filters, copies of one message grouped |
+| [17-largest-documents-in-one-language.md](17-largest-documents-in-one-language.md) | deep research | off | `textfiles` | a language or folder filter, a size sort, an absent language |
+| [18-list-from-a-web-data-file.md](18-list-from-a-web-data-file.md) | chat | on | none | a raw repository file, a find across a large page |
+| [19-contested-question-with-named-sources.md](19-contested-question-with-named-sources.md) | chat | on | none | named sources only, a constraint applied to every item |
+| [20-distinct-court-cases-from-the-web.md](20-distinct-court-cases-from-the-web.md) | chat | on | none | distinct items, reports of one item merged, no filler |
+| [21-primary-documents-and-press-coverage.md](21-primary-documents-and-press-coverage.md) | deep research | off | `enron` | a primary source told apart from press coverage |
+| [22-follow-a-lead-without-inventing-names.md](22-follow-a-lead-without-inventing-names.md) | deep research | off | `enron` | a missing fact reported as missing |
+| [23-question-with-a-disputed-premise.md](23-question-with-a-disputed-premise.md) | chat | on | none | a premise checked before the answer |
 
 ## How to run a story
 
