@@ -113,6 +113,8 @@ Its allowed-host validation also compares the ephemeral listener port.
 
 `read_page` stores successful Markdown under the caller and chat session.
 `cite_pages` accepts one to twelve previously read URLs with exact supporting terms.
+Case mismatch errors include literal source terms for an explicit retry.
+The failed call allocates no handle.
 Each page accepts one to eight terms of up to 200 characters.
 Terms match case and literal source text.
 A missing term or unread page returns an individual error.

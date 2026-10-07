@@ -121,7 +121,9 @@ def repair_note(check: dict) -> str:
     if check.get("web_unmarked"):
         problems.append("Replace bare source URLs with handles returned by `cite_pages`. Copy exact supporting text into its terms field.")
     for paragraph in check.get("unsupported_paragraphs") or []:
-        problems.append(f"Paragraph {paragraph['number']} has a name or number without a source: {paragraph['text']} Add its citation or remove the claim.")
+        location = (f"List item {paragraph['item']} in paragraph {paragraph['number']}"
+                    if "item" in paragraph else f"Paragraph {paragraph['number']}")
+        problems.append(f"{location} has a name or number without a source: {paragraph['text']} Add its citation or remove the claim.")
     if check.get("unresolved"):
         problems.append("No successful citation result gives "
                         + ", ".join(check["unresolved"]) + ".")
@@ -136,6 +138,7 @@ def repair_note(check: dict) -> str:
 URL_PATTERN = re.compile(r"https?://[^\s<>\]]+")
 NAME_PATTERN = re.compile(r"\b[^\W\d_][^\W\d_'-]{2,}\b")
 OPENING_WORDS = frozenset({"The", "This", "There", "These", "Those", "However", "It", "They", "Their", "For", "From", "With", "Not", "None", "Some"})
+LIST_ITEM_PATTERN = re.compile(r"^([ \t]*)(?:[-+*]|\d+[.)])\s+(.+)")
 
 
 def page_address(url: str) -> str:
@@ -147,14 +150,28 @@ def page_address(url: str) -> str:
 
 
 def unsupported_paragraphs(answer: str) -> list[dict]:
-    """Identify paragraphs with names or numbers and no citation marker or page address."""
+    """Identify uncited names or numbers in each paragraph or list item."""
     findings = []
     for number, paragraph in enumerate(re.split(r"\n\s*\n", answer), 1):
-        if HANDLE_PATTERN.search(paragraph) or URL_PATTERN.search(paragraph):
-            continue
-        names = {word for word in NAME_PATTERN.findall(paragraph) if word[0].isupper()} - OPENING_WORDS
-        if names or re.search(r"\b\d+(?:[.,]\d+)*\b", paragraph):
-            findings.append({"number": number, "text": paragraph[:500]})
+        parts = re.split(r"\n(?=[ \t]*(?:[-+*]|\d+[.)])\s+)", paragraph)
+        for position, part in enumerate(parts):
+            item = LIST_ITEM_PATTERN.match(part)
+            text = part[item.start(2):] if item else part
+            if len(parts) > 1 and not item and all(
+                    line.lstrip().startswith("#") for line in text.splitlines() if line.strip()):
+                continue
+            following = LIST_ITEM_PATTERN.match(parts[position + 1]) if position + 1 < len(parts) else None
+            if (item and following and len(following[1]) > len(item[1])
+                    and text.rstrip(" *_`").endswith(":")):
+                continue
+            if HANDLE_PATTERN.search(text) or URL_PATTERN.search(text):
+                continue
+            names = {word for word in NAME_PATTERN.findall(text) if word[0].isupper()} - OPENING_WORDS
+            if names or re.search(r"\b\d+(?:[.,]\d+)*\b", text):
+                finding = {"number": number, "text": part[:500]}
+                if item:
+                    finding["item"] = position + (0 if not LIST_ITEM_PATTERN.match(parts[0]) else 1)
+                findings.append(finding)
     return findings
 
 

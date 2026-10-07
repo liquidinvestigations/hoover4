@@ -104,11 +104,14 @@ The web repair requires search discovery, successful page reads, and `cite_pages
 It identifies bare source URLs, unread pages, and undiscovered pages.
 It requires verified item identities and each requested constraint.
 It requires merged duplicates and fewer items when sources are insufficient.
+It verifies each list item separately, so a sibling citation cannot cover an uncited claim.
 
 `read_page` stores successful Markdown under the owner and chat session.
 `cite_pages` verifies exact supporting terms against that captured text.
 Its `[Wn]` handles identify source versions and survive browser service replacement.
 Unread pages and absent terms return individual errors.
+Case differences return literal source terms for an explicit retry.
+The failed call allocates no handle and keeps exact matching unchanged.
 Web cards show linked titles, domains, and source quotes.
 They open the captured Markdown in a side pane with exact find and match navigation.
 The preview and find state survive URL reload.

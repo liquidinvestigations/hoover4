@@ -169,8 +169,13 @@ def _cite(owner: str, session: str, pages: list) -> dict:
             except ValueError as exc:
                 from browser_use_server.read_page import focus
                 candidate, _ = focus(source["markdown"], " ".join(terms), 600)
-                errors.append({"url": url, "error": str(exc), "candidate": candidate,
-                               "version": source["version"]})
+                error = {"url": url, "error": str(exc), "candidate": candidate,
+                         "version": source["version"]}
+                matches = [re.search(re.escape(term), source["markdown"], re.IGNORECASE)
+                           for term in terms]
+                if all(matches):
+                    error["suggested_terms"] = [match.group() for match in matches]
+                errors.append(error)
                 continue
             key = (url, source["version"])
             handle = bindings.get(key)

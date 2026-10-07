@@ -1060,6 +1060,28 @@ def test_a_cited_paragraph_does_not_cover_the_next_claim():
     assert findings == [{"number": 2, "text": "Ștefan receives 12 payments."}]
 
 
+@pytest.mark.parametrize("marker", ["-", "*", "+", "1.", "2)"])
+def test_a_cited_list_item_does_not_cover_its_uncited_sibling(marker):
+    answer = f"{marker} South Africa filed a case [W2].\n{marker} Francesca Albanese issued a report."
+    findings = citations.unsupported_paragraphs(answer)
+    assert findings == [{"number": 1, "item": 2,
+                         "text": f"{marker} Francesca Albanese issued a report."}]
+    note = citations.repair_note({"unsupported_paragraphs": findings})
+    assert "List item 2 in paragraph 1" in note
+    assert "Francesca Albanese" in note
+
+
+def test_nested_claims_keep_their_own_citations_and_wrapped_text():
+    answer = ("### **Israel**\n* **Accused by:**\n"
+              "    * **South Africa:** Filed a case.\n      [W2]\n"
+              "    * **UN Special Rapporteurs:** Francesca Albanese issued a report.")
+    findings = citations.unsupported_paragraphs(answer)
+    assert len(findings) == 1
+    assert findings[0]["item"] == 3
+    assert findings[0]["text"].lstrip().startswith("* **UN Special Rapporteurs:**")
+    assert citations.unsupported_paragraphs(answer + " [W3].") == []
+
+
 def _with_earlier_turn(store, monkeypatch, messages):
     read_current = agent_runs.read_messages
     monkeypatch.setattr(agent_runs, "read_earlier_threads", lambda *a: ["previous"])

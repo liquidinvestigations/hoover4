@@ -143,6 +143,25 @@ def test_absent_or_wrong_case_terms_do_not_allocate_a_handle(store):
     assert cite()["citations"][0]["handle"] == "[W1]"
 
 
+def test_case_mismatch_suggests_literal_source_terms_for_an_explicit_retry(store):
+    read_source("Genocide as colonial erasure. Report [1] includes 4.2 points.")
+    result = cite(terms=["genocide as colonial erasure", "report [1] includes 4.2"])
+    assert not result["citations"]
+    terms = result["errors"][0]["suggested_terms"]
+    assert terms == ["Genocide as colonial erasure", "Report [1] includes 4.2"]
+    assert not any(row["kind"] == citations.KIND_PAGE_CITATION for row in store.rows.values())
+    ref = cite(terms=terms)["citations"][0]
+    assert ref["handle"] == "[W1]" and ref["quote_verified"]
+    assert [span["text"] for span in ref["spans"]] == terms
+
+
+def test_absent_wording_does_not_suggest_a_partial_term_list(store):
+    read_source()
+    result = cite(terms=["Verified Statement", "absent wording"])
+    assert not result["citations"]
+    assert "suggested_terms" not in result["errors"][0]
+
+
 def test_unknown_source_version_is_refused(store):
     read_source()
     result = cite(version="not-read")
