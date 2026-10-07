@@ -18,23 +18,23 @@ class TestRegistry:
             assert source.kind in sources_mod.ALL_KINDS, source.name
 
     def test_the_retired_servers_sources_are_present(self):
-        """hoover4-mcp-ddg and hoover4-mcp-wikipedia were retired into these three."""
+        """hoover4 replaced two separate search servers with these three sources."""
         for name in ("ddg_api", "ddg_news", "wikipedia"):
             assert name in sources_mod.SOURCES
 
     def test_the_html_scrapers_are_all_web_kind(self):
-        for name in ("ddg", "brave", "yahoo"):
+        for name in ("ddg", "brave", "yahoo", "bing", "google", "mojeek", "startpage"):
             assert sources_mod.SOURCES[name].kind == sources_mod.KIND_WEB
 
     def test_news_and_reference_are_distinguishable(self):
         assert sources_mod.SOURCES["ddg_news"].kind == sources_mod.KIND_NEWS
         assert sources_mod.SOURCES["wikipedia"].kind == sources_mod.KIND_REFERENCE
 
-    def test_startpage_is_gone_rather_than_permanently_degraded(self):
-        """It serves a JS app with a captcha and no results in the HTML for any query.
-        Leaving it registered advertised seven sources where there were six."""
-        assert "startpage" not in sources_mod.SOURCES
-        assert "startpage" not in sources_mod.DEFAULT_SOURCES
+    def test_startpage_has_time_for_a_proof_of_work_solve(self):
+        """A new Anubis solve and 2 more requests do not fit in the common deadline."""
+        assert "startpage" in sources_mod.DEFAULT_SOURCES.split(",")
+        assert sources_mod.SOURCES["startpage"].timeout == sources_mod.STARTPAGE_TIMEOUT
+        assert sources_mod.STARTPAGE_TIMEOUT > sources_mod.SOURCE_TIMEOUT
 
     def test_the_default_set_names_only_sources_that_exist(self):
         """Written out by hand, this string outlived a source it named."""
@@ -99,7 +99,7 @@ class TestResolveSources:
 
 
 class TestTrackingUrlUnwrap:
-    """The `ddgs` library mixes back ends, so its rows carry other engines' wrappers.
+    """A news row can link through another engine's redirector.
 
     Not cosmetic. A wrapped URL normalises to a different dedupe key from the direct one,
     so the same article survives fusion twice and the model cites the tracker.
@@ -110,23 +110,15 @@ class TestTrackingUrlUnwrap:
         "/RU=https%3a%2f%2fnews.example%2fstory/RK=2/RS=zzz-"
     )
 
-    def test_a_news_row_is_unwrapped(self):
-        rows = [{"url": self.YAHOO, "title": "T", "body": "b", "source": "Example"}]
-        out = self._news(rows)
+    def test_a_news_row_is_unwrapped(self, monkeypatch):
+        rows = [{"url": self.YAHOO, "title": "T", "excerpt": "b", "source": "Example"}]
+        out = _news(monkeypatch, rows)
         assert out[0].url == "https://news.example/story"
 
-    def test_a_text_row_is_unwrapped(self):
-        rows = [{"href": self.YAHOO, "title": "T", "body": "b"}]
-        out = self._text(rows)
-        assert out[0].url == "https://news.example/story"
-
-    def test_a_ddg_redirect_row_is_unwrapped(self):
-        rows = [{"href": "https://duckduckgo.com/l/?uddg=https%3A%2F%2Freal.example%2Fp&rut=x"}]
-        assert self._text(rows)[0].url == "https://real.example/p"
-
-    def test_a_direct_url_is_left_alone(self):
-        rows = [{"href": "https://direct.example/page?id=7"}]
-        assert self._text(rows)[0].url == "https://direct.example/page?id=7"
+    def test_a_lite_row_is_unwrapped(self):
+        html = ('<table><tr><td><a class="result-link" href="//duckduckgo.com/l/?uddg='
+                'https%3A%2F%2Freal.example%2Fp&rut=x">T</a></td></tr></table>')
+        assert engines.parse_duckduckgo_lite(html)[0].url == "https://real.example/p"
 
     def test_the_wrapper_and_the_direct_url_now_dedupe_together(self):
         from agent_common.fusion import normalise_url
@@ -137,28 +129,115 @@ class TestTrackingUrlUnwrap:
             "https://news.example/story"
         )
 
-    # The two adapters are sync-inside-async; drive them through a stubbed `ddgs` call.
+
+def _news(monkeypatch, rows, page='<script>vqd="4-123456789"</script>', calls=None):
+    """Run `ddg_news` against a fake `fetch`: the result page, then `news.js` with `rows`."""
+    import json
+
+    from metasearch_server.fetch import FetchResponse
+
+    async def fake_fetch(source, url, *, params=None, headers=None, timeout, **_):
+        if calls is not None:
+            calls.append((url, dict(params or {}), dict(headers or {})))
+        if url == sources_mod.DDG_HOME_URL:
+            return FetchResponse(status=200, text=page, url=url)
+        return FetchResponse(status=200, text=json.dumps({"results": rows}), url=url)
+
+    monkeypatch.setattr(sources_mod, "fetch", fake_fetch)
+    return asyncio.run(sources_mod._fetch_ddg_news("q", 10, "w"))
+
+
+class TestDuckDuckGoSources:
+    """`ddg_api` and `ddg_news` fetch DuckDuckGo through `fetch`, without the `ddgs` library."""
+
+    LITE = """
+    <table>
+      <tr class="result-sponsored"><td><a class="result-link"
+          href="https://duckduckgo.com/y.js?ad=1">Advert</a></td></tr>
+      <tr class="result-sponsored"><td class="result-snippet">Buy now</td></tr>
+      <tr><td>1.</td><td><a rel="nofollow" href="https://one.example/" class='result-link'>One
+          <b>title</b></a></td></tr>
+      <tr><td></td><td class='result-snippet'>First <b>snippet</b></td></tr>
+      <tr><td></td><td><span class='link-text'>one.example</span></td></tr>
+      <tr><td>2.</td><td><a href="https://two.example/a" class="result-link">Two</a></td></tr>
+      <tr><td></td><td class="result-snippet">Second</td></tr>
+    </table>
+    """
+
+    def test_the_lite_parser_reads_links_and_snippets_and_skips_adverts(self):
+        out = engines.parse_duckduckgo_lite(self.LITE)
+        assert [(r.title, r.url, r.snippet) for r in out] == [
+            ("One title", "https://one.example/", "First snippet"),
+            ("Two", "https://two.example/a", "Second"),
+        ]
+
+    def test_ddg_api_sends_the_time_filter_and_names_no_other_host(self, monkeypatch):
+        from metasearch_server.fetch import FetchResponse
+
+        calls = []
+
+        async def fake_fetch(source, url, *, params=None, headers=None, timeout, **_):
+            calls.append((url, dict(params or {})))
+            return FetchResponse(status=200, text=self.LITE, url=url)
+
+        monkeypatch.setattr(sources_mod, "fetch", fake_fetch)
+        out = asyncio.run(sources_mod._fetch_ddg_api("q", 1, "m"))
+        # One request to DuckDuckGo. The `ddgs` library also asked a Wikipedia host made
+        # from the region, `wt.wikipedia.org`, which does not exist.
+        assert [url for url, _ in calls] == [sources_mod.DDG_LITE_URL]
+        assert calls[0][1]["df"] == "m" and calls[0][1]["q"] == "q"
+        assert [r.url for r in out] == ["https://one.example/"]
+        assert out[0].kind == sources_mod.KIND_WEB
+
+    def test_ddg_api_names_a_challenge_page(self, monkeypatch):
+        from metasearch_server.fetch import FetchResponse
+
+        async def fake_fetch(source, url, *, params=None, headers=None, timeout, **_):
+            return FetchResponse(status=202, text="<html>captcha</html>", url=url)
+
+        monkeypatch.setattr(sources_mod, "fetch", fake_fetch)
+        with pytest.raises(sources_mod.SourceUnavailable, match="HTTP 202"):
+            asyncio.run(sources_mod._fetch_ddg_api("q", 5, None))
+
+    def test_ddg_news_takes_the_vqd_token_then_reads_the_rows(self, monkeypatch):
+        calls = []
+        rows = [{"url": "https://news.example/a", "title": "A <b>head</b>",
+                 "excerpt": "Body", "source": "Wire", "date": 1700000000}]
+        out = _news(monkeypatch, rows, calls=calls)
+        assert [url for url, _, _ in calls] == [sources_mod.DDG_HOME_URL, sources_mod.DDG_NEWS_URL]
+        news_params, news_headers = calls[1][1], calls[1][2]
+        assert news_params["vqd"] == "4-123456789" and news_params["df"] == "w"
+        assert news_headers["Referer"] == sources_mod.DDG_HOME_URL
+        assert (out[0].title, out[0].snippet, out[0].kind) == ("A head", "Wire: Body",
+                                                               sources_mod.KIND_NEWS)
+        assert out[0].published == "2023-11-14T22:13:20Z"
+
+    def test_ddg_news_without_a_token_says_why(self, monkeypatch):
+        with pytest.raises(sources_mod.SourceUnavailable, match="vqd"):
+            _news(monkeypatch, [], page="<html>no token</html>")
+
+
+class TestCapturedNewsPage:
+    """`news.js` rows from a captured DuckDuckGo News answer for the query `battlebots`."""
+
     @staticmethod
-    def _run(method: str, rows: list[dict]):
-        import asyncio
+    def _rows():
+        import json
+        from pathlib import Path
 
-        import metasearch_server.sources as m
+        path = Path(__file__).parent / "fixtures" / "ddg_news.json"
+        return json.loads(path.read_text(encoding="utf-8"))["results"]
 
-        original = m._ddgs_call
-        m._ddgs_call = lambda *a, **k: rows
-        try:
-            fetch = m._fetch_ddg_news if method == "news" else m._fetch_ddg_api
-            return asyncio.run(fetch("q", 10, None))
-        finally:
-            m._ddgs_call = original
+    def test_character_references_become_characters(self, monkeypatch):
+        out = _news(monkeypatch, self._rows())
+        ringer = next(r for r in out if r.title == "You Can Talk About Robot Fight Club")
+        assert ringer.snippet.startswith("The Ringer: Tombstone's primary weapon")
+        for r in out:
+            for text in (r.title, r.snippet):
+                assert "&#x27;" not in text and "&quot;" not in text and "<b>" not in text
 
-    @classmethod
-    def _news(cls, rows):
-        return cls._run("news", rows)
-
-    @classmethod
-    def _text(cls, rows):
-        return cls._run("text", rows)
+    def test_an_escaped_tag_stays_text(self):
+        assert sources_mod._strip_tags("a &lt;b&gt; c &#x27;d&#x27;") == "a <b> c 'd'"
 
 
 class TestWikipediaSnippets:

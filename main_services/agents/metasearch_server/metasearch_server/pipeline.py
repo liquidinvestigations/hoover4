@@ -22,8 +22,9 @@ log = logging.getLogger(__name__)
 MIN_PER_KIND = int(os.getenv("METASEARCH_MIN_PER_KIND", "3"))
 MAX_PER_KIND = int(os.getenv("METASEARCH_MAX_PER_KIND", "15"))
 
-#: Bound the fused candidate pool before applying source-kind limits.
-FUSION_CANDIDATES = int(os.getenv("METASEARCH_FUSION_CANDIDATES", "60"))
+#: Bound the fetch time for all query angles.
+FETCH_BUDGET = float(os.getenv("METASEARCH_FETCH_BUDGET", "60"))
+MIN_QUERY_SECONDS = 1.0
 
 #: Snippet cap in what reaches the model.
 SNIPPET_CHARS = int(os.getenv("SEARCH_SNIPPET_CHARS", "400"))
@@ -53,6 +54,8 @@ class SearchOutcome:
     query: str
     #: The queries as asked, after de-duplication.
     queries: list[str] = field(default_factory=list)
+    skipped_queries: list[str] = field(default_factory=list)
+    source_routes: dict[str, str] = field(default_factory=dict)
     ranked: list[Ranked] = field(default_factory=list)
     #: Keep the complete fused order for the search-detail artifact.
     fused: list[Ranked] = field(default_factory=list)
@@ -135,10 +138,22 @@ async def run_search(
     answered: set[str] = set()
     reasons: dict[str, str] = {}
     matched: dict[str, list[str]] = {}
+    budget_end = fetch_started + FETCH_BUDGET
+    skipped: list[str] = []
+    routes: dict[str, list[str]] = {}
     for index, one in enumerate(queries):
-        per_source, per_latency, degraded, degraded_reasons = await sources_mod.fetch_all(
-            one, names, timelimit=timelimit
+        remaining = budget_end - time.monotonic()
+        if remaining < MIN_QUERY_SECONDS:
+            skipped.append(one)
+            continue
+        per_source, per_latency, degraded, degraded_reasons, per_route = await sources_mod.fetch_all(
+            one, names, timelimit=timelimit,
+            overall_timeout=min(sources_mod.OVERALL_TIMEOUT, remaining),
         )
+        for name, route in per_route.items():
+            for used in filter(None, route.split("+")):
+                if used not in routes.setdefault(name, []):
+                    routes[name].append(used)
         for name, rows in per_source.items():
             # One ranked list per (source, query) pair. The key has to carry both or two
             # queries' rankings from one source overwrite each other and the batch fuses
@@ -166,6 +181,8 @@ async def run_search(
     outcome = SearchOutcome(
         query=joined,
         queries=list(queries),
+        skipped_queries=skipped,
+        source_routes={name: "+".join(found) for name, found in routes.items()},
         sources_used=names,
         unknown_sources=unknown,
         degraded=degraded_names,
@@ -178,7 +195,7 @@ async def run_search(
 
     # Step 2: fuse every (source, query) ranking into ONE pool. This is also the dedupe,
     # one SearchResult per normalised URL, carrying every source that returned it.
-    fused = reciprocal_rank_fusion(rankings, max_results=FUSION_CANDIDATES)
+    fused = reciprocal_rank_fusion(rankings, max_results=outcome.total_before_dedupe)
     for result in fused:
         # The fusion keys are `source\x1fquery-index`; the model is shown source names, and
         # a name repeated once per query would read as corroboration it does not have.
@@ -250,6 +267,8 @@ def detail_document(outcome: SearchOutcome) -> dict:
     return {
         "query": outcome.query,
         "queries": outcome.queries,
+        "skipped_queries": outcome.skipped_queries,
+        "source_routes": outcome.source_routes,
         "before_rerank": [row(i) for i in outcome.fused],
         "after_rerank": [row(i) for i in outcome.ranked],
         "sources_used": outcome.sources_used,

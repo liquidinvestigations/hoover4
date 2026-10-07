@@ -89,11 +89,11 @@ class TestRunSearch:
 
     @staticmethod
     def _stub_sources(monkeypatch, per_source):
-        async def fetch_all(query, names, per_source_results=15, timelimit=None):
+        async def fetch_all(query, names, per_source_results=15, timelimit=None, overall_timeout=None):
             latency = {n: 1.0 for n in names}
             degraded = [n for n in names if not per_source.get(n)]
             reasons = {n: "answered with no results (selector rot?)" for n in degraded}
-            return {n: list(per_source.get(n, [])) for n in names}, latency, degraded, reasons
+            return {n: list(per_source.get(n, [])) for n in names}, latency, degraded, reasons, {}
 
         monkeypatch.setattr(sources_mod, "fetch_all", fetch_all)
         monkeypatch.setattr(
@@ -146,12 +146,12 @@ class TestBatchedQueries:
     def _stub_per_query(monkeypatch, per_query):
         """`per_query` maps a query to `{source: [results]}`."""
 
-        async def fetch_all(query, names, per_source_results=15, timelimit=None):
+        async def fetch_all(query, names, per_source_results=15, timelimit=None, overall_timeout=None):
             table = per_query.get(query, {})
             latency = {n: 1.0 for n in names}
             degraded = [n for n in names if not table.get(n)]
             reasons = {n: "answered with no results" for n in degraded}
-            return {n: list(table.get(n, [])) for n in names}, latency, degraded, reasons
+            return {n: list(table.get(n, [])) for n in names}, latency, degraded, reasons, {}
 
         monkeypatch.setattr(sources_mod, "fetch_all", fetch_all)
         monkeypatch.setattr(

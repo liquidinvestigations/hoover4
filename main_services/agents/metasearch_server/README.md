@@ -1,163 +1,117 @@
 # Metasearch MCP server
 
-The metasearch server provides web search tools for chat with internet tools enabled.
-Its HTML readers use the selectolax Lexbor parser.
-
-One tool searches the open web, and there must never be a second. A small model faced with
-several near-identical "search the web" descriptions picks badly and inconsistently, so
-every source (the scrapers, DuckDuckGo text and news, world news, the encyclopaedias, DOI
-metadata and the archives) is a `sources` entry here rather than a tool of its own.
-
-Modelled on [`MikeLuu99/metasearch-rust`](https://github.com/MikeLuu99/metasearch-rust).
-The design worth taking is: query several sources in parallel, deduplicate on a normalised
-URL, and merge with RRF so agreement between sources beats any one source's confidence.
+The server exposes one web search tool when internet tools are enabled.
+It searches several sources, deduplicates URLs, and orders results with reciprocal rank fusion.
+Each result kind reserves a configured share of the selected results.
+Web search never calls a model reranker.
 
 ## Tools
 
-| Tool | Returns |
-|---|---|
-| `web_search(queries=[…], sources=None, max_results=15, timelimit=None)` | titles, URLs, snippets, dates and result kinds, plus a `search_detail` artifact id |
-| `list_search_sources()` | every source with its kind, and which are configured |
+`web_search` accepts `queries`, optional `sources`, `max_results`, and `timelimit`.
+The legacy `query` argument adds one query to the batch.
+The server removes repeated queries and names queries beyond the configured limit.
+The time filter accepts `d`, `w`, `m`, or `y` for supported news and DuckDuckGo sources.
 
-The result names sources with no results in `no_results_from`.
-The server stores search detail separately and gives its artifact id in `_hoover4_artifacts`.
+`list_search_sources` lists registered sources, their kinds, and their configured state.
+A fact-check source requires a mounted key file before registration.
 
-`timelimit` is `d`/`w`/`m`/`y` and only affects `ddg_news`, `ddg_api` and `gdelt`. The HTML
-endpoints take no time filter and the reference sources have no publication date. A bad
-value is **refused**, not ignored: a model that assumes it filtered to the last day and did
-not will present stale results as fresh.
+## Sources and transports
 
-### One call, several angles
+| Sources | Kind | Transport |
+|---|---|---|
+| DuckDuckGo HTML, Brave | `web` | wreq with browser emulation. |
+| Yahoo, Bing | `web` | curl_cffi with source-specific browser emulation. |
+| Google | `web` | A dedicated browser fetch queue. |
+| Mojeek, Startpage | `web` | curl_cffi with bounded proof-of-work challenge handling. |
+| DuckDuckGo Lite | `web` | wreq with browser emulation. |
+| DuckDuckGo News | `news` | curl_cffi with a shared circuit for its token and result requests. |
+| GDELT | `news` | HTTP API requests with separate pacing. |
+| Wikipedia, Wikidata, Crossref | `reference` | HTTP API requests. |
+| Fact-check publishers | `reference` | HTTP API requests when a key file is available. |
+| Wayback Machine, archive.today | `archive` | HTTP API or HTML requests for a URL named in the query. |
 
-`queries` accepts several query angles. Each query searches the selected sources.
-Reciprocal rank fusion merges their rankings and deduplicates their URLs.
-Each result names the queries that found it in `matched_queries`.
-The legacy `query` argument adds one query to that list.
+Google tracking links resolve to their destination URLs before fusion.
+Bing requests use cached engine cookies.
+Mojeek and Startpage share one bounded challenge task for concurrent requests.
+Challenge complexity, solve duration, worker count, and failure cooldown limit CPU use.
+The server does not solve image or behavior challenges.
 
-## Sources
+Direct routes run independently of configured Tor fallback routes.
+A request tries at most three routes within its source deadline.
+Blocked route and host pairs enter cooldown.
+Each Tor attempt uses isolated SOCKS authentication unless a multi-request source needs one circuit.
+Empty Tor configuration disables fallback.
 
-| name | kind | key | what it is |
-|---|---|---|---|
-| `ddg`, `brave`, `yahoo` | `web` | none | the HTML scrapers in `engines.py` |
-| `ddg_api` | `web` | none | the `ddgs` library's `text()`, inherited from `hoover4-mcp-ddg` |
-| `ddg_news` | `news` | none | the `ddgs` library's `news()`, same origin |
-| `gdelt` | `news` | none | GDELT DOC 2.0, world news across languages and back years |
-| `wikipedia` | `reference` | none | MediaWiki `list=search`, inherited from `hoover4-mcp-wikipedia` |
-| `wikidata` | `reference` | none | structured entities: a company, a person, an identifier, by Q-number |
-| `crossref` | `reference` | none | DOI metadata, resolving to `doi.org` |
-| `factcheck` | `reference` | free key | published fact-checks; **absent unless a key file is mounted** |
-| `wayback` | `archive` | none | Wayback Machine snapshots of a host named in the query |
-| `archive_today` | `archive` | none | the second archive; no API, so the flakiest source here |
+## Capacity and deadlines
 
-**A key-gated source with no key is not registered at all**. Absent from
-`list_search_sources`, from the default set and from dispatch, rather than present and
-failing. Telling a model about a capability the deployment does not have costs a round trip
-to discover that. The key is a path to a chmod-600 file outside the repository,
-bind-mounted read-only, and is never a value in a file, a default or a log.
+The admission gate bounds running searches and queued searches.
+A full queue returns a busy error.
+A waiting call has a separate deadline.
+Cancellation releases its queue entry or running slot.
 
-**The archives answer about a URL, not about a phrase.** Neither has a full-text index, so a
-query naming no host is a question they cannot be asked and they say so in
-`degraded_reasons` rather than returning nothing. `archive_today` has no API at all: it
-parses the HTML of a page behind a bot wall, and it is expected to be the first name on the
-`degraded` list. That is what it is here for. A second archive that answers sometimes beats
-no second archive, as long as its failure is visible.
+Sources run in parallel within each query.
+Query angles run sequentially within one complete fetch budget.
+Queries that cannot start before that budget expires appear in `skipped_queries`.
+A source that finishes before the fan-out deadline retains its results.
+The server cancels and drains unfinished source tasks before returning.
 
-**`wikidata` searches twice on a miss.** `wbsearchentities` matches an item's label by
-prefix, so it is exact for `Enron` and returns nothing at all for `Arthur Andersen
-accounting firm`, which is the shape of query a model actually sends. The full-text
-`list=search` answers those, and one `wbgetentities` call turns its Q-numbers into labels.
+## Results and artifacts
 
-**`gdelt` carries its own deadline.** It takes ten to twelve seconds to answer at all,
-including when it answers `429`, so the common eight-second deadline turned every call into
-a timeout. It also rate-limits per address, so a batch of queries will degrade it partway
-through.
+The model receives selected titles, destination URLs, snippets, kinds, and query indexes.
+Each failed source has a bounded diagnostic reason.
+An empty result includes the available failure causes.
+A result note requests page reads before another search and requires verification of requested constraints.
 
-`ddg_api` is kept **alongside** the `ddg` HTML scraper rather than replacing it. They rot
-independently (a selector change breaks one, a library bump breaks the other), and the
-whole point of the `degraded` list is that rot is visible rather than silent.
+The artifact writer preserves caller identity and conversation ownership.
+The search-detail artifact keeps complete candidates, selected results, source routes, counts, and timing.
+The result retains the reserved `_hoover4_artifacts` marker.
 
-**`startpage` was removed, not disabled.** It serves a Gatsby single-page app with a
-`<noscript>` wall and a captcha field: there are no results in the HTML for any query, on
-the first request from a cold container. There is no selector to repair, so there is no run
-in which it can come back, and a permanently-degraded source inflates the source count the
-tool advertises. Reporting rot is not the same as tolerating it.
-
-`kind` is not decoration: it drives the per-kind floor below.
-
-Wikipedia is called through the MediaWiki API directly rather than through the `wikipedia`
-package the retired server used. That package is synchronous, fetches each article's full
-HTML to produce a summary, and pins an ancient `requests`/`BeautifulSoup` pair; one
-`list=search` call with `srprop=snippet` gives titles, snippets and canonical URLs in a
-single round trip.
-
-## Result ordering
-
-The server fetches sources, deduplicates their URLs, merges rankings, and applies source-kind limits.
-Reciprocal rank fusion uses source positions. Web search does not call a model reranker.
-
-Each source first removes duplicate URLs from its own results.
-Fusion then combines results with the same normalized URL across sources and query angles.
-Each kind reserves its best `METASEARCH_MIN_PER_KIND` results in fused order.
-The server fills remaining slots up to the total limit and the per-kind maximum.
-Reserved slots can exceed a requested limit smaller than their combined count.
-
-## Tool results and artifacts
-
-Tool results contain selected titles, URLs, snippets, source names, query matches, and fused positions.
-The search-detail artifact keeps complete candidates, selected results, and source timing.
-The model receives the artifact identifier.
-
-Legacy `rerank_rank` and `rerank_score` fields remain empty.
+Legacy rerank fields remain for stored transcripts and renderers.
+`rerank_rank` and `rerank_score` are empty.
 `rerank_applied` is false, `rerank_ms` is zero, and `rerank_error` is empty.
-The artifact retains `before_rerank` and `after_rerank` for renderer compatibility.
-These arrays now contain all fused candidates and selected fused results.
-The health response reports reranking as disabled even when corpus reranking is configured.
-
-## Expect a scraper to rot
-
-Every HTML source is **CSS selectors and no API key**. That is what makes it free and what
-makes it fragile: assume at least one selector breaks within months. In the run above, Brave
-had already stopped matching. The search still worked, and said so. Two things keep that
-visible:
-
-* **The `degraded` field** on every response names the sources that returned nothing for
-  **every** query in the call, and `degraded_reasons` says why each one did. One empty
-  query out of five is a query with no results, not a broken source; counting it as one
-  would degrade every source on any batch carrying a narrow angle. Those are different questions: "brave returned
-  nothing" reads identically for a rotted selector, an `HTTP 429` and an unreachable host,
-  and the three want three different fixes. Never swallow a zero-result source.
-* **`METASEARCH_SOURCES`** turns a broken one off without a rebuild. Unknown names are
-  dropped with a warning rather than raising, because a typo must not take the server down,
-  and the same rule applies to the model's own `sources` argument.
-
-If a scraper is degraded, the fix is in `engines.py`: one `_parse_<engine>` function, a
-handful of CSS selectors. `tests/test_engines.py` has a captured fragment per engine so a
-selector edit fails a test rather than production.
+`before_rerank` contains fused candidates and `after_rerank` contains selected fused results.
+The source result limit bounds fusion input without excluding minority kinds before their reservation.
 
 ## Configuration
 
-| Variable | Default | Notes |
-|---|---|---|
-| `METASEARCH_SOURCES` | every registered source | the set to query; empty means the default, not "none". `METASEARCH_ENGINES` is still honoured for the scrapers |
-| `METASEARCH_MAX_QUERIES` | `5` | queries one call may fan out over; the surplus is named, not trimmed |
-| `METASEARCH_SOURCE_TIMEOUT` | `8` | per source, seconds; a slow source degrades rather than delays |
-| `METASEARCH_GDELT_TIMEOUT` | `15` | GDELT's own deadline; must stay under the overall one |
-| `METASEARCH_OVERALL_TIMEOUT` | `20` | whole fan-out deadline |
-| `FACTCHECK_API_KEY_FILE` | mounted path | a **path**, never a value; empty file means the fact-check source is not registered |
-| `METASEARCH_PER_SOURCE_RESULTS` | `15` | This bounds results from each source before fusion. |
-| `METASEARCH_RRF_K` | `60` | the RRF constant; larger flattens rank differences |
-| `METASEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `3` / `15` | the floor and ceiling per kind |
-| `METASEARCH_FUSION_CANDIDATES` | `60` | This bounds fused candidates before source-kind limits. |
-| `MAX_RESULTS` | `15` | default result count |
-| `SEARCH_SNIPPET_CHARS` | `400` | snippets land in the agent's context, so they are capped |
-| `CHAT_ARTIFACTS_ENABLED` | `true` | off means search works and produces no detail artifact |
+Deployment generates configuration from `hoover4.ini`.
+The service also reads these environment variables.
 
-## Tests
+| Variable | Default | Behavior |
+|---|---|---|
+| `METASEARCH_SOURCES` | All registered sources. | Select the default source set. |
+| `METASEARCH_MAX_QUERIES` | `5` | Bound query angles in one call. |
+| `METASEARCH_MAX_CONCURRENT` | `4` | Bound running searches. |
+| `METASEARCH_MAX_WAITING` | `16` | Bound queued searches. |
+| `METASEARCH_QUEUE_WAIT_SECONDS` | `60` | Bound admission wait time. |
+| `METASEARCH_FETCH_BUDGET` | `60` | Bound fetching across all query angles. |
+| `METASEARCH_SOURCE_TIMEOUT` | `8` | Bound one source's fetch time. |
+| `METASEARCH_OVERALL_TIMEOUT` | `20` | Bound one query's source fan-out. |
+| `METASEARCH_ATTEMPT_TIMEOUT` | `6` | Bound an attempt when another route remains. |
+| `METASEARCH_TOR_ROUTES` | Empty. | Configure named SOCKS routes. |
+| `BROWSER_FETCH_URL` | Empty. | Configure the internal browser fetch route. |
+| `METASEARCH_COOLDOWN_SECONDS` | `600` | Delay a blocked route for the same host. |
+| `METASEARCH_SOLVE_TIMEOUT` | `30` | Bound a proof-of-work solve. |
+| `METASEARCH_SOLVE_BACKOFF` | `300` | Delay a new solve after failure. |
+| `METASEARCH_PER_SOURCE_RESULTS` | `15` | Bound results from each source. |
+| `METASEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `3` / `15` | Reserve and limit each result kind. |
+| `MAX_RESULTS` | `15` | Set the default selected result count. |
+| `SEARCH_SNIPPET_CHARS` | `400` | Bound each model snippet. |
+| `METASEARCH_DIAGNOSTICS` | Disabled. | Include ranking and source timing in evaluation responses. |
+| `CHAT_ARTIFACTS_ENABLED` | `true` | Store search-detail artifacts. |
+
+The health response includes admission counts, route cooldowns, browser fetch state, and configured Tor connection state.
+A failed browser or Tor probe reports degraded status.
+The response reports web reranking as disabled.
+
+## Verification
+
+Run the source and shared tests in the service container.
 
 ```bash
 docker exec hoover4-mcp-metasearch python -m pytest tests/ -q
 ```
 
-The tests verify URL normalization, deduplication, fusion, source-kind limits, and the payload/artifact split.
-They verify that configured and disabled rerankers receive no web search calls.
-Captured HTML verifies source parsers. Live source failures appear in `degraded` at runtime.
+Captured source responses verify parsers and destination URL handling.
+Mock transports verify deadlines, cancellation, fallback, cooldowns, challenge limits, and failure reporting.
+Live source access and answer accuracy require separate verification.

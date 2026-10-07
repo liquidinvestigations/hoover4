@@ -1,9 +1,7 @@
 """Search sources: one name, one kind, one fetch function.
 
-This is the abstraction that let `hoover4-mcp-ddg` and `hoover4-mcp-wikipedia` be
-retired. Before it, the full research agent carried three overlapping "search the web"
-tools and had to guess which one to call; now there is exactly one, and choosing *where*
-to look is a `sources` argument rather than a tool choice.
+The server has one search tool. The `sources` argument selects where to look, so an agent
+does not choose between several search tools.
 
 A source's `kind` is not decoration. :mod:`.pipeline` applies a per-kind floor so an
 encyclopaedia entry or a news story is not buried by ten generic web results that RRF
@@ -17,10 +15,14 @@ name             kind         what it is
 ``ddg``          web          the HTML scraper in :mod:`.engines`
 ``brave``        web          "
 ``yahoo``        web          "
-``ddg_api``      web          the ``ddgs`` library's ``text()``, from `ddg_search_server`
-``ddg_news``     news         the ``ddgs`` library's ``news()``, same origin
+``bing``         web          "
+``google``       web          "
+``mojeek``       web          "
+``startpage``    web          "
+``ddg_api``      web          DuckDuckGo Lite, ``lite.duckduckgo.com/lite/``
+``ddg_news``     news         DuckDuckGo News, ``duckduckgo.com/news.js``
 ``gdelt``        news         GDELT DOC 2.0, world news across languages and back years
-``wikipedia``    reference    MediaWiki search + extracts, from `wikipedia_search_server`
+``wikipedia``    reference    MediaWiki search
 ``wikidata``     reference    structured entities: a company, a person, an identifier
 ``crossref``     reference    DOI metadata, resolving to doi.org
 ``factcheck``    reference    published fact-checks; **key-gated**, absent without one
@@ -28,11 +30,10 @@ name             kind         what it is
 ``archive_today` archive      the second archive; no API, so the flakiest source here
 ===============  ===========  =========================================================
 
-`ddg_api` is kept **alongside** the `ddg` HTML scraper rather than replacing it. They rot
-independently (a selector change breaks one and a library bump breaks the other), and
-the `degraded` list exists so that rot is visible rather than silent.
-`startpage` was removed for the opposite reason: it never worked at all (see
-:data:`.engines.ENGINES`), and a permanently-degraded source is a facade, not a metasearch.
+`ddg_api` is kept **alongside** the `ddg` HTML scraper rather than replacing it. They read
+two different DuckDuckGo pages with different markup, so they rot independently, and
+the `degraded` list exists so that rot is visible rather than silent. Only `ddg_api` takes
+the `timelimit` filter.
 
 **A source that fails or times out must never fail the tool.** Every fetch here returns a
 list, empty on any failure, and names itself in `degraded`. A fetch that knows *why* it
@@ -45,25 +46,34 @@ selector rot, an HTTP 429 and an unreachable host, and those want three differen
 failing on every call. A source the model is told about and cannot use costs a round trip
 to discover that. The key is read from a file path in the environment and never from a
 value, never defaulted, and never logged.
+
+Every source sends its HTTP requests through :func:`metasearch_server.fetch.fetch`, with
+the client, the route order and the rate cap of :data:`metasearch_server.fetch.TRANSPORTS`.
+See :mod:`.fetch`.
 """
 
 from __future__ import annotations
 
 import asyncio
+import html as html_mod
 import logging
 import os
 import re
+import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
-import httpx
-
+from metasearch_server import fetch as fetch_mod
 from metasearch_server.engines import (
     ENGINES,
     SearchResult,
     _fetch_engine,
+    dedupe_within_source,
+    parse_duckduckgo_lite,
     unwrap_tracking_url,
 )
+from metasearch_server.fetch import FetchError, fetch
 
 log = logging.getLogger(__name__)
 
@@ -83,14 +93,16 @@ KIND_ARCHIVE = "archive"
 ALL_KINDS = (KIND_WEB, KIND_NEWS, KIND_REFERENCE, KIND_ARCHIVE)
 
 #: Per-source deadline. Shorter than the overall one below, so one slow source costs the
-#: search a few seconds rather than the whole budget.
+#: search a few seconds rather than the whole budget. It holds a refused direct attempt and
+#: one attempt over Tor.
 SOURCE_TIMEOUT = float(os.getenv("METASEARCH_SOURCE_TIMEOUT", "8"))
 
 #: Overall fan-out deadline. Anything still running when it expires is cancelled and
 #: reported degraded.
 OVERALL_TIMEOUT = float(os.getenv("METASEARCH_OVERALL_TIMEOUT", "20"))
 
-#: Bound results from each source before deduplication and fusion.
+#: How many results to ask each source for. Larger than the caller's `max_results`
+#: because fusion and the per-kind floor need candidates to work with.
 PER_SOURCE_RESULTS = int(os.getenv("METASEARCH_PER_SOURCE_RESULTS", "15"))
 
 DDG_REGION = os.getenv("DDG_DEFAULT_REGION", "wt-wt")
@@ -114,99 +126,125 @@ class Source:
 
 # --------------------------------------------------------------- HTML scrapers (web)
 
+#: The deadline of `startpage`. A new Anubis solve takes about 2 s on average with 4 worker
+#: processes, and the search then needs 2 more requests.
+STARTPAGE_TIMEOUT = float(os.getenv("METASEARCH_STARTPAGE_TIMEOUT", "15"))
+
+
 def _html_engine_source(name: str) -> Source:
     async def fetch(query: str, max_results: int, timelimit: str | None) -> list[SearchResult]:
         # The HTML endpoints take no time filter, so `timelimit` is ignored here rather
         # than faked, a filter that silently does nothing is worse than one that is
         # documented as unsupported.
-        headers = {
-            "User-Agent": os.getenv(
-                "METASEARCH_USER_AGENT",
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/122.0.0.0 Safari/537.36",
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-            results, reason = await _fetch_engine(client, name, query)
+        results, reason = await _fetch_engine(name, query)
         if reason:
             raise SourceUnavailable(reason)
         for r in results:
             r.kind = KIND_WEB
         return results[:max_results]
 
-    return Source(name=name, kind=KIND_WEB, fetch=fetch, description=f"{name} HTML results")
+    return Source(name=name, kind=KIND_WEB, fetch=fetch, description=f"{name} HTML results",
+                  timeout=STARTPAGE_TIMEOUT if name == "startpage" else 0.0)
 
 
-# ------------------------------------------------------------------- ddgs library
+# ------------------------------------------------------------------- DuckDuckGo
 
-def _ddgs_call(method: str, query: str, max_results: int, timelimit: str | None) -> list[dict]:
-    """Blocking `ddgs` call. Run through `asyncio.to_thread`. The library is sync, and
-    calling it on the event loop would stall every other source in the fan-out."""
-    from ddgs import DDGS
+#: The DuckDuckGo endpoints of `ddg_api` and `ddg_news`. The `ddgs` library makes its own
+#: HTTP requests and takes no HTTP client, so these sources fetch the endpoints through
+#: :func:`fetch` and do not use the library. `news.js` refuses this host's address, so
+#: `ddg_news` uses the Tor routes only.
+DDG_LITE_URL = "https://lite.duckduckgo.com/lite/"
+DDG_HOME_URL = "https://duckduckgo.com/"
+DDG_NEWS_URL = "https://duckduckgo.com/news.js"
 
-    with DDGS(timeout=int(SOURCE_TIMEOUT)) as ddgs:
-        return list(
-            getattr(ddgs, method)(
-                query,
-                region=DDG_REGION,
-                safesearch=DDG_SAFESEARCH,
-                timelimit=timelimit,
-                max_results=max_results,
-            )
-        )
+#: The DuckDuckGo `kp` and `p` values of `DDG_DEFAULT_SAFESEARCH`.
+_DDG_SAFESEARCH = {"on": "1", "moderate": "-1", "off": "-2"}
+
+#: The `vqd` token that duckduckgo.com puts in its result page. `news.js` needs it.
+_VQD = re.compile(r"""vqd=["']?([0-9-]+)""")
 
 
 async def _fetch_ddg_api(query: str, max_results: int, timelimit: str | None) -> list[SearchResult]:
+    """The result list of DuckDuckGo Lite. `timelimit` becomes its `df` filter."""
+    params = {"q": query, "kl": DDG_REGION, "kp": _DDG_SAFESEARCH.get(DDG_SAFESEARCH, "-1")}
+    if timelimit:
+        params["df"] = timelimit
     try:
-        rows = await asyncio.to_thread(_ddgs_call, "text", query, max_results, timelimit)
-    except Exception as exc:  # noqa: BLE001 - one dead source degrades, never fails
-        log.warning("source ddg_api failed: %s", exc)
-        return []
-    return [
-        SearchResult(
-            title=row.get("title", "") or "",
-            # The `ddgs` library fans out over several back ends of its own, so a row can
-            # arrive carrying another engine's click-tracker. See :func:`unwrap_tracking_url`.
-            url=unwrap_tracking_url(row.get("href", "") or row.get("url", "") or ""),
-            snippet=row.get("body", "") or "",
-            kind=KIND_WEB,
-            published=str(row.get("date") or ""),
-        )
-        for row in rows
-        if (row.get("href") or row.get("url"))
-    ]
+        response = await fetch("ddg_api", DDG_LITE_URL, params=params, timeout=SOURCE_TIMEOUT)
+    except FetchError as exc:
+        raise SourceUnavailable(str(exc)) from exc
+    if response.status >= 400:
+        raise SourceUnavailable(f"HTTP {response.status}")
+    results = parse_duckduckgo_lite(response.text)
+    if not results:
+        raise SourceUnavailable(
+            f"HTTP {response.status} with no results (a bot challenge page?)"
+            if response.status != 200 else "answered with no results (selector rot?)")
+    for r in results:
+        r.kind = KIND_WEB
+    return dedupe_within_source(results)[:max_results]
 
 
 async def _fetch_ddg_news(query: str, max_results: int, timelimit: str | None) -> list[SearchResult]:
+    """DuckDuckGo News: the result page gives the `vqd` token, then `news.js` the rows.
+
+    Both requests use one SOCKS user name and the route of the first answer, so they go
+    through one Tor circuit.
+    """
+    circuit = uuid.uuid4().hex
     try:
-        rows = await asyncio.to_thread(_ddgs_call, "news", query, max_results, timelimit)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("source ddg_news failed: %s", exc)
-        return []
+        page = await fetch("ddg_news", DDG_HOME_URL, params={"q": query}, circuit=circuit,
+                           timeout=SOURCE_TIMEOUT)
+    except FetchError as exc:
+        raise SourceUnavailable(str(exc)) from exc
+    if page.status >= 400:
+        raise SourceUnavailable(f"HTTP {page.status} from the result page")
+    token = _VQD.search(page.text)
+    if not token:
+        raise SourceUnavailable("the result page has no vqd token (a bot challenge page?)")
+    params = {
+        "l": DDG_REGION,
+        "o": "json",
+        "noamp": "1",
+        "q": query,
+        "vqd": token.group(1),
+        "p": _DDG_SAFESEARCH.get(DDG_SAFESEARCH, "-1"),
+    }
+    if timelimit:
+        params["df"] = timelimit
+    payload = await _get_json(DDG_NEWS_URL, params, "ddg_news",
+                              headers={"Referer": DDG_HOME_URL}, circuit=circuit,
+                              prefer=page.route)
     out = []
-    for row in rows:
-        # News rows are the worst offenders: `ddgs` routes several of its news back ends
-        # through `r.search.yahoo.com/_ylt=…`, and an un-unwrapped wrapper normalises to a
-        # different key from the direct URL, so dedupe cannot merge the two and the model
-        # ends up citing a tracking link to the user.
-        url = unwrap_tracking_url(row.get("url") or row.get("href") or "")
+    for row in (payload or {}).get("results", [])[:max_results]:
+        # A news row can carry a click-tracker of another engine. See
+        # :func:`unwrap_tracking_url`.
+        url = unwrap_tracking_url(str(row.get("url") or ""))
         if not url:
             continue
-        source_name = row.get("source") or ""
-        snippet = row.get("body", "") or ""
+        source_name = str(row.get("source") or "")
+        snippet = _strip_tags(str(row.get("excerpt") or ""))
         out.append(
             SearchResult(
-                title=row.get("title", "") or "",
+                title=_strip_tags(str(row.get("title") or "")),
                 url=url,
                 # The outlet is the most useful thing a news result carries beyond the
                 # headline, and it is not recoverable from the URL for syndicated wires.
                 snippet=f"{source_name}: {snippet}" if source_name else snippet,
                 kind=KIND_NEWS,
-                published=str(row.get("date") or ""),
+                published=_unix_date(row.get("date")),
             )
         )
     return out
+
+
+def _unix_date(value: Any) -> str:
+    """An ISO 8601 UTC time from a Unix time in seconds, or the value as text."""
+    from datetime import datetime, timezone
+
+    if isinstance(value, (int, float)) and value > 0:
+        return datetime.fromtimestamp(value, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return str(value or "")
 
 
 # --------------------------------------------------------------------- Wikipedia
@@ -231,16 +269,22 @@ async def _fetch_wikipedia(query: str, max_results: int, timelimit: str | None) 
     }
     url = WIKIPEDIA_API.format(lang=WIKIPEDIA_LANGUAGE)
     try:
-        async with httpx.AsyncClient(
-            headers={"User-Agent": "hoover4-metasearch/1.0 (research tool)"},
-            follow_redirects=True,
-        ) as client:
-            response = await client.get(url, params=params, timeout=SOURCE_TIMEOUT)
-            response.raise_for_status()
-            rows = response.json().get("query", {}).get("search", [])
+        response = await fetch(
+            "wikipedia", url, params=params, headers={"User-Agent": API_USER_AGENT},
+            timeout=SOURCE_TIMEOUT,
+        )
+        if response.status != 200:
+            raise SourceUnavailable(f"HTTP {response.status}")
+        rows = response.json().get("query", {}).get("search", [])
+    except SourceUnavailable:
+        raise
+    except FetchError as exc:
+        # The message of a FetchError names the cause, as in the other sources.
+        log.warning("source wikipedia failed: %s", exc)
+        raise SourceUnavailable(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         log.warning("source wikipedia failed: %s", exc)
-        return []
+        raise SourceUnavailable(f"{type(exc).__name__}: {exc}") from exc
 
     out = []
     for row in rows:
@@ -252,9 +296,7 @@ async def _fetch_wikipedia(query: str, max_results: int, timelimit: str | None) 
                 title=title,
                 url=f"https://{WIKIPEDIA_LANGUAGE}.wikipedia.org/wiki/{title.replace(' ', '_')}",
                 # MediaWiki marks the matched terms with <span class="searchmatch">.
-                # These snippets are rendered as text nodes by the card, but stripping
-                # the markup here keeps the model's context free of HTML it would
-                # otherwise try to interpret.
+                # The markup is removed so that the model receives plain text.
                 snippet=_strip_tags(row.get("snippet") or ""),
                 kind=KIND_REFERENCE,
                 published=str(row.get("timestamp") or ""),
@@ -273,19 +315,20 @@ def _strip_tags(html: str) -> str:
             depth = max(0, depth - 1)
         elif depth == 0:
             out.append(char)
-    return " ".join("".join(out).replace("&quot;", '"').replace("&amp;", "&").split())
+    # The markup is removed first, so an escaped `&lt;b&gt;` stays text and is not removed.
+    return " ".join(html_mod.unescape("".join(out)).split())
 
 
 # -------------------------------------------------------- the JSON-API sources
 
-#: Every JSON API below identifies itself the same way. Several of these services run a
-#: "polite pool" keyed on a recognisable agent string and throttle anonymous callers
-#: harder, so this is not decoration.
-API_USER_AGENT = "hoover4-metasearch/1.0 (research tool)"
+#: Every JSON API below sends the same agent string. Crossref and the Wikimedia APIs give
+#: more capacity to a caller with an identifiable agent string than to an anonymous one.
+API_USER_AGENT = "from-the-cracks-metasearch/1.0 (research tool)"
 
 
 async def _get_json(
-    url: str, params: dict[str, str], source: str, timeout: float = 0.0
+    url: str, params: dict[str, str], source: str, timeout: float = 0.0,
+    headers: dict[str, str] | None = None, circuit: str = "", prefer: str = "",
 ) -> Any:
     """One GET returning parsed JSON, or :class:`SourceUnavailable` saying why not.
 
@@ -295,25 +338,26 @@ async def _get_json(
     indistinguishable from one that found nothing.
     """
     try:
-        async with httpx.AsyncClient(
-            headers={"User-Agent": API_USER_AGENT, "Accept": "application/json"},
-            follow_redirects=True,
-        ) as client:
-            # The client's own deadline must match the one `fetch_all` will enforce, or a
-            # source given a longer leash is cut off by its HTTP client instead and
-            # reports a connect timeout it never had.
-            response = await client.get(
-                url, params=params, timeout=timeout or SOURCE_TIMEOUT
-            )
-    except Exception as exc:  # noqa: BLE001 - degradation, never a tool failure
-        raise SourceUnavailable(f"{type(exc).__name__}: {exc}") from exc
-    if response.status_code != 200:
-        raise SourceUnavailable(f"HTTP {response.status_code}")
+        # The HTTP deadline must match the one `fetch_all` enforces. Otherwise a source
+        # with a longer deadline stops at the HTTP timeout and reports a wrong cause.
+        response = await fetch(
+            source,
+            url,
+            params=params,
+            headers=headers or {"User-Agent": API_USER_AGENT, "Accept": "application/json"},
+            timeout=timeout or SOURCE_TIMEOUT,
+            circuit=circuit,
+            prefer=prefer,
+        )
+    except FetchError as exc:
+        raise SourceUnavailable(str(exc)) from exc
+    if response.status != 200:
+        raise SourceUnavailable(f"HTTP {response.status}")
     try:
         return response.json()
     except ValueError:
         raise SourceUnavailable(
-            f"answered {response.status_code} with a non-JSON body: "
+            f"answered {response.status} with a non-JSON body: "
             f"{response.text.strip()[:120]}"
         ) from None
 
@@ -331,7 +375,30 @@ GDELT_TIMEOUT = float(os.getenv("METASEARCH_GDELT_TIMEOUT", "15"))
 _GDELT_TIMELIMIT = {"d": "1d", "w": "1w", "m": "1m", "y": "12m"}
 
 
+#: GDELT pacing: at most one request in flight, and at least this many seconds from the end
+#: of one request to the start of the next. GDELT answers HTTP 429 to a faster caller.
+GDELT_GAP_S = float(os.getenv("METASEARCH_GDELT_GAP_SECONDS", "10"))
+
+#: Whether a GDELT request runs, and the `time.monotonic()` value of the next allowed start.
+_GDELT_PACE = {"busy": False, "next": 0.0}
+
+
 async def _fetch_gdelt(query: str, max_results: int, timelimit: str | None) -> list[SearchResult]:
+    """GDELT articles. A call that is not due is skipped at once with the reason "gdelt paced"."""
+    if _GDELT_PACE["busy"]:
+        raise SourceUnavailable("gdelt paced: another GDELT request is running")
+    wait = _GDELT_PACE["next"] - time.monotonic()
+    if wait > 0:
+        raise SourceUnavailable(f"gdelt paced: the next GDELT request can start in {wait:.0f} s")
+    _GDELT_PACE["busy"] = True
+    try:
+        return await _gdelt_request(query, max_results, timelimit)
+    finally:
+        _GDELT_PACE["busy"] = False
+        _GDELT_PACE["next"] = time.monotonic() + GDELT_GAP_S
+
+
+async def _gdelt_request(query: str, max_results: int, timelimit: str | None) -> list[SearchResult]:
     params = {
         "query": query,
         "mode": "artlist",
@@ -677,21 +744,14 @@ async def _fetch_archive_today(
     if not host:
         raise SourceUnavailable("the archive indexes URLs and this query names no host")
     try:
-        async with httpx.AsyncClient(
-            headers={
-                "User-Agent": os.getenv("METASEARCH_USER_AGENT", API_USER_AGENT),
-                "Accept-Language": "en-US,en;q=0.9",
-            },
-            follow_redirects=True,
-        ) as client:
-            # `/<host>` is the snapshot listing. A trailing `*` is the form the site's own
-            # UI shows and it answers 404 to a request for it, which reads as "nothing
-            # archived" rather than as a wrong URL.
-            response = await client.get(f"{ARCHIVE_TODAY_URL}/{host}", timeout=SOURCE_TIMEOUT)
-    except Exception as exc:  # noqa: BLE001
-        raise SourceUnavailable(f"{type(exc).__name__}: {exc}") from exc
-    if response.status_code != 200:
-        raise SourceUnavailable(f"HTTP {response.status_code}")
+        # `/<host>` is the snapshot listing. The site answers 404 to the form with a
+        # trailing `*` that its own interface shows.
+        response = await fetch("archive_today", f"{ARCHIVE_TODAY_URL}/{host}",
+                               timeout=SOURCE_TIMEOUT)
+    except FetchError as exc:
+        raise SourceUnavailable(str(exc)) from exc
+    if response.status != 200:
+        raise SourceUnavailable(f"HTTP {response.status}")
 
     # Each snapshot is linked twice in the listing (once from its capture date and once
     # from the page's own title), so the anchors are gathered per URL and the longest one
@@ -736,13 +796,13 @@ SOURCES: dict[str, Source] = {
         name="ddg_api",
         kind=KIND_WEB,
         fetch=_fetch_ddg_api,
-        description="DuckDuckGo through the ddgs library",
+        description="DuckDuckGo Lite results, with the time filter",
     ),
     "ddg_news": Source(
         name="ddg_news",
         kind=KIND_NEWS,
         fetch=_fetch_ddg_news,
-        description="DuckDuckGo News through the ddgs library",
+        description="DuckDuckGo News",
     ),
     "gdelt": Source(
         name="gdelt",
@@ -811,7 +871,7 @@ def configured_sources() -> list[str]:
     `configured_engines()` has always done: the point of the env var is to disable a
     rotted source in a hurry, and a typo there must not take the server down.
 
-    `METASEARCH_ENGINES` is still honoured for the four HTML scrapers so an existing
+    `METASEARCH_ENGINES` is still honoured for the HTML scrapers so an existing
     deployment's setting keeps meaning what it meant.
     """
     # Empty is unset, not "no sources". A compose file renders an unset variable as an
@@ -864,62 +924,93 @@ def resolve_sources(requested: list[str] | None) -> tuple[list[str], list[str]]:
     return (wanted or configured), unknown
 
 
+#: The reason of a source that answered with an empty list and no error.
+NO_RESULTS = "answered with no results"
+
+
 async def fetch_all(
     query: str,
     names: list[str],
     per_source_results: int = PER_SOURCE_RESULTS,
     timelimit: str | None = None,
-) -> tuple[dict[str, list[SearchResult]], dict[str, float], list[str], dict[str, str]]:
+    overall_timeout: float | None = None,
+) -> tuple[dict[str, list[SearchResult]], dict[str, float], list[str], dict[str, str],
+           dict[str, str]]:
     """Query every named source in parallel.
 
-    Returns `(results per source, latency_ms per source, degraded names, reason per
-    degraded name)`. A source that raised, timed out, or came back empty is degraded,
-    from the *ordering's* point of view those are the same failure, but from a maintainer's
-    they are not, so the reason travels with the name instead of only reaching the log.
-    """
-    import time
+    `overall_timeout` is the deadline in seconds for the whole fan-out. The default is
+    :data:`OVERALL_TIMEOUT`. The pipeline gives a smaller value when the time budget of
+    the call has less time left.
 
-    async def run(name: str) -> tuple[str, list[SearchResult], float, str]:
+    Returns `(results per source, latency_ms per source, degraded names, reason per
+    degraded name, routes per source)`. A source that raised, timed out, or came back empty
+    is degraded. From the *ordering's* point of view those are the same failure, but from
+    a maintainer's they are not, so each degraded name has a reason. The routes of a source
+    are the routes of its answers, joined with `+`, for example `direct` or `tor-de`.
+    """
+    overall = OVERALL_TIMEOUT if overall_timeout is None else overall_timeout
+    fan_out_end = time.monotonic() + max(0.0, overall)
+
+    async def run(name: str) -> tuple[str, list[SearchResult], float, str, str]:
         source = SOURCES[name]
         deadline = source.timeout or SOURCE_TIMEOUT
         started = time.monotonic()
         reason = ""
-        try:
-            results = await asyncio.wait_for(
-                source.fetch(query, per_source_results, timelimit), timeout=deadline
-            )
-        except asyncio.TimeoutError:
-            log.warning("source %s exceeded its %.0fs deadline", name, deadline)
-            results, reason = [], f"timed out after {deadline:g}s"
-        except SourceUnavailable as exc:
-            log.warning("source %s unavailable: %s", name, exc)
-            results, reason = [], str(exc)
-        except Exception as exc:  # noqa: BLE001 - degradation, never a tool failure
-            log.warning("source %s raised: %s", name, exc)
-            results, reason = [], f"{type(exc).__name__}: {exc}"
+        with fetch_mod.record_routes() as routes:
+            try:
+                # The fetches of this source end by the deadline of the source. The source
+                # is cancelled `fetch.ANSWER_GRACE_S` later, so a fetch reports its own
+                # cause, not a timeout, also when the event loop is busy.
+                with fetch_mod.source_deadline(min(started + deadline, fan_out_end)):
+                    results = await asyncio.wait_for(
+                        source.fetch(query, per_source_results, timelimit),
+                        timeout=deadline + fetch_mod.ANSWER_GRACE_S,
+                    )
+            except asyncio.TimeoutError:
+                limit = deadline + fetch_mod.ANSWER_GRACE_S
+                log.warning("source %s exceeded its %.0fs deadline", name, limit)
+                results, reason = [], f"timed out after {limit:g}s"
+            except SourceUnavailable as exc:
+                log.warning("source %s unavailable: %s", name, exc)
+                results, reason = [], str(exc)
+            except Exception as exc:  # noqa: BLE001 - degradation, never a tool failure
+                log.warning("source %s raised: %s", name, exc)
+                results, reason = [], f"{type(exc).__name__}: {exc}"
         elapsed = (time.monotonic() - started) * 1000.0
         for r in results:
             r.kind = r.kind or source.kind
-        return name, results, elapsed, reason
+        return name, results, elapsed, reason or ("" if results else NO_RESULTS), "+".join(
+            dict.fromkeys(routes))
 
+    # A source that finished before the deadline keeps its results. Only the sources
+    # still running at the deadline are cancelled.
+    tasks = [asyncio.create_task(run(n)) for n in names]
+    gathered = []
     try:
-        gathered = await asyncio.wait_for(
-            asyncio.gather(*(run(n) for n in names)), timeout=OVERALL_TIMEOUT
-        )
-    except asyncio.TimeoutError:
-        log.warning("metasearch fan-out exceeded %.0fs overall", OVERALL_TIMEOUT)
-        gathered = []
+        if tasks:
+            done, pending = await asyncio.wait(tasks, timeout=max(0.0, overall))
+            if pending:
+                log.warning("metasearch fan-out exceeded %.1fs overall", overall)
+            gathered = [task.result() for task in done]
+    finally:
+        # Also runs when the caller is cancelled, so no fetch outlives its call.
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     per_source = {name: [] for name in names}
     latency = {name: 0.0 for name in names}
-    reasons = {name: f"cancelled by the {OVERALL_TIMEOUT:g}s overall deadline" for name in names}
-    for name, results, elapsed, reason in gathered:
+    reasons = {name: f"cancelled by the {overall:.1f}s overall deadline" for name in names}
+    routes = {name: "" for name in names}
+    for name, results, elapsed, reason, route in gathered:
         per_source[name] = results
         latency[name] = round(elapsed, 1)
         reasons[name] = reason
+        routes[name] = route
 
     degraded = [name for name in names if not per_source[name]]
-    return per_source, latency, degraded, {n: reasons[n] for n in degraded if reasons[n]}
+    return per_source, latency, degraded, {n: reasons[n] for n in degraded}, routes
 
 
 def describe_sources() -> list[dict]:

@@ -7,6 +7,8 @@ where a silent wrong answer would actually hide, plus each parser against a capt
 fragment so a selector edit is caught.
 """
 
+from pathlib import Path
+
 import pytest
 
 from metasearch_server.engines import (
@@ -15,7 +17,14 @@ from metasearch_server.engines import (
     configured_engines,
     normalise_url,
     reciprocal_rank_fusion,
+    unwrap_tracking_url,
 )
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _fixture(name: str) -> str:
+    return (FIXTURES / name).read_text(encoding="utf-8")
 
 
 class TestNormaliseUrl:
@@ -102,7 +111,7 @@ class TestReciprocalRankFusion:
         assert merged[0].url == "https://agreed.example"
         assert len([r for r in merged if "solo" in r.url]) == 1
 
-    def test_source_ranks_are_recorded_for_the_detail_artifact(self):
+    def test_source_ranks_are_recorded_per_source(self):
         merged = reciprocal_rank_fusion(
             {
                 "a": [SearchResult("x", "https://x.example"), SearchResult("y", "https://y.example")],
@@ -135,8 +144,8 @@ class TestEngineConfiguration:
         assert configured_engines() == ["ddg"]
 
     def test_a_retired_engine_named_by_an_old_setting_is_dropped(self, monkeypatch):
-        """Deployments still carry `startpage` in their rendered env."""
-        monkeypatch.setenv("METASEARCH_ENGINES", "ddg,startpage,yahoo")
+        """An old setting can name an engine that is no longer registered."""
+        monkeypatch.setenv("METASEARCH_ENGINES", "ddg,searx,yahoo")
         assert configured_engines() == ["ddg", "yahoo"]
 
     def test_an_empty_setting_falls_back_rather_than_disabling_search(self, monkeypatch):
@@ -199,8 +208,7 @@ class TestParsers:
 
     def test_brave_reads_the_current_generic_snippet_markup(self):
         """Captured live: `.snippet-description` is gone and the description moved into
-        `.generic-snippet .content`, so every Brave result carried an empty snippet, and
-        an empty snippet is a candidate the cross-encoder scores on its title alone."""
+        `.generic-snippet .content`, so every Brave result carried an empty snippet."""
         html = """
         <div class="snippet" data-type="web">
           <a class="l1" href="https://brave.example/x">
@@ -245,8 +253,7 @@ class TestParsers:
         """Captured live: the anchor wraps the favicon, the site name AND the URL
         breadcrumb as well as the `h3`, so the link's text was
         `Wikipediahttps://en.wikipedia.org › wiki › Eiffel_TowerEiffel Tower - Wikipedia`.
-        That string is what the user reads and what the reranker scores, a page with a
-        keyword-stuffed breadcrumb outranked the clean encyclopaedia entry because of it.
+        That string is what the user reads and what the model cites.
         """
         html = """
         <div class="dd algo">
@@ -272,12 +279,155 @@ class TestParsers:
         """
         assert ENGINES["yahoo"][1](html)[0].title == "Plain title"
 
+    def test_bing_reads_a_captured_page(self):
+        """`tests/fixtures/bing_eiffel_tower_height.html` is a live capture, cut to 4 rows."""
+        results = ENGINES["bing"][1](_fixture("bing_eiffel_tower_height.html"))
+        assert [r.url for r in results] == [
+            "https://en.wikipedia.org/wiki/Eiffel_Tower",
+            "https://www.toureiffel.paris/en/the-monument/key-figures",
+            "https://eiffeltowertravel.com/height-and-facts",
+            "https://www.britannica.com/topic/Eiffel-Tower-Paris-France",
+        ]
+        assert results[0].title == "Eiffel Tower - Wikipedia"
+        assert results[0].snippet.startswith("It was the first structure in the world")
+        assert all(r.title and r.snippet for r in results)
+
+    def test_bing_keeps_a_direct_link(self):
+        html = """
+        <ol id="b_results"><li class="b_algo">
+          <h2><a href="https://direct.example/a">Direct</a></h2>
+          <div class="b_caption"><p>Old caption</p></div>
+        </li></ol>
+        """
+        results = ENGINES["bing"][1](html)
+        assert results[0].url == "https://direct.example/a"
+        assert results[0].snippet == "Old caption"
+
+    def test_google_reads_a_captured_page(self):
+        """`tests/fixtures/google_eiffel_tower_height.html` is a live capture, cut to 4
+        rows. Each link is an encrypted `/goto` token, so the URL stays on google.com."""
+        results = ENGINES["google"][1](_fixture("google_eiffel_tower_height.html"))
+        assert [r.title for r in results] == [
+            "Eiffel Tower",
+            "The Eiffel Tower facts, eight & weight",
+            "The tower was the tallest man-made structure in the world ...",
+            "Discover the Eiffel Tower, the greatest symbol of Paris!",
+        ]
+        assert all(r.url.startswith("https://www.google.com/goto?url=") for r in results)
+        assert results[0].snippet.startswith("The tower is 330 metres (1,083 ft) tall")
+        assert all(r.snippet for r in results)
+
+    def test_google_unwraps_its_url_redirect(self):
+        """The `/url?q=` link of the older and the no-script page."""
+        html = """
+        <div class="g"><a href="/url?q=https://real.example/g&amp;sa=U&amp;ved=x">
+          <h3>G Title</h3></a><div class="VwiC3b">G snippet</div></div>
+        """
+        results = ENGINES["google"][1](html)
+        assert results[0].url == "https://real.example/g"
+        assert results[0].title == "G Title"
+        assert results[0].snippet == "G snippet"
+
+    def test_google_skips_a_row_without_a_result_title(self):
+        html = """
+        <div id="rso">
+          <div class="MjjYud"><div>People also ask</div><a href="https://x.example/">x</a></div>
+          <div class="MjjYud"><a href="https://real.example/"><h3>Real</h3></a></div>
+        </div>
+        """
+        assert [r.url for r in ENGINES["google"][1](html)] == ["https://real.example/"]
+
+    def test_mojeek_reads_its_result_list(self):
+        """Not captured: Mojeek answered this host with its JavaScript challenge page
+        (`tests/fixtures/mojeek_captcha.html`). The fragment follows the public markup of
+        Mojeek result pages."""
+        html = """
+        <ul class="results-standard">
+          <li class="r1">
+            <a class="ob" href="https://en.wikipedia.org/wiki/Eiffel_Tower"><p class="i">en.wikipedia.org</p></a>
+            <h2><a class="title" href="https://en.wikipedia.org/wiki/Eiffel_Tower">Eiffel Tower - Wikipedia</a></h2>
+            <p class="s">The tower is 330 metres tall.</p>
+          </li>
+          <li class="r2">
+            <h2><a class="title" href="https://www.toureiffel.paris/en">La tour Eiffel</a></h2>
+            <p class="s">Official site.</p>
+          </li>
+        </ul>
+        """
+        results = ENGINES["mojeek"][1](html)
+        assert [r.url for r in results] == [
+            "https://en.wikipedia.org/wiki/Eiffel_Tower",
+            "https://www.toureiffel.paris/en",
+        ]
+        assert results[0].title == "Eiffel Tower - Wikipedia"
+        assert results[0].snippet == "The tower is 330 metres tall."
+
+    @pytest.mark.parametrize(
+        "engine, fixture",
+        [("google", "google_js_redirect.html"), ("mojeek", "mojeek_captcha.html")],
+    )
+    def test_a_captured_challenge_page_has_no_results(self, engine, fixture):
+        assert ENGINES[engine][1](_fixture(fixture)) == []
+
+    def test_unwrap_bing_ck_redirect(self):
+        url = ("https://www.bing.com/ck/a?!&&p=abc&ptn=3&ver=2&hsh=4"
+               "&u=a1aHR0cHM6Ly9lbi53aWtpcGVkaWEub3JnL3dpa2kvRWlmZmVsX1Rvd2Vy&ntb=1")
+        assert unwrap_tracking_url(url) == "https://en.wikipedia.org/wiki/Eiffel_Tower"
+
+    def test_unwrap_leaves_an_unknown_bing_encoding(self):
+        url = "https://www.bing.com/ck/a?!&&p=abc&u=zz&ntb=1"
+        assert unwrap_tracking_url(url) == url
+
     @pytest.mark.parametrize("name", sorted(ENGINES))
     def test_a_parser_returns_nothing_rather_than_raising_on_junk(self, name):
         """Selector rot must surface as an empty list (-> `degraded`), never a 500."""
         assert ENGINES[name][1]("<html><body><p>nothing here</p></body></html>") == []
 
-    def test_startpage_is_no_longer_registered(self):
-        """Retired, not disabled: its HTML is a JS app behind a captcha for every query,
-        so there is no selector to repair and no run in which it can come back."""
-        assert "startpage" not in ENGINES
+    def test_startpage_reads_the_result_object_of_its_script(self):
+        """The web results come from the JSON object of the page script. The advert block
+        is left out, and the `<b>` marks and character references become text."""
+        results = ENGINES["startpage"][1](_fixture("startpage_stam_stable_fluids.html"))
+        assert [r.url for r in results] == [
+            "https://dl.acm.org/doi/10.1145/311535.311548",
+            "https://www.researchgate.net/publication/2486965_Stable_Fluids",
+            results[2].url,
+        ]
+        assert len(results) == 3 and "ads.example" not in results[2].url
+        assert results[0].title.startswith("Stable fluids | Proceedings of the 26th")
+        assert "<b>" not in results[0].snippet and "&nbsp;" not in results[0].snippet
+
+    def test_startpage_with_a_broken_script_object_has_no_results(self):
+        page = '<script>React.createElement(UIStartpage.AppSerpWeb, {"render": </script>'
+        assert ENGINES["startpage"][1](page) == []
+
+
+class TestFetchEngineReasons:
+    """The reason names a challenge page apart from selector rot. No network."""
+
+    @staticmethod
+    def _run(monkeypatch, status, text):
+        import asyncio
+
+        from metasearch_server import engines
+        from metasearch_server.fetch import FetchResponse
+
+        async def fake_fetch(source, url, *, timeout, **_):
+            return FetchResponse(status=status, text=text, url=url)
+
+        monkeypatch.setattr(engines, "fetch", fake_fetch)
+        return asyncio.run(engines._fetch_engine("ddg", "q"))
+
+    def test_a_202_challenge_page_is_named(self, monkeypatch):
+        results, reason = self._run(monkeypatch, 202, "<html>select all squares</html>")
+        assert results == [] and reason.startswith("HTTP 202")
+
+    def test_an_empty_200_page_is_selector_rot(self, monkeypatch):
+        results, reason = self._run(monkeypatch, 200, "<html></html>")
+        assert results == [] and "selector rot" in reason
+
+    def test_an_empty_page_reason_names_the_page_title(self, monkeypatch):
+        results, reason = self._run(monkeypatch, 200, _fixture("mojeek_captcha.html"))
+        assert results == [] and reason.endswith("page title 'Captcha'")
+
+    def test_a_refusal_is_its_status(self, monkeypatch):
+        assert self._run(monkeypatch, 429, "")[1] == "HTTP 429"
