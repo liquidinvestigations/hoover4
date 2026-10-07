@@ -184,8 +184,10 @@ class FollowUpSubmitTests(unittest.IsolatedAsyncioTestCase):
 
 
 class FollowUpDriverTests(unittest.IsolatedAsyncioTestCase):
-    async def drive(self, followup):
+    async def drive(self, followup, preview=None):
         browser = AsyncMock()
+        self.preview_screenshot = AsyncMock(return_value=b"image")
+        preview = {"ok": False, "reason": "no_cards"} if preview is None else preview
         primary = observer.ConversationResult(
             name="driver-test", profile="chat_local", prompt_text="first",
             session_url="http://example.test/ai_chat/c/saved", submission_ok=True,
@@ -199,8 +201,8 @@ class FollowUpDriverTests(unittest.IsolatedAsyncioTestCase):
              patch("browser_lifecycle.stop_browser", AsyncMock()), \
              patch.object(observer, "watch_network", AsyncMock()), \
              patch.object(observer, "submit_and_observe", submit), \
-             patch.object(observer, "open_last_document_card", AsyncMock(return_value={"ok": False, "reason": "no_cards"})), \
-             patch.object(observer, "screenshot", AsyncMock(return_value=b"image")), \
+             patch.object(observer, "open_last_document_card", AsyncMock(return_value=preview)), \
+             patch.object(observer, "screenshot", self.preview_screenshot), \
              patch.object(observer, "check_history", AsyncMock(return_value={
                  "reload_survived": True, "before_answers": [{"seq": "2", "text": "answer"}],
              })), \
@@ -229,6 +231,17 @@ class FollowUpDriverTests(unittest.IsolatedAsyncioTestCase):
         _results, status, submit = await self.drive(followup)
         self.assertEqual(status, 0)
         self.assertEqual(submit.await_args_list[1].args[6], "chat_local")
+        self.preview_screenshot.assert_not_awaited()
+
+    async def test_a_document_card_keeps_its_preview_capture(self):
+        followup = observer.ConversationResult(
+            name="driver-test-followup", profile="chat_local", prompt_text="second",
+            submission_ok=True, turn_started=True, turn_phase="answered", completed_answer_present=True,
+        )
+        results, status, _submit = await self.drive(followup, {"ok": True, "count": 1})
+        self.assertEqual(status, 0)
+        self.assertTrue(results[0].document_preview["ok"])
+        self.preview_screenshot.assert_awaited_once()
 
 
 if __name__ == "__main__":

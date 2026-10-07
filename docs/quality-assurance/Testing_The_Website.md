@@ -154,10 +154,12 @@ Output lands at `website/test_reports/chat_observer/run-<UTC-timestamp>-<pid>/ch
 (gitignored, never wiped, same `latest` symlink convention), with `pre_send.snapshot.txt`,
 `<resolution>/interval-NNN-t<seconds>s.png` and matching `.snapshot.txt` at five-second
 deadlines, `<resolution>/completion-top.png` / `completion-bottom.png`,
-`document_preview.png`, `conversation.json`, `report.md`, and a run-level `chat_index.md`
+`conversation.json`, `report.md`, and a run-level `chat_index.md`
 with the generating-interval column an overlap claim needs. Same six severities and the same
 1/2/0 exit-status rule as the screenshot harness, read from `chat_observer.py`'s own exit
 code.
+The observer captures `document_preview.png` when the conversation has a document card.
+It skips the preview capture when no card exists.
 
 ## Two single-question diagnostics next to it
 

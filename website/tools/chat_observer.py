@@ -1145,14 +1145,15 @@ async def run_all(
                 try:
                     merged.document_preview = await asyncio.wait_for(
                         open_last_document_card(tabs[0]), PAGE_CALL_TIMEOUT_S)
-                    await asyncio.sleep(0.6)
-                    doc_shot = await asyncio.wait_for(screenshot(tabs[0], False), PAGE_CALL_TIMEOUT_S)
-                    (conv_dir / "document_preview.png").write_bytes(doc_shot)
-                    if merged.document_preview.get("ok") is False and merged.document_preview.get("reason") != "no_cards":
-                        merged.observations.append((
-                            DIAGNOSTIC_WARNING,
-                            f"a document card exists but would not open: {merged.document_preview}",
-                        ))
+                    if merged.document_preview.get("reason") != "no_cards":
+                        await asyncio.sleep(0.6)
+                        doc_shot = await asyncio.wait_for(screenshot(tabs[0], False), PAGE_CALL_TIMEOUT_S)
+                        (conv_dir / "document_preview.png").write_bytes(doc_shot)
+                        if merged.document_preview.get("ok") is False:
+                            merged.observations.append((
+                                DIAGNOSTIC_WARNING,
+                                f"a document card exists but would not open: {merged.document_preview}",
+                            ))
                 except Exception as exc:  # noqa: BLE001
                     merged.observations.append((DIAGNOSTIC_WARNING, f"document preview step failed: {exc}"))
 
