@@ -203,7 +203,16 @@ def _cite(owner: str, session: str, pages: list) -> dict:
             citations.append(ref)
         except (ValueError, KeyError, LookupError, PermissionError, artifacts.ArtifactWriteFailed) as exc:
             errors.append({"url": url, "error": str(exc)})
-    return {"citations": citations, "errors": errors}
+    result = {"citations": citations, "errors": errors}
+    if errors:
+        result["next_action"] = (
+            "Retry each failed page before answering. A partial success covers only its returned handles. "
+            "For absent text, copy a short exact phrase from candidate or suggested_terms. "
+            "For an unread page, call read_page, then call cite_pages again. "
+            'Use one page per call: {"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}. '
+            "Omit claims whose citations still fail."
+        )
+    return result
 
 
 async def cite(owner: str, session: str, pages: object) -> dict:

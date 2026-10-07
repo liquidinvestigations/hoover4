@@ -112,6 +112,7 @@ Its allowed-host validation also compares the ephemeral listener port.
 ## Web citations
 
 `read_page` stores successful Markdown under the caller and chat session.
+A stored read result reminds the model to cite its supporting text before answering.
 `cite_pages` accepts one to twelve previously read URLs with exact supporting terms.
 Case mismatch errors include literal source terms for an explicit retry.
 The failed call allocates no handle.
@@ -120,6 +121,8 @@ Terms match case and literal source text.
 A missing term or unread page returns an individual error.
 An absent term also returns bounded source context for a corrected citation request.
 That context does not allocate a handle or verify the missing wording.
+Partial results instruct the model to retry failed entries before answering.
+An unread source requires a successful read followed by another citation call.
 Successful citations return verified quotes, source offsets, a stored page identifier, and a stable `[Wn]` handle.
 A changed text version receives a different handle.
 A version field selects earlier stored text without another page request.

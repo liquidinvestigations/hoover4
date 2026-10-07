@@ -716,13 +716,19 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     snapshot = context.snapshot
     name = request.call.name
     allowed = snapshot.callable_names()
+    argument_hint = (
+        ' For cite_pages, retry one page with flat arguments: '
+        '{"url":"COPY_READ_PAGE_URL","terms":["COPY_SHORT_EXACT_PHRASE"]}. '
+        'Omit the pages list.'
+        if name == "cite_pages" else ""
+    )
 
     if request.call.argument_error:
         return _tool_response(request, _error(
             "invalid_arguments",
             "The call was not run, because the arguments could not be read as JSON: "
             f"{request.call.argument_error} Send the call again, with each argument as plain "
-            "JSON.", tool=name,
+            "JSON." + argument_hint, tool=name,
         ), "error", "invalid_arguments")
 
     if name not in allowed:
@@ -738,7 +744,7 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     if normalized.problem:
         log.info("tool %s: damaged arguments: %s", name, normalized.problem)
         return _tool_response(
-            request, _error("invalid_arguments", normalized.problem, tool=name), "error",
+            request, _error("invalid_arguments", normalized.problem + argument_hint, tool=name), "error",
             "invalid_arguments")
     if repairs:
         log.info("tool %s: %d argument repairs: %s", name, len(repairs), "; ".join(repairs))
@@ -746,7 +752,7 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     problem = validation_error(args, schema)
     if problem:
         return _tool_response(
-            request, _error("invalid_arguments", problem, tool=name), "error", "invalid_arguments",
+            request, _error("invalid_arguments", problem + argument_hint, tool=name), "error", "invalid_arguments",
             _with_repairs(None, repairs),
         )
 

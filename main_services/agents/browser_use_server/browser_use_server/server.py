@@ -486,12 +486,19 @@ class ReadPageTool(Tool):
 
         chat_session = _header(SESSION_HEADER)
         if username and chat_session:
+            retained = False
             for page in outcome.pages:
                 try:
-                    await asyncio.to_thread(page_citations.store_read, username, chat_session, page)
+                    retained = bool(await asyncio.to_thread(
+                        page_citations.store_read, username, chat_session, page)) or retained
                 except Exception:
                     log.exception("could not retain citation text for %s", page.url)
                     outcome.note += " The page preview could not be stored. Read the page again before citing it."
+            if retained:
+                outcome.note += (
+                    " Before using these facts, call cite_pages with this read_page URL and short exact terms from this text. "
+                    "Put the returned handle beside each supported claim. A read_page result alone is not a citation."
+                )
 
         failed = bool(outcome.pages) and all(page.error for page in outcome.pages)
         blocked = sum(1 for page in outcome.pages if page.blocked)

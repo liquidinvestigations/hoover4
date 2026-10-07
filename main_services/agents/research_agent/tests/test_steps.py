@@ -379,6 +379,19 @@ async def test_a_call_whose_arguments_are_not_json_is_kept_and_refused_with_the_
     assert seen == []
 
 
+async def test_damaged_page_citation_arguments_get_a_flat_retry_example():
+    seen = []
+    schema = {"type": "object", "properties": {"pages": {
+        "type": "array", "items": {"type": "object"}}}}
+    agent = FakeAgent([dict_tool("cite_pages", schema, seen)], {"cite_pages"})
+    result = await steps.run_tool_call(agent, tool_request(
+        "cite_pages", {"pages": ['{<|"|>url<|"|>:<|"|>https://source.example<|"|>}']}))
+    assert result["status"] == "error" and result["error_class"] == "invalid_arguments"
+    message = json.loads(result["content"])["message"]
+    assert "flat arguments" in message and '"terms":["COPY_SHORT_EXACT_PHRASE"]' in message
+    assert seen == []
+
+
 LEAKED = ('call:read_documents{collectionname:<|"|>testdata<|"|>,file_hash:[<|"|>36a12c77e4fd84e8'
           'd38542990f9bd657c6afb9768cae6703fc78b37cf64e88be<|"|>],page:0}')
 

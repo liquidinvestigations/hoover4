@@ -146,7 +146,8 @@ def test_explicit_capture_never_selects_another_parallel_tab(monkeypatch):
     }
 
 
-def test_reader_tool_uses_its_pool_without_starting_an_interactive_browser(monkeypatch):
+@pytest.mark.parametrize("retained", [True, False])
+def test_reader_tool_uses_its_pool_without_starting_an_interactive_browser(monkeypatch, retained):
     async def no_reaper():
         pass
     async def forbidden(*_):
@@ -157,11 +158,15 @@ def test_reader_tool_uses_its_pool_without_starting_an_interactive_browser(monke
         return read_page.ReadResult(pages=[read_page.PageRead(url=urls[0], full_text="Source text.")])
     monkeypatch.setattr(server.router, "ensure_reaper", no_reaper)
     monkeypatch.setattr(server.router, "get", forbidden)
-    monkeypatch.setattr(server, "_header", lambda key: {server.RUN_HEADER: "run", server.USER_HEADER: "user"}.get(key, ""))
+    monkeypatch.setattr(server, "_header", lambda key: {
+        server.RUN_HEADER: "run", server.USER_HEADER: "user", server.SESSION_HEADER: "chat"}.get(key, ""))
+    monkeypatch.setattr(server.page_citations, "store_read", lambda *_: "stored-page" if retained else "")
     monkeypatch.setattr(read_page, "read", read)
     monkeypatch.setattr(server.telemetry, "record_async", lambda *_args, **_kwargs: None)
     tool = server.ReadPageTool(name="read_page", description="Read public pages.", parameters=server.READ_PAGE_SCHEMA)
-    asyncio.run(tool.run({"urls": ["https://page.example"]}))
+    result = asyncio.run(tool.run({"urls": ["https://page.example"]}))
+    text = " ".join(block.text for block in result.content if hasattr(block, "text"))
+    assert ("call cite_pages" in text) is retained
 
 
 def test_cached_tor_read_preserves_route_and_link_mode(monkeypatch):

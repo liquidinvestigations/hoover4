@@ -335,7 +335,7 @@ pub fn TodoChanges(tool_output: String, running: bool, todo_versions: Vec<common
                 div { role: "alert", "{failure.message}" }
             } else if let Some(current) = current {
                 div { style: "font-size: 17px; font-weight: 700; margin-bottom: 8px;", "{current.goal}" }
-                ul { style: "margin: 0; padding-left: 20px;",
+                ul { style: "margin: 0; padding-left: 20px; list-style: disc;",
                     for item in current.items.clone() {
                         li { key: "{item.id}",
                             if item.status == "done" { s { "{item.text}" } }

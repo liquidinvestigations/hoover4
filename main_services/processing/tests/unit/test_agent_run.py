@@ -1051,6 +1051,7 @@ def test_document_and_web_findings_share_one_repair_note(citations_store):
     assert _check(citations_store).needed
     note = citations_store["messages"][-1]
     assert "Call `cite_pages`" in note.content
+    assert "Call cite_documents" in note.content
     assert "Paragraph 1" in note.content
     assert len([m for m in citations_store["messages"] if citations.is_citation_note(m)]) == 1
 
@@ -1236,4 +1237,7 @@ def test_one_web_handle_does_not_cover_an_uncited_paragraph():
     assert not check["web_missing"]
     assert check["unsupported_paragraphs"] == [{"number": 2, "text": answer.split("\n\n")[1]}]
     assert "Paragraph 2" in citations.repair_note(check)
+    assert "Call `cite_pages`" in citations.repair_note(check)
+    assert "Call cite_documents" not in citations.repair_note(check)
+    assert "every factual paragraph and list item" in citations.repair_note(check)
     assert citations.answer_metadata(answer, messages, entries, True)["citation_status"] == "missing"

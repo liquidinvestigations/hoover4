@@ -112,7 +112,7 @@ def repair_note(check: dict) -> str:
     problems = []
     if check.get("page_zero"):
         problems.append("The answer names page 0. Use the 1-based page from the verified cite_documents result.")
-    if check.get("web_missing"):
+    if check.get("web_missing") or (check.get("web_used") and check.get("unsupported_paragraphs")):
         problems.append('Call `cite_pages` before answering. Use one page per call: {"url":"COPY_READ_URL","terms":["COPY_EXACT_SOURCE_WORDS"]}. Copy a short phrase from read_page text. A title, paraphrase, or guessed wording can fail. If the call returns an error, correct it and retry. Only returned handles are valid.')
     if check.get("web_missing") and check.get("read_page_urls"):
         problems.append("Already read page URLs: " + ", ".join(check["read_page_urls"]) + ". Cite the supporting pages from this list.")
@@ -126,13 +126,16 @@ def repair_note(check: dict) -> str:
         location = (f"List item {paragraph['item']} in paragraph {paragraph['number']}"
                     if "item" in paragraph else f"Paragraph {paragraph['number']}")
         problems.append(f"{location} has a name or number without a source: {paragraph['text']} Add its citation or remove the claim.")
+    if check.get("unsupported_paragraphs"):
+        problems.append("Give every factual paragraph and list item a verified source handle, including items beyond these examples. Retry each failed citation entry before answering. After another read_page call, call cite_pages again. Remove claims that have no verified source.")
     if check.get("unresolved"):
         problems.append("No successful citation result gives "
                         + ", ".join(check["unresolved"]) + ".")
     if check.get("conflicting"):
         problems.append("Results give " + ", ".join(check["conflicting"])
                         + " for more than one document.")
-    if check.get("unsupported_paragraphs") and not check.get("web_missing"):
+    if check.get("unsupported_paragraphs") and (check.get("documents_read") or
+            (not check.get("web_used") and not check.get("web_missing"))):
         problems.append('Call cite_documents with {"citations":[{"collectionname":"COPY_COLLECTION","file_hash":"COPY_HASH","quote":"COPY_EXACT_SOURCE_SENTENCE","why":"What it supports"}]}. The quote field is required. Find is an optional part of quote.')
     if not problems:
         return CITATION_NOTE
@@ -235,6 +238,7 @@ def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
                                  session_entries)
     check["page_zero"] = bool(PAGE_ZERO_PATTERN.search(answer))
     documents_read = read_documents(messages)
+    check["documents_read"] = documents_read
     web_used, urls = web_evidence(messages)
     read_urls = {page_address(url) for url in urls}
     answer_urls = list(dict.fromkeys(page_address(url) for url in URL_PATTERN.findall(answer)))
@@ -245,6 +249,7 @@ def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
     cited_urls = [page_address(ref["url"]) for ref in web_refs]
     source_urls = list(dict.fromkeys(answer_urls + cited_urls))
     web_used = web_used or bool(web_refs) or bool(answer_urls)
+    check["web_used"] = web_used
     check["web_unread"] = [url for url in source_urls if url not in read_urls] if web_used else []
     discovered = web_discoveries(messages)
     check["web_undiscovered"] = [url for url in source_urls if url not in discovered] if web_used else []

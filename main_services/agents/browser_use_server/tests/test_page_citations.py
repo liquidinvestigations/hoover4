@@ -193,6 +193,9 @@ def test_one_invalid_page_does_not_discard_a_valid_citation(store):
         {"url": "https://source.example/page", "terms": ["verified statement"]},
     ]))
     assert len(result["errors"]) == 1 and len(result["citations"]) == 1
+    assert "partial success" in result["next_action"]
+    assert "read_page, then call cite_pages again" in result["next_action"]
+    assert '{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}' in result["next_action"]
 
 
 def test_conflicting_committed_handles_fail_before_allocation(store):
