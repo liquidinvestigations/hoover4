@@ -565,7 +565,11 @@ READ_PAGE_SCHEMA = {
             "type": "integer",
             "minimum": 0,
             "default": 0,
-            "description": "Character position in one page's extracted text. Use the cut line's offset to read the next part.",
+            "description": (
+                "Character position in the complete page text. For a plain read, copy the cut line's next offset. "
+                "For find matches, copy the more line's next offset with the same find and version. "
+                "The result length is not the next match offset."
+            ),
         },
         "find": {
             "type": "string",
@@ -601,7 +605,8 @@ READ_PAGE_DESCRIPTION = (
     "A cut result gives the next character offset and the text's version. Pass one URL with "
     "that offset and version to read its next part. To find entries in a long page, pass "
     "`find` with a literal text: the result gives each match with its offset, and a next "
-    "offset when more matches remain. For a file of a code repository, read its raw address, "
+    "offset when more matches remain. Copy the more line's offset with the same find and version for the next matches. "
+    "For a file of a code repository, read its raw address, "
     "such as the `/-/raw/` address on GitLab or `raw.githubusercontent.com` for GitHub. The "
     "viewer page of a large file does not hold its text."
 )
