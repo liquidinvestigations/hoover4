@@ -19,15 +19,17 @@ pub fn SignalTermsPage() -> Element {
         None => rsx! { LoadingIndicator {} },
         Some(Err(error)) => rsx! { ServerErrorDisplay { error } },
         Some(Ok(catalog)) => rsx! {
-            main { class: "x-signal-terms", style: "max-width: 1100px; margin: auto; padding: 24px;",
+            main { class: "x-signal-terms",
+              div { class: "x-signal-terms-content",
                 h1 { "Red flag terms" }
-                p { "These terms identify passages for review. A match does not establish misconduct." }
+                p { "These terms identify passages for review." }
                 for category in catalog.categories {
                     SignalCategoryTerms {
                         key: "{category.id}", category: category.clone(),
                         terms: catalog.terms.iter().filter(|term| term.category == category.id).cloned().collect::<Vec<_>>(),
                     }
                 }
+              }
             }
         },
     }
@@ -39,12 +41,16 @@ fn SignalCategoryTerms(category: SignalCategory, terms: Vec<SignalTerm>) -> Elem
         section { id: "{category.id}", style: "margin-bottom: 24px;",
             h2 { "{category.title}" }
             p { "{category.catches}" }
-            p { "{category.does_not_prove}" }
-            p { {format!("Tier points are L {}, M {}, and H {}.", category.points["L"], category.points["M"], category.points["H"])} }
-            p { "A passage needs {category.threshold} points and {category.min_concepts} distinct concepts. L points contribute at most {category.l_cap}." }
-            if category.low_recall {
-                p { role: "note", "This category has low recall on business mail. Documents without a flag can still be relevant." }
+            p {
+                "Tier points are "
+                code { "L = {category.points[\"L\"]}" }
+                ", "
+                code { "M = {category.points[\"M\"]}" }
+                ", and "
+                code { "H = {category.points[\"H\"]}" }
+                "."
             }
+            p { "A passage needs {category.threshold} points and {category.min_concepts} distinct concepts. L points contribute at most {category.l_cap}." }
             details {
                 summary { "Show {terms.len()} lexicon terms." }
                 table {

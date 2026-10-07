@@ -189,7 +189,13 @@ html, body, #main {
 /* Category headings and term columns need spacing after the global style reset. */
 .x-signal-terms {
     height: 100%;
+    width: 100%;
     overflow: auto;
+}
+.x-signal-terms-content {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px;
 }
 .x-signal-terms h1 {
     font-size: 1.5rem;
@@ -201,10 +207,10 @@ html, body, #main {
     font-weight: 600;
     margin-bottom: 8px;
 }
-.x-signal-terms > p {
+.x-signal-terms-content > p {
     margin-bottom: 24px;
 }
-.x-signal-terms > section {
+.x-signal-terms-content > section {
     padding-bottom: 24px;
     border-bottom: 1px solid #ddd;
 }
@@ -212,9 +218,11 @@ html, body, #main {
     margin-bottom: 6px;
     line-height: 1.5;
 }
-.x-signal-terms [role="note"] {
-    padding: 8px 12px;
+.x-signal-terms code {
+    font-family: monospace;
+    padding: 2px 4px;
     background: #f5f5f5;
+    border-radius: 3px;
 }
 .x-signal-terms summary {
     cursor: pointer;
@@ -235,4 +243,57 @@ html, body, #main {
 .x-signal-terms th {
     font-weight: 600;
     background: #f5f5f5;
+}
+
+.x-document-red-flags {
+    margin: 10px 0;
+    border-top: 1px solid rgba(0,0,0,0.1);
+    padding-top: 10px;
+    font-size: 14px;
+}
+.x-document-red-flags h3 {
+    margin: 0 0 8px 2px;
+    font-weight: 700;
+}
+.x-document-red-flags h3 a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: inherit;
+    text-decoration: none;
+}
+.x-document-red-flags h3 a:hover {
+    text-decoration: underline;
+}
+.x-red-flag-passage {
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid rgba(0,0,0,0.2);
+    border-radius: 6px;
+    background: white;
+}
+.x-red-flag-passage h4 {
+    margin-bottom: 6px;
+    font-size: 14px;
+    font-weight: 700;
+}
+.x-red-flag-passage h5 {
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 400;
+}
+.x-red-flag-passage strong {
+    font-weight: 700;
+}
+.x-red-flag-excerpt {
+    padding: 10px 12px;
+    border-left: 2px solid #cbd5e1;
+    background: #f5f5f5;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.x-document-red-flags summary {
+    padding: 8px 0;
+    cursor: pointer;
 }

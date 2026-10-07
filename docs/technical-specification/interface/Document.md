@@ -58,7 +58,8 @@ The empty source selector stays hidden. A processing query failure remains separ
 
 The Entities tab shows red flag excerpts with matched text marked.
 Other signal hits remain in a closed pane.
-The information control opens the read-only category and terms page in a new tab.
+The Red flags heading opens the read-only category and terms page in a new tab.
+The terms page scrolls across the full content width.
 Document permission checks apply before signal evidence queries.
 A signal query failure appears as an error.
 

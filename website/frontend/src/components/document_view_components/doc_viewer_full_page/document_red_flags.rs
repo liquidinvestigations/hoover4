@@ -42,10 +42,14 @@ pub fn DocumentRedFlags(document_identifier: ReadSignal<DocumentIdentifier>) -> 
         Some(Ok(evidence)) => rsx! {
             if evidence.clusters.is_empty() { p { "No red flag passage was found in this document." } }
             for (index, cluster) in evidence.clusters.iter().enumerate() {
-                section { key: "{index}", style: "margin-bottom: 12px;",
+                section { key: "{index}", class: "x-red-flag-passage",
                     h4 { "{titles.get(&cluster.category).unwrap_or(&cluster.category)}" }
-                    p { "{common::document_sources::text_source_label(&cluster.extracted_by)}, page {cluster.page_id}, {cluster.points} points." }
-                    p { style: "white-space: pre-wrap; overflow-wrap: anywhere;",
+                    h5 {
+                        "{common::document_sources::text_source_label(&cluster.extracted_by)}, page {cluster.page_id}, "
+                        strong { "{cluster.points} points" }
+                        "."
+                    }
+                    p { class: "x-red-flag-excerpt",
                         for (part, marked) in marked_parts(&cluster.excerpt, &cluster.hit_starts, &cluster.hit_ends) {
                             if marked { mark { "{part}" } } else { span { "{part}" } }
                         }
@@ -64,10 +68,12 @@ pub fn DocumentRedFlags(document_identifier: ReadSignal<DocumentIdentifier>) -> 
         },
     };
     rsx! {
-        section { "data-red-flags": "true", style: "padding: 10px 0;",
-            h3 { "Red flags" }
-            Link { to: Route::SignalTermsPage {}, new_tab: true, aria_label: "View category definitions and terms",
-                Icon { icon: MdInfo, style: "width: 20px; height: 20px;" }
+        section { "data-red-flags": "true", class: "x-document-red-flags",
+            h3 {
+                Link { to: Route::SignalTermsPage {}, new_tab: true, aria_label: "View category definitions and terms",
+                    Icon { icon: MdInfo, style: "width: 16px; height: 16px; flex-shrink: 0;" }
+                    "Red flags"
+                }
             }
             if let Some(Err(error)) = catalog.read().clone() { ServerErrorDisplay { error } }
             {body}
