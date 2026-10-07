@@ -107,12 +107,11 @@ def quote_occurs_in(quote: str, document_text: str) -> bool:
 def find_in_quote(find: str, quote: str) -> bool:
     """Whether a find phrase is part of its quote, after the quote's folding.
 
-    The quote is checked against the document, so a phrase inside the quote is in the
-    document too. A phrase shorter than `MIN_QUOTE_CHARS` fails, because it marks too many
-    places in the document.
+    The quote has a separate verification minimum. A find phrase selects text inside
+    that quote and can contain any nonempty substring, including a short table value.
     """
     needle = normalise_for_match(find)
-    return len(needle) >= MIN_QUOTE_CHARS and needle in normalise_for_match(quote)
+    return bool(needle) and needle in normalise_for_match(quote)
 
 
 def phrase_query(text: str) -> str:

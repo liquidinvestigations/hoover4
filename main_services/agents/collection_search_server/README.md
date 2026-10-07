@@ -132,6 +132,10 @@ A citation accepts an optional `term` from the search that found its document.
 The transcript can infer an omitted term from the newest earlier search for that document.
 The source card shows this term and the matching search passage.
 
+An optional `find` selects a nonempty substring of the quote, including a short table value.
+The quote keeps its separate minimum of twelve characters for verification.
+An empty or absent find phrase opens the document at the whole quote.
+
 `cite_documents` is how the agent says which documents its answer rests on, as against
 which documents a search happened to return. Each citation names a document, a quote and
 one line of why, and gets back a handle (`[D1]`, `[D2]`) that the model writes into its

@@ -166,6 +166,18 @@ class TestCiteOne:
         assert result.term == "board transfer"
         assert result.find_query == '"The board approved the transfer on 3 March."'
 
+    def test_a_short_table_find_keeps_the_verified_quote(self, monkeypatch):
+        quote = "Meadow\tTraining contact\tActive"
+        self._stub_pages(monkeypatch, [quote], path="/contacts.csv")
+        result = _cite_one(_acl(), "s1", Citation(
+            collectionname="testdata", file_hash=HASH, quote=quote, find="Meadow"))
+        assert result.quote_verified
+        assert result.quote == quote and result.quote_reason == ""
+        assert result.find_query == '"Meadow"'
+        assert result.handle == "[D1]" and result.error is None
+        assert result.path == "/contacts.csv" and result.page == 1
+        assert result.extracted_by == "raw_text"
+
     def test_a_find_phrase_outside_the_quote_falls_back_to_the_quote(self, monkeypatch):
         quote = "Your notes look great. Best of luck today."
         self._stub_pages(monkeypatch, [quote])
@@ -313,8 +325,13 @@ class TestFindPhrase:
     def test_a_phrase_of_the_quote_checks_after_folding(self):
         assert find_in_quote("YOUR NOTES  look great", "Your notes look great. Best of luck.")
 
-    def test_a_short_phrase_fails(self):
-        assert not find_in_quote("notes", "Your notes look great. Best of luck.")
+    def test_a_short_phrase_inside_the_quote_is_accepted(self):
+        assert find_in_quote("notes", "Your notes look great. Best of luck.")
+        assert citation_find_query("weed", "Reduce weed growth through irrigation.") == '"weed"'
+
+    def test_an_empty_or_absent_phrase_fails(self):
+        assert not find_in_quote(" \t", "Your notes look great.")
+        assert not find_in_quote("weed", "Your notes look great.")
 
     def test_an_empty_quote_and_find_give_no_query(self):
         assert citation_find_query("", "") == ""

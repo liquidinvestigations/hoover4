@@ -1594,7 +1594,7 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
     if find_fallbacks:
         note_parts.append(
             f"{find_fallbacks} of {len(results)} find phrases were not an exact part of "
-            f"their quote, or were shorter than {MIN_QUOTE_CHARS} characters. Those "
+            "their quote. Those "
             "cards open the document at the whole quote."
         )
     if any(r.error is None and not r.handle for r in results):
