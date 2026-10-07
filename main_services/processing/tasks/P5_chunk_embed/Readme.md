@@ -18,6 +18,8 @@ of the AI stack.
   produces these; embedding them buys a vector that then wins searches it has no business
   winning, because noise is close to everything. Counted as
   `chunks_skipped_non_linguistic`, never silently. `text_content` still holds every byte.
+- Limit encoded runs in each embedding request with the text index's shared rule.
+  Mixed prose keeps its surrounding text. Stored chunks and their original byte offsets stay unchanged.
 - Embed with the e5 prefix from `embedding_prefix.embedding_input`, the ONE function
   that owns the convention, keyed off the **probed** serving model id
   (`server_settings.embeddings_serving_model`, written by `main.py

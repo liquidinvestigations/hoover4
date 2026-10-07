@@ -27,6 +27,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from database.clickhouse import get_collection_client, get_server_setting
+from database.manticore import limit_encoded_runs
 from tasks.remote_busy_retry import with_remote_busy_retry
 from tasks.heartbeat import HeartbeatClock, stop_if_worker_is_stopping, with_heartbeat
 from tasks.remote import post_json
@@ -253,7 +254,10 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
                 f"{collection_dataset} plan {plan_hash[:8]}: "
                 f"{total_vectors + page_vectors} vectors written")
             batch = missing[i:i + EMBED_BATCH_TEXTS]
-            prefixed = [embedding_input(serving_model, "passage", c["text"])[0] for c in batch]
+            # Keep stored source text and byte offsets. Bound encoded data in model input.
+            prefixed = [embedding_input(
+                serving_model, "passage", limit_encoded_runs(c["text"]),
+            )[0] for c in batch]
             result = post_json(
                 [("embeddings", f"{base_url}/embeddings")],
                 {"input": prefixed},
