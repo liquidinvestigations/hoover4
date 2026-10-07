@@ -44,6 +44,14 @@ def _item(file_hash, page=1, text="x", **extra):
             **extra}
 
 
+def test_grouped_citations_validate_each_source_in_answer_order():
+    check = reports.check_labels("First [W1, D8]. Next [ W2, W1 ].", {
+        "[W1]": {"web:source:v1"}, "[D8]": {HASH_A[:16]},
+    })
+    assert check["labels"] == ["[W1]", "[D8]", "[W2]"]
+    assert check["unresolved"] == ["[W2]"]
+
+
 def test_web_discovery_and_citations_keep_distinct_evidence():
     found = reports.normalize("web_search", {}, json.dumps({"results": [
         {"url": "https://example.org/source", "title": "Source"}]}), "ok")

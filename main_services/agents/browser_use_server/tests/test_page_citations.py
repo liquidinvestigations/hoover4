@@ -67,6 +67,39 @@ def test_quotes_retain_exact_unicode_text_and_source_offsets(store):
     assert result["handle"] == "[W1]" and result["quote_verified"] is True
 
 
+@pytest.mark.parametrize("count", [7, 12])
+def test_source_lists_fit_the_document_citation_batch_size(store, count):
+    pages = []
+    for index in range(count):
+        url = f"https://source.example/page-{index}"
+        read_source(url=url, final_url=url)
+        pages.append({"url": url, "terms": ["verified statement"]})
+    result = asyncio.run(citations.cite("owner", "chat", pages))
+    assert not result["errors"] and len(result["citations"]) == count
+    assert [row["handle"] for row in result["citations"]] == [f"[W{n}]" for n in range(1, count + 1)]
+
+
+def test_oversized_citation_list_allocates_no_handles(store):
+    read_source()
+    result = asyncio.run(citations.cite("owner", "chat", [
+        {"url": "https://source.example/page", "terms": ["verified statement"]}
+    ] * 13))
+    assert not result["citations"] and result["errors"]
+    assert not any(row["kind"] == citations.KIND_PAGE_CITATION for row in store.rows.values())
+
+
+def test_absent_wording_returns_source_context_without_allocating_a_handle(store):
+    exact = "The report describes starvation as a weapon of war."
+    read_source("Opening text. " * 100 + "\n\n" + exact + "\n\n" + "Other text. " * 100)
+    result = cite(terms=["The report states that starvation was a weapon of war."])
+    assert not result["citations"]
+    error = result["errors"][0]
+    assert exact in error["candidate"] and len(error["candidate"]) <= 600
+    assert error["version"] == "version-1"
+    assert not any(row["kind"] == citations.KIND_PAGE_CITATION for row in store.rows.values())
+    assert cite(terms=[exact])["citations"][0]["handle"] == "[W1]"
+
+
 def test_repeat_and_new_versions_keep_distinct_stable_handles(store):
     first_id = read_source()
     assert cite()["citations"][0]["handle"] == "[W1]"

@@ -112,10 +112,12 @@ Its allowed-host validation also compares the ephemeral listener port.
 ## Web citations
 
 `read_page` stores successful Markdown under the caller and chat session.
-`cite_pages` accepts one to six previously read URLs with exact supporting terms.
+`cite_pages` accepts one to twelve previously read URLs with exact supporting terms.
 Each page accepts one to eight terms of up to 200 characters.
 Terms match case and literal source text.
 A missing term or unread page returns an individual error.
+An absent term also returns bounded source context for a corrected citation request.
+That context does not allocate a handle or verify the missing wording.
 Successful citations return verified quotes, source offsets, a stored page identifier, and a stable `[Wn]` handle.
 A changed text version receives a different handle.
 A version field selects earlier stored text without another page request.

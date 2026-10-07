@@ -531,7 +531,7 @@ class CitePagesTool(Tool):
 
 CITE_PAGES_SCHEMA = {
     "type": "object",
-    "properties": {"pages": {"type": "array", "minItems": 1, "maxItems": 6,
+    "properties": {"pages": {"type": "array", "minItems": 1, "maxItems": page_citations.MAX_PAGES_PER_CALL,
         "items": {"type": "object", "properties": {
             "url": {"type": "string", "description": "Copy an address successfully read with read_page."},
             "terms": {"type": "array", "minItems": 1, "maxItems": 8,

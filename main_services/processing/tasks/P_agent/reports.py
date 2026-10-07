@@ -36,7 +36,7 @@ MAX_ENTRY_TEXT = 2000
 _CUT_TEXT = re.compile(r"^\s*(\d+)\s+of\s+(\d+)\s+bytes")
 
 #: A citation label as an answer writes it.
-LABEL_PATTERN = re.compile(r"\[([DW]\d+)\]")
+LABEL_PATTERN = re.compile(r"\[\s*([DW]\d+(?:\s*,\s*[DW]\d+)*)\s*\]")
 
 
 def _clip(text: Any, limit: int = MAX_ENTRY_TEXT) -> str:
@@ -480,9 +480,10 @@ def answer_labels(answer: str) -> list[str]:
     """Return distinct document and web citation labels in their answer order."""
     seen: list[str] = []
     for match in LABEL_PATTERN.finditer(answer or ""):
-        label = f"[{match.group(1)}]"
-        if label not in seen:
-            seen.append(label)
+        for value in match.group(1).split(","):
+            label = f"[{value.strip()}]"
+            if label not in seen:
+                seen.append(label)
     return seen
 
 

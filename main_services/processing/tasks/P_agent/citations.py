@@ -39,7 +39,7 @@ REPAIR_MARKER_KEY = "repair_marker"
 REPAIR_MARKER = "citation"
 
 #: A citation handle as the answer writes it, for example `[D1]`.
-HANDLE_PATTERN = re.compile(r"\[[DW]\d+\]")
+HANDLE_PATTERN = re.compile(r"\[\s*[DW]\d+(?:\s*,\s*[DW]\d+)*\s*\]")
 DOCUMENT_HANDLE_PATTERN = re.compile(r"\[D\d+\]")
 PAGE_ZERO_PATTERN = re.compile(r"\bpage\s+0\b", re.IGNORECASE)
 

@@ -40,10 +40,11 @@ The lead researcher resolves them, so a handle you never allocated is no use to 
 {% if has('cite_pages') %}
 Search for each web source and read its supporting passage with {{ tool('read_page') }}.
 Call {{ tool('cite_pages') }} with the read URL and exact source wording in `terms`.
-One call accepts at most six pages. Split longer source lists into separate calls.
+One call accepts at most twelve pages. Split longer source lists into separate calls.
 Copy the returned web handle, for example `[W1]`, beside the claim it supports.
 Keep each handle with the URL and quotes from its returned citation object.
 An error does not allocate a handle. Omit that source's claims until its citation succeeds.
+For absent wording, copy exact text from the returned candidate and call the tool again.
 The handle opens the captured page text and its verified quotes.
 Use a web citation handle in place of a bare source URL.
 An unread, blocked, or unverified page cannot support a claim.

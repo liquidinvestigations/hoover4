@@ -19,6 +19,7 @@ KIND_PAGE_CITATION = artifacts.KIND_WEB_PAGE_CITATION
 NAMESPACE = uuid.UUID("cbf403e2-2084-4ced-8432-4458745a459e")
 MAX_BODY_BYTES = 64 * 1024 * 1024
 MAX_CITATIONS = 200
+MAX_PAGES_PER_CALL = 12
 _lock = asyncio.Lock()
 
 
@@ -163,7 +164,14 @@ def _cite(owner: str, session: str, pages: list) -> dict:
             if size > MAX_BODY_BYTES or len(body) != size:
                 raise ValueError("The captured page exceeds the citation storage limit.")
             source = json.loads(body)
-            quotes, spans = passages(source["markdown"], terms)
+            try:
+                quotes, spans = passages(source["markdown"], terms)
+            except ValueError as exc:
+                from browser_use_server.read_page import focus
+                candidate, _ = focus(source["markdown"], " ".join(terms), 600)
+                errors.append({"url": url, "error": str(exc), "candidate": candidate,
+                               "version": source["version"]})
+                continue
             key = (url, source["version"])
             handle = bindings.get(key)
             if handle is None:
@@ -194,8 +202,8 @@ def _cite(owner: str, session: str, pages: list) -> dict:
 
 async def cite(owner: str, session: str, pages: object) -> dict:
     """Allocate handles serially and keep storage operations outside the event loop."""
-    if not isinstance(pages, list) or not 1 <= len(pages) <= 6:
-        return {"citations": [], "errors": [{"error": "Give one to six page citation objects."}]}
+    if not isinstance(pages, list) or not 1 <= len(pages) <= MAX_PAGES_PER_CALL:
+        return {"citations": [], "errors": [{"error": "Give one to twelve page citation objects."}]}
     async with _lock:
         task = asyncio.create_task(asyncio.to_thread(_cite, owner, session, pages))
         try:

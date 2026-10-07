@@ -331,7 +331,7 @@ struct TodoChangeLine {
 
 fn todo_line(item: &common::chat_types::TodoItemView) -> String {
     let note = if item.note.is_empty() { String::new() } else { format!(" ({})", item.note) };
-    format!("{}: {}{note}", item.status, item.text)
+    format!("{}: {}{note}", item.status.replace('_', " "), item.text)
 }
 
 fn todo_change_lines(previous: Option<&common::chat_types::TodoSnapshot>, current: &common::chat_types::TodoSnapshot) -> Vec<TodoChangeLine> {

@@ -234,9 +234,9 @@ def web_citations(name: str, username: str) -> dict:
         tool("read_page", {"urls": [page["url"] for page in pages]}, {"pages": pages}),
         tool("cite_pages", {"pages": [{"url": page["url"], "terms": ["Știință"]}
                                      for page in pages]}, {"citations": refs, "errors": []}),
-        answer("The first page contains the exact source text [W1]. "
-               "The second page contains another passage [W2].\n\n"
-               "The first source also supports this later claim [W1].\n\n"
+        answer("The first page contains the exact source text **[W1]**. "
+               "The second page contains another passage *[W2]*.\n\n"
+               "Both sources support this later claim [W1, W2].\n\n"
                "| Source | Claim |\n| --- | --- |\n"
                "| First | Table claim one [W1]. |\n"
                "| Second | Table claim two [W2]. |"),

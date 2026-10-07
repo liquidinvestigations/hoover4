@@ -17,6 +17,8 @@
 ## States
 
 Citation cards appear beside their claims, in response order.
+Bold and italic citation handles keep their source controls and validation.
+A comma-separated citation group renders and verifies each handle.
 Tables show each source card after its cited row.
 Document cards contain the matching source excerpt.
 Web cards show a linked title, domain, and verified source excerpt.

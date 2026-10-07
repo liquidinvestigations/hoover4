@@ -142,10 +142,18 @@ fn citation_parts(spans: &[Span]) -> Vec<Vec<Span>> {
             cited = false;
         }
         current.push(span.clone());
-        cited |= matches!(span, Span::Handle(_));
+        cited |= span_has_handle(span);
     }
     if !current.is_empty() { parts.push(current); }
     parts
+}
+
+fn span_has_handle(span: &Span) -> bool {
+    match span {
+        Span::Handle(_) => true,
+        Span::Styled { spans, .. } => spans.iter().any(span_has_handle),
+        _ => false,
+    }
 }
 
 fn block_handles(block: &Block) -> Vec<String> {
@@ -310,6 +318,11 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                         strong { key: "{i}", style: "font-weight: 650;", "{t}" }
                     },
                     Span::Italic(t) => rsx! { em { key: "{i}", "{t}" } },
+                    Span::Styled { bold, spans } => if bold {
+                        rsx! { strong { key: "{i}", style: "font-weight: 650;", InlineSpans { spans } } }
+                    } else {
+                        rsx! { em { key: "{i}", InlineSpans { spans } } }
+                    },
                     Span::Code(t) => rsx! {
                         code {
                             key: "{i}",
@@ -379,6 +392,8 @@ pub enum Span {
     Text(String),
     Bold(String),
     Italic(String),
+    /// Preserve emphasis around citation controls and their validation state.
+    Styled { bold: bool, spans: Vec<Span> },
     Code(String),
     Link { text: String, href: String },
     /// A document or web citation handle in assistant prose.
@@ -430,7 +445,13 @@ pub fn mark_handles(blocks: Vec<Block>, issued: &[String], conflicting: &[String
 
 /// `block` with `f` applied to each of its spans.
 fn map_spans(block: Block, f: &dyn Fn(Span) -> Span) -> Block {
-    let mark = |spans: Vec<Span>| -> Vec<Span> { spans.into_iter().map(f).collect() };
+    fn inline(spans: Vec<Span>, f: &dyn Fn(Span) -> Span) -> Vec<Span> {
+        spans.into_iter().map(|span| f(match span {
+            Span::Styled { bold, spans } => Span::Styled { bold, spans: inline(spans, f) },
+            other => other,
+        })).collect()
+    }
+    let mark = |spans| inline(spans, f);
     let mark_all = |lists: Vec<Vec<Span>>| -> Vec<Vec<Span>> { lists.into_iter().map(mark).collect() };
     match block {
         Block::Heading { level, spans } => Block::Heading { level, spans: mark(spans) },
@@ -642,6 +663,20 @@ fn numbered_item(line: &str) -> Option<String> {
 /// Code is matched first and its contents are never re-scanned, so a backtick span
 /// containing asterisks survives intact.
 pub fn parse_inline(text: &str) -> Vec<Span> {
+    parse_inline_depth(text, 0)
+}
+
+fn emphasis_span(body: String, bold: bool, depth: usize) -> Span {
+    if depth < 8 && body.contains('[') {
+        let spans = parse_inline_depth(&body, depth + 1);
+        if spans.iter().any(span_has_handle) {
+            return Span::Styled { bold, spans };
+        }
+    }
+    if bold { Span::Bold(body) } else { Span::Italic(body) }
+}
+
+fn parse_inline_depth(text: &str, depth: usize) -> Vec<Span> {
     let chars: Vec<char> = text.chars().collect();
     let mut out: Vec<Span> = Vec::new();
     let mut plain = String::new();
@@ -668,7 +703,8 @@ pub fn parse_inline(text: &str) -> Vec<Span> {
         if c == '*' && i + 1 < chars.len() && chars[i + 1] == '*' {
             if let Some(end) = find_seq(&chars, i + 2, &['*', '*']) {
                 push_plain(&mut plain, &mut out);
-                out.push(Span::Bold(chars[i + 2..end].iter().collect()));
+                let body: String = chars[i + 2..end].iter().collect();
+                out.push(emphasis_span(body, true, depth));
                 i = end + 2;
                 continue;
             }
@@ -682,7 +718,7 @@ pub fn parse_inline(text: &str) -> Vec<Span> {
                     let body: String = chars[i + 1..end].iter().collect();
                     if !body.is_empty() && !body.starts_with(' ') {
                         push_plain(&mut plain, &mut out);
-                        out.push(Span::Italic(body));
+                        out.push(emphasis_span(body, false, depth));
                         i = end + 1;
                         continue;
                     }
@@ -693,10 +729,13 @@ pub fn parse_inline(text: &str) -> Vec<Span> {
         if c == '[' {
             if let Some(close) = find_char(&chars, i + 1, ']')
                 && chars.get(close + 1) != Some(&'(')
-                && let Some(handle) = as_handle(&chars[i..=close])
+                && let Some(handles) = as_handles(&chars[i..=close])
             {
                 push_plain(&mut plain, &mut out);
-                out.push(Span::Handle(handle));
+                for (index, handle) in handles.into_iter().enumerate() {
+                    if index > 0 { out.push(Span::Text(", ".into())); }
+                    out.push(Span::Handle(handle));
+                }
                 i = close + 1;
                 continue;
             }
@@ -727,13 +766,14 @@ pub fn parse_inline(text: &str) -> Vec<Span> {
 }
 
 /// Read document and web citation handles. Other bracketed words remain ordinary text.
-fn as_handle(chars: &[char]) -> Option<String> {
+fn as_handles(chars: &[char]) -> Option<Vec<String>> {
     let inner: String = chars.iter().collect();
-    let digits = inner.strip_prefix("[D").or_else(|| inner.strip_prefix("[W"))?.strip_suffix(']')?;
-    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    Some(inner)
+    inner.strip_prefix('[')?.strip_suffix(']')?.split(',').map(|value| {
+        let value = value.trim();
+        let digits = value.strip_prefix('D').or_else(|| value.strip_prefix('W'))?;
+        if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) { return None; }
+        Some(format!("[{value}]"))
+    }).collect()
 }
 
 /// Scroll to the next matching citation card in the active answer.
@@ -893,6 +933,19 @@ mod tests {
         let row = vec![parse_inline("First [W2][D1]"), parse_inline("Again [W2], then [W1]")];
         assert_eq!(table_row_handles(&row), vec!["[W2]", "[D1]", "[W1]"]);
         assert!(table_row_handles(&[parse_inline("No citation")]).is_empty());
+    }
+
+    #[test]
+    fn emphasized_citations_keep_source_order_and_validation() {
+        let parts = citation_parts(&parse_inline("First **[W1, W2]**. Next *[D8]*."));
+        assert_eq!(parts.len(), 2);
+        assert_eq!(block_handles(&Block::Paragraph(parts[0].clone())), vec!["[W1]", "[W2]"]);
+        assert_eq!(block_handles(&Block::Paragraph(parts[1].clone())), vec!["[D8]"]);
+        let marked = mark_handles(vec![Block::Paragraph(parts[1].clone())], &[], &[]);
+        assert_eq!(marked, vec![Block::Paragraph(vec![Span::Text("Next ".into()),
+            Span::Styled { bold: false, spans: vec![Span::UncitedHandle("[D8]".into())] },
+            Span::Text(".".into())])]);
+        assert!(block_handles(&parse_blocks("**`[W1]`**")[0]).is_empty());
     }
 
     #[test]
