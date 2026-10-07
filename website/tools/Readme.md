@@ -128,6 +128,7 @@ The combined `manual-qa-results.json` reports each baseline and variation at eac
 An absent or unfinished procedure cannot pass.
 
 The chat observer follows one turn: the turn that the first user message after the submission started.
+Its saved-answer comparison excludes citation-card contents that load asynchronously.
 The turn ends when the transcript's `data-chat-turn` state is `idle` or `interrupted`.
 A turn that waits for a model or tool slot is still running, so a silent queue does not end the observation.
 An ended turn with no answer text gets 15 s for a late answer row before the observer records an empty answer.

@@ -376,10 +376,15 @@ for (const el of bubbles) {
 }
 const text = root.innerText || '';
 const working = text.includes('is working') || text.includes('is searching');
+const answerText = element => {
+    const copy = element.cloneNode(true);
+    copy.querySelectorAll('[data-citation-handle]').forEach(card => card.remove());
+    return copy.textContent;
+};
 return {
     turn: matched ? (root.dataset.chatTurn || '') : '',
     user_seqs: [...root.querySelectorAll('[data-chat-user]')].map(e=>Number(e.dataset.chatUser)),
-    assistant_answers: [...root.querySelectorAll('[data-chat-answer]')].map(e=>({seq:e.dataset.chatAnswer,text:e.textContent})),
+    assistant_answers: [...root.querySelectorAll('[data-chat-answer]')].map(e=>({seq:e.dataset.chatAnswer,text:answerText(e)})),
     asked: [...root.querySelectorAll('[data-chat-asked]')].map(e=>({seq:e.dataset.chatAsked,text:e.textContent})),
     matched_transcript_selector: matched,
     text_length: text.length,

@@ -122,6 +122,7 @@ It records each observed outcome in `manual-qa-results.json` and retains partial
 Use `--select` for a row list and `--skip-chat` when the row list does not include chat.
 The command uses one chat generation for row 25 and its viewport observations.
 Chat history verification compares persisted assistant answers. It excludes temporary disclosures and document previews.
+It also excludes citation-card contents, whose source details can load after the answer.
 
 ## Observing a chat conversation
 
