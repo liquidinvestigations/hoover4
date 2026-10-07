@@ -73,6 +73,8 @@ They define the role's sources and evidence requirements.
 The full chat role verifies every constraint for each listed item before an optional skill read.
 It requires reading each cited page and reports a shortage when fewer items match.
 It keeps items that fail a constraint outside the matching list.
+It verifies product names, composition, and production methods against the source.
+It keeps plant extraction separate from synthetic production.
 It counts a trial and its appeals as one prosecution.
 It uses another readable source or omits claims from a failed page read.
 The system text records the observed UTC date when the run context is created.
