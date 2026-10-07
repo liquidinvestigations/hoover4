@@ -47,7 +47,8 @@ from agent_common import artifacts, telemetry
 
 from browser_use_server import capture as capture_mod
 from browser_use_server import chat_browser
-from browser_use_server import read_page
+from browser_use_server import read_page, internal_fetch
+from browser_use_server.reader_routes import Reader
 from browser_use_server import router as router_mod
 from browser_use_server.router import router
 from browser_use_server.urlcheck import UrlNotAllowed, check_tool_arguments
@@ -496,30 +497,15 @@ class ReadPageTool(Tool):
         session_id = browser_key()
         username = _header(USER_HEADER)
 
-        try:
-            chat = await router.get(session_id)
-        except router_mod.BrowserBusy as exc:
-            log.warning("no browser for %r: %s", session_id, exc)
-            return _busy(exc)
-        except chat_browser.BrowserSpawnFailed as exc:
-            log.error("could not start a browser for chat %r: %s", session_id, exc)
-            return _refusal(f"no browser could be started: {exc}")
-
         ceiling = page_share()
-        async with chat.lock:
-            if chat.client is None or not chat_browser.sidecar_alive(chat):
-                await chat_browser.restart_sidecar(chat)
-            outcome = await read_page.read(
-                chat,
-                arguments.get("urls"),
-                str(arguments.get("goal") or ""),
-                username,
-                max(0, int(arguments.get("offset") or 0)),
-                find=str(arguments.get("find") or ""),
-                version=str(arguments.get("version") or "").strip(),
-                ceiling=ceiling,
-            )
-            await chat_browser.enforce_tab_cap(chat, router_mod.MAX_TABS_PER_CHAT)
+        reader = Reader(router.reader, username, session_id)
+        outcome = await read_page.read(
+            reader, arguments.get("urls"), str(arguments.get("goal") or ""), username,
+            max(0, int(arguments.get("offset") or 0)),
+            find=str(arguments.get("find") or ""),
+            version=str(arguments.get("version") or "").strip(),
+            ceiling=ceiling, links=arguments.get("links", True) is not False,
+        )
 
         failed = bool(outcome.pages) and all(page.error for page in outcome.pages)
         blocked = sum(1 for page in outcome.pages if page.blocked)
@@ -534,7 +520,7 @@ class ReadPageTool(Tool):
             "browser", provider="read_page",
             latency_ms=(time.monotonic() - started) * 1000.0,
             ok=not failed, detail=detail,
-            session_id=chat.session_id,
+            session_id=session_id,
         )
         # The model reads the page text and the marker block, so both fit the share.
         marker = _marker_text(outcome.artifacts, failed)
@@ -584,6 +570,10 @@ READ_PAGE_SCHEMA = {
                 "on. The result gives each match with the text around it and its character "
                 "offset, in place of the page text."
             ),
+        },
+        "links": {
+            "type": "boolean", "default": True,
+            "description": "Include link destinations in the extracted Markdown.",
         },
         "version": {
             "type": "string",
@@ -666,6 +656,52 @@ async def _register_tools() -> int:
         len(tools), advertised, len(tools) - (advertised - 1),
     )
     return advertised
+
+
+@mcp.custom_route("/internal/fetch", methods=["POST"])
+async def fetch_for_search(request: Any):
+    """Serve authenticated search fetches through a separate bounded browser queue."""
+    import hmac
+    from pathlib import Path
+    from starlette.responses import JSONResponse
+
+    token_file = os.getenv("BROWSER_FETCH_TOKEN_FILE", "")
+    try:
+        token = Path(token_file).read_text().strip() if token_file else ""
+    except OSError:
+        token = ""
+    supplied = request.headers.get("authorization", "")
+    if not token or not hmac.compare_digest(supplied.encode("utf-8"), ("Bearer " + token).encode("utf-8")):
+        return JSONResponse({"error": "The internal fetch caller is not authorized.",
+                             "error_kind": "refused"}, status_code=403)
+    try:
+        body = await request.json()
+    except (ValueError, UnicodeError):
+        body = None
+    if not isinstance(body, dict) or not isinstance(body.get("url"), str):
+        return JSONResponse({"error": "Give a JSON object with a URL string.",
+                             "error_kind": "refused"}, status_code=400)
+    if body.get("method", "GET") != "GET":
+        return JSONResponse({"error": "Only GET requests are supported.",
+                             "error_kind": "refused"}, status_code=400)
+    for name in ("params", "headers"):
+        if body.get(name) is not None and not isinstance(body[name], dict):
+            return JSONResponse({"error": f"{name} must be an object.",
+                                 "error_kind": "refused"}, status_code=400)
+    if body.get("body", internal_fetch.RAW_BODY) not in internal_fetch.BODY_KINDS:
+        return JSONResponse({"error": "body must be raw or dom.",
+                             "error_kind": "refused"}, status_code=400)
+    try:
+        timeout = float(body.get("timeout_s", internal_fetch.DEFAULT_TIMEOUT_S))
+    except (ValueError, TypeError):
+        return JSONResponse({"error": "timeout_s must be a number.",
+                             "error_kind": "refused"}, status_code=400)
+    outcome = await internal_fetch.fetch(
+        router.metasearch, body["url"], params=body.get("params"),
+        headers=body.get("headers"), timeout_s=timeout,
+        body=body.get("body", internal_fetch.RAW_BODY),
+    )
+    return JSONResponse(outcome.as_dict())
 
 
 @mcp.custom_route("/health", methods=["GET"])

@@ -35,6 +35,7 @@ from collections import OrderedDict
 
 from browser_use_server import chat_browser
 from browser_use_server.chat_browser import BrowserSpawnFailed, ChatBrowser
+from browser_use_server.special_browser import SpecialBrowser
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,9 @@ class BrowserBusy(Exception):
 
 class Router:
     def __init__(self) -> None:
+        self.reader = SpecialBrowser("_reader", int(os.getenv("READER_TAB_SLOTS", "4")),
+                                     context_extensions=("ubol",))
+        self.metasearch = SpecialBrowser("_metasearch", int(os.getenv("METASEARCH_TAB_SLOTS", "2")))
         self._chats: "OrderedDict[str, ChatBrowser]" = OrderedDict()
         # Guards the map, not the browsers. Per-chat serialisation is each ChatBrowser's
         # own lock; a global lock here would make eight chats queue behind each other,
@@ -122,6 +126,8 @@ class Router:
         at all, which is what the eight-context cap is supposed to mean.
         """
         key = (session_id or "").strip() or ANONYMOUS
+        if key in {TEMPLATE_SESSION, "_reader", "_metasearch"}:
+            raise BrowserBusy("This browser session name is reserved.")
 
         while True:
             async with self._lock:
@@ -212,6 +218,7 @@ class Router:
         return True
 
     async def shutdown(self) -> None:
+        await asyncio.gather(self.reader.shutdown(), self.metasearch.shutdown())
         if self._reaper is not None:
             self._reaper.cancel()
         async with self._lock:
@@ -276,6 +283,7 @@ class Router:
 
     async def sweep(self, idle_limit: float | None = None) -> int:
         """Dispose every chat idle past the limit. Returns how many went."""
+        await asyncio.gather(self.reader.sweep_tabs(), self.metasearch.sweep_tabs())
         limit = IDLE_SECONDS if idle_limit is None else idle_limit
         async with self._lock:
             doomed = [c for c in self._chats.values() if c.idle_seconds() >= limit]
@@ -303,6 +311,8 @@ class Router:
             "max_sessions": MAX_CONTEXTS,
             "idle_seconds": IDLE_SECONDS,
             "spawn_failures": self.spawn_failures,
+            "reader": self.reader.health(),
+            "metasearch": self.metasearch.health(),
             "sidecar_restarts": sum(c.sidecar_restarts for c in self._chats.values()),
             "template_ready": template is not None and chat_browser.sidecar_alive(template),
             "extensions": [os.path.basename(p) for p in chat_browser.extension_paths()],

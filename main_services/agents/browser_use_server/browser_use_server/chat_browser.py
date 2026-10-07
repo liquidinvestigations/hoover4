@@ -7,13 +7,11 @@ boundary for cookies. It is not enough here: the agent drives the page through
 **playwright-mcp**, and playwright-mcp connected with `--cdp-endpoint` shares
 one browser context across every client attached to that endpoint. Measured, not assumed:
 two clients, one cookie jar. `--isolated` restores isolation but makes
-playwright launch its *own* browser, which loses the extensions and the CDP handle this
-module needs for capture.
+playwright launch its *own* browser, which loses the extensions.
 
 So the isolation boundary sits one level lower: **one Chromium process per chat**, each
 with its own `--user-data-dir` and its own sidecar bound to it. That costs about 500 MB
-per live chat, which is why `BROWSER_MAX_CONTEXTS` is 16 and the reaper closes idle
-contexts quickly.
+per live chat. `BROWSER_MAX_CONTEXTS` limits these processes, and the reaper closes idle browsers.
 
 ## The three handles
 
@@ -23,10 +21,8 @@ Each :class:`ChatBrowser` holds:
 2. the `@playwright/mcp` node process bound to that CDP port,
 3. an MCP :class:`fastmcp.Client` speaking to the sidecar.
 
-The router keeps its **own** CDP connection through (1). That is what makes capture
-possible without asking the model to request it: the sidecar owns the Playwright session,
-but CDP allows a second client, and `Page.captureScreenshot` / `Page.captureSnapshot` need
-nothing Playwright is holding exclusively.
+The router keeps its **own** CDP connection through (1). The tab cap uses it, because CDP
+allows a second client beside the sidecar's Playwright session.
 
 ## What the browser may reach
 
@@ -41,19 +37,24 @@ Loaded through nodriver's `Config.add_extension()`, which supplies
 `--disable-features=…DisableLoadExtensionCommandLineSwitch` and
 `--enable-unsafe-extension-debugging`. Hand-rolling `--load-extension` appears to work and
 loads nothing. Chromium has disabled that switch for MV3 by default.
+
+## Site isolation
+
+nodriver also disables `IsolateOrigins` and `site-per-process`, so each site would not get
+a renderer process of its own. `launch_args` removes the two from the feature list. Chromium
+reads only the last `--disable-features` switch, so `launch_args` writes one switch with
+every other disabled feature of the list. A second switch would drop
+`DisableLoadExtensionCommandLineSwitch`, and `--load-extension` would then load nothing.
 """
 
 from __future__ import annotations
 
 import asyncio
-import functools
 import logging
 import os
-import re
 import shutil
 import signal
 import socket
-import subprocess
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -71,8 +72,10 @@ PLAYWRIGHT_MCP_BIN = os.getenv("PLAYWRIGHT_MCP_BIN", "/opt/playwright-mcp/node_m
 #: fatal.
 EXTENSIONS_DIR = os.getenv("BROWSER_EXTENSIONS_DIR", "/opt/browser-extensions")
 
-VIEWPORT_WIDTH = int(os.getenv("BROWSER_WINDOW_WIDTH", "1280"))
-VIEWPORT_HEIGHT = int(os.getenv("BROWSER_WINDOW_HEIGHT", "720"))
+#: The size of every browser window. The container entry script makes the Xvfb screen the
+#: same size from the same variables, so a page reads one size for the screen and the window.
+WINDOW_WIDTH = int(os.getenv("BROWSER_WINDOW_WIDTH", "1280"))
+WINDOW_HEIGHT = int(os.getenv("BROWSER_WINDOW_HEIGHT", "720"))
 
 #: Navigation and action deadlines handed to the sidecar, in milliseconds.
 NAV_TIMEOUT_MS = int(float(os.getenv("BROWSER_NAV_TIMEOUT", "30")) * 1000)
@@ -94,34 +97,41 @@ CHROMIUM_START_TIMEOUT = float(os.getenv("BROWSER_CHROMIUM_START_TIMEOUT", "45")
 BLOCKED_ORIGIN_HOSTS = os.getenv("BROWSER_BLOCKED_ORIGINS", netfilter.DEFAULT_BLOCKED_HOSTS)
 
 
+#: A folder for the Chromium log of each browser, for diagnosis. Unset means no log. When
+#: set, Chromium gets `--enable-logging=stderr` and `--v=<BROWSER_CHROMIUM_LOG_V>`, and its
+#: stderr goes to one file per browser in this folder.
+CHROMIUM_LOG_DIR = os.getenv("BROWSER_CHROMIUM_LOG_DIR", "")
+CHROMIUM_LOG_VERBOSITY = int(os.getenv("BROWSER_CHROMIUM_LOG_V", "0"))
+
+#: The WebRTC address policy of every browser. See `write_profile_prefs()`.
+WEBRTC_POLICY = "disable_non_proxied_udp"
+
+
+def write_profile_prefs(profile_dir: str) -> None:
+    """Write the preferences of a new profile, before Chromium starts with it.
+
+    WebRTC may then send UDP only through a proxy that carries UDP, and no proxy here does.
+    Without it, a page in a Tor context of `read_page` sent STUN packets directly. It learned
+    the public address of the host, and it sent datagrams to a loopback port. A CDP browser
+    context reads this preference through the profile. The switch
+    `--force-webrtc-ip-handling-policy` does not do this: Chromium 154 gave it to no
+    renderer process, and a page still got the public address.
+    """
+    import json
+
+    folder = os.path.join(profile_dir, "Default")
+    os.makedirs(folder, exist_ok=True)
+    prefs = {"webrtc": {"ip_handling_policy": WEBRTC_POLICY,
+                        "multiple_routes_enabled": False,
+                        "nonproxied_udp_enabled": False}}
+    with open(os.path.join(folder, "Preferences"), "w", encoding="utf-8") as fh:
+        json.dump(prefs, fh)
+
+#: The largest disk cache of one browser. See `start()`.
+DISK_CACHE_BYTES = 64 * 1024 * 1024
+
 #: The prefix of every chat's profile folder under the temporary directory.
 PROFILE_PREFIX = "h4browser-"
-
-
-@functools.lru_cache(maxsize=4)
-def user_agent_for(executable: str) -> str | None:
-    """The user agent of a headed Chromium of the version that `executable` runs.
-
-    Headless Chromium sends `HeadlessChrome/<version>`, and some bot checks refuse that
-    word. This keeps the reduced form Chromium itself sends, with `0.0.0` for the minor
-    parts, so the word `Headless` is the only difference. The major version is read from
-    the binary, so it follows the image. `None` when `--version` gives no version.
-    """
-    try:
-        done = subprocess.run(
-            [executable, "--version"], capture_output=True, text=True, timeout=10, check=False
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.warning("could not read the version of %s: %s", executable, exc)
-        return None
-    match = re.search(r"\b(\d+)\.\d+\.\d+\.\d+\b", done.stdout or "")
-    if not match:
-        log.warning("%s --version printed no version: %r", executable, (done.stdout or "")[:200])
-        return None
-    return (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-        f"Chrome/{match.group(1)}.0.0.0 Safari/537.36"
-    )
 
 
 def sweep_leftover_profiles(root: str | None = None) -> int:
@@ -184,9 +194,6 @@ class ChatBrowser:
     """Everything one conversation browses with."""
 
     session_id: str
-    #: The kept text of each URL that `read_page` read: `(expiry, title, final_url, text,
-    #: version)`. See `read_page.read`.
-    page_reads: dict[str, tuple[float, str, str, str, str]] = field(default_factory=dict)
     profile_dir: str = ""
     browser: object | None = None
     #: The browser process. Ours, not nodriver's. See `start()`.
@@ -198,10 +205,14 @@ class ChatBrowser:
     last_used: float = field(default_factory=time.monotonic)
     calls: int = 0
     sidecar_restarts: int = 0
-    #: One chat's calls are serialised. The old global lock is gone, with one browser per
-    #: chat, a global lock would make eight conversations queue behind each other for no
+    #: Serialises the `browser_*` calls of one chat, because they act on the sidecar's
+    #: current tab. A global lock would make the chats queue behind each other for no
     #: safety benefit.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+    def busy(self) -> bool:
+        """True while a call of this chat is in flight."""
+        return self.lock.locked()
 
     def touch(self) -> None:
         self.last_used = time.monotonic()
@@ -224,8 +235,100 @@ class ChatBrowser:
         }
 
 
-async def start(session_id: str) -> ChatBrowser:
-    """Launch Chromium and its sidecar for one chat. Raises on failure.
+#: The disabled features that `launch_args` removes, so site isolation stays on.
+SITE_ISOLATION_FEATURES = frozenset({"IsolateOrigins", "site-per-process"})
+
+
+def launch_args(args: list[str]) -> list[str]:
+    """`args` with one `--disable-features` switch, at the place of the first one. It holds
+    every feature of the switches of `args`, in order, without `SITE_ISOLATION_FEATURES`.
+    See the module text."""
+    prefix = "--disable-features="
+    features: list[str] = []
+    out: list[str] = []
+    place = -1
+    for arg in args:
+        if not arg.startswith(prefix):
+            out.append(arg)
+            continue
+        if place < 0:
+            place = len(out)
+        for name in arg[len(prefix):].split(","):
+            name = name.strip()
+            if name and name not in features and name not in SITE_ISOLATION_FEATURES:
+                features.append(name)
+    if place >= 0 and features:
+        out.insert(place, prefix + ",".join(features))
+    return out
+
+
+def browser_config(profile_dir: str, cdp_port: int):
+    """The nodriver `Config` of one browser, and the extension folders it loads.
+
+    Chromium runs headed, on the X display that `DISPLAY` names. It sends its own user
+    agent and client hints, so the two agree. The window fills the Xvfb screen, so the
+    screen size and the window size that a page reads agree too.
+    """
+    import nodriver
+
+    config = nodriver.Config(
+        headless=False,
+        user_data_dir=profile_dir,
+        browser_executable_path=os.getenv("BROWSER_EXECUTABLE") or None,
+        # `sandbox=False` is how nodriver spells `--no-sandbox`; passing the flag through
+        # `add_argument` raises, because Config owns it. Required in a container:
+        # Chromium's sandbox needs privileges the image does not have and it exits
+        # immediately without this.
+        sandbox=False,
+        host="127.0.0.1",
+        port=cdp_port,
+    )
+    # nodriver adds `--remote-allow-origins=*`. With it, a script in any page may open the
+    # CDP WebSocket of its own browser, and then control every tab of it. Without the flag,
+    # Chromium refuses a CDP WebSocket whose request has an `Origin` header. nodriver and
+    # the sidecar send no `Origin` header, so they still connect.
+    config._default_browser_args = [
+        arg for arg in config._default_browser_args
+        if not arg.startswith("--remote-allow-origins")
+    ]
+    # /dev/shm is 64 MB by default and Chromium fills it on content-heavy pages. compose
+    # raises it, but a browser per chat multiplies the demand, so the flag stays as well.
+    # With this flag Chromium puts its shared memory files in /tmp, so the launcher mounts
+    # /tmp as a tmpfs. On a disk, those writes made parallel tabs wait for I/O.
+    config.add_argument("--disable-dev-shm-usage")
+    # The profile is in /tmp too. This limits the disk cache of each browser in that tmpfs.
+    config.add_argument(f"--disk-cache-size={DISK_CACHE_BYTES}")
+    # Xvfb has no GPU. Chromium draws in software, and a page gets no WebGL context.
+    config.add_argument("--disable-gpu")
+    config.add_argument("--window-position=0,0")
+    config.add_argument(f"--window-size={WINDOW_WIDTH},{WINDOW_HEIGHT}")
+    # Every window fills the screen, so each new window covers the older ones. On X11,
+    # Chromium marks the page of a covered window `hidden` and slows its timers and its
+    # rendering. Measured on Xvfb: without this flag, a covered window reports `hidden`.
+    config.add_argument("--disable-backgrounding-occluded-windows")
+    # The line that survives a redirect. Consulted by Chromium for every request in every
+    # tab, before a connection is opened, which is the coverage a tool-argument check
+    # cannot have. See :mod:`.netfilter`.
+    config.add_argument(f"--proxy-pac-url={netfilter.pac_data_url()}")
+    extensions = extension_paths()
+    for path in extensions:
+        # `add_extension` is what supplies the two feature flags MV3 extensions need. See
+        # the module docstring. It does NOT add --load-extension; nodriver's own `start()`
+        # does that, and we are not calling it.
+        config.add_extension(path)
+    if extensions:
+        # nodriver's own `Browser.start()` would add this, but we are not calling it (see
+        # `start()`). `start()` clears `_extensions` after the launch, which stops
+        # `Browser.create` adding a duplicate to a config we have already rendered.
+        config.add_argument("--load-extension=%s" % ",".join(str(p) for p in extensions))
+    return config, extensions
+
+
+async def start(session_id: str, sidecar: bool = True) -> ChatBrowser:
+    """Launch Chromium and, with `sidecar`, its sidecar for one chat. Raises on failure.
+
+    A special session (`special_browser`) passes `sidecar=False`. Its browser gets the
+    same launch settings and extensions.
 
     **Chromium is launched here, not by nodriver.** Two reasons, both learned the hard
     way:
@@ -244,85 +347,74 @@ async def start(session_id: str) -> ChatBrowser:
     """
     import nodriver
 
+    if not os.environ.get("DISPLAY"):
+        # Chromium runs headed on the Xvfb display of the container entry script. Without
+        # a display it exits at once, and the CDP probe would only report a timeout.
+        raise BrowserSpawnFailed(
+            "DISPLAY is not set. Start the server with its container display script."
+        )
     chat = ChatBrowser(session_id=session_id)
     chat.profile_dir = tempfile.mkdtemp(prefix=f"{PROFILE_PREFIX}{session_id[:24]}-")
     chat.cdp_port = _free_port()
-
-    config = nodriver.Config(
-        headless=True,
-        user_data_dir=chat.profile_dir,
-        browser_executable_path=os.getenv("BROWSER_EXECUTABLE") or None,
-        # `sandbox=False` is how nodriver spells `--no-sandbox`; passing the flag through
-        # `add_argument` raises, because Config owns it. Required in a container:
-        # Chromium's sandbox needs privileges the image does not have and it exits
-        # immediately without this.
-        sandbox=False,
-        host="127.0.0.1",
-        port=chat.cdp_port,
-    )
-    # /dev/shm is 64 MB by default and Chromium fills it on content-heavy pages. compose
-    # raises it, but a browser per chat multiplies the demand, so the flag stays as well.
-    config.add_argument("--disable-dev-shm-usage")
-    config.add_argument("--disable-gpu")
-    config.add_argument(f"--window-size={VIEWPORT_WIDTH},{VIEWPORT_HEIGHT}")
-    user_agent = user_agent_for(str(config.browser_executable_path))
-    if user_agent:
-        config.add_argument(f"--user-agent={user_agent}")
-    # The line that survives a redirect. Consulted by Chromium for every request in every
-    # tab, before a connection is opened, which is the coverage a tool-argument check
-    # cannot have. See :mod:`.netfilter`.
-    config.add_argument(f"--proxy-pac-url={netfilter.pac_data_url()}")
-    extensions = extension_paths()
-    for path in extensions:
-        # `add_extension` is what supplies the two feature flags MV3 extensions need in
-        # headless Chromium. See the module docstring. It does NOT add --load-extension;
-        # nodriver's own `start()` does that, and we are not calling it.
-        config.add_extension(path)
-    if extensions:
-        # nodriver's own `Browser.start()` would add this, but we are not calling it (see
-        # the docstring). Clearing `_extensions` afterwards stops `Browser.create` adding
-        # a duplicate to a config we have already rendered.
-        config.add_argument("--load-extension=%s" % ",".join(str(p) for p in extensions))
+    write_profile_prefs(chat.profile_dir)
+    config, extensions = browser_config(chat.profile_dir, chat.cdp_port)
 
     try:
         await _launch_chromium(chat, config)
         config._extensions = []
         chat.browser = await nodriver.Browser.create(config)
-    except Exception as exc:
+    except BaseException as exc:
         await _stop_chromium(chat)
         await _cleanup_profile(chat)
+        if isinstance(exc, asyncio.CancelledError):
+            raise
         raise BrowserSpawnFailed(f"chromium did not start: {exc}") from exc
 
-    try:
-        await _start_sidecar(chat)
-    except Exception:
-        await stop(chat)
-        raise
+    if sidecar:
+        try:
+            await _start_sidecar(chat)
+        except BaseException:
+            await stop(chat)
+            raise
 
     log.info(
-        "chat %s: chromium up (cdp %s), sidecar on 127.0.0.1:%d, %d extensions",
-        session_id, _cdp_endpoint(chat), chat.sidecar_port, len(extensions),
+        "chat %s: chromium up (cdp %s), %s, %d extensions",
+        session_id, _cdp_endpoint(chat),
+        f"sidecar on 127.0.0.1:{chat.sidecar_port}" if sidecar else "no sidecar",
+        len(extensions),
     )
     return chat
 
 
 async def _launch_chromium(chat: ChatBrowser, config) -> None:
     """Start the browser process and wait for its CDP endpoint to answer."""
-    args = list(config())
-    chat.chromium = await asyncio.create_subprocess_exec(
-        str(config.browser_executable_path),
-        *args,
-        stdout=asyncio.subprocess.DEVNULL,
-        # Chromium in a container writes a continuous stream of D-Bus and GCM errors to
-        # stderr. Left on a pipe with nobody reading, that pipe fills and the browser
-        # blocks on write, a wedge that looks exactly like a hung page. DEVNULL is the
-        # cheap correct answer; the messages are noise, and a browser that will not start
-        # is caught by the port probe below rather than by reading its log.
-        stderr=asyncio.subprocess.DEVNULL,
-        # Its own process group, so `_stop_chromium` ends the renderers and helpers too.
-        # Ending only the parent leaves children that write into the profile folder.
-        start_new_session=True,
-    )
+    args = launch_args(list(config()))
+    # Chromium in a container writes a continuous stream of D-Bus and GCM errors to
+    # stderr. Left on a pipe with nobody reading, that pipe fills and the browser blocks on
+    # write, a wedge that looks exactly like a hung page. So stderr goes to DEVNULL, or to
+    # a file when `BROWSER_CHROMIUM_LOG_DIR` asks for the log. A browser that will not
+    # start is caught by the port probe below.
+    log_file = None
+    if CHROMIUM_LOG_DIR:
+        os.makedirs(CHROMIUM_LOG_DIR, exist_ok=True)
+        path = os.path.join(CHROMIUM_LOG_DIR,
+                            f"{chat.session_id[:24]}-{chat.cdp_port}-{int(time.time())}.log")
+        log_file = open(path, "ab")  # noqa: SIM115 - the child process holds it open
+        args += ["--enable-logging=stderr", f"--v={CHROMIUM_LOG_VERBOSITY}"]
+        log.info("chat %s: chromium log in %s", chat.session_id, path)
+    try:
+        chat.chromium = await asyncio.create_subprocess_exec(
+            str(config.browser_executable_path),
+            *args,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=log_file if log_file is not None else asyncio.subprocess.DEVNULL,
+            # Its own process group, so `_stop_chromium` ends the renderers and helpers
+            # too. Ending only the parent leaves children that write into the profile.
+            start_new_session=True,
+        )
+    finally:
+        if log_file is not None:
+            log_file.close()
     if not await _wait_for_cdp(chat.cdp_port, CHROMIUM_START_TIMEOUT):
         raise BrowserSpawnFailed(
             f"chromium did not answer on 127.0.0.1:{chat.cdp_port} within "
@@ -403,7 +495,7 @@ async def _start_sidecar(chat: ChatBrowser) -> None:
     """Spawn `@playwright/mcp` bound to this chat's Chromium and wait for its port.
 
     `--isolated` is deliberately absent: it would make playwright launch a browser of its
-    own, losing the extensions and the CDP handle capture needs. `--cdp-endpoint` is what
+    own, losing the extensions. `--cdp-endpoint` is what
     binds it to the Chromium above, and the per-chat *process* is what supplies the
     isolation `--cdp-endpoint` alone does not.
     """
@@ -418,9 +510,10 @@ async def _start_sidecar(chat: ChatBrowser) -> None:
         # Host header. Which is why the client URL below says `localhost` and not
         # `127.0.0.1`: the same address by IP comes back `403 Access is only allowed at
         # localhost:<port>`.
-        "--headless",
+        # No `--headless` and no `--viewport-size`: the sidecar launches no browser, and
+        # without a viewport override the page size follows the window, as in a person's
+        # browser.
         "--no-sandbox",
-        "--viewport-size", f"{VIEWPORT_WIDTH},{VIEWPORT_HEIGHT}",
         "--timeout-navigation", str(NAV_TIMEOUT_MS),
         "--timeout-action", str(ACTION_TIMEOUT_MS),
         # Coordinate-based clicking, for pages whose accessibility tree is useless.

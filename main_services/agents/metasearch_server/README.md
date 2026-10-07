@@ -90,6 +90,7 @@ The service also reads these environment variables.
 | `METASEARCH_ATTEMPT_TIMEOUT` | `6` | Bound an attempt when another route remains. |
 | `METASEARCH_TOR_ROUTES` | Empty. | Configure named SOCKS routes. |
 | `BROWSER_FETCH_URL` | Empty. | Configure the internal browser fetch route. |
+| `BROWSER_FETCH_TOKEN_FILE` | Empty. | Read the shared token for internal browser source fetches. |
 | `METASEARCH_COOLDOWN_SECONDS` | `600` | Delay a blocked route for the same host. |
 | `METASEARCH_SOLVE_TIMEOUT` | `30` | Bound a proof-of-work solve. |
 | `METASEARCH_SOLVE_BACKOFF` | `300` | Delay a new solve after failure. |

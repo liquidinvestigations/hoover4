@@ -48,13 +48,13 @@ def test_the_probe_detects_human_verification_pages(title, body, blocked):
                          ids=["probe", "extraction"])
 def test_page_scripts_report_the_document_http_status(status, function):
     script = (
-        "global.document = {title: 'Example', body: {innerText: 'Article about HTTP 404 errors.'},"
+        "global.document = {title: 'Example', contentType: 'application/json', readyState: 'complete', body: {innerText: 'Article about HTTP 404 errors.' + 'x'.repeat(2000)},"
         " querySelector: () => null, getElementsByTagName: () => [],"
         " querySelectorAll: () => [document.body], cloneNode: () => document};"
         "global.window = {}; global.location = {href: 'https://checked.example/article'};"
         "Object.defineProperty(globalThis, 'performance', {value: {getEntriesByType:"
         f" kind => kind === 'navigation' ? [{{responseStatus: {status}}}] : []}}}});"
-        f"console.log(({function})());"
+        f"Promise.resolve(({function})()).then(value => console.log(value));"
     )
     result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
     assert json.loads(result.stdout)["status"] == status
@@ -125,6 +125,10 @@ def fast(monkeypatch):
     monkeypatch.setattr(capture_mod, "capture", no_capture)
     # The test host does not resolve, and the URL check is not what these tests cover.
     monkeypatch.setattr(read_page, "check_url", lambda url: None)
+
+    async def fresh(chat, url, goal, limit, username, deadline, links=True):
+        return await read_page._read_one(chat, url, goal, limit, username, links=links)
+    monkeypatch.setattr(read_page, "_read_fresh", fresh)
 
 
 def _read(client: FakeClient) -> tuple[PageRead, float]:

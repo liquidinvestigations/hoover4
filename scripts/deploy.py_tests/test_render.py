@@ -1364,3 +1364,43 @@ def test_scanner_memory_below_four_gib_is_refused(size):
     cfg.values["main_services"]["regex_scanner_mem_limit"] = size
     with pytest.raises(deploy.DeployError, match="regex_scanner_mem_limit.*at least 4G"):
         deploy.render_main_env(cfg)
+
+
+@pytest.mark.parametrize("internet,tor,selected", [(True, True, True), (True, False, False), (False, True, False)])
+def test_private_tor_requires_both_switches(internet, tor, selected):
+    cfg = _config("settings-defaults.ini")
+    cfg.values["main_services"]["internet_tools_enabled"] = str(internet).lower()
+    cfg.values["main_services"]["web_tor_enabled"] = str(tor).lower()
+    env = deploy.render_main_env(cfg)
+    assert ("compose/web-tor.yaml" in deploy.selected_overlays(cfg, "main")) == selected
+    assert bool(env["METASEARCH_TOR_ROUTES"]) == selected
+    assert env["READ_PAGE_TOR_PROXIES"] == env["METASEARCH_TOR_ROUTES"]
+    rt = mock.Mock()
+    deploy.stop_disabled_internet_tools(cfg, rt)
+    removals = [call.args[0][-1] for call in rt.run.call_args_list]
+    assert ("hoover4-web-tor" in removals) == (not selected)
+
+
+@pytest.mark.parametrize("key", ["browser_reader_tabs", "browser_search_tabs", "browser_queue_limit",
+    "browser_read_timeout_seconds", "web_search_concurrency", "web_search_queue_limit",
+    "web_search_queue_wait_seconds", "web_search_fetch_budget_seconds"])
+def test_web_capacity_refuses_invalid_values(key):
+    cfg = _config("settings-defaults.ini")
+    for value in ("0", "-1", "1.5", "invalid"):
+        cfg.values["main_services"][key] = value
+        with pytest.raises(deploy.DeployError, match=key):
+            deploy.render_main_env(cfg)
+
+
+def test_web_configuration_and_private_tor_compose():
+    import yaml
+    cfg = _config("settings-defaults.ini")
+    cfg.values["main_services"]["browser_reader_tabs"] = "7"
+    cfg.values["main_services"]["browser_fetch_token_file"] = "/private/token"
+    env = deploy.render_main_env(cfg)
+    assert env["READER_TAB_SLOTS"] == "7"
+    assert env["BROWSER_FETCH_TOKEN_FILE_HOST"] == "/private/token"
+    compose = yaml.safe_load((REPO_ROOT / "main_services/ops/docker/compose/web-tor.yaml").read_text())
+    service = compose["services"]["hoover4-web-tor"]
+    assert not service.get("ports") and service.get("network_mode") != "host"
+    assert service["read_only"] is True and service["init"] is True

@@ -1,7 +1,7 @@
 [project]
 name = "hoover4-mcp-browser-use-server"
 version = "0.1.0"
-description = "MCP server that reads web pages with a real headless Chromium, driven over CDP"
+description = "MCP server that reads web pages with a real Chromium, driven over CDP"
 requires-python = ">=3.11,<4.0"
 dependencies = [
     "fastmcp>=2.12,<3",

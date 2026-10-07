@@ -1,0 +1,29 @@
+# Optional private Tor clients for the browser and web search services.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+services:
+  hoover4-web-tor:
+    logging: *logging
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/ops/docker/web-tor
+    image: hoover4-web-tor:local
+    container_name: hoover4-web-tor
+    init: true
+    restart: unless-stopped
+    mem_limit: ${HOOVER4_WEB_TOR_MEM_LIMIT:-512M}
+    memswap_limit: ${HOOVER4_WEB_TOR_MEM_LIMIT:-512M}
+    cpus: 1
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m,mode=1777
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1',9050),2).close(); socket.create_connection(('127.0.0.1',9051),2).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    networks:
+      - hoover4

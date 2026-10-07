@@ -64,6 +64,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
+from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 import httpx
@@ -554,6 +555,16 @@ async def _send_curl(target, proxy, method, url, headers, cookies, data, multipa
             mime.close()
 
 
+def browser_headers() -> dict[str, str]:
+    """Read the mounted internal fetch token without recording its value."""
+    path = os.getenv("BROWSER_FETCH_TOKEN_FILE", "")
+    try:
+        token = Path(path).read_text().strip() if path else ""
+    except OSError:
+        token = ""
+    return {"Authorization": "Bearer " + token} if token else {}
+
+
 async def _send_browser(url, headers, budget) -> FetchResponse:
     request = {
         "url": url,
@@ -568,7 +579,7 @@ async def _send_browser(url, headers, budget) -> FetchResponse:
     if not BROWSER_FETCH_URL:
         raise FetchError("The browser fetch endpoint is not configured.")
     try:
-        answer = await _httpx_client().post(BROWSER_FETCH_URL, json=request,
+        answer = await _httpx_client().post(BROWSER_FETCH_URL, json=request, headers=browser_headers(),
                                             timeout=budget + BROWSER_ANSWER_GRACE_S)
     except Exception as exc:  # noqa: BLE001
         raise FetchError(
@@ -602,7 +613,7 @@ async def probe_browser() -> str:
     the return value names the cause.
     """
     try:
-        answer = await _httpx_client().post(BROWSER_FETCH_URL, json={}, timeout=PROBE_TIMEOUT_S)
+        answer = await _httpx_client().post(BROWSER_FETCH_URL, json={}, headers=browser_headers(), timeout=PROBE_TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001 - the cause goes into the health answer
         return (f"the browser fetch endpoint {BROWSER_FETCH_URL} did not answer: "
                 f"{type(exc).__name__}: {exc}")
@@ -610,9 +621,10 @@ async def probe_browser() -> str:
         data = answer.json()
     except ValueError:
         data = None
+    if answer.status_code not in (200, 400):
+        return f"The browser fetch endpoint answered HTTP {answer.status_code}."
     if not isinstance(data, dict):
-        return (f"the browser fetch endpoint {BROWSER_FETCH_URL} answered HTTP "
-                f"{answer.status_code} without a JSON object")
+        return "The browser fetch endpoint did not return a JSON object."
     return ""
 
 

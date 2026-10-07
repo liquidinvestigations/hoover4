@@ -256,6 +256,17 @@ rate_chat_poll_per_minute = 1800
 ; times about 500 MB is 8 GB of chat browsers plus the template. The container
 ; memory limit below is what stops that from filling the host.
 browser_max_contexts = 16
+browser_reader_tabs = 4
+browser_search_tabs = 2
+browser_queue_limit = 32
+browser_read_timeout_seconds = 180
+browser_fetch_token_file =
+web_search_concurrency = 4
+web_search_queue_limit = 16
+web_search_queue_wait_seconds = 60
+web_search_fetch_budget_seconds = 60
+web_tor_enabled = false
+web_tor_mem_limit = 512M
 ; Hard memory ceiling for hoover4-mcp-browser. Sixteen live chats at 500 MB
 ; plus the template fit in 24 GB with room.
 mcp_browser_mem_limit = 24G

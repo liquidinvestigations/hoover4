@@ -48,6 +48,9 @@ from agent_common import artifacts, batching
 from agent_common.result_pages import SAFE_MODE_BATCH_BYTES
 
 from browser_use_server import capture as capture_mod
+from browser_use_server.markdown_walker import extract_script
+from browser_use_server.reader_client import _document
+from browser_use_server.reader_routes import read_fresh as _read_fresh
 from browser_use_server.urlcheck import UrlNotAllowed, check_url
 
 log = logging.getLogger(__name__)
@@ -78,27 +81,9 @@ NAVIGATE_TIMEOUT_MS = int(os.getenv("READ_PAGE_NAVIGATE_TIMEOUT_MS", "25000"))
 #: furniture removed. It is deliberately not Readability-the-library: an innerText read of
 #: the densest text block is within a few percent of it on the pages this actually meets,
 #: and it needs nothing injected into a page the router does not control.
-_EXTRACT_JS = """
-() => {
-  const status = Number(globalThis.performance?.getEntriesByType?.('navigation')?.[0]?.responseStatus) || 0;
-  const strip = ['script','style','noscript','svg','nav','header','footer','aside','form'];
-  const doc = document.cloneNode(true);
-  for (const tag of strip) {
-    for (const el of Array.from(doc.getElementsByTagName(tag))) el.remove();
-  }
-  const candidates = Array.from(doc.querySelectorAll('article,main,[role=main],body'));
-  let best = doc.body, bestLen = 0;
-  for (const el of candidates) {
-    const len = (el.innerText || el.textContent || '').length;
-    if (len > bestLen) { best = el; bestLen = len; }
-  }
-  const text = (best.innerText || best.textContent || '')
-    .replace(/[ \\t]+/g, ' ')
-    .replace(/\\n{3,}/g, '\\n\\n')
-    .trim();
-  return JSON.stringify({ title: document.title || '', url: location.href, text, status });
-}
-"""
+_EXTRACT_JS = extract_script()
+
+CALL_TIMEOUT_S = float(os.getenv("READ_PAGE_CALL_TIMEOUT_S", "180"))
 
 #: How long a page that shows a bot check gets to pass it before it is reported as
 #: blocked. A Cloudflare check that a real browser passes clears in a few seconds.
@@ -120,10 +105,9 @@ _CHECK_JS = """
 () => {
   const t = (document.title || '').toLowerCase();
   const b = ((document.body && document.body.innerText) || '').slice(0, 4000).toLowerCase();
-  // Not the challenge-platform script: Cloudflare adds it to ordinary pages too, so it
-  // marks a page as a check after the check has passed.
-  const dom = !!(window._cf_chl_opt
-    || document.querySelector('#challenge-form, #challenge-running, #challenge-stage'));
+  // Ordinary pages can contain precursor scripts after a successful verification.
+  const dom = !!document.querySelector('#challenge-form, #challenge-running, #challenge-stage, '
+    + 'script[src*="/cdn-cgi/challenge-platform/"][src*="/orchestrate/"]');
   const titles = ['just a moment', 'attention required', 'checking your browser', 'please wait', 'ddos-guard', 'access denied'];
   const phrases = ['performing security verification', 'verify you are human', 'checking your browser',
                    'verify that you are human', 'confirm that you are human',
@@ -133,9 +117,15 @@ _CHECK_JS = """
     && (b.includes('myra') || b.includes('unusual traffic') || b.includes('mensch'));
   const verification = t.trim() === 'security verification'
     && b.includes('verification could not be completed');
+  const blockPhrases = ['prove your humanity', 'blocked by network security', "you\'ve been blocked",
+    'you have been blocked', 'unusual traffic from your computer network',
+    'are you a robot', 'complete the security check', 'access to this page has been denied',
+    'request blocked', 'please verify you are a human'];
+  const blocked = ((document.body && document.body.innerText) || '').length < 5000
+    ? blockPhrases.find(x => t.includes(x) || b.includes(x)) : '';
   const hit = dom ? 'dom' : (myra ? 'security check' :
     (verification ? 'security verification' :
-      (titles.find(x => t.includes(x)) || phrases.find(x => b.includes(x)) || '')));
+      (blocked || titles.find(x => t.includes(x)) || phrases.find(x => b.includes(x)) || '')));
   return JSON.stringify({ text: hit, check: !!hit, url: location.href, title: document.title || '',
                           type: document.contentType || '',
                           status: Number(globalThis.performance?.getEntriesByType?.('navigation')?.[0]?.responseStatus) || 0 });
@@ -184,7 +174,10 @@ class PageRead:
     error: str = ""
     truncated: bool = False
     artifact: dict | None = None
-    #: The page stayed on a bot check for the whole wait. `error` is then set too.
+    links: bool = True
+    route: str = "direct"
+    tried: list[str] = field(default_factory=list)
+    #: The page returned a blocking status or stayed on a bot check. `error` is also set.
     blocked: bool = False
     #: What the call note says about this page. It is empty when there is nothing to add.
     note: str = ""
@@ -322,6 +315,8 @@ def _find_block(page: PageRead) -> str:
         left = page.matches_after - page.shown_matches
         fields = (f"find {literal}, offset {page.next_offset} and version {page.version}"
                   if page.version else f"find {literal} and offset {page.next_offset}")
+        if not page.links:
+            fields += ", links false"
         parts.append(f"[more: {left} matches from offset {page.next_offset}. Call read_page "
                      f"with this URL, {fields} for the next matches]")
     return "\n\n".join(parts)
@@ -334,9 +329,11 @@ def render(result: ReadResult) -> str:
         head = f"## {page.title or page.url}\n{page.final_url or page.url}"
         if page.blocked:
             where = page.final_url or page.url
+            cause = (f"The page stayed on its bot check for {BOT_CHECK_WAIT_S:g} s"
+                     if page.error == BOT_CHECK_ERROR else page.error or BOT_CHECK_ERROR)
             blocks.append(
-                f"{head}\n\n{BOT_CHECK_LABEL}: {where}. The page stayed on its bot check for "
-                f"{BOT_CHECK_WAIT_S:g} s, so this call has no text from it. Do not use this "
+                f"{head}\n\n{BOT_CHECK_LABEL}: {where}. {cause}. "
+                "This call has no source text from this page. Do not use this "
                 "page as a source. Try its archived copy with web_search and sources "
                 '["wayback"], or another page.'
             )
@@ -358,6 +355,8 @@ def render(result: ReadResult) -> str:
             )
             continue
         version = f", with version {page.version}" if page.version else ""
+        if not page.links:
+            version += ", links false"
         tail = (
             f"\n\n[cut: this call read {len(page.text):,} of the page's "
             f"{page.full_chars:,} characters. Call read_page with offset "
@@ -460,17 +459,9 @@ def fit(result: ReadResult, ceiling: int, reserved: int = 0) -> None:
 
 async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0,
                find: str = "", version: str = "",
-               ceiling: int = DEFAULT_PAGE_BYTES) -> ReadResult:
-    """Navigate, extract and capture each URL in turn, inside one chat's browser. The
-    text of each page is chosen later, by `fit`.
-
-    Serial rather than concurrent on purpose: there is one browser per chat and its calls
-    are already serialised by the router's per-chat lock, so firing the navigations in
-    parallel would queue them anyway while making the failure attribution worse.
-
-    A page whose text is kept is not navigated again. With `version`, only the kept text of
-    that version is read, and a page with no such text is reported with the reason.
-    """
+               ceiling: int = DEFAULT_PAGE_BYTES, links: bool = True) -> ReadResult:
+    """Read pages in parallel through bounded reader slots and keep scoped continuations."""
+    deadline = time.monotonic() + CALL_TIMEOUT_S
     to_read, _repeats, _over, note = plan(raw_urls)
     result = ReadResult(note=note)
     if not to_read:
@@ -486,12 +477,13 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
         result.note = batching.corrective_note(result.note, batching.dropped_note(dropped, "URL"))
     find = (find or "")[:FIND_MAX_CHARS]
 
+    outcomes = []
     for url in to_read:
         now = time.monotonic()
         for old_url, stored in list(chat.page_reads.items()):
             if stored[0] <= now:
                 del chat.page_reads[old_url]
-        cached = chat.page_reads.get(url)
+        cached = chat.page_reads.get((url, links))
         if version and (not cached or cached[4] != version):
             page = PageRead(url=url, find=find, offset=offset)
             if cached:
@@ -506,22 +498,51 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
                     f"{KEEP_SECONDS // 60} minutes). Call read_page without version to read "
                     "the page again from offset 0"
                 )
-            result.pages.append(page)
+            outcomes.append(page)
             continue
         if cached:
-            _, title, final_url, full_text, kept_version = cached
+            _, title, final_url, full_text, kept_version, *kept_route = cached
             page = PageRead(url=url, title=title, final_url=final_url, full_text=full_text,
-                            version=kept_version)
+                            version=kept_version, route=kept_route[0] if kept_route else "direct")
         else:
-            page = await _read_one(chat, url, goal, per_page, username)
-            # Only a kept text has a version. A version of a text that is not kept would
-            # make a continuation report an expiry that did not happen.
+            outcomes.append(asyncio.create_task(
+                _read_fresh(chat, url, goal, per_page, username, deadline, links=links)))
+            continue
+        outcomes.append(page)
+
+    jobs = [item for item in outcomes if isinstance(item, asyncio.Task)]
+    try:
+        if jobs:
+            await asyncio.wait(jobs, timeout=max(0.0, deadline - time.monotonic()))
+    finally:
+        for job in jobs:
+            if not job.done():
+                job.cancel()
+        if jobs:
+            await asyncio.gather(*jobs, return_exceptions=True)
+
+    for url, outcome in zip(to_read, outcomes):
+        if isinstance(outcome, PageRead):
+            page = outcome
+        elif outcome.cancelled():
+            page = PageRead(url=url, error="The page read reached its call deadline.")
+        elif outcome.exception() is not None:
+            page = PageRead(url=url, error=f"The page could not be read: {outcome.exception()}")
+        else:
+            page = outcome.result()
+            valid_page(page)
             if page.full_text and len(page.full_text.encode("utf-8")) <= PDF_MAX_BYTES:
                 page.version = text_version(page.full_text)
-                chat.page_reads[url] = (
+                chat.page_reads[(url, links)] = (
                     time.monotonic() + KEEP_SECONDS, page.title, page.final_url,
-                    page.full_text, page.version,
+                    page.full_text, page.version, page.route,
                 )
+        valid_page(page)
+        page.links = links
+        if page.route != "direct":
+            page.note = batching.corrective_note(page.note, f"The page used route {page.route}.")
+        if page.error and page.tried:
+            page.note = batching.corrective_note(page.note, "Earlier attempts: " + ", ".join(page.tried))
         if page.full_text:
             page.offset = offset
             page.find = find
@@ -533,10 +554,11 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
     return result
 
 
-async def _read_one(chat, url: str, goal: str, limit: int, username: str) -> PageRead:
+async def _read_one(chat, url: str, goal: str, limit: int, username: str,
+                    links: bool = True, capture_result: bool = True) -> PageRead:
     page = PageRead(url=url)
     try:
-        check_url(url)
+        await asyncio.to_thread(check_url, url)
     except UrlNotAllowed as exc:
         page.error = f"refused: {exc}"
         return page
@@ -558,7 +580,19 @@ async def _read_one(chat, url: str, goal: str, limit: int, username: str) -> Pag
         # reported as the failure.
         log.info("read_page: navigation to %s reported %s", url, navigated)
 
+    if _document(chat) != "ours":
+        page.error = navigated or "The page did not load."
+        return page
+
     first = await _probe(chat)
+    status = (first or {}).get("status")
+    if status in (403, 429, 451, 503):
+        page.blocked = True
+        page.final_url = str(first.get("url") or url)
+        page.error = f"the page returned HTTP {status}"
+        if capture_result:
+            await _capture_read(chat, page, url, goal, username)
+        return page
     if first and first.get("type") == "application/pdf":
         await _read_pdf(chat, page, url, goal, limit, first)
     elif (blocked_at := await _wait_out_check(chat, first)) is not None:
@@ -568,11 +602,19 @@ async def _read_one(chat, url: str, goal: str, limit: int, username: str) -> Pag
         page.error = BOT_CHECK_ERROR
     else:
         _extract(page, url, goal, limit, navigated, await _call(
-            chat, "browser_evaluate", {"function": _EXTRACT_JS}
+            chat, "browser_evaluate", {"function": extract_script(links)}
         ))
 
+    if capture_result:
+        await _capture_read(chat, page, url, goal, username)
+    return page
+
+
+async def _capture_read(chat, page, url, goal, username):
+    """Capture the selected attempt with its caller ownership and explicit tab."""
     captured = await capture_mod.capture(
-        chat, "read_page", username, failed=bool(page.error)
+        chat, "read_page", username, failed=bool(page.error),
+        **({"tab": chat.tab} if getattr(chat, "tab", None) is not None else {})
     )
     if captured.artifact_id:
         entry = {
@@ -586,7 +628,6 @@ async def _read_one(chat, url: str, goal: str, limit: int, username: str) -> Pag
         if detail:
             entry["detail"] = detail
         page.artifact = entry
-    return page
 
 
 def _extract(
@@ -775,3 +816,17 @@ __all__ = [
     "render",
     "text_version",
 ]
+
+
+def valid_text(text: str) -> str:
+    """Join surrogate pairs and replace lone surrogates before UTF-8 serialization."""
+    if not any("\ud800" <= char <= "\udfff" for char in text):
+        return text
+    return text.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "replace")
+
+
+def valid_page(page: PageRead) -> None:
+    """Normalize page strings before rendering, hashing, and storing them."""
+    for name in ("url", "title", "final_url", "text", "full_text", "error", "note", "route", "find"):
+        setattr(page, name, valid_text(getattr(page, name)))
+    page.tried = [valid_text(value) for value in page.tried]

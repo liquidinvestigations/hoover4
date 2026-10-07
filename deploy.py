@@ -244,6 +244,17 @@ DEFAULTS = {
         "max_held_polls_per_user": "8",
         "rate_chat_poll_per_minute": "1800",
         "browser_max_contexts": "16",
+        "browser_reader_tabs": "4",
+        "browser_search_tabs": "2",
+        "browser_queue_limit": "32",
+        "browser_read_timeout_seconds": "180",
+        "browser_fetch_token_file": "",
+        "web_search_concurrency": "4",
+        "web_search_queue_limit": "16",
+        "web_search_queue_wait_seconds": "60",
+        "web_search_fetch_budget_seconds": "60",
+        "web_tor_enabled": "false",
+        "web_tor_mem_limit": "512M",
         # Tool packs of a chat run: a comma list of pack names, or `all`.
         "agent_packs_chat": "all",
         # The catalogue match count that the probe selects. Empty keeps six matches.
@@ -484,6 +495,11 @@ def research_agents_enabled(cfg):
     return cfg.active_llm_provider() is not None
 
 
+def web_tor_enabled(cfg):
+    """Start private Tor clients only with enabled internet tools and Tor fallback."""
+    return cfg.internet_tools_enabled() and cfg.get_bool("main_services", "web_tor_enabled")
+
+
 def research_agents_internet_enabled(cfg):
     return research_agents_enabled(cfg) and cfg.internet_tools_enabled()
 
@@ -492,6 +508,7 @@ def research_agents_internet_enabled(cfg):
 MAIN_OVERLAYS = [
     (None, "compose/agents.yaml", None),          # collections and todo
     ("internet_tools_enabled", "compose/internet-tools.yaml", None),
+    (web_tor_enabled, "compose/web-tor.yaml", "hoover4-web-tor"),
     (research_agents_enabled, "compose/research-agents.yaml", None),
     # Adds the internet MCP servers to hoover4-full-research-agent's depends_on.
     (research_agents_internet_enabled, "compose/research-agents-internet.yaml", None),
@@ -1583,6 +1600,25 @@ def render_main_env(cfg):
     env["HOOVER4_MAX_HELD_POLLS_PER_USER"] = cfg.get(m, "max_held_polls_per_user")
     env["HOOVER4_RATE_CHAT_POLL_PER_MINUTE"] = cfg.get(m, "rate_chat_poll_per_minute")
     env["BROWSER_MAX_CONTEXTS"] = cfg.get(m, "browser_max_contexts")
+    for key, variable in (
+        ("browser_reader_tabs", "READER_TAB_SLOTS"),
+        ("browser_search_tabs", "METASEARCH_TAB_SLOTS"),
+        ("browser_queue_limit", "SPECIAL_BROWSER_MAX_WAITING"),
+        ("browser_read_timeout_seconds", "READ_PAGE_CALL_TIMEOUT_S"),
+        ("web_search_concurrency", "METASEARCH_MAX_CONCURRENT"),
+        ("web_search_queue_limit", "METASEARCH_MAX_WAITING"),
+        ("web_search_queue_wait_seconds", "METASEARCH_QUEUE_WAIT_SECONDS"),
+        ("web_search_fetch_budget_seconds", "METASEARCH_FETCH_BUDGET"),
+    ):
+        raw = cfg.get(m, key)
+        if not raw.isdigit() or int(raw) < 1:
+            fail("[main_services] %s must be a positive integer" % key)
+        env[variable] = raw
+    env["BROWSER_FETCH_TOKEN_FILE_HOST"] = cfg.get(m, "browser_fetch_token_file")
+    env["HOOVER4_WEB_TOR_MEM_LIMIT"] = cfg.get(m, "web_tor_mem_limit")
+    routes = "tor-1=hoover4-web-tor:9050,tor-2=hoover4-web-tor:9051" if web_tor_enabled(cfg) else ""
+    env["METASEARCH_TOR_ROUTES"] = routes
+    env["READ_PAGE_TOR_PROXIES"] = routes
     for key in REMOVED_DEEP_RESEARCH_KEYS:
         if key in cfg.extra.get(m, []):
             print("warning: [main_services] %s is ignored. Deep research is removed." % key,
@@ -2432,6 +2468,8 @@ def stop_disabled_internet_tools(cfg, rt):
     `compose up` without those services in the file list does not stop a container
     that was started by an earlier deploy with the switch on.
     """
+    if not web_tor_enabled(cfg):
+        rt.run(["rm", "-f", "hoover4-web-tor"], capture_output=True)
     if cfg.internet_tools_enabled():
         return
     for name in INTERNET_TOOL_SERVICES:

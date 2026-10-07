@@ -192,8 +192,31 @@ Empty gives 4, and the release template sets 8. Each process has `indexing_concu
 slots, 1 by default. The email graph runs in one more process of its own, on
 `processing-email-graph-queue` with one slot, and no key changes that count.
 
-`browser_max_contexts` is live Chromium processes on `hoover4-mcp-browser`, one per chat.
-`mcp_browser_mem_limit` is that container's memory ceiling.
+`browser_max_contexts` limits interactive Chromium processes, one per agent run.
+`mcp_browser_mem_limit` is the browser container's memory ceiling.
+Page reads and metasearch source fetches use separate shared browsers and bounded tab queues.
+
+| Main service key | Default | Behavior |
+|---|---|---|
+| `browser_reader_tabs` | `4` | This setting limits concurrent reader tabs. |
+| `browser_search_tabs` | `2` | This setting limits concurrent metasearch browser tabs. |
+| `browser_queue_limit` | `32` | This setting limits waiting requests in each shared browser queue. |
+| `browser_read_timeout_seconds` | `180` | This setting bounds a complete page-read call. |
+| `browser_fetch_token_file` | Empty. | This setting names the private token file shared by browser and metasearch containers. |
+| `web_search_concurrency` | `4` | This setting limits concurrent web-search calls. |
+| `web_search_queue_limit` | `16` | This setting limits waiting web-search calls. |
+| `web_search_queue_wait_seconds` | `60` | This setting bounds the web-search queue wait. |
+| `web_search_fetch_budget_seconds` | `60` | This setting bounds source fetching across all queries in one call. |
+| `web_tor_enabled` | `false` | This setting enables private Tor clients when internet tools are enabled. |
+| `web_tor_mem_limit` | `512M` | This setting limits Tor container memory. |
+
+Create a private, nonempty token file before enabling browser-backed search sources.
+Set its path through `browser_fetch_token_file` and restrict host file access to the deployment user.
+An empty file disables the internal source-fetch route and reports degraded browser source access.
+Tor fallback uses two clients with isolated request identities and no published ports or control interface.
+A Tor container health response verifies listeners.
+Live source requests must verify circuit availability separately.
+
 `agent_packs_chat` selects chat tool packs as a comma-separated list or `all`.
 The available packs are `catalogue`, `skills`, `collections`, `conversation`, `web`, and `browser`.
 Every chat receives the `skills` pack.

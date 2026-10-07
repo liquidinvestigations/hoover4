@@ -31,6 +31,7 @@ WORKDIR /app
 # nodejs is for the @playwright/mcp sidecar, one process per live chat.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         chromium \
+        xvfb \
         ca-certificates \
         curl \
         unzip \
@@ -96,9 +97,11 @@ RUN set -eux; \
 COPY ./agent_common/ ./agent_common/
 RUN pip install --no-cache-dir ./agent_common
 
+COPY ./browser_use_server/display.sh /usr/local/bin/browser-display
 COPY ./browser_use_server/pyproject.toml ./
 COPY ./browser_use_server/browser_use_server/ ./browser_use_server/
 COPY ./browser_use_server/tests/ ./tests/
+COPY ./browser_use_server/integration_tests/ ./integration_tests/
 # The shared package's tests, under the one target a runner reaches. Without this they
 # ship in the image and run in nothing, so a regression in `agent_common` lands silently
 # in all three server images at once.
@@ -111,4 +114,4 @@ EXPOSE 8087
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request,os; urllib.request.urlopen(f\"http://127.0.0.1:{os.getenv('PORT','8087')}/health\", timeout=5)" || exit 1
 
-CMD ["python", "-m", "browser_use_server.server"]
+CMD ["bash", "/usr/local/bin/browser-display"]

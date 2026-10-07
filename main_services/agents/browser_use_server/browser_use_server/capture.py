@@ -105,6 +105,8 @@ async def capture(
     tool_name: str,
     username: str,
     failed: bool = False,
+    *,
+    tab=None,
 ) -> CaptureResult:
     """Screenshot + snapshot the active page and write one `chat_artifacts` row.
 
@@ -116,7 +118,7 @@ async def capture(
     result = CaptureResult()
     try:
         result = await asyncio.wait_for(
-            _capture(chat, tool_name, username, failed), timeout=CAPTURE_TIMEOUT
+            _capture(chat, tool_name, username, failed, tab=tab), timeout=CAPTURE_TIMEOUT
         )
     except asyncio.TimeoutError:
         # `str(TimeoutError())` is the empty string, so logging the exception alone
@@ -135,9 +137,10 @@ async def capture(
 
 
 async def _capture(
-    chat: ChatBrowser, tool_name: str, username: str, failed: bool
+    chat: ChatBrowser, tool_name: str, username: str, failed: bool, *, tab=None
 ) -> CaptureResult:
-    tab = await _active_tab(chat)
+    if tab is None:
+        tab = await _active_tab(chat)
     if tab is None:
         return CaptureResult(status=artifacts.STATUS_FAILED, detail="no active page")
 

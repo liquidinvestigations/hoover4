@@ -4,35 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import os
-import stat
 import sys
 import time
 
 from browser_use_server import chat_browser
-
-
-def _fake_executable(tmp_path, output: str) -> str:
-    path = tmp_path / "chromium"
-    path.write_text(f"#!/bin/sh\nprintf '%s' '{output}'\n")
-    path.chmod(path.stat().st_mode | stat.S_IEXEC)
-    return str(path)
-
-
-def test_the_user_agent_takes_the_major_version_and_drops_headless(tmp_path):
-    chat_browser.user_agent_for.cache_clear()
-    exe = _fake_executable(tmp_path, "Chromium 153.0.8010.52 built on Debian")
-    agent = chat_browser.user_agent_for(exe)
-    assert agent == (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/153.0.0.0 Safari/537.36"
-    )
-    assert "Headless" not in agent
-
-
-def test_no_version_gives_no_user_agent(tmp_path):
-    chat_browser.user_agent_for.cache_clear()
-    assert chat_browser.user_agent_for(_fake_executable(tmp_path, "")) is None
-    assert chat_browser.user_agent_for(str(tmp_path / "missing")) is None
 
 
 def test_the_sweep_removes_only_profile_folders(tmp_path):

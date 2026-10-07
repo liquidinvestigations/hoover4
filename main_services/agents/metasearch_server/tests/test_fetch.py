@@ -513,3 +513,26 @@ class TestHealthProbe:
         assert body["status"] == "degraded" and body["tor_routes"] == {"tor-test": False}
 
     _real_probe = staticmethod(fetch_mod.probe_tor_routes)
+
+
+def test_browser_fetch_and_probe_send_the_private_token(monkeypatch, transport, tmp_path):
+    token = tmp_path / "token"
+    token.write_text("test-only-token")
+    monkeypatch.setenv("BROWSER_FETCH_TOKEN_FILE", str(token))
+    def handle(request):
+        assert request.headers["authorization"] == "Bearer test-only-token"
+        if json.loads(request.content) == {}:
+            return httpx.Response(400, json={"error": "Give a URL."})
+        return httpx.Response(200, json={"status": 200, "body": "Source response.", "url": "https://page.example"})
+    transport.state["handler"] = handle
+    async def run():
+        assert await fetch_mod.probe_browser() == ""
+        outcome = await fetch_mod._send_browser("https://page.example", {}, 5)
+        assert outcome.text == "Source response."
+    _run(run())
+
+
+def test_browser_probe_reports_denied_authentication(monkeypatch, transport):
+    monkeypatch.delenv("BROWSER_FETCH_TOKEN_FILE", raising=False)
+    transport.state["handler"] = lambda _: httpx.Response(403, json={"error": "The caller is not authorized."})
+    assert "HTTP 403" in _run(fetch_mod.probe_browser())

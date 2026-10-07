@@ -79,7 +79,13 @@ services:
       # under the cap, 10 across three kinds reserves 30 and overrides the cap entirely.
       - METASEARCH_MIN_PER_KIND=${METASEARCH_MIN_PER_KIND:-3}
       - METASEARCH_MAX_PER_KIND=${METASEARCH_MAX_PER_KIND:-15}
-      - METASEARCH_FUSION_CANDIDATES=${METASEARCH_FUSION_CANDIDATES:-60}
+      - METASEARCH_MAX_CONCURRENT=${METASEARCH_MAX_CONCURRENT:-4}
+      - METASEARCH_MAX_WAITING=${METASEARCH_MAX_WAITING:-16}
+      - METASEARCH_QUEUE_WAIT_SECONDS=${METASEARCH_QUEUE_WAIT_SECONDS:-60}
+      - METASEARCH_FETCH_BUDGET=${METASEARCH_FETCH_BUDGET:-60}
+      - METASEARCH_TOR_ROUTES=${METASEARCH_TOR_ROUTES:-}
+      - BROWSER_FETCH_URL=http://hoover4-mcp-browser:8087/internal/fetch
+      - BROWSER_FETCH_TOKEN_FILE=/run/secrets/browser_fetch_token
       - MAX_RESULTS=${METASEARCH_MAX_RESULTS:-15}
       - SEARCH_SNIPPET_CHARS=${METASEARCH_SNIPPET_CHARS:-400}
       - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE:-en}
@@ -104,6 +110,7 @@ services:
     volumes:
       # /dev/null when unset: readable and empty, which is what "no key" means here.
       - ${FACTCHECK_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/factcheck_api_key:ro
+      - ${BROWSER_FETCH_TOKEN_FILE_HOST:-/dev/null}:/run/secrets/browser_fetch_token:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8086/health', timeout=5)\""]
@@ -146,6 +153,12 @@ services:
       - BROWSER_NAV_TIMEOUT=${BROWSER_NAV_TIMEOUT:-30}
       - BROWSER_ACTION_TIMEOUT=${BROWSER_ACTION_TIMEOUT:-15}
       - BROWSER_MAX_CONTEXTS=${BROWSER_MAX_CONTEXTS:-16}
+      - READER_TAB_SLOTS=${READER_TAB_SLOTS:-4}
+      - METASEARCH_TAB_SLOTS=${METASEARCH_TAB_SLOTS:-2}
+      - SPECIAL_BROWSER_MAX_WAITING=${SPECIAL_BROWSER_MAX_WAITING:-32}
+      - READ_PAGE_CALL_TIMEOUT_S=${READ_PAGE_CALL_TIMEOUT_S:-180}
+      - READ_PAGE_TOR_PROXIES=${READ_PAGE_TOR_PROXIES:-}
+      - BROWSER_FETCH_TOKEN_FILE=/run/secrets/browser_fetch_token
       - BROWSER_IDLE_SECONDS=${BROWSER_IDLE_SECONDS:-900}
       - BROWSER_MAX_TABS_PER_CHAT=${BROWSER_MAX_TABS_PER_CHAT:-6}
       - BROWSER_WINDOW_WIDTH=${BROWSER_WINDOW_WIDTH:-1280}
@@ -180,6 +193,8 @@ services:
     # "cannot fork", which surfaces as an unrelated browser launch failing. `init: true`
     # gives the container a subreaper whose whole job is reaping them.
     init: true
+    volumes:
+      - ${BROWSER_FETCH_TOKEN_FILE_HOST:-/dev/null}:/run/secrets/browser_fetch_token:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8087/health', timeout=5)\""]
