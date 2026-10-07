@@ -44,6 +44,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 from agent_common import artifacts, batching
 from agent_common.result_pages import SAFE_MODE_BATCH_BYTES
@@ -227,6 +228,18 @@ def plan(raw_urls: object) -> tuple[list[str], list[str], list[str], str]:
             else ""
         ),
     )
+    for url in to_read:
+        try:
+            parsed = urlsplit(url)
+        except ValueError:
+            continue
+        if parsed.hostname == "gitlab.com" and "/-/blob/" in parsed.path:
+            raw_url = parsed._replace(path=parsed.path.replace("/-/blob/", "/-/raw/", 1)).geturl()
+            note = batching.corrective_note(
+                note,
+                f"{url} is a file viewer. Its text can omit the file. "
+                f"Read the file at {raw_url}. Use find to search its text.",
+            )
     return to_read, repeats, over_cap, note
 
 

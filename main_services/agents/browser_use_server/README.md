@@ -24,6 +24,8 @@ of adaptive.
 The tool reads up to six URLs in one call. It extracts text, stores a capture, and returns each page.
 For a cut page, pass its URL, the stated offset and the stated version to read the next part.
 To find entries in a long page, pass `find` with a literal text.
+The `goal` field records the purpose. It does not search the text.
+A GitLab file viewer result names the raw file address. Read that address to search the complete file.
 
 ```json
 {"urls": ["https://en.wikipedia.org/wiki/Enron_scandal",

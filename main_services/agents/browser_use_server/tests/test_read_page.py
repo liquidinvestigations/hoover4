@@ -51,6 +51,21 @@ class TestPlan:
         urls, _, _, _ = read_page.plan(None)
         assert urls == []
 
+    def test_gitlab_viewer_names_raw_address_without_changing_requested_url(self):
+        url = "https://gitlab.com/example/project/-/blob/main/data/items.json?ref_type=heads"
+        urls, _, _, note = read_page.plan([url])
+        assert urls == [url]
+        assert "https://gitlab.com/example/project/-/raw/main/data/items.json?ref_type=heads" in note
+        assert "Its text can omit the file" in note
+
+    def test_raw_file_and_other_hosts_get_no_viewer_note(self):
+        _, _, _, note = read_page.plan([
+            "https://gitlab.com/example/project/-/raw/main/items.json",
+            "https://example.org/project/-/blob/main/items.json",
+            "https://[invalid",
+        ])
+        assert note == ""
+
 
 class TestFocus:
     def test_short_text_is_untouched(self):
@@ -122,6 +137,19 @@ def _read(chat, urls, ceiling, **kwargs):
     result = asyncio.run(read_page.read(chat, urls, "", "user", ceiling=ceiling, **kwargs))
     read_page.fit(result, ceiling)
     return result
+
+
+def test_viewer_hint_survives_cached_find_without_changing_offsets(monkeypatch):
+    url = "https://gitlab.com/example/project/-/blob/main/data/items.json"
+    chat = SimpleNamespace(page_reads={})
+    calls = _loader(monkeypatch, {url: "File viewer navigation"})
+    first = _read(chat, [url], 2000)
+    found = _read(chat, [url], 2000, find="missing", version=first.pages[0].version)
+    assert calls == [url]
+    rendered = read_page.render(found)
+    assert 'no match from offset 0' in rendered
+    assert "https://gitlab.com/example/project/-/raw/main/data/items.json" in rendered
+    assert len(rendered.encode("utf-8")) <= 2000
 
 
 def test_read_page_offsets_and_cached_text(monkeypatch):

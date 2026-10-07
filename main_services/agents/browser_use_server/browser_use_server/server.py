@@ -563,7 +563,8 @@ READ_PAGE_SCHEMA = {
             "type": "string",
             "description": (
                 "What you are looking for on these pages, in a few words. "
-                "The capture records this goal."
+                "The capture records this goal. This field does not search the text. "
+                "Use find for a literal text search."
             ),
         },
         "offset": {
