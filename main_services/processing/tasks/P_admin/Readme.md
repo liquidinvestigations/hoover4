@@ -64,9 +64,10 @@ bootstrap with `USE_EXISTING`). Each pass writes one row per (collection, datase
 into the global `processing_eta_samples` table (migration `00013`); the website only ever
 *reads* that table. The expensive `uniqExact` scans never run in a request path.
 
-- One rate per stage (P1 plan, P2/P3 execute, P4 NLP, P6 index) measured over the
-  trailing **100 watermark events** (plans created, plans finished, segments
-  NLP-processed, documents indexed), not over a wall-clock window.
+- Each stage measures its rate across the latest 100 distinct completion timestamps.
+  Each timestamp includes all its distinct watermarks.
+  Large completion batches therefore retain earlier timestamps in the rate sample.
+  One timestamp alone gives no estimate because it has no measurable time span.
 - Each stage's rate is measured in every unit the schema offers: items/s (blobs, plans,
   segments, documents) and bytes/s (`blobs.blob_size_bytes`,
   `processing_plans.plan_size_bytes`, `nlp_processed.text_bytes`,

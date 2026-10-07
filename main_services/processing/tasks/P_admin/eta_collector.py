@@ -13,8 +13,8 @@ The website then only reads that table, which is a cheap, indexed query.
 The estimate, in words:
 
 * one rate per stage (P1 plan, P2/P3 execute, P4 NLP, P6 index), measured over
-  the trailing 100 watermark *events* (plans created, plans finished, segments
-  NLP-processed, documents indexed), not over a wall-clock window;
+  the latest 100 distinct completion timestamps. Each timestamp includes all its
+  distinct watermarks, so a large batch cannot remove the rate's time span;
 * each stage's rate is measured in every unit the raw data offers. Items/s
   (blobs, plans, segments, documents) and, where the schema carries sizes,
   bytes/s (``blobs.blob_size_bytes``, ``processing_plans.plan_size_bytes``,
@@ -57,9 +57,8 @@ STAGE_EXECUTE = "P2_execute"
 STAGE_NLP = "P4_nlp"
 STAGE_INDEX = "P6_index"
 
-#: Events per rate sample. A wall-clock window with three completions in it is a
-#: rate with no information; 100 events is a sample.
-RATE_WINDOW_EVENTS = 100
+#: Include complete timestamp groups so batched completions retain a measurable span.
+RATE_WINDOW_TIMESTAMPS = 100
 
 #: Multiplier for the self-throttle: wait at least this many times the mean cost
 #: of the recent passes before running another one.
@@ -175,22 +174,29 @@ def _epoch(ts: datetime) -> float:
     return ts.replace(tzinfo=timezone.utc).timestamp()
 
 
+def _completion_events(client, ds: str, watermarks: str) -> list[tuple[float, int, int]]:
+    """Group distinct watermarks by timestamp before limiting the rate sample."""
+    return [
+        (_epoch(ts), int(items), int(nbytes))
+        for ts, items, nbytes in _query(
+            client,
+            "SELECT ts, sum(items) AS completed_items, sum(nbytes) AS completed_bytes "
+            f"FROM ({watermarks}) GROUP BY ts ORDER BY ts DESC LIMIT {RATE_WINDOW_TIMESTAMPS}",
+            ds,
+        )
+    ]
+
+
 def _sample_plan(client, ds: str) -> StageSample:
     """P1, plan computation. Unit: blobs planned. Bytes from blob sizes."""
     done = _query(client, "SELECT uniqExact(item_hash) FROM processing_plan_hits WHERE collection_dataset = {ds:String}", ds)[0][0]
     total = _query(client, "SELECT uniqExact(blob_hash) FROM blobs WHERE collection_dataset = {ds:String}", ds)[0][0]
     done_bytes = _query(client, "SELECT sum(sz) FROM (SELECT plan_hash, any(plan_size_bytes) AS sz FROM processing_plans WHERE collection_dataset = {ds:String} GROUP BY plan_hash)", ds)[0][0] or 0
     total_bytes = _query(client, "SELECT sum(sz) FROM (SELECT blob_hash, any(blob_size_bytes) AS sz FROM blobs WHERE collection_dataset = {ds:String} GROUP BY blob_hash)", ds)[0][0] or 0
-    events = [
-        (_epoch(ts), int(items), int(size))
-        for items, size, ts in _query(
-            client,
-            "SELECT argMax(length(item_hashes), created_at), argMax(plan_size_bytes, created_at), max(created_at) AS ts "
-            "FROM processing_plans WHERE collection_dataset = {ds:String} "
-            f"GROUP BY plan_hash ORDER BY ts DESC LIMIT {RATE_WINDOW_EVENTS}",
-            ds,
-        )
-    ]
+    events = _completion_events(client, ds,
+        "SELECT argMax(length(item_hashes), created_at) AS items, "
+        "argMax(plan_size_bytes, created_at) AS nbytes, max(created_at) AS ts "
+        "FROM processing_plans WHERE collection_dataset = {ds:String} GROUP BY plan_hash")
     rate_items, rate_bytes = rate_from_events(events)
     eta = combine_eta(
         remaining_projection(done, total, rate_items),
@@ -207,19 +213,12 @@ def _sample_execute(client, ds: str) -> StageSample:
     total_items, total_bytes = int(totals[0] or 0), int(totals[1] or 0)
     dones = _query(client, "SELECT sum(length(ih)), sum(sz) FROM (SELECT f.plan_hash, any(p.item_hashes) AS ih, any(p.plan_size_bytes) AS sz FROM processing_plan_finished f INNER JOIN processing_plans p ON p.collection_dataset = f.collection_dataset AND p.plan_hash = f.plan_hash WHERE f.collection_dataset = {ds:String} GROUP BY f.plan_hash)", ds)[0]
     done_items, done_bytes = int(dones[0] or 0), int(dones[1] or 0)
-    events = [
-        (_epoch(ts), int(items), int(size))
-        for ts, size, items in _query(
-            client,
-            "SELECT max(f.finished_at) AS ts, argMax(p.plan_size_bytes, f.finished_at), "
-            "argMax(length(p.item_hashes), f.finished_at) "
-            "FROM processing_plan_finished f "
-            "INNER JOIN processing_plans p ON p.collection_dataset = f.collection_dataset AND p.plan_hash = f.plan_hash "
-            "WHERE f.collection_dataset = {ds:String} "
-            f"GROUP BY f.plan_hash ORDER BY ts DESC LIMIT {RATE_WINDOW_EVENTS}",
-            ds,
-        )
-    ]
+    events = _completion_events(client, ds,
+        "SELECT max(f.finished_at) AS ts, argMax(p.plan_size_bytes, f.finished_at) AS nbytes, "
+        "argMax(length(p.item_hashes), f.finished_at) AS items "
+        "FROM processing_plan_finished f "
+        "INNER JOIN processing_plans p ON p.collection_dataset = f.collection_dataset AND p.plan_hash = f.plan_hash "
+        "WHERE f.collection_dataset = {ds:String} GROUP BY f.plan_hash")
     rate_items, rate_bytes = rate_from_events(events)
     eta = combine_eta(
         remaining_projection(done_items, total_items, rate_items),
@@ -238,16 +237,10 @@ def _sample_nlp(client, ds: str) -> StageSample:
     import os
     if not (os.getenv('NER_URL') or '').strip():
         return StageSample(STAGE_NLP, total, total, 0.0, 0.0, 0)
-    events = [
-        (_epoch(ts), 1, int(tb))
-        for ts, tb in _query(
-            client,
-            "SELECT max(processed_at) AS ts, argMax(text_bytes, processed_at) "
-            "FROM nlp_processed WHERE collection_dataset = {ds:String} "
-            f"GROUP BY file_hash, extracted_by, page_id ORDER BY ts DESC LIMIT {RATE_WINDOW_EVENTS}",
-            ds,
-        )
-    ]
+    events = _completion_events(client, ds,
+        "SELECT max(processed_at) AS ts, argMax(text_bytes, processed_at) AS nbytes, 1 AS items "
+        "FROM nlp_processed WHERE collection_dataset = {ds:String} "
+        "GROUP BY file_hash, extracted_by, page_id")
     rate_items, rate_bytes = rate_from_events(events)
     eta = combine_eta(
         remaining_projection(done, total, rate_items),
@@ -261,15 +254,9 @@ def _sample_index(client, ds: str) -> StageSample:
     (``index_state`` carries no size), so the items projection is the only one."""
     done = _query(client, "SELECT uniqExact(file_hash) FROM index_state WHERE collection_dataset = {ds:String}", ds)[0][0]
     total = _query(client, "SELECT uniqExact(file_hash) FROM text_content WHERE collection_dataset = {ds:String}", ds)[0][0]
-    events = [
-        (_epoch(ts), 1, 0)
-        for ts, in _query(
-            client,
-            "SELECT max(indexed_at) AS ts FROM index_state WHERE collection_dataset = {ds:String} "
-            f"GROUP BY file_hash ORDER BY ts DESC LIMIT {RATE_WINDOW_EVENTS}",
-            ds,
-        )
-    ]
+    events = _completion_events(client, ds,
+        "SELECT max(indexed_at) AS ts, 1 AS items, 0 AS nbytes "
+        "FROM index_state WHERE collection_dataset = {ds:String} GROUP BY file_hash")
     rate_items, rate_bytes = rate_from_events(events)
     eta = combine_eta(remaining_projection(done, total, rate_items), 0.0)
     return StageSample(STAGE_INDEX, done, total, rate_items, rate_bytes, eta)
