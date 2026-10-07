@@ -113,14 +113,16 @@ def repair_note(check: dict) -> str:
     if check.get("page_zero"):
         problems.append("The answer names page 0. Use the 1-based page from the verified cite_documents result.")
     if check.get("web_missing"):
-        problems.append("Search for the sources behind each web claim. Read the supporting passages with `read_page`. Call `cite_pages` with their URLs and exact supporting terms. Put each returned [Wn] handle beside its claim. Verify each item's identity and all requested constraints against the read text. Merge repeated items. Give fewer items when the read text supports fewer matches.")
+        problems.append('Call `cite_pages` before answering. Use one page per call: {"url":"COPY_READ_URL","terms":["COPY_EXACT_SOURCE_WORDS"]}. Copy a short phrase from read_page text. A title, paraphrase, or guessed wording can fail. If the call returns an error, correct it and retry. Only returned handles are valid.')
+    if check.get("web_missing") and check.get("read_page_urls"):
+        problems.append("Already read page URLs: " + ", ".join(check["read_page_urls"]) + ". Cite the supporting pages from this list.")
     for url in check.get("web_unread") or []:
         problems.append(f"The answer links an unread page: {url}. Call `read_page` for that address before you use its claims, or remove those claims.")
     for url in check.get("web_undiscovered") or []:
         problems.append(f"No successful search found this page: {url}. Find it with `web_search` before using it as a source.")
     if check.get("web_unmarked"):
         problems.append("Replace bare source URLs with handles returned by `cite_pages`. Copy exact supporting text into its terms field.")
-    for paragraph in check.get("unsupported_paragraphs") or []:
+    for paragraph in (check.get("unsupported_paragraphs") or [])[:3]:
         location = (f"List item {paragraph['item']} in paragraph {paragraph['number']}"
                     if "item" in paragraph else f"Paragraph {paragraph['number']}")
         problems.append(f"{location} has a name or number without a source: {paragraph['text']} Add its citation or remove the claim.")
@@ -130,6 +132,8 @@ def repair_note(check: dict) -> str:
     if check.get("conflicting"):
         problems.append("Results give " + ", ".join(check["conflicting"])
                         + " for more than one document.")
+    if check.get("unsupported_paragraphs") and not check.get("web_missing"):
+        problems.append('Call cite_documents with {"citations":[{"collectionname":"COPY_COLLECTION","file_hash":"COPY_HASH","quote":"COPY_EXACT_SOURCE_SENTENCE","why":"What it supports"}]}. The quote field is required. Find is an optional part of quote.')
     if not problems:
         return CITATION_NOTE
     return " ".join(problems) + " Write the complete answer again with the sources that support its claims."
@@ -248,6 +252,7 @@ def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
     check["web_missing"] = web_used and (not web_refs or bool(check["web_unread"])
                                          or bool(check["web_undiscovered"]) or bool(answer_urls))
     check["unsupported_paragraphs"] = unsupported_paragraphs(answer) if documents_read or web_used else []
+    check["read_page_urls"] = list(dict.fromkeys(urls))[:12]
     if not answer.strip() or any(is_citation_note(m) for m in messages):
         return False, check
     if (check["unresolved"] or check["conflicting"] or check["page_zero"]

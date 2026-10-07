@@ -187,7 +187,8 @@ def _cite(owner: str, session: str, pages: list) -> dict:
             ref = {"handle": handle, "url": url, "final_url": source["final_url"],
                    "title": source["title"], "version": source["version"],
                    "artifact_id": row["artifact_id"], "terms": terms,
-                   "quotes": quotes, "spans": spans, "quote_verified": True}
+                   "quotes": quotes, "spans": spans, "quote_verified": True,
+                   "why": str(item.get("why") or "")[:300]}
             artifact_id = _id(owner, session, KIND_PAGE_CITATION, *key)
             artifacts.write_required(
                 artifacts.ArtifactRequest(username=owner, session_id=session,

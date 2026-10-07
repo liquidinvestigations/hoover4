@@ -14,16 +14,27 @@ pub struct ChatWebOpen {
 }
 
 #[component]
-pub fn WebPageCard(page: ChatPageRef) -> Element {
+pub fn WebPageCard(page: ChatPageRef, #[props(default)] passages: Vec<ChatPageRef>) -> Element {
     let open = try_use_context::<ChatWebOpen>();
     let href = http_link(if page.final_url.is_empty() { &page.url } else { &page.final_url });
     let domain = href.as_deref().unwrap_or_default().split("://").nth(1)
         .unwrap_or_default().split('/').next().unwrap_or_default().to_string();
     let target = (page.artifact_id.clone(), page.terms.first().cloned().unwrap_or_default());
+    let passages = if passages.is_empty() { vec![page.clone()] } else { passages };
+    let mut seen = std::collections::HashSet::new();
+    let quotes = passages.iter().flat_map(|source| source.quotes.iter().map(move |quote| (source, quote)))
+        .filter(|(source, quote)| seen.insert((source.version.clone(), (*quote).clone())))
+        .map(|(source, quote)| (source.clone(), quote.clone())).collect::<Vec<_>>();
+    let control = try_use_context::<DocViewerStateControl>();
+    let selected = control.is_some_and(|control| control.doc_viewer_state.read().as_ref().and_then(|state| state.web_artifact_id.as_ref()) == Some(&page.artifact_id));
+    let background = if selected { "#4096FF33" } else { "white" };
+    let border = if selected { "#367ED899" } else { "#AAAAAA33" };
     rsx! {
         div {
             "data-web-citation": "{page.handle}",
-            style: "background: white; border: 3px solid #AAAAAA33; border-radius: 8px; \
+            "data-citation-select": "true",
+            "data-selected": "{selected}",
+            style: "background: {background}; border: 3px solid {border}; border-radius: 8px; \
                     padding: 12px 16px; margin: 8px; font-size: 15px; cursor: pointer;",
             onclick: move |_| { if let Some(open) = open { open.open.call(target.clone()); } },
             if let Some(href) = href {
@@ -34,9 +45,13 @@ pub fn WebPageCard(page: ChatPageRef) -> Element {
                 }
             } else { div { "{page.title}" } }
             div { style: "color: #16713C; margin: 3px 0 8px;", "{domain}" }
-            for quote in page.quotes {
-                div { style: "margin-top: 5px; color: #111827; white-space: pre-wrap;",
-                    for (text, marked) in common::chat_pages::exact_quote_parts(&quote, &page.terms) {
+            for (source, quote) in quotes {
+                button { r#type: "button", style: "display: block; text-align: left; font: inherit; border: 0; padding: 0; background: transparent; margin-top: 5px; color: #111827; white-space: pre-wrap; cursor: pointer;",
+                    onclick: move |event| {
+                        event.stop_propagation();
+                        if let Some(open) = open { open.open.call((source.artifact_id.clone(), source.terms.first().cloned().unwrap_or_default())); }
+                    },
+                    for (text, marked) in common::chat_pages::exact_quote_parts(&quote, &source.terms) {
                         if marked { mark { style: "background: #EB3E014D; color: inherit;", "{text}" } }
                         else { span { "{text}" } }
                     }

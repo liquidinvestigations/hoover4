@@ -65,9 +65,7 @@ fn is_running_compaction(message: &ChatMessageItem) -> bool {
             .unwrap_or(false)
 }
 
-/// The `after_seq` of the next poll. It is the last seq of the page, except when the newest
-/// turn has a running compaction line. The poll then reads again from that line, so the page
-/// receives the `done` line that replaces it.
+/// Re-read a running compaction line or the latest answer to receive metadata updates.
 fn poll_after_seq(messages: &[ChatMessageItem]) -> Option<u32> {
     let turn_start = messages
         .iter()
@@ -75,7 +73,9 @@ fn poll_after_seq(messages: &[ChatMessageItem]) -> Option<u32> {
         .unwrap_or(0);
     match messages[turn_start..].iter().find(|m| is_running_compaction(m)) {
         Some(line) => line.seq.checked_sub(1),
-        None => messages.last().map(|m| m.seq),
+        None => messages[turn_start..].iter().rfind(|message| message.role == ChatRole::Assistant)
+            .and_then(|message| message.seq.checked_sub(1))
+            .or_else(|| messages.last().map(|message| message.seq)),
     }
 }
 
@@ -736,7 +736,7 @@ mod poll_rows_tests {
                                            row(6, ChatRole::Assistant, "a")]));
         assert_eq!(rows.iter().map(|m| m.seq).collect::<Vec<_>>(), vec![3, 4, 5, 6]);
         assert_eq!(rows[1].content, done);
-        assert_eq!(poll_after_seq(&rows), Some(6));
+        assert_eq!(poll_after_seq(&rows), Some(5));
         assert!(!merge_rows(&mut rows, vec![row(6, ChatRole::Assistant, "a")]));
     }
 

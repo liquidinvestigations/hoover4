@@ -1,33 +1,10 @@
-"""Citation handles, and the quote check behind them.
+"""Verify document quotes and preserve session citation handles.
 
-A citation is the agent's own claim that one document supports one point. It is not the
-same object as a search hit: a search returns everything that matched, a citation is what
-the agent decided mattered, and rendering the first as if it were the second is what
-turns an answer into a pile of links.
-
-Two properties this module exists for.
-
-**The quote is verified.** The server checks that the quoted span actually occurs in the
-document's extracted pages before handing back a handle. Verification reads every page
-in bounded batches and is independent of the excerpt the model is shown. A quote that
-does not verify is returned flagged rather than refused: a model that stops citing is a
-worse outcome than a citation carrying a visible "unverified quote" marker, and the
-marker is a fact the reader can act on.
-
-**Handles are allocated per SESSION, not per turn.** `[D7]` from the first turn has to
-still resolve in the ninth, because the answer that used it is still on screen and the
-reader can still click it. Per-turn numbering is cheaper and renumbers the reader's
-evidence underneath them.
-
-**Handles survive a restart.** `HandleTable` stores each new handle through its
-`BindingStore` before it returns it, and loads the stored handles of a session before its
-first new handle. The server's store (`binding_store.py`) also reads the handles of the
-committed `cite_documents` results of the session, so a handle from before the store
-stays reserved. One process allocates, and its session lock orders the allocations.
-
-**A quote that does not verify gets a candidate.** `candidate_passage` returns an exact
-passage of the extracted text near the quote, with its source and span, beside the
-unverified citation. The citation keeps the quote it was given.
+Verification reads extracted pages in bounded batches.
+Missing, short, and absent quotes return errors without new handles.
+Candidate passages help the caller copy source wording and retry.
+Verified quotes reuse one durable handle per document and owner session.
+Separate quotes keep their own page and find information.
 """
 
 from __future__ import annotations

@@ -523,7 +523,9 @@ class CitePagesTool(Tool):
 
     async def run(self, arguments: dict[str, Any]) -> ToolResult:
         payload = await page_citations.cite(
-            _header(USER_HEADER), _header(SESSION_HEADER), arguments.get("pages"),
+            _header(USER_HEADER), _header(SESSION_HEADER), arguments.get("pages") if "pages" in arguments else [
+                {key: arguments[key] for key in ("url", "terms", "version", "why") if key in arguments}
+            ],
         )
         return ToolResult(content=[TextContent(type="text", text=json.dumps(payload, ensure_ascii=False))],
                           structured_content=payload)
@@ -538,9 +540,11 @@ CITE_PAGES_SCHEMA = {
                       "items": {"type": "string", "minLength": 1, "maxLength": 200},
                       "description": "Copy exact source wording to quote and highlight. Case must match."},
             "version": {"type": "string", "description": "Select a read_page text version when needed."},
+            "why": {"type": "string", "maxLength": 300, "description": "State what the page supports."},
         }, "required": ["url", "terms"]}}},
-    "required": ["pages"],
+    "anyOf": [{"required": ["pages"]}, {"required": ["url", "terms"]}],
 }
+CITE_PAGES_SCHEMA["properties"].update(CITE_PAGES_SCHEMA["properties"]["pages"]["items"]["properties"])
 
 CITE_PAGES_DESCRIPTION = (
     "Cite web pages that support the answer. Search for each source and read it with read_page first. "
@@ -548,7 +552,9 @@ CITE_PAGES_DESCRIPTION = (
     "The tool verifies those terms against the stored Markdown and returns quotes with stable [W1] handles. "
     "Place each returned handle beside its claim. The reader sees the source card and can open its captured text. "
     "Unread pages, blocked pages, and absent terms cannot supply a citation. "
-    "Use these handles in place of bare source URLs."
+    'Use these handles in place of bare source URLs. Prefer one page per call. '
+    'For one page use flat arguments: {"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}. '
+    'Use short exact phrases. Correct failed calls before answering.'
 )
 
 

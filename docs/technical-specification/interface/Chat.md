@@ -6,25 +6,33 @@
 |---|---|---|
 | Source card | Open its document or captured web page in the preview pane. | Web pages use the captured Markdown version. |
 | Web source title | Open the source website in a new tab. | The captured preview stays available through the card. |
-| Citation handle | Scroll to the source card beside this claim. | Repeated handles resolve within their answer. |
+| Citation handle | Select its source and scroll to the existing card. | Each source has one card across the conversation. |
 | Search-term line | Open the originating search with the cited document selected. | The line requires a query association in the stored trace. |
 | Find exact text | Highlight exact, case-sensitive matches in the captured page. | Formatting boundaries can occur inside a match. |
 | Previous match | Select and scroll to the previous exact match. | Selection wraps through the available matches. |
 | Next match | Select and scroll to the next exact match. | Selection wraps through the available matches. |
 | Close preview | Close the captured page pane. | The conversation stays open. |
+| Search in conversation | Find messages containing the entered text and move between matches. | The count updates while typing. |
+| Follow-up suggestion | Fill and focus the composer with the selected prompt. | The user edits or sends it explicitly. |
 | Tool group | Show or hide the tools, instructions, and superseded answers. | Completed groups start closed. |
 
 ## States
 
-Citation cards appear beside their claims, in response order.
+Citation cards appear at their first visible marker, in response order.
+Successful citations without markers appear after the final answer and before the token footer.
+Their citation reason appears above the card.
+Later markers select the existing card.
+Separate verified document passages share one card and open their own find queries.
 Bold and italic citation handles keep their source controls and validation.
 A comma-separated citation group renders and verifies each handle.
-Tables show each source card after its cited row.
+Tables show a source card after the first row that cites it.
 Document cards contain the matching source excerpt.
 Web cards show a linked title, domain, and verified source excerpt.
-Top-level todo changes show numbered additions and struck-through removals.
-The todo display includes completion and note changes.
-Unverified document quotes retain their verification failure message.
+The todo card shows the current bold goal and an unnumbered task list.
+It uses white text on black and strikes through completed tasks.
+Failed document quotes allocate no new handles.
+Finished answers show three generated follow-up prompts when generation succeeds.
+The centered token footer has a faint separator beneath it.
 An unavailable captured page shows a loading failure.
 Exact find shows the current match and total count.
 

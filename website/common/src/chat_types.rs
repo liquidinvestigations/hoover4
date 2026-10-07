@@ -156,9 +156,7 @@ pub struct ChatDocRef {
     pub why: String,
     /// The quoted span was found in the document's extracted text.
     ///
-    /// False on a citation is not a refusal and must not be hidden: the citation is shown
-    /// marked. A model that stops citing is a worse outcome than a marked quote, and a
-    /// marked quote is a fact the reader can act on.
+    /// Older stored citations can contain unverified quotes. New calls refuse them.
     #[serde(default)]
     pub quote_verified: bool,
     /// Why an unverified quote failed the check: `short`, `absent`, or
@@ -316,6 +314,14 @@ pub fn compact_tokens(n: u32) -> String {
 }
 
 impl ChatMessageItem {
+    /// Return exactly three stored follow-up prompts for the completed answer.
+    pub fn follow_up_prompts(&self) -> Vec<String> {
+        let value = serde_json::from_str::<serde_json::Value>(&self.usage_json).unwrap_or_default();
+        let prompts = value.get("follow_up_prompts").and_then(|value| value.as_array())
+            .map(|items| items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect::<Vec<_>>()).unwrap_or_default();
+        if prompts.len() == 3 && prompts.iter().all(|prompt| !prompt.trim().is_empty()) { prompts } else { Vec::new() }
+    }
+
     /// Return the stored citation status and available tools below an answer.
     pub fn answer_status_line(&self) -> Option<String> {
         if self.streaming || self.role != ChatRole::Assistant {

@@ -56,3 +56,16 @@ Your todo list
 You can use the todo list to track work that needs several steps. Use the ids that
 `read_todo` shows. A cancelled item needs a reason. An open item does not stop an answer.
 {% endif %}
+
+{% if has('cite_pages') %}
+Before writing web claims, call `cite_pages` for each page you read and use.
+Example: {"url":"COPY_READ_PAGE_URL","terms":["COPY_EXACT_WORDS_FROM_PAGE"]}.
+Copy a short exact source phrase into terms. Correct failed calls before answering.
+Use successful handles such as [W1]. Never guess a handle.
+{% endif %}
+{% if has('cite_documents') %}
+Before writing document claims, call `cite_documents` with an exact supporting sentence in `quote`.
+The quote must contain at least twelve characters. `find` alone does not supply a quote.
+An absent quote returns no handle. Copy source wording from the returned candidate and retry.
+Reuse a document's returned handle for separate quotes and pages. Its card appears once.
+{% endif %}

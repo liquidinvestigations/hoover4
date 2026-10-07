@@ -219,6 +219,7 @@ class TestVectorEndpoint:
         assert "rescore=1, oversampling=5.0" in queries[1]
 
     def test_unavailable_vectors_keep_keyword_results_and_add_a_note(self, monkeypatch):
+        monkeypatch.setattr(server.embeddings_client, "endpoint", lambda: "http://embedding-stub")
         monkeypatch.setattr(vectors, "serving_model", lambda: "model")
         monkeypatch.setattr(server, "_shard_tables", lambda _collection: ["coll_1_pages"])
         monkeypatch.setattr(

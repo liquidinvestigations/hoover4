@@ -111,7 +111,9 @@ def cards(_name: str, _username: str) -> dict:
              {"citations": [{"file_hash": DOC_SHORT, "handle": "[D1]", "quote_verified": True}]},
              citation_refs),
         answer("The unit table in the sample document gives energy density as "
-               "1 erg/cm3 = 10^-1 J/m3 [D1]."),
+               "1 erg/cm3 = 10^-1 J/m3 [D1]. Again [D1]."),
+        user("Which source gave that conversion?"),
+        answer("The same document [D1]."),
     ]}
 
 
@@ -206,7 +208,7 @@ def web(name: str, username: str) -> dict:
 
 def web_citations(name: str, username: str) -> dict:
     pages, refs, stored = [], [], []
-    for number in (1, 2):
+    for number in (1, 2, 3):
         url = f"https://example.org/source-{number}"
         artifact_id = fixture_uuid(name, username, f"page-{number}")
         markdown = (f"# Captured source {number}\n\n"
@@ -220,13 +222,13 @@ def web_citations(name: str, username: str) -> dict:
         ref = {key: page[key] for key in ("url", "final_url", "title", "version")}
         ref.update(handle=f"[W{number}]", artifact_id=artifact_id,
                    terms=["Știință"], quotes=["Știință exact match appears here."],
-                   quote_verified=True)
+                   quote_verified=True, why=f"The source supports claim {number}.")
         refs.append(ref)
         pages.append({"url": url, "title": page["title"], "text": markdown,
                       "version": page["version"], "blocked": False, "error": None})
         stored.append((artifact_id, "web_page_text", "read_page", page["title"], page))
     return {"title": "Browser fixture: web citations", "internet": True, "rows": [
-        user("Compare the two captured pages and cite their text."),
+        user("Compare German records in the captured pages and cite their text."),
         tool("web_search", {"queries": ["captured sources"]},
              {"results": [{"url": page["url"], "title": page["title"]} for page in pages]}),
         answer("Earlier draft text with source URLs."),
@@ -239,7 +241,9 @@ def web_citations(name: str, username: str) -> dict:
                "Both sources support this later claim [W1, W2].\n\n"
                "| Source | Claim |\n| --- | --- |\n"
                "| First | Table claim one [W1]. |\n"
-               "| Second | Table claim two [W2]. |"),
+               "| Second | Table claim two [W2]. |\n\nGerman records mention Germany.") | {"usage": {
+                   "follow_up_prompts": ["Compare the source passages.", "Find related documents.", "Explain the third source."],
+                   "context_tokens": 48000, "peak_context_tokens": 49000, "context_window": 262144}},
     ], "artifacts": stored}
 
 
@@ -309,13 +313,15 @@ def write_fixture(client, name: str, username: str, now: datetime) -> str:
             sid, username, seq, row["role"], row.get("content", ""), row.get("tool_name", ""),
             row.get("tool_input", ""), row.get("tool_output", ""), row.get("doc_refs", ""),
             now, now, now, turn,
+            row.get("usage", {}).get("context_tokens", 0), row.get("usage", {}).get("peak_context_tokens", 0),
+            row.get("usage", {}).get("context_window", 0),
             json.dumps({"citation_status": "cited" if any(handle in row.get("content", "") for handle in ("[D1]", "[W1]")) else "none",
-                        "tool_scope": "documents_and_web" if spec.get("internet") else "documents_only"})
+                        "tool_scope": "documents_and_web" if spec.get("internet") else "documents_only", **row.get("usage", {})})
             if row["role"] == "assistant" else "{}",
         ])
     insert_durable(client, "chat_messages", rows, column_names=[
         "session_id", "username", "seq", "role", "content", "tool_name", "tool_input",
-        "tool_output", "doc_refs", "created_ms", "created_at", "updated_at", "message_uuid", "usage_json"])
+        "tool_output", "doc_refs", "created_ms", "created_at", "updated_at", "message_uuid", "context_tokens", "peak_context_tokens", "context_window", "usage_json"])
     for version, goal, items in spec.get("todos", []):
         insert_durable(client, "chat_todos", [[sid, username, version, goal, json.dumps(items), now]],
                        column_names=["session_id", "username", "version", "goal", "items",

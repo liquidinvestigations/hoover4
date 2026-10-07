@@ -703,7 +703,7 @@ async def run_chat_worker():
 
   `chat-queue` carries `AgentRun` and its short activities (open, ending, step failure,
   citation check, notes, title).
-  `chat-model-queue` carries `model_step` for every run.
+  `chat-model-queue` carries `model_step` and follow-up generation.
   `agent-tool-queue` carries `tool_call` for every run. A slot is one model call or one
   tool call in flight, not one agent run.
 
@@ -717,6 +717,7 @@ async def run_chat_worker():
       summarize_if_first_turn,
       write_ending,
   )
+  from .P_agent.followups import write_followups
   from .P_agent.steps import (
       check_citations,
       model_step,
@@ -768,7 +769,7 @@ async def run_chat_worker():
         max_heartbeat_throttle_interval=STEP_HEARTBEAT_THROTTLE,
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[],
-        activities=[model_step],
+        activities=[model_step, write_followups],
         activity_executor=activity_executor,
         max_concurrent_activities=model_slots,
       ),

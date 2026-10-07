@@ -1,6 +1,6 @@
 //! Transcript of a chat session: user bubbles, assistant markdown, tools, doc cards.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use common::chat_types::{
     CITATION_NOTE_NAME, ChatDocRef, ChatMessageItem, ChatRole, StreamTurn, merge_citations,
@@ -10,7 +10,8 @@ use dioxus::prelude::*;
 
 use crate::components::chat_components::{
     doc_ref_card::{ChatDocRefCard, ChatDocRefRow},
-    markdown_text::MarkdownishText,
+    markdown_text::{MarkdownishText, referenced_handles},
+    web_page::WebPageCard,
     tool_cards::{ElapsedCounter, ToolCard},
     tool_run_summary::{run_duration_ms, timestamp_ms, tool_run_summary},
 };
@@ -66,12 +67,17 @@ pub fn ChatTranscript(
     let count = matches.len();
     // Reported to the find bar from an effect, never from the render body: writing a
     // signal mid-render schedules another render from inside one.
-    use_effect(move || {
-        if *match_count.peek() != count {
-            match_count.set(count);
-        }
-    });
+    use_effect(use_reactive!(|count| {
+        if *match_count.peek() != count { match_count.set(count); }
+        if count > 0 && *match_index.peek() >= count { match_index.set(0); }
+    }));
     let active_msg = matches.get(*match_index.read()).copied();
+    let active_seq = active_msg.map(|index| messages[index].seq);
+    use_effect(use_reactive!(|active_seq| {
+        if let Some(seq) = active_seq {
+            document::eval(&format!("document.querySelector('[data-chat-message=\"{seq}\"]')?.firstElementChild?.scrollIntoView({{block: 'center'}});"));
+        }
+    }));
     // Gathered once for the whole transcript rather than per card: the tool that lists a
     // document's entities names it by collection and hash, and the dataset that makes it
     // addressable was named earlier in the same conversation by whatever found it.
@@ -81,12 +87,17 @@ pub fn ChatTranscript(
     // Handles are allocated for the whole conversation, so a handle that any citation of
     // any run gave is a real one. The answers mark every other handle as not cited.
     let mut cited_handles = issued_handles(&messages, &run_cited_handles);
-    let web_pages = messages.iter().filter(|row| row.tool_name == "cite_pages")
-        .flat_map(|row| common::chat_pages::extract_page_refs(&row.tool_output)).collect::<Vec<_>>();
+    let web_pages = common::chat_pages::merge_page_refs(messages.iter().filter(|row| row.tool_name == "cite_pages")
+        .flat_map(|row| common::chat_pages::extract_page_refs(&row.tool_output)).collect::<Vec<_>>());
     for page in &web_pages {
         if !cited_handles.contains(&page.handle) { cited_handles.push(page.handle.clone()); }
     }
     let conflicting = conflicting_handles(&messages);
+    let mut all_sources = messages.iter().enumerate().filter(|(_, row)| row.tool_name == "cite_documents")
+        .flat_map(|(index, _)| citation_search_context_with_tree(&messages, index, &collection_tree)).collect::<Vec<_>>();
+    all_sources.extend(run_cited_refs.clone());
+    all_sources.retain(|source| !source.handle.is_empty());
+    let placements = citation_placements(&messages, &all_sources, &web_pages);
     // One row as `MessageEntry`. A run of tool rows renders the same entries inside its
     // group when the group is open.
     let entry = |i: usize| -> Element {
@@ -98,18 +109,8 @@ pub fn ChatTranscript(
         // Source cards use the citations stored before this answer.
         let replaced = answer_replaced(&messages, i);
         // The replacement answer renders the source cards.
-        let sources = if m.role == ChatRole::Assistant && !replaced {
-            let mut sources = Vec::new();
-            for previous in (0..i).rev() {
-                if messages[previous].tool_name == "cite_documents" {
-                    sources.extend(citation_search_context_with_tree(&messages, previous, &collection_tree));
-                }
-            }
-            sources.extend(run_cited_refs.clone());
-            merge_citations(sources)
-        } else {
-            Vec::new()
-        };
+        let placement = placements.get(&i).cloned().unwrap_or_default();
+        let sources = if replaced { Vec::new() } else { all_sources.clone() };
         let read_more_source = if m.tool_name == "read_more" {
             read_more_source(&messages, i)
         } else { None };
@@ -117,11 +118,15 @@ pub fn ChatTranscript(
             && asked_question(&messages[..i]) == m.content
             && !m.content.is_empty();
         rsx! {
+            div { "data-chat-message": "{m.seq}", style: "display: contents;",
             MessageEntry {
                 key: "{m.seq}",
-                message: m,
+                message: m.clone(),
                 highlight,
                 sources,
+                card_handles: placement.inline,
+                trailing_docs: placement.documents,
+                trailing_pages: placement.pages,
                 web_pages: web_pages.clone(),
                 cited_handles: cited_handles.clone(),
                 conflicting_handles: conflicting.clone(),
@@ -131,6 +136,7 @@ pub fn ChatTranscript(
                 repeat_question,
                 replaced,
                 draft,
+            }
             }
         }
     };
@@ -286,6 +292,75 @@ pub fn ChatTranscript(
                     div {
                         style: "color: #64748B; font-size: 13px; font-style: italic;",
                         "The assistant is working\u{2026}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct CitationPlacement {
+    inline: Vec<String>,
+    documents: Vec<ChatDocRef>,
+    pages: Vec<common::chat_pages::ChatPageRef>,
+}
+
+fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages: &[common::chat_pages::ChatPageRef]) -> HashMap<usize, CitationPlacement> {
+    let mut result = HashMap::new();
+    let mut seen = HashSet::new();
+    let identity = |handle: &str| {
+        if handle.is_empty() { return None; }
+        docs.iter().find(|doc| doc.handle == handle).map(|doc| format!("document:{}", doc.file_hash))
+            .or_else(|| pages.iter().find(|page| page.handle == handle).map(|page| format!("page:{}", page.url)))
+    };
+    for (index, message) in messages.iter().enumerate() {
+        if message.role != ChatRole::Assistant || answer_replaced(messages, index) { continue; }
+        let mut placement = CitationPlacement::default();
+        for handle in referenced_handles(&message.content) {
+            if let Some(key) = identity(&handle) {
+                if seen.insert(key) { placement.inline.push(handle); }
+            }
+        }
+        let start = messages[..index].iter().rposition(|row| row.role == ChatRole::User).unwrap_or(0);
+        let next_user = messages[index + 1..].iter().position(|row| row.role == ChatRole::User)
+            .map(|offset| index + 1 + offset).unwrap_or(messages.len());
+        let final_answer = !messages[index + 1..next_user].iter().any(|row| row.role == ChatRole::Assistant);
+        if final_answer {
+            let mut issued = Vec::new();
+            for row in &messages[start..next_user] {
+                if row.tool_name == "cite_documents" { issued.extend(row.parsed_doc_refs().into_iter().map(|doc| doc.handle)); }
+                if row.tool_name == "cite_pages" { issued.extend(common::chat_pages::extract_page_refs(&row.tool_output).into_iter().map(|page| page.handle)); }
+            }
+            if index == messages.iter().rposition(|row| row.role == ChatRole::Assistant).unwrap_or(index) {
+                issued.extend(docs.iter().map(|doc| doc.handle.clone()));
+                issued.extend(pages.iter().map(|page| page.handle.clone()));
+            }
+            for handle in issued {
+                if let Some(key) = identity(&handle) {
+                    if seen.insert(key) {
+                        if let Some(source) = docs.iter().find(|doc| doc.handle == handle) {
+                            placement.documents.extend(docs.iter().filter(|doc| doc.file_hash == source.file_hash).cloned());
+                        }
+                        if let Some(page) = pages.iter().find(|page| page.handle == handle) { placement.pages.push(page.clone()); }
+                    }
+                }
+            }
+        }
+        result.insert(index, placement);
+    }
+    result
+}
+
+#[component]
+fn FollowUpSuggestions(prompts: Vec<String>, mut draft: Signal<String>) -> Element {
+    rsx! {
+        if prompts.len() == 3 {
+            div { class: "x-chat-follow-ups", style: "background: #E5E7EB; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 4px;",
+                for (index, prompt) in prompts.into_iter().enumerate() {
+                    button { key: "{index}", r#type: "button", style: "text-align: left; background: transparent; color: #333; border: 0; border-radius: 4px; padding: 10px; cursor: pointer; font: inherit;",
+                        onclick: move |_| { draft.set(prompt.clone()); document::eval("document.querySelector('[data-chat-composer]')?.focus();"); },
+                        "{prompt}"
                     }
                 }
             }
@@ -695,6 +770,12 @@ fn MessageEntry(
     sources: Vec<ChatDocRef>,
     #[props(default)]
     web_pages: Vec<common::chat_pages::ChatPageRef>,
+    #[props(default)]
+    card_handles: Vec<String>,
+    #[props(default)]
+    trailing_docs: Vec<ChatDocRef>,
+    #[props(default)]
+    trailing_pages: Vec<common::chat_pages::ChatPageRef>,
     /// The handles that the citations of the conversation gave (`issued_handles`).
     #[props(default)]
     cited_handles: Vec<String>,
@@ -757,6 +838,7 @@ fn MessageEntry(
                                 conflicting_handles: conflicting_handles.clone(),
                                 sources: sources.clone(),
                                 pages: web_pages.clone(),
+                                card_handles: Some(if replaced { Vec::new() } else { card_handles.clone() }),
                             }
                             if let Some(footer) = context_footer.as_ref() {
                                 div {
@@ -775,6 +857,7 @@ fn MessageEntry(
                                 conflicting_handles: conflicting_handles.clone(),
                                 sources: sources.clone(),
                                 pages: web_pages.clone(),
+                                card_handles: Some(if replaced { Vec::new() } else { card_handles.clone() }),
                             }
                         }
                     } else {
@@ -795,10 +878,28 @@ fn MessageEntry(
                             tone_color: "#B45309",
                         }
                     }
+                    if !replaced {
+                        if !trailing_docs.is_empty() || !trailing_pages.is_empty() {
+                        div { "data-unreferenced-citations": "true",
+                            if !trailing_docs.is_empty() {
+                                DocumentCitationCards { sources: trailing_docs, conflicting: conflicting_handles.clone() }
+                            }
+                            for page in trailing_pages {
+                                div { "data-citation-handle": "{page.handle}",
+                                    "data-citation-aliases": serde_json::to_string(&web_pages.iter().filter(|source| source.url == page.url).map(|source| source.handle.clone()).collect::<Vec<_>>()).unwrap_or_default(),
+                                    if !page.why.is_empty() { p { "{page.why}" } }
+                                    else { p { {page.terms.join("; ")} } }
+                                    WebPageCard { page: page.clone(), passages: web_pages.iter().filter(|source| source.url == page.url).cloned().collect::<Vec<_>>() }
+                                }
+                            }
+                        }
+                        }
+                        FollowUpSuggestions { prompts: message.follow_up_prompts(), draft }
+                    }
                     if let Some(footer) = context_footer.filter(|_| !replaced) {
                         div {
-                            style: "margin-top: 6px; font-size: 0.78em; color: #6B7280; \
-                                    font-variant-numeric: tabular-nums;",
+                            class: "x-chat-turn-footer",
+                            style: "margin-top: 6px; padding-bottom: 12px; border-bottom: 1px solid #80808033; text-align: center; font-size: 0.78em; color: #6B7280; font-variant-numeric: tabular-nums;",
                             title: "Tokens the conversation carries, the largest single \
                                     context this turn was billed for, and how much of \
                                     the model's window that used",
@@ -823,7 +924,7 @@ fn MessageEntry(
                         read_more_source: read_more_source.clone(),
                         draft: Some(draft),
                     }
-                    if !refs.is_empty() {
+                    if !refs.is_empty() && message.tool_name != "cite_documents" {
                         DocRefsDisclosure { tool_name: message.tool_name.clone(), refs }
                     }
                 }
@@ -1000,7 +1101,7 @@ fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {
                 // guaranteed to render twice; `extract_doc_refs` now collapses them, and
                 // the key no longer hides it if that ever stops being true.
                 for (i, doc) in refs.into_iter().enumerate() {
-                    ChatDocRefCard { key: "{doc.file_hash}", doc, index: i as u64 }
+                    ChatDocRefRow { key: "{i}-{doc.file_hash}", doc }
                 }
             }
         }
@@ -1068,15 +1169,19 @@ pub(super) fn DocumentCitationCards(
     #[props(default)]
     conflicting: Vec<String>,
 ) -> Element {
+    let mut seen = HashSet::new();
+    let grouped = merge_citations(sources.clone()).into_iter()
+        .filter(|doc| seen.insert(doc.file_hash.clone())).collect::<Vec<_>>();
     rsx! {
         div {
             style: "margin-top: 10px; border-top: 1px solid #E2E8F0; padding-top: 8px;",
             div {
                 style: "display: flex; flex-direction: column; gap: 8px;",
-                for (index, doc) in sources.into_iter().enumerate() {
+                for (index, doc) in grouped.into_iter().enumerate() {
                     div {
                         key: "{doc.handle}-{doc.file_hash}",
                         "data-citation-handle": if conflicting.contains(&doc.handle) { String::new() } else { doc.handle.clone() },
+                        "data-citation-aliases": serde_json::to_string(&sources.iter().filter(|source| source.file_hash == doc.file_hash).map(|source| source.handle.clone()).collect::<Vec<_>>()).unwrap_or_default(),
                         "data-conflicting-handle": conflicting.contains(&doc.handle).to_string(),
                         class: "x-source-entry",
                         style: "display: flex; gap: 8px; align-items: flex-start;",
@@ -1093,24 +1198,15 @@ pub(super) fn DocumentCitationCards(
                         }
                         div {
                             style: "flex: 1 1 auto; min-width: 0;",
-                            ChatDocRefCard { doc: doc.clone(), index: index as u64 }
+                            if !doc.why.is_empty() { div { style: "font-size: 13px; color: #475569; padding: 0 8px;", "{doc.why}" } }
+                            ChatDocRefCard { doc: doc.clone(), index: index as u64, passages: sources.iter().filter(|source| source.file_hash == doc.file_hash).cloned().collect::<Vec<_>>() }
                             if conflicting.contains(&doc.handle) {
                                 div {
                                     style: "font-size: 12px; color: #B45309; padding: 0 4px 2px 4px;",
                                     "Citations of this conversation give {doc.handle} to more than one document. The answer links it to none of them."
                                 }
                             }
-                            if !doc.why.is_empty() {
-                                div {
-                                    style: "font-size: 12px; color: #475569; padding: 0 4px 2px 4px;",
-                                    "{doc.why}"
-                                }
-                            }
-                            // A quote the server could not find in the document is shown
-                            // and marked, never dropped. A model that stops citing is a
-                            // worse outcome than a marked quote, and the marker is a fact
-                            // the reader can act on. An empty reason is an older stored
-                            // result, so the page keeps the wording it already showed.
+                            // Older stored citations can contain unverified quotes.
                             if !doc.quote.is_empty() && !doc.quote_verified {
                                 div {
                                     style: "
@@ -1136,6 +1232,60 @@ mod tests {
     use crate::components::chat_components::markdown_text::{
         Block, Span, mark_handles, parse_blocks,
     };
+
+    fn test_doc() -> ChatDocRef {
+        serde_json::from_value(serde_json::json!({"collection_dataset":"c_d", "file_hash":"a".repeat(64)})).unwrap()
+    }
+
+    #[test]
+    fn sources_appear_once_across_answers_and_unmarked_sources_follow_the_answer() {
+        let docs = vec![ChatDocRef { handle: "[D1]".into(), file_hash: "a".repeat(64),
+            collection_dataset: "c_d".into(), ..test_doc() },
+            ChatDocRef { handle: "[D2]".into(), file_hash: "b".repeat(64),
+            collection_dataset: "c_d".into(), ..test_doc() }];
+        let refs = serde_json::to_string(&docs).unwrap();
+        let messages = vec![row(0, ChatRole::User, "", "", "Question"),
+            row(1, ChatRole::Tool, "cite_documents", &refs, ""),
+            row(2, ChatRole::Assistant, "", "", "First [D1]. Again [D1]."),
+            row(3, ChatRole::User, "", "", "Next question"),
+            row(4, ChatRole::Assistant, "", "", "Earlier source [D1].")];
+        let places = citation_placements(&messages, &docs, &[]);
+        assert_eq!(places[&2].inline, vec!["[D1]"]);
+        assert_eq!(places[&2].documents.iter().map(|doc| doc.handle.as_str()).collect::<Vec<_>>(), vec!["[D2]"]);
+        assert!(places[&4].inline.is_empty() && places[&4].documents.is_empty());
+    }
+
+    #[test]
+    fn unmarked_pages_and_document_aliases_share_one_source_card() {
+        let mut first = test_doc();
+        first.handle = "[D1]".into();
+        let mut alias = first.clone();
+        alias.handle = "[D2]".into();
+        alias.collection_dataset = "another_dataset".into();
+        let failed = test_doc();
+        let docs = vec![first, alias, failed];
+        let page = serde_json::from_value(serde_json::json!({"handle":"[W1]", "url":"https://example.org/",
+            "final_url":"https://example.org/", "title":"Example", "artifact_id":"source-id",
+            "version":"version", "terms":["Exact source"], "quotes":["Exact source text"], "quote_verified":true})).unwrap();
+        let messages = vec![row(0, ChatRole::User, "", "", "Question"),
+            row(1, ChatRole::Tool, "cite_documents", &serde_json::to_string(&docs).unwrap(), ""),
+            row(2, ChatRole::Assistant, "", "", "First [D1], alias [D2].")];
+        let places = citation_placements(&messages, &docs, &[page]);
+        assert_eq!(places[&2].inline, vec!["[D1]"]);
+        assert!(places[&2].documents.is_empty());
+        assert_eq!(places[&2].pages.len(), 1);
+    }
+
+    #[test]
+    fn citations_in_superseded_answers_do_not_consume_the_card() {
+        let docs = vec![ChatDocRef { handle: "[D1]".into(), file_hash: "a".repeat(64), ..test_doc() }];
+        let messages = vec![row(0, ChatRole::Assistant, "", "", "Draft [D1]."),
+            row(1, ChatRole::Nag, CITATION_NOTE_NAME, "", "Repair"),
+            row(2, ChatRole::Assistant, "", "", "Final [D1].")];
+        let places = citation_placements(&messages, &docs, &[]);
+        assert!(!places.contains_key(&0));
+        assert_eq!(places[&2].inline, vec!["[D1]"]);
+    }
 
     #[test]
     fn citation_context_uses_the_newest_earlier_search_for_its_document() {

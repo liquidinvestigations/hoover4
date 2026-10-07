@@ -1438,8 +1438,7 @@ class CitationResult(BaseModel):
     path: str | None = None
     quote: str = ""
     why: str = ""
-    #: The quoted span was found in the document's extracted text. False is not a
-    #: refusal. The citation still stands and the reader sees it marked.
+    #: Only a verified quote receives a handle. Failed quotes retain their error details.
     quote_verified: bool = False
     page: int | None = None
     extracted_by: str | None = None
@@ -1467,7 +1466,7 @@ class CitationsResponse(BaseModel):
 
     @model_serializer
     def _slim_result(self) -> dict[str, Any]:
-        if not self.success:
+        if not self.success and not self.citations:
             return {"success": False, "error": self.error}
         citations = []
         for result in self.citations:
@@ -1485,6 +1484,8 @@ class CitationsResponse(BaseModel):
                 row["error"] = result.error
             citations.append(row)
         out: dict[str, Any] = {"citations": citations}
+        if not self.success:
+            out.update(success=False, error=self.error)
         if self.note:
             out["note"] = self.note
         return out
@@ -1516,11 +1517,11 @@ def _session_id() -> str:
     name="cite_documents",
     description=(
         "Create citation handles for documents that support an answer. "
-        "Each citation names a document and can include a verbatim quote, find phrase, search term, and reason. "
+        "Each citation requires a verbatim quote of at least twelve characters from the document text. "
         "The find phrase must be an exact part of the quote. The card opens the document at that phrase. "
         "Write returned handles such as [D1] beside the claims they support. "
         "The tool verifies quotes against extracted document pages. "
-        "An unverified quote retains its handle and reports the reason. Read the document again to correct the quote. "
+        "An absent or missing quote returns an error without a handle. Copy a returned candidate passage and retry. Reuse a document handle for separate verified quotes. "
         "Cite each document used as evidence."
     ),
 )
@@ -1563,30 +1564,11 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
             lookup_failed += 1
         results.append(result)
 
-    if short:
+    if short or absent or lookup_failed:
         note_parts.append(
-            f"{short} of {len(results)} quotes were too short to check. "
-            f"A quote must be at least {MIN_QUOTE_CHARS} characters after "
-            "whitespace is folded."
-        )
-    if absent:
-        note_parts.append(
-            f"{absent} of {len(results)} quotes were not found in the document they "
-            "were attributed to. Those citations are shown to the reader marked as "
-            "unverified. Re-read the document and quote it exactly rather than from "
-            "memory."
-        )
-    if any(r.candidate for r in results):
-        note_parts.append(
-            "A citation with `candidate` has an exact passage of the document near its "
-            "quote. To verify it, cite the document again with a quote copied from a plain "
-            f"part of that passage, at least {MIN_QUOTE_CHARS} characters long. Each "
-            "handle above is valid in the answer whether or not its quote is verified."
-        )
-    if lookup_failed:
-        note_parts.append(
-            f"{lookup_failed} of {len(results)} documents could not be read for "
-            "quote verification. Those citations are shown marked."
+            "Failed quotes allocate no handles. Copy an exact supporting sentence from "
+            "the document or returned candidate, at least twelve characters long. "
+            "Send it in quote, not find. Retry only failed entries. Reuse successful handles."
         )
     find_fallbacks = sum(
         1 for c in parsed if c.find.strip() and not find_in_quote(c.find, c.quote)
@@ -1610,9 +1592,10 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
         "path": result.path, "quote": result.quote, "why": result.why,
         "quote_verified": result.quote_verified, "quote_reason": result.quote_reason,
         "find_query": result.find_query, "term": result.term, "candidate": result.candidate,
-    } for result in results])
+    } for result in results if result.quote_verified and result.handle and result.error is None])
+    success = any(result.quote_verified and result.handle and result.error is None for result in results)
     return CitationsResponse(
-        success=True, citations=results, note=" ".join(note_parts)
+        success=success, error=None if success else "No quote verified. Copy source text into quote and retry.", citations=results, note=" ".join(note_parts)
     )
 
 
@@ -1777,6 +1760,9 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
                 citation.collectionname, citation.file_hash, dataset))
         except Exception as exc:  # noqa: BLE001, the candidate is optional
             log.warning("no candidate passage for %s: %s", citation.file_hash, exc)
+    if not result.quote_verified:
+        result.error = "The quote did not verify. Copy at least twelve characters from the source into quote and retry."
+        return result
     owner = {k.lower(): v for k, v in get_http_headers().items()}.get("x-hoover4-user", "")
     try:
         result.handle = _HANDLES.handle_for(

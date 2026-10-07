@@ -213,6 +213,8 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
     monkeypatch.setattr(workflows, "CHAT_MODEL_TASK_QUEUE", model_queue)
     monkeypatch.setattr(activities, "INTERNAL_AGENT_URL", stub.url)
     monkeypatch.setattr(stream_writer, "BROWSER_SERVER_URL", stub.url)
+    from tasks.P_agent import followups
+    monkeypatch.setattr(followups, "generate_prompts", lambda *args: {"follow_up_prompts": ["Question one?", "Question two?", "Question three?"]})
     titled = []
     monkeypatch.setattr(activities, "title_session", lambda p: titled.append(p) or "")
     client = None
@@ -235,7 +237,7 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
             ]
             if model_worker:
                 workers.append(Worker(
-                    client, task_queue=model_queue, activities=[steps.model_step],
+                    client, task_queue=model_queue, activities=[steps.model_step, workflows.write_followups],
                     activity_executor=executor,
                     max_heartbeat_throttle_interval=STEP_HEARTBEAT_THROTTLE))
             async with workers[0], workers[1]:
@@ -309,6 +311,10 @@ def test_one_answer(monkeypatch):
         assert (row.state, row.model_steps, row.end_reason) == ("completed", 1, "")
         assert [(r[0], r[1], r[2]) for r in case.chat_rows()] == [
             (1, "user", "What is in the reports?"), (2, "assistant", "done")]
+        with get_global_client() as database:
+            usage = database.query("SELECT usage_json FROM chat_messages FINAL WHERE username = {u:String} AND role='assistant'",
+                                   parameters={"u": case.username}).result_rows
+        assert json.loads(usage[0][0])["follow_up_prompts"] == ["Question one?", "Question two?", "Question three?"]
         assert _roles(case) == [(0, "human"), (1, "ai")]
 
     asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, "done"), body))
@@ -828,7 +834,7 @@ def test_an_uncited_answer_that_names_a_document_gets_one_citation_round(monkeyp
         assert await handle.result() == "completed"
         assert len(stub.requests) == 3
         note = stub.requests[1]["messages"][-1]["content"]
-        assert "No successful `cite_documents` result gives [D1]." in note
+        assert "No successful citation result gives [D1]." in note
         assert "Write the complete answer again" in note
         rows = [(r[1], r[2], r[3]) for r in case.chat_rows()]
         assert [r[0] for r in rows] == ["user", "assistant", "nag", "tool", "assistant"]
@@ -1148,3 +1154,37 @@ def test_a_note_warning_field_writes_no_row(monkeypatch):
         assert rows == [(case.start_seq, "tool"), (case.start_seq + 1, "assistant")]
 
     asyncio.run(_run_case(monkeypatch, script, body))
+
+
+def test_a_stop_during_followups_preserves_the_answer_and_closes_the_run(monkeypatch):
+    from tasks.P_agent import followups
+    entered, released = threading.Event(), threading.Event()
+
+    def generate(*args):
+        entered.set()
+        assert released.wait(20)
+        return {"follow_up_prompts": ["One?", "Two?", "Three?"]}
+
+    async def body(client, case, stub, queue, titled):
+        monkeypatch.setattr(followups, "generate_prompts", generate)
+        handle = await _start(client, case, queue)
+        try:
+            deadline = time.monotonic() + 10
+            while not entered.is_set() and time.monotonic() < deadline:
+                await asyncio.sleep(0.05)
+            assert entered.is_set()
+            agent_runs.write_turn_stop(case.username, case.session_id, case.turn_seq)
+            await handle.cancel()
+            assert (await _wait_terminal(case, seconds=10)).state == "cancelled"
+            with pytest.raises(WorkflowFailureError):
+                await handle.result()
+        finally:
+            released.set()
+        await asyncio.sleep(0.2)
+        with get_global_client() as database:
+            rows = database.query("SELECT content,usage_json FROM chat_messages FINAL WHERE username={u:String} AND role='assistant'",
+                                  parameters={"u": case.username}).result_rows
+        assert rows[0][0] == "done"
+        assert "follow_up_prompts" not in json.loads(rows[0][1])
+
+    asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, "done"), body))

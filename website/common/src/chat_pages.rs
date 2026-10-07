@@ -13,6 +13,8 @@ pub struct ChatPageRef {
     #[serde(default)]
     pub quotes: Vec<String>,
     pub quote_verified: bool,
+    #[serde(default)]
+    pub why: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -22,6 +24,19 @@ pub struct CapturedWebPage {
     pub title: String,
     pub version: String,
     pub markdown: String,
+}
+
+/// Combine repeated citations of the same captured page without losing verified passages.
+pub fn merge_page_refs(refs: Vec<ChatPageRef>) -> Vec<ChatPageRef> {
+    let mut merged: Vec<ChatPageRef> = Vec::new();
+    for page in refs {
+        if let Some(kept) = merged.iter_mut().find(|kept| kept.handle == page.handle && kept.version == page.version) {
+            for term in page.terms { if !kept.terms.contains(&term) { kept.terms.push(term); } }
+            for quote in page.quotes { if !kept.quotes.contains(&quote) { kept.quotes.push(quote); } }
+            if kept.why.is_empty() { kept.why = page.why; }
+        } else { merged.push(page); }
+    }
+    merged
 }
 
 /// Split source text at exact term matches without changing Unicode byte boundaries.
@@ -108,6 +123,22 @@ mod tests {
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].terms, vec!["Exact text"]);
         assert_eq!(refs[0].artifact_id, "source-id");
+    }
+
+    #[test]
+    fn repeated_quotes_keep_each_distinct_passage() {
+        let value = serde_json::json!({"citations":[{"handle":"[W1]", "url":"https://example.org/",
+            "final_url":"https://example.org/", "title":"Example", "artifact_id":"source-id",
+            "version":"version", "terms":["First"], "quotes":["First passage"], "quote_verified":true}]});
+        let mut refs = extract_page_refs(&value.to_string());
+        let mut second = refs[0].clone();
+        second.terms = vec!["Second".into()];
+        second.quotes = vec!["Second passage".into()];
+        refs.push(second);
+        let merged = merge_page_refs(refs);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].quotes, vec!["First passage", "Second passage"]);
+        assert_eq!(merged[0].terms, vec!["First", "Second"]);
     }
 
     #[test]

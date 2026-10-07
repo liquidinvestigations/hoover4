@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
         CONTINUE_AS_NEW_STEPS, HISTORY_EVENTS_PER_RUN, RUN_MODEL_STEPS,
         STEP_HEARTBEAT_TIMEOUT, TIMEOUTS, TOOL_CALL_TIMEOUT,
     )
+    from tasks.P_agent.followups import write_followups
     from tasks.P_agent.steps import MODEL_STEP_MODE
     from tasks.P_agent.activities import (
         AgentRunInput,
@@ -77,8 +78,7 @@ with workflow.unsafe.imports_passed_through():
 #: same patch or not at all.
 CHAT_TASK_QUEUE = "chat-queue"
 
-#: The queue of the `model_step` activities of a chat turn. One slot is one model call in
-#: flight.
+#: The queue of model steps and follow-up generation. One slot is one model call.
 CHAT_MODEL_TASK_QUEUE = "chat-model-queue"
 
 #: The queue of every `tool_call` activity. One slot is one tool call in flight.
@@ -213,6 +213,24 @@ class AgentRun:
         # Outside the try: a failure below cannot rewrite the state of this run.
         if summary.outcome == "closed":
             return "closed"
+        if not summary.end_reason:
+            try:
+                await workflow.execute_activity(
+                    write_followups,
+                    RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
+                    start_to_close_timeout=TIMEOUTS.title_activity,
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=1),
+                    task_queue=CHAT_MODEL_TASK_QUEUE,
+                )
+            except asyncio.CancelledError:
+                await asyncio.shield(self._finish(inp, "cancelled"))
+                raise
+            except Exception as exc:
+                if _was_cancelled(exc):
+                    await asyncio.shield(self._finish(inp, "cancelled"))
+                    raise
+                workflow.logger.warning("could not generate follow-up suggestions for %s", inp.session_id)
         await self._finish(inp, "completed")
         await self._summarize_if_first_turn(inp)
         return "completed"

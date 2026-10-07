@@ -33,6 +33,8 @@ that Jim Steffes approved the draft. Call {{ tool('cite_documents') }} with coll
 file_hash from the result, the quote "Your notes look great. Best of luck today with the
 Hearings.", find "Your notes look great", and why "Steffes approves the draft of 27 December".
 Then write "Steffes approved the draft [D1]."
+Missing or absent quotes allocate no handle. Copy a candidate sentence into quote and retry.
+Reuse the returned document handle for additional verified passages. The document has one card.
 {% if citation_resolver == "lead" %}
 The lead researcher resolves them, so a handle you never allocated is no use to anyone.
 {% endif %}
@@ -47,5 +49,7 @@ An error does not allocate a handle. Omit that source's claims until its citatio
 For absent wording, copy exact text from the returned candidate and call the tool again.
 The handle opens the captured page text and its verified quotes.
 Use a web citation handle in place of a bare source URL.
+Use one page per call if a batch arrives damaged.
+Example: {"url":"COPY_READ_URL","terms":["COPY_EXACT_SOURCE_PHRASE"]}.
 An unread, blocked, or unverified page cannot support a claim.
 {% endif %}

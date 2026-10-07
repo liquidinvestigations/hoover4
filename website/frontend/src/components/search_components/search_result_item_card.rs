@@ -18,6 +18,8 @@ pub fn SearchResultItemCard(
     onmounted: Callback<Event<MountedData>>,
     #[props(default)]
     citation_excerpt: bool,
+    #[props(default)]
+    children: Option<Element>,
 ) -> Element {
     let search_results_state = use_context::<SearchResultsState>();
     let current_search_result_page = search_results_state.current_search_result_page;
@@ -48,6 +50,7 @@ pub fn SearchResultItemCard(
         "rgba(255,255,255,1.0)"
     };
 
+    let height = if children.is_some() { "auto" } else { "148px" };
     rsx! {
         div {
             "data-citation-search-snippet": citation_excerpt.then_some("true"),
@@ -61,7 +64,8 @@ pub fn SearchResultItemCard(
                 border-radius: 8px;
                 padding: 12px 16px;
                 margin: 8px 8px;
-                height: 148px;
+                height: {height};
+                min-height: 148px;
                 width: calc(100% - 16px);
                 box-sizing: border-box;
             ",
@@ -133,6 +137,7 @@ pub fn SearchResultItemCard(
                     }
                 }
             }
+            {children}
         }
     }
 }

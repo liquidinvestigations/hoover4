@@ -50,6 +50,8 @@ pub fn MarkdownishText(
     pages: Vec<ChatPageRef>,
     #[props(default = true)]
     citation_links: bool,
+    #[props(default)]
+    card_handles: Option<Vec<String>>,
 ) -> Element {
     let blocks = if !citation_links {
         parse_blocks(&text).into_iter().map(|block| map_spans(block, &|span| match span {
@@ -62,6 +64,7 @@ pub fn MarkdownishText(
             .map(unmark_uncited)
             .collect(),
     }};
+    let blocks = unique_card_blocks(blocks, card_handles.as_deref());
     rsx! {
         div {
             style: "font-size: {BODY_PX}px; line-height: 1.65; color: #0F172A; \
@@ -113,10 +116,13 @@ fn CitationSources(handles: Vec<String>, sources: Vec<ChatDocRef>, pages: Vec<Ch
     rsx! {
         for handle in handles {
             if let Some(doc) = sources.iter().find(|source| source.handle == handle).cloned() {
-                DocumentCitationCards { sources: vec![doc], conflicting: conflicting.clone() }
+                DocumentCitationCards { sources: sources.iter().filter(|source| source.file_hash == doc.file_hash).cloned().collect::<Vec<_>>(), conflicting: conflicting.clone() }
             }
             if let Some(page) = pages.iter().rev().find(|source| source.handle == handle).cloned() {
-                div { "data-citation-handle": "{handle}", WebPageCard { page } }
+                div { "data-citation-handle": "{handle}",
+                    "data-citation-aliases": serde_json::to_string(&pages.iter().filter(|source| source.url == page.url).map(|source| source.handle.clone()).collect::<Vec<_>>()).unwrap_or_default(),
+                    WebPageCard { page: page.clone(), passages: pages.iter().filter(|source| source.url == page.url).cloned().collect::<Vec<_>>() }
+                }
             }
         }
     }
@@ -333,7 +339,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                             "{t}"
                         }
                     },
-                    Span::Handle(handle) => rsx! {
+                    Span::Handle(handle) | Span::Reference(handle) => rsx! {
                         button {
                             key: "{i}",
                             style: "
@@ -399,6 +405,8 @@ pub enum Span {
     /// A document or web citation handle in assistant prose.
     /// Its control opens the next matching source card in the same answer.
     Handle(String),
+    /// A later citation marker selects the existing source card.
+    Reference(String),
     /// A handle that no `cite_documents` result of the conversation gave. Rendered as
     /// plain text marked "not cited", with no chip.
     UncitedHandle(String),
@@ -776,25 +784,40 @@ fn as_handles(chars: &[char]) -> Option<Vec<String>> {
     }).collect()
 }
 
-/// Scroll to the next matching citation card in the active answer.
+/// Scroll to and select the conversation's single source card.
 fn scroll_to_handle(handle: &str) {
     let handle = serde_json::to_string(handle).unwrap_or_default();
-    document::eval(&format!(
-        r#"
-        const button = document.activeElement;
-        const scope = button?.closest('[data-chat-answer]') || document;
-        const candidates = [...scope.querySelectorAll('[data-citation-handle]')].filter(el => el.dataset.citationHandle === {handle});
-        const el = candidates.find(el => button && (button.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) || candidates[0];
+    document::eval(&format!(r#"
+        const el = [...document.querySelectorAll('#x-chat-transcript [data-citation-handle]')]
+            .find(el => el.dataset.citationHandle === {handle} || JSON.parse(el.dataset.citationAliases || "[]").includes({handle}));
         if (el) {{
+            el.querySelector('[data-citation-select]')?.click();
             el.scrollIntoView({{ behavior: "smooth", block: "center" }});
             el.classList.remove("x-source-flash");
-            // Reading offsetWidth forces a reflow, which is what makes removing and
-            // re-adding the class restart the animation rather than do nothing.
             void el.offsetWidth;
             el.classList.add("x-source-flash");
         }}
-        "#
-    ));
+    "#));
+}
+
+/// Return citation markers in their visible Markdown order.
+pub(super) fn referenced_handles(text: &str) -> Vec<String> {
+    parse_blocks(text).iter().flat_map(block_handles).collect()
+}
+
+fn unique_card_blocks(blocks: Vec<Block>, allowed: Option<&[String]>) -> Vec<Block> {
+    let seen = std::cell::RefCell::new(Vec::new());
+    blocks.into_iter().map(|block| map_spans(block, &|span| match span {
+        Span::Handle(handle) => {
+            if allowed.is_some_and(|handles| !handles.contains(&handle)) || seen.borrow().contains(&handle) {
+                Span::Reference(handle)
+            } else {
+                seen.borrow_mut().push(handle.clone());
+                Span::Handle(handle)
+            }
+        },
+        other => other,
+    })).collect()
 }
 
 fn is_wordish(c: char) -> bool {
@@ -826,6 +849,13 @@ mod tests {
 
     fn text(s: &str) -> Vec<Span> {
         vec![Span::Text(s.to_string())]
+    }
+
+    #[test]
+    fn repeated_styled_and_table_references_render_one_card() {
+        let blocks = unique_card_blocks(parse_blocks("First **[D1]**. Again [D1].\n\n| Source |\n| --- |\n| [D1] |\n| [D2] |"), Some(&["[D1]".into()]));
+        assert_eq!(blocks.iter().flat_map(block_handles).collect::<Vec<_>>(), vec!["[D1]"]);
+        assert_eq!(referenced_handles("**[D1]** then *[D2]*"), vec!["[D1]", "[D2]"]);
     }
 
     #[test]

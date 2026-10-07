@@ -65,7 +65,7 @@ def test_agent_run_and_its_activities_are_registered_on_their_queues():
     for removed in ("read_chat_todo", "preload_reads", "write_repeat_note",
                     "write_found_documents", "delegate_step"):
         assert removed not in chat_acts, removed
-    assert workers["CHAT_MODEL_TASK_QUEUE"][1] == ["model_step"]
+    assert workers["CHAT_MODEL_TASK_QUEUE"][1] == ["model_step", "write_followups"]
     assert workers["AGENT_TOOL_TASK_QUEUE"][1] == ["tool_call"]
 
 

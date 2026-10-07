@@ -236,3 +236,17 @@ def test_cancelled_allocation_keeps_its_lock_until_storage_finishes(monkeypatch)
             await task
         assert not citations._lock.locked()
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_tool_accepts_flat_and_list_arguments_with_reasons(store, monkeypatch, nested):
+    from browser_use_server import server
+    read_source()
+    monkeypatch.setattr(server, "_header", lambda name: "owner" if name == server.USER_HEADER else "chat")
+    page = {"url": "https://source.example/page", "terms": ["verified statement"], "why": "Supports the statement."}
+    tool = server.CitePagesTool(name="cite_pages", description=server.CITE_PAGES_DESCRIPTION,
+                                parameters=server.CITE_PAGES_SCHEMA)
+    result = asyncio.run(tool.run({"pages": [page]} if nested else page))
+    payload = json.loads(result.content[0].text)
+    assert payload["citations"][0]["why"] == page["why"]
+    assert payload["citations"][0]["handle"] == "[W1]"

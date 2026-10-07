@@ -155,13 +155,9 @@ The session lock orders the allocations of one process. The compose service runs
 container with one server process, and more than one allocating process needs another
 authority.
 
-**A quote that is not in the text gets a candidate** (`citations.candidate_passage`). The
-citation keeps the quote it was given and stays unverified. Beside it, `candidate` holds an
-exact passage of the extracted text near the longest part of the quote that the text holds,
-with its page. A later citation whose quote is copied from the candidate verifies. The note
-of the result asks for a plain part of the passage and says that each returned handle is
-valid in the answer. A model that copied escape sequences and replacement characters from
-a passage sent the same failing citation many times and then wrote the answer with no handle.
+**A failed quote gets no handle.** The result retains its error and a candidate passage when available.
+Copy a supporting sentence from that passage into `quote` and retry the failed entry.
+Successful entries keep their handles. Separate verified passages of one document reuse its handle.
 
 **A file hash start names its document.** `read_documents` and `cite_documents` accept the
 first 12 or more characters of a file hash in place of the whole hash, in a collection that
@@ -184,12 +180,9 @@ extracted page in bounded batches, each continuing after the `(extracted_by, pag
 the last page read, and is independent of `MAX_DOCUMENT_CHARS`, which only
 bounds the excerpt `read_documents` shows the model. A model quoting a sentence it read
 reproduces the words, not the extractor's line breaks, and an exact-substring test
-rejects nearly every accurate quote. A quote that does not check out is returned **flagged,
-never refused**, with a reason of `short`, `absent`, or `lookup_failed`. A model that stops
-citing is a worse outcome than a citation the reader sees marked. A quote too short to
-prove anything is unverified for the same reason a check that always passes is not a check.
-A paraphrase is absent wording. A stored citation that never recorded a reason stays
-readable and does not display a reason that was never established. Pages are fetched in
+rejects nearly every accurate quote. A missing, short, absent, or unreadable quote returns an error without a new handle.
+Stored older citations retain their recorded verification status.
+Pages are fetched in
 batches of 32 (`VERIFY_PAGE_BATCH`). A match that crosses a batch or a page still
 verifies, because the pages are joined with the same separator a full-document read uses.
 

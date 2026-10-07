@@ -145,6 +145,7 @@ def render(
     ).strip()
     return _environment().get_template(AGENT_TEMPLATE).render(
         current_date=datetime.now(timezone.utc).date().isoformat(),
+        has=lambda name: name in tool_names,
         role_line=role_line,
         role_method=role_method(ctx, strict=strict),
         skills=list(skills),

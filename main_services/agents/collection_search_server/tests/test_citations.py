@@ -129,6 +129,14 @@ class TestCiteOne:
 
         monkeypatch.setattr(srv, "clickhouse_query", fake_query)
 
+    def test_find_without_quote_allocates_no_handle(self, monkeypatch):
+        import collection_search_server.server as srv
+        self._stub_pages(monkeypatch, ["The board approved the transfer on 3 March."])
+        monkeypatch.setattr(srv._HANDLES, "handle_for", lambda *a, **k: pytest.fail("Allocated an invalid citation"))
+        result = _cite_one(_acl(), "missing-quote", Citation(
+            collectionname="testdata", file_hash=HASH, find="approved the transfer"))
+        assert result.error and not result.handle and not result.quote_verified
+
     def test_a_quote_past_the_excerpt_is_verified(self, monkeypatch):
         filler = "word " * 9000
         quote = "unique cited sentence from the end"
@@ -202,7 +210,7 @@ class TestCiteOne:
         )
         assert not result.quote_verified
         assert result.quote_reason == QUOTE_REASON_SHORT
-        assert result.error is None
+        assert result.error and not result.handle
 
     def test_absent_wording_is_named(self, monkeypatch):
         self._stub_pages(monkeypatch, ["The board approved the transfer on 3 March."])
@@ -218,7 +226,7 @@ class TestCiteOne:
         )
         assert not result.quote_verified
         assert result.quote_reason == QUOTE_REASON_ABSENT
-        assert result.error is None
+        assert result.error and not result.handle
 
     def test_a_missing_document_is_a_lookup_failure(self, monkeypatch):
         self._stub_pages(monkeypatch, [])

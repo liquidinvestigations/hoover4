@@ -19,7 +19,7 @@ pub struct ChatDocOpen {
 }
 
 #[component]
-pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
+pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: Vec<ChatDocRef>) -> Element {
     // The click reads the document and its find query of the latest render, because a
     // card instance can receive another document while it stays mounted.
     let target = use_hook(|| Rc::new(RefCell::new((doc.document_identifier(), String::new()))));
@@ -114,12 +114,28 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
         document_date: None,
     };
 
+    let mut quotes = Vec::new();
+    let passages = passages.into_iter().filter(|passage| {
+        if !passage.quote_verified || passage.quote.is_empty() || quotes.contains(&passage.quote) { return false; }
+        quotes.push(passage.quote.clone());
+        true
+    }).collect::<Vec<_>>();
+    let selected_target = (doc.document_identifier(), doc.find_query.clone());
     rsx! {
         div {
+            button { "data-citation-select": "true", hidden: true, tabindex: "-1", onclick: move |_| { if let Some(open) = chat_open { open.open.call(selected_target.clone()); } } }
             SearchResultItemCard {
                 result,
                 onmounted: |_| {},
                 citation_excerpt: !doc.search_snippet.is_empty(),
+                children: Some(rsx! {
+                    for (index, passage) in passages.into_iter().enumerate() {
+                        button { key: "{index}", r#type: "button", style: "border: 0; background: transparent; color: inherit; text-align: left; padding: 6px 0; font: inherit; cursor: pointer;",
+                            onclick: move |event| { event.stop_propagation(); if let Some(open) = chat_open { open.open.call((passage.document_identifier(), passage.find_query.clone())); } },
+                            "{passage.quote}"
+                        }
+                    }
+                }),
             }
             if !doc.term.is_empty() && !doc.search_route.is_empty() {
                 div { "data-citation-search-term": "{doc.term}", style: "padding: 0 12px; font-size: 12px;",
