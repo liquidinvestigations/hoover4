@@ -106,7 +106,7 @@ class WebSearchResponse(BaseModel):
         default_factory=list, description="The queries that were run, after de-duplication"
     )
     note: str | None = Field(
-        default=None, description="What was de-duplicated or not run, and what to do instead"
+        default=None, description="Query corrections and instructions to read the result pages"
     )
     results: list[WebResult] = Field(default_factory=list)
     sources_used: list[str] = Field(default_factory=list)
@@ -255,6 +255,14 @@ async def web_search(
         log.exception("metasearch failed")
         return WebSearchResponse(
             success=False, query=pipeline.QUERY_JOIN.join(wanted), queries=wanted, error=str(exc)
+        )
+
+    if outcome.ranked:
+        note = batching.corrective_note(
+            note,
+            "These are search snippets. Read the relevant page addresses with read_page before another search. "
+            "Verify the requested constraints in those pages. "
+            "If they do not establish a requested comparison or ranking, state that limit.",
         )
 
     # `to_thread`: this is an S3 PUT plus a ClickHouse insert, both synchronous. On the

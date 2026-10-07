@@ -5,11 +5,9 @@ This is the ninety-percent case of browsing, as one call. Reading a page used to
 URL, serially, three round trips and a tree full of markup for something the model wanted
 as prose. Here it is navigate, settle, extract, capture, return, batched over URLs.
 
-**`goal` is not an inner agent loop.** It is passed to the extraction, which uses it to
-choose *which* part of a long page survives the character budget, and it is recorded on the
-artifact so the capture says what the page was read for. An LLM loop inside a tool hides
-cost and latency behind something that looks like a function call, and it cannot be
-debugged from the outside; that shape was rejected deliberately and must not come back.
+The `goal` field records the purpose of the read on the capture.
+The result keeps text order. Use `find` to search the complete kept text.
+The tool does not run a model.
 
 **The artifact contract is unchanged.** Each page produces the same screenshot-always,
 MHTML-under-the-cap capture that an explicit snapshot produces, so the archived-page card

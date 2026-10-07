@@ -40,7 +40,10 @@ against the question, so the best answer to the sharpest angle arrives interleav
 best answer to the vaguest one at the same rank.
 
 `METASEARCH_MAX_QUERIES` caps the batch, and the surplus is **named** in `note` rather than
-trimmed silently. `note` also reports de-duplicated repeats. A list arrives coerced through
+trimmed silently. `note` also reports de-duplicated repeats.
+When results exist, the note asks for page reads before another search.
+It asks the answer to state when those pages do not establish a requested comparison or ranking.
+A list arrives coerced through
 `agent_common.batching.as_list`, so a bare string and a JSON-encoded list both work.
 
 ## Sources
