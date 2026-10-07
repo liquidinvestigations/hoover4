@@ -80,6 +80,7 @@ NAVIGATE_TIMEOUT_MS = int(os.getenv("READ_PAGE_NAVIGATE_TIMEOUT_MS", "25000"))
 #: and it needs nothing injected into a page the router does not control.
 _EXTRACT_JS = """
 () => {
+  const status = Number(globalThis.performance?.getEntriesByType?.('navigation')?.[0]?.responseStatus) || 0;
   const strip = ['script','style','noscript','svg','nav','header','footer','aside','form'];
   const doc = document.cloneNode(true);
   for (const tag of strip) {
@@ -95,7 +96,7 @@ _EXTRACT_JS = """
     .replace(/[ \\t]+/g, ' ')
     .replace(/\\n{3,}/g, '\\n\\n')
     .trim();
-  return JSON.stringify({ title: document.title || '', url: location.href, text });
+  return JSON.stringify({ title: document.title || '', url: location.href, text, status });
 }
 """
 
@@ -113,7 +114,7 @@ BOT_CHECK_LABEL = "BLOCKED BY A BOT CHECK"
 BOT_CHECK_ERROR = "blocked by a bot check"
 
 #: Detects a bot check page. Runs in the page and returns a JSON string
-#: `{text, check, url, title, type}`, where `text` names the signal that matched and
+#: `{text, check, url, title, type, status}`, where `text` names the signal that matched and
 #: `type` is the document's content type.
 _CHECK_JS = """
 () => {
@@ -136,7 +137,8 @@ _CHECK_JS = """
     (verification ? 'security verification' :
       (titles.find(x => t.includes(x)) || phrases.find(x => b.includes(x)) || '')));
   return JSON.stringify({ text: hit, check: !!hit, url: location.href, title: document.title || '',
-                          type: document.contentType || '' });
+                          type: document.contentType || '',
+                          status: Number(globalThis.performance?.getEntriesByType?.('navigation')?.[0]?.responseStatus) || 0 });
 }
 """
 
@@ -598,12 +600,23 @@ def _extract(
         return
     page.title = str(payload.get("title") or "")
     page.final_url = str(payload.get("url") or url)
+    page.error = _http_error(payload)
+    if page.error:
+        return
     text = str(payload.get("text") or "")
     if not text.strip():
         page.error = navigated or "the page returned no readable text"
     else:
         page.full_text = text
         page.text, page.truncated = focus(text, goal or "", limit)
+
+
+def _http_error(payload: dict) -> str:
+    """Reject a known HTTP error without classifying an unknown status as an error."""
+    status = payload.get("status")
+    if isinstance(status, int) and 400 <= status < 600:
+        return f"the page returned HTTP {status}"
+    return ""
 
 
 async def _probe(chat) -> dict | None:
@@ -640,6 +653,9 @@ async def _wait_out_check(chat, probe: dict | None) -> str | None:
 async def _read_pdf(chat, page: PageRead, url: str, goal: str, limit: int, probe: dict) -> None:
     """Read the text of the PDF the page shows, into `page`."""
     page.final_url = str(probe.get("url") or url)
+    page.error = _http_error(probe)
+    if page.error:
+        return
     data = bytearray()
     total = 0
     while len(data) < PDF_MAX_BYTES:

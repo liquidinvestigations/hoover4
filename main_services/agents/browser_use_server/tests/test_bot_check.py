@@ -43,6 +43,37 @@ def test_the_probe_detects_human_verification_pages(title, body, blocked):
     assert json.loads(result.stdout)["check"] is blocked
 
 
+@pytest.mark.parametrize("status", [0, 200, 404, 503])
+@pytest.mark.parametrize("function", [read_page._CHECK_JS, read_page._EXTRACT_JS],
+                         ids=["probe", "extraction"])
+def test_page_scripts_report_the_document_http_status(status, function):
+    script = (
+        "global.document = {title: 'Example', body: {innerText: 'Article about HTTP 404 errors.'},"
+        " querySelector: () => null, getElementsByTagName: () => [],"
+        " querySelectorAll: () => [document.body], cloneNode: () => document};"
+        "global.window = {}; global.location = {href: 'https://checked.example/article'};"
+        "Object.defineProperty(globalThis, 'performance', {value: {getEntriesByType:"
+        f" kind => kind === 'navigation' ? [{{responseStatus: {status}}}] : []}}}});"
+        f"console.log(({function})());"
+    )
+    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+    assert json.loads(result.stdout)["status"] == status
+
+
+@pytest.mark.parametrize("status", [None, 0, 200, 404, 503])
+def test_extraction_preserves_articles_and_rejects_known_http_errors(status):
+    page = PageRead(url=CHECK_URL)
+    payload = {"title": "HTTP 404 guide", "url": CHECK_URL,
+               "text": "An article about Page not found errors.", "status": status}
+    read_page._extract(page, CHECK_URL, "", 5000, "", ("", json.dumps(payload)))
+    if status in (404, 503):
+        assert page.error == f"the page returned HTTP {status}"
+        assert not page.text and not page.full_text
+    else:
+        assert not page.error
+        assert page.text == payload["text"]
+
+
 def _answer(payload: dict) -> SimpleNamespace:
     """A sidecar `browser_evaluate` answer: prose around a JSON string."""
     body = f"### Result\n{json.dumps(json.dumps(payload))}\n"
@@ -132,6 +163,29 @@ def test_a_check_that_stays_is_blocked_with_no_extraction(monkeypatch):
     assert 0.2 <= elapsed < 1.0
 
 
+def test_an_http_error_has_no_kept_text_and_marks_its_capture_failed(monkeypatch):
+    class HttpClient(FakeClient):
+        async def call_tool(self, tool, arguments, raise_on_error=False):
+            if tool == "browser_evaluate" and arguments["function"] == read_page._EXTRACT_JS:
+                return _answer({"title": "Page not found", "url": CHECK_URL,
+                                "text": "The requested page does not exist.", "status": 404})
+            return await super().call_tool(tool, arguments, raise_on_error)
+
+    captures = []
+
+    async def capture(chat, tool_name, username, failed=False):
+        captures.append(failed)
+        return capture_mod.CaptureResult()
+
+    monkeypatch.setattr(capture_mod, "capture", capture)
+    chat = SimpleNamespace(client=HttpClient([False]), page_reads={})
+    result = asyncio.run(read_page.read(chat, [CHECK_URL], "", "user"))
+    assert result.pages[0].error == "the page returned HTTP 404"
+    assert not result.pages[0].text and not chat.page_reads
+    assert captures == [True]
+    assert "COULD NOT READ" in read_page.render(result)
+
+
 def test_the_label_names_the_url_and_the_wait(monkeypatch):
     monkeypatch.setattr(read_page, "BOT_CHECK_WAIT_S", 7.0)
     out = read_page.render(ReadResult(pages=[PageRead(
@@ -200,6 +254,15 @@ def test_a_pdf_is_read_through_its_text_layer(monkeypatch):
     assert "Neural Network Topologies" in page.text
     assert client.slices > 1
     assert not page.error and not page.note
+
+
+def test_a_pdf_http_error_is_rejected_before_fetching_bytes():
+    client = PdfClient(_text_pdf("This error response must not become evidence."))
+    page = PageRead(url=CHECK_URL)
+    asyncio.run(read_page._read_pdf(SimpleNamespace(client=client), page, CHECK_URL,
+                                   "", 5000, {"url": CHECK_URL, "status": 404}))
+    assert page.error == "the page returned HTTP 404"
+    assert not page.text and client.slices == 0
 
 
 def test_a_pdf_over_the_limit_is_not_read(monkeypatch):

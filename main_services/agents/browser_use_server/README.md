@@ -91,6 +91,8 @@ Read these behaviours before you change it:
   returns. A navigation that errored is still extracted and still captured: a cookie wall or
   a CAPTCHA is the most valuable screenshot this server produces.
   A failed text read tells the model to read another source or omit the page's claims and address.
+  A known HTTP error status gives no page text and records the failed read with its capture.
+  The browser reads this status from its navigation timing entry. An unavailable status does not reject readable text.
 * **A bot check page is waited out, then reported as blocked.** After the navigation, a
   probe in the page looks for a bot check. It matches titles such as "Just a moment...",
   the Cloudflare challenge elements, and phrases such as "verify you are human".
