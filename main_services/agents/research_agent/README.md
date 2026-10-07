@@ -58,7 +58,8 @@ name and summary follow. A chat run then gets the `ask_user` rule and the closin
 an answer to a request that compares documents or collections ends with a `Disagreements:`
 line and a `Not covered:` line, and other answers end without them. The role text of the
 chat asks for the same two statements. The served model wrote the lines only when both
-texts asked for them. The todo text
+texts asked for them. The initial web role names `read_page` and its `find` field for supporting passages.
+It requires comparative evidence for a size ranking. The todo text
 follows when the run has the four todo tools. It says
 that the list is optional and that an open item does not stop an answer. The summary of a
 tool is the first sentence of its description, at most 160 characters. `_create_context`

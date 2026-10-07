@@ -111,9 +111,9 @@ def repair_note(check: dict) -> str:
     if check.get("page_zero"):
         problems.append("The answer names page 0. Use the 1-based page from the verified cite_documents result.")
     if check.get("web_missing"):
-        problems.append("Read the web pages behind each web claim. Put each read page address beside its claim.")
+        problems.append("Call `read_page` now for the sources behind each web claim. Read the supporting passages with its `find` field. Put each read page address beside its claim.")
     for url in check.get("web_unread") or []:
-        problems.append(f"The answer links an unread page: {url}. Read it before you use its claims, or remove those claims.")
+        problems.append(f"The answer links an unread page: {url}. Call `read_page` for that address before you use its claims, or remove those claims.")
     for paragraph in check.get("unsupported_paragraphs") or []:
         problems.append(f"Paragraph {paragraph['number']} has a name or number without a source: {paragraph['text']} Add its citation or remove the claim.")
     if check.get("unresolved"):

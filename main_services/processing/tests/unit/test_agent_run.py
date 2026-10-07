@@ -1050,7 +1050,7 @@ def test_document_and_web_findings_share_one_repair_note(citations_store):
     citations_store["messages"].sort(key=lambda message: message.idx)
     assert _check(citations_store).needed
     note = citations_store["messages"][-1]
-    assert "Read the web pages" in note.content
+    assert "Call `read_page` now" in note.content
     assert "Paragraph 1" in note.content
     assert len([m for m in citations_store["messages"] if citations.is_citation_note(m)]) == 1
 
