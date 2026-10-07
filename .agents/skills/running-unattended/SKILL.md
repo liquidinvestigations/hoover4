@@ -14,7 +14,6 @@ Do not add, drop, or change a requested capability because nobody is available t
 
 Record unresolved material questions in the plan's `OPEN_QUESTIONS.md`.
 State the question, affected requirement, recommended choice, and work that depends on the answer.
-Leave dependent work pending and continue independent work.
 An unanswered question does not become approval after a timeout.
 
 Keep a short status record with completed work, evidence, remaining requirements, and the next action.

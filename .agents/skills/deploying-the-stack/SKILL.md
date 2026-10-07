@@ -8,7 +8,9 @@ allowed-tools: Bash, Read, Grep, Glob
 
 Inspect the target containers and active jobs before starting.
 Use the local infrastructure inventory for the target environment.
-Confirm the authorized deployment scope and preserve unrelated services.
+Verify the authorized deployment scope and preserve unrelated services.
+A user's instruction to start a plan authorizes the deployments and resets explicitly requested in it.
+Do not request another confirmation for those actions. Preserve their requested targets, scope, and reset allowance.
 
 `hoover4.ini` owns configuration. The deployment generates environment files.
 Read [deploy flags](reference/deploy-flags.md) before selecting a build or reset operation.

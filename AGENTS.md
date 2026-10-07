@@ -16,6 +16,8 @@ public**, at `github.com/liquidinvestigations/hoover4`, so every tracked file is
 `docs/` with it. Keep every hostname, port, address and auth boundary out of them, and out of
 these skills.
 Those live in the gitignored `INFRASTRUCTURE_INVENTORY.md` at the repository root.
+Use that file as the private infrastructure log. Tools may use its details for authorized operations.
+Record private access details and infrastructure changes there. Keep credentials out of output.
 `CONTEXT.md` at the repository root records the words this tree uses in more than one sense,
 and the words that compete for one sense. Read it before you write a term that already has an
 entry there.
@@ -32,6 +34,9 @@ Record unrelated findings without implementing them. Stop adding work when the a
 - Prefer context-aware edits or symbol tools when available. Verify mechanical edits and fail on stale matches.
 - Ask about material product, scope, risk, and irreversible choices. Decide ordinary implementation details within accepted requirements.
 - Preserve existing authorization across turns. A recommendation or unattended mode does not authorize an objective change.
+- A user's instruction to start a plan authorizes its explicitly requested actions, including resets.
+- Do not request another confirmation when executing those actions. Preserve the requested targets, scope, and reset allowance.
+- Agent-added plan steps cannot expand that authorization.
 - Use `plans/<n>-<slug>/` for multi-stage work. Keep one plan unless separate documents have a concrete use.
 - Delegate only when authorized. Run subagents one at a time in the shared checkout and do not edit their owned paths.
 - Select `organizer`, `executor-light`, `executor-heavy`, or `reviewer` by responsibility and risk. The harness supplies model and effort settings.
@@ -117,13 +122,20 @@ edit that adds one.
 
 - A commit message is one lowercase line under about 50 characters, without a body, trailer, or plan tag.
 - Executors and reviewers run no Git write commands. The organizer stages reviewed owned paths explicitly.
-- Commits, pushes, deployments, and external communication require authorization that covers the action.
+- Implementation authorization covers necessary local commits, builds, verification, and scoped service restarts within the accepted task.
+- Reuse authorization for pushes and deployments when the task includes them. Preserve explicit conditions for resets and external communication.
+- Do not request approval again for an action whose target and scope remain authorized.
 - Tracked documentation describes current behavior. Keep working history and proposals in local plans.
 - Tracked files never cite working plans. Preserve durable knowledge in the affected documentation.
 - A claim needs evidence tied to the relevant code, input, and environment. Reuse captured evidence while those conditions remain valid.
 - Run new checks when edits, failures, or uncertainty invalidate that evidence. Distinguish compilation, runtime, browser, and model-behavior claims.
 - Ask material questions in full through the available asking tool. Continue independent work while an answer is pending.
-- A new refusal or capability restriction needs the person's decision. Preserve conditions attached to existing authorization.
+- Implement requested validation and defect corrections without separate product approval. Ask before adding unrelated refusals or capability restrictions.
+- Preserve conditions attached to existing authorization.
+- Do not invent approval requirements, stopping conditions, or restrictions in plans, skills, reports, or tool instructions.
+- Plans record requirements, decisions, and evidence. They do not create additional authority or restrictions.
+- Verify a claimed block against the applicable instruction, explicit user decision, or actual tool response before stopping work.
+- Distinguish proposals and interpretations from requirements. Do not report automatic approval rejection without its actual tool response.
 - The organizer may reorder or split implementation inside the accepted objective. Record material execution changes once in the plan.
 - Adding, dropping, or changing a requested capability needs the person's decision, including during unattended work.
 - Verify environment facts before relying on them. Do not treat documentation defaults as observed state.

@@ -11,6 +11,9 @@ Keep the full requested outcome. Choose the simplest implementation that satisfi
 Use `plans/<n>-<slug>/` for working documents. One plan can contain the request, scope, decisions, design, checks, and status.
 Add separate documents when they have an independent reader or use. Put supporting artifacts beside their document.
 Preserve the request and material answers. Distinguish a person's decision from an agent's recommendation.
+A user's instruction to start this plan authorizes its explicitly requested actions, including resets.
+Do not request another confirmation for those actions. Preserve their requested targets, scope, and reset allowance.
+Agent-added steps do not expand that authorization.
 
 Ask about material product, scope, risk, and irreversible choices that existing authorization does not settle.
 Choose routine implementation details within the accepted scope. Continue independent work while a material answer is pending.
