@@ -7,6 +7,7 @@ import json
 import hashlib
 import time
 from dataclasses import dataclass
+from functools import partial
 from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
 from tasks.payload_guard import MAX_PAYLOAD_BYTES, payload_size
 
@@ -114,7 +115,7 @@ def insert_text_pages(
     *,
     min_chars: int = 2,
 ) -> int:
-    """Insert ``(page_id, text)`` pairs into ``text_content`` as one batch.
+    """Queue a complete source's ``(page_id, text)`` pairs in ``text_content``.
 
     This is the paged path: the caller already knows the real page numbers, which for a
     paged format is a **1-based page number** and never 0 -- the document viewer's page
@@ -132,7 +133,8 @@ def insert_text_pages(
     readers that need size (ETA sampling) never scan the body.
 
     Each call assigns one version from the current clock or above the previous source version.
-    The async insert waits for storage before obsolete pages are removed.
+    The activity buffer waits for storage before obsolete pages are removed.
+    Calls outside an activity buffer write and remove obsolete pages immediately.
     """
     return insert_text_sources(collectionname, collection_dataset, file_hash,
                                {extracted_by: pages}, min_chars=min_chars)
@@ -140,9 +142,10 @@ def insert_text_pages(
 
 def insert_text_sources(collectionname: str, collection_dataset: str, file_hash: str,
                         sources: dict[str, Sequence[tuple]], *, min_chars: int = 2) -> int:
-    """Replace a file's text sources with one prior-page read and one waited insert."""
+    """Read prior pages once and queue source replacements before obsolete-page cleanup."""
     import pyarrow as pa
-    from database.clickhouse import get_collection_client, insert_arrow_durable
+    from database.clickhouse import get_collection_client, insert_parser_arrow
+    from tasks.P3_parse_files.insert_batch import current_batch
 
     from tasks.document_language import source_language
     languages = {source: source_language(pages)
@@ -187,10 +190,17 @@ def insert_text_sources(collectionname: str, collection_dataset: str, file_hash:
                 "version": pa.array([versions[r[0]] for r in rows], type=pa.uint64()),
                 "language": pa.array([languages[r[0]] for r in rows], type=pa.string()),
             })
-            insert_arrow_durable(client, "text_content", table)
+            insert_parser_arrow(client, "text_content", table)
+        batch = current_batch()
         for source, (ids, _) in previous.items():
             ids.difference_update(r[1] for r in rows if r[0] == source)
-            _delete_obsolete_pages(client, collection_dataset, file_hash, source, ids)
+            if not ids:
+                continue
+            cleanup = partial(_delete_obsolete_pages, client, collection_dataset, file_hash, source, ids)
+            if batch is None:
+                cleanup()
+            else:
+                batch.after_storage(cleanup)
     return len(rows)
 
 

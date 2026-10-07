@@ -185,7 +185,10 @@ The Tika task outcome and stored Java exception remain available.
 Parser activities collect rows into an 8 MiB buffer and write each table with waited inserts.
 A failed table batch is written per file to isolate the failed file.
 Heartbeat details list a file as finished after its writes complete.
-Text replacement remains per file.
+Text rows from different files share the activity buffer.
+Each file removes its obsolete source pages only after its replacement rows reach storage.
+An empty successful replacement removes prior pages without a text insert.
+Failed storage preserves that file's prior pages.
 Member scans remove temporary folders after their stored rows become visible.
 See [`../../database/Readme.md`](../../database/Readme.md).
 
