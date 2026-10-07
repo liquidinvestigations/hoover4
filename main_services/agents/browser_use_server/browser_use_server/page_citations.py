@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from difflib import SequenceMatcher
+from itertools import islice
 import json
 import os
 import re
@@ -141,17 +142,36 @@ def passages(text: str, terms: list[str]) -> tuple[list[str], list[dict]]:
     return quotes or [text[:600]], spans
 
 
+def source_context(text: str, goal: str) -> str:
+    """Select bounded source context, including inside a long paragraph or JSON value."""
+    candidate = text[:600]
+    if len(text) <= 600:
+        return candidate
+    words = set(re.findall(r"\w{4,}", goal.casefold()))
+    def score(snippet):
+        folded = snippet.casefold()
+        return sum(word in folded for word in words)
+
+    best = score(candidate)
+    for word in sorted(words, key=lambda word: (-len(word), word))[:8]:
+        for match in islice(re.finditer(re.escape(word), text, re.IGNORECASE), 16):
+            start = max(0, match.start() - 180)
+            excerpt = text[start:start + 600]
+            weight = score(excerpt)
+            if weight > best:
+                candidate, best = excerpt, weight
+    return candidate
+
+
 def suggested_terms(text: str, terms: list[str]) -> list[str]:
     """Suggest literal source phrases for explicit retries, without verifying absent wording."""
-    from browser_use_server.read_page import focus
-
     suggestions = []
     for term in terms:
         match = re.search(re.escape(term), text, re.IGNORECASE)
         if match:
             suggestions.append(match.group())
             continue
-        candidate, _ = focus(text, term, 600)
+        candidate = source_context(text, term)
         block = SequenceMatcher(None, term, candidate, autojunk=False).find_longest_match()
         phrase = candidate[block.b:block.b + block.size].strip()
         if len(phrase) < 12 or not re.search(r"\w+\s+\w+", phrase):
@@ -188,8 +208,7 @@ def _cite(owner: str, session: str, pages: list) -> dict:
             try:
                 quotes, spans = passages(source["markdown"], terms)
             except ValueError as exc:
-                from browser_use_server.read_page import focus
-                candidate, _ = focus(source["markdown"], " ".join(terms), 600)
+                candidate = source_context(source["markdown"], " ".join(terms))
                 error = {"url": url, "error": str(exc), "candidate": candidate,
                          "version": source["version"]}
                 suggestions = suggested_terms(source["markdown"], terms)

@@ -191,6 +191,22 @@ def test_retry_suggestions_never_turn_absent_wording_into_verified_quotes(store)
     assert "states that starvation was" not in retry["citations"][0]["quotes"][0]
 
 
+@pytest.mark.parametrize("separator", ["", "\n"])
+def test_retry_context_finds_a_late_passage_without_paragraph_breaks(store, separator):
+    passage = "VIETNAM. 1963-1965 CHIEF OF STATION PEER DESILVA RECOGNIZED THE REPORT."
+    text = ("Unrelated record data." + separator) * 5000 + passage + " Other records." * 100
+    read_source(text)
+    result = cite(terms=["VIETNAM, 1963-1965 CHIEF OF STATION PEER DESILVA RECOGNIZED"])
+    assert not result["citations"]
+    error = result["errors"][0]
+    assert passage in error["candidate"] and len(error["candidate"]) <= 600
+    assert error["retry_arguments"]["terms"] == ["1963-1965 CHIEF OF STATION PEER DESILVA RECOGNIZED"]
+    assert not any(row["kind"] == citations.KIND_PAGE_CITATION for row in store.rows.values())
+    retried = asyncio.run(citations.cite("owner", "chat", [error["retry_arguments"]]))
+    assert retried["citations"][0]["quote_verified"]
+    assert passage in retried["citations"][0]["quotes"][0]
+
+
 def test_unknown_source_version_is_refused(store):
     read_source()
     result = cite(version="not-read")

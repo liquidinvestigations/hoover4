@@ -27,6 +27,9 @@ Each source has one card across the conversation, placed at its first visible ma
 Successful citations without markers follow the final answer, before the centered token footer.
 Later markers select the source and scroll to its card.
 Distinct verified document passages share one card and keep their own find actions.
+A web source without a title uses its URL as the linked title.
+Opening any captured version selects the shared page card. Each quote opens a search term present in that quote.
+Preview find accounts for the display scale when scrolling a match into view.
 Three generated follow-up buttons fill the composer without submitting.
 The todo card shows the current goal and bullet list in white on black.
 Completed tasks use strikethrough.

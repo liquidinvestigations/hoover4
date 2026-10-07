@@ -206,10 +206,10 @@ def web(name: str, username: str) -> dict:
     ], "artifacts": [(artifact_id, "search_detail", "web_search", " ; ".join(queries), detail)]}
 
 
-def web_citations(name: str, username: str) -> dict:
+def web_citations(name: str, username: str, shared_versions: bool = False) -> dict:
     pages, refs, stored = [], [], []
     for number in (1, 2, 3):
-        url = f"https://example.org/source-{number}"
+        url = f"https://example.org/source-{1 if shared_versions and number == 2 else number}"
         artifact_id = fixture_uuid(name, username, f"page-{number}")
         markdown = (f"# Captured source {number}\n\n"
                     "Știință **exact match** appears here.\n\n"
@@ -217,12 +217,15 @@ def web_citations(name: str, username: str) -> dict:
                     + "\n\n".join(f"Paragraph {i} contains source text." for i in range(40))
                     + "\n\nȘtiință exact match appears again.\n\n"
                     + "<script>window.pageContentExecuted = true</script>\n\n[W99]")
-        page = {"url": url, "final_url": url, "title": f"Captured source {number}",
+        page = {"url": url, "final_url": url, "title": "" if shared_versions and number == 1 else f"Captured source {number}",
                 "version": f"version-{number}", "markdown": markdown}
         ref = {key: page[key] for key in ("url", "final_url", "title", "version")}
         ref.update(handle=f"[W{number}]", artifact_id=artifact_id,
                    terms=["Știință"], quotes=["Știință exact match appears here."],
                    quote_verified=True, why=f"The source supports claim {number}.")
+        if shared_versions and number == 1:
+            ref["terms"].append("source text")
+            ref["quotes"].append("Paragraph 1 contains source text.")
         refs.append(ref)
         pages.append({"url": url, "title": page["title"], "text": markdown,
                       "version": page["version"], "blocked": False, "error": None})
@@ -290,6 +293,7 @@ FIXTURES = {
     "todo": todo,
     "web": web,
     "web_citations": web_citations,
+    "web_versions": lambda name, username: web_citations(name, username, shared_versions=True),
     "compaction": compaction,
     "question": question,
 }

@@ -120,6 +120,7 @@ Each page accepts one to eight terms of up to 200 characters.
 Terms match case and literal source text.
 A missing term or unread page returns an individual error.
 An absent term also returns bounded source context for a corrected citation request.
+Context selection searches inside long paragraphs and JSON values.
 That context does not allocate a handle or verify the missing wording.
 When Markdown interrupts a phrase, errors suggest literal source terms and flat retry arguments.
 Only an explicit retry can verify those terms and allocate a handle.
