@@ -12,3 +12,6 @@ The server parses the outer document only.
 Embedded document text needs a separate reader.
 The output limit is 20,000,000 characters.
 A reached output limit keeps the truncated text and its metadata flag.
+The XML general and total entity size limits use the same finite character limit.
+This permits documents with many escaped characters.
+The entity expansion count remains limited, and external entity references remain blocked.

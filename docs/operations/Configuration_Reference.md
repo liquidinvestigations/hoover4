@@ -169,6 +169,8 @@ Deployment requires memory for all parser heaps plus one GiB.
 `deploy.py` generates the server configuration from these keys.
 The configuration disables request overrides and embedded document parsing.
 It limits output to 20,000,000 characters and keeps a truncation flag.
+The XML general and total entity size limits use the same finite value.
+The entity expansion count and external entity restrictions remain active.
 
 ### Worker fleet and concurrency
 

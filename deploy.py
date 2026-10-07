@@ -1275,6 +1275,7 @@ def render_clickhouse_config(cfg):
 
 def render_tika_config(cfg):
     """Render parser limits from the main service configuration."""
+    text_limit = 20_000_000
     processes = whole_number(cfg, "tika_parse_processes")
     heap = size_bytes(cfg, "tika_parse_heap")
     limit = size_bytes(cfg, "tika_mem_limit")
@@ -1286,13 +1287,17 @@ def render_tika_config(cfg):
     config = {
         "server": {"allowPerRequestConfig": False},
         "pipes": {"numClients": processes,
-                  "forkedJvmArgs": ["-Xmx" + cfg.get("main_services", "tika_parse_heap")],
+                  "forkedJvmArgs": [
+                      "-Xmx" + cfg.get("main_services", "tika_parse_heap"),
+                      f"-Djdk.xml.maxGeneralEntitySizeLimit={text_limit}",
+                      f"-Djdk.xml.totalEntitySizeLimit={text_limit}",
+                  ],
                   "maxWaitForClientMillis": 60000},
         "parse-context": {
             "skip-embedded-document-selector": {},
             "timeout-limits": {"totalTaskTimeoutMillis": 300000, "progressTimeoutMillis": 60000},
             "exception-reporting": {"level": "FULL", "maxLength": 8000},
-            "output-limits": {"writeLimit": 20000000, "throwOnWriteLimit": True},
+            "output-limits": {"writeLimit": text_limit, "throwOnWriteLimit": True},
         },
         "parsers": [{"default-parser": {}}],
     }

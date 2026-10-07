@@ -1298,7 +1298,11 @@ def test_tika_config_limits_and_slots():
     cfg = _config("settings-defaults.ini")
     config = json.loads(deploy.render_tika_config(cfg))
     assert config["pipes"]["numClients"] == 4
-    assert config["pipes"]["forkedJvmArgs"] == ["-Xmx1g"]
+    assert config["pipes"]["forkedJvmArgs"] == [
+        "-Xmx1g",
+        "-Djdk.xml.maxGeneralEntitySizeLimit=20000000",
+        "-Djdk.xml.totalEntitySizeLimit=20000000",
+    ]
     assert config["pipes"]["maxWaitForClientMillis"] == 60000
     assert config["server"]["allowPerRequestConfig"] is False
     limits = config["parse-context"]["output-limits"]
