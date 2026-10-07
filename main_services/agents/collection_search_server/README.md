@@ -6,6 +6,10 @@ container `hoover4-mcp-collections`. Both agents use this server.
 Keyword search uses the text Manticore service. Vector ranking uses the separate vectors
 Manticore service. The pipeline stores extracted text in ClickHouse.
 
+Corpus ranking can use the configured reranker.
+Set `reranker_enabled = false` to disable it and retain fused search results.
+Web search and browser tools do not call the reranker.
+
 ## Tools
 
 | Tool | Purpose |

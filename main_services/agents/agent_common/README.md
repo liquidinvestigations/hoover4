@@ -10,8 +10,8 @@ would drift.
 | `rerank.py` | the GPU tier's `/v1/rerank`, with a 2 s connect timeout and a circuit breaker |
 | `tool_packs.py` | the tool pack table: which tools each kind of agent run may bind and call |
 
-Consumers: `metasearch_server` (writes `search_detail`, reranks) and
-`browser_use_server` (writes `page_capture`). The research agent image copies the package
+Consumers include `metasearch_server` for search artifacts, `collection_search_server` for optional corpus reranking,
+and `browser_use_server` for page captures. The research agent image copies the package
 folder for `tool_packs.py` alone, and each MCP server image runs `tests/test_tool_packs.py`
 against the tools that server lists.
 
@@ -74,6 +74,10 @@ this module exists to enforce.
 
 ## The rerank client
 
+Corpus search can use the rerank client. Web tools do not call it.
+`reranker_enabled = false` disables the model and clears the rendered `RERANK_URL`.
+Corpus search retains its fused results when reranking is disabled.
+
 Two rules that read identically to their wrong versions:
 
 * **A rerank timeout is an error, not a silent skip.** 25 s hard cap. If reranking is slow,
@@ -109,6 +113,6 @@ behalf.
 
 ## Tests
 
-The behaviour lives in the consumers' suites, where it can be exercised against real call
-sites: `metasearch_server/tests/test_pipeline.py` covers the rerank fallback and the
-payload/artifact split. There is no separate suite here.
+The consumers' suites verify their call sites.
+`collection_search_server/tests/test_fused_search.py` verifies optional corpus reranking.
+`metasearch_server/tests/test_pipeline.py` verifies fusion and the payload/artifact split without reranking.

@@ -90,9 +90,7 @@ SOURCE_TIMEOUT = float(os.getenv("METASEARCH_SOURCE_TIMEOUT", "8"))
 #: reported degraded.
 OVERALL_TIMEOUT = float(os.getenv("METASEARCH_OVERALL_TIMEOUT", "20"))
 
-#: How many results to ask each source for. Larger than the caller's `max_results`
-#: because fusion and reranking both need candidates to work with, asking for 8 and
-#: returning 8 means the reranker has nothing to reorder.
+#: Bound results from each source before deduplication and fusion.
 PER_SOURCE_RESULTS = int(os.getenv("METASEARCH_PER_SOURCE_RESULTS", "15"))
 
 DDG_REGION = os.getenv("DDG_DEFAULT_REGION", "wt-wt")

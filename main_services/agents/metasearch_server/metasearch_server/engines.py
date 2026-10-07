@@ -72,14 +72,10 @@ def _first_text(row, *selectors: str) -> str:
 
 
 def _title_of(row, link, *selectors: str) -> str:
-    """The result's own title node, never the whole clickable region.
+    """Read the title node before the link text.
 
-    Yahoo nests the site name and a URL breadcrumb inside the same `<a>` as the title, so
-    taking the link's text yields `eiffeltowertravel.comhttps://eiffeltowertravel.com ›
-    height-and-factsEiffel Tower Height: …`. That mash is what the user reads, what the
-    model cites, and, worst, what the **cross-encoder scores**, so a page with a
-    keyword-stuffed breadcrumb outranks a clean title. Take the title element when the row
-    has one; the link is only the fallback for engines whose anchor *is* the title.
+    Yahoo link text can also contain a site name and URL breadcrumb.
+    Use link text only when the result has no separate title node.
     """
     return _first_text(row, *selectors) or _text(link)
 

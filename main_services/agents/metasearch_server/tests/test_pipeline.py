@@ -1,9 +1,4 @@
-"""The ordering pipeline: the per-kind floor, the rerank fallback, and the payload split.
-
-Nothing here touches the network. The sources are stubbed, and the rerank client is
-monkeypatched. What is under test is the *ordering*, which is where a silent wrong answer would
-hide, not whether DuckDuckGo is up.
-"""
+"""Verify web fusion, source-kind limits, and payload fields without model reranking."""
 
 import asyncio
 
@@ -46,7 +41,7 @@ class TestPerKindFloor:
         kept = apply_per_kind_floor(ranked, max_results=10, min_per_kind=10, max_per_kind=20)
         assert len(kept) == 2
 
-    def test_the_reranked_order_survives_the_floor(self):
+    def test_the_fused_order_survives_the_floor(self):
         ranked = [_ranked("web", 1), _ranked("news", 2), _ranked("web", 3)]
         kept = apply_per_kind_floor(ranked, max_results=3, min_per_kind=1, max_per_kind=20)
         assert [r.rrf_rank for r in kept] == [1, 2, 3]
@@ -64,7 +59,7 @@ class TestPerKindFloor:
             apply_per_kind_floor([], max_results=10, min_per_kind=20, max_per_kind=10)
 
     def test_the_default_floor_leaves_the_cap_meaningful(self, monkeypatch):
-        """15 results, always reranked. A floor of 10 across three kinds reserves
+        """The default result limit is 15. A floor of 10 across three kinds reserves
         30 slots and `max_results` stops meaning anything. This test pins that defect.
 
         Reloaded with the env cleared because the *code* default is what is under test;
@@ -87,41 +82,6 @@ class TestPerKindFloor:
             importlib.reload(pipeline)
 
 
-class TestReserveScoreGate:
-    """A floor guarantees representation, and representation of nothing is padding.
-
-    Live, an Eiffel Tower query returned "Yanam district" and "Aasta Hansteen spar" as
-    reference results, reserved by the floor, scored around -5 by the cross-encoder,
-    and indistinguishable to the model from a result that earned its place.
-    """
-
-    def test_a_kind_whose_best_result_scores_below_zero_is_not_padded_in(self):
-        ranked = [_ranked("web", i, 6.0) for i in range(1, 11)]
-        ranked += [_ranked("reference", i, -5.0) for i in range(11, 16)]
-        kept = apply_per_kind_floor(ranked, max_results=5, min_per_kind=3, max_per_kind=15)
-        assert [r.result.kind for r in kept] == ["web"] * 5
-
-    def test_a_kind_that_scores_well_still_gets_its_floor(self):
-        ranked = [_ranked("web", i, 8.0) for i in range(1, 21)]
-        ranked += [_ranked("reference", 21, 4.0), _ranked("reference", 22, -6.0)]
-        kept = apply_per_kind_floor(ranked, max_results=5, min_per_kind=3, max_per_kind=15)
-        kinds = [r.result.kind for r in kept]
-        # One reference result earned a slot; the irrelevant one did not get reserved.
-        assert kinds.count("reference") == 1
-
-    def test_a_low_scoring_result_can_still_be_filled_in_on_merit(self):
-        """The gate blocks the reservation, not the result. With budget to spare it comes
-        back in rank order like anything else."""
-        ranked = [_ranked("web", 1, 8.0), _ranked("reference", 2, -5.0)]
-        kept = apply_per_kind_floor(ranked, max_results=10, min_per_kind=3, max_per_kind=15)
-        assert len(kept) == 2
-
-    def test_with_no_rerank_score_the_floor_is_unconditional(self):
-        """The GPU is down: no score is not a low score, and the floor is then the only
-        protection a minority kind has."""
-        ranked = [_ranked("web", i) for i in range(1, 21)] + [_ranked("reference", 21)]
-        kept = apply_per_kind_floor(ranked, max_results=3, min_per_kind=3, max_per_kind=15)
-        assert "reference" in [r.result.kind for r in kept]
 
 
 class TestRunSearch:
@@ -140,50 +100,26 @@ class TestRunSearch:
             sources_mod, "resolve_sources", lambda requested: (list(per_source), [])
         )
 
-    def test_a_dead_gpu_returns_rrf_order_and_says_so(self, monkeypatch):
-        """The acceptance check from the plan: killing the GPU tier must degrade the
-        ordering, not remove search."""
-        self._stub_sources(
-            monkeypatch,
-            {"ddg": [SearchResult("a", "https://a.example"), SearchResult("b", "https://b.example")]},
-        )
-
-        def dead(query, documents, model=None):
-            raise rerank_client.RerankUnavailable("circuit open")
-
-        monkeypatch.setattr(rerank_client, "rerank", dead)
-
+    @pytest.mark.parametrize("configured", [False, True])
+    def test_web_search_never_calls_reranker(self, monkeypatch, configured):
+        self._stub_sources(monkeypatch, {"ddg": [
+            SearchResult("a", "https://a.example"), SearchResult("b", "https://b.example"),
+        ]})
+        if configured:
+            monkeypatch.setenv("RERANK_URL", "http://rerank.example/v1")
+        else:
+            monkeypatch.delenv("RERANK_URL", raising=False)
+        def forbidden(*_args, **_kwargs):
+            pytest.fail("Web search called the model reranker.")
+        monkeypatch.setattr(rerank_client, "rerank", forbidden)
         outcome = asyncio.run(pipeline.run_search(["q"], max_results=10))
         assert outcome.rerank_applied is False
-        assert outcome.rerank_error
-        assert [r.result.url for r in outcome.ranked] == [
-            "https://a.example",
-            "https://b.example",
-        ]
+        assert outcome.rerank_error == ""
+        assert outcome.rerank_ms == 0
+        assert [r.result.url for r in outcome.ranked] == ["https://a.example", "https://b.example"]
+        assert all(r.rerank_rank is None and r.rerank_score is None for r in outcome.ranked)
 
-    def test_reranking_reorders_and_records_both_ranks(self, monkeypatch):
-        self._stub_sources(
-            monkeypatch,
-            {"ddg": [SearchResult("a", "https://a.example"), SearchResult("b", "https://b.example")]},
-        )
 
-        def flip(query, documents, model=None):
-            # Reverse the fused order, so a wrong "rerank did nothing" would be visible.
-            return [
-                rerank_client.RerankScore(index=1, score=9.0),
-                rerank_client.RerankScore(index=0, score=1.0),
-            ], 12.0
-
-        monkeypatch.setattr(rerank_client, "rerank", flip)
-
-        outcome = asyncio.run(pipeline.run_search(["q"], max_results=10))
-        assert outcome.rerank_applied is True
-        assert [r.result.url for r in outcome.ranked] == [
-            "https://b.example",
-            "https://a.example",
-        ]
-        top = outcome.ranked[0]
-        assert top.rrf_rank == 2 and top.rerank_rank == 1
 
     def test_a_source_returning_nothing_is_degraded_not_fatal(self, monkeypatch):
         self._stub_sources(
@@ -200,55 +136,11 @@ class TestRunSearch:
         assert outcome.degraded_reasons["brave"]
         assert len(outcome.ranked) == 1
 
-    def test_a_partial_rerank_response_does_not_delete_the_rest(self, monkeypatch):
-        """The reranker scored one of three candidates (a `top_k`, a truncated body).
-        The two it skipped are real results with a real RRF position; dropping them turns
-        a partial rerank into a partial search."""
-        self._stub_sources(
-            monkeypatch,
-            {"ddg": [SearchResult(f"t{i}", f"https://{i}.example") for i in range(3)]},
-        )
-        monkeypatch.setattr(
-            rerank_client,
-            "rerank",
-            lambda q, d, model=None: ([rerank_client.RerankScore(index=2, score=9.0)], 3.0),
-        )
-        outcome = asyncio.run(pipeline.run_search(["q"], max_results=10))
-        assert outcome.rerank_applied is True
-        assert [r.result.url for r in outcome.ranked] == [
-            "https://2.example",
-            "https://0.example",
-            "https://1.example",
-        ]
-        # The unscored two say so rather than claiming a rank they never got.
-        assert outcome.ranked[0].rerank_rank == 1
-        assert [r.rerank_rank for r in outcome.ranked[1:]] == [None, None]
 
-    def test_a_repeated_index_in_a_rerank_response_is_not_duplicated(self, monkeypatch):
-        self._stub_sources(
-            monkeypatch,
-            {"ddg": [SearchResult(f"t{i}", f"https://{i}.example") for i in range(2)]},
-        )
-        monkeypatch.setattr(
-            rerank_client,
-            "rerank",
-            lambda q, d, model=None: (
-                [
-                    rerank_client.RerankScore(index=1, score=9.0),
-                    rerank_client.RerankScore(index=1, score=8.0),
-                ],
-                3.0,
-            ),
-        )
-        outcome = asyncio.run(pipeline.run_search(["q"], max_results=10))
-        assert [r.result.url for r in outcome.ranked] == [
-            "https://1.example",
-            "https://0.example",
-        ]
 
 
 class TestBatchedQueries:
-    """One fan-out per query, one merged pool, ONE rerank over that pool."""
+    """Each query contributes to one fused pool."""
 
     @staticmethod
     def _stub_per_query(monkeypatch, per_query):
@@ -270,10 +162,7 @@ class TestBatchedQueries:
             ),
         )
 
-    def test_the_merged_pool_is_reranked_once_for_the_whole_batch(self, monkeypatch):
-        """The one substantive way to get batched search wrong is a rerank per query
-        followed by a merge: that ranks each query's results against each other rather
-        than against the question, and it looks correct from the outside."""
+    def test_the_merged_pool_never_calls_reranker(self, monkeypatch):
         self._stub_per_query(
             monkeypatch,
             {
@@ -293,9 +182,7 @@ class TestBatchedQueries:
         monkeypatch.setattr(rerank_client, "rerank", record)
 
         outcome = asyncio.run(pipeline.run_search(["one", "two"], max_results=10))
-        assert len(calls) == 1, calls
-        # The one call saw the whole merged pool, and was asked the union of the angles.
-        assert calls[0] == ("one" + pipeline.QUERY_JOIN + "two", 2)
+        assert calls == []
         assert len(outcome.ranked) == 2
 
     def test_a_page_two_queries_found_names_both(self, monkeypatch):
@@ -364,14 +251,11 @@ class TestBatchedQueries:
 
 
 class TestPayloadSplit:
-    def test_the_model_never_sees_the_pre_rerank_ordering(self):
-        """The pre-rerank fused order is bookkeeping and would roughly double the token
-        cost. It belongs in the artifact, not in the tool result."""
+    def test_the_model_gets_selected_fusion_fields(self):
         item = _ranked("web", 1)
-        item.rerank_rank, item.rerank_score = 1, 4.5
         payload = pipeline.result_payload(item)
         assert "source_ranks" not in payload
-        assert payload["rrf_rank"] == 1 and payload["rerank_rank"] == 1
+        assert payload["rrf_rank"] == 1 and payload["rerank_rank"] is None
 
     def test_the_detail_document_carries_both_orderings(self):
         outcome = pipeline.SearchOutcome(query="q")
@@ -388,3 +272,15 @@ class TestPayloadSplit:
     def test_display_url_truncates_a_long_path(self):
         long = "https://example.com/" + "x" * 200
         assert len(pipeline.display_url(long)) <= 60
+
+
+def test_health_reports_web_reranking_disabled(monkeypatch):
+    import json
+    from metasearch_server import server
+
+    monkeypatch.setenv("RERANK_URL", "http://rerank.example/v1")
+    response = asyncio.run(server.health(None))
+    result = json.loads(response.body)
+    assert result["rerank_endpoint"] == ""
+    assert result["rerank_available"] is False
+    assert result["rerank_circuits"] == {}

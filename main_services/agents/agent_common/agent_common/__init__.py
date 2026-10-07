@@ -2,8 +2,8 @@
 
 Things live here because two or more servers need them and a second copy would
 drift: the chat-artifact writer (metasearch writes `search_detail`, the browser router
-writes `page_capture`), the rerank client with its circuit breaker (metasearch and
-collection search), the RRF/floor fusion machinery (same two), the query-side embedding
+writes `page_capture`), the optional corpus rerank client with its circuit breaker,
+the RRF/floor fusion machinery, the query-side embedding
 client, the S3 helper, and the batching mechanics every list-taking tool repeats. List
 coercion, the divided character budget and the corrective note.
 

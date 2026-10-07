@@ -45,18 +45,9 @@ services:
     networks:
       - hoover4
 
-  # Metasearch: the web search server. One `web_search` tool covering four HTML scrapers,
-  # the ddgs library (text and news) and Wikipedia, merged with reciprocal rank fusion and
-  # then reordered by the GPU tier's cross-encoder. Every open-web source lives behind
-  # this one tool and must stay there. Overlapping "search the web" tools make a small
-  # model pick at random.
-  #
-  # The scrapers have no API keys, so expect one to rot. METASEARCH_SOURCES turns a
-  # broken one off without a rebuild, and the response's `degraded` list is how you notice.
-  #
-  # RERANK_URL is the GPU tier's /v1 base (deploy.py renders it from the same setting as
-  # EMBEDDINGS_URL). Empty means no reranking: search still works, the results come back
-  # in RRF order, and `rerank_applied: false` says so on the card.
+  # One web search tool merges registered sources with reciprocal rank fusion.
+  # Source-kind limits preserve representation. Web search does not use model reranking.
+  # A failed source remains visible in the degraded list.
   hoover4-mcp-metasearch:
     logging: *logging
     build:
@@ -80,26 +71,18 @@ services:
       # own deadline. It must stay under the overall one, which bounds the fan-out anyway.
       - METASEARCH_GDELT_TIMEOUT=${METASEARCH_GDELT_TIMEOUT:-15}
       - METASEARCH_OVERALL_TIMEOUT=${METASEARCH_OVERALL_TIMEOUT:-20}
-      # Queries one web_search call may fan out over. Each is a full fan-out across every
-      # source plus its share of one cross-encoder pass.
+      # Bound query angles in one web search call.
       - METASEARCH_MAX_QUERIES=${METASEARCH_MAX_QUERIES:-5}
       - METASEARCH_ENGINE_TIMEOUT=${METASEARCH_ENGINE_TIMEOUT:-8}
       - METASEARCH_RRF_K=${METASEARCH_RRF_K:-60}
-      # The result policy: 15 results, always reranked. The floor is per kind and must stay well
+      # Return 15 results by default. The floor is per kind and must stay well
       # under the cap, 10 across three kinds reserves 30 and overrides the cap entirely.
       - METASEARCH_MIN_PER_KIND=${METASEARCH_MIN_PER_KIND:-3}
       - METASEARCH_MAX_PER_KIND=${METASEARCH_MAX_PER_KIND:-15}
-      # Rerank logit below which a result no longer earns a reserved floor slot. 0 is the
-      # cross-encoder's own decision boundary; it is model-specific, so it is a knob.
-      - METASEARCH_RESERVE_MIN_SCORE=${METASEARCH_RESERVE_MIN_SCORE:-0}
+      - METASEARCH_FUSION_CANDIDATES=${METASEARCH_FUSION_CANDIDATES:-60}
       - MAX_RESULTS=${METASEARCH_MAX_RESULTS:-15}
       - SEARCH_SNIPPET_CHARS=${METASEARCH_SNIPPET_CHARS:-400}
       - WIKIPEDIA_LANGUAGE=${WIKIPEDIA_LANGUAGE:-en}
-      # Reranking, and the breaker in front of it.
-      - RERANK_URL=${RERANK_URL:-}
-      - RERANK_TIMEOUT_SECONDS=${RERANK_TIMEOUT_SECONDS:-25}
-      - GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}
-      - GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}
       # Search-detail artifacts: bytes to S3, one index row in ClickHouse.
       - CHAT_ARTIFACTS_ENABLED=${CHAT_ARTIFACTS_ENABLED:-true}
       - CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}

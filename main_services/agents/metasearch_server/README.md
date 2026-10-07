@@ -29,22 +29,10 @@ not will present stale results as fresh.
 
 ### One call, several angles
 
-`queries` is a list. Every query is run across every source, all of those rankings fuse into
-**one** pool, and that pool is reranked **once**; each result carries `matched_queries`, the
-queries that found it. `query` is still accepted and folds into `queries`, so a batch of one
-is not a special case.
-
-**Reranking per query and then merging the orderings is the wrong shape**, and it looks
-correct from the outside. It ranks each query's results against each other rather than
-against the question, so the best answer to the sharpest angle arrives interleaved with the
-best answer to the vaguest one at the same rank.
-
-`METASEARCH_MAX_QUERIES` caps the batch, and the surplus is **named** in `note` rather than
-trimmed silently. `note` also reports de-duplicated repeats.
-When results exist, the note asks for page reads before another search.
-It asks the answer to state when those pages do not establish a requested comparison or ranking.
-A list arrives coerced through
-`agent_common.batching.as_list`, so a bare string and a JSON-encoded list both work.
+`queries` accepts several query angles. Each query searches the selected sources.
+Reciprocal rank fusion merges their rankings and deduplicates their URLs.
+Each result names the queries that found it in `matched_queries`.
+The legacy `query` argument adds one query to that list.
 
 ## Sources
 
@@ -102,89 +90,28 @@ HTML to produce a summary, and pins an ancient `requests`/`BeautifulSoup` pair; 
 `list=search` call with `srprop=snippet` gives titles, snippets and canonical URLs in a
 single round trip.
 
-## The order of operations is not interchangeable
+## Result ordering
 
-```
-fan out  →  RRF fuse (which dedupes across sources)  →  rerank  →  per-kind floor
-```
+The server fetches sources, deduplicates their URLs, merges rankings, and applies source-kind limits.
+Reciprocal rank fusion uses source positions. Web search does not call a model reranker.
 
-**Reranking after the floor reads identically and is wrong.** The floor would pick each
-kind's arbitrary RRF-ordered results and the cross-encoder would then reorder that
-already-truncated set, so a kind's genuinely best result could be cut before it was ever
-scored. Rerank the whole candidate pool, then take the best per kind.
+Each source first removes duplicate URLs from its own results.
+Fusion then combines results with the same normalized URL across sources and query angles.
+Each kind reserves its best `METASEARCH_MIN_PER_KIND` results in fused order.
+The server fills remaining slots up to the total limit and the per-kind maximum.
+Reserved slots can exceed a requested limit smaller than their combined count.
 
-There are two dedupes and both are needed:
+## Tool results and artifacts
 
-* **within a source, before fusion** (`dedupe_within_source`): a source that lists the same
-  article at ranks 2, 5 and 9 would otherwise award that URL three RRF contributions and
-  beat a page three independent sources agreed on;
-* **across sources**, which is what the RRF merge itself does.
+Tool results contain selected titles, URLs, snippets, source names, query matches, and fused positions.
+The search-detail artifact keeps complete candidates, selected results, and source timing.
+The model receives the artifact identifier.
 
-The **per-kind floor** exists because RRF is a popularity measure. Four web scrapers
-agreeing on a page beats one encyclopaedia entry every time, so without a floor a query with
-a well-known Wikipedia answer returns twenty blogs about it. Each kind keeps its own best
-`METASEARCH_MIN_PER_KIND` results whatever the overall cap says, then the rest fills by
-score up to `METASEARCH_MAX_PER_KIND` per kind. A page both Wikipedia and a scraper returned
-keeps the *more specific* kind, or the floor could not see it.
-
-**A floor guarantees representation, not relevance**, and representation of nothing is
-padding. A floor of ten reference results on a query with one encyclopaedia answer filled
-the rest with whatever Wikipedia ranked next (live, "Yanam district" and "Aasta Hansteen
-spar" for an Eiffel Tower query), and the model cannot tell a reserved slot from an earned
-one. So a result the cross-encoder scored below `METASEARCH_RESERVE_MIN_SCORE` cannot take a
-reserved slot; it can still be filled in on merit. The threshold defaults to `0`, which is
-the cross-encoder's own decision boundary (it returns a raw logit). A result with **no**
-rerank score is always reservable: the GPU being down is not evidence against a result.
-
-The floor is `3`, not `10`. The result policy is fifteen results, always reranked, and
-a floor of ten across three kinds reserves thirty slots: `max_results` then means nothing,
-because a reserved slot is never evicted.
-
-## Reranking
-
-`POST /v1/rerank` on the GPU tier (`RERANK_URL`, rendered by `deploy.py` from the same
-setting as `EMBEDDINGS_URL`). Same shape as the OCR and NER clients: a **2 s connect
-timeout** so a dead host is noticed in seconds, and a **circuit breaker** so it is noticed
-once rather than once per search. Without the breaker every query pays a connect timeout
-while the GPU box is down, and the point of reranking inverts.
-
-A rerank failure is **reported, never hidden**: `rerank_applied` goes false, the RRF order
-stands, `rerank_error` says why, and the card shows a "not reranked" pip. Killing the GPU
-tier must degrade search quality, not remove search.
-
-The breaker counts **connect** failures only. A model returning 500 is a different problem
-and must stay visible on every call. A read timeout is likewise not a breaker failure. The
-host answered and was slow, and skipping it for a minute would hide a model that needs
-replacing.
-
-## What the model gets, and what it does not
-
-Per result: `title`, `url`, `display_url`, `snippet`, `sources[]`, `matched_queries[]`,
-`kind`, `rrf_rank`, `rrf_score`, `rerank_rank`, `rerank_score`, `published`. Top level:
-`query`, `queries`, `note`, `sources_used`,
-`degraded`, `degraded_reasons`, `unknown_sources`, `total_before_dedupe`,
-`total_after_dedupe`, `rerank_applied`, `rerank_ms`, per-source `source_latency_ms` and
-`source_counts`.
-
-A result the reranker did not score keeps its fused position rather than disappearing: a
-partial rerank response must not silently shrink the search.
-
-**The pre-rerank ordering of every candidate is not sent to the model.** It is search
-bookkeeping, not evidence, and it would roughly double the tool's token cost. It goes to a
-**`search_detail` chat artifact** instead, both orderings in full, with each source's own
-rank per URL, and the tool result carries only that artifact's UUID. The card's popup
-fetches it lazily. See `../README.md` for how artifacts are stored and served.
-
-Measured on the live server (`danube water level drought 2026`):
-
-```
-sources_used: ['ddg','brave','yahoo','ddg_api','ddg_news','wikipedia']
-degraded:     ['brave']
-degraded_reasons: {'brave': 'HTTP 429'}
-74 results in, 48 after dedupe, reranked in 256 ms, 15 returned
-rerank moved RRF #26 to #1
-detail artifact: 48 before_rerank rows / 15 after_rerank rows, 49 kB
-```
+Legacy `rerank_rank` and `rerank_score` fields remain empty.
+`rerank_applied` is false, `rerank_ms` is zero, and `rerank_error` is empty.
+The artifact retains `before_rerank` and `after_rerank` for renderer compatibility.
+These arrays now contain all fused candidates and selected fused results.
+The health response reports reranking as disabled even when corpus reranking is configured.
 
 ## Expect a scraper to rot
 
@@ -217,15 +144,12 @@ selector edit fails a test rather than production.
 | `METASEARCH_GDELT_TIMEOUT` | `15` | GDELT's own deadline; must stay under the overall one |
 | `METASEARCH_OVERALL_TIMEOUT` | `20` | whole fan-out deadline |
 | `FACTCHECK_API_KEY_FILE` | mounted path | a **path**, never a value; empty file means the fact-check source is not registered |
-| `METASEARCH_PER_SOURCE_RESULTS` | `15` | asked of each source; larger than `max_results` so fusion and reranking have candidates |
+| `METASEARCH_PER_SOURCE_RESULTS` | `15` | This bounds results from each source before fusion. |
 | `METASEARCH_RRF_K` | `60` | the RRF constant; larger flattens rank differences |
 | `METASEARCH_MIN_PER_KIND` / `_MAX_PER_KIND` | `3` / `15` | the floor and ceiling per kind |
-| `METASEARCH_RESERVE_MIN_SCORE` | `0` | rerank logit below which a result no longer earns a reserved floor slot |
-| `METASEARCH_RERANK_CANDIDATES` | `60` | how many fused candidates reach the cross-encoder |
+| `METASEARCH_FUSION_CANDIDATES` | `60` | This bounds fused candidates before source-kind limits. |
 | `MAX_RESULTS` | `15` | default result count |
 | `SEARCH_SNIPPET_CHARS` | `400` | snippets land in the agent's context, so they are capped |
-| `RERANK_URL` | rendered | empty means no reranking, search still works, in RRF order |
-| `RERANK_TIMEOUT_SECONDS` | `25` | hard cap; a timeout is an error, not a silent skip |
 | `CHAT_ARTIFACTS_ENABLED` | `true` | off means search works and produces no detail artifact |
 
 ## Tests
@@ -234,8 +158,6 @@ selector edit fails a test rather than production.
 docker exec hoover4-mcp-metasearch python -m pytest tests/ -q
 ```
 
-They cover URL normalisation, both dedupes, the RRF merge, the per-kind floor, the rerank
-fallback, the payload/artifact split, source selection, and the per-engine parsers against
-captured HTML. They deliberately do **not** hit the live web: a suite that fails whenever an
-engine changes its markup would be noise, and that event is what `degraded` reports at
-runtime.
+The tests verify URL normalization, deduplication, fusion, source-kind limits, and the payload/artifact split.
+They verify that configured and disabled rerankers receive no web search calls.
+Captured HTML verifies source parsers. Live source failures appear in `degraded` at runtime.

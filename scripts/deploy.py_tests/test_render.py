@@ -143,6 +143,16 @@ def _config(fixture_name):
     return cfg
 
 
+def test_disabled_reranker_preserves_embeddings_and_disables_model():
+    cfg = _config("gpu-on.ini")
+    cfg.values["ai_services"]["reranker_enabled"] = "false"
+    with mock.patch.object(deploy, "Config", return_value=cfg):
+        env, _ = _render("gpu-on.ini")
+    assert env["EMBEDDINGS_URL"]
+    assert env["RERANK_URL"] == ""
+    assert deploy.render_ai_env(cfg)["AI_SERVER_ENABLE_RERANKER"] == "false"
+
+
 def test_manticore_memory_limits_are_required_and_rendered():
     cfg = _config("settings-defaults.ini")
     cfg.values["main_services"].pop("manticore_mem_limit")

@@ -5,12 +5,8 @@ several near-identical "search the web" descriptions picks badly and inconsisten
 source lives in :mod:`.sources` (`ddg_api`, `ddg_news`, `wikipedia` and the scrapers)
 selectable through the `sources` argument.
 
-What the model gets back is deliberately richer than before (the old payload was a title,
-a URL and 400 characters, which is not enough to decide what to read): full snippets,
-which sources corroborated each result, both rankings, and the timing table. What it does
-*not* get is the pre-rerank ordering of every candidate. That is bookkeeping, and it would
-roughly double the token cost, and it goes to the search-detail artifact instead. The tool
-result carries only that artifact's UUID.
+The tool returns selected results in fused order. Complete candidates and timing
+remain in the search-detail artifact. Web tools do not call a model reranker.
 """
 
 from __future__ import annotations
@@ -24,7 +20,7 @@ from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field, model_serializer
 
-from agent_common import artifacts, batching, rerank as rerank_client
+from agent_common import artifacts, batching
 from metasearch_server import pipeline
 from metasearch_server.sources import ALL_KINDS, configured_sources, describe_sources
 
@@ -51,9 +47,7 @@ mcp = FastMCP(
         "Wikipedia, Wikidata, Crossref DOI metadata and the web archives at once. It "
         "takes a LIST of queries: every query is run across every source, the results are "
         "merged into one pool and ranked together, so ask a question's distinct angles in "
-        "one call. Results are merged with reciprocal rank fusion and then reordered by a "
-        "cross-encoder, so the top results are the ones most relevant to the question "
-        "rather than the ones most engines happened to agree on. Each result names the "
+        "one call. Results use reciprocal rank fusion without model reranking. Each result names the "
         "sources that returned it and the queries that found it: a page three sources or "
         "three queries agree on is better corroborated than one found by one. Snippets "
         "are short by design, so use the browser tools to open a promising result and read "
@@ -174,9 +168,7 @@ class WebSearchResponse(BaseModel):
         return out
 
 
-#: Queries one call may fan out over. Every extra query is a full fan-out across every
-#: source plus its share of one cross-encoder pass, so this bounds what a single tool call
-#: costs the sources and the GPU. The surplus is named rather than silently trimmed.
+#: Bound query angles in one call. The result names surplus queries.
 MAX_QUERIES = int(os.getenv("METASEARCH_MAX_QUERIES", "5"))
 
 
@@ -189,7 +181,7 @@ MAX_QUERIES = int(os.getenv("METASEARCH_MAX_QUERIES", "5"))
         "distinct angles of your question in one call rather than one per turn. Each "
         "result names the queries that found it. Covers several independent engines, "
         "world news, Wikipedia, Wikidata, DOI metadata and the web archives; results are "
-        "fused across sources and reordered by a cross-encoder. Use for anything outside "
+        "merged with reciprocal rank fusion, without model reranking. Use for anything outside "
         "the user's own document collections. Optional `sources` narrows where to look "
         "(e.g. ['gdelt'] for news, ['wikidata'] for entities, ['wayback'] for what a page "
         "used to say); omit it to search everything. `timelimit` accepts 'd', 'w', 'm' or "
@@ -327,9 +319,9 @@ async def health(_request: Any):
             "status": "ok",
             "service": "hoover4-metasearch",
             "sources": configured_sources(),
-            "rerank_endpoint": rerank_client.endpoint(),
-            "rerank_available": rerank_client.available(),
-            "rerank_circuits": rerank_client.breaker_state(),
+            "rerank_endpoint": "",
+            "rerank_available": False,
+            "rerank_circuits": {},
             "artifacts_enabled": artifacts.enabled(),
         }
     )
@@ -339,7 +331,7 @@ def main() -> None:
     log.info(
         "Starting Hoover4 metasearch MCP server (sources: %s, rerank: %s)",
         configured_sources(),
-        rerank_client.endpoint() or "disabled",
+        "disabled",
     )
     mcp.run(
         transport="http",

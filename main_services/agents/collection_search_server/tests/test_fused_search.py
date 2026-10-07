@@ -40,6 +40,17 @@ def _identity_rerank(monkeypatch):
 
 
 class TestFusedPipeline:
+    def test_disabled_reranker_keeps_corpus_results_without_http(self, monkeypatch):
+        import requests
+
+        monkeypatch.delenv("RERANK_URL", raising=False)
+        monkeypatch.setattr(requests, "post", lambda *_args, **_kwargs:
+                            pytest.fail("Disabled corpus reranking made an HTTP request."))
+        hits = server._fused_pipeline("q", [
+            _keyword(H1, 1, 10.0, "first"), _keyword(H2, 1, 5.0, "second"),
+        ], [], limit=10, notes=[])
+        assert [h.file_hash for h in hits] == [H1, H2]
+
     def test_rerank_reorders_and_sources_are_labelled(self, monkeypatch):
         keyword = [_keyword(H1, 1, 10.0, "keyword page text"), _keyword(H2, 1, 9.0, "other page")]
         vector = [_vector(H2, 1, 0.1, "chunk text of the second page")]
