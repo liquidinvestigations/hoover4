@@ -60,8 +60,9 @@ You can use the todo list to track work that needs several steps. Use the ids th
 {% if has('cite_pages') %}
 Call `cite_pages` for each web source after `read_page`.
 Example: {"url":"COPY_READ_PAGE_URL","terms":["COPY_EXACT_WORDS_FROM_PAGE"]}.
-Use flat arguments and short exact phrases. Retry every failed entry, even after partial success.
-Give every factual paragraph and list item a returned source handle. Omit claims without a verified source.
+Use flat arguments and short exact phrases. Copy retry_arguments when errors return it.
+Give every factual paragraph and list item its returned [W1] or [W2] handle. Never use site names as handles.
+Omit claims whose citations fail.
 {% endif %}
 {% if has('cite_documents') %}
 Call `cite_documents` with an exact supporting `quote` of at least twelve characters.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from difflib import SequenceMatcher
 import json
 import os
 import re
@@ -140,6 +141,26 @@ def passages(text: str, terms: list[str]) -> tuple[list[str], list[dict]]:
     return quotes or [text[:600]], spans
 
 
+def suggested_terms(text: str, terms: list[str]) -> list[str]:
+    """Suggest literal source phrases for explicit retries, without verifying absent wording."""
+    from browser_use_server.read_page import focus
+
+    suggestions = []
+    for term in terms:
+        match = re.search(re.escape(term), text, re.IGNORECASE)
+        if match:
+            suggestions.append(match.group())
+            continue
+        candidate, _ = focus(text, term, 600)
+        block = SequenceMatcher(None, term, candidate, autojunk=False).find_longest_match()
+        phrase = candidate[block.b:block.b + block.size].strip()
+        if len(phrase) < 12 or not re.search(r"\w+\s+\w+", phrase):
+            return []
+        if phrase not in suggestions:
+            suggestions.append(phrase)
+    return suggestions
+
+
 def _cite(owner: str, session: str, pages: list) -> dict:
     if not owner or not session:
         return {"citations": [], "errors": [{"error": "Web citations require an owned chat session."}]}
@@ -171,10 +192,11 @@ def _cite(owner: str, session: str, pages: list) -> dict:
                 candidate, _ = focus(source["markdown"], " ".join(terms), 600)
                 error = {"url": url, "error": str(exc), "candidate": candidate,
                          "version": source["version"]}
-                matches = [re.search(re.escape(term), source["markdown"], re.IGNORECASE)
-                           for term in terms]
-                if all(matches):
-                    error["suggested_terms"] = [match.group() for match in matches]
+                suggestions = suggested_terms(source["markdown"], terms)
+                if suggestions:
+                    error["suggested_terms"] = suggestions
+                    error["retry_arguments"] = {"url": url, "version": source["version"],
+                                                "terms": suggestions}
                 errors.append(error)
                 continue
             key = (url, source["version"])
@@ -208,6 +230,7 @@ def _cite(owner: str, session: str, pages: list) -> dict:
         result["next_action"] = (
             "Retry each failed page before answering. A partial success covers only its returned handles. "
             "For absent text, copy a short exact phrase from candidate or suggested_terms. "
+            "When retry_arguments is present, call cite_pages with that object. "
             "For an unread page, call read_page, then call cite_pages again. "
             'Use one page per call: {"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}. '
             "Omit claims whose citations still fail."

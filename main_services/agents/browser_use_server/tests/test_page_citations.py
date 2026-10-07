@@ -162,6 +162,35 @@ def test_absent_wording_does_not_suggest_a_partial_term_list(store):
     assert "suggested_terms" not in result["errors"][0]
 
 
+def test_markdown_link_interruption_returns_literal_retry_without_allocating_a_handle(store):
+    text = ("The emails [show us that Nicole Junkermann](https://source.example/email) "
+            "was central to organising Reporty Homeland Security via funding from Jeffrey Epstein.")
+    read_source(text)
+    result = cite(terms=["Nicole Junkermann was central to organising Reporty Homeland Security"])
+    assert not result["citations"]
+    error = result["errors"][0]
+    assert error["suggested_terms"] == ["was central to organising Reporty Homeland Security"]
+    assert not any(row["kind"] == citations.KIND_PAGE_CITATION for row in store.rows.values())
+    retry = asyncio.run(citations.cite("owner", "chat", [error["retry_arguments"]]))
+    ref = retry["citations"][0]
+    assert ref["handle"] == "[W1]" and ref["quote_verified"]
+    assert "Nicole Junkermann" in ref["quotes"][0]
+    for span in ref["spans"]:
+        assert text[span["start"]:span["end"]] == span["text"]
+
+
+def test_retry_suggestions_never_turn_absent_wording_into_verified_quotes(store):
+    read_source("The report describes starvation as a weapon of war.")
+    result = cite(terms=["The report states that starvation was a weapon of war."])
+    assert not result["citations"]
+    error = result["errors"][0]
+    assert error["retry_arguments"]["terms"]
+    assert not any(row["kind"] == citations.KIND_PAGE_CITATION for row in store.rows.values())
+    retry = asyncio.run(citations.cite("owner", "chat", [error["retry_arguments"]]))
+    assert retry["citations"][0]["quote_verified"]
+    assert "states that starvation was" not in retry["citations"][0]["quotes"][0]
+
+
 def test_unknown_source_version_is_refused(store):
     read_source()
     result = cite(version="not-read")

@@ -279,7 +279,10 @@ field and gives the agent `reasoning_content`.
 ## The end of a run
 
 The model decides when it is finished: a reply with no call is the answer. The worker adds
-no todo round. The service skips a repeated successful search or read while its complete result remains in model input. Its limits are the step limit of the run and one retry
+no todo round. The service skips a repeated successful search or read while its complete result remains in model input.
+It also reuses an identical complete verified citation until another source read occurs.
+Different passages, partial failures, and reduced results remain executable.
+Its limits are the step limit of the run and one retry
 after a reply with no text and no call. At a limit, the worker ends the run with a result
 that code writes from the stored thread, and it sends no further model request. See
 `processing/tasks/Readme.md` for the loop.

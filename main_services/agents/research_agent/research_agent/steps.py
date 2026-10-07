@@ -756,19 +756,44 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
             _with_repairs(None, repairs),
         )
 
-    if name.startswith(("search_", "read_documents", "doc_", "table_", "folder_", "list_document_")):
+    citation_call = name in ("cite_documents", "cite_pages")
+    if citation_call or name.startswith(("search_", "read_documents", "doc_", "table_", "folder_", "list_document_")):
         rows, visible = model_input_rows(request.earlier, request.messages)
         whole = {(m.thread_id, m.idx) for m in visible if m.role == "tool" and m.status == "ok"
                  and any(r.thread_id == m.thread_id and r.idx == m.idx and r.content == m.content
                          for r in rows)}
         answers = {m.tool_call_id: m for m in rows if m.role == "tool"
                    and (m.thread_id, m.idx) in whole}
+        positions = {(m.thread_id, m.idx): index for index, m in enumerate(rows)}
+        latest_read = max((index for index, m in enumerate(rows)
+                           if m.role == "tool" and (m.name or "").startswith(
+                               ("read_page", "read_documents", "doc_", "table_"))), default=-1)
         for message in rows:
             if message.role != "ai":
                 continue
             for call in message.tool_calls:
                 if (call.name == name and call.id in answers
                         and normalize_arguments(call.args, schema).args == args):
+                    if citation_call:
+                        answer = answers[call.id]
+                        if positions[(answer.thread_id, answer.idx)] <= latest_read:
+                            continue
+                        try:
+                            result = json.loads(answer.content)
+                        except ValueError:
+                            continue
+                        if not isinstance(result, dict) or result.get("errors") or result.get("success") is False:
+                            continue
+                        refs = result.get("citations")
+                        if not isinstance(refs, list):
+                            continue
+                        handles = [ref["handle"] for ref in refs
+                                   if isinstance(ref, dict) and ref.get("quote_verified") is True and ref.get("handle")]
+                        if not handles:
+                            continue
+                        return _tool_response(request,
+                            f"This citation repeats call {call.id}. Use its verified handles {', '.join(dict.fromkeys(handles))}. "
+                            "Cite different terms for another passage. Finish the answer when its sources are complete.", "ok")
                     return _tool_response(request, f"This call repeats call {call.id}. Its result is above.", "ok")
 
     share_token = _PAGE_SHARE.set(request.page_share)

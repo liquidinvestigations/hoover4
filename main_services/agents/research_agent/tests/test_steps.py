@@ -966,3 +966,35 @@ async def test_repeated_read_runs_again_after_its_result_is_reduced(model):
     request.messages[-1].model_content = "partial"
     assert (await steps.run_tool_call(agent, request))["status"] == "ok"
     assert len(seen) == 1
+
+
+@pytest.mark.parametrize("name,handle", [("cite_pages", "[W1]"), ("cite_documents", "[D1]")])
+@pytest.mark.parametrize("changed", [None, "terms", "read", "reduced", "failed", "partial"])
+async def test_only_complete_unchanged_verified_citations_skip_reexecution(name, handle, changed):
+    seen = []
+    agent = FakeAgent([dict_tool(name, LIST_SCHEMA, seen)], {name})
+    result = {"citations": [{"handle": handle, "quote_verified": True}], "errors": []}
+    if changed == "failed":
+        result = {"citations": [], "errors": [{"error": "Absent wording"}]}
+    if changed == "partial":
+        result["errors"] = [{"error": "Another source is unread"}]
+    messages = [
+        {"role": "human", "content": "question", "thread_id": "t", "idx": 0},
+        {"role": "ai", "content": "", "tool_calls": [{"id": "old", "name": name,
+            "args": {"query": "first passage"}}], "thread_id": "t", "idx": 1},
+        {"role": "tool", "content": json.dumps(result), "tool_call_id": "old", "name": name,
+            "status": "ok", "thread_id": "t", "idx": 2},
+    ]
+    if changed == "read":
+        messages.append({"role": "tool", "content": "New source version", "tool_call_id": "read",
+                         "name": "read_page", "status": "ok", "thread_id": "t", "idx": 3})
+    if changed == "reduced":
+        messages[-1]["model_content"] = "partial result"
+    request = tool_request(name, {"query": "another passage" if changed == "terms" else "first passage"})
+    request = request.model_copy(update={"messages": [steps.RunMessage(**message) for message in messages]})
+    response = await steps.run_tool_call(agent, request)
+    assert response["status"] == "ok"
+    if changed is None:
+        assert seen == [] and f"Use its verified handles {handle}" in response["content"]
+    else:
+        assert len(seen) == 1

@@ -121,6 +121,8 @@ Terms match case and literal source text.
 A missing term or unread page returns an individual error.
 An absent term also returns bounded source context for a corrected citation request.
 That context does not allocate a handle or verify the missing wording.
+When Markdown interrupts a phrase, errors suggest literal source terms and flat retry arguments.
+Only an explicit retry can verify those terms and allocate a handle.
 Partial results instruct the model to retry failed entries before answering.
 An unread source requires a successful read followed by another citation call.
 Successful citations return verified quotes, source offsets, a stored page identifier, and a stable `[Wn]` handle.
