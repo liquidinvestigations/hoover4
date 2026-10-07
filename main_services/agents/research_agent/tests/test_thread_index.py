@@ -53,6 +53,15 @@ def ok(name, args, result):
     return (name, args, result if isinstance(result, str) else json.dumps(result), "ok")
 
 
+def test_hidden_web_citations_keep_their_source_version():
+    thread = Thread()
+    thread.step(ok("cite_pages", {}, {"citations": [{"handle": "[W1]",
+        "url": "https://example.org/source", "version": "kept-version"}]}))
+    index = thread_index.render(thread.rows, visible_after=set())
+    assert "[W1] https://example.org/source version=kept-version" in index
+    assert compaction.CITATION_HANDLE.findall("Use [W1] and [D2].") == ["[W1]", "[D2]"]
+
+
 def stub(prompt, cap):
     return "## Goal\nshort"
 

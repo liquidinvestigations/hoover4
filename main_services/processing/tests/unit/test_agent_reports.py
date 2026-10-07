@@ -44,6 +44,22 @@ def _item(file_hash, page=1, text="x", **extra):
             **extra}
 
 
+def test_web_discovery_and_citations_keep_distinct_evidence():
+    found = reports.normalize("web_search", {}, json.dumps({"results": [
+        {"url": "https://example.org/source", "title": "Source"}]}), "ok")
+    assert found[0]["kind"] == "discovery"
+    assert found[0]["reference"]["url"] == "https://example.org/source"
+    cited = reports.normalize("cite_pages", {}, json.dumps({"citations": [{
+        "handle": "[W1]", "url": "https://example.org/source", "version": "v1",
+        "artifact_id": "captured-source", "quote_verified": True,
+        "quotes": ["The result is 5."], "terms": ["result is 5"]}],
+        "errors": [{"url": "https://unread.example.org/", "error": "Unread page"}]}), "ok")
+    assert [entry["status"] for entry in cited] == ["ok", "error"]
+    assert reports.check_labels("The result is 5 [W1].", reports.label_bindings(cited))["unresolved"] == []
+    changed = dict(cited[0], reference=dict(cited[0]["reference"], version="v2"))
+    assert reports.check_labels("The result is 5 [W1].", reports.label_bindings([cited[0], changed]))["conflicting"] == ["[W1]"]
+
+
 # ------------------------------------------------------------------------ evidence
 
 

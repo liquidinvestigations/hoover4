@@ -158,7 +158,7 @@ pub async fn delete_chat_session(user: &CurrentUser, session_id: String) -> anyh
     db_chat::delete_session(username, &session_id).await
 }
 
-/// The search-detail JSON behind a `web_search` card's popup.
+/// Load search details or captured page Markdown for a chat source preview.
 ///
 /// Served through a server function rather than the `/_chat_artifact/…` route because the
 /// popup renders it, and a fetch from WASM would need its own credential handling and its

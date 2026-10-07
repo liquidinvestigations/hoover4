@@ -118,7 +118,7 @@ pub fn SearchCard(tool_name: String, tool_input: String, tool_output: String, ru
             if key != "source" { div { style: "font-size: 12px;", "{key}: {value}" } }
         }
         for (index, row) in rows.into_iter().enumerate() {
-            div { key: "{index}", style: "border-top: 1px solid #FDE68A; padding-top: 6px;",
+            div { key: "{index}", style: "border-top: 1px solid #E5E7EB; padding-top: 6px;",
                 for (key, value) in row.as_object().into_iter().flat_map(|row| row.iter()) {
                     if key != "snippet" && key != "file_hash" { div { style: "font-size: 11px;", "{key}: {value}" } }
                 }
@@ -155,7 +155,7 @@ fn ReadRow(row: serde_json::Value, refs: Vec<ChatDocRef>) -> Element {
     let excerpt: String = text.chars().take(400).collect();
     let cut = text.chars().count() > 400;
     rsx! {
-        div { style: "border-top: 1px solid #FDE68A; padding-top: 6px; white-space: pre-wrap;",
+        div { style: "border-top: 1px solid #E5E7EB; padding-top: 6px; white-space: pre-wrap;",
             for (key, value) in row.as_object().into_iter().flat_map(|row| row.iter()) {
                 if key != "text" && key != "file_hash" { div { style: "font-size: 11px;", "{key}: {value}" } }
             }
@@ -197,7 +197,7 @@ pub fn CiteCard(tool_input: String, tool_output: String, running: bool, doc_refs
                 let reason = json_str(&citation, "quote_reason");
                 let check = if citation.get("quote_verified").and_then(|value| value.as_bool()) == Some(true) { "Quote found" } else if !reason.is_empty() { "Quote not found" } else { "Quote not checked" };
                 rsx! {
-            div { key: "{index}", style: "border-top: 1px solid #FDE68A; padding-top: 6px; white-space: pre-wrap;",
+            div { key: "{index}", style: "border-top: 1px solid #E5E7EB; padding-top: 6px; white-space: pre-wrap;",
                 div { "{check}" }
                 if !quote.is_empty() { div { "Quote: {quote}" } }
                 if !why.is_empty() { div { "Reason: {why}" } }
@@ -235,7 +235,7 @@ fn QuestionOption(answer: String, draft: Option<Signal<String>>) -> Element {
     let chosen = answer.clone();
     rsx! {
         button {
-            style: "border: 1px solid #FDE68A; background: white; border-radius: 6px; padding: 6px; cursor: pointer;",
+            style: "border: 1px solid #E5E7EB; background: white; border-radius: 6px; padding: 6px; cursor: pointer;",
             onclick: move |_| { if let Some(mut draft) = draft { draft.set(chosen.clone()); } },
             "{answer}"
         }
@@ -319,4 +319,135 @@ mod tests {
             .contains("part 2 of read_documents #4"));
     }
 
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct TodoChangeLine {
+    old_number: Option<usize>,
+    new_number: Option<usize>,
+    change: i8,
+    text: String,
+}
+
+fn todo_line(item: &common::chat_types::TodoItemView) -> String {
+    let note = if item.note.is_empty() { String::new() } else { format!(" ({})", item.note) };
+    format!("{}: {}{note}", item.status, item.text)
+}
+
+fn todo_change_lines(previous: Option<&common::chat_types::TodoSnapshot>, current: &common::chat_types::TodoSnapshot) -> Vec<TodoChangeLine> {
+    let old = previous.map(|snapshot| snapshot.items.as_slice()).unwrap_or_default();
+    let mut lines = Vec::new();
+    for (index, item) in old.iter().enumerate() {
+        if !current.items.iter().any(|new| new.id == item.id) {
+            lines.push(TodoChangeLine { old_number: Some(index + 1), new_number: None, change: -1, text: todo_line(item) });
+        }
+    }
+    for (index, item) in current.items.iter().enumerate() {
+        let before = old.iter().enumerate().find(|(_, before)| before.id == item.id);
+        let changed = before.is_none_or(|(old_index, before)| old_index != index || before != item);
+        if let Some((old_index, before)) = before.filter(|_| changed) {
+            lines.push(TodoChangeLine { old_number: Some(old_index + 1), new_number: None, change: -1, text: todo_line(before) });
+        }
+        lines.push(TodoChangeLine {
+            old_number: before.filter(|_| !changed).map(|(index, _)| index + 1),
+            new_number: Some(index + 1), change: if changed { 1 } else { 0 }, text: todo_line(item),
+        });
+    }
+    lines
+}
+
+#[component]
+pub fn TodoChanges(tool_output: String, running: bool, todo_versions: Vec<common::chat_types::TodoSnapshot>) -> Element {
+    let value = tool_content(&tool_output).unwrap_or_default();
+    let failure = tool_failure(&value);
+    let version = value.get("version").and_then(|value| value.as_u64()).map(|version| version as u32);
+    let current = version.and_then(|version| todo_versions.iter().find(|snapshot| snapshot.version == version));
+    let previous = version.and_then(|version| version.checked_sub(1))
+        .and_then(|version| todo_versions.iter().find(|snapshot| snapshot.version == version));
+    rsx! {
+        div {
+            class: "x-chat-todo-diff",
+            style: "background: white; border-radius: 6px; padding: 14px 18px; color: #222; font-size: 15px;",
+            if let Some(failure) = failure {
+                div { role: "alert", "{failure.message}" }
+            } else if let Some(current) = current {
+                if let Some(previous) = previous.filter(|before| before.goal != current.goal) {
+                    div { style: "background: #fce8e6; padding: 4px 8px;", "-- " s { "{previous.goal}" } }
+                    div { style: "background: #e8f3e8; padding: 4px 8px; margin-bottom: 8px;", "++ {current.goal}" }
+                } else {
+                    div { style: "margin-bottom: 8px;", "{current.goal}" }
+                }
+                for (index, line) in todo_change_lines(previous, current).into_iter().enumerate() {
+                    TodoDiffLine { key: "{index}", line }
+
+                }
+            } else if running {
+                div { role: "status", "Updating tasks." }
+            } else {
+                div { "The task list is unavailable." }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod todo_diff_tests {
+    use super::*;
+    use common::chat_types::{TodoItemView, TodoSnapshot};
+
+    fn item(id: &str, status: &str, note: &str) -> TodoItemView {
+        TodoItemView { id: id.into(), text: format!("Task {id}"), status: status.into(), note: note.into() }
+    }
+
+    fn snapshot(items: Vec<TodoItemView>) -> TodoSnapshot {
+        TodoSnapshot { version: 1, goal: "Verify sources".into(), items }
+    }
+
+    #[test]
+    fn completion_and_notes_show_the_removed_and_added_text() {
+        let before = snapshot(vec![item("1", "pending", "")]);
+        let after = snapshot(vec![item("1", "done", "Source verified")]);
+        let lines = todo_change_lines(Some(&before), &after);
+        assert_eq!(lines.len(), 2);
+        assert_eq!((lines[0].change, lines[0].old_number, lines[0].new_number), (-1, Some(1), None));
+        assert_eq!((lines[1].change, lines[1].old_number, lines[1].new_number), (1, None, Some(1)));
+        assert!(lines[0].text.starts_with("pending:"));
+        assert!(lines[1].text.contains("Source verified"));
+    }
+
+    #[test]
+    fn removals_and_new_tasks_keep_their_own_line_numbers() {
+        let before = snapshot(vec![item("1", "pending", ""), item("2", "pending", "")]);
+        let after = snapshot(vec![item("1", "pending", ""), item("3", "pending", "")]);
+        let lines = todo_change_lines(Some(&before), &after);
+        assert_eq!(lines.iter().map(|line| line.change).collect::<Vec<_>>(), vec![-1, 0, 1]);
+        assert_eq!(lines[0].old_number, Some(2));
+        assert_eq!(lines[2].new_number, Some(2));
+    }
+
+    #[test]
+    fn reordered_tasks_show_a_move_as_a_removal_and_addition() {
+        let before = snapshot(vec![item("1", "pending", ""), item("2", "pending", "")]);
+        let after = snapshot(vec![item("2", "pending", ""), item("1", "pending", "")]);
+        let lines = todo_change_lines(Some(&before), &after);
+        assert_eq!(lines.iter().map(|line| line.change).collect::<Vec<_>>(), vec![-1, 1, -1, 1]);
+    }
+}
+
+#[component]
+fn TodoDiffLine(line: TodoChangeLine) -> Element {
+    let old_number = line.old_number.map(|number| number.to_string()).unwrap_or_default();
+    let new_number = line.new_number.map(|number| number.to_string()).unwrap_or_default();
+    let marker = match line.change { -1 => "--", 1 => "++", _ => "" };
+    let background = match line.change { -1 => "#fce8e6", 1 => "#e8f3e8", _ => "white" };
+    rsx! {
+        div {
+            "data-todo-diff": "{line.change}",
+            style: "display: grid; grid-template-columns: 28px 28px 28px 1fr; gap: 6px; padding: 4px 8px; background: {background};",
+            span { style: "color: #777; text-align: right; font-variant-numeric: tabular-nums;", "{old_number}" }
+            span { style: "color: #777; text-align: right; font-variant-numeric: tabular-nums;", "{new_number}" }
+            span { style: "font-family: monospace;", "{marker}" }
+            if line.change < 0 { s { "{line.text}" } } else { span { "{line.text}" } }
+        }
+    }
 }

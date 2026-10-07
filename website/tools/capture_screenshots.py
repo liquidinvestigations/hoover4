@@ -635,12 +635,18 @@ async def snapshot(tab) -> dict:
     return await js(tab, SNAPSHOT_JS)
 
 
+_screenshot_lock = asyncio.Lock()
+
+
 async def screenshot(tab, full_page: bool) -> bytes:
+    """Activate the target tab and serialize captures from concurrent observers."""
     import nodriver.cdp.page as page_cdp
 
-    data = await tab.send(
-        page_cdp.capture_screenshot(format_="png", capture_beyond_viewport=full_page)
-    )
+    async with _screenshot_lock:
+        await tab.send(page_cdp.bring_to_front())
+        data = await tab.send(
+            page_cdp.capture_screenshot(format_="png", capture_beyond_viewport=full_page)
+        )
     return base64.b64decode(data) if isinstance(data, str) else bytes(data)
 
 

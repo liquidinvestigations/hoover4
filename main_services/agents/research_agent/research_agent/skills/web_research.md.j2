@@ -2,7 +2,7 @@
 name: web_research
 group: technique
 description: how to search the open web, read a web page or the owner record of a domain, and name the web sources in the answer
-tools: web_search, read_page, whois_lookup, list_search_sources
+tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
 ---
 {# Each tool sentence renders when the run has that tool. #}
 Researching the open web
@@ -21,7 +21,12 @@ lists those sources.{% endif +%}
 {% if has('read_page') %}2.{% else %}1.{% endif %} For the owner, the registrar or the dates of a domain, call {{ tool('whois_lookup') }} with every domain in one call.
 {% endif %}
 
-In your answer, give the address of each web page that a fact comes from. Say which facts came from the web and which came from the documents. A search result snippet is not a source. Read the page before you rely on it.
+Read each source before using its claims. A search result snippet is not a source.
+{% if has('cite_pages') %}
+Call {{ tool('cite_pages') }} with each read page URL and exact supporting wording in `terms`.
+Use its returned web handles beside the claims they support.
+Replace bare source URLs with those handles.
+{% endif %}
 
 Apply every requested constraint to each item in the answer.
 State which constraint an item fails.

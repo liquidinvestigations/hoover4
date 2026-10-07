@@ -578,7 +578,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
         if problem:
             detail = {
                 "raw_call": "It contains a tool call as text.",
-                "unresolved_label": "It uses a label that no document gives.",
+                "unresolved_label": "It uses a label that no successful citation gives.",
                 "conflicting_label": "It uses a label for more than one document.",
                 "page_zero": "It names page 0 instead of the verified page.",
             }[problem]

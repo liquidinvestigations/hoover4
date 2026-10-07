@@ -16,6 +16,8 @@ use crate::components::search_components::{
 pub fn SearchResultItemCard(
     result: ReadSignal<SearchResultDocumentItem>,
     onmounted: Callback<Event<MountedData>>,
+    #[props(default)]
+    citation_excerpt: bool,
 ) -> Element {
     let search_results_state = use_context::<SearchResultsState>();
     let current_search_result_page = search_results_state.current_search_result_page;
@@ -48,6 +50,7 @@ pub fn SearchResultItemCard(
 
     rsx! {
         div {
+            "data-citation-search-snippet": citation_excerpt.then_some("true"),
             style: "
                 display: flex;
                 flex-direction: column;
@@ -328,6 +331,7 @@ fn render_highlight_text_span(spans: Vec<HighlightTextSpan>) -> Element {
             };
             rsx! {
                 span {
+                    "data-highlighted": i.is_highlighted.to_string(),
                     style: "background-color: {color}; color: rgb(0, 0, 0);",
                     "{i.text}"
                 }

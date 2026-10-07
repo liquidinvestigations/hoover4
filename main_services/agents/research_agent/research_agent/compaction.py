@@ -106,8 +106,8 @@ _V2_RECORD_HEAD = "[Record of earlier steps. Code wrote the lists"
 _V1_RECORD_HEAD = "[Context handoff."
 _RECORD_HEADS = (RECORD_HEADER[:40], _V2_RECORD_HEAD, _V1_RECORD_HEAD)
 
-#: A citation handle as `cite_documents` allocates it and as the model writes it.
-CITATION_HANDLE = re.compile(r"\[D\d+\]")
+#: A document or web citation handle returned by a citation tool.
+CITATION_HANDLE = re.compile(r"\[[DW]\d+\]")
 
 #: The results that never go to the summary model. The index names them.
 TEXT_TOOLS = frozenset({thread_index.READ_SKILL, thread_index.READ_TOOL})

@@ -620,7 +620,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
             "reasoning_tokens": int(stats.reasoning_tokens or 0),
             "request_size": sent_size,
             # The worker's citation check runs only for a model that had the tool.
-            "citation_tool": any(getattr(t, "name", "") == "cite_documents"
+            "citation_tool": any(getattr(t, "name", "") in ("cite_documents", "cite_pages")
                                  for t in bound_tools),
         },
         # True when a summary replaced older steps. A failed summary changes no message.

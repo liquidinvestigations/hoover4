@@ -152,6 +152,29 @@ class ScenarioParsingTests(unittest.TestCase):
 
 
 class HistoryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_concurrent_captures_keep_activation_with_the_target_tab(self) -> None:
+        import asyncio
+        import base64
+        commands = []
+
+        class Tab:
+            def __init__(self, name):
+                self.name = name
+
+            async def send(self, request):
+                method = next(request)["method"]
+                commands.append((self.name, method))
+                await asyncio.sleep(0)
+                if method == "Page.captureScreenshot":
+                    return base64.b64encode(self.name.encode()).decode()
+
+        with patch.object(MODULE, "_screenshot_lock", asyncio.Lock()):
+            images = await asyncio.gather(MODULE.screenshot(Tab("first"), False),
+                                          MODULE.screenshot(Tab("second"), True))
+        self.assertEqual(images, [b"first", b"second"])
+        self.assertEqual(commands, [("first", "Page.bringToFront"), ("first", "Page.captureScreenshot"),
+                                    ("second", "Page.bringToFront"), ("second", "Page.captureScreenshot")])
+
     async def test_navigation_removes_initial_script_in_the_same_session(self) -> None:
         commands = []
 

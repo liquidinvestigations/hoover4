@@ -212,6 +212,12 @@ PROMPTS: list[tuple[str, str, str]] = [
 # The text is the stored text of the audited sessions. `--prompts all` does not select them,
 # so the workload of `all` stays the list above.
 ACCEPTANCE_PROMPTS: list[tuple[str, str, str]] = [
+    ("ux-synthetic-cannabinoids", "chat",
+     "what company is the biggest producer of Synthetic Cannabinoids in Europe ?"),
+    ("ux-genocide-sources", "chat",
+     "which state is currently committing a genocide and according to who ?"),
+    ("ux-weed-documents", "chat",
+     "show me all our documents related to weed or marijuana"),
     ("general-question", "chat_local", "What is the capital of France?"),
     ("number-game", "chat_local",
      "I am thinking of a number. You may ask if it is bigger or smaller until you find it."),

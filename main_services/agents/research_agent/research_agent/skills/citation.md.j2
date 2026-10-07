@@ -1,8 +1,8 @@
 ---
 name: citation
 group: general
-description: how to cite the documents an answer relies on with cite_documents
-tools: cite_documents
+description: how to cite documents and captured web pages that support an answer
+tools: cite_documents, cite_pages
 ---
 {# The citation protocol of every run that has `cite_documents`.
 
@@ -33,10 +33,18 @@ that Jim Steffes approved the draft. Call {{ tool('cite_documents') }} with coll
 file_hash from the result, the quote "Your notes look great. Best of luck today with the
 Hearings.", find "Your notes look great", and why "Steffes approves the draft of 27 December".
 Then write "Steffes approved the draft [D1]."
-{% if web_enabled %}
-Web sources keep their URLs. The handles are for the user's own documents.
-{% endif %}
 {% if citation_resolver == "lead" %}
 The lead researcher resolves them, so a handle you never allocated is no use to anyone.
 {% endif %}
+{% endif %}
+{% if has('cite_pages') %}
+Search for each web source and read its supporting passage with {{ tool('read_page') }}.
+Call {{ tool('cite_pages') }} with the read URL and exact source wording in `terms`.
+One call accepts at most six pages. Split longer source lists into separate calls.
+Copy the returned web handle, for example `[W1]`, beside the claim it supports.
+Keep each handle with the URL and quotes from its returned citation object.
+An error does not allocate a handle. Omit that source's claims until its citation succeeds.
+The handle opens the captured page text and its verified quotes.
+Use a web citation handle in place of a bare source URL.
+An unread, blocked, or unverified page cannot support a claim.
 {% endif %}

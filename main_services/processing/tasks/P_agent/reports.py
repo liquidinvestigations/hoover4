@@ -36,7 +36,7 @@ MAX_ENTRY_TEXT = 2000
 _CUT_TEXT = re.compile(r"^\s*(\d+)\s+of\s+(\d+)\s+bytes")
 
 #: A citation label as an answer writes it.
-LABEL_PATTERN = re.compile(r"\[D(\d+)\]")
+LABEL_PATTERN = re.compile(r"\[([DW]\d+)\]")
 
 
 def _clip(text: Any, limit: int = MAX_ENTRY_TEXT) -> str:
@@ -370,6 +370,11 @@ def _artifacts(parsed: Any) -> list[dict]:
 def _discovery(tool_name: str, parsed: Any, args: dict, doc_refs: Any) -> list[dict]:
     from tasks.P_agent.trajectory import call_query, extract_doc_refs, response_doc_refs
 
+    if tool_name == "web_search" and isinstance(parsed, dict):
+        rows = parsed.get("items", parsed.get("results", []))
+        return [_entry(KIND_DISCOVERY, STATUS_OK, {"url": row["url"]}, f"web-found:{i}")
+                for i, row in enumerate(rows if isinstance(rows, list) else [])
+                if isinstance(row, dict) and isinstance(row.get("url"), str) and row["url"]]
     if isinstance(doc_refs, list):
         refs = response_doc_refs(tool_name, doc_refs, call_query(args))
     else:
@@ -401,6 +406,8 @@ def normalize(tool_name: str, args: Any, content: str, status: str,
         entries = _read_page(parsed, args, error)
     elif tool_name in ("table_page", "table_cell"):
         entries = _table_content(tool_name, parsed, args, error)
+    elif tool_name == "cite_pages":
+        entries = _page_citations(parsed, error)
     elif tool_name == "cite_documents":
         entries = _citations(parsed, args, doc_refs, error)
     elif tool_name == "write_note":
@@ -412,6 +419,27 @@ def normalize(tool_name: str, args: Any, content: str, status: str,
     if not error:
         entries += _artifacts(parsed)
     return _unique_keys(entries[:MAX_ENTRIES_PER_MESSAGE])
+
+
+def _page_citations(parsed: Any, error: str) -> list[dict]:
+    if error or not isinstance(parsed, dict):
+        return [_entry(KIND_CITATION, STATUS_ERROR, {}, "web-citation:call", error=error)]
+    out = []
+    for i, row in enumerate(parsed.get("citations") or []):
+        if not isinstance(row, dict):
+            continue
+        ref = {key: row[key] for key in ("url", "final_url", "version", "artifact_id", "handle",
+                                       "quote_verified", "terms", "quotes", "spans") if key in row}
+        valid = (all(ref.get(key) for key in ("url", "version", "artifact_id"))
+                 and re.fullmatch(r"\[W[1-9]\d*\]", str(ref.get("handle") or ""))
+                 and ref.get("quote_verified") is True)
+        out.append(_entry(KIND_CITATION, STATUS_OK if valid else STATUS_ERROR, ref,
+                          f"web-citation:{i}", error="" if valid else "Invalid web citation evidence."))
+    for i, row in enumerate(parsed.get("errors") or []):
+        if isinstance(row, dict):
+            out.append(_entry(KIND_CITATION, STATUS_ERROR, {"url": row.get("url", "")},
+                              f"web-citation-error:{i}", error=_clip(row.get("error"))))
+    return out
 
 
 def _unique_keys(entries: list[dict]) -> list[dict]:
@@ -449,18 +477,17 @@ def message_evidence(message) -> list[dict]:
 
 
 def answer_labels(answer: str) -> list[str]:
-    """The distinct `[Dn]` labels of an answer, in order of first use."""
+    """Return distinct document and web citation labels in their answer order."""
     seen: list[str] = []
     for match in LABEL_PATTERN.finditer(answer or ""):
-        label = f"[D{match.group(1)}]"
+        label = f"[{match.group(1)}]"
         if label not in seen:
             seen.append(label)
     return seen
 
 
 def label_bindings(entries: Iterable[dict]) -> dict[str, set[str]]:
-    """The documents of each label of successful citation entries. A document is its
-    16-character hash start, which a stored result of every age shows."""
+    """Bind successful labels to document hash starts or captured page versions."""
     out: dict[str, set[str]] = {}
     for entry in entries:
         if entry.get("kind") != KIND_CITATION or entry.get("status") != STATUS_OK:
@@ -468,8 +495,10 @@ def label_bindings(entries: Iterable[dict]) -> dict[str, set[str]]:
         reference = entry.get("reference") or {}
         handle = str(reference.get("handle") or "")
         file_hash = _hash_start(reference.get("file_hash"))
-        if handle and file_hash:
-            out.setdefault(handle, set()).add(file_hash)
+        source = ("web:" + str(reference["url"]) + ":" + str(reference["version"])) if (
+            reference.get("url") and reference.get("version")) else file_hash
+        if handle and source:
+            out.setdefault(handle, set()).add(source)
     return out
 
 
@@ -528,9 +557,9 @@ def session_citation_entries(username: str, session_id: str) -> list[dict]:
     from database import agent_runs
 
     out: list[dict] = []
-    for thread_id, messages in agent_runs.read_session_tool_messages(
-            username, session_id, "cite_documents").items():
-        for message in messages:
-            entries = message_evidence(message)
-            out.extend(e for e in entries if e.get("kind") == KIND_CITATION)
+    for tool_name in ("cite_documents", "cite_pages"):
+        for messages in agent_runs.read_session_tool_messages(username, session_id, tool_name).values():
+            for message in messages:
+                entries = message_evidence(message)
+                out.extend(e for e in entries if e.get("kind") == KIND_CITATION)
     return out

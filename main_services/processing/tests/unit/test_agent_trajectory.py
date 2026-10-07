@@ -203,6 +203,18 @@ def test_a_bounded_web_read_keeps_its_continuation_and_archive_marker():
     assert marker in fields["tool_output"].replace('\\"', '"')
 
 
+def test_a_large_page_citation_batch_keeps_every_handle_and_quote():
+    result = {"citations": [
+        {"handle": f"[W{number}]", "url": f"https://example.invalid/source-{number}",
+         "quotes": [f"Passage {index} " + "α" * 600 for index in range(8)],
+         "terms": ["α"], "quote_verified": True}
+        for number in range(1, 7)
+    ], "errors": []}
+    fields = tool_row_fields("cite_pages", {}, json.dumps(result))
+    assert len(fields["tool_output"]) > TOOL_PAYLOAD_CHARS
+    assert json.loads(fields["tool_output"]) == result
+
+
 def _search_page(items):
     """A broker result page as the broker serialises it: canonical JSON text."""
     return _canonical_json({"items": items, "success": True,

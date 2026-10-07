@@ -8,6 +8,18 @@ from langchain_core.tools import StructuredTool
 
 from research_agent.agent import with_decoded_arguments
 from research_agent.execution import validation_error
+
+
+@pytest.mark.parametrize("validator,value,limit,expected", [
+    ("maxItems", ["long source passage " * 30] * 7, 6, "pages: accepts at most 6 items. The call gave 7 items."),
+    ("minItems", [], 1, "pages: accepts at least 1 item. The call gave 0 items."),
+    ("maxLength", "α" * 400, 200, "pages: accepts at most 200 characters. The call gave 400 characters."),
+    ("minLength", "", 1, "pages: accepts at least 1 character. The call gave 0 characters."),
+])
+def test_size_errors_keep_the_limit_when_input_text_is_long(validator, value, limit, expected):
+    kind = "array" if validator.endswith("Items") else "string"
+    schema = {"type": "object", "properties": {"pages": {"type": kind, validator: limit}}}
+    assert validation_error({"pages": value}, schema) == expected
 from research_agent.tool_args import (
     DamagedArguments, decode_string_arguments, model_schema, normalize_arguments,
     rename_aliases, repair_arguments,

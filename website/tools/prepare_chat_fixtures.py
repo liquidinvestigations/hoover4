@@ -186,8 +186,8 @@ def web(name: str, username: str) -> dict:
          "snippet": "Guidelines for authors who prepare a manuscript.", "sources": ["brave"]},
     ]
     detail = {
-        "before_rerank": results, "after_rerank": list(reversed(results)),
-        "rerank_ms": 12.0, "rerank_applied": True, "total_before_dedupe": 3,
+        "before_rerank": results, "after_rerank": results,
+        "rerank_ms": 0.0, "rerank_applied": False, "total_before_dedupe": 3,
         "total_after_dedupe": 2, "degraded": [],
         "source_latency_ms": {"duckduckgo": 410.0, "brave": 380.0},
         "source_counts": {"duckduckgo": 1, "brave": 2},
@@ -202,6 +202,45 @@ def web(name: str, username: str) -> dict:
         tool("web_search", {"queries": queries}, output),
         answer("IEEE publishes the templates on its conference publishing page."),
     ], "artifacts": [(artifact_id, "search_detail", "web_search", " ; ".join(queries), detail)]}
+
+
+def web_citations(name: str, username: str) -> dict:
+    pages, refs, stored = [], [], []
+    for number in (1, 2):
+        url = f"https://example.org/source-{number}"
+        artifact_id = fixture_uuid(name, username, f"page-{number}")
+        markdown = (f"# Captured source {number}\n\n"
+                    "Știință **exact match** appears here.\n\n"
+                    "Lowercase știință exact match stays distinct.\n\n"
+                    + "\n\n".join(f"Paragraph {i} contains source text." for i in range(40))
+                    + "\n\nȘtiință exact match appears again.\n\n"
+                    + "<script>window.pageContentExecuted = true</script>\n\n[W99]")
+        page = {"url": url, "final_url": url, "title": f"Captured source {number}",
+                "version": f"version-{number}", "markdown": markdown}
+        ref = {key: page[key] for key in ("url", "final_url", "title", "version")}
+        ref.update(handle=f"[W{number}]", artifact_id=artifact_id,
+                   terms=["Știință"], quotes=["Știință exact match appears here."],
+                   quote_verified=True)
+        refs.append(ref)
+        pages.append({"url": url, "title": page["title"], "text": markdown,
+                      "version": page["version"], "blocked": False, "error": None})
+        stored.append((artifact_id, "web_page_text", "read_page", page["title"], page))
+    return {"title": "Browser fixture: web citations", "internet": True, "rows": [
+        user("Compare the two captured pages and cite their text."),
+        tool("web_search", {"queries": ["captured sources"]},
+             {"results": [{"url": page["url"], "title": page["title"]} for page in pages]}),
+        answer("Earlier draft text with source URLs."),
+        {"role": "nag", "tool_name": "citation_check", "content": "Read and cite each source."},
+        tool("read_page", {"urls": [page["url"] for page in pages]}, {"pages": pages}),
+        tool("cite_pages", {"pages": [{"url": page["url"], "terms": ["Știință"]}
+                                     for page in pages]}, {"citations": refs, "errors": []}),
+        answer("The first page contains the exact source text [W1]. "
+               "The second page contains another passage [W2].\n\n"
+               "The first source also supports this later claim [W1].\n\n"
+               "| Source | Claim |\n| --- | --- |\n"
+               "| First | Table claim one [W1]. |\n"
+               "| Second | Table claim two [W2]. |"),
+    ], "artifacts": stored}
 
 
 def compaction(_name: str, _username: str) -> dict:
@@ -246,6 +285,7 @@ FIXTURES = {
     "read_more": read_more,
     "todo": todo,
     "web": web,
+    "web_citations": web_citations,
     "compaction": compaction,
     "question": question,
 }
@@ -269,7 +309,7 @@ def write_fixture(client, name: str, username: str, now: datetime) -> str:
             sid, username, seq, row["role"], row.get("content", ""), row.get("tool_name", ""),
             row.get("tool_input", ""), row.get("tool_output", ""), row.get("doc_refs", ""),
             now, now, now, turn,
-            json.dumps({"citation_status": "cited" if "[D1]" in row.get("content", "") else "none",
+            json.dumps({"citation_status": "cited" if any(handle in row.get("content", "") for handle in ("[D1]", "[W1]")) else "none",
                         "tool_scope": "documents_and_web" if spec.get("internet") else "documents_only"})
             if row["role"] == "assistant" else "{}",
         ])

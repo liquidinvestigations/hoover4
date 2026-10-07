@@ -266,10 +266,11 @@ async def test_every_model_step_binds_every_tool_of_the_run(model):
 
 @pytest.mark.parametrize("names, bound", [
     (("search_collections", "cite_documents"), True),
+    (("web_search", "cite_pages"), True),
     (("search_collections",), False),
 ])
 async def test_the_reply_states_whether_the_citation_tool_was_bound(model, names, bound):
-    """The worker's citation check runs only for a model that had `cite_documents`."""
+    """The worker checks citations when either citation tool was bound."""
     agent = FakeAgent([dict_tool(n, LIST_SCHEMA, []) for n in names], set(names))
     model.replies.append(AIMessage(content="The answer [D1]."))
     turn = turn_of(await frames_of(agent, step_request()))

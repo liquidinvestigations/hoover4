@@ -21,6 +21,11 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Remove phrase delimiters before literal table-cell matching.
+pub fn table_find_text(query: &str) -> String {
+    query.replace(['"', '“', '”'], "").trim().to_string()
+}
+
 /// Most rows one page request may return, however large a limit is asked for.
 ///
 /// Reported back in [`TableClamps`] rather than applied silently: a grid that quietly
@@ -555,5 +560,18 @@ mod tests {
     fn an_unlabelled_column_falls_back_to_its_letter() {
         let column = TableColumnInfo { letter: "AB".into(), ..Default::default() };
         assert_eq!(column.label(), "Column AB");
+    }
+}
+
+#[cfg(test)]
+mod find_tests {
+    use super::table_find_text;
+
+    #[test]
+    fn phrase_quotes_do_not_become_cell_content() {
+        assert_eq!(table_find_text("\"Jenalynn Weed\""), "Jenalynn Weed");
+        assert_eq!(table_find_text(" “María García” "), "María García");
+        assert_eq!(table_find_text("D'Angelo"), "D'Angelo");
+        assert_eq!(table_find_text("\"\""), "");
     }
 }

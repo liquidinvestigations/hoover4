@@ -17,7 +17,7 @@ added, renamed or deleted in the code mechanically visible against this tree, an
 | `UI-EmailGraphPage` | `/email_graph/…` | - |
 | `UI-AiChatPage` | `/ai_chat` | - |
 | `UI-AiChatHistoryPage` | `/ai_chat/history` | - |
-| `UI-AiChatSessionPage` | `/ai_chat/c/…` | - |
+| `UI-AiChatSessionPage` | `/ai_chat/c/…` | [`Chat.md`](Chat.md) |
 | `UI-AdminDashboardPage` | `/admin` | - |
 | `UI-AdminCollectionsPage` | `/admin/collections` | - |
 | `UI-AdminCollectionPage` | `/admin/collections/:collection_id` | - |

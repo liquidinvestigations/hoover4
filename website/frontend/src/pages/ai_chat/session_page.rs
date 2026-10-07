@@ -18,6 +18,7 @@ use crate::components::chat_components::{
     ChatComposer, ChatGateOverlay, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
 };
 use crate::components::chat_components::doc_ref_card::ChatDocOpen;
+use crate::components::chat_components::web_page::{ChatWebOpen, WebPagePreview};
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
 use crate::components::suspend_boundary::SuspendWrapper;
@@ -187,6 +188,14 @@ fn AiChatSessionRoot(
         }),
     });
 
+    use_context_provider(move || ChatWebOpen {
+        open: Callback::new(move |(artifact_id, find): (String, String)| {
+            let mut state = DocViewerState::from_find_query(find);
+            state.web_artifact_id = Some(artifact_id);
+            navigator().push(Route::ai_chat_session(session_id(), None, Some(state)));
+        }),
+    });
+
     let detail_res = use_resource(move || chat_get_session(session_id.read().clone()));
     // This signal lives in the parent. The document pane's `preview_query` reads it too.
     // The two panes are siblings, so their shared state has to live where both can reach
@@ -266,7 +275,11 @@ fn AiChatSessionRoot(
             style: "height: 100%; width: 100%; display: flex; flex-direction: row; \
                     background: #F5F6F8; overflow: hidden;",
             ChatConversationPanel { session_id, detail, messages, gate, choices }
-            if selected_result_hash.read().is_some() {
+            if let Some(artifact_id) = doc_viewer_state.read().as_ref().and_then(|state| state.web_artifact_id.clone()) {
+                div { style: "height: 100%; width: 40%; min-width: 300px;",
+                    WebPagePreview { artifact_id, find: doc_viewer_state.read().as_ref().map(|state| state.find_query.clone()).unwrap_or_default() }
+                }
+            } else if selected_result_hash.read().is_some() {
                 div {
                     "data-chat-document-pane": "true",
                     style: "height: 100%; width: 40%; min-width: 300px;",

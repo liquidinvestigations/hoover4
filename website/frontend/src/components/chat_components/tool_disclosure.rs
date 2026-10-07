@@ -59,9 +59,9 @@ pub fn ToolCallDisclosure(
     let failure = tool_content(&tool_output).as_ref().and_then(tool_failure);
     let (background, border, ink) = match failure {
         Some(_) => ("#FEF2F2", "#FECACA", "#991B1B"),
-        None => ("#FFFBEB", "#FDE68A", "#78350F"),
+        None => ("#FFFFFF", "#E5E7EB", "#1E293B"),
     };
-    let chip_bg = if failure.is_some() { "#FECACA" } else { "#FDE68A" };
+    let chip_bg = if failure.is_some() { "#FECACA" } else { "#E5E7EB" };
 
     // Older rows (and any writer that has not been taught the payload columns) have
     // empty input/output. Fall back to the summary so the expansion is never blank.
@@ -91,7 +91,7 @@ pub fn ToolCallDisclosure(
                 span {
                     style: "flex-shrink: 0; background: {chip_bg}; color: {ink}; \
                             border-radius: 999px; padding: 1px 8px; font-size: 11px; \
-                            font-weight: 600; font-family: ui-monospace, monospace;",
+                            font-weight: 400; font-family: inherit;",
                     "{chip}"
                 }
                 span { style: "flex: 1; min-width: 0;", "{label}" }
@@ -106,7 +106,7 @@ pub fn ToolCallDisclosure(
                 }
                 if running {
                     span {
-                        style: "flex-shrink: 0; font-size: 12px; font-style: italic; color: #B45309;",
+                        style: "flex-shrink: 0; font-size: 12px; font-style: italic; color: #64748B;",
                         "running\u{2026}"
                     }
                 }
@@ -128,7 +128,7 @@ pub fn ToolCallDisclosure(
                 }
                 if !running {
                     button {
-                        style: "background: none; border: none; color: #92400E; cursor: pointer; \
+                        style: "background: none; border: none; color: #475569; cursor: pointer; \
                                 font-size: 12px; padding: 0; white-space: nowrap;",
                         onclick: move |_| {
                             let next = !*expanded.peek();
@@ -164,7 +164,7 @@ pub fn ToolCallDisclosure(
                         pre {
                             style: "margin: 0; white-space: pre-wrap; word-break: break-word; \
                                     font-family: ui-monospace, monospace; font-size: 11px; \
-                                    background: #FEF3C7; padding: 8px; border-radius: 6px; \
+                                    background: #F1F5F9; padding: 8px; border-radius: 6px; \
                                     max-height: 220px; overflow: auto;",
                             "{content_summary}"
                         }
@@ -189,7 +189,7 @@ pub fn ToolCallDisclosure(
                     if has_payload {
                         div {
                             button {
-                                style: "background: none; border: none; color: #92400E; \
+                                style: "background: none; border: none; color: #475569; \
                                         cursor: pointer; font-size: 12px; padding: 0; \
                                         text-decoration: underline;",
                                 onclick: move |_| {
@@ -222,7 +222,7 @@ fn ObjectRowsTable(rows: Vec<serde_json::Value>) -> Element {
                     for (index, row) in rows.into_iter().take(20).enumerate() {
                         tr { key: "{index}",
                             for column in columns.iter() {
-                                td { style: "padding: 4px; vertical-align: top; border-top: 1px solid #FDE68A;",
+                                td { style: "padding: 4px; vertical-align: top; border-top: 1px solid #E5E7EB;",
                                     "{row.get(column).map(summarise_value).unwrap_or_default()}"
                                 }
                             }
@@ -296,7 +296,7 @@ fn RawJson(heading: &'static str, body: String) -> Element {
             pre {
                 style: "margin: 0; white-space: pre-wrap; word-break: break-word; \
                         font-family: ui-monospace, monospace; font-size: 11px; \
-                        background: #FEF3C7; padding: 8px; border-radius: 6px; \
+                        background: #F1F5F9; padding: 8px; border-radius: 6px; \
                         max-height: 280px; overflow: auto;",
                 "{pretty_json(&body)}"
             }

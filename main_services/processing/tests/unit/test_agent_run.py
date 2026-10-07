@@ -1050,7 +1050,7 @@ def test_document_and_web_findings_share_one_repair_note(citations_store):
     citations_store["messages"].sort(key=lambda message: message.idx)
     assert _check(citations_store).needed
     note = citations_store["messages"][-1]
-    assert "Call `read_page` now" in note.content
+    assert "Call `cite_pages`" in note.content
     assert "Paragraph 1" in note.content
     assert len([m for m in citations_store["messages"] if citations.is_citation_note(m)]) == 1
 
@@ -1095,7 +1095,7 @@ def test_a_followup_gets_its_own_repair_for_earlier_read_evidence(
 
 @pytest.mark.parametrize("address, expected", [
     ("", "missing"),
-    ("https://example.invalid/report", "cited"),
+    ("https://example.invalid/report", "missing"),
     ("https://example.invalid/unread", "missing"),
 ])
 def test_followup_answer_status_uses_earlier_page_reads(store, monkeypatch, address, expected):
@@ -1142,14 +1142,15 @@ def test_one_read_web_link_does_not_cover_an_unread_link(citations_store, unread
 
 
 @pytest.mark.parametrize("page", ["read", "report_(court)"])
-def test_all_read_web_links_with_fragments_have_cited_status(page):
+def test_read_web_links_require_citation_handles(page):
     messages = [agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
         usage_json=json.dumps({"status": "ok", "evidence": [
             {"kind": "document_read", "status": "ok", "reference": {"url": f"https://example.invalid/{page}"}},
             {"kind": "document_read", "status": "partial", "reference": {"url": "https://example.invalid/next"}}]}))]
     answer = f"[First](https://example.invalid/{page}#one). [Second](https://example.invalid/next#two)."
-    assert not citations.needs_repair(answer, messages, [])[0]
-    assert citations.answer_metadata(answer, messages, [], True)["citation_status"] == "cited"
+    needed, check = citations.needs_repair(answer, messages, [])
+    assert needed and check["web_unmarked"]
+    assert citations.answer_metadata(answer, messages, [], True)["citation_status"] == "missing"
 
 
 def test_a_failed_web_read_cannot_satisfy_its_answer_link():
@@ -1160,3 +1161,57 @@ def test_a_failed_web_read_cannot_satisfy_its_answer_link():
     needed, check = citations.needs_repair(f"The source is {url}.", messages, [])
     assert needed and check["web_unread"] == [url]
     assert citations.answer_metadata(f"The source is {url}.", messages, [], True)["citation_status"] == "missing"
+
+
+@pytest.mark.parametrize("missing", [None, "search", "read", "citation"])
+def test_web_claim_requires_discovery_read_and_citation(missing):
+    from tasks.P_agent import reports
+    url = "https://example.invalid/report"
+    reference = {"handle": "[W1]", "url": url, "final_url": url, "version": "v1",
+                 "artifact_id": "captured-page", "quote_verified": True,
+                 "terms": ["The result is 5."], "quotes": ["The result is 5."]}
+    messages = []
+    if missing != "search":
+        messages.append(agent_runs.RunMessageRow(idx=1, role="tool", tool_name="web_search",
+            content=json.dumps({"results": [{"url": url}]}), usage_json='{"status":"ok"}'))
+    if missing != "read":
+        messages.append(agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
+            usage_json=json.dumps({"status": "ok", "evidence": [{"kind": "document_read",
+                "status": "ok", "reference": {"url": url}}]})))
+    entries = [] if missing == "citation" else reports.normalize(
+        "cite_pages", {}, json.dumps({"citations": [reference]}), "ok")
+    needed, check = citations.needs_repair("The result is 5 [W1].", messages, entries)
+    assert needed == (missing is not None)
+    assert citations.answer_metadata("The result is 5 [W1].", messages, entries, True)["citation_status"] == (
+        "cited" if missing is None else "invalid" if missing == "citation" else "missing")
+    if missing == "search":
+        assert check["web_undiscovered"] == [url]
+    if missing == "read":
+        assert check["web_unread"] == [url]
+
+
+def test_raw_web_citation_call_is_rejected():
+    assert citations.repair_reply_problem('[cite_pages(pages=[])]', []) == "raw_call"
+
+
+def test_one_web_handle_does_not_cover_an_uncited_paragraph():
+    from tasks.P_agent import reports
+    url = "https://example.invalid/report"
+    messages = [
+        agent_runs.RunMessageRow(idx=1, role="tool", tool_name="web_search",
+            content=json.dumps({"results": [{"url": url}]}), usage_json='{"status":"ok"}'),
+        agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
+            usage_json=json.dumps({"status": "ok", "evidence": [{"kind": "document_read",
+                "status": "ok", "reference": {"url": url}}]})),
+    ]
+    entries = reports.normalize("cite_pages", {}, json.dumps({"citations": [{
+        "handle": "[W1]", "url": url, "version": "v1", "artifact_id": "captured-page",
+        "quote_verified": True, "terms": ["The result is 5."], "quotes": ["The result is 5."]
+    }]}), "ok")
+    answer = "The result is 5 [W1].\n\nA court reported 12 cases in Sudan."
+    needed, check = citations.needs_repair(answer, messages, entries)
+    assert needed
+    assert not check["web_missing"]
+    assert check["unsupported_paragraphs"] == [{"number": 2, "text": answer.split("\n\n")[1]}]
+    assert "Paragraph 2" in citations.repair_note(check)
+    assert citations.answer_metadata(answer, messages, entries, True)["citation_status"] == "missing"

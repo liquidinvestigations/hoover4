@@ -177,17 +177,19 @@ def documents_read(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
 
 
 def citation_lines(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
-    """One line for each label that a hidden `cite_documents` result allocated: the label
-    and the file hash as the result gives it. The label stays valid for the chat session."""
+    """Retain each hidden citation handle with its document or captured page version."""
     labels: Dict[str, str] = {}
     for m, name, _args in _results(rows):
-        if name != CITE_DOCUMENTS or _key(m) not in hidden:
+        if name not in (CITE_DOCUMENTS, "cite_pages") or _key(m) not in hidden:
             continue
         body = _json_object(m.content) or {}
         for item in body.get("citations") or []:
-            if isinstance(item, dict) and item.get("handle") and item.get("file_hash"):
+            identity = item.get("file_hash") if isinstance(item, dict) else ""
+            if isinstance(item, dict) and item.get("url") and item.get("version"):
+                identity = f"{item['url']} version={item['version']}"
+            if isinstance(item, dict) and item.get("handle") and identity:
                 labels.pop(str(item["handle"]), None)
-                labels[str(item["handle"])] = str(item["file_hash"])
+                labels[str(item["handle"])] = str(identity)
     return [f"- {label} {file_hash}" for label, file_hash in labels.items()][-CITATION_LINES:]
 
 

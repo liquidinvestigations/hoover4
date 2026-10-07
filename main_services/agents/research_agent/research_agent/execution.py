@@ -261,6 +261,18 @@ def _problems(error: Any) -> List[str]:
                            f"which the schema does not name. The schema names "
                            f"{', '.join(properties)}.")
         return out
+    if error.validator in ("minItems", "maxItems"):
+        bound = "at least" if error.validator == "minItems" else "at most"
+        unit = "item" if error.validator_value == 1 else "items"
+        given = "item" if len(error.instance) == 1 else "items"
+        return [f"{where}: accepts {bound} {error.validator_value} {unit}. "
+                f"The call gave {len(error.instance)} {given}."]
+    if error.validator in ("minLength", "maxLength"):
+        bound = "at least" if error.validator == "minLength" else "at most"
+        unit = "character" if error.validator_value == 1 else "characters"
+        given = "character" if len(error.instance) == 1 else "characters"
+        return [f"{where}: accepts {bound} {error.validator_value} {unit}. "
+                f"The call gave {len(error.instance)} {given}."]
     message = error.message
     if len(message) > 300:
         message = message[:300] + "..."

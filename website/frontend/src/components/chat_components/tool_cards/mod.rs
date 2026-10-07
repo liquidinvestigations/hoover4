@@ -123,7 +123,10 @@ pub fn ToolCard(
         "ask_user" => rsx! {
             result_cards::QuestionCard { tool_input, tool_output, running, draft }
         },
-        "read_todo" | "write_todo" | "edit_todo" | "mark_todo" => rsx! {
+        "write_todo" | "edit_todo" | "mark_todo" => rsx! {
+            result_cards::TodoChanges { tool_output, running, todo_versions }
+        },
+        "read_todo" => rsx! {
             result_cards::TodoCard { tool_name, tool_input, tool_output, running, todo_versions }
         },
         "list_document_entities" => rsx! {
@@ -504,9 +507,9 @@ pub fn CardShell(
     let mut show_raw = use_signal(|| false);
     let (background, border, ink) = match failure {
         Some(_) => ("#FEF2F2", "#FECACA", "#991B1B"),
-        None => ("#FFFBEB", "#FDE68A", "#78350F"),
+        None => ("#FFFFFF", "#E5E7EB", "#1E293B"),
     };
-    let chip_bg = if failure.is_some() { "#FECACA" } else { "#FDE68A" };
+    let chip_bg = if failure.is_some() { "#FECACA" } else { "#E5E7EB" };
     rsx! {
         div {
             "data-card-chip": "{chip}",
@@ -518,7 +521,7 @@ pub fn CardShell(
                 span {
                     style: "flex-shrink: 0; background: {chip_bg}; color: {ink}; \
                             border-radius: 999px; padding: 1px 8px; font-size: 11px; \
-                            font-weight: 600; font-family: ui-monospace, monospace;",
+                            font-weight: 400; font-family: inherit;",
                     "{chip}"
                 }
                 span { style: "flex: 1; min-width: 0;", "{label}" }
@@ -534,7 +537,7 @@ pub fn CardShell(
                 {badges}
                 if running {
                     span {
-                        style: "flex-shrink: 0; font-size: 12px; font-style: italic; color: #B45309;",
+                        style: "flex-shrink: 0; font-size: 12px; font-style: italic; color: #64748B;",
                         "running\u{2026}"
                     }
                 } else {
@@ -686,7 +689,7 @@ pub fn ElapsedCounter(already_ms: Option<u32>) -> Element {
     let n = *seconds.read();
     rsx! {
         span {
-            style: "flex-shrink: 0; font-size: 11px; color: #B45309; \
+            style: "flex-shrink: 0; font-size: 11px; color: #64748B; \
                     font-variant-numeric: tabular-nums;",
             "{n}s"
         }

@@ -147,14 +147,14 @@ pub fn BrowserCard(
         let label = action_label(&tool_name, &input, false);
         return rsx! {
             div {
-                style: "align-self: flex-start; max-width: 92%; background: #FFFBEB; \
-                        border: 1px solid #FDE68A; border-radius: 10px; padding: 8px 12px; \
-                        font-size: 13px; color: #78350F; display: flex; align-items: center; \
+                style: "align-self: flex-start; max-width: 92%; background: #FFFFFF; \
+                        border: 1px solid #E5E7EB; border-radius: 10px; padding: 8px 12px; \
+                        font-size: 13px; color: #1E293B; display: flex; align-items: center; \
                         gap: 10px; flex-wrap: wrap;",
                 span {
-                    style: "flex-shrink: 0; background: #FDE68A; color: #78350F; \
+                    style: "flex-shrink: 0; background: #E5E7EB; color: #1E293B; \
                             border-radius: 999px; padding: 1px 8px; font-size: 11px; \
-                            font-weight: 600; font-family: ui-monospace, monospace;",
+                            font-weight: 400; font-family: inherit;",
                     "{tool_name}"
                 }
                 span { style: "flex: 1; min-width: 0;", "{label}" }
@@ -207,7 +207,7 @@ pub fn BrowserCard(
                         on_open: move |e| popup.set(Some(e)),
                         img_style: "height: 40px; width: 71px; object-fit: cover; \
                                     border-radius: 3px; display: block;".to_string(),
-                        button_style: "padding: 0; border: 1px solid #FDE68A; background: none; \
+                        button_style: "padding: 0; border: 1px solid #E5E7EB; background: none; \
                                        border-radius: 4px; cursor: pointer; flex-shrink: 0; \
                                        line-height: 0;".to_string(),
                     }
@@ -311,7 +311,7 @@ fn CaptureBlock(
                 opener,
                 on_open,
                 img_style: "max-width: 100%; border-radius: 5px; display: block;".to_string(),
-                button_style: "padding: 0; border: 1px solid #FDE68A; background: none; \
+                button_style: "padding: 0; border: 1px solid #E5E7EB; background: none; \
                                border-radius: 6px; cursor: pointer; line-height: 0; \
                                max-width: 100%;".to_string(),
             }
@@ -321,7 +321,7 @@ fn CaptureBlock(
             // Never an absent element: a capture that is not there must say why.
             if !has_page {
                 div {
-                    style: "font-size: 11px; color: #92400E; font-style: italic;",
+                    style: "font-size: 11px; color: #475569; font-style: italic;",
                     if artifact.detail.is_empty() {
                         "The page itself was not archived (status: {artifact.status}). The screenshot above is what was kept."
                     } else {
@@ -354,13 +354,13 @@ fn PageText(text: String) -> Element {
             pre {
                 style: "margin: 0; white-space: pre-wrap; word-break: break-word; \
                         font-family: ui-monospace, monospace; font-size: 11px; \
-                        background: #FEF3C7; padding: 8px; border-radius: 6px; \
+                        background: #F1F5F9; padding: 8px; border-radius: 6px; \
                         max-height: 320px; overflow: auto;",
                 "{clipped}"
             }
             if long {
                 button {
-                    style: "background: none; border: none; color: #92400E; cursor: pointer; \
+                    style: "background: none; border: none; color: #475569; cursor: pointer; \
                             font-size: 12px; padding: 2px 0 0 0; text-decoration: underline;",
                     onclick: move |_| {
                         let next = !*show_all.peek();
@@ -489,7 +489,7 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
             } else {
                 div {
                     style: "flex: 1; display: flex; align-items: center; justify-content: center; \
-                            padding: 30px; text-align: center; color: #92400E; font-size: 13px;",
+                            padding: 30px; text-align: center; color: #475569; font-size: 13px;",
                     if artifact.detail.is_empty() {
                         "This page was not archived (status: {artifact.status})."
                     } else {

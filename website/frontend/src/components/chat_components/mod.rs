@@ -14,6 +14,7 @@ pub mod tool_cards;
 pub mod tool_disclosure;
 pub mod tool_run_summary;
 pub mod transcript;
+pub mod web_page;
 
 pub use composer::ChatComposer;
 pub use conversation_find::ConversationFindBar;

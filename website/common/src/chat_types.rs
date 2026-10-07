@@ -180,6 +180,9 @@ pub struct ChatDocRef {
     /// The matching passage from an earlier search result.
     #[serde(default)]
     pub search_snippet: String,
+    /// The originating search route with this result selected, when traces identify it.
+    #[serde(default)]
+    pub search_route: String,
 }
 
 impl ChatDocRef {
@@ -250,8 +253,8 @@ pub struct ChatMessageItem {
     /// JSON arguments the model passed to the tool (role = tool).
     #[serde(default)]
     pub tool_input: String,
-    /// JSON result (role = tool). Cut to [`TOOL_PAYLOAD_CHARS`], except a broker result
-    /// page ([`is_canonical_page`]), which is stored and read whole.
+    /// JSON result (role = tool). Broker pages and bounded web reads and citations stay complete.
+    /// Other results are cut to [`TOOL_PAYLOAD_CHARS`].
     #[serde(default)]
     pub tool_output: String,
     /// JSON array of [`ChatDocRef`] this step surfaced.
@@ -852,6 +855,39 @@ pub fn extract_doc_refs_with_query(tool_name: &str, tool_output_json: &str, quer
     refs
 }
 
+/// Preserve a search row's query association when one call contains several queries.
+pub fn extract_doc_refs_with_queries(tool_name: &str, output: &str, queries: &[String]) -> Vec<ChatDocRef> {
+    fn matched(value: &serde_json::Value, doc: &ChatDocRef, queries: &[String], depth: usize) -> Option<String> {
+        if depth > 8 { return None; }
+        match value {
+            serde_json::Value::String(text) => serde_json::from_str::<serde_json::Value>(text).ok()
+                .and_then(|value| matched(&value, doc, queries, depth + 1)),
+            serde_json::Value::Array(items) => items.iter().find_map(|item| matched(item, doc, queries, depth + 1)),
+            serde_json::Value::Object(fields) => {
+                let hash = fields.get("file_hash").and_then(|v| v.as_str()).unwrap_or_default();
+                let snippet = fields.get("snippet").and_then(|v| v.as_str()).unwrap_or_default();
+                if !hash.is_empty() && (hash.starts_with(&doc.file_hash) || doc.file_hash.starts_with(hash))
+                    && snippet == doc.snippet
+                {
+                    return fields.get("matched_queries").and_then(|v| v.get(0)).and_then(|v| v.as_str()).map(str::to_string)
+                        .or_else(|| fields.get("q").and_then(|v| v.get(0)).and_then(|v| v.as_u64())
+                            .and_then(|index| queries.get(index as usize)).cloned())
+                        .or_else(|| (queries.len() == 1).then(|| queries[0].clone()));
+                }
+                fields.values().find_map(|value| matched(value, doc, queries, depth + 1))
+            }
+            _ => None,
+        }
+    }
+    let mut refs = extract_doc_refs_from_output(tool_name, output);
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(output) {
+        for doc in refs.iter_mut().filter(|doc| doc.find_query.is_empty()) {
+            doc.find_query = matched(&value, doc, queries, 0).unwrap_or_default();
+        }
+    }
+    refs
+}
+
 fn extract_doc_refs_from_output(tool_name: &str, tool_output_json: &str) -> Vec<ChatDocRef> {
     let Ok(root) = serde_json::from_str::<serde_json::Value>(tool_output_json) else {
         return Vec::new();
@@ -903,6 +939,13 @@ fn extract_from_citations(content: &serde_json::Value) -> Vec<ChatDocRef> {
         doc.quote_reason =
             value.get("quote_reason").and_then(|v| v.as_str()).unwrap_or("").to_string();
         doc.find_query = value.get("find_query").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        if !doc.quote_verified {
+            if let Some(candidate) = value.get("candidate").and_then(|candidate| candidate.get("text")).and_then(|v| v.as_str()).filter(|text| !text.is_empty()) {
+                doc.snippet = candidate.to_string();
+                let phrase = candidate.replace('"', " ").split_whitespace().take(16).collect::<Vec<_>>().join(" ");
+                doc.find_query = format!("\"{phrase}\"");
+            }
+        }
         // The snippet slot carries the quote, so the card shows what was cited rather
         // than an unrelated passage of the same file.
         if doc.snippet.is_empty() {
@@ -1109,6 +1152,7 @@ fn doc_ref_from_value(v: &serde_json::Value) -> Option<ChatDocRef> {
         quote_reason: String::new(),
         term: v.get("term").and_then(|x| x.as_str()).unwrap_or("").to_string(),
         search_snippet: String::new(),
+        search_route: String::new(),
         find_query: v
             .get("matched_queries")
             .and_then(|x| x.get(0))
@@ -1141,6 +1185,17 @@ fn collect_document_shaped(v: &serde_json::Value, out: &mut Vec<ChatDocRef>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_query_indices_select_the_matching_query() {
+        let output = r#"{"items":[{"collectionname":"c","file_hash":"0123456789abcdef","path":"/a","q":[1],"snippet":"second match"}]}"#;
+        let queries = vec!["first".to_string(), "second".to_string()];
+        let refs = extract_doc_refs_with_queries("search_collections", output, &queries);
+        assert_eq!(refs[0].find_query, "second");
+        let ambiguous = output.replace(",\"q\":[1]", "");
+        let refs = extract_doc_refs_with_queries("search_collections", &ambiguous, &queries);
+        assert!(refs[0].find_query.is_empty());
+    }
 
     fn counted(context: u32, peak: u32, window: u32) -> ChatMessageItem {
         ChatMessageItem {
@@ -1267,6 +1322,7 @@ mod tests {
             find_query: String::new(),
             term: String::new(),
             search_snippet: String::new(),
+            search_route: String::new(),
         }
     }
 

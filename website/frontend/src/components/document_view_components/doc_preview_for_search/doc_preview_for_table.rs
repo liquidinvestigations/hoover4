@@ -28,7 +28,7 @@ use common::document_sources::DocumentTableSourceItem;
 use common::document_tables::{
     DEFAULT_TABLE_PAGE_ROWS, TableCell, TableColumnClass,
     TableColumnFilter, TableColumnInfo, TableColumnValue, TableFilterKind, TableOverview,
-    TablePage, TableSort, TableViewQuery,
+    TablePage, TableSort, TableViewQuery, table_find_text,
 };
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
@@ -1030,25 +1030,8 @@ fn cell_style(class: TableColumnClass) -> String {
 /// The find query marked inside a cell, with the same accent the search snippets use.
 #[component]
 fn HighlightedText(text: String, needle: String) -> Element {
-    if needle.is_empty() {
-        return rsx! { "{text}" };
-    }
-    let haystack = text.to_lowercase();
-    let lowered = needle.to_lowercase();
-    let mut pieces: Vec<(String, bool)> = Vec::new();
-    let mut cursor = 0usize;
-    while let Some(found) = haystack[cursor..].find(&lowered) {
-        let start = cursor + found;
-        let end = start + lowered.len();
-        if start > cursor {
-            pieces.push((text[cursor..start].to_string(), false));
-        }
-        pieces.push((text[start..end].to_string(), true));
-        cursor = end;
-    }
-    if cursor < text.len() {
-        pieces.push((text[cursor..].to_string(), false));
-    }
+    let needle = table_find_text(&needle);
+    let pieces = common::text_highlight::case_insensitive_parts(&text, &needle);
     rsx! {
         for (index, (piece, marked)) in pieces.into_iter().enumerate() {
             span {

@@ -69,3 +69,7 @@ Entity counts state that they include all sources.
 Text hit navigation finds the current rendered span after query, source, or page changes.
 PDF pointer coordinates remain correct at each application zoom.
 A filename-only search match opens the table without a row filter.
+
+Table find removes double-quote phrase delimiters before literal cell matching.
+Match counts, row filters, and cell highlights use the same normalized text.
+Unicode case folding preserves the original text offsets during highlighting.

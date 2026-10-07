@@ -75,18 +75,19 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
     // Clamped, not raw: a search hit's snippet is up to 1200 characters of page text and a
     // turn can return a dozen of them, so one result could bury the conversation it is
     // meant to support. `display_snippet` says what the clamp is for.
-    let snippet = if doc.snippet.is_empty() {
+    let snippet = if !doc.search_snippet.is_empty() {
+        clamp_display_text(&doc.search_snippet, 600)
+    } else if doc.snippet.is_empty() && !doc.quote.is_empty() {
+        clamp_display_text(&doc.quote, 600)
+    } else if doc.snippet.is_empty() {
         title.clone()
     } else {
         doc.display_snippet()
     };
     let result = SearchResultDocumentItem {
         title: title.clone(),
-        highlight_text_spans: vec![HighlightTextSpan {
-            text: snippet,
-            is_highlighted: false,
-            index: 0,
-        }],
+        highlight_text_spans: search_snippet_parts(&snippet, &doc.term).into_iter().enumerate()
+            .map(|(index, (text, is_highlighted))| HighlightTextSpan { text, is_highlighted, index: index as u64 }).collect(),
         highlight_filenames_spans: vec![HighlightTextSpan {
             text: title,
             is_highlighted: false,
@@ -118,16 +119,14 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64) -> Element {
             SearchResultItemCard {
                 result,
                 onmounted: |_| {},
+                citation_excerpt: !doc.search_snippet.is_empty(),
             }
-            if !doc.term.is_empty() {
+            if !doc.term.is_empty() && !doc.search_route.is_empty() {
                 div { "data-citation-search-term": "{doc.term}", style: "padding: 0 12px; font-size: 12px;",
-                    "The search term was {doc.term}."
-                }
-            }
-            if !doc.search_snippet.is_empty() {
-                div { "data-citation-search-snippet": "true", style: "padding: 4px 12px; font-size: 13px;",
-                    for (part, marked) in search_snippet_parts(&clamp_display_text(&doc.search_snippet, 400), &doc.term) {
-                        if marked { mark { "{part}" } } else { span { "{part}" } }
+                    Link { to: doc.search_route.clone(), style: "color: #475569;",
+                        "The search term was "
+                        strong { em { code { "{doc.term}" } } }
+                        "."
                     }
                 }
             }

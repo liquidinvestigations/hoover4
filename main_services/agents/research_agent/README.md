@@ -58,7 +58,7 @@ name and summary follow. A chat run then gets the `ask_user` rule and the closin
 an answer to a request that compares documents or collections ends with a `Disagreements:`
 line and a `Not covered:` line, and other answers end without them. The role text of the
 chat asks for the same two statements. The served model wrote the lines only when both
-texts asked for them. The initial web role names `read_page` and its `find` field for supporting passages.
+texts asked for them. The initial web role names `read_page` and its `find` field for supporting passages. It requires `cite_pages` after each source read. The returned web handles identify captured source versions. Bare source URLs require citation repair.
 It requires comparative evidence for a size ranking. The todo text
 follows when the run has the four todo tools. It says
 that the list is optional and that an open item does not stop an answer. The summary of a
@@ -325,7 +325,7 @@ estimate when the tokenizer does not count.
 **The summary.** It starts with `RECORD_HEADER`, which tells the model to read a source again
 before it quotes it. Code writes the lists next (`thread_index.py`): the searches that found
 nothing, the searches that found documents with their counts, the documents read with their
-pages, the citation labels with their file hashes, the pages that `read_page` read with
+pages, the citation labels with document hashes or web source versions, the pages that `read_page` read with
 their source versions and unread continuation offsets, the result pages that continue with their `more`
 handle and call, and one line that names the skill and tool texts that left the list. The model never writes those lists, because a summary model copies
 file hashes with errors. The summary model writes the rest with thinking off, in one request

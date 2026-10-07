@@ -36,7 +36,7 @@ LATEST_TEXT_HEAD = "The newest text that the model wrote in this run:"
 CALL_REFUSAL = "The model server returned a tool call as text. The tool server refused it."
 
 #: A call that the model wrote inside prose instead of sending through the tool API.
-RAW_CITATION_CALL = re.compile(r"\[cite_documents\(.*?\)\]", re.DOTALL)
+RAW_CITATION_CALL = re.compile(r"\[cite_(?:documents|pages)\(.*?\)\]", re.DOTALL)
 
 #: The paragraph before the lists. The lists name the documents of stored results, and a
 #: document that a search returned is not a document that the run read.

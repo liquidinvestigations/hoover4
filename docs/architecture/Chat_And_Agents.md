@@ -72,12 +72,15 @@ checks that a model chosen here can call tools at all. Choosing one that cannot 
 turn that answers without ever searching, which reads as a bad answer rather than as a
 misconfiguration.
 
-## Citations, and why they are not the search cards
+## Citations
 
-`cite_documents` is the agent's own claim about which documents its answer rests on. The
-search cards under a tool disclosure are everything a search returned; the **Sources
-strip** beneath an answer is what the agent chose, and rendering the first in place of the
-second is what turns an answer into a pile of links.
+`cite_documents` identifies the documents that support the answer.
+Search cards show the search results inside tool groups.
+Citation cards appear at their references in the answer.
+Tables show each source card after its cited row.
+Document cards contain the matching source excerpt.
+The search-term line links to the originating query with the cited document selected.
+The line is absent when stored traces cannot identify that query.
 
 Each citation carries a handle (`[D1]`, `[D2]`) allocated per chat **session** by the
 collection-search MCP server, so a handle from the first turn still resolves in the ninth.
@@ -89,23 +92,38 @@ the text stays unverified, and the result gives an exact passage of the text nea
 An unlabeled answer also gets that round after a successful document read, even if the
 answer does not name the file. The worker checks the revised answer before it replaces
 the earlier answer. It retains the earlier answer with a notice when the reply contains
-raw call text or a label that does not resolve. A revised answer without labels shows a
-citation status. The round does not repeat.
+raw call text or a label that does not resolve.
+Each answer stores citation status in its usage metadata.
+The interface omits redundant status prose.
+The round does not repeat.
 
 The citation check uses tool evidence from the current and earlier turns.
 It excludes earlier repair notes.
 Each turn can get one repair round.
-The web repair asks for verified item identities, every requested constraint, merged duplicates, and fewer items when sources are insufficient.
+The web repair requires search discovery, successful page reads, and `cite_pages` references.
+It identifies bare source URLs, unread pages, and undiscovered pages.
+It requires verified item identities and each requested constraint.
+It requires merged duplicates and fewer items when sources are insufficient.
+
+`read_page` stores successful Markdown under the owner and chat session.
+`cite_pages` verifies exact supporting terms against that captured text.
+Its `[Wn]` handles identify source versions and survive browser service replacement.
+Unread pages and absent terms return individual errors.
+Web cards show linked titles, domains, and source quotes.
+They open the captured Markdown in a side pane with exact find and match navigation.
+The preview and find state survive URL reload.
+The existing artifact access check protects captured text.
+Bounded web read and citation results remain complete in the stored transcript.
 
 The worker stores the typed evidence of each tool result beside it: the reads with their
 spans, failed items, citations, notes, and artifacts.
 Table row windows and cell text count as document reads. Table metadata and search results
 count as discovery. A page find with no match does not count as a content read. The read
 record keeps its source version and unread continuation when the page gives them.
-`markdown_text.rs` renders a bare `[Dn]` in the prose as a chip that scrolls the strip's
-entry into view and flashes it; `[D3](https://…)` is still a link, because the handle arm
-only fires when no `(` follows the `]`. The anchor id is minted by `source_anchor_id` and
-read by the strip, one function, because two spellings would scroll to nothing silently.
+`markdown_text.rs` renders bare document and web handles as controls that scroll to their cards.
+Repeated references resolve beside their claim within the answer.
+A Markdown link remains a link.
+Superseded answers remain inside collapsed tool groups.
 
 **A quote that does not verify is shown, marked, never dropped.** A model that stops citing
 is a worse outcome than a citation the reader can see is unverified.

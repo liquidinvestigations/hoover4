@@ -1,36 +1,13 @@
-"""FastMCP router in front of one playwright-mcp sidecar per chat.
+"""Serve page reads, captured-page citations, and isolated interactive browsers.
 
-Each chat gets a browser that belongs to it and to nobody else. What this server
-*advertises* over that browser is deliberately small: `read_page`, which opens a list of
-URLs and returns their readable text with a screenshot and an archived copy each, plus six
-interactive tools for pages that have to be driven: navigate, snapshot, click, type,
-select an option, press a key.
-
-The sidecar's other two dozen tools are registered **disabled**: absent from `list_tools`,
-still routable, and one entry in `BROWSER_EXPOSED_TOOLS` away from coming back. Advertising
-all of them made this one server four fifths of a research agent's tool list, and a tool
-list that long costs accuracy. The evidence is that a seven-tool adaptive shortlist scores
-level with a fixed fifty. `read_page` covers what almost all of them were reached for.
-
-How a call flows:
-
-1. the tool name and arguments arrive here, with `x-hoover4-chat-session` naming the chat;
-2. :mod:`.urlcheck` inspects every URL-shaped argument **before** anything is dispatched.
-   This server sits inside a network where ClickHouse and Temporal answer unauthenticated,
-   so the check is the boundary and refusals are *returned* to the model, not raised;
-3. :mod:`.router` hands back that chat's :class:`ChatBrowser`, starting one if needed;
-4. the call is forwarded to that chat's sidecar over MCP;
-5. if the tool could have changed what is on screen, :mod:`.capture` screenshots and
-   snapshots the page (**including when the call failed**), and appends the artifact id
-   to the result under `_hoover4_artifacts`.
-
-Tool *listing* never spawns a browser: it is answered from a warm template session started
-on first ask. `list_tools` runs during graph construction for every chat, including the
-ones that will never browse.
+Each chat has its own interactive browser. Page reads use a separate bounded queue.
+Successful owned reads store Markdown before `cite_pages` can return verified quotes.
+URL checks run before external browser requests. Tool listing uses a template session.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -47,7 +24,7 @@ from agent_common import artifacts, telemetry
 
 from browser_use_server import capture as capture_mod
 from browser_use_server import chat_browser
-from browser_use_server import read_page, internal_fetch
+from browser_use_server import read_page, internal_fetch, page_citations
 from browser_use_server.reader_routes import Reader
 from browser_use_server import router as router_mod
 from browser_use_server.router import router
@@ -507,6 +484,15 @@ class ReadPageTool(Tool):
             ceiling=ceiling, links=arguments.get("links", True) is not False,
         )
 
+        chat_session = _header(SESSION_HEADER)
+        if username and chat_session:
+            for page in outcome.pages:
+                try:
+                    await asyncio.to_thread(page_citations.store_read, username, chat_session, page)
+                except Exception:
+                    log.exception("could not retain citation text for %s", page.url)
+                    outcome.note += " The page preview could not be stored. Read the page again before citing it."
+
         failed = bool(outcome.pages) and all(page.error for page in outcome.pages)
         blocked = sum(1 for page in outcome.pages if page.blocked)
         detail = f"{len(outcome.pages)} page(s)"
@@ -530,6 +516,40 @@ class ReadPageTool(Tool):
             structured_content=None,
         )
         return _append_marker(result, outcome.artifacts, failed=failed)
+
+
+class CitePagesTool(Tool):
+    """Return verified quotes and stable references to previously read page text."""
+
+    async def run(self, arguments: dict[str, Any]) -> ToolResult:
+        payload = await page_citations.cite(
+            _header(USER_HEADER), _header(SESSION_HEADER), arguments.get("pages"),
+        )
+        return ToolResult(content=[TextContent(type="text", text=json.dumps(payload, ensure_ascii=False))],
+                          structured_content=payload)
+
+
+CITE_PAGES_SCHEMA = {
+    "type": "object",
+    "properties": {"pages": {"type": "array", "minItems": 1, "maxItems": 6,
+        "items": {"type": "object", "properties": {
+            "url": {"type": "string", "description": "Copy an address successfully read with read_page."},
+            "terms": {"type": "array", "minItems": 1, "maxItems": 8,
+                      "items": {"type": "string", "minLength": 1, "maxLength": 200},
+                      "description": "Copy exact source wording to quote and highlight. Case must match."},
+            "version": {"type": "string", "description": "Select a read_page text version when needed."},
+        }, "required": ["url", "terms"]}}},
+    "required": ["pages"],
+}
+
+CITE_PAGES_DESCRIPTION = (
+    "Cite web pages that support the answer. Search for each source and read it with read_page first. "
+    "Give its read_page URL and exact terms from the supporting passage. "
+    "The tool verifies those terms against the stored Markdown and returns quotes with stable [W1] handles. "
+    "Place each returned handle beside its claim. The reader sees the source card and can open its captured text. "
+    "Unread pages, blocked pages, and absent terms cannot supply a citation. "
+    "Use these handles in place of bare source URLs."
+)
 
 
 READ_PAGE_SCHEMA = {
@@ -609,7 +629,7 @@ READ_PAGE_DESCRIPTION = (
 
 
 async def _register_tools() -> int:
-    """Register `read_page`, the interactive allowlist, and the rest as disabled.
+    """Register page reads, page citations, and the interactive allowlist.
 
     Every sidecar tool is still registered, so restoring one is a change to
     `BROWSER_EXPOSED_TOOLS` and a restart rather than a code change, and a future adaptive
@@ -643,6 +663,10 @@ async def _register_tools() -> int:
     )
     advertised += 1
 
+    mcp.add_tool(CitePagesTool(name="cite_pages", description=CITE_PAGES_DESCRIPTION,
+                               parameters=CITE_PAGES_SCHEMA))
+    advertised += 1
+
     mcp.add_middleware(RetiredNames())
 
     missing = sorted(allowed - {spec.name for spec in tools})
@@ -653,7 +677,7 @@ async def _register_tools() -> int:
         )
     log.info(
         "registered %d sidecar tools, advertising %d (%d held back)",
-        len(tools), advertised, len(tools) - (advertised - 1),
+        len(tools), advertised, len(tools) - (advertised - 2),
     )
     return advertised
 

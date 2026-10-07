@@ -18,6 +18,10 @@
 //! that opens with `# Summary` still reads as one message rather than a new document.
 
 use dioxus::prelude::*;
+use common::chat_pages::ChatPageRef;
+use common::chat_types::ChatDocRef;
+use super::transcript::DocumentCitationCards;
+use super::web_page::WebPageCard;
 
 /// Body size for assistant prose. Heading sizes are derived from it.
 const BODY_PX: f32 = 15.0;
@@ -40,27 +44,128 @@ pub fn MarkdownishText(
     /// renders as plain text with no link, because no one document stands behind it.
     #[props(default)]
     conflicting_handles: Vec<String>,
+    #[props(default)]
+    sources: Vec<ChatDocRef>,
+    #[props(default)]
+    pages: Vec<ChatPageRef>,
+    #[props(default = true)]
+    citation_links: bool,
 ) -> Element {
-    let blocks = match &cited_handles {
+    let blocks = if !citation_links {
+        parse_blocks(&text).into_iter().map(|block| map_spans(block, &|span| match span {
+            Span::Handle(handle) => Span::Text(handle), other => other,
+        })).collect()
+    } else { match &cited_handles {
         Some(issued) => mark_handles(parse_blocks(&text), issued, &conflicting_handles),
         None => mark_handles(parse_blocks(&text), &[], &conflicting_handles)
             .into_iter()
             .map(unmark_uncited)
             .collect(),
-    };
+    }};
     rsx! {
         div {
             style: "font-size: {BODY_PX}px; line-height: 1.65; color: #0F172A; \
                     word-break: break-word; overflow-wrap: anywhere;",
             for (i, block) in blocks.into_iter().enumerate() {
-                BlockView { key: "{i}", block }
+                CitationBlock { key: "{i}", block, sources: sources.clone(), pages: pages.clone(), conflicting: conflicting_handles.clone() }
             }
         }
     }
 }
 
 #[component]
-fn BlockView(block: Block) -> Element {
+fn CitationBlock(block: Block, sources: Vec<ChatDocRef>, pages: Vec<ChatPageRef>, conflicting: Vec<String>) -> Element {
+    if let Block::Paragraph(spans) = &block {
+        let parts = citation_parts(spans);
+        if parts.len() > 1 {
+            return rsx! {
+                for (index, spans) in parts.into_iter().enumerate() {
+                    CitationBlock { key: "part-{index}", block: Block::Paragraph(spans), sources: sources.clone(), pages: pages.clone(), conflicting: conflicting.clone() }
+                }
+            };
+        }
+    }
+    let list = match &block {
+        Block::Bullets(items) => Some((false, items.clone())),
+        Block::Numbers(items) => Some((true, items.clone())),
+        _ => None,
+    };
+    if let Some((ordered, items)) = list {
+        let children = rsx! {
+            for (index, spans) in items.into_iter().enumerate() {
+                li { key: "{index}", style: "margin-bottom: 4px;",
+                    CitationBlock { block: Block::Paragraph(spans), sources: sources.clone(), pages: pages.clone(), conflicting: conflicting.clone() }
+                }
+            }
+        };
+        return if ordered { rsx! { ol { style: "padding-left: 22px;", {children} } } }
+            else { rsx! { ul { style: "padding-left: 22px;", {children} } } };
+    }
+    let handles = if matches!(&block, Block::Table { .. }) { Vec::new() } else { block_handles(&block) };
+    rsx! {
+        BlockView { block, sources: sources.clone(), pages: pages.clone(), conflicting: conflicting.clone() }
+        CitationSources { handles, sources, pages, conflicting }
+    }
+}
+
+#[component]
+fn CitationSources(handles: Vec<String>, sources: Vec<ChatDocRef>, pages: Vec<ChatPageRef>, conflicting: Vec<String>) -> Element {
+    rsx! {
+        for handle in handles {
+            if let Some(doc) = sources.iter().find(|source| source.handle == handle).cloned() {
+                DocumentCitationCards { sources: vec![doc], conflicting: conflicting.clone() }
+            }
+            if let Some(page) = pages.iter().rev().find(|source| source.handle == handle).cloned() {
+                div { "data-citation-handle": "{handle}", WebPageCard { page } }
+            }
+        }
+    }
+}
+
+fn citation_parts(spans: &[Span]) -> Vec<Vec<Span>> {
+    let mut parts = Vec::new();
+    let mut current = Vec::new();
+    let mut cited = false;
+    for span in spans {
+        if cited && !matches!(span, Span::Handle(_)) {
+            if let Span::Text(text) = span {
+                let boundary = text.char_indices().find(|(_, ch)| !ch.is_whitespace() && !ch.is_ascii_punctuation())
+                    .map(|(index, _)| index).unwrap_or(text.len());
+                if boundary > 0 { current.push(Span::Text(text[..boundary].to_string())); }
+                if boundary == text.len() { continue; }
+                parts.push(std::mem::take(&mut current));
+                current.push(Span::Text(text[boundary..].to_string()));
+                cited = false;
+                continue;
+            }
+            parts.push(std::mem::take(&mut current));
+            cited = false;
+        }
+        current.push(span.clone());
+        cited |= matches!(span, Span::Handle(_));
+    }
+    if !current.is_empty() { parts.push(current); }
+    parts
+}
+
+fn block_handles(block: &Block) -> Vec<String> {
+    let handles = std::cell::RefCell::new(Vec::new());
+    map_spans(block.clone(), &|span| {
+        if let Span::Handle(handle) = &span {
+            if !handles.borrow().contains(handle) { handles.borrow_mut().push(handle.clone()); }
+        }
+        span
+    });
+    handles.into_inner()
+}
+
+#[component]
+fn BlockView(
+    block: Block,
+    #[props(default)] sources: Vec<ChatDocRef>,
+    #[props(default)] pages: Vec<ChatPageRef>,
+    #[props(default)] conflicting: Vec<String>,
+) -> Element {
     match block {
         Block::Heading { level, spans } => {
             let (size, weight, top) = heading_style(level);
@@ -116,7 +221,10 @@ fn BlockView(block: Block) -> Element {
         },
         // Wide tables scroll inside their own box; the transcript column must not gain
         // a horizontal scrollbar because one answer contained a ten-column table.
-        Block::Table { header, rows } => rsx! {
+        Block::Table { header, rows } => {
+            let columns = header.len().max(rows.iter().map(Vec::len).max().unwrap_or(1)).max(1);
+            let header_handles = table_row_handles(&header);
+            rsx! {
             div { style: "margin: 0 0 10px 0; overflow-x: auto;",
                 table {
                     style: "border-collapse: collapse; font-size: 13.5px; min-width: 100%;",
@@ -136,7 +244,15 @@ fn BlockView(block: Block) -> Element {
                         }
                     }
                     tbody {
+                        if !header_handles.is_empty() {
+                            tr { "data-citation-table-row": "header",
+                                td { colspan: "{columns}",
+                                    CitationSources { handles: header_handles, sources: sources.clone(), pages: pages.clone(), conflicting: conflicting.clone() }
+                                }
+                            }
+                        }
                         for (r, row) in rows.into_iter().enumerate() {
+                            {let handles = table_row_handles(&row); rsx! {
                             tr { key: "{r}",
                                 for (c, cell) in row.into_iter().enumerate() {
                                     td {
@@ -147,15 +263,27 @@ fn BlockView(block: Block) -> Element {
                                     }
                                 }
                             }
+                            if !handles.is_empty() {
+                                tr { key: "sources-{r}", "data-citation-table-row": "{r}",
+                                    td { colspan: "{columns}",
+                                        CitationSources { handles, sources: sources.clone(), pages: pages.clone(), conflicting: conflicting.clone() }
+                                    }
+                                }
+                            }
+                            }}
                         }
                     }
                 }
             }
-        },
+        }},
         Block::Rule => rsx! {
             hr { style: "border: none; border-top: 1px solid #E2E8F0; margin: 14px 0;" }
         },
     }
+}
+
+fn table_row_handles(row: &[Vec<Span>]) -> Vec<String> {
+    block_handles(&Block::Paragraph(row.iter().flatten().cloned().collect()))
 }
 
 /// `(font-size px, weight, margin-top px)` for a heading level.
@@ -196,12 +324,12 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                         button {
                             key: "{i}",
                             style: "
-                                display: inline; border: 1px solid #C7D2FE;
-                                background: #EEF2FF; color: #3730A3; border-radius: 5px;
+                                display: inline; border: 1px solid #E5E7EB;
+                                background: #F8FAFC; color: #334155; border-radius: 5px;
                                 padding: 0 4px; margin: 0 1px; font-size: 0.82em;
-                                font-weight: 600; cursor: pointer; vertical-align: baseline;
+                                font-weight: 400; cursor: pointer; vertical-align: baseline;
                             ",
-                            title: "Jump to the cited document",
+                            title: "Show the cited source",
                             onclick: {
                                 let handle = handle.clone();
                                 move |_| scroll_to_handle(&handle)
@@ -253,11 +381,8 @@ pub enum Span {
     Italic(String),
     Code(String),
     Link { text: String, href: String },
-    /// A citation handle the agent wrote into its prose, `[D3]`.
-    ///
-    /// Rendered as a chip that scrolls to the document's card in the Sources strip and
-    /// highlights it. Recognised before the link syntax so `[D3](http://…)` is still a
-    /// link. A handle is `[D` followed by digits and a `]` and nothing else.
+    /// A document or web citation handle in assistant prose.
+    /// Its control opens the next matching source card in the same answer.
     Handle(String),
     /// A handle that no `cite_documents` result of the conversation gave. Rendered as
     /// plain text marked "not cited", with no chip.
@@ -601,27 +726,25 @@ pub fn parse_inline(text: &str) -> Vec<Span> {
     out
 }
 
-/// `[D12]` and nothing else. `[Dog]`, `[D]` and `[12]` are ordinary text.
+/// Read document and web citation handles. Other bracketed words remain ordinary text.
 fn as_handle(chars: &[char]) -> Option<String> {
     let inner: String = chars.iter().collect();
-    let digits = inner.strip_prefix("[D")?.strip_suffix(']')?;
+    let digits = inner.strip_prefix("[D").or_else(|| inner.strip_prefix("[W"))?.strip_suffix(']')?;
     if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
         return None;
     }
     Some(inner)
 }
 
-/// Scroll the Sources strip's entry for one handle into view and flash it.
-///
-/// Done with an element id and the platform's own scrolling rather than by lifting the
-/// selection into a signal: the strip and the prose are in different components with no
-/// shared owner, and threading a signal between them would put chat-wide state in the
-/// markdown renderer.
+/// Scroll to the next matching citation card in the active answer.
 fn scroll_to_handle(handle: &str) {
-    let id = source_anchor_id(handle);
+    let handle = serde_json::to_string(handle).unwrap_or_default();
     document::eval(&format!(
         r#"
-        const el = document.getElementById("{id}");
+        const button = document.activeElement;
+        const scope = button?.closest('[data-chat-answer]') || document;
+        const candidates = [...scope.querySelectorAll('[data-citation-handle]')].filter(el => el.dataset.citationHandle === {handle});
+        const el = candidates.find(el => button && (button.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) || candidates[0];
         if (el) {{
             el.scrollIntoView({{ behavior: "smooth", block: "center" }});
             el.classList.remove("x-source-flash");
@@ -632,13 +755,6 @@ fn scroll_to_handle(handle: &str) {
         }}
         "#
     ));
-}
-
-/// The DOM id of a Sources-strip entry. One function, because the prose writes it and
-/// the strip reads it, and two spellings would scroll to nothing.
-pub fn source_anchor_id(handle: &str) -> String {
-    let digits: String = handle.chars().filter(|c| c.is_ascii_digit()).collect();
-    format!("x-source-{digits}")
 }
 
 fn is_wordish(c: char) -> bool {
@@ -762,12 +878,21 @@ mod tests {
         );
     }
 
-    /// The prose writes the anchor id and the strip reads it. Two spellings would scroll
-    /// to nothing, silently.
     #[test]
-    fn the_anchor_id_is_derived_from_the_handles_digits() {
-        assert_eq!(source_anchor_id("[D3]"), "x-source-3");
-        assert_eq!(source_anchor_id("[D12]"), "x-source-12");
+    fn citation_parts_keep_punctuation_and_source_order() {
+        let parts = citation_parts(&parse_inline("First [D2]. Next **claim** [W1][D1]. Last."));
+        assert_eq!(parts.len(), 3);
+        assert_eq!(block_handles(&Block::Paragraph(parts[0].clone())), vec!["[D2]"]);
+        assert_eq!(block_handles(&Block::Paragraph(parts[1].clone())), vec!["[W1]", "[D1]"]);
+        assert_eq!(parts[0].last(), Some(&Span::Text(". ".into())));
+        assert_eq!(parts[2], vec![Span::Text("Last.".into())]);
+    }
+
+    #[test]
+    fn table_row_citations_keep_cell_order_and_remove_repeats() {
+        let row = vec![parse_inline("First [W2][D1]"), parse_inline("Again [W2], then [W1]")];
+        assert_eq!(table_row_handles(&row), vec!["[W2]", "[D1]", "[W1]"]);
+        assert!(table_row_handles(&[parse_inline("No citation")]).is_empty());
     }
 
     #[test]

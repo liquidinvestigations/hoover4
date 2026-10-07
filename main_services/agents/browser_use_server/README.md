@@ -108,3 +108,19 @@ Change each extension version and its checksum together.
 Missing extensions report degraded browser operation without preventing startup.
 The interactive sidecar connects through its required loopback hostname spelling.
 Its allowed-host validation also compares the ephemeral listener port.
+
+## Web citations
+
+`read_page` stores successful Markdown under the caller and chat session.
+`cite_pages` accepts one to six previously read URLs with exact supporting terms.
+Each page accepts one to eight terms of up to 200 characters.
+Terms match case and literal source text.
+A missing term or unread page returns an individual error.
+Successful citations return verified quotes, source offsets, a stored page identifier, and a stable `[Wn]` handle.
+A changed text version receives a different handle.
+A version field selects earlier stored text without another page request.
+Required artifacts store each binding before the tool returns it.
+Committed citation results keep earlier handles reserved after binding retention.
+The service has one allocating process. Multiple allocating processes require a shared allocation authority.
+The website verifies ownership before serving captured Markdown.
+The preview renders Markdown without executable source HTML and supports exact find.

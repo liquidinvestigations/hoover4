@@ -60,6 +60,9 @@ pub struct DocViewerState {
     /// existed takes `None` and opens the panel the way it always did.
     #[serde(default)]
     pub selected_entity: Option<String>,
+    /// The captured web page shown by the chat preview pane.
+    #[serde(default)]
+    pub web_artifact_id: Option<String>,
 }
 
 impl DocViewerState {
@@ -70,6 +73,7 @@ impl DocViewerState {
             selected_source_page: None,
             table_state: None,
             selected_entity: None,
+            web_artifact_id: None,
         }
     }
 
@@ -95,6 +99,7 @@ impl Default for DocViewerState {
             selected_source_page: None,
             table_state: None,
             selected_entity: None,
+            web_artifact_id: None,
         }
     }
 }
@@ -134,6 +139,18 @@ mod tests {
     use super::*;
     use crate::data_definitions::url_param::UrlParam;
     use std::str::FromStr;
+
+    #[test]
+    fn web_preview_identity_and_exact_find_survive_the_url() {
+        let state = DocViewerState {
+            web_artifact_id: Some("source-version-id".into()),
+            find_query: "Știință exact match".into(),
+            ..Default::default()
+        };
+        let encoded = UrlParam(state.clone()).to_string();
+        assert_eq!(UrlParam::<DocViewerState>::from_str(&encoded).unwrap().0, state);
+        assert!(DocViewerState::from_find_query("document".into()).web_artifact_id.is_none());
+    }
 
     fn round_trip(tab: ViewerRightTabSelection) -> ViewerRightTabSelection {
         let encoded = UrlParam(ViewerRightTabState { selected_tab: tab }).to_string();
@@ -205,6 +222,7 @@ mod tests {
                 page: 3,
             }),
             selected_entity: None,
+            web_artifact_id: None,
         };
         let encoded = UrlParam(state.clone()).to_string();
         let parsed = UrlParam::<DocViewerState>::from_str(&encoded)

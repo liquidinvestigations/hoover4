@@ -18,6 +18,7 @@ enum Kind {
     Browser,
     Entities,
     Cite,
+    WebCite,
     Skill,
     Note,
     Todo,
@@ -36,6 +37,7 @@ impl Kind {
             "read_page" => Kind::WebRead,
             "list_document_entities" => Kind::Entities,
             "cite_documents" => Kind::Cite,
+            "cite_pages" => Kind::WebCite,
             "write_todo" | "edit_todo" | "mark_todo" | "read_todo" => Kind::Todo,
             "search_skills" | "read_skill" | "read_tool" | "search_agent_tools" => Kind::Skill,
             "write_note" => Kind::Note,
@@ -55,6 +57,7 @@ impl Kind {
             Kind::Browser => format!("{n} browser {}", s("action", "actions")),
             Kind::Entities => format!("listed the entities of {n} {}", s("document", "documents")),
             Kind::Cite => format!("cited {n} {}", s("document", "documents")),
+            Kind::WebCite => format!("cited {n} web {}", s("page", "pages")),
             Kind::Skill => format!("read {n} {} and tool texts", s("skill", "skills")),
             Kind::Note => format!("saved {n} {}", s("note", "notes")),
             Kind::Todo => format!("{n} todo list {}", s("call", "calls")),
@@ -90,6 +93,7 @@ fn units(kind: Kind, args: &serde_json::Value) -> u64 {
         Kind::Read | Kind::Entities => items(args, "file_hash") + items(args, "documents"),
         Kind::WebRead => items(args, "urls") + items(args, "url"),
         Kind::Cite => items(args, "citations"),
+        Kind::WebCite => items(args, "pages"),
         _ => 1,
     };
     n.max(1)
@@ -164,6 +168,7 @@ pub fn tool_run_summary(rows: &[ChatMessageItem], duration_ms: Option<i64>) -> S
     let mut counts: Vec<(Kind, u64)> = Vec::new();
     let mut failures = 0u64;
     for row in rows {
+        if row.role == common::chat_types::ChatRole::Assistant { continue; }
         let kind = if row.role.is_instruction() {
             Kind::Instruction
         } else {
@@ -272,5 +277,14 @@ mod tests {
             tool_run_summary(&rows, Some(5_000)),
             "Searched the web for 1 term, read 2 web pages, 1 other call, took 5s"
         );
+    }
+
+    #[test]
+    fn earlier_answers_do_not_count_as_calls_and_page_citations_count_pages() {
+        let mut earlier = tool("", "", "", "");
+        earlier.role = ChatRole::Assistant;
+        earlier.content = "Earlier answer".into();
+        let rows = vec![earlier, tool("cite_pages", r#"{"pages":[{"url":"https://a.example"},{"url":"https://b.example"}]}"#, "{}", "")];
+        assert_eq!(tool_run_summary(&rows, Some(1_000)), "Cited 2 web pages, took 1s");
     }
 }

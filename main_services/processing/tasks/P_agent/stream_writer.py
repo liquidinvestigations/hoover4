@@ -328,7 +328,7 @@ BROWSER_SERVER_URL = os.getenv("BROWSER_SERVER_URL", "http://hoover4-mcp-browser
 def tool_row_fields(name: str, args: Any, content: str, doc_refs: Any = None) -> dict[str, str]:
     """The `chat_messages` columns of one finished tool call, in today's row shape.
 
-    A canonical broker page keeps its own bytes. A bounded web page read keeps its complete JSON representation.
+    Canonical broker pages and bounded web reads and citations keep their complete representation.
     Other results use truncated JSON, and the summary is the start of the arguments. `doc_refs` is the list that the
     collection server sent beside the page, with the whole hashes and the datasets. When it
     is None, the refs come from the content.
@@ -348,8 +348,8 @@ def tool_row_fields(name: str, args: Any, content: str, doc_refs: Any = None) ->
             result = json.loads(content)
         except (TypeError, ValueError):
             result = content
-        # The browser already bounds page reads with their continuation and archive markers.
-        tool_output = _dumps(result) if name == "read_page" else truncate_json(_dumps(result))
+        # Web citations retain every handle and quote that the answer can reference.
+        tool_output = _dumps(result) if name in ("read_page", "cite_pages") else truncate_json(_dumps(result))
     if isinstance(doc_refs, list):
         refs = response_doc_refs(name, doc_refs, call_query(args))
     else:

@@ -5,6 +5,7 @@ extern crate serde;
 pub mod admin_types;
 pub mod agent_api;
 pub mod chat_gate;
+pub mod chat_pages;
 pub mod chat_types;
 pub mod current_user;
 pub mod date_histogram;

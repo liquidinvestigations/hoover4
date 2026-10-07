@@ -160,8 +160,8 @@ pub fn EntitiesCard(
             badges: rsx! {
                 if !running && openable > 0 {
                     span {
-                        style: "flex-shrink: 0; font-size: 11px; color: #78350F; \
-                                background: #FDE68A; border-radius: 999px; padding: 1px 8px;",
+                        style: "flex-shrink: 0; font-size: 11px; color: #1E293B; \
+                                background: #E5E7EB; border-radius: 999px; padding: 1px 8px;",
                         "{openable} with a card"
                     }
                 }
@@ -198,18 +198,18 @@ fn DocumentEntityRow(
 
     rsx! {
         div {
-            style: "background: white; border: 1px solid #FDE68A; border-radius: 8px; \
+            style: "background: white; border: 1px solid #E5E7EB; border-radius: 8px; \
                     padding: 7px 9px;",
             div {
                 style: "font-size: 11px; font-family: ui-monospace, monospace; \
-                        color: #92400E; margin-bottom: 5px;",
+                        color: #475569; margin-bottom: 5px;",
                 "{document.collectionname} \u{b7} {short_hash}"
             }
             if !document.error.is_empty() {
                 div { style: "font-size: 12px; color: #991B1B;", "{document.error}" }
             }
             if document.truncated {
-                div { style: "font-size: 12px; color: #92400E;", "The entity list was cut." }
+                div { style: "font-size: 12px; color: #475569;", "The entity list was cut." }
             }
             if !document.structured.is_empty() {
                 div {
@@ -220,9 +220,9 @@ fn DocumentEntityRow(
                                 key: "s{value}",
                                 to: Route::entity_card(identifier, value.clone()),
                                 title: "Open the card for this value ({rule_id})",
-                                style: "border: 1px solid #C7D2FE; background: #EEF2FF; \
+                                style: "border: 1px solid #E5E7EB; background: #F8FAFC; \
                                         border-radius: 999px; padding: 1px 9px; \
-                                        font-size: 12px; color: #3730A3; \
+                                        font-size: 12px; color: #334155; \
                                         text-decoration: none; word-break: break-all;",
                                 "{entity_label(&value, count)}"
                             }
@@ -241,7 +241,7 @@ fn DocumentEntityRow(
                 }
                 if identifier.is_none() {
                     div {
-                        style: "font-size: 11px; color: #92400E; margin-top: 4px;",
+                        style: "font-size: 11px; color: #475569; margin-top: 4px;",
                         "No card: this conversation never named the dataset these values \
                          came from, and the viewer is addressed by dataset."
                     }
@@ -261,7 +261,7 @@ fn DocumentEntityRow(
                     }
                 }
                 div {
-                    style: "font-size: 11px; color: #92400E; margin-top: 4px;",
+                    style: "font-size: 11px; color: #475569; margin-top: 4px;",
                     if document.model_found.len() > MODEL_VALUES_SHOWN {
                         {
                             let rest = document.model_found.len() - MODEL_VALUES_SHOWN;
@@ -276,7 +276,7 @@ fn DocumentEntityRow(
             if document.structured.is_empty() && document.model_found.is_empty()
                 && document.error.is_empty() {
                 div {
-                    style: "font-size: 12px; color: #92400E;",
+                    style: "font-size: 12px; color: #475569;",
                     "Nothing extracted from this document."
                 }
             }

@@ -58,7 +58,7 @@ use common::document_tables::{
     MAX_TABLE_COLUMN_VALUES, TableCell, TableClamps, TableColumnClass, TableColumnFilter,
     TableColumnInfo, TableColumnValue, TableFilterKind, TableOverview, TablePage, TableRow,
     TableSheet, TableTruncation, TableViewQuery, clamp_table_page_rows,
-    clamp_table_visible_columns,
+    clamp_table_visible_columns, table_find_text,
 };
 use common::search_result::DocumentIdentifier;
 
@@ -515,7 +515,7 @@ pub async fn get_table_page(
     let sort = query
         .sort
         .filter(|sort| known_columns.contains(&sort.column_id));
-    let search = query.search.clone();
+    let search = table_find_text(&query.search);
 
     let constrained = !filters.is_empty() || !search.is_empty();
     let offset = query.offset;
@@ -714,6 +714,7 @@ fn build_constraints(
     hash: &str,
     binds: &mut Vec<Bind>,
 ) -> String {
+    let search = table_find_text(search);
     let mut clauses = Vec::new();
     for filter in filters {
         let column_id = filter.column_id;
@@ -760,6 +761,7 @@ pub async fn get_table_column_values(
     column_id: u32,
     search: String,
 ) -> anyhow::Result<Vec<TableColumnValue>> {
+    let search = table_find_text(&search);
     let _manifest = require_table_manifest(user, &document_identifier).await?;
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
 
@@ -834,6 +836,7 @@ pub async fn count_table_cell_matches(
     document_identifier: &DocumentIdentifier,
     find_query: &str,
 ) -> anyhow::Result<u64> {
+    let find_query = table_find_text(find_query);
     if find_query.is_empty() {
         return Ok(0);
     }
@@ -855,7 +858,7 @@ pub async fn count_table_cell_matches(
         .bind(&document_identifier.collection_dataset)
         .bind(&document_identifier.file_hash)
         .bind(&document_identifier.file_hash)
-        .bind(find_query)
+        .bind(&find_query)
         .fetch_one()
         .await?;
     Ok(count)

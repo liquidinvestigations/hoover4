@@ -36,7 +36,7 @@ PROFILES = sorted(ROLE_CONTEXT)
 GENERAL_DESCRIPTIONS = {
     "search": "how to search document collections and use the query syntax",
     "thorough": "how to choose further searches when a question needs research",
-    "citation": "how to cite the documents an answer relies on with cite_documents",
+    "citation": "how to cite documents and captured web pages that support an answer",
 }
 
 #: The descriptions of the technique and stumble skills that the classifier forms were
@@ -294,3 +294,20 @@ def test_document_ids_names_the_hash_and_the_supported_path():
     text = normalised(render_skill("document_ids", context("full_research")))
     assert "A document hash has 64 hexadecimal characters." in text
     assert "`read_documents` can also resolve a file name or path" in text
+
+
+def test_web_only_citation_skill_keeps_page_instructions():
+    context = SkillContext(profile="full_research", tool_names=frozenset({"cite_pages", "read_page", "web_search"}))
+    body = render_skill("citation", context, strict=True)
+    assert "`cite_pages`" in body and "[W1]" in body
+    assert "`cite_documents`" not in body
+
+
+def test_web_citation_role_does_not_request_bare_source_links():
+    context = SkillContext(profile="full_research", tool_names=frozenset({"cite_pages", "read_page", "web_search"}))
+    body = skill_store.role_method(context, strict=True)
+    assert "returned `cite_pages` handle" in body
+    assert "Put a direct page link" not in body
+    assert "give the link of each web page" not in body
+    assert "Never number citations yourself." in body
+    assert "omit its claims until a later citation succeeds" in body

@@ -35,7 +35,7 @@ PACKS: Dict[str, FrozenSet[str]] = {
         "folder_list", "folder_search", "read_more",
     }),
     "conversation": frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"}),
-    "web": frozenset({"web_search", "list_search_sources", "whois_lookup", "read_page"}),
+    "web": frozenset({"web_search", "list_search_sources", "whois_lookup", "read_page", "cite_pages"}),
     "browser": frozenset({"browser_navigate", "browser_snapshot", "browser_click",
                           "browser_type", "browser_select_option", "browser_press_key"}),
 }

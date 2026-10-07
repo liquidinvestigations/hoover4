@@ -213,11 +213,11 @@ pub fn WebSearchCard(
             if has_artifact {
                 div {
                     button {
-                        style: "background: none; border: none; color: #92400E; cursor: pointer; \
+                        style: "background: none; border: none; color: #475569; cursor: pointer; \
                                 font-size: 12px; padding: 0; text-decoration: underline;",
                         onmounted: move |e| opener.set(Some(e.data())),
                         onclick: move |_| popup_open.set(true),
-                        "Search detail \u{2014} before and after reranking"
+                        "View search details."
                     }
                 }
             }
@@ -246,14 +246,14 @@ fn PendingSearch(query: String, sources: Vec<String>, elapsed_ms: Option<u32>) -
     };
     rsx! {
         div {
-            style: "align-self: flex-start; max-width: 92%; background: #FFFBEB; \
-                    border: 1px solid #FDE68A; border-radius: 10px; padding: 8px 12px; \
-                    font-size: 13px; color: #78350F; display: flex; align-items: center; \
+            style: "align-self: flex-start; max-width: 92%; background: #FFFFFF; \
+                    border: 1px solid #E5E7EB; border-radius: 10px; padding: 8px 12px; \
+                    font-size: 13px; color: #1E293B; display: flex; align-items: center; \
                     gap: 10px; flex-wrap: wrap;",
             span {
-                style: "flex-shrink: 0; background: #FDE68A; color: #78350F; \
+                style: "flex-shrink: 0; background: #E5E7EB; color: #1E293B; \
                         border-radius: 999px; padding: 1px 8px; font-size: 11px; \
-                        font-weight: 600; font-family: ui-monospace, monospace;",
+                        font-weight: 400; font-family: inherit;",
                 "web_search"
             }
             span { style: "flex: 1; min-width: 0;", "\u{201c}{query}\u{201d}" }
@@ -319,7 +319,7 @@ fn ResultRow(row: Row) -> Element {
     rsx! {
         div {
             style: "display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; \
-                    border-top: 1px solid #FEF3C7;",
+                    border-top: 1px solid #F1F5F9;",
             div {
                 style: "min-width: 0; flex: 1;",
                 div {
@@ -407,12 +407,12 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
                     div {
                         style: "padding: 12px 16px; border-bottom: 1px solid #E2E8F0; \
                                 font-size: 12px; color: #334155; line-height: 1.7;",
-                        div { "The model did not read these ranks." }
+                        div { "The tool returned selected results to the model." }
                         div { "{dedupe}" }
                         if applied {
-                            div { "cross-encoder reranked in {rerank_ms:.0} ms" }
+                            div { "The cross-encoder ranked results in {rerank_ms:.0} ms." }
                         } else {
-                            div { style: "color: #3730A3;", "reranking did not run \u{2014} this is fusion order in both columns" }
+                            div { style: "color: #475569;", "Results use reciprocal rank fusion." }
                         }
                         if !degraded.is_empty() {
                             div { style: "color: #991B1B;", "returned nothing: {degraded}" }
@@ -422,12 +422,16 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
                     div {
                         style: "display: flex; gap: 0; align-items: stretch; overflow: auto; flex: 1;",
                         RankColumn {
-                            heading: "Before reranking (fusion order)".to_string(),
+                            heading: "All candidates use fusion order.".to_string(),
                             rows: before,
                             show_source_ranks: true,
                         }
                         RankColumn {
-                            heading: "After reranking (cross-encoder score)".to_string(),
+                            heading: (if applied {
+                                "The cross-encoder ranks selected results."
+                            } else {
+                                "Selected results use fusion order."
+                            }).to_string(),
                             rows: after,
                             show_source_ranks: false,
                         }

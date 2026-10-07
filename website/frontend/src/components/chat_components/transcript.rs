@@ -10,7 +10,7 @@ use dioxus::prelude::*;
 
 use crate::components::chat_components::{
     doc_ref_card::{ChatDocRefCard, ChatDocRefRow},
-    markdown_text::{MarkdownishText, source_anchor_id},
+    markdown_text::MarkdownishText,
     tool_cards::{ElapsedCounter, ToolCard},
     tool_run_summary::{run_duration_ms, timestamp_ms, tool_run_summary},
 };
@@ -76,25 +76,37 @@ pub fn ChatTranscript(
     // document's entities names it by collection and hash, and the dataset that makes it
     // addressable was named earlier in the same conversation by whatever found it.
     let datasets = dataset_by_hash(&messages);
+    let collections = use_resource(crate::api::storage_api::list_storage_tree);
+    let collection_tree = collections.read().as_ref().and_then(|result| result.as_ref().ok()).cloned().unwrap_or_default();
     // Handles are allocated for the whole conversation, so a handle that any citation of
     // any run gave is a real one. The answers mark every other handle as not cited.
-    let cited_handles = issued_handles(&messages, &run_cited_handles);
+    let mut cited_handles = issued_handles(&messages, &run_cited_handles);
+    let web_pages = messages.iter().filter(|row| row.tool_name == "cite_pages")
+        .flat_map(|row| common::chat_pages::extract_page_refs(&row.tool_output)).collect::<Vec<_>>();
+    for page in &web_pages {
+        if !cited_handles.contains(&page.handle) { cited_handles.push(page.handle.clone()); }
+    }
     let conflicting = conflicting_handles(&messages);
     // One row as `MessageEntry`. A run of tool rows renders the same entries inside its
     // group when the group is open.
     let entry = |i: usize| -> Element {
         let mut m = messages[i].clone();
         if m.tool_name == "cite_documents" {
-            m.doc_refs = serde_json::to_string(&citation_search_context(&messages, i)).unwrap_or_default();
+            m.doc_refs = serde_json::to_string(&citation_search_context_with_tree(&messages, i, &collection_tree)).unwrap_or_default();
         }
         let highlight = active_msg == Some(i);
-        // The strip belongs to the ANSWER, and the citations arrive on the tool rows before
-        // it. Collected here rather than inside `MessageEntry`, which sees one message and
-        // cannot know which turn it closes.
+        // Source cards use the citations stored before this answer.
         let replaced = answer_replaced(&messages, i);
-        // A replaced answer shows no strip. The answer that replaces it lists its citations.
+        // The replacement answer renders the source cards.
         let sources = if m.role == ChatRole::Assistant && !replaced {
-            citations_for_answer(&messages, i)
+            let mut sources = Vec::new();
+            for previous in (0..i).rev() {
+                if messages[previous].tool_name == "cite_documents" {
+                    sources.extend(citation_search_context_with_tree(&messages, previous, &collection_tree));
+                }
+            }
+            sources.extend(run_cited_refs.clone());
+            merge_citations(sources)
         } else {
             Vec::new()
         };
@@ -110,6 +122,7 @@ pub fn ChatTranscript(
                 message: m,
                 highlight,
                 sources,
+                web_pages: web_pages.clone(),
                 cited_handles: cited_handles.clone(),
                 conflicting_handles: conflicting.clone(),
                 datasets: datasets.clone(),
@@ -157,6 +170,7 @@ pub fn ChatTranscript(
                 if end - start == 1
                     && messages[start].role != ChatRole::Tool
                     && !messages[start].role.is_instruction()
+                    && !answer_replaced(&messages, start)
                     || end - start == 1 && (is_todo_write(&messages[start]) || is_question(&messages[start]))
                 {
                     {entry(start)}
@@ -313,9 +327,9 @@ fn tool_run_segments(messages: &[ChatMessageItem], split_todo: bool) -> Vec<(usi
         }
         match out.last_mut() {
             Some((start, end))
-                if (m.role == ChatRole::Tool || m.role.is_instruction())
+                if (m.role == ChatRole::Tool || m.role.is_instruction() || answer_replaced(messages, i))
                     && (messages[*start].role == ChatRole::Tool
-                        || messages[*start].role.is_instruction())
+                        || messages[*start].role.is_instruction() || answer_replaced(messages, *start))
                     && !is_question(&messages[*start])
                     && !(split_todo && is_todo_write(&messages[*start])) =>
             {
@@ -360,9 +374,11 @@ fn ToolRunGroup(
     children: Element,
 ) -> Element {
     let mut open = use_signal(|| false);
+    let mut was_live = use_signal(|| false);
     use_effect(move || {
-        if live && !*open.peek() {
-            open.set(true);
+        if live != *was_live.peek() {
+            was_live.set(live);
+            open.set(live);
         }
     });
     let shown = *open.read() || force_open;
@@ -466,7 +482,7 @@ fn collect_datasets(
 
 /// The handles that the citation rows of the conversation give to more than one document.
 /// Records from before durable handles can hold such a handle. The answer links it to no
-/// document, and the sources strip names the conflict.
+/// document, and its citation card names the conflict.
 fn conflicting_handles(messages: &[ChatMessageItem]) -> Vec<String> {
     let mut documents: Vec<(String, String)> = Vec::new();
     let mut conflicting: Vec<String> = Vec::new();
@@ -547,19 +563,34 @@ fn read_more_source(messages: &[ChatMessageItem], index: usize) -> Option<(Strin
 }
 
 /// Add the newest earlier search context for each cited document.
+#[cfg(test)]
 fn citation_search_context(messages: &[ChatMessageItem], index: usize) -> Vec<ChatDocRef> {
+    citation_search_context_with_tree(messages, index, &[])
+}
+
+fn citation_search_context_with_tree(messages: &[ChatMessageItem], index: usize, tree: &[common::storage_tree::CollectionNode]) -> Vec<ChatDocRef> {
     let mut refs = messages[index].parsed_doc_refs();
+    let extracted = common::chat_types::extract_doc_refs(
+        &messages[index].tool_name, &messages[index].tool_output);
     for doc in &mut refs {
+        if !doc.quote_verified {
+            if let Some(candidate) = extracted.iter().find(|item| item.handle == doc.handle
+                && item.file_hash == doc.file_hash && !item.snippet.is_empty()) {
+                doc.snippet = candidate.snippet.clone();
+                doc.find_query = candidate.find_query.clone();
+            }
+        }
         for search in messages[..index].iter().rev().filter(|row| {
             row.role == ChatRole::Tool && matches!(row.tool_name.as_str(), "search_collections" | "search_passages")
         }) {
             let input = serde_json::from_str::<serde_json::Value>(&search.tool_input).unwrap_or_default();
             let input = input.get("input").unwrap_or(&input);
-            let query = input.get("query").and_then(|v| v.as_str())
-                .or_else(|| input.get("queries").and_then(|v| v.get(0)).and_then(|v| v.as_str()))
+            let queries = input.get("queries").and_then(|v| v.as_array()).map(|values|
+                values.iter().filter_map(|v| v.as_str().map(str::to_string)).collect::<Vec<_>>())
+                .or_else(|| input.get("query").and_then(|v| v.as_str()).map(|value| vec![value.to_string()]))
                 .unwrap_or_default();
-            let mut found = common::chat_types::extract_doc_refs_with_query(
-                &search.tool_name, &search.tool_output, query);
+            let mut found = common::chat_types::extract_doc_refs_with_queries(
+                &search.tool_name, &search.tool_output, &queries);
             found.extend(search.parsed_doc_refs());
             if let Some(hit) = found.into_iter().find(|hit| {
                 let length = hit.file_hash.len().min(doc.file_hash.len());
@@ -567,10 +598,33 @@ fn citation_search_context(messages: &[ChatMessageItem], index: usize) -> Vec<Ch
                     && (hit.collectionname.is_empty() || doc.collectionname.is_empty()
                         || hit.collectionname == doc.collectionname)
             }) {
+                let matched_query = hit.find_query.clone();
                 if doc.term.is_empty() {
-                    doc.term = if hit.find_query.is_empty() { query.to_string() } else { hit.find_query };
+                    doc.term = matched_query.clone();
                 }
                 doc.search_snippet = hit.snippet;
+                if !doc.quote_verified && !matched_query.is_empty() {
+                    doc.find_query = matched_query.clone();
+                }
+                let reproducible = input.as_object().is_some_and(|fields| fields.keys().all(|key|
+                    matches!(key.as_str(), "query" | "queries" | "collectionname" | "collections" | "limit" | "max_results" | "offset")));
+                if reproducible && !matched_query.is_empty() && doc.term == matched_query
+                    && !doc.collection_dataset.is_empty()
+                {
+                    let mut matched_input = input.clone();
+                    matched_input["query"] = serde_json::Value::String(matched_query.clone());
+                    if let Some(crate::routes::Route::SearchPage { query, .. }) =
+                        super::tool_disclosure::search_route_from_tool_input(&search.tool_name, &matched_input.to_string(), tree)
+                    {
+                        doc.search_route = crate::routes::Route::SearchPage {
+                            query,
+                            current_search_result_page: 0,
+                            selected_result_hash: crate::data_definitions::url_param::UrlParam(Some(doc.document_identifier())),
+                            doc_viewer_state: crate::data_definitions::url_param::UrlParam(Some(
+                                crate::data_definitions::doc_viewer_state::DocViewerState::from_find_query(matched_query))),
+                        }.to_string();
+                    }
+                }
                 break;
             }
         }
@@ -579,6 +633,7 @@ fn citation_search_context(messages: &[ChatMessageItem], index: usize) -> Vec<Ch
 }
 
 /// Return citations from the answer turn, including its repair round.
+#[cfg(test)]
 fn citations_for_answer(messages: &[ChatMessageItem], answer_index: usize) -> Vec<ChatDocRef> {
     let mut refs: Vec<ChatDocRef> = Vec::new();
     // True after the note of a citation repair round. The answer before that note is
@@ -635,10 +690,11 @@ fn MessageEntry(
     message: ChatMessageItem,
     highlight: bool,
     draft: Signal<String>,
-    /// The documents this answer cited, for the strip beneath it. Empty for every role
-    /// but the assistant's.
+    /// The documents rendered at citation positions in this answer.
     #[props(default)]
     sources: Vec<ChatDocRef>,
+    #[props(default)]
+    web_pages: Vec<common::chat_pages::ChatPageRef>,
     /// The handles that the citations of the conversation gave (`issued_handles`).
     #[props(default)]
     cited_handles: Vec<String>,
@@ -680,7 +736,6 @@ fn MessageEntry(
             // counts arrive with the finished row, and a footer that appears mid-answer
             // showing zeros would read as a measurement of nothing.
             let context_footer = message.context_footer();
-            let answer_status = message.answer_status_line();
             rsx! {
                 div {
                     style: "align-self: stretch; max-width: 96%; padding: 4px 2px; {ring}",
@@ -694,12 +749,14 @@ fn MessageEntry(
                             "data-chat-replaced-answer": "{message.seq}",
                             summary {
                                 style: "cursor: pointer; color: #64748B; font-size: 13px;",
-                                "The answer before the citation check. The answer below replaces it."
+                                "Earlier answer"
                             }
                             MarkdownishText {
                                 text: message.content.clone(),
                                 cited_handles: Some(cited_handles.clone()),
                                 conflicting_handles: conflicting_handles.clone(),
+                                sources: sources.clone(),
+                                pages: web_pages.clone(),
                             }
                             if let Some(footer) = context_footer.as_ref() {
                                 div {
@@ -716,15 +773,14 @@ fn MessageEntry(
                                 text: message.content.clone(),
                                 cited_handles: Some(cited_handles.clone()),
                                 conflicting_handles: conflicting_handles.clone(),
+                                sources: sources.clone(),
+                                pages: web_pages.clone(),
                             }
                         }
                     } else {
                         // The question card above shows this text. A browser test reads
                         // the answer of a turn that asked the user from this element.
                         span { "data-chat-asked": "{message.seq}", hidden: true, "{message.content}" }
-                    }
-                    if !sources.is_empty() {
-                        SourcesStrip { sources: sources.clone(), conflicting: conflicting_handles.clone() }
                     }
                     // A turn that only succeeded on retry is a healthy answer over an
                     // unhealthy agent tier. Worth saying, quietly, rather than hiding.
@@ -737,13 +793,6 @@ fn MessageEntry(
                             ),
                             errors: retries,
                             tone_color: "#B45309",
-                        }
-                    }
-                    if let Some(status) = answer_status.filter(|_| !replaced) {
-                        div {
-                            "data-chat-answer-status": "{message.seq}",
-                            style: "margin-top: 6px; font-size: 0.85em; color: #6B7280;",
-                            "{status}"
                         }
                     }
                     if let Some(footer) = context_footer.filter(|_| !replaced) {
@@ -789,8 +838,8 @@ fn MessageEntry(
         ChatRole::Nag => rsx! {
             details {
                 class: "x-chat-nag",
-                style: "align-self: flex-start; max-width: 88%; background: #F5F3FF; \
-                        color: #5B21B6; border-left: 3px solid #A78BFA; padding: 6px 12px; \
+                style: "align-self: flex-start; max-width: 88%; background: white; \
+                        color: #475569; border-left: 3px solid #AAAAAA33; padding: 6px 12px; \
                         border-radius: 0 8px 8px 0; font-size: 0.9em; {ring}",
                 summary { style: "cursor: pointer; font-weight: 600;", "Instruction to the agent" }
                 div {
@@ -1013,7 +1062,7 @@ fn unverified_quote_message(reason: &str) -> &'static str {
 /// Each entry carries the handle that appears in the prose, so a reader following `[D3]`
 /// out of a sentence lands on the document it names.
 #[component]
-fn SourcesStrip(
+pub(super) fn DocumentCitationCards(
     sources: Vec<ChatDocRef>,
     /// See [`conflicting_handles`]. An entry with such a handle gets no jump target.
     #[props(default)]
@@ -1023,15 +1072,11 @@ fn SourcesStrip(
         div {
             style: "margin-top: 10px; border-top: 1px solid #E2E8F0; padding-top: 8px;",
             div {
-                style: "font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px;",
-                "Sources"
-            }
-            div {
                 style: "display: flex; flex-direction: column; gap: 8px;",
                 for (index, doc) in sources.into_iter().enumerate() {
                     div {
                         key: "{doc.handle}-{doc.file_hash}",
-                        id: if conflicting.contains(&doc.handle) { String::new() } else { source_anchor_id(&doc.handle) },
+                        "data-citation-handle": if conflicting.contains(&doc.handle) { String::new() } else { doc.handle.clone() },
                         "data-conflicting-handle": conflicting.contains(&doc.handle).to_string(),
                         class: "x-source-entry",
                         style: "display: flex; gap: 8px; align-items: flex-start;",
@@ -1039,8 +1084,8 @@ fn SourcesStrip(
                             div {
                                 style: "
                                     flex-shrink: 0; font-size: 12px; font-weight: 600;
-                                    color: #3730A3; background: #EEF2FF;
-                                    border: 1px solid #C7D2FE; border-radius: 5px;
+                                    color: #334155; background: #F8FAFC;
+                                    border: 1px solid #E5E7EB; border-radius: 5px;
                                     padding: 1px 5px; margin-top: 10px;
                                 ",
                                 "{doc.handle}"
