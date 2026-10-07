@@ -88,9 +88,9 @@ distinct terms before they alert.
 
 ## `GET /signals`
 
-The lexicon's version, languages, total term count, and every category with its `title`, what it
-`catches`, what a match `does_not_prove`, and its term count per language. A client shows the last
-of these beside a signal.
+The response includes the lexicon version, languages, total term count, and category definitions.
+Each category includes `title`, `catches`, `does_not_prove`, and term counts per language.
+The website shows category descriptions, scoring rules, and terms. It omits the caution fields.
 
 ## `GET /signal_terms`
 
