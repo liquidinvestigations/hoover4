@@ -16,6 +16,7 @@ that answer with a notice. A reply without labels shows its citation status.
 A logical thread gets one repair round at most. The note in the thread is the stored marker
 (`REPAIR_MARKER_KEY` in its usage). `is_citation_note` reads this marker.
 `steps.check_citations` uses stored read evidence after each answer or question.
+The evidence includes earlier turns' tool reads, without their repair notes.
 A web check compares every answer link with readable page evidence and names each unread link.
 A stopped run and a run that ended at a limit get no round. The rules here are pure.
 """

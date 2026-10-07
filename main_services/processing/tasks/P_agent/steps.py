@@ -367,6 +367,20 @@ def _read_thread(row):
     return prepare_thread(agent_runs.read_messages(row.username, row.session_id, row.thread_id))
 
 
+def _citation_messages(row, messages):
+    """Include earlier tool evidence without earlier turns' repair markers."""
+    from database import agent_runs
+    from tasks.P_agent.stream_writer import prepare_thread
+
+    earlier = []
+    for thread_id in agent_runs.read_earlier_threads(row.username, row.session_id,
+                                                     row.turn_seq):
+        previous = prepare_thread(agent_runs.read_messages(row.username, row.session_id,
+                                                           thread_id))
+        earlier.extend(message for message in previous if message.role == "tool")
+    return earlier + list(messages)
+
+
 def _earlier_turns(row) -> list[dict[str, Any]]:
     """The stored threads of the earlier chat turns of the session, in turn order, as
     `RunMessage` rows. Each thread is sent whole, with its tool calls and results.
@@ -581,7 +595,8 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
     from database import agent_runs
 
     entries = reports.session_citation_entries(row.username, row.session_id)
-    metadata = citations.answer_metadata(answer, earlier, entries, params.internet_tools)
+    metadata = citations.answer_metadata(answer, _citation_messages(row, earlier),
+                                         entries, params.internet_tools)
     if any(m.usage.get("summarised") for m in round_ai):
         answer = answer + SUMMARY_NOTICE
     ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
@@ -1040,7 +1055,8 @@ def check_citations(params: CitationCheckParams) -> CitationRepair:
             agent_runs.write_run(row, next_seq=params.seq + 1)
         return CitationRepair(needed=True, next_seq=params.seq + int(transcript))
     entries = reports.session_citation_entries(row.username, row.session_id)
-    needed, check = citations.needs_repair(row.result or "", messages, entries)
+    needed, check = citations.needs_repair(row.result or "",
+                                          _citation_messages(row, messages), entries)
     if not needed:
         return CitationRepair(next_seq=params.seq)
     text = citations.repair_note(check)

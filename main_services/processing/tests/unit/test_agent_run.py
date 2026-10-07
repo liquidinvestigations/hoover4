@@ -1060,6 +1060,66 @@ def test_a_cited_paragraph_does_not_cover_the_next_claim():
     assert findings == [{"number": 2, "text": "Ștefan receives 12 payments."}]
 
 
+def _with_earlier_turn(store, monkeypatch, messages):
+    read_current = agent_runs.read_messages
+    monkeypatch.setattr(agent_runs, "read_earlier_threads", lambda *a: ["previous"])
+
+    def read_messages(username, session_id, thread_id):
+        assert (username, session_id) == ("u", "s")
+        return messages if thread_id == "previous" else read_current(username, session_id, thread_id)
+
+    monkeypatch.setattr(agent_runs, "read_messages", read_messages)
+
+
+@pytest.mark.parametrize("reader, reference", [
+    ("read_page", {"url": "https://example.invalid/report"}),
+    ("read_more", {"file_hash": "a" * 64, "collectionname": "c"}),
+])
+def test_a_followup_gets_its_own_repair_for_earlier_read_evidence(
+        citations_store, monkeypatch, reader, reference):
+    previous = [
+        agent_runs.RunMessageRow(idx=1, role="human", content="repair",
+            usage_json=json.dumps({"repair_marker": "citation"})),
+        agent_runs.RunMessageRow(idx=2, role="tool", tool_name=reader,
+            usage_json=json.dumps({"status": "ok", "evidence": [
+                {"kind": "document_read", "status": "partial", "reference": reference}]})),
+    ]
+    _with_earlier_turn(citations_store, monkeypatch, previous)
+    _answer_with_tool(citations_store, "The budget is 5.", citation_tool=False)
+    assert _check(citations_store).needed
+    assert sum(citations.is_citation_note(m) for m in citations_store["messages"]) == 1
+    citations_store["messages"].append(agent_runs.RunMessageRow(
+        idx=citations_store["messages"][-1].idx + 1, role="ai", content="The budget is 5."))
+    assert not _check(citations_store).needed
+
+
+@pytest.mark.parametrize("address, expected", [
+    ("", "missing"),
+    ("https://example.invalid/report", "cited"),
+    ("https://example.invalid/unread", "missing"),
+])
+def test_followup_answer_status_uses_earlier_page_reads(store, monkeypatch, address, expected):
+    previous = [agent_runs.RunMessageRow(idx=1, role="tool", tool_name="read_page",
+        usage_json=json.dumps({"status": "ok", "evidence": [
+            {"kind": "document_read", "status": "ok",
+             "reference": {"url": "https://example.invalid/report"}}]}))]
+    _with_earlier_turn(store, monkeypatch, previous)
+    _serve(monkeypatch, store, _frames(text=f"The budget is 5. {address}"))
+    assert _step().outcome == "answered"
+    assert json.loads(store["chat"][-1]["usage_json"])["citation_status"] == expected
+
+
+def test_an_unfinished_earlier_page_result_gives_no_followup_evidence(store, monkeypatch):
+    previous = [agent_runs.RunMessageRow(idx=1, role="tool", tool_name="read_page", is_final=0,
+        usage_json=json.dumps({"status": "ok", "evidence": [
+            {"kind": "document_read", "status": "ok",
+             "reference": {"url": "https://example.invalid/report"}}]}))]
+    _with_earlier_turn(store, monkeypatch, previous)
+    _serve(monkeypatch, store, _frames(text="The result is 5."))
+    assert _step().outcome == "answered"
+    assert json.loads(store["chat"][-1]["usage_json"])["citation_status"] == "none"
+
+
 @pytest.mark.parametrize("unread_status", ["absent", "error"])
 def test_one_read_web_link_does_not_cover_an_unread_link(citations_store, unread_status):
     evidence = [{"kind": "document_read", "status": "partial",

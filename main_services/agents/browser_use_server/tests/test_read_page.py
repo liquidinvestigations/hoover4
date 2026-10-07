@@ -304,7 +304,8 @@ def test_the_rendered_page_shape_matches_the_worker_parser():
     first, second = text.split("\n\n---\n\n")
     assert first.split("\n")[1] == "https://example.org/a"
     assert "[cut: this call read 10 of the page's 50 characters." in first
-    assert second.endswith("\n\nCOULD NOT READ: timeout")
+    assert second.split("\n", 2)[2].strip().split("\n", 1)[0] == "COULD NOT READ: timeout"
+    assert "Read another source or omit this page's claims and address." in second
     found = PageRead(url="https://example.org/p", full_text="abc Staff Engineer def",
                      find="Staff Engineer", version="0123456789abcdef", full_chars=22)
     read_page._fill_find(found, 1000)

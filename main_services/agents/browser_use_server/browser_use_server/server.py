@@ -552,7 +552,12 @@ READ_PAGE_SCHEMA = {
         "urls": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "The http/https pages to read, most promising first. Up to six.",
+            "description": (
+                "Give the most promising HTTP or HTTPS page addresses first. "
+                "Give at most six addresses. "
+                "For repository data files, use raw file addresses. "
+                "On GitLab, replace /-/blob/ with /-/raw/."
+            ),
         },
         "goal": {
             "type": "string",
@@ -591,7 +596,7 @@ READ_PAGE_SCHEMA = {
 }
 
 READ_PAGE_DESCRIPTION = (
-    "Open several web pages and read them, in one call. Give it the URLs of search "
+    "Read web pages or raw repository data files. Give it the URLs of search "
     "results worth reading in full and it navigates to each, waits for it to load, and "
     "returns the page's readable text with the navigation and adverts stripped, plus a "
     "screenshot and an archived copy the user can open. This is how you read a page: use "

@@ -326,7 +326,11 @@ def render(result: ReadResult) -> str:
             )
             continue
         if page.error:
-            blocks.append(f"{head}\n\nCOULD NOT READ: {page.error}")
+            blocks.append(
+                f"{head}\n\nCOULD NOT READ: {page.error}\n\n"
+                "This call gives no text from this page. "
+                "Read another source or omit this page's claims and address."
+            )
             continue
         if page.find:
             blocks.append(f"{head}\n\n{_find_block(page)}")

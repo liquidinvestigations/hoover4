@@ -92,6 +92,10 @@ the earlier answer. It retains the earlier answer with a notice when the reply c
 raw call text or a label that does not resolve. A revised answer without labels shows a
 citation status. The round does not repeat.
 
+The citation check uses tool evidence from the current and earlier turns.
+It excludes earlier repair notes.
+Each turn can get one repair round.
+
 The worker stores the typed evidence of each tool result beside it: the reads with their
 spans, failed items, citations, notes, and artifacts.
 Table row windows and cell text count as document reads. Table metadata and search results

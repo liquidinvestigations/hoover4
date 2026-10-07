@@ -73,6 +73,8 @@ They define the role's sources and evidence requirements.
 The full chat role verifies every constraint for each listed item before an optional skill read.
 It requires reading each cited page and reports a shortage when fewer items match.
 It keeps items that fail a constraint outside the matching list.
+It counts a trial and its appeals as one prosecution.
+It uses another readable source or omits claims from a failed page read.
 The system text records the observed UTC date when the run context is created.
 Current web claims require the latest dated source update.
 Repository data reads use raw addresses, returned continuation offsets, and surrounding record text when a match omits an identifying fact.

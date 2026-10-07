@@ -88,6 +88,7 @@ Read these behaviours before you change it:
 * **A page that failed is reported as failed**, per URL, and the rest of the call still
   returns. A navigation that errored is still extracted and still captured: a cookie wall or
   a CAPTCHA is the most valuable screenshot this server produces.
+  A failed text read tells the model to read another source or omit the page's claims and address.
 * **A bot check page is waited out, then reported as blocked.** After the navigation, a
   probe in the page looks for a bot check. It matches titles such as "Just a moment...",
   the Cloudflare challenge elements, and phrases such as "verify you are human".
