@@ -95,6 +95,7 @@ Read these behaviours before you change it:
   probe in the page looks for a bot check. It matches titles such as "Just a moment...",
   the Cloudflare challenge elements, and phrases such as "verify you are human".
   It also detects Myra security pages in English and German.
+  A failed page titled "Security Verification" also counts as a bot check.
   A page with
   no check costs one probe and no wait. A page with a check is probed every 0.5 s for up to
   `READ_PAGE_BOT_CHECK_WAIT_S`. When the check clears, the extraction runs on the page it

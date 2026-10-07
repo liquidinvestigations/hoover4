@@ -130,8 +130,11 @@ _CHECK_JS = """
   // Myra uses a separate title and human verification text in both languages.
   const myra = ['security check', 'sicherheitsüberprüfung'].includes(t.trim())
     && (b.includes('myra') || b.includes('unusual traffic') || b.includes('mensch'));
+  const verification = t.trim() === 'security verification'
+    && b.includes('verification could not be completed');
   const hit = dom ? 'dom' : (myra ? 'security check' :
-    (titles.find(x => t.includes(x)) || phrases.find(x => b.includes(x)) || ''));
+    (verification ? 'security verification' :
+      (titles.find(x => t.includes(x)) || phrases.find(x => b.includes(x)) || '')));
   return JSON.stringify({ text: hit, check: !!hit, url: location.href, title: document.title || '',
                           type: document.contentType || '' });
 }

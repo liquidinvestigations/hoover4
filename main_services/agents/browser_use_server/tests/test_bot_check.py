@@ -28,6 +28,9 @@ CHECK_URL = "https://checked.example/article"
 @pytest.mark.parametrize("title, body, blocked", [
     ("Security Check", "Myra. Our systems have detected unusual traffic. You must confirm that you are human.", True),
     ("Sicherheitsüberprüfung", "Myra. Bitte bestätigen Sie, dass Sie ein Mensch sind.", True),
+    ("Security Verification", "Verification could not be completed. Please refresh the page to try again. Loading...", True),
+    ("Security Verification", "Documentation for our account verification process.", False),
+    ("Security verification guide", "The page can report: Verification could not be completed.", False),
     ("", "Please verify that you are human.", True),
     ("Myra security check guide", "This article describes a security check.", False),
 ])
