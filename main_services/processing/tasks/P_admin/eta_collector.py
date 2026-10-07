@@ -237,7 +237,7 @@ def _sample_nlp(client, ds: str) -> StageSample:
     total_bytes = _query(client, "SELECT sum(tb) FROM (SELECT file_hash, extracted_by, page_id, argMax(text_bytes, version) AS tb FROM text_content WHERE collection_dataset = {ds:String} GROUP BY file_hash, extracted_by, page_id)", ds)[0][0] or 0
     import os
     if not (os.getenv('NER_URL') or '').strip():
-        return StageSample(STAGE_NLP, total, total, 0.0, 0.0, 0.0)
+        return StageSample(STAGE_NLP, total, total, 0.0, 0.0, 0)
     events = [
         (_epoch(ts), 1, int(tb))
         for ts, tb in _query(

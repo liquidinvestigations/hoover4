@@ -78,6 +78,8 @@ def test_continue_as_new_resets_passes():
 
 
 def test_disabled_ner_counts_every_segment_as_complete(monkeypatch):
+    import struct
+
     from tasks.P_admin import eta_collector as eta
 
     monkeypatch.delenv('NER_URL', raising=False)
@@ -86,6 +88,7 @@ def test_disabled_ner_counts_every_segment_as_complete(monkeypatch):
     sample = eta._sample_nlp(object(), 'dataset')
     assert sample.done == sample.total == 8
     assert sample.eta_seconds == 0
+    assert struct.pack('<Q', sample.eta_seconds) == bytes(8)
 
 
 def test_collection_without_active_operation_has_no_collection_reads(monkeypatch):
