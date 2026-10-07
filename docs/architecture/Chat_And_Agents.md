@@ -95,6 +95,7 @@ citation status. The round does not repeat.
 The citation check uses tool evidence from the current and earlier turns.
 It excludes earlier repair notes.
 Each turn can get one repair round.
+The web repair asks for verified item identities, every requested constraint, merged duplicates, and fewer items when sources are insufficient.
 
 The worker stores the typed evidence of each tool result beside it: the reads with their
 spans, failed items, citations, notes, and artifacts.
