@@ -564,8 +564,9 @@ def scan_signals_collection(collectionname: str):
 
 
 #: The most hashes one `refresh_document_locations` operation carries. A hash takes
-#: about 67 bytes in the JSON input, so a batch stays near 0.7 MB.
-REFRESH_BATCH_HASHES = 10_000
+#: about 67 bytes in the JSON input, so a batch stays near 335 KB, below the 512 KB
+#: payload limit of `tasks/payload_guard.py`.
+REFRESH_BATCH_HASHES = 5_000
 
 
 @cli.command(name="refresh-document-locations")
@@ -585,8 +586,8 @@ def refresh_document_locations(collectionname: str, collection_dataset: str, app
     The dry run is a local read. `--apply` dispatches
     `refresh_document_locations` operations and follows each one. Ctrl-C detaches.
     Each operation holds at most `REFRESH_BATCH_HASHES` hashes, because the hashes
-    travel in the workflow input and Temporal refuses a message over 4 MB. The
-    next batch starts after the previous operation finishes.
+    travel in the workflow input and the payload guard refuses one over 512 KB.
+    The next batch starts after the previous operation finishes.
     """
     from database.clickhouse import validate_collectionname
     from database.operations import OperationLocked
