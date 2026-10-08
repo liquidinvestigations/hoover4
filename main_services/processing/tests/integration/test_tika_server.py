@@ -104,3 +104,37 @@ def test_email_outer_body_excludes_attachment(tmp_path):
     assert "ATTACHMENT_TEXT_SENTINEL" not in answer.text
     metadata = parse(path, types=["message/rfc822"], routes=["email", "text"])
     assert metadata.error is None and metadata.text == ""
+
+
+@pytest.mark.parametrize("relative,has_body", [
+    ('mail-public/sources/nauru-police-force/czarist-daniel/czarist-daniel/recoverableitemsdeletions/2023.eml', True),
+    ('mail-public/sources/nauru-police-force/rosella-dageago/rosella-dageago/sentitems/86.eml', False),
+    ('mail-public/sources/nauru-police-force/brown-capelle/brown-capelle/sentitems/742.eml', True),
+    ('mail-public/sources/nauru-police-force/peter-leaupepe/peter-leaupepe/sentitems/1283.eml', True),
+    ('mail-public/sources/nauru-police-force/peter-leaupepe/peter-leaupepe/inbox/1385.eml', False),
+])
+def test_nauru_email_bodies(relative, has_body):
+    from email import policy
+    from email.parser import BytesParser
+    from tasks.P3_parse_files.email_parts import body_alternatives
+
+    path = DATA / relative
+    answer = parse(path)
+    assert answer.error is None
+    assert answer.text.strip()
+    source = BytesParser(policy=policy.default).parsebytes(path.read_bytes())
+    bodies = body_alternatives(source)
+    assert bool(bodies) == has_body
+    text = " ".join(answer.text.split())
+    if has_body:
+        assert any(" ".join(body.split())[:40] in text for body in bodies.values())
+    else:
+        assert " ".join(str(source["Subject"]).split()) in text
+    for part in source.walk():
+        if part.get_content_disposition() == "attachment":
+            payload = part.get_payload()
+            if isinstance(payload, str) and len(payload) > 200:
+                assert payload[:200] not in answer.text
+    metadata = parse(path, types=["message/rfc822"], routes=["email", "text"])
+    assert metadata.error is None
+    assert metadata.text == ""

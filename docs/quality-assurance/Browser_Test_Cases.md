@@ -113,6 +113,7 @@ Search results, filter panes, sort menus, and query chips.
 | `133-search-collections-filter-expanded` | Exercises the search collections filter expanded case. | none named | `--names search-collections-filter-expanded` |
 | `134-filter-pane-language` | Verifies language labels and applies the English filter. | `any` | `--names filter-pane-language` |
 | `135-filter-pane-red-flags` | Applies a scored red flag category from the Entities filter. | `any` | `--names filter-pane-red-flags` |
+| `136-search-sqlite-cells` | Finds stored SQLite cell text with a keyword search. | `filetypes_files` | `--names search-sqlite-cells` |
 | `137-filter-pane-text-source` | Verifies text source labels and applies the Raw file text filter. | `any` | `--names filter-pane-text-source` |
 | `138-search-table-sheet-hits` | Opens a workbook match on its sheet and counts matches per sheet in the chooser. | `testdata_polpro` | `--names search-table-sheet-hits` |
 | `139-search-preview-divider` | Drags the divider between results and preview and restores its width after a reload. | none named | `--names search-preview-divider` |
@@ -140,6 +141,7 @@ PDF, image, email, text, metadata, file locations, and entity cards.
 | `215-view-doc-entity-card-stale` | Exercises the view doc entity card stale case. | `testdata_testfiles` | `--names view-doc-entity-card-stale` |
 | `216-signal-terms` | Verifies category definitions, calibration, recall notes, and expandable terms. | none named | `--names signal-terms` |
 | `217-view-doc-red-flags` | Verifies the document signal section and its category definition link. | `testdata_testfiles` | `--names view-doc-red-flags` |
+| `218-view-doc-vcard-photo` | Shows a vCard with its photo replaced by a size marker. | `filetypes_files` | `--names view-doc-vcard-photo` |
 | `219-view-doc-empty-archive` | Verifies the completed state of a document without text sources. | `testdata_manualqa` | `--names view-doc-empty-archive` |
 | `220-view-doc-email-long-details` | Verifies wheel scrolling through a long recipient list into the email body. | `enron_kaminski` | `--names view-doc-email-long-details` |
 | `221-view-doc-pdf-feedback-capture` | Opens the report overlay on a PDF document and shows the drawn image with its notes. | `testdata_testfiles` | `--names view-doc-pdf-feedback-capture` |
@@ -202,6 +204,9 @@ Spreadsheet grids, column filters, and the table column dialog.
 | `413-qa-table-modal-dark-colors` | Exercises the qa table modal dark colors case. | `testdata_excelsc` | `--names qa-table-modal-dark-colors` |
 | `414-qa-table-picker-visibility` | Exercises the qa table picker visibility case. | `testdata_excelsc` | `--names qa-table-picker-visibility` |
 | `415-qa-table-data-sort-filter` | Exercises the qa table data sort filter case. | `testdata_manualqa` | `--names qa-table-data-sort-filter` |
+| `416-view-doc-html-table` | Shows an HTML table export as a grid. | `filetypes_files` | `--names view-doc-html-table` |
+| `417-view-doc-spreadsheetml` | Shows a SpreadsheetML workbook as a grid. | `filetypes_files` | `--names view-doc-spreadsheetml` |
+| `418-view-doc-sqlite` | Shows a SQLite table as a grid with BLOB size markers. | `filetypes_files` | `--names view-doc-sqlite` |
 
 ## Chat
 
