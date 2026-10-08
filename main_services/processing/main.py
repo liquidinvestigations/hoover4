@@ -563,6 +563,11 @@ def scan_signals_collection(collectionname: str):
     asyncio.run(scan())
 
 
+#: The most hashes one `refresh_document_locations` operation carries. A hash takes
+#: about 67 bytes in the JSON input, so a batch stays near 0.7 MB.
+REFRESH_BATCH_HASHES = 10_000
+
+
 @cli.command(name="refresh-document-locations")
 @click.argument("collectionname", type=str)
 @click.argument("collection_dataset", type=str)
@@ -577,8 +582,11 @@ def refresh_document_locations(collectionname: str, collection_dataset: str, app
     whose indexed `language` differs from the current document language rule.
     Invocation is explicit: deployment does not start this.
 
-    The dry run is a local read. `--apply` dispatches a
-    `refresh_document_locations` operation and follows it. Ctrl-C detaches.
+    The dry run is a local read. `--apply` dispatches
+    `refresh_document_locations` operations and follows each one. Ctrl-C detaches.
+    Each operation holds at most `REFRESH_BATCH_HASHES` hashes, because the hashes
+    travel in the workflow input and Temporal refuses a message over 4 MB. The
+    next batch starts after the previous operation finishes.
     """
     from database.clickhouse import validate_collectionname
     from database.operations import OperationLocked
@@ -609,22 +617,26 @@ def refresh_document_locations(collectionname: str, collection_dataset: str, app
         click.echo("nothing to refresh")
         return
 
-    try:
-        op_id = submit_operation(
-            "refresh_document_locations",
-            collectionname=collectionname,
-            collection_dataset=collection_dataset,
-            detail={"item_hashes": selected, "indexed_documents": indexed_count,
-                    "mechanism": mechanism},
-        )
-    except OperationLocked as e:
-        raise click.ClickException(str(e))
-    click.echo(f"operation {op_id}")
-    state = tail_operation(op_id)
-    if state == "errored":
-        raise click.ClickException(f"{op_id} failed.")
-    if state == "detached":
-        click.echo(where_to_look(op_id))
+    batches = [selected[i:i + REFRESH_BATCH_HASHES]
+               for i in range(0, len(selected), REFRESH_BATCH_HASHES)]
+    for number, batch in enumerate(batches, start=1):
+        try:
+            op_id = submit_operation(
+                "refresh_document_locations",
+                collectionname=collectionname,
+                collection_dataset=collection_dataset,
+                detail={"item_hashes": batch, "indexed_documents": indexed_count,
+                        "mechanism": mechanism},
+            )
+        except OperationLocked as e:
+            raise click.ClickException(str(e))
+        click.echo(f"operation {op_id}, batch {number} of {len(batches)}, {len(batch)} hash(es)")
+        state = tail_operation(op_id)
+        if state == "detached":
+            click.echo(where_to_look(op_id))
+            return
+        if state != "finished":
+            raise click.ClickException(f"{op_id} ended {state}. The later batches did not start.")
 
 
 @cli.command(name="purge-dataset")
